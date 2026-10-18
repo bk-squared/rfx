@@ -1086,10 +1086,10 @@ def test_every_shared_helper_has_an_identity_guard():
 # their current files.
 _RUNNER_ENTRY_POINTS = (
     ("uniform", "run_uniform", "rfx.runners.uniform", "run_uniform"),
-    ("nonuniform", "run_nonuniform", "rfx.nonuniform", "run_nonuniform"),
+    ("nonuniform", "run_nonuniform", "rfx.stepping.graded_loop", "run_nonuniform"),
     ("nonuniform", "run_nonuniform_path", "rfx.runners.nonuniform",
      "run_nonuniform_path"),
-    ("nonuniform", "run_nonuniform_until_decay", "rfx.nonuniform",
+    ("nonuniform", "run_nonuniform_until_decay", "rfx.stepping.graded_loop",
      "run_nonuniform_until_decay"),
     ("subgridded", "run_subgridded_path", "rfx.runners.subgridded",
      "run_subgridded_path"),

@@ -109,7 +109,7 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
     in REPORT.md; this test remains portable across JAX backends/dtypes.
     """
     import rfx.simulation as uniform
-    import rfx.nonuniform as nu
+    import rfx.stepping.graded_loop as nu
     captured = []
 
     def record(state):

@@ -10,7 +10,8 @@ from rfx.core.yee import EPS_0, MU_0, MaterialArrays
 from tests.contracts.path_equivalence.test_one_vs_several_devices_occupancy import BINS_HZ
 from tests._multi_device_scene import host_devices
 from rfx.model.electric_metrics import stage_forward_materials
-from rfx.nonuniform import _build_nu_scan, make_current_source, run_nonuniform
+from rfx.stepping.graded_setup import _build_nu_scan
+from rfx.nonuniform import make_current_source, run_nonuniform
 from rfx.runners.distributed_nu import build_sharded_nu_grid, run_nonuniform_distributed_pec
 from rfx.simulation import SourceSpec, ProbeSpec
 from rfx.stepping.slab import cut
@@ -463,7 +464,7 @@ def pole_metrics(one, several, dt):
 
 @pytest.mark.parametrize('name', ['S1', 'lorentz'])
 def test_pole_one_slab_invariants(name, monkeypatch):
-    from rfx import nonuniform
+    from rfx.stepping import graded_loop as nonuniform
     from rfx.runners import _distributed_nu_wrapped as runner
     from rfx.stepping.slab import Slab, cut_pole_coeffs, cut_poles
     captures = []
@@ -615,7 +616,7 @@ def cpml_metrics(one, several, dt, name):
 @pytest.mark.parametrize('name', ['scene2', pytest.param('debye', marks=pytest.mark.skip(
     reason='CPML with poles: the wrapped setup is not built for poles until rfx #1402 item 5'))])
 def test_cpml_one_slab_invariants(name, monkeypatch):
-    from rfx import nonuniform
+    from rfx.stepping import graded_loop as nonuniform
     from rfx.runners import _distributed_nu_wrapped as runner
     from rfx.stepping.slab_cpml import apply
     captures = []

@@ -28,7 +28,7 @@ SEAMS = {
     'core': ('rfx.stepping.uniform_loop', 'make_core_step'),
     'invariants': ('rfx.stepping.uniform_loop', 'core_step_invariants'),
     'graded': ('rfx.runners.nonuniform', 'run_nonuniform_path'),
-    'graded_step': ('rfx.nonuniform', '_build_nu_scan'),
+    'graded_step': ('rfx.stepping.graded_loop', '_build_nu_scan'),
     'distributed': ('rfx.runners._distributed_nu_execute', 'execute_from_materials'),
     'distributed_step': ('rfx.runners.distributed_nu', 'run_nonuniform_distributed_pec'),
 }

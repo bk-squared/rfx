@@ -53,10 +53,8 @@ import pytest
 from rfx.api import Simulation
 from rfx.auto_config import smooth_grading
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.nonuniform import (
-    _waveguide_port_axis_metrics,
-    make_nonuniform_grid,
-)
+from rfx.stepping.graded_setup import _waveguide_port_axis_metrics
+from rfx.nonuniform import make_nonuniform_grid
 
 _A_WG, _B_WG = 0.02286, 0.01016
 _DX_COARSE, _DX_FINE = 1.5e-3, 0.75e-3

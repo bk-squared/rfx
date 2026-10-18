@@ -231,7 +231,7 @@ def test_traced_singleton_transverse_axis_is_constant():
 
 def assert_graded_admitted(sim, skip, distributed, monkeypatch):
     import jax
-    import rfx.nonuniform as kernel
+    import rfx.stepping.graded_loop as kernel
 
     assert not any(issue.code == "tfsf_transverse_periodic" for issue in sim.preflight(check_ntff=False))
     original = kernel._build_nu_scan

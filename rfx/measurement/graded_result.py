@@ -9,7 +9,7 @@ import jax
 from rfx.measurement.time_records import with_graded_records
 
 if TYPE_CHECKING:
-    from rfx.nonuniform import _NUScanSetup
+    from rfx.stepping.graded_setup import _NUScanSetup
 
 
 def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_record=None) -> dict:

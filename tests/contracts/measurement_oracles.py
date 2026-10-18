@@ -23,7 +23,8 @@ def tree(nu):
     result = ast.parse((ROOT / path).read_text())
     if not isinstance(nu, str):
         # Keep the original runner in scope and recognize its extracted step.
-        for name in ('sequence.py', 'graded.py' if nu else 'uniform.py'):
+        names = ('sequence.py', 'graded.py', 'graded_setup.py', 'graded_loop.py') if nu else ('sequence.py', 'uniform.py')
+        for name in names:
             result.body.extend(ast.parse((ROOT / 'rfx/stepping' / name).read_text()).body)
     return result
 

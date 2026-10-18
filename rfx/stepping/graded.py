@@ -130,7 +130,7 @@ def make_graded_step(
     hooks: Mapping[HookPoint, tuple[Callable[[GradedFrame], None], ...]] | None = None,
 ) -> Callable:
     """Bind graded kernels and measurements, then user hooks at each point."""
-    from rfx.nonuniform import _update_e_nu_dispersive
+    from rfx.stepping.graded_setup import _update_e_nu_dispersive
     from rfx.measurement.projector import port_table, project, port_owners
     port_specs = ctx.port_record_specs if ctx.port_record_specs is not None else tuple(
         (m[3], m[13], 'wire', m[:3], i) for i, m in enumerate(ctx.wp_meta))

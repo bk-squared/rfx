@@ -1265,7 +1265,8 @@ def _load_mutated(path: Path, name: str, replacements):
 UNIFORM_RUNNER_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform_loop.py"
 UNIFORM_SETUP_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform_setup.py"
 UNIFORM_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform.py"
-GRADED_RUNNER_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
+GRADED_RUNNER_SRC = REPO_ROOT / "rfx" / "stepping" / "graded_loop.py"
+GRADED_SETUP_SRC = REPO_ROOT / "rfx" / "stepping" / "graded_setup.py"
 GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
@@ -1390,10 +1391,14 @@ def _slot_case(kind, edits):
             return observed_core
 
         step.make_graded_step = observed_step
-        name = "rfx._current_moment_nonuniform_copy"
-        mod = _load_mutated(GRADED_RUNNER_SRC, name, [(
+        setup_name = "rfx.stepping._current_moment_graded_setup_copy"
+        setup = _load_mutated(GRADED_SETUP_SRC, setup_name, [(
             "    from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table",
             f"    from {step_name} import GradedStepContext, make_graded_step, graded_probe_table")])
+        names.append(setup_name)
+        name = "rfx._current_moment_nonuniform_copy"
+        mod = _load_mutated(GRADED_RUNNER_SRC, name, [])
+        mod._build_nu_scan = setup._build_nu_scan
         names.append(name)
         case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run_nonuniform)
         assert executed, "the copied runner never executed the copied step"

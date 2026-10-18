@@ -33,16 +33,8 @@
     },
     "rfx/nonuniform.py": {
       "I": [
-        "rfx.boundaries.axes:padded_axes",
         "rfx.boundaries.axes:resolve_cpml_axes",
-        "rfx.boundaries.depths:resolve_face_depths",
-        "rfx.boundaries.setup:nonuniform_boundaries",
-        "rfx.boundaries.tfsf:admit_setup",
-        "rfx.core.yee:curl_h_nu",
         "rfx.core.yee:h_neighbor",
-        "rfx.core.yee:init_state",
-        "rfx.measurement.accumulators:flux_metadata",
-        "rfx.measurement.accumulators:plane_metadata",
         "rfx.model.graded_grid:_append_bounding_node",
         "rfx.model.graded_grid:_assert_declared_floor_at_runtime",
         "rfx.model.graded_grid:_assert_traced_index_matches_realized",
@@ -76,29 +68,12 @@
         "rfx.model.graded_profile:make_z_profile",
         "rfx.model.materials:e_update_coefficient_at",
         "rfx.model.materials:electric_materials_traced",
-        "rfx.model.materials:kernel_materials",
-        "rfx.model.materials:with_components",
-        "rfx.model.source_coefficients:drive_table",
-        "rfx.model.source_coefficients:source_table",
-        "rfx.stepping.absorber:apply_cpml_e_step",
-        "rfx.stepping.absorber:apply_cpml_h",
-        "rfx.stepping.absorber:graded_cpml_operands",
-        "rfx.stepping.graded:graded_probe_table",
-        "rfx.stepping.graded:make_graded_step"
+        "rfx.model.source_coefficients:source_table"
       ],
-      "S": [
-        "_build_nu_scan",
-        "_update_e_nu_dispersive",
-        "run_nonuniform",
-        "run_nonuniform_until_decay"
-      ],
+      "S": [],
       "M": [],
       "A": [],
-      "G": [
-        "_update_e_nu_dispersive",
-        "run_nonuniform",
-        "run_nonuniform_until_decay"
-      ],
+      "G": [],
       "D1": [],
       "D2": []
     },

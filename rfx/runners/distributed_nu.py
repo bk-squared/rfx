@@ -580,7 +580,7 @@ def _update_e_dispersive_local_nu(
     back to ``state.ex/ey/ez``, but on the distributed path that is
     NEVER what the caller wants — pass the snapshot explicitly.
     """
-    from rfx.nonuniform import _update_e_nu_dispersive
+    from rfx.stepping.graded_setup import _update_e_nu_dispersive
 
     return _update_e_nu_dispersive(
         state, materials, dt, inv_dx, inv_dy, inv_dz,
