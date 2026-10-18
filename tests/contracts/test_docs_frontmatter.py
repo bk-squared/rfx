@@ -1,9 +1,11 @@
 """Every public docs page opens with YAML frontmatter that parses to a mapping with a title.
 
 PR 1704 was blocked by `docs/public/design/design-regions.mdx`, whose description held an unquoted
-second colon. Only the non-required api-reference job (the site build) parsed the frontmatter; nothing
-in tests/unit/docs did. This test runs the same `yaml.safe_load` the site build and
-`scripts/build_public_docs_bundle.py` use, on every docs/public/**/*.md(x) page.
+second colon. Only the non-required api-reference job parsed the frontmatter; nothing in tests/unit/docs
+did. This test runs the `yaml.safe_load` that `scripts/build_public_docs_bundle.py` uses on every
+docs/public/**/*.md(x) page. It lives in tests/contracts because pr-tests runs only tests/contracts on a
+docs-only PR, which is exactly the PR that breaks frontmatter. The downstream Astro site parses with js-yaml,
+which also rejects duplicate keys; PyYAML accepts them, so this test does not catch that case.
 """
 from __future__ import annotations
 
@@ -12,7 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-_REPO = Path(__file__).resolve().parents[3]
+_REPO = Path(__file__).resolve().parents[2]
 _PAGES = sorted(p for p in (_REPO / "docs" / "public").rglob("*") if p.suffix in {".md", ".mdx"})
 
 
