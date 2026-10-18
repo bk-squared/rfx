@@ -704,11 +704,13 @@ def simulation_auto(
 # ``Simulation``'s body in rfx/api/__init__.py (2.0 declaration rule: that file's
 # Simulation methods only record declarations; deriving a configuration belongs
 # here, beside ``auto_configure``). It returns to ``Simulation`` as
-# ``auto = classmethod(simulation_auto)``, so its pre-move ``__qualname__`` is
-# restored explicitly: a module-level ``def`` gets the bare name, and a TypeError
-# would otherwise stop naming ``Simulation.auto()``.
+# ``auto = classmethod(simulation_auto)``, so its pre-move ``__qualname__`` and
+# ``__name__`` are restored explicitly: a module-level ``def`` gets its own bare
+# name, a TypeError would otherwise stop naming ``Simulation.auto()``, and pickle
+# finds a bound classmethod on its class by ``__name__``.
 # ---------------------------------------------------------------------------
 simulation_auto.__qualname__ = "Simulation.auto"
+simulation_auto.__name__ = "auto"
 
 
 # A cut this close to an existing mesh line is that line (#931): splitting
