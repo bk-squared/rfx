@@ -821,8 +821,10 @@ def test_drive_column_mutations_are_caught(monkeypatch, mode, mutation):
     check(producer, SCENES['material_seam'], 3)
     source = inspect.getsource(drive_columns)
     if mutation == 'M1':
-        source = source.replace('scale = jnp.where(owned[n], coefficient / volume, 0.)',
-                                'scale = coefficient / volume')
+        mutated = source.replace('scale = jnp.where(owned[n], coefficient * (jnp.float32(1) / volume), 0.)',
+                                 'scale = coefficient * (jnp.float32(1) / volume)')
+        assert mutated != source, 'M1 no longer matches drive_columns'
+        source = mutated
     elif mutation == 'M2':
         source = source.replace('column = scale * samples[:, n]',
             'column = (scale * jnp.where(owned[n], keep[axis][cell], 0.)) * samples[:, n]')
