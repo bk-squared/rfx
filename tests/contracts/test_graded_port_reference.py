@@ -66,3 +66,24 @@ def test_graded_reference_is_not_an_s_settling_input():
     assert public.channels == ('V', 'I', 'V_port', 'V_ref')
     assert selected.channels == ('V', 'I', 'V_port')
     np.testing.assert_array_equal(selected.samples, public.samples[:, :3])
+
+
+@pytest.mark.parametrize('kind', ['wire', 'lumped'])
+def test_passive_reference_reads_the_local_edge_on_a_graded_profile(kind):
+    """On a passive port nothing is injected, so V_ref equals V, edge for edge."""
+    dx = 1 / 1024
+    dz = np.array([1.0, 0.8, 1.3, 0.7, 1.1, 0.9, 1.2, 1.0]) * dx
+    sim = Simulation(freq_max=20e9, domain=(12*dx, 8*dx, float(dz.sum())), dx=dx,
+                     boundary='pec', dz_profile=dz)
+    z0, extent = float(dz[:2].sum()), (float(dz[2:5].sum()) if kind == 'wire' else None)
+    sim.add_port((3*dx, 3*dx, z0), 'ez', impedance=50., extent=extent,
+                 waveform=lambda t: jnp.cos(t * 2e10))
+    sim.add_port((8*dx, 4*dx, z0), 'ez', impedance=50., extent=extent, excite=False)
+    sim.add_probe((6*dx, 4*dx, float(dz[:3].sum())), 'ez')
+    with enable_x64(False):
+        result = sim.forward(n_steps=64, skip_preflight=True, checkpoint=False,
+                             port_s11_freqs=np.array([3e9, 7e9, 13e9], np.float32))
+    passive = result.sparam_time_records[1]
+    assert np.any(np.asarray(passive['V']) != 0)
+    np.testing.assert_array_equal(passive['V_ref'], passive['V'])
+    assert np.all(np.abs(np.asarray(result.wire_port_sparams[1][1][4])) > 0)

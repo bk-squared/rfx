@@ -140,19 +140,24 @@ def make_graded_step(
     widths = tuple(3 if p[2] == 'wire' else 2 for p in port_specs)
     from rfx.measurement.port_sampler import (
         pre_injection_samples, ref_dft_update, wire_dft_update, stack_samples)
-    port_tables, edge_lengths = {}, {}
+    port_tables = {}
+
+    def graded_port_table(frame: GradedFrame):
+        table = frame.invariants.get('port_table')
+        dtype = frame.st.ex.dtype
+        if table is None and dtype not in port_tables:
+            # Graded widths are JAX arrays: evaluate the weights once, outside
+            # the traced step, as they were before the table (a coefficient
+            # formed inside the loop is rounded by its context).
+            with jax.ensure_compile_time_eval():
+                port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
+                                                boundary=ctx.curl_boundary, dtype=dtype)
+        return port_tables[dtype] if table is None else table
 
     def before_sources(frame: GradedFrame):
-        table = frame.invariants.get('port_table')
-        if table is None and not edge_lengths:
-            # Form primal widths as host constants, like the physical table.
-            with jax.ensure_compile_time_eval():
-                for component, _, _, mid, _ in port_specs:
-                    axis = 'xyz'.index(component[1])
-                    cells = (ctx.grid.dx_arr, ctx.grid.dy_arr, ctx.grid.dz)[axis]
-                    edge_lengths[component, mid] = float(cells[mid[axis]])
-        frame.port_refs = pre_injection_samples(
-            frame.st, port_specs, lambda component, mid: edge_lengths[component, mid], table=table)
+        # The reference reads the V row's own weight, so a traced width
+        # (a dz_profile design variable) stays a tracer.
+        frame.port_refs = pre_injection_samples(frame.st, port_specs, None, table=graded_port_table(frame))
         frame.new_port_refs = [ref_dft_update(
             accs[4], frame.port_refs[acc_indices[p]], frame.step_idx, ctx.sp_freqs, ctx.dt)
             for p, accs in enumerate(frame.carry.get('wire_sparams', ()))]
@@ -389,16 +394,7 @@ def make_graded_step(
         if port_specs:
             frame.new_wire_sp = []
             frame.port_samples = []
-            dtype = frame.st.ex.dtype
-            table = frame.invariants.get('port_table')
-            if table is None and dtype not in port_tables:
-                # Graded widths are JAX arrays: evaluate the weights once, outside
-                # the traced step, as they were before the table (a coefficient
-                # formed inside the loop is rounded by its context).
-                with jax.ensure_compile_time_eval():
-                    port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
-                                                    boundary=ctx.curl_boundary, dtype=dtype)
-            port_values = project(frame.st, port_tables[dtype] if table is None else table)
+            port_values = project(frame.st, graded_port_table(frame))
             frame.port_samples = stack_samples(port_values, port_specs, frame.port_refs)
             for p, accs in enumerate(frame.carry.get("wire_sparams", ())):
                 sample = frame.port_samples[acc_indices[p]]

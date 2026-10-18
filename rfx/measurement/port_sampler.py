@@ -1,5 +1,6 @@
 """In-scan drive references and physical port spectra, in the carry's dtype."""
 import jax.numpy as jnp
+import numpy as np
 
 from rfx.core.dft_utils import port_dft_phase
 
@@ -7,15 +8,18 @@ from rfx.core.dft_utils import port_dft_phase
 def pre_injection_samples(state, port_specs, edge_length, *, table=None):
     """Read each midpoint before injection, preserving the uniform operand order.
 
-    Slabs supply their owner-masked physical table: its V rows are the same
-    midpoint samples, routed to local indices and summed only after the scan.
+    Graded steps supply their physical table (slabs: owner-masked, routed to
+    local indices and summed after the scan); its V row weight is the edge
+    length, so a traced graded width stays a tracer.
     """
     if table is not None:
         refs, offset = [], 0
         for component, _, kind, _, _ in port_specs:
             term = next(t for t in table.components if t.component == component)
             owned = term.channel_ids == offset
-            index = jnp.argmax(owned)
+            # One-device tables hold host indices; slab tables are rank-local.
+            index = (int(np.argmax(owned)) if isinstance(owned, np.ndarray)
+                     else jnp.argmax(owned))
             mid = tuple(a[index] for a in term.indices)
             # V has exactly one midpoint term. A segment sum would turn its
             # negative zero into positive zero before the rank reduction.
