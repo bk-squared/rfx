@@ -110,7 +110,8 @@ accurate.
 | Microstrip S-matrix + graded mesh | **experimental** | `mode="laplace"` / `"uniform"`; regression checks only. `mode="eigenmode"` is refused. |
 | Coaxial port + graded mesh | **unsupported** | Refused. |
 | `boundary="upml"` + graded mesh | **unsupported** | Refused. Use CPML. |
-| Periodic axis or Floquet port + graded mesh | **unsupported** | Refused. |
+| Periodic axis + graded mesh | **experimental** | One device, `run()` and `forward()`, with one cell size along the periodic axis. A graded profile along it, a plane wave, `interface_eps='dual_average'` and Bloch phases are refused. |
+| Floquet port + graded mesh | **unsupported** | Refused. |
 
 ## Refused inputs
 

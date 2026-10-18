@@ -106,10 +106,21 @@ PEC wall where the tangential E is zero by symmetry, a PMC wall where the
 tangential H is zero. A closed cavity is
 PEC on every face; do not mix an absorber into it.
 
+A far field cannot be taken through such a wall. The far-field transform
+(NTFF) rebuilds no mirror image, so `run()`, `forward()` and `compute_rcs`
+refuse a far-field box in a model with a PEC or PMC face, or an absorbing face
+with zero layers: a half model cut by a magnetic symmetry plane would give a
+pattern 6 dB wrong, not only a scale factor. For a far field, draw a finite
+ground plane as geometry and keep every face absorbing.
+
 ### Periodic walls and a phase across the cell
 
 A `"periodic"` axis joins its two faces: the field leaving one face enters the
-other. With no phase, this models an infinite array at normal incidence. A
+other. With no phase, this models an infinite array at normal incidence. An
+axis of length L has exactly L/dx cells, so the structure repeats every L; an
+explicit `dx` that does not divide L is refused with the nearest one that
+does. A periodic axis runs on a uniform or a graded mesh on one device; on a
+graded mesh the cells along that axis must all have one size. A
 phase across the cell (a Bloch condition, for oblique incidence or a scanned
 array) is not set on the boundary itself but by the source that needs it:
 
@@ -153,8 +164,12 @@ the solver path checks that it implements every face (refusals, below).
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
-| `"pmc"` face | multi-device, ADI, subgridded | refused | run on one device on a uniform or graded mesh |
-| `"periodic"` axis | graded mesh, multi-device, ADI, subgridded | refused | use a uniform mesh |
+| `"pmc"` face | ADI, subgridded | refused | a uniform or graded mesh, on one device or several |
+| `"pmc"` face with lumped or wire ports | graded mesh on several devices | refused | run on one device |
+| `"periodic"` axis | multi-device, ADI, subgridded | refused | run on one device |
+| on a periodic axis: a graded cell profile along it, a plane wave, `interface_eps="dual_average"` or Bloch phases | graded mesh | refused | keep the cell size constant along the axis; run plane waves on a periodic cell on a uniform mesh |
+| `extract_s_matrix` or `extract_s_matrix_wire` on a model with a periodic axis | all | refused: they solved six PEC walls | `run(compute_s_params=True)` |
+| a far-field box (`add_ntff_box`) with a PEC, PMC or zero-depth absorbing face | all | refused | a finite ground plane drawn as geometry, every face absorbing |
 | an absorbing face (`"cpml"` or `"upml"`) | ADI | refused when the `Simulation` is created | `boundary="pec"` for a closed cavity, or the default solver for an open structure |
 | `"upml"` | graded mesh, multi-device, ADI, subgridded | refused | use `"cpml"` |
 | `"upml"` with a plane wave (`add_tfsf_source`) | all | refused | use `"cpml"` |
