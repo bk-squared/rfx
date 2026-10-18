@@ -209,8 +209,7 @@ def _concrete(value):
 
 def judge_pole_sets(records, dt, budget, *, grid_kind):
     """Apply the existing admission rule and ordered callback to reductions."""
-    import jax
-    from rfx.core.jax_utils import is_tracer
+    from rfx._traced_check import traced_check
 
     if budget is None:
         return
@@ -252,11 +251,7 @@ def judge_pole_sets(records, dt, budget, *, grid_kind):
         # Eager autodiff carries concrete primals: judge them on the host. A
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
-        traced = any(is_tracer(v) for v in args)
-        if traced:
-            jax.debug.callback(check, *args, ordered=True)
-        else:
-            check(*args)
+        traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
 
 def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):

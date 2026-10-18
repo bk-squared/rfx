@@ -87,7 +87,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
         # Include the cell neighbours read by edge-averaged epsilon as
         # well as the corrected Yee nodes. A face-only test misses the
         # material immediately across a transverse edge or corner.
-        import jax
+        from rfx._traced_check import traced_check
         bounds = [(getattr(tfsf_cfg, a + "_lo"), getattr(tfsf_cfg, a + "_hi"))
                   for a in "xyz"]
         slices = []
@@ -114,12 +114,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
                         "closed_box TFSF requires vacuum on and adjacent to all six "
                         f"faces; non-vacuum material found at {name}")
 
-        if any(isinstance(a, jax.core.Tracer) for a in arrays):
-            # A traced material override can change a source face too.
-            # Keep the refusal during jit/grad rather than dropping it.
-            jax.debug.callback(check, *arrays, ordered=True)
-        else:
-            check(*arrays)
+        traced_check("closed_box TFSF", "vacuum faces", check, *arrays, ordered=True)
         return
 
     boundary_slices = (
@@ -129,7 +124,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
         ("x_hi+1", slice(tfsf_cfg.x_hi + 1, tfsf_cfg.x_hi + 2)),
     )
 
-    import jax
+    from rfx._traced_check import traced_check
     arrays = tuple(value[xs, :, :] for _, xs in boundary_slices
                    for value in (materials.eps_r, conductivity_envelope(materials),
                                  materials.mu_r, *nonvacuum_masks))
@@ -150,10 +145,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
                     f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
                 )
 
-    if any(isinstance(a, jax.core.Tracer) for a in arrays):
-        jax.debug.callback(check, *arrays, ordered=True)
-    else:
-        check(*arrays)
+    traced_check("TFSF slab", "vacuum boundaries", check, *arrays, ordered=True)
 
 
 def _validate_cfg_source_on_reflector_plane(

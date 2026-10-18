@@ -3,20 +3,25 @@ from __future__ import annotations
 
 import math
 
+from rfx._traced_check import traced_check
+
 
 def interval_coordinates(grid, axis, start, end):
     """Keep interval endpoints unwrapped; refuse an unsupported seam crossing."""
     if "xyz"[axis] not in getattr(grid, "periodic_axes", ""):
         return start, end
     from rfx.core.jax_utils import is_tracer
-    if is_tracer(start) or is_tracer(end):
-        # Shape bounds may be design variables. Validate their runtime
-        # values without converting a tracer or changing its derivatives.
-        import jax
-        def validate(a, b):
-            interval_coordinates(grid, axis, float(a), float(b))
-        jax.debug.callback(validate, start, end, ordered=True)
-        return start, end
+    traced = is_tracer(start) or is_tracer(end)
+    def validate(start, end):
+        if traced:
+            start, end = float(start), float(end)
+        return _checked_interval(grid, axis, start, end)
+    result = traced_check("periodic geometry", "interval seam", validate,
+                          start, end, ordered=True)
+    return (start, end) if traced else result
+
+
+def _checked_interval(grid, axis, start, end):
     length = float(grid.domain[axis])
     # Permit only expression roundoff at a declared endpoint, not a cell fraction.
     tol = 8 * math.ulp(length)
@@ -95,7 +100,6 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
     lo, hi = bounds[0][axis], bounds[1][axis]
     length = float(grid.domain[axis])
     if is_tracer(lo) or is_tracer(hi):
-        import jax
         import numpy as np
         def validate(a, b):
             if isinstance(shape, Box) and a == b:
@@ -108,7 +112,7 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
                 raise ValueError(
                     f"periodic axis {'xyz'[axis]!r}: fill bounds [{a}, {b}] m "
                     f"must lie inside [-L, 2L] for traced bounds; L={length} m")
-        jax.debug.callback(validate, lo, hi, ordered=True)
+        traced_check("periodic geometry", "fill bounds", validate, lo, hi, ordered=True)
         return (-1, 0, 1)
     lo, hi = float(lo) - padding, float(hi) + padding
     if closed_footprint:
