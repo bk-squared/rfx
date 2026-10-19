@@ -2810,6 +2810,7 @@
       "sigma_override",
       "checkpoint_segments",
       "strict_passivity",
+      "skip_preflight",
       "port_reference_sims"
     ],
     "conductor_mask": [
