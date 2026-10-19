@@ -5,7 +5,7 @@ import pytest
 
 from rfx.farfield import compute_far_field, directivity, radiation_pattern
 from tests._multi_device_scene import host_devices
-from tests._one_device_parity import STEPS, perturb_cell, record, scene
+from tests._one_device_parity import STEPS, perturb_cell, record, scene, assert_multi_device
 
 pytestmark = pytest.mark.distributed
 
@@ -37,7 +37,10 @@ def test_uniform_farfield_matches_one_device(entry, n_devices):
                            dict(distributed=True, devices=selected))
         elif selected is not None:
             options["devices"] = selected
-        return getattr(sim, entry)(**options)
+        result = getattr(sim, entry)(**options)
+        if selected is not None:
+            assert_multi_device(sim, result)
+        return result
 
     # Check the open-box assumption on both public entries and both device counts.
     for selected in (None, devices):

@@ -7,6 +7,7 @@ import pytest
 from rfx import Box, DebyePole, Simulation
 from tests._multi_device_scene import host_devices
 from tests._one_device_parity import (
+    assert_multi_device,
     derivative_metrics, field_probes, record, trace_metrics,
 )
 
@@ -49,6 +50,8 @@ def test_graded_derivatives_match_one_device(boundary, kind, n_devices):
     tangent = jnp.zeros_like(eps).at[cell].set(1.)
 
     def evaluate(sim, e, selected):
+        if selected is not None:
+            assert_multi_device(sim)
         options = {} if selected is None else dict(distributed=True, devices=selected)
         def forward(value):
             return sim.forward(eps_override=value, n_steps=STEPS, checkpoint=True,

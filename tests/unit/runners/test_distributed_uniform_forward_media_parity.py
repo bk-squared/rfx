@@ -8,6 +8,7 @@ from rfx import simulation
 from rfx.runners import distributed_v2
 from tests._multi_device_scene import host_devices
 from tests._one_device_parity import (
+    assert_multi_device,
     COMPONENTS, STEPS, field_probes, perturb_cell, record, scene, trace_metrics,
 )
 
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.distributed
 
 def evaluate(sim, devices=None):
     """Observe the actual forward solve's final fields before result packaging."""
-    states = []
+    states, solvers = [], []
     original_scan = simulation.run
     original_run = distributed_v2.run_distributed
 
@@ -26,11 +27,13 @@ def evaluate(sim, devices=None):
         kwargs["return_state"] = True
         result = original_scan(*args, **kwargs)
         states.append(result.state)
+        solvers.append("one_device")
         return result
 
     def run(*args, **kwargs):
         result = original_run(*args, **kwargs)
         states.append(result.state)
+        solvers.append("run_distributed")
         return result
 
     options = dict(checkpoint=False) if devices is None else dict(distributed=True, devices=devices)
@@ -38,6 +41,9 @@ def evaluate(sim, devices=None):
             patch.object(distributed_v2, "run_distributed", run):
         result = sim.forward(n_steps=STEPS, skip_preflight=True, **options)
     assert len(states) == 1
+    assert solvers == ["one_device" if devices is None else "run_distributed"], solvers
+    if devices is not None:
+        assert_multi_device(sim, result)
     return result, {c: np.asarray(getattr(states[0], c)) for c in COMPONENTS}
 
 

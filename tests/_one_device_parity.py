@@ -150,3 +150,18 @@ def derivative_metrics(one, multi):
     return dict(relative=relative, bar=1e-4, max_abs=difference, peak=peak,
                 worst_index=index, one=float(a[index]), multi=float(b[index]),
                 finite=finite, nonzero=nonzero, passed=finite and nonzero and relative <= 1e-4)
+
+
+def assert_multi_device(sim, result=None):
+    """The multi-device side really ran on several devices: no one-device fallback.
+
+    A waveguide port or a TFSF source makes every multi-device entry fall back to
+    one device (rfx.runners.distributed_v2.one_device_reason); the comparison would
+    then pass trivially. None of these models has one, and no result carries the
+    fallback record.
+    """
+    from rfx.runners.distributed_v2 import one_device_reason
+    assert one_device_reason(sim) is None, one_device_reason(sim)
+    if result is not None:
+        codes = [d.code for d in getattr(result, "diagnostics", ())]
+        assert "distributed.one_device_fallback" not in codes, codes

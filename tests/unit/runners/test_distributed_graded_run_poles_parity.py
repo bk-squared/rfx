@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from tests._multi_device_scene import host_devices
-from tests._one_device_parity import STEPS, field_probes, perturb_cell, record, scene, trace_metrics
+from tests._one_device_parity import STEPS, field_probes, perturb_cell, record, scene, trace_metrics, assert_multi_device
 
 pytestmark = pytest.mark.distributed
 
@@ -22,6 +22,7 @@ def test_graded_cpml_poles_match_one_device(kind, n_devices):
             perturb_cell(actual_model, n_devices, graded=True)
         assert field_probes(actual_model, graded=True) == labels
         multi = actual_model.run(n_steps=STEPS, skip_preflight=True, devices=devices)
+        assert_multi_device(actual_model, multi)
         assert np.asarray(multi.time_series).shape[0] == STEPS
         rows.append(record(dict(cell=2, model=kind, boundary="cpml", devices=n_devices, steps=STEPS),
                            mutation, trace_metrics(one.time_series, multi.time_series,
