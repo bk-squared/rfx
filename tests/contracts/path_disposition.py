@@ -954,7 +954,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         fwd_nonuniform=carries(),
         fwd_distributed_nu=refuses("flux monitors refused",
                                    raises="add_flux_monitor() is not supported on the distributed non-uniform"),
-        fwd_adi=ignorable(FWD_FLUX),
+        fwd_adi=admission("a flux monitor", FWD_ADI, "forward() returned flux_monitors=None"),
     )},
     "_ntff": {"ntff_box": lanes(
         run_uniform=carries(),
