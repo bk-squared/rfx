@@ -264,10 +264,8 @@ def refusal(case, entry, path):
         return 'uniform, single-device'
     if case == 'periodic' and path.startswith('distributed'):
         return 'periodic'
-    if case in ('plane', 'closed_box') and path == 'distributed-graded':
+    if case in ('plane', 'closed_box') and path == 'distributed-graded' and entry == 'run':
         return 'TFSF'
-    if case == 'W-guide' and path == 'distributed-graded' and entry == 'forward':
-        return 'Waveguide|waveguide'
     return None
 
 
@@ -288,7 +286,12 @@ def test_wall_matrix(case, entry, path):
             capture(model(case, path), entry, path)
         return
     sim = model(case, path)
-    got = capture(sim, entry, path)
+    if path == 'distributed-graded' and entry == 'forward' and case in ('plane', 'W-guide'):
+        with pytest.warns(UserWarning, match='Falling back to single-device'):
+            got = capture(sim, entry, path)
+        assert got['backend'] == 'graded'
+    else:
+        got = capture(sim, entry, path)
     expected = expected_faces(sim, got['grid'], case, path)
     assert got['faces'] == expected, f'{case}/{entry}/{path}: actual walls {sorted(got["faces"])} != declared {sorted(expected)}'
 

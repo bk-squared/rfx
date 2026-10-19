@@ -1603,14 +1603,6 @@ class _ExecuteMixin:
                 "for differentiable nonlinear (Kerr) design."
             )
 
-        # Both single-device lanes build TFSF; distributed/ADI lanes do not.
-        if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
-            raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward refuses distributed and "
-                f"ADI lanes, including {plan.lane!r}. Use a uniform or graded "
-                "single-device forward lane for TFSF/plane-wave inverse design."
-            )
-
         # mu_r_override is wired only on the uniform lane; the NU/distributed
         # material-override paths do not thread it, so fail loud instead of
         # silently dropping it to a zero-gradient no-op.

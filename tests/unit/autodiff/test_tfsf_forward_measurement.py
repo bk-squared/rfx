@@ -60,14 +60,12 @@ def test_graded_plane_wave_refusals_match_run(angle, direction, body):
         assert message[len(prefix):] == expected_body
 
 
-def test_distributed_graded_plane_wave_still_refused():
-    if len(jax.devices("cpu")) < 2:
-        pytest.skip("requires two CPU devices")
-    with pytest.raises(NotImplementedError) as caught:
-        _scene().forward(n_steps=2, distributed=True, devices=jax.devices("cpu")[:2])
-    assert str(caught.value) == (
-        "TFSF sources are not supported on the distributed forward path; "
-        "remove the TFSF source or omit distributed=True.")
+def test_distributed_graded_plane_wave_falls_back(two_devices):
+    with pytest.warns(UserWarning, match="Falling back to single-device"):
+        actual = _scene().forward(n_steps=2, distributed=True, devices=two_devices)
+    expected = _scene().forward(n_steps=2)
+    assert np.array_equal(np.asarray(actual.time_series).view(np.uint8),
+                          np.asarray(expected.time_series).view(np.uint8))
 
 
 def test_graded_plane_wave_gradient_matches_fd():

@@ -19,8 +19,6 @@ KNOWN_ROWS = (
     ('P-lumped', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
     ('P-lumped2', 'graded', 'L1', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
     ('P-lumped2', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
-    ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
-    ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
 )
 
 # Declarations with ports compare equal S requests in both directions (#1373):
@@ -307,7 +305,6 @@ BOTH_REFUSE_ROWS = (
     ('P-lumped2', 'multi-device-uniform'),
     ('P-msl', 'multi-device-graded'),
     ('P-msl', 'multi-device-uniform'),
-    ('PW-A', 'multi-device-graded'),
     ('PW-B', 'graded'),
     ('PW-B', 'multi-device-graded'),
     ('PW-closed', 'graded'),
@@ -340,8 +337,6 @@ ID_PATTERNS = {
             'L2': ('s_params', 'freqs', 'freqs_hz', 'lumped_port_sparams/*',
                    'settling_witness/error_per_bin', 'settling_witness/share_per_bin',
                    'settling_witness/runs/*/error_per_bin', 'settling_witness/runs/*/share_per_bin')},
-    'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
-            'Waveguide ports are not supported on the distributed forward path')},
 }
 DISTRIBUTED_L1_SLOW = False
 
@@ -380,7 +375,8 @@ def finish(declaration, path, level, ids, matched, unexplained):
 def outcomes(declaration, path, level, pair, direction=None):
     ids = known(declaration, path, level, direction)
     capabilities = {i: reason for i, reason in ids.items() if i.startswith('A')}
-    success = 'captured' if level == 'L1' else 'admitted'
+    fallback = (declaration, path) == ('P-waveguide', 'multi-device-graded')
+    success = ('fallback' if fallback else 'captured') if level == 'L1' else 'admitted'
     if capabilities:
         matched, unexplained = set(), []
         for ident in capabilities:
@@ -389,7 +385,7 @@ def outcomes(declaration, path, level, pair, direction=None):
                 record = pair[entry]
                 wanted = pattern[0]
                 if wanted == 'admitted' and level == 'L1':
-                    wanted = 'fallback' if ident == 'A5' and entry == 'run' else 'captured'
+                    wanted = 'captured'
                 ok = record['outcome'] == wanted
                 if pattern[0] == 'raised':
                     ok = ok and record.get('type') == pattern[1] and pattern[2] in record.get('message', '')
@@ -473,6 +469,8 @@ def test_assembly(declaration, path, direction):
         ids = outcomes(declaration, path, 'L1', pair, direction)
         required = {'ctx', 'invariants', 'carry_init', 'init', 'xs'} if path == 'uniform' else (
             {'arguments', 'result'} if path == 'graded' else {'arguments'})
+        if (declaration, path) == ('P-waveguide', 'multi-device-graded'):
+            required = {'arguments', 'result'}
         for cap in pair.values():
             assert set(cap['value']) == required, cap['seam_sites']
         differences.extend(compare(normalize_inputs(pair['run']['value'], path),
@@ -542,6 +540,10 @@ def test_admission(declaration, path, direction):
         assert 'Lumped/wire S-matrix requests do not support plain sources' in run['message'], pair
         return
     ids = outcomes(declaration, path, 'admission', pair, direction)
+    if (declaration, path) == ('P-waveguide', 'multi-device-graded'):
+        for entry, record in pair.items():
+            assert any(d.code == 'distributed.one_device_fallback'
+                       for d in record['result'].diagnostics), entry
     finish(declaration, path, 'admission', ids, set(), [])
 
 
@@ -619,3 +621,17 @@ def test_port_s_equal_requests(declaration, path):
         assert pair is None  # public explicit lumped run S request is refused
     else:
         assert pair is not None
+
+
+def test_graded_tfsf_run_refusal_and_forward_fallback():
+    # The run-only Phase B dispatch refusal predates A5; forward now uses
+    # the supported single-device graded solve. Do not call this both-refused.
+    pair = {entry: run_l2(BUILDERS['PW-A'], entry, 'multi-device-graded', n_steps=1)
+            for entry in ('run', 'forward')}
+    assert pair['run']['outcome'] == 'raised'
+    assert pair['run']['type'] == 'ValueError'
+    assert pair['run']['message'] == (
+        'Distributed + non-uniform does not support TFSF plane-wave sources (Phase B scope).')
+    assert pair['forward']['outcome'] == 'admitted'
+    assert any(d.code == 'distributed.one_device_fallback'
+               for d in pair['forward']['result'].diagnostics)

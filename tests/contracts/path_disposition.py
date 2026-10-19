@@ -664,8 +664,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("waveguide ports refused",
-                                   raises="Waveguide ports are not supported on the distributed forward path"),
+        fwd_distributed_nu=falls_back("fwd_nonuniform", "single-device graded forward with the same arguments"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_coaxial_ports": {"coax_port": lanes(
@@ -736,8 +735,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("TFSF refused",
-                                   raises="TFSF sources are not supported on the distributed forward path"),
+        fwd_distributed_nu=falls_back("fwd_nonuniform", "single-device graded forward with the same arguments"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_refinement": {

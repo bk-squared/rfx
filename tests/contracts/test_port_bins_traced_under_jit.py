@@ -163,7 +163,8 @@ def test_port_bins(kind, path, ringdown):
     actual = _evaluate(lambda: _call(sim, path, ringdown, jnp.asarray(REQUEST)), compiled=True)
     print(f'REACH {kind}-{path}, ringdown={ringdown}, staged={actual[2]}', file=sys.stderr)
 
-    if ringdown and path.startswith('multi-'):
+    # Graded waveguide fallback applies the single-device ringdown refusal.
+    if ringdown and path.startswith('multi-') and (kind, path) != ('waveguide', 'multi-graded'):
         _same_refusal(eager, actual, NotImplementedError,
                       'forward(ringdown=...) is not supported with distributed=True')
     elif ringdown and kind != 'wire':

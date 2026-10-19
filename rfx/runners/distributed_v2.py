@@ -459,11 +459,10 @@ def one_device_reason(sim):
     return None
 
 
-def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics):
-    """Run the full-domain fallback and record the requested and used devices."""
+def one_device_fallback_diagnostic(reason, requested_devices, *, path):
+    """Warn and describe the full-domain fallback for either public entry."""
     import warnings
 
-    from rfx._diagnostic_transport import result_with_diagnostics
     from rfx.diagnostic_records import Diagnostic
 
     message = (
@@ -471,11 +470,19 @@ def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics
         "Falling back to single-device execution with the same arguments."
     )
     warnings.warn(message, stacklevel=3)
-    diagnostic = Diagnostic(
+    return Diagnostic(
         "distributed.one_device_fallback", "warning", reason, message,
         {"requested_devices": requested_devices, "devices_used": 1},
-        path="run_distributed",
+        path=path,
     )
+
+
+def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics):
+    """Run the full-domain fallback and record the requested and used devices."""
+    from rfx._diagnostic_transport import result_with_diagnostics
+
+    diagnostic = one_device_fallback_diagnostic(
+        reason, requested_devices, path="run_distributed")
     return result_with_diagnostics(sim.run(**run_kwargs), diagnostics + (diagnostic,))
 
 

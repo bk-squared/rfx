@@ -185,19 +185,6 @@ def _dispatch_plan(
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
-            # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
-            if self._tfsf is not None:
-                raise NotImplementedError(
-                    "TFSF sources are not supported on the distributed "
-                    "forward path; remove the TFSF source or omit "
-                    "distributed=True."
-                )
-            if self._waveguide_ports:
-                raise NotImplementedError(
-                    "Waveguide ports are not supported on the distributed "
-                    "forward path; remove waveguide ports or omit "
-                    "distributed=True."
-                )
             # T8 (2026-04): PMC is now wired across all three sharded
             # runners (distributed_nu, distributed_v2, distributed).
             # The reject guard that used to live here (introduced in
@@ -394,6 +381,12 @@ def _declaration_setup_at_trace_time(entry):
     def staged_entry(self, *args, **kwargs):
         self._resolve_field_dtype()
         guard_shape_tangents(self)
+        if (entry.__name__ == "forward" and kwargs.get("distributed", False)
+                and self._uses_nonuniform_mesh):
+            from rfx.runners.distributed_v2 import one_device_reason
+            if reason := one_device_reason(self):
+                from rfx.runners._distributed_entry import forward_on_one_device
+                return forward_on_one_device(self, args, kwargs, reason=reason)
         if _setup_evaluated_at_trace_time(
                 distributed=bool(kwargs.get("distributed", False))):
             from rfx.core.jax_utils import declaration_setup

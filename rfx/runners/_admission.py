@@ -464,6 +464,9 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "passive_port"): _OTHER_RUNNERS - _ADI - {"run_distributed"},
     ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
+    # Distributed entries fall back before runner admission (both graded
+    # entries for waveguides; graded forward for TFSF). These features stay
+    # excluded from the sharded carriers; the single-device lane admits them.
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS,
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,

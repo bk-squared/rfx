@@ -6,6 +6,21 @@ import numpy as np
 from rfx.api._spec import Result, _warn_if_nonfinite_result
 
 
+def forward_on_one_device(sim, args, forward_kwargs, *, reason):
+    """Re-enter graded forward with every argument except device selection."""
+    import jax
+    from rfx._diagnostic_transport import result_with_diagnostics
+    from rfx.runners.distributed_v2 import one_device_fallback_diagnostic
+
+    kwargs = dict(forward_kwargs)
+    kwargs.pop("distributed")
+    devices = kwargs.pop("devices", None)
+    diagnostic = one_device_fallback_diagnostic(
+        reason, len(jax.devices() if devices is None else devices),
+        path="fwd_distributed_nu")
+    return result_with_diagnostics(sim.forward(*args, **kwargs), (diagnostic,))
+
+
 def refuse_distributed_options(self, *, subpixel_smoothing=False, **options):
     """Use the same option refusal on imperative and differentiable entries."""
     from rfx.model.smoothing_admission import admit_full_tensor

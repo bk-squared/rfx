@@ -472,6 +472,7 @@ def seam(key, seams=SEAMS):
 def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, seams=SEAMS):
     """Capture assembly from a fresh declaration without executing a field step."""
     captured, sites = {}, {}
+    fell_back = False
     def original(key):
         owner, name = seam(key, seams)
         return getattr(owner, name)
@@ -502,8 +503,24 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
         with ExitStack() as stack:
             install(stack, 'scan', forbid_step)
             if path == 'multi-device-graded':
-                # A5: run may fall back to one device before the shared seam.
-                install(stack, 'graded', stop_at(original('graded'), 'fallback_arguments'))
+                # Both entries can fall back before the distributed seam.
+                # Capture the same assembled scan as the single-device graded
+                # census, rather than comparing entry-only driver arguments.
+                graded, build_scan = original('graded'), original('graded_step')
+
+                def fallback(*args, **kwargs):
+                    nonlocal fell_back
+                    fell_back = True
+                    return graded(*args, **kwargs)
+
+                def fallback_scan(*args, **kwargs):
+                    remember_site('arguments')
+                    captured['arguments'] = freeze(bound_arguments(build_scan, args, kwargs))
+                    captured['result'] = freeze(build_scan(*args, **kwargs))
+                    raise Captured
+
+                install(stack, 'graded', fallback)
+                install(stack, 'graded_step', fallback_scan)
             if level == 'a':
                 key = 'uniform' if path == 'uniform' else 'graded' if path == 'graded' else 'distributed'
                 install(stack, key, stop_at(original(key), 'arguments'))
@@ -536,7 +553,7 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
             invoke(sim, entry, path, n_steps, entry_options)
         raise CaptureFailure('entry returned without reaching the requested L1 seam')
     except Captured:
-        return {'outcome': 'fallback' if 'fallback_arguments' in captured else 'captured',
+        return {'outcome': 'fallback' if fell_back else 'captured',
                 'value': captured, 'seam_sites': sites}
     except CaptureFailure:
         raise
