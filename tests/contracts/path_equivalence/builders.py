@@ -136,6 +136,13 @@ def build(row, lane, *, graded=False, dt=None):
         # box lengths. Put both transverse walls exactly on grid nodes.
         kwargs['domain'] = point(10.3, 8, 7)
     nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
+    # Off-node absorbers remain intentional; reflecting axes use whole cells.
+    from rfx.boundaries.spec import normalize_boundary
+    spec = normalize_boundary(kwargs['boundary'])
+    kwargs['domain'] = tuple(
+        float(np.ceil(length / DX)) * DX
+        if not (nu or row[0] in ('_dx_profile', '_dy_profile', '_dz_profile')) and all(getattr(getattr(spec, axis), side) in ('pec', 'pmc') for side in ('lo', 'hi'))
+        else length for axis, length in zip('xyz', kwargs['domain']))
     if nu or row[0] in ('_dx_profile', '_dy_profile', '_dz_profile'):
         for axis, length in zip('xyz', kwargs['domain']):
             profile = np.full(int(np.ceil(length / DX)), DX)

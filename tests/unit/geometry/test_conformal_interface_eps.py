@@ -1,4 +1,5 @@
 """#1373: conformal PEC must not replace dielectric edge means with cells."""
+from tests._wall_axis_declaration import assert_declared_wall_warning
 from unittest.mock import patch
 
 import jax.numpy as jnp
@@ -23,7 +24,8 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
     sim = Simulation(freq_max=10e9, domain=(13/1024, ny/1024, 19.2/1024),
                      dx=1/1024, boundary=BoundarySpec(
                          x=Boundary(lo="pec", hi="pec", conformal=True),
-                         y="periodic" if periodic_y else "pec", z="pec"))
+                         y="periodic" if periodic_y else "pec", z="pec"), snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_material("diel", eps_r=4.0, sigma=0.03 if loaded else 0.0)
     # Periodic: the block starts at the y=0 seam and does not wrap, so a
     # wrapped and an edge-replicated mean differ on the seam edges.
@@ -176,7 +178,8 @@ def test_waveguide_conformal_builder_uses_component_means(monkeypatch):
     sim = Simulation(freq_max=10e9, domain=(.060, .025, .012), dx=.002,
                      cpml_layers=4, boundary=BoundarySpec(
                          x="cpml", y=Boundary(lo="pec", hi="pec", conformal=True),
-                         z="pec"))
+                         z="pec"), snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_material("diel", eps_r=4)
     sim.add(Box((.023, .004, .003), (.035, .017, .008)), material="diel")
     sim.add_waveguide_port(.012, direction="+x", f0=8e9, name="left")
@@ -229,7 +232,8 @@ def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
 
     def build():
         sim = Simulation(freq_max=10e9, domain=(13 / 1024, 16.7 / 1024, 19.2 / 1024),
-                         dx=1 / 1024, boundary="pec")
+                         dx=1 / 1024, boundary="pec", snap="declared")
+        assert_declared_wall_warning(sim)
         sim.add_material("diel", eps_r=4.0)
         sim.add(Box((.0041, .0032, .0063), (.0094, .0106, .0148)), material="diel")
         sim.add_source((.007, .005, .008), "ez", amplitude_kind="field",

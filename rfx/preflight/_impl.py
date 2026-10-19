@@ -36,7 +36,10 @@ def _preflight_impl(
         import copy
         import weakref
         from rfx.preflight.realization import _CampaignStaticsContext
-        self = copy.copy(self)
+        from rfx.boundaries.features import share_wall_warning_history
+        diagnostic_copy = copy.copy(self)
+        share_wall_warning_history(self, diagnostic_copy)
+        self = diagnostic_copy
         with jax.ensure_compile_time_eval():
             ctx = _CampaignStaticsContext(self)
         ctx.sim = weakref.proxy(self)

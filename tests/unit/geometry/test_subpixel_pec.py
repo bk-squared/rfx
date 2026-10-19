@@ -23,6 +23,7 @@ turn the test suite into a multi-minute job.
 
 from __future__ import annotations
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import numpy as np
 import pytest
 
@@ -340,7 +341,8 @@ def _wr90_battery_sim(*, conformal: bool):
             z=Boundary(lo="pec", hi="pec", conformal=conformal),
         ),
         cpml_layers=4,
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_waveguide_port(
         0.030,
         direction="+x",
@@ -511,7 +513,8 @@ def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
             z=Boundary(lo="pec", hi="pec", conformal=conformal),
         ),
         cpml_layers=10,
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     # #931: the old 2 mm slab on a 3 mm grid is a sub-cell VOLUME the
     # contract refuses (it was realized by the thin branch as one wall at
     # x = 0.087 m). Drawn as one full cell, 0.084 -> 0.087 m: a solid
@@ -770,7 +773,8 @@ def _wr90_meshconv_sim(*, dx: float, conformal: bool, cpml_layers: int):
             z=Boundary(lo="pec", hi="pec", conformal=conformal),
         ),
         cpml_layers=cpml_layers,
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_material("diel_4", eps_r=4.0, sigma=0.0)
     sim.add(Box((0.05, 0.0, 0.0), (0.07, 0.04, 0.02)), material="diel_4")
 

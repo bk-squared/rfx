@@ -151,14 +151,14 @@ def test_periodic_index_wrap_and_full_cell_measure(graded, axis):
 def test_period_snap_and_explicit_refusal(graded):
     # lambda/20 requests 1 mm; 10.3 mm is deliberately noncommensurate.
     with pytest.warns(UserWarning, match='snapped'):
-        g = periodic_grid(graded, 299792458.0 / .020, (.0103, .008, .006), periodic_axes='x')
+        g = periodic_grid(graded, 299792458.0 / .020, (.0103, 8 * .0103 / 11, 6 * .0103 / 11), periodic_axes='x')
     _check_snap(g)
     with pytest.raises(ValueError, match='axis x: L=0.0103 m, dx=0.001 m.*nearest dividing dx=0.00103 m'):
         periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.001, periodic_axes='x')
     with pytest.raises(ValueError, match='common.*axis x.*axis y.*nearest common dividing dx=0.0001 m'):
         periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.001, periodic_axes='xy')
     # Their 0.1 mm common spacing is below the automatic cost bound.
-    with pytest.raises(ValueError, match='common.*nearest common dividing dx=0.0001 m'):
+    with pytest.raises(ValueError, match='largest fitting dx=0.0001 m'):
         periodic_grid(graded, 299792458.0 / .020, (.0103, .008, .006), periodic_axes='xy')
     common = periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.0001, periodic_axes='xy')
     assert common.shape[:2] == (103, 80)
@@ -233,7 +233,7 @@ def test_invariant_axis_is_not_a_period(mode):
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_public_auto_resolution_snaps_and_explicit_resolution_refuses(graded, entry):
     boundary = BoundarySpec(x='periodic', y='pec', z='pec')
-    sim = periodic_sim(graded, 299792458.0 / .020, (.0103, .008, .006), boundary=boundary, cpml_layers=0)
+    sim = periodic_sim(graded, 299792458.0 / .020, (.0103, 8 * .0103 / 11, 6 * .0103 / 11), boundary=boundary, cpml_layers=0)
     sim.add_source((.002, .003, .003), 'ez')
     sim.add_probe((.007, .004, .003), 'ez')
     with pytest.warns(UserWarning, match='snapped'):

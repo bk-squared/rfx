@@ -2,6 +2,22 @@
   "preflight": {
     "issues": [
       {
+        "code": "wall_axis_off_node",
+        "loc": "z",
+        "numbers": [
+          10.75,
+          11.0,
+          2.32558139535,
+          11.0,
+          1.0,
+          0.977272727273,
+          1.075,
+          1.0
+        ],
+        "severity": "warning",
+        "source": "judge_wall_axes"
+      },
+      {
         "code": "pec_faces_finite_pec",
         "loc": null,
         "numbers": [
@@ -86,8 +102,10 @@
           10.0,
           10.16,
           11.0,
-          10.16,
-          1000.0
+          10.75,
+          590.0,
+          1000.0,
+          69.49
         ],
         "severity": "warning",
         "source": "_validate_cfg_sheet_cavity_thickness"
@@ -118,7 +136,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 6,
+    "n_issues": 7,
     "ok": true
   }
 }

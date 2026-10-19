@@ -109,7 +109,7 @@ def _iris_sim(*, nonuniform: bool):
     nx = int(round(0.100 / dx))
     kw = {"dy_profile": _graded_dy()} if nonuniform else {}
     sim = Simulation(
-        freq_max=_FMAX, domain=(nx * dx, _A, _B), dx=dx,
+        freq_max=_FMAX, domain=(nx * dx, _A if nonuniform else 16 * dx, 7 * dx), dx=dx,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),

@@ -185,7 +185,7 @@ def test_refused_occupancy_is_diagnostic_and_cached(monkeypatch):
 def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_first):
     from tests._realized_geometry import realized
 
-    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008), boundary="pec")
+    sim = Simulation(freq_max=10e9, domain=(6 * (299792458.0 / 10e9 / 20),)*3, boundary="pec")
     grid = sim.freeze_mesh()
     d = grid.cells("x")[0]
     sim.add(Box((2*d, d, d), (2.2*d, 4*d, 4*d)), material="pec")

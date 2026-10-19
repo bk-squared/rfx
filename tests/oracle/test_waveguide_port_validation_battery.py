@@ -501,6 +501,7 @@ def test_mesh_convergence_s21_scaled_cpml():
         layers = max(8, int(round(TARGET_CPML_M / dx)))  # [10, 15, 20]
         sim = _build_sim(
             [freq],
+            solved_domain=True,
             dx=dx,
             cpml_layers=layers,
             obstacles=obstacles,

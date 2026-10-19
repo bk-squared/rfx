@@ -28,7 +28,7 @@ def test_image_difference_ignores_stored_ghost(axis, side):
 
 def model(graded=False, high=False, **kwargs):
     profile = np.array([1., .9, 1.1, 1., .9, 1.1, 1., .9, 1.1, .9, 1.1, 1.]) * .001
-    return Simulation(freq_max=20e9, domain=(.012, .0097, .0074), dx=.001,
+    return Simulation(freq_max=20e9, domain=(.012, 10 * .001, 8 * .001), dx=.001,
                       boundary=BoundarySpec(x=Boundary("pec", "pmc") if high else Boundary("pmc", "pec"),
                                             y="pec", z="pec"),
                       **({"dx_profile": profile} if graded else {}), **kwargs)

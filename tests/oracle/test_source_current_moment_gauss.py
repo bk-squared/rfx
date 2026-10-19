@@ -18,7 +18,7 @@ def test_default_current_moment_deposits_charge(graded, dx):
     # A genuinely graded mesh, symmetric about the driven edge's region.
     widths = dx * (1 - .1 * np.sin(np.linspace(0, np.pi, n))**2)
     profiles = dict(dx_profile=widths, dy_profile=widths, dz_profile=widths) if graded else {}
-    sim = Simulation(freq_max=1e10, domain=(.03, .03, .03), dx=dx,
+    sim = Simulation(freq_max=1e10, domain=(float(widths.sum()),)*3 if graded else (.03,)*3, dx=dx,
                      boundary="pec", **profiles)
     position = (.015, .015, .015)
     t0, tau = .3e-9, .08e-9

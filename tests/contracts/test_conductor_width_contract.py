@@ -314,7 +314,7 @@ def _extractor_context_cell(monkeypatch, lane, model):
         elif lane == 'waveguide_s_matrix':
             # f0 sheet size is not this test's subject (sheet_effective_size)
             # _wr90 declares its snap policy; this cell stops at kernel handoff.
-            sim = set_model(_wr90())
+            sim = set_model(_wr90(solved_domain=True))
             if model == 'pec':
                 # This context/ownership cell pins no S value: align the cavity.
                 sim._domain = (0.06, 0.024, 0.012)

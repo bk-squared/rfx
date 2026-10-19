@@ -1,4 +1,5 @@
 """Build-only #1800: spacing, not absolute sheet position, decides refusal."""
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import numpy as np
 import pytest
 
@@ -687,7 +688,17 @@ def _wall_sheet(mesh="uniform", height=2.1, extent=20.0, *, snap="strict", z="pe
 def test_wall_snap_verdict_before_runner(monkeypatch, entry, snap):
     # ceil(5.5/1) = 6: lid 5.5 -> 6, sheet 2 -> 2.
     # Drawn 5.5-2 = 3.5 mm; solved 6-2 = 4 mm; 4/3.5-1 = +14.29%.
-    sim = _wall_sheet(height=2, extent=5.5, snap=snap)
+    # The strict id now witnesses the earlier domain refusal; declared still
+    # exercises the sheet-spacing warning and reaches the runner.
+    sim = _wall_sheet(height=2, extent=5.5, snap="declared")
+    assert_declared_wall_warning(sim)
+    if snap == "strict":
+        sim._snap = "strict"
+        calls = _stub_runners(monkeypatch)
+        with pytest.raises(ValueError, match="wall axis 'z'"):
+            getattr(sim, entry)(n_steps=1)
+        assert not calls
+        return
     message = _assert_review_verdict(monkeypatch, sim, entry, snap,
                                     "drawn spacing 3.5mm, solved spacing 4mm (+14.29%)")
     assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
@@ -726,11 +737,12 @@ def test_floor_spacing_one_percent_boundary(mesh, height, refused):
 
 
 def test_box_touching_off_node_lid_is_solved_open(monkeypatch):
-    sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM, boundary="pec")
+    sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM, boundary="pec", snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add(Box((2 * MM, 2 * MM, 0), (17 * MM, 15 * MM, 5.5 * MM)), material="pec")
     sim.add_source((MM, MM, MM), component="ez")
     # Box upper tie 5.5 -> 5; ceil domain lid 5.5 -> 6; touching -> 1 mm.
-    message = _assert_review_verdict(monkeypatch, sim, "run", "strict",
+    message = _assert_review_verdict(monkeypatch, sim, "run", "declared",
                                     "drawn touching/overlapping, solved spacing 1mm")
     assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
     assert "domain wall z_lo" not in message  # Box bottom 0 -> 0, touching shut.
@@ -841,7 +853,8 @@ def test_conformal_wall_is_not_judged_at_its_node(conformal):
     # Dey-Mittra half-space at 5.5 mm, so the node is not the wall.
     sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM,
                      boundary=BoundarySpec(x="pec", y="pec",
-                                           z=Boundary("pec", "pec", conformal=conformal)))
+                                           z=Boundary("pec", "pec", conformal=conformal)), snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add(Box((0, 0, 2 * MM), (20 * MM, 18 * MM, 2 * MM)), material="pec")
     sim.add_source((MM, MM, MM), component="ez")
     rows = sim.preflight().by_code(CODE)

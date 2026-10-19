@@ -86,6 +86,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 # rfx/preflight/ row: a later leg must not have to remember this file.
 _PREFLIGHT_SRCS = (
     _REPO_ROOT / "rfx" / "api" / "_preflight.py",
+    # #1887: the shared grid judge emits a coded wall-length warning.
+    _REPO_ROOT / "rfx" / "boundaries" / "features.py",
     *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
 )
 
@@ -482,7 +484,8 @@ def _enumerate_emission_sites():
 # 138 -> 139 (#1953): ``_validate_cfg_thin_conductor_thickness`` (rfx/preflight/pec_geometry.py),
 # new code ``thin_conductor_thickness_unmodelled`` -- a metal sheet's declared
 # thickness is not in the model.
-_FROZEN_TOTAL_SITES = 139
+# 139 -> 140 (#1887): judge_wall_axes emits wall_axis_off_node once per tuple.
+_FROZEN_TOTAL_SITES = 140
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -520,7 +523,8 @@ _FROZEN_TOTAL_SITES = 139
 # 90 -> 91 (#1800): sheet_cavity_spacing.
 # #1913: waveguide_port_obstacle_before_reference.
 # 92 -> 93 (#1953): thin_conductor_thickness_unmodelled.
-_FROZEN_LITERAL_CODE_COUNT = 93
+# 93 -> 94 (#1887): wall_axis_off_node.
+_FROZEN_LITERAL_CODE_COUNT = 94
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

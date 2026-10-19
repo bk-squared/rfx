@@ -2,7 +2,7 @@
 import numpy as np
 
 from rfx import Box, DebyePole, GaussianPulse, Simulation, Sphere, lorentz_pole
-from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.boundaries.spec import Boundary, BoundarySpec, normalize_boundary
 
 
 def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=False):
@@ -29,6 +29,12 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     if feature == "conformal":
         boundary = BoundarySpec(x=Boundary(lo="pec", hi="pec", conformal=True),
                                 y="pec", z="pec")
+    # Routing is tested on the same on-node walls in both lanes (#1887).
+    spec = normalize_boundary(boundary)
+    domain = tuple(float(np.ceil(v / 1e-3)) * 1e-3
+                   if all(getattr(getattr(spec, a), side) in ("pec", "pmc")
+                          for side in ("lo", "hi")) and not (mesh == "graded" and a == "x")
+                   else v for a, v in zip("xyz", domain))
     kwargs = {}
     if mesh == "graded":
         # Exact declared length, genuinely graded, distinct transverse lengths.

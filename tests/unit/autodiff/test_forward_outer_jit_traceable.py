@@ -123,12 +123,12 @@ def test_a_pec_shape_that_realizes_nothing_is_an_error_not_a_silent_none():
     """
     import pytest
 
-    s_empty = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
+    s_empty = Simulation(freq_max=6e9, domain=(.042, .021, .021), dx=.0015, boundary="pec")
     s_empty.add(Box((10.0, 10.0, 10.0), (11.0, 11.0, 11.0)), material="pec")
     with pytest.raises(ValueError, match="ZERO cells"):
         s_empty._assemble_materials(s_empty._build_grid())
 
-    s_real = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
+    s_real = Simulation(freq_max=6e9, domain=(.042, .021, .021), dx=.0015, boundary="pec")
     s_real.add(Box((0.018, 0.006, 0.006), (0.024, 0.014, 0.014)), material="pec")
     grid_r = s_real._build_grid()
     pec_mask_r = s_real._assemble_materials(grid_r)[3]
@@ -136,5 +136,5 @@ def test_a_pec_shape_that_realizes_nothing_is_an_error_not_a_silent_none():
         "interior PEC obstacle must return a non-empty mask"
     # ... and a run with NO conductor at all still returns None, so "None"
     # keeps meaning "no conductor" rather than "a conductor vanished".
-    s_none = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
+    s_none = Simulation(freq_max=6e9, domain=(.042, .021, .021), dx=.0015, boundary="pec")
     assert s_none._assemble_materials(s_none._build_grid())[3] is None

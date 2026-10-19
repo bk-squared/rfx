@@ -25,6 +25,7 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box, Cylinder
@@ -219,6 +220,7 @@ def test_kottke_pec_90_corner_finite_and_convergent_signal():
             # against the y_lo wall; the off-node corner is this test's point.
             snap="declared",
         )
+        assert_declared_wall_warning(sim)
         # PEC L-shape: a Box that has one corner inside the domain.
         sim.add(Box((0.030, 0.020, -0.001), (0.061, 0.041, 0.021)),
                 material="pec")

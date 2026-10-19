@@ -23,7 +23,7 @@ def _make_sim(dx):
     """Create a minimal PEC-cavity simulation at the given cell size."""
     sim = Simulation(
         freq_max=5e9,
-        domain=(0.03, 0.03, 0.03),
+        domain=(int(np.ceil(.03 / dx)) * dx,)*3,
         boundary="pec",
         dx=dx,
     )
@@ -212,7 +212,7 @@ def test_quick_convergence_runs():
     """quick_convergence should run without error on a simple simulation."""
     sim = Simulation(
         freq_max=5e9,
-        domain=(0.03, 0.03, 0.03),
+        domain=(12 * (299792458.0 / 5e9 / 20),)*3,
         boundary="pec",
     )
     sim.add_port((0.015, 0.015, 0.015), "ez")

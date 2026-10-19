@@ -1,14 +1,10 @@
-"""``pec_face_short_of_domain_wall``: a conductor drawn to the DECLARED
-cross-section stops one cell inside the wall the mesh realizes (#931).
+"""``pec_face_short_of_domain_wall``: a conductor stops one cell inside
+the wall the mesh realizes (#931).
 
-``Grid`` realizes a declared extent by ``ceil(extent / dx)`` cells, so a
-WR-90 22.86 x 10.16 mm guide on a 1 mm mesh is a 23 x 11 mm box and the
-domain-face PEC (design note §1.8, BC-owned) stands on the last interior
-node. A PEC VOLUME's face rounds to the NEAREST node (§1.1). Those two
-rules disagree whenever the declared face is more than half a cell below
-the realized wall: the 10.16 mm face rounds DOWN to 10.000 mm while the
-wall is at 11.000 mm, and the cell between them is a vacuum slot along
-the broad wall — a parallel-plate line, open at both ends.
+The nominal WR-90 plug remains 22.86 x 10.16 mm on a 1 mm mesh. The domain
+lid is declared at 10.75 mm, inside its last solved cell, so both nearest
+rounding and ceil give an 11 mm wall. The plug's 10.16 mm face rounds down
+to 10 mm, leaving the one-cell vacuum slot this finding must identify.
 
 Measured on the WR-90 waveguide-port case, 2026-09-07: that slot passed
 |S21| 0.22-0.33 through what the fixture called a short,
@@ -19,31 +15,33 @@ include the top node and the question never arose.
 The narrow (10.16 mm) axis is the one that fires here and the broad
 (22.86 mm) axis is not: 22.86 rounds UP to the 23 mm wall (0.14 mm away,
 under half a cell) while 10.16 rounds DOWN off the 11 mm wall (0.84 mm
-away). Same declaration, same mesh, opposite outcomes — which is the
-reason the finding reads the realized planes instead of comparing
-declared numbers.
+away). The plug drawing and domain lid are separate declarations; the
+finding reads their realized planes instead of comparing declared numbers.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.preflight._common import PreflightWarning
 
 MM = 1e-3
 DX = 1 * MM
 A_WG = 22.86 * MM          # WR-90 broad wall, declared
 B_WG = 10.16 * MM          # WR-90 narrow wall, declared
+B_DOMAIN = 10.75 * MM      # domain lid inside the 10..11 mm solved cell
 A_REALIZED = float(np.ceil(A_WG / DX)) * DX     # 23 mm
 B_REALIZED = float(np.ceil(B_WG / DX)) * DX     # 11 mm
 CODE = "pec_face_short_of_domain_wall"
 
 
 def _sim(guide_y: float, guide_z: float) -> Simulation:
-    """A 2 mm PEC plug across a WR-90 guide, y/z closed by PEC faces."""
+    """A nominal WR-90 plug below a separately declared PEC domain lid."""
     sim = Simulation(
-        freq_max=12.4e9, domain=(20 * MM, A_WG, B_WG), dx=DX,
+        freq_max=12.4e9, domain=(20 * MM, A_WG, B_DOMAIN), dx=DX,
         snap="declared",  # The drawn plug's open wall slot is intentional.
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
@@ -54,9 +52,16 @@ def _sim(guide_y: float, guide_z: float) -> Simulation:
     return sim
 
 
+def _preflight(sim):
+    report = sim.preflight()
+    warning, = report.by_code('wall_axis_off_node')
+    assert warning.loc == 'z' and warning.severity == 'warning'
+    return report
+
+
 def test_plug_drawn_to_the_declared_cross_section_fires():
     """The cv11 drawing: the plug's z_hi face lands one node inside the wall."""
-    rep = _sim(A_WG, B_WG).preflight()
+    rep = _preflight(_sim(A_WG, B_WG))
     hits = rep.by_code(CODE)
     assert len(hits) == 1, [str(h) for h in rep]
     text = str(hits[0])
@@ -73,7 +78,7 @@ def test_plug_drawn_to_the_declared_cross_section_fires():
 
 def test_plug_drawn_to_the_realized_walls_does_not_fire():
     """The same plug drawn to ceil(declared/dx)*dx reaches both walls."""
-    rep = _sim(A_REALIZED, B_REALIZED).preflight()
+    rep = _preflight(_sim(A_REALIZED, B_REALIZED))
     assert rep.by_code(CODE) == [], [str(h) for h in rep.by_code(CODE)]
 
 
@@ -86,7 +91,9 @@ def test_the_finding_reads_the_entry_s_own_realized_wall_planes():
     for label, (gy, gz) in (("declared", (A_WG, B_WG)),
                             ("realized", (A_REALIZED, B_REALIZED))):
         sim = _sim(gy, gz)
-        ctx = sim._campaign_ctx()
+        with pytest.warns(PreflightWarning, match="wall axis 'z'") as caught:
+            ctx = sim._campaign_ctx()
+        assert [w.message.code for w in caught] == ['wall_axis_off_node']
         (entry,) = [e for e in ctx.entry_realizations() if e.kind == "volume"]
         edges = entry.edges(ctx.periodic, tuple(ctx.grid.shape))
         tops[label] = max(realized_wall_planes(edges, 2))

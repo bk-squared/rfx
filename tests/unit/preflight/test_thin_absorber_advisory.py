@@ -18,7 +18,7 @@ def _vacuum(*, graded, token="cpml", depths=(4, 16, 0, 8), z="pec"):
     # A declared periodic axis must be a whole number of cells (#1221 B2
     # refuses an explicit dx that does not divide its period); the other
     # axes stay non-integral on purpose.
-    lz = 0.009 if z == "periodic" else 0.0091
+    lz = 0.010 if z in ("pec", "pmc") else 0.009 if z == "periodic" else 0.0091
     return Simulation(
         freq_max=3e9, domain=(0.0123, 0.0107, lz), dx=1e-3,
         dz_profile=np.linspace(0.0007, 0.00132, 9) if graded else None,

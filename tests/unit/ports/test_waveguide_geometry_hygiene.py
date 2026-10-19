@@ -91,7 +91,7 @@ def _fin_sim(cells: int, faces):
     if key not in _FIN_CACHE:
         dx = A_WR90 / cells
         sim = Simulation(
-            freq_max=14e9, domain=(0.05, A_WR90, B_WR90), dx=dx,
+            freq_max=14e9, domain=(0.05, A_WR90, int(np.ceil(B_WR90 / dx)) * dx), dx=dx,
             boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                                   y=Boundary(lo="pec", hi="pec"),
                                   z=Boundary(lo="pec", hi="pec")),
@@ -678,7 +678,7 @@ def test_advisory_dedupes_per_axis_and_still_reports_both_axes():
     # to report, and correct dedupe collapses them to one per axis.
     dx = 0.004
     sim = Simulation(
-        freq_max=float(_FREQS[-1]), domain=(0.12, 0.05, 0.12), dx=dx,
+        freq_max=float(_FREQS[-1]), domain=(0.12, int(np.ceil(.05 / dx)) * dx, 0.12), dx=dx,
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"), y="pec",
                               z=Boundary(lo="cpml", hi="cpml")),
         cpml_layers=6,

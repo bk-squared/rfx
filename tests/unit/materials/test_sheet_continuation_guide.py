@@ -1,4 +1,5 @@
 """A 380.6-cell guide must continue the same plates through its rounded end."""
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import warnings
 
 import jax
@@ -18,7 +19,8 @@ def _rounded_guide(nonuniform, nonbox):
     sim = Simulation(freq_max=10e9, domain=(lx, ly, .006), dx=dx,
                      boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"), y="pmc", z="pec"),
                      cpml_layers=10,
-                     **({"dz_profile": np.full(12, dx)} if nonuniform else {}))
+                     **({"dz_profile": np.full(12, dx)} if nonuniform else {}), snap="declared")
+    assert_declared_wall_warning(sim)
     for i in range(oracle.ABSORBER_N):
         sigma = oracle.ABSORBER_SIGMA_MAX * ((i + .5) / oracle.ABSORBER_N) ** 2
         sim.add_material(f"abs{i}", eps_r=1., sigma=sigma)
