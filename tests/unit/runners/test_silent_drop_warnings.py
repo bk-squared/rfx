@@ -569,7 +569,8 @@ def _graded_pec_sim(nonuniform=True, pec=False):
     return _quiet(build)
 
 
-@pytest.mark.parametrize("kw", list(ASKS))
+# Graded multi-device runs carry snapshot= since #1402 step 4g (rfx/runners/_distributed_records.py).
+@pytest.mark.parametrize("kw", [kw for kw in ASKS if kw != "snapshot"])
 def test_distributed_nu_remedies_lead_to_a_lane_that_runs(kw):
     """devices= on a graded mesh: the remedy for each argument names a lane
     that carries it, and following it runs."""
