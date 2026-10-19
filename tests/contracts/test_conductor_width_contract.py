@@ -313,6 +313,12 @@ def _extractor_context_cell(monkeypatch, lane, model):
                 compute_lumped_wire_s_matrix_via_scan(sim, np.array([F0]), n_steps=4)
         elif lane == 'waveguide_s_matrix':
             sim = set_model(_wr90())
+            if model == 'pec':
+                # This context/ownership cell pins no S value: align the cavity.
+                sim._domain = (0.06, 0.024, 0.012)
+                sim._thin_conductors = [replace(
+                    tc, shape=Box((0.02, 0, 0.006), (0.04, 0.024, 0.006)))
+                    for tc in sim._thin_conductors]
             patch.setattr(waveguide, 'extract_waveguide_s_matrix', handoff)
             with pytest.raises(HandoffReached):
                 sim.compute_waveguide_s_matrix(n_steps=4)

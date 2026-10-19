@@ -910,6 +910,7 @@ def run_uniform(
             sim, s_param_freqs, n_steps=sp_n_steps,
             conformal_pec=conformal_pec,
             return_settling=True,
+            skip_preflight=True,
         )
 
     declared_measurements = package_declared_measurements(

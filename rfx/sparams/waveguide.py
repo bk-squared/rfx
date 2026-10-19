@@ -28,6 +28,7 @@ composition point and the import graph stays acyclic.
 from __future__ import annotations
 
 from rfx.stepping.step_count import steps_for_periods
+from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
@@ -84,6 +85,7 @@ def compute_waveguide_s_matrix(
     sigma_override: "jnp.ndarray | None" = None,
     checkpoint_segments: int | None = None,
     strict_passivity: bool = False,
+    skip_preflight: bool = False,
     port_reference_sims: "list[Simulation] | None" = None,
 ) -> WaveguideSMatrixResult:
     """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
@@ -94,6 +96,8 @@ def compute_waveguide_s_matrix(
 
     Parameters
     ----------
+    skip_preflight : bool
+        Skip shared preflight checks when True. Default False.
     num_periods : float
         Length of the FDTD run (in source-period multiples) used to
         derive ``n_steps`` when ``n_steps`` is not given. The
@@ -231,7 +235,7 @@ def compute_waveguide_s_matrix(
         thinner than ``0.5 * lambda_g`` at the **lowest** measured
         frequency, which is where ``lambda_g`` is longest and the
         ``cpml_layers=16`` default weakest. It is checked in-method
-        because the functional entry points run no ``sim.preflight()``.
+        to retain the calculator-specific setup advisory alongside shared preflight.
         Treat ``0.5 * lambda_g`` as a floor, not a target: at the WR-90
         band edge the measured residual ``|S11|`` ripple was 0.0706 at
         0.30 ``lambda_g``, 0.0366 at 0.50 and 0.0093 at 0.75, so a
@@ -355,6 +359,10 @@ def compute_waveguide_s_matrix(
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
             admit(reference, "waveguide_s_matrix")
+
+    if not skip_preflight:
+        report_diagnostics(self._auto_preflight(
+            context="compute_waveguide_s_matrix", check_ntff="advisory"))
 
     if (
         self._dz_profile is not None

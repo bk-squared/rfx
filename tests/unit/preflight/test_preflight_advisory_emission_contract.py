@@ -629,13 +629,9 @@ EMISSION_CLASSIFICATION = {
         AUTO,
         "calls self._auto_preflight() when not skip_preflight, rfx/sparams/mixed.py"),
     "Simulation.compute_waveguide_s_matrix": (
-        DIAGNOSTIC_ONLY,
-        "rfx/api/_sparams.py:1265 -- \"the functional entry points run no "
-        "sim.preflight() at all\" (issue #494); silent gap named in the "
-        "brief and in the WR-90 inductive iris case's own "
-        "no_preflight_note. Measured: unlike compute_msl_s_matrix below, "
-        "this method never calls self.run()/self.forward() -- it drives "
-        "the scan directly -- so it has no path to _auto_preflight at all."),
+        AUTO,
+        "S-calculator shared admission (2026-10-19): calls self._auto_preflight() "
+        "after calculator admission unless skip_preflight, rfx/sparams/waveguide.py"),
     "Simulation.compute_msl_s_matrix": (
         AUTO,
         "MEASURED CORRECTION to the #742(b) brief's framing (which reads "
@@ -666,7 +662,7 @@ EMISSION_CLASSIFICATION = {
         "self.compute_msl_s_matrix()/self.compute_mixed_s_matrix() branches "
         "of its own if-chain (both AUTO above), so _reaches_preflight is "
         "True. READ IT AS: preflight runs on SOME lanes this method can "
-        "select, not on all of them. On the waveguide and the three coaxial "
+        "select, not on all of them. On the three coaxial "
         "lanes -- each DIAGNOSTIC_ONLY in its own row above -- routing "
         "through compute_s_matrix() adds no preflight, exactly as calling "
         "them directly adds none. The dispatch is deliberately written as "

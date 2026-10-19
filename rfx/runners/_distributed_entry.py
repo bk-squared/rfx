@@ -173,7 +173,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
         if s_param_freqs is None:
             s_param_freqs = default_frequency_grid(self._freq_max, 50)
         _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
-            self, s_param_freqs,
+            self, s_param_freqs, skip_preflight=True,
             n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
             devices=devices,
             **({"_main_wire_record": True} if len(_dist_ports) == 1

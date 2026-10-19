@@ -45,7 +45,7 @@ def _wr90_pec_short_sim():
         ),
         cpml_layers=10,
     )  # solved length; #1887
-    sim.add(Box((0.084, 0, 0), (0.087, 0.04, 0.02)), material="pec")
+    sim.add(Box((0.084, 0, 0), (0.087, 0.042, 0.021)), material="pec")
     freqs = jnp.linspace(5e9, 6.5e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",

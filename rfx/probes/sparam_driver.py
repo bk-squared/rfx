@@ -59,6 +59,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     _main_wire_record=False,
     return_settling=False,
     _forward_port_s11=False,
+    skip_preflight: bool = False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -73,6 +74,8 @@ def compute_lumped_wire_s_matrix_via_scan(
         impedance!=0 lumped/wire ports.
     freqs : array-like
         Frequencies (Hz) at which to extract the S-matrix.
+    skip_preflight : bool
+        Skip shared preflight checks when True. Default False.
     n_steps : int or None
         Number of FDTD steps per drive.  Defaults to
         ``grid.num_timesteps(num_periods=30)`` (matching the eager
@@ -140,6 +143,10 @@ def compute_lumped_wire_s_matrix_via_scan(
     sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
     from rfx.runners._admission import admit
     admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+    if not skip_preflight:
+        from rfx._diagnostic_transport import report_diagnostics
+        report_diagnostics(sim._auto_preflight(
+            context="compute_lumped_wire_s_matrix_via_scan", check_ntff="advisory"))
     grid = sim._build_grid()
     if devices is None:
         _sheet_specs: list = []

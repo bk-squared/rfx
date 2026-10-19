@@ -493,7 +493,7 @@ def test_run_battery_geometry_auto_routes():
 # -----------------------------------------------------------------------------
 
 
-def _pec_short_sim(*, conformal: bool):
+def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
     """Validation-battery-style PEC-short setup. Two ports + a thin
     PEC wall midway through the guide; with num_periods=40 the round
     trip settles inside the DFT window and |S11| → 1.0 for a correct
@@ -503,7 +503,7 @@ def _pec_short_sim(*, conformal: bool):
 
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.12, 0.04, 0.02),
+        domain=domain,
         dx=0.003,
         boundary=BoundarySpec(
             x="cpml",
@@ -517,7 +517,7 @@ def _pec_short_sim(*, conformal: bool):
     # x = 0.087 m). Drawn as one full cell, 0.084 -> 0.087 m: a solid
     # short with walls on both drawn planes, the far one still at 0.087 m.
     # The |S11| magnitude gate below is unchanged.
-    sim.add(Box((0.084, 0, 0), (0.087, 0.04, 0.02)), material="pec")
+    sim.add(Box((0.084, 0, 0), (0.087, domain[1], domain[2])), material="pec")
     freqs = jnp.linspace(5e9, 7e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
@@ -715,7 +715,8 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
     Dey-Mittra face-PEC lane, which #931 §1.8 fences out of the ownership
     contract, and it is recorded here as an observation, not fixed.)
     """
-    sim = _pec_short_sim(conformal=False)
+    # #1887: declare whole cells, instead of rounding 40/20 mm to 42/21 mm.
+    sim = _pec_short_sim(conformal=False, domain=(0.12, 0.042, 0.021))
     # build-time: the short realizes walls on BOTH drawn faces (#931 §1.2)
     from tests._realized_geometry import assert_wall_planes
     assert_wall_planes(sim, 0, [0.084, 0.087], what="cv11-style PEC short")
