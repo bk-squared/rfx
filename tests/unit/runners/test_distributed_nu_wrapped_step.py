@@ -536,6 +536,28 @@ def test_pole_one_slab_invariants(name, monkeypatch):
     assert_same_tree(expected.carry_init['fdtd'], carry['fdtd'], 'fdtd', owned=owned)
 
 
+def pole_law(one, several):
+    """Accumulated float32 rounding law (#1860 law C) on the E and H columns.
+
+    Pole media are not bit-stable across compiled forms on one device: the
+    Debye box differs from itself under jit by 251 ULP of the peak, and the
+    multi-device step's difference is formed inside the compiled step from
+    byte-equal operands (rfx-archive rfx/records/20261017-item5-dispersive,
+    RESULT.md). A per-step 9-ULP bar is the wrong unit for such a difference;
+    at step n it is allowed 1.2e-7 x the running sum of the peak |field| up to n.
+    Returns the largest difference/allowance ratio for E and for H.
+    """
+    one, several = np.asarray(one, np.float64), np.asarray(several, np.float64)
+    ratios = []
+    for columns in (slice(0, 2), slice(2, None)):
+        difference = np.abs(several[:, columns] - one[:, columns]).max(axis=1)
+        allowance = 1.2e-7 * np.cumsum(np.abs(one[:, columns]).max(axis=1))
+        ratio = np.divide(difference, allowance, out=np.where(difference > 0, np.inf, 0.),
+                          where=allowance > 0)
+        ratios.append(float(ratio.max()))
+    return tuple(ratios)
+
+
 @pytest.mark.parametrize('name', ['S1', 'S2', 'lorentz'])
 def test_pole_two_vs_three_bitwise_and_bars(name):
     one = pole_scene(name).run(n_steps=60)
@@ -544,9 +566,26 @@ def test_pole_two_vs_three_bitwise_and_bars(name):
     assert_bits((two.time_series, two.state), (three.time_series, three.state))
     for result in (two, three):
         e, h, dft = pole_metrics(one.time_series, result.time_series, float(one.dt))
-        assert np.max(e) <= 9, e
-        assert np.max(h) <= 9, h
+        law_e, law_h = pole_law(one.time_series, result.time_series)
+        # S2 on the CI host: 10 ULP of the peak at step 57, law ratio ~0.5 (Mac 0.48).
+        assert law_e <= 1. and law_h <= 1., (law_e, law_h, np.max(e), np.max(h))
         assert dft <= 1e-4, dft
+
+
+@pytest.mark.parametrize('mutation', ['skipped_e_exchange', 'debye_tau_0.01%'])
+def test_pole_law_catches(mutation, monkeypatch):
+    """The law stays a bar: each defect lands far above it (Mac: 1.3e4, 129)."""
+    one = pole_scene('S2').run(n_steps=60)
+    sim = pole_scene('S2')
+    if mutation == 'skipped_e_exchange':
+        from rfx.runners import distributed_nu
+        monkeypatch.setattr(distributed_nu, '_exchange_e_ghosts_nu', lambda st, *a, **kw: st)
+    else:
+        from rfx.materials.debye import DebyePole
+        sim.add_material('body', eps_r=2.0, debye_poles=[DebyePole(delta_eps=3.0, tau=2e-11 * 1.0001)])
+    several = sim.run(n_steps=60, devices=host_devices(2))
+    law_e, law_h = pole_law(one.time_series, several.time_series)
+    assert law_e > 1. and law_h > 1., (mutation, law_e, law_h)
 
 
 @pytest.mark.parametrize('name', ['S1', 'lorentz', 'mixed'])
