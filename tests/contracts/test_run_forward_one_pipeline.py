@@ -9,9 +9,11 @@ from pathlib import Path
 
 import pytest
 
+import numpy as np
+
 from tests.contracts.run_forward_census import (
-    BUILDERS, SEAMS, capture, compare, compare_l2, equal_request_pair, l2_differences,
-    normalize_inputs, observables, run_l2, port_s_pair, port_drive_witness_leaves,
+    BUILDERS, SEAMS, FrozenArray, capture, compare, compare_l2, equal_request_pair, freeze,
+    l2_differences, normalize_inputs, observables, run_l2, port_s_pair, port_drive_witness_leaves,
 )
 
 KNOWN_ROWS = (
@@ -96,7 +98,9 @@ ASSEMBLY_ROWS = (
     ('O-vector', 'multi-device-graded'),
     ('O-vector', 'uniform'),
     ('P-floquet', 'uniform'),
+    ('P-lumped', 'graded'),
     ('P-lumped', 'uniform'),
+    ('P-lumped2', 'graded'),
     ('P-lumped2', 'uniform'),
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
@@ -208,8 +212,10 @@ FIELD_ROWS = (
     ('O-vector', 'multi-device-uniform'),
     ('O-vector', 'uniform'),
     ('P-floquet', 'uniform'),
+    ('P-lumped', 'graded'),
     ('P-lumped', 'multi-device-uniform'),
     ('P-lumped', 'uniform'),
+    ('P-lumped2', 'graded'),
     ('P-lumped2', 'uniform'),
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
@@ -431,6 +437,15 @@ def test_assembly(declaration, path, direction):
             {'arguments', 'result'} if capture_path == 'graded' and level == 'b' else {'arguments'})
         for cap in pair.values():
             assert set(cap['value']) == required, cap['seam_sites']
+        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2'):
+            # run's default bins arrive as the float64 host grid, forward's
+            # request as float32; the runner solves on float32 bins either way
+            # (result/sp_freqs is compared exactly below).
+            for cap in pair.values():
+                arguments = cap['value']['arguments']
+                freqs = arguments.get('s_param_freqs')
+                if isinstance(freqs, FrozenArray):
+                    arguments['s_param_freqs'] = freeze(freqs.array().astype(np.float32))
         if level == 'a' and capture_path == 'graded':
             # Judge a full-domain fallback at the same scan-builder seam as
             # a direct graded call, after driver defaults are resolved.
