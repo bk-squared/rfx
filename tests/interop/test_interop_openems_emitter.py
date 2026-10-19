@@ -986,3 +986,14 @@ def test_differing_per_face_pml_depth_is_flagged_as_assumed_not_measured():
     uniform = plan_openems_projection(design_to_dict(_thru()))
     assert not [n for n in uniform.approximations
                 if "per-face PML depths differ" in n]
+
+
+def test_off_node_wall_mesh_matches_realized_grid():
+    sim = Simulation(10e9, (.021, .013, .0074), dx=.001, cpml_layers=8,
+                     boundary=dict(x='cpml', y='cpml', z='pec'), snap='declared')
+    sim.add_port(position=(.010, .006, .003), component='ez',
+                 impedance=50., waveform=_PULSE)
+    plan = plan_openems_projection(design_to_dict(sim))
+    # x: 21 + 16 pads + 1; y: 13 + 16 + 1; z: round(7.4) + 1.
+    assert plan.grid_shape == (38, 30, 8)
+    assert plan.grid_shape == sim._build_grid().shape

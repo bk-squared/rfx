@@ -34,12 +34,12 @@ from rfx.interop import design_to_dict, simulation_from_design
 # These are literal policy answers, never obtained from the admission function.
 # The final column names the reason for an exception to public guide admission.
 EXPECTED = {
-    # Both meshes count an absorber axis up (#1887): 22.86 mm at 2 mm is 12
-    # cells, 24 mm, so the port is not full-aperture on either mesh.
+    # 22.86 x 10.16 mm at 2 mm: 11 x 5 wall cells on the uniform mesh (22 mm,
+    # -3.76 %; 10 mm, -1.57 %); the graded mesh keeps 8-cell absorbers on y/z.
     "wr90-nonwhole-cells": (
-        ("admitted", None, ""),
-        ("admitted", None, ""),
-        "",
+        ("refused", ValueError, "wall axis 'y': declared 22.86 mm, solved 22 mm, rel -3.76202974628 %, 11 cells, dx=2 mm; nearest dx=2.07818181818 mm, next dx=1.905 mm (both pass 1 %); wall axis 'z': declared 10.16 mm, solved 10 mm, rel -1.57480314961 %, 5 cells, dx=2 mm; nearest dx=2.032 mm, next dx=1.69333333333 mm (both pass 1 %); set snap='declared' to accept."),
+        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "both refuse (#1887): the uniform mesh solves the zero-depth transverse faces as walls, judged 1 % off before guide admission; the graded mesh keeps absorbers there and refuses the declared full aperture",
     ),
     "perpendicular-pec-z": (
         ("admitted", None, ""),
@@ -264,6 +264,9 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
         assert answers[0] != answers[1]
     elif (declaration, entry) in PUBLIC_OVERRIDES:
         assert "uniform run two-port refusal" in row[2]
+        assert answers[0] != answers[1]
+    elif declaration == "wr90-nonwhole-cells":
+        assert row[2] == "both refuse (#1887): the uniform mesh solves the zero-depth transverse faces as walls, judged 1 % off before guide admission; the graded mesh keeps absorbers there and refuses the declared full aperture"
         assert answers[0] != answers[1]
     elif declaration.startswith("perpendicular-"):
         assert row[2] == "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b"

@@ -59,16 +59,16 @@ and defined inline below (the durable rationale is also recorded in
 docs/design_notes/geometry_setup_interop.md):
 
 ``D1``  CPML padding direction — rfx adds absorber cells **outside** the user
-        domain (``rfx/grid.py``: ``nx = ceil(Lx/dx) + 1 + pad_lo + pad_hi``,
+        domain (``rfx/grid.py``: ``nx = realized_cells(Lx, dx, kind) + 1 + pad_lo + pad_hi``,
         and ``(idx - axis_pads[ax]) * dx`` recovers user coordinates), while
         openEMS ``PML_<N>`` consumes ``N`` cells **inside** the mesh extent it
         is handed.  The emitted mesh therefore spans the user domain *plus*
         the per-face pads, and ``PML_<N>`` eats exactly the added margin.
         Getting this wrong silently compares a different structure; the repo's
         own hand-written scripts get it wrong.
-``D2``  ``ceil`` vs ``round`` on the cell count — rfx uses ``ceil``; the
-        emitter follows rfx, so the emitted extent is ``n_cells * dx`` and may
-        exceed ``domain``.
+``D2``  Cell counts follow rfx's realized face kinds: walls round,
+        positive-depth absorber axes span the declaration. The emitted extent
+        is ``n_cells * dx`` and may differ from ``domain``.
 ``D3``  ``PML_<N>`` is parameterised from ``cpml_layers``; the scripts'
         hard-coded ``PML_8`` is stale against the current rfx default of 16.
 ``D4``  ``MUR`` is never emitted (measured 8 % resonance error on a patch, and
@@ -401,7 +401,7 @@ def _axis_lines_mm(
     """Mesh lines for one axis, in mm, spanning the pads as well as the domain.
 
     **D1 — the highest-severity divergence.**  rfx's grid is
-    ``ceil(L/dx) + 1 + pad_lo + pad_hi`` nodes and user coordinates are
+    ``n_cells + 1 + pad_lo + pad_hi`` nodes and user coordinates are
     ``(idx - pad_lo) * dx``, i.e. index 0 lies *outside* the user domain.
     openEMS's ``PML_<N>`` instead consumes ``N`` cells of whatever mesh it is
     given.  So the emitted mesh runs from ``-pad_lo * dx`` to
@@ -1282,7 +1282,12 @@ def plan_openems_projection(
     )
 
     # --- mesh lines (D1, D2) ------------------------------------------------
-    n_cells = tuple(int(math.ceil(float(extent[i]) / dx_m)) for i in range(3))
+    from rfx.boundaries.depths import resolve_face_depths
+    from rfx.grid import axis_kinds, realized_cells
+    kinds = axis_kinds(resolve_face_depths(
+        spec, budget=cpml_layers, periodic_axes=periodic_axes))
+    n_cells = tuple(realized_cells(float(extent[i]), dx_m, kinds[axis])
+                    for i, axis in enumerate(_AXES))
     pad_lo = tuple(pads[f"{ax}_lo"] for ax in _AXES)
     pad_hi = tuple(pads[f"{ax}_hi"] for ax in _AXES)
     lines: dict[str, tuple[float, ...]] = {
@@ -1313,9 +1318,9 @@ def plan_openems_projection(
         "formulations, so the same layer count does not mean the same absorber."
     )
     notes.append(
-        f"[D2] cell counts use rfx's ceil(domain/dx), not the round() the "
-        f"repository's hand-written openEMS scripts use, so the emitted clear "
-        f"extent is {tuple(n_cells[i] * dx_m for i in range(3))} m and may exceed "
+        f"[D2] cell counts use rfx's realized face kinds (walls round; "
+        f"positive-depth absorber axes span the declaration), so the emitted clear "
+        f"extent is {tuple(n_cells[i] * dx_m for i in range(3))} m and may differ from "
         f"the requested domain {tuple(float(v) for v in extent)} m."
     )
     if upml_faces:

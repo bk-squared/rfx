@@ -168,7 +168,7 @@ def axis_kinds(boundary_depths):
     for axis in "xyz":
         pair = [faces[f"{axis}_{side}"] for side in ("lo", "hi")]
         result[axis] = ("periodic" if all(f.kind == Kind.PERIODIC for f in pair)
-                        else "wall" if all(f.kind in (Kind.PEC, Kind.PMC) and f.realized == 0
+                        else "wall" if all(f.kind != Kind.PERIODIC and f.realized == 0
                                            for f in pair) else "absorber")
     return result
 
