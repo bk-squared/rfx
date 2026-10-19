@@ -744,7 +744,9 @@ def port_drive_witness_leaves(sim, run, forward):
             assert drive['scored_port_record_ids'] == port_ids, (location, port_id)
             if port.excite:
                 # (b) Compare the port-record row, not the probe aggregate.
-                for key in drive.keys() & forward_row.keys():
+                shared = drive.keys() & forward_row.keys()
+                assert {'db', 'status', 'error_per_bin', 'share_per_bin'} <= shared, (location, shared)
+                for key in shared:
                     np.testing.assert_array_equal(drive[key], forward_row[key],
                                                   err_msg=f'{location}/{key}: {port_id}')
             else:
