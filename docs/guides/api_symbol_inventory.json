@@ -1409,7 +1409,8 @@
         "dt_caller",
         "nominal_profiles",
         "periodic_axes",
-        "domain"
+        "domain",
+        "boundary_depths"
       ]
     },
     "make_ntff_box": {
