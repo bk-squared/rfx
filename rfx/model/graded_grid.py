@@ -1091,10 +1091,17 @@ def _assert_traced_index_matches_realized(
     traced_check("graded mesh", "node index", _check, nearest, agrees)
 
 
+def _traced_fallback_width(grid: NonUniformGrid, axis) -> float:
+    """Width of the uniform reference cells a traced axis resolves positions
+    on when no ``nominal_profiles`` entry is declared: the y scalar on y, the
+    x scalar on x and z (one definition for the resolver and host code)."""
+    return float(grid.dy if grid._axis_layout(axis)[0] == 1 else grid.dx)
+
+
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
     """Convert physical z-coordinate to (cpml-offset) grid index."""
     return _axis_position_to_index(grid, "z", z_phys,
-                                   fallback_dx=float(grid.dx))
+                                   fallback_dx=_traced_fallback_width(grid, "z"))
 
 
 def _axis_position_to_index(
@@ -1152,6 +1159,49 @@ def _axis_position_to_index(
     return _nearest_on_line(nodes, cells, pos) + pad_lo
 
 
+def host_node_of(grid: NonUniformGrid, axis, i: int) -> float:
+    """Coordinate of padded node ``i`` on the line ``_axis_position_to_index``
+    resolves positions on, so the two round-trip on every axis.
+
+    A concrete axis gives ``node_of``. A traced axis gives the nominal mesh
+    that resolver uses: the declared ``nominal_profiles`` widths, else uniform
+    cells of the axis's fallback width (:func:`_traced_fallback_width`).
+    """
+    ax, n, pad_lo, _pad_hi = grid._axis_layout(axis)
+    if not is_tracer(grid._axis_store(ax)) or _axis_name(ax) in grid.periodic_axes:
+        return float(grid.node_of(ax, i))
+    idx = int(i)
+    if not (0 <= idx < n):
+        raise IndexError(f"padded index {idx} is outside axis {_axis_name(ax)!r}, which has {n} entries")
+    from rfx.model.graded_admission import nominal_cells
+    widths = nominal_cells(grid, ax)
+    if widths is not None:
+        nodes = np.concatenate([[0.0], np.cumsum(widths)])
+        return float(nodes[min(max(idx - pad_lo, 0), nodes.size - 1)])
+    from rfx.geometry.rasterize_grid import _uniform_axis_nodes
+    fallback = _traced_fallback_width(grid, ax)
+    return float(_uniform_axis_nodes(n, pad_lo, fallback)[idx])
+
+
+def host_nominal_grid(grid: NonUniformGrid) -> NonUniformGrid:
+    """``grid`` with each traced axis's cells replaced by the nominal widths
+    positions resolve on (the line :func:`host_node_of` reads), so host code
+    can size a port on concrete numbers. Concrete axes are returned as they are.
+    """
+    from rfx.model.graded_admission import nominal_cells
+    fields = {}
+    for ax, (store, exact) in enumerate((("dx_arr", "dx_arr_f64"), ("dy_arr", "dy_arr_f64"), ("dz", "dz_f64"))):
+        cells = getattr(grid, store)
+        if not is_tracer(cells):
+            continue
+        widths = nominal_cells(grid, ax, padded=True)
+        if widths is None:
+            widths = np.full(cells.shape[0], _traced_fallback_width(grid, ax))
+        fields[store] = jnp.asarray(widths, dtype=cells.dtype)
+        fields[exact] = np.asarray(widths, dtype=np.float64)
+    return grid._replace(**fields) if fields else grid
+
+
 def _nearest_on_line(nodes, cells, pos) -> int:
     """``nearest_node_index`` on a node line, with the local cell the sheet
     snap uses (``_local_cell``). A coordinate outside the line gets its end
@@ -1173,9 +1223,9 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
     pad index or refuses.
     """
     i = _axis_position_to_index(grid, "x", pos[0],
-                                fallback_dx=float(grid.dx))
+                                fallback_dx=_traced_fallback_width(grid, "x"))
     j = _axis_position_to_index(grid, "y", pos[1],
-                                fallback_dx=float(grid.dy))
+                                fallback_dx=_traced_fallback_width(grid, "y"))
     k = z_position_to_index(grid, pos[2])
     return (i, j, k)
 

@@ -124,7 +124,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/geometry/smoothing.py": 6,
     "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,
-    "rfx/model/graded_grid.py": 3,  # moved, not new: rfx/nonuniform.py's 3 reads moved with position_to_index and its helpers (total unchanged)
+    "rfx/model/graded_grid.py": 2,  # the traced-axis fallback width, read once in _traced_fallback_width (position_to_index and the ring-down host helpers)
     "rfx/preflight/realization.py": 1,
     "rfx/rcs.py": 1,
     "rfx/runners/adi.py": 5,  # moved, not new: rfx/api/_execute.py's 5 reads moved with _run_adi_from_materials (Block E1; total unchanged)

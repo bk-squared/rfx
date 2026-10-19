@@ -948,7 +948,10 @@ def _user_geometry(result, n_user: int, n_int: int):
 
 
 def _node_position(grid, idx) -> tuple:
-    return tuple(float(grid.node_of(ax, int(idx[ax]))) for ax in range(3))
+    if not hasattr(grid, "nominal_cells"):
+        return tuple(float(grid.node_of(ax, int(idx[ax]))) for ax in range(3))
+    from rfx.model.graded_grid import host_node_of
+    return tuple(host_node_of(grid, ax, int(idx[ax])) for ax in range(3))
 
 
 class _PortMeta(NamedTuple):
@@ -960,8 +963,6 @@ class _PortMeta(NamedTuple):
     excite: bool
     live_cells: tuple
     k_mid: int
-    raw: dict            # the metric objects the run multiplied by
-    f64: dict            # the same metrics as Python floats
     accs: tuple          # rfx's (v, i, v_port) accumulators
     freqs: object        # jnp float32 bins the accumulators used
     meta: object         # the run's own metadata entry
@@ -983,22 +984,12 @@ def _read_port_metas(lane: str, result, grid, boundary=None, port_ids=None) -> l
             mid = (int(meta.mid_i), int(meta.mid_j), int(meta.mid_k))
             comp = str(meta.component)
             live = tuple(tuple(int(v) for v in c) for c in (meta.live_cells or (mid,)))
-            dx = float(grid.cells(0)[mid[0]])
-            raw = {"dx": dx}
-            f64 = {"dx": dx}
             z0, excite, freqs = meta.impedance, bool(meta.excite), meta.freqs
             acc3 = (accs[0], accs[1], accs[3])
         else:
             mid = (int(meta[0]), int(meta[1]), int(meta[2]))
             comp = str(meta[3])
             live = tuple(tuple(int(v) for v in c) for c in meta[13])
-            v_metric = meta[11] if comp == "ez" else meta[5] if comp == "ex" else meta[6]
-            raw = {"v_metric": v_metric, "d_par": tuple(meta[14]),
-                   "dual_x": meta[9], "dual_y": meta[10], "dual_z": meta[12]}
-            f64 = {"v_metric": float(v_metric),
-                   "d_par": tuple(float(d) for d in meta[14]),
-                   "dual_x": float(meta[9]), "dual_y": float(meta[10]),
-                   "dual_z": float(meta[12])}
             z0, excite = meta[4], bool(meta[7])
             freqs = jnp.asarray(np.asarray(result.freqs), dtype=jnp.float32)
             acc3 = (accs[0], accs[1], accs[3])
@@ -1012,8 +1003,7 @@ def _read_port_metas(lane: str, result, grid, boundary=None, port_ids=None) -> l
                                   pmc_faces=boundary.pmc_faces, periodic=boundary.periodic,
                                   port_id=port_id, kind='wire')
         out.append(_PortMeta(mid=mid, component=comp, z0=z0, excite=excite,
-                             live_cells=live, k_mid=live.index(mid), raw=raw,
-                             f64=f64, accs=acc3, freqs=freqs, meta=meta, owner=owner))
+                             live_cells=live, k_mid=live.index(mid), accs=acc3, freqs=freqs, meta=meta, owner=owner))
     return out
 
 
@@ -1075,7 +1065,7 @@ def _rebuild_channels(lane: str, pms, e_cols, h_cols) -> np.ndarray:
         e64 = np.asarray(e_cols[p]).astype(np.float64).T                  # (n_live, n)
         h64 = {k: np.moveaxis(np.asarray(v).astype(np.float64), 0, -1)   # (2, 2, 2, n)
                for k, v in h_cols[p].items()}
-        _v, v_port, i_val = _port_vi(lane, pm, pm.f64, e64,
+        _v, v_port, i_val = _port_vi(lane, pm, None, e64,
                                      h64["hx"], h64["hy"], h64["hz"])
         cols += [np.asarray(v_port, dtype=np.float64),
                  np.asarray(i_val, dtype=np.float64)]
@@ -1101,7 +1091,7 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     def body(carry, xs):
         step_idx, e, hx, hy, hz = xs
         v_dft, i_dft, vp_dft = carry
-        v, v_port, i_val = _port_vi(lane, pm, pm.raw, e, hx, hy, hz)
+        v, v_port, i_val = _port_vi(lane, pm, None, e, hx, hy, hz)
         phase = port_dft_phase(step_idx, freqs, dt, dtype=v_dft.dtype)
         i_phase = port_dft_phase(step_idx, freqs, dt, 'H', dtype=i_dft.dtype)
         return (v_dft + v * phase, i_dft + i_val * i_phase,
@@ -2774,6 +2764,15 @@ class RingdownForward(RingdownRun):
                                          jnp.asarray(jnp.nan, dtype=_rdt_nan(result)),
                                          jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
+        host_pms = pms
+        if self.lane == "graded":
+            from rfx.model.graded_grid import host_nominal_grid
+            nominal = host_nominal_grid(result.grid)
+            if nominal is not result.grid:
+                # A traced mesh: the host identification sizes the port's V/I on the
+                # nominal mesh, a different combination of the same recorded samples and
+                # so of the same poles (each column is RMS-normalised); S stays traced.
+                host_pms = [pm._replace(accs=None) for pm in self._read_metas_checked(result, nominal)]
         acc_dtype = jnp.result_type(accs[0][3])
         used = sorted({j for e_cols, h_cells in layouts for j in e_cols}
                       | {j for e_cols, h_cells in layouts for _h, _l, j in h_cells}
@@ -2796,7 +2795,7 @@ class RingdownForward(RingdownRun):
             h = {name: jnp.zeros((2, 2, 2, n), dtype=rdt) for name in ("hx", "hy", "hz")}
             for hname, (a, b, c), j in h_cells:
                 h[hname] = h[hname].at[a, b, c].set(raw[:, j].astype(rdt))
-            _v, v_port, i_val = _port_vi(lane, pm, pm.f64, e, h["hx"], h["hy"], h["hz"])
+            _v, v_port, i_val = _port_vi(lane, pm, None, e, h["hx"], h["hy"], h["hz"])
             cols += [v_port, i_val]
         identification_cols = [pos[j] for j in self._identification_columns()]
         cols += [raw[:, j].astype(rdt) for j in identification_cols]
@@ -2805,7 +2804,7 @@ class RingdownForward(RingdownRun):
         def identify_window(w_raw):
             """run()'s float64 rebuild and identification, on a window of the raw columns."""
             arrays = [_port_arrays(w_raw, lay) for lay in local]
-            Yw = _rebuild_channels(lane, pms, [a[0] for a in arrays],
+            Yw = _rebuild_channels(lane, host_pms, [a[0] for a in arrays],
                                    [a[1] for a in arrays])
             Yw = np.concatenate((Yw, np.asarray(w_raw[:, identification_cols], dtype=np.float64)), axis=1)
             return identify(Yw, dt, 0, Yw.shape[0], freq_max=ref_hz, guard=spec.guard,
