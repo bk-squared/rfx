@@ -1123,19 +1123,49 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
         return True
     if main_record and not any(getattr(p, "excite", True) for p in ports):
         return True
-    message = (
+    reason = (
         "Lumped/wire S-matrix requests do not support plain sources / "
         "0-ohm ports (add_source, add_polarized_source or "
-        "add_port(impedance=0)): they fire in every port drive. "
-        "Remove the plain source, or call run(compute_s_params=False) "
-        "to get raw port waves with the source included."
-    )
+        "add_port(impedance=0)): they fire in every port drive. ")
     if implicit:
         _warn_implicit_s(
-            message + " remove the plain source, or pass compute_s_params=False "
+            reason + "Remove the plain source, or pass compute_s_params=False "
             "to silence this warning; returning no S-parameters.")
         return False
-    raise NotImplementedError(message)
+    raise NotImplementedError(
+        reason + "Remove the plain source, or call run(compute_s_params=False) "
+        "to get raw port waves with the source included.")
+
+
+def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=None):
+    """run()'s S request after the plain-source rule: an explicit request with a
+    plain source or 0-ohm port is refused; the default request warns and
+    resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
+    # Subgridded runs opt into S explicitly; uniform/graded runs resolve
+    # None from the presence of lumped/wire or wire ports respectively.
+    default_requested = (
+        compute_s_params is None
+        and sim._refinement is None
+        and sim._solver != "adi"
+        and any(
+            pe.impedance != 0.0
+            and (not sim._uses_nonuniform_mesh or pe.extent is not None)
+            for pe in sim._ports
+        )
+    )
+    if compute_s_params is False or not (requested or default_requested):
+        return compute_s_params
+    _one_device = devices is None or len(devices) <= 1
+    # S read from the main run's own record: the graded wire path and
+    # the uniform single-wire fast path (no scan, _s_matrix_ports False).
+    _main_record = (
+        _one_device and sim._refinement is None and sim._solver != "adi"
+        and (sim._uses_nonuniform_mesh or not _s_matrix_ports(sim)))
+    if not refuse_plain_sources_s_matrix(
+            sim, main_record=_main_record,
+            implicit=compute_s_params is None and not requested):
+        return False
+    return compute_s_params
 
 
 def admit_forward_s_matrix(sim):

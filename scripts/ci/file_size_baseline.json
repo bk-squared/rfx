@@ -4,7 +4,7 @@
   "files": {
     "rfx/api/__init__.py": 2112,
     "rfx/api/_execute.py": 2100,
-    "rfx/api/_preflight.py": 1169,
+    "rfx/api/_preflight.py": 1155,
     "rfx/api/_spec.py": 1866,
     "rfx/interop/_design.py": 1643,
     "rfx/interop/emitters/openems.py": 1668,

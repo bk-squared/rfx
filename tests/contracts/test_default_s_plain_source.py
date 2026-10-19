@@ -9,14 +9,16 @@ import pytest
 from rfx import Simulation
 
 # Verbatim refusal on origin/main f0e3805d9, not derived from the implementation.
-REFUSAL = (
+REASON = (
     "Lumped/wire S-matrix requests do not support plain sources / "
     "0-ohm ports (add_source, add_polarized_source or "
     "add_port(impedance=0)): they fire in every port drive. "
+)
+REFUSAL = REASON + (
     "Remove the plain source, or call run(compute_s_params=False) "
     "to get raw port waves with the source included."
 )
-FIX = ("remove the plain source, or pass compute_s_params=False "
+FIX = ("Remove the plain source, or pass compute_s_params=False "
        "to silence this warning; returning no S-parameters.")
 
 
@@ -58,8 +60,7 @@ def test_default_fields_equal_explicit_false(graded, wire, distributed):
     else:
         assert len(mixed) == 1
         assert mixed[0].category is UserWarning
-        assert str(mixed[0].message).startswith(REFUSAL)
-        assert str(mixed[0].message).endswith(FIX)
+        assert str(mixed[0].message) == REASON + FIX
         assert Path(mixed[0].filename).resolve() == Path(__file__).resolve()
     assert actual.s_params is expected.s_params is None
     assert np.any(np.asarray(expected.time_series))

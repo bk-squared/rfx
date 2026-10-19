@@ -360,31 +360,9 @@ class _PreflightMixin:
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
-        # Subgridded runs opt into S explicitly; uniform/graded runs resolve
-        # None from the presence of lumped/wire or wire ports respectively.
-        default_requested = (
-            compute_s_params is None
-            and self._refinement is None
-            and self._solver != "adi"
-            and any(
-                pe.impedance != 0.0
-                and (not self._uses_nonuniform_mesh or pe.extent is not None)
-                for pe in self._ports
-            )
-        )
-        if compute_s_params is not False and (requested or default_requested):
-            from rfx.runners._admission import refuse_plain_sources_s_matrix
-            from rfx.runners._admission import _s_matrix_ports
-            _one_device = devices is None or len(devices) <= 1
-            # S read from the main run's own record: the graded wire path and
-            # the uniform single-wire fast path (no scan, _s_matrix_ports False).
-            _main_record = (
-                _one_device and self._refinement is None and self._solver != "adi"
-                and (self._uses_nonuniform_mesh or not _s_matrix_ports(self)))
-            if not refuse_plain_sources_s_matrix(
-                    self, main_record=_main_record,
-                    implicit=compute_s_params is None and not requested):
-                compute_s_params = False
+        from rfx.runners._admission import resolve_plain_source_s_request
+        compute_s_params = resolve_plain_source_s_request(
+            self, compute_s_params, requested=requested, devices=devices)
         if not requested:
             return compute_s_params
 
