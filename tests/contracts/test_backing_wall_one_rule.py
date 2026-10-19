@@ -264,10 +264,6 @@ def refusal(case, entry, path):
         return 'uniform, single-device'
     if case == 'periodic' and path.startswith('distributed'):
         return 'periodic'
-    if case in ('plane', 'closed_box') and path == 'distributed-graded':
-        return 'TFSF'
-    if case == 'W-guide' and path == 'distributed-graded' and entry == 'forward':
-        return 'Waveguide|waveguide'
     return None
 
 

@@ -111,11 +111,6 @@ def test_explicit_graded_dispatch_reaches_distributed_nu(method, boundary, monke
             "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
         assert reached == []
         return
-    if method == "forward":
-        with pytest.raises(NotImplementedError, match="Waveguide ports are not supported on the distributed forward path"):
-            sim.forward(n_steps=1, skip_preflight=True, **kwargs)
-        assert reached == []
-        return
     with pytest.raises(Admitted):
         getattr(sim, method)(n_steps=1, skip_preflight=True, **kwargs)
     assert reached == ["run_distributed_nu" if method == "run" else "fwd_distributed_nu"]

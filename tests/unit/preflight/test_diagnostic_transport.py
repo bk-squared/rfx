@@ -503,9 +503,10 @@ def test_native_fallback_keeps_parent_and_child_reports(kind, entry, monkeypatch
     )
     assert fallback.message == (
         f"Distributed runner does not yet support {fallback.subject}. "
-        "Falling back to single-device execution with the same arguments."
+        "Falling back to single-device execution with the same arguments. "
+        "the whole domain is held on one device; peak memory is that of a one-device run, not divided over the requested devices"
     )
-    assert fallback.values == {"requested_devices": len(devices), "devices_used": 1}
+    assert fallback.values == {"requested_devices": len(devices), "devices_used": 1, "memory": "the whole domain is held on one device; peak memory is that of a one-device run, not divided over the requested devices"}
     assert fallback.path == "run_distributed"
     assert fallback.source is None
     assert result.time_series is payload

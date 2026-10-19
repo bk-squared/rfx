@@ -664,8 +664,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("waveguide ports refused",
-                                   raises="Waveguide ports are not supported on the distributed forward path"),
+        fwd_distributed_nu=falls_back("fwd_nonuniform", "one device, with a warning, a memory "
+                                     "Diagnostic and every argument the caller gave (A5)"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_coaxial_ports": {"coax_port": lanes(
@@ -736,8 +736,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("TFSF refused",
-                                   raises="TFSF sources are not supported on the distributed forward path"),
+        fwd_distributed_nu=falls_back("fwd_nonuniform", "one device, with a warning, a memory "
+                                     "Diagnostic and every argument the caller gave (A5)"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_refinement": {
@@ -1696,9 +1696,8 @@ TABLE["_cpml_kappa_max"]["kappa"]["run_distributed_nu"] = admission(
     "cpml_kappa_max != 1", "graded multi-device run(devices=...)", "the NU runner has no kappa carrier")
 TABLE["_ntff"]["ntff_box"]["run_distributed_nu"] = refuses(
     "the NU runner has no NTFF accumulation", raises="add_ntff_box() (NTFF box) is not supported")
-TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = refuses(
-    "distributed nonuniform TFSF is refused at dispatch",
-    raises="Distributed + non-uniform does not support TFSF")
+TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = falls_back(
+    "run_nonuniform", "single-device graded run with the same arguments and memory Diagnostic")
 TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = falls_back(
     "run_nonuniform", "single-device graded run with the same arguments")
 

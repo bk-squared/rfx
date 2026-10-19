@@ -356,7 +356,7 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
             assert diagnostic.subject == (
                 "TFSF plane-wave sources" if kind == "tfsf" else "waveguide ports"
             )
-            assert diagnostic.values == {"requested_devices": len(_devices()), "devices_used": 1}
+            assert diagnostic.values == {"requested_devices": len(_devices()), "devices_used": 1, "memory": "the whole domain is held on one device; peak memory is that of a one-device run, not divided over the requested devices"}
             assert len(calls) == 1
             if entry == "api":
                 # Every run() parameter arrives: the caller's values, the

@@ -185,19 +185,6 @@ def _dispatch_plan(
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
-            # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
-            if self._tfsf is not None:
-                raise NotImplementedError(
-                    "TFSF sources are not supported on the distributed "
-                    "forward path; remove the TFSF source or omit "
-                    "distributed=True."
-                )
-            if self._waveguide_ports:
-                raise NotImplementedError(
-                    "Waveguide ports are not supported on the distributed "
-                    "forward path; remove waveguide ports or omit "
-                    "distributed=True."
-                )
             # T8 (2026-04): PMC is now wired across all three sharded
             # runners (distributed_nu, distributed_v2, distributed).
             # The reject guard that used to live here (introduced in
@@ -259,7 +246,7 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     # Distributed graded meshes share forward's NU runner and staging.
-    # Keep the run() grading/TFSF admission before either runner starts.
+    # Keep the run() grading admission before either runner starts.
     if distributed_run and is_nonuniform:
         import warnings as _wmod
         # Grading ratio check (shared single dt) across provided profiles.
@@ -279,11 +266,6 @@ def _dispatch_plan(
                 "Distributed + non-uniform requires grading ratio "
                 "<= 5:1 for shared-dt stability; got "
                 f"{_max_ratio:.2f}:1."
-            )
-        if self._tfsf is not None:
-            raise ValueError(
-                "Distributed + non-uniform does not support TFSF "
-                "plane-wave sources (Phase B scope)."
             )
         if self._solver == "adi":
             raise ValueError(

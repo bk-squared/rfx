@@ -337,30 +337,35 @@ def forward_from_materials(
         dft_planes=result.get('dft_planes'))
 
 
-def dispatch_forward(self, *, plan, _solve_assembly, subpixel_smoothing=False, eps_override, sigma_override, pec_mask_override, pec_occupancy_override, checkpoint, emit_time_series, checkpoint_every, n_warmup, devices, exchange_interval, skip_preflight, port_s11_freqs, num_periods, design_sigma_override, design_eps_override):
+def dispatch_forward(self, *, plan, _solve_assembly, _call_args, fallback_only=False):
+    """Try the full-domain fallback before distributed-only admission fences."""
+    from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
+    if reason := one_device_reason(self):
+        diagnostics = _solve_assembly.diagnostics
+        del _solve_assembly
+        devices = _call_args["devices"]
+        return run_on_one_device(
+            self, {**_call_args, "distributed": False, "devices": None},
+            reason=reason, requested_devices=len(jax.devices() if devices is None else devices),
+            diagnostics=diagnostics, entry="forward")
+    if fallback_only:
+        return None
     from rfx.api._gradient_witness import with_conductivity_record
     from rfx.materials.thin_conductor import refuse_f0_sheets
     refuse_f0_sheets(self._thin_conductors,
                      "distributed non-uniform forward()")
     result = self._forward_distributed_nonuniform_from_materials(
-        subpixel_smoothing=subpixel_smoothing,
+        **{name: _call_args[name] for name in (
+            "subpixel_smoothing", "eps_override", "sigma_override", "pec_mask_override",
+            "pec_occupancy_override", "emit_time_series", "checkpoint_every", "n_warmup",
+            "devices", "exchange_interval", "skip_preflight")},
         diagnostics=_solve_assembly.diagnostics,
         assembly=_solve_assembly,
-        eps_override=eps_override,
-        sigma_override=sigma_override,
-        pec_mask_override=pec_mask_override,
-        pec_occupancy_override=pec_occupancy_override,
         n_steps=plan.n_steps,
-        checkpoint=checkpoint,
-        emit_time_series=emit_time_series,
-        checkpoint_every=checkpoint_every,
-        n_warmup=n_warmup,
-        devices=devices,
-        exchange_interval=exchange_interval,
-        skip_preflight=skip_preflight,
-        s_param_freqs=port_s11_freqs,
+        checkpoint=True if _call_args["checkpoint"] is None else _call_args["checkpoint"],
+        s_param_freqs=_call_args["port_s11_freqs"],
     )
     return with_conductivity_record(self._attach_run_settling_witness(
-        result, n_steps=plan.n_steps, num_periods=num_periods, context="forward"),
-        design_sigma=design_sigma_override, sigma_override=sigma_override, design_eps=design_eps_override, n_steps=plan.n_steps, dt=getattr(result.grid, "dt", None))
-
+        result, n_steps=plan.n_steps, num_periods=_call_args["num_periods"], context="forward"),
+        design_sigma=_call_args["design_sigma_override"], sigma_override=_call_args["sigma_override"],
+        design_eps=_call_args["design_eps_override"], n_steps=plan.n_steps, dt=getattr(result.grid, "dt", None))

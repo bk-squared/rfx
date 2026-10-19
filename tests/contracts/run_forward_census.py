@@ -501,11 +501,11 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
         sim = builder(path)
         with ExitStack() as stack:
             install(stack, 'scan', forbid_step)
-            if path == 'multi-device-graded':
-                # A5: run may fall back to one device before the shared seam.
-                install(stack, 'graded', stop_at(original('graded'), 'fallback_arguments'))
+            # Full-domain fallbacks use the same graded capture seams on both entries.
+            capture_path = ('graded' if path == 'multi-device-graded'
+                            and (sim._waveguide_ports or sim._tfsf is not None) else path)
             if level == 'a':
-                key = 'uniform' if path == 'uniform' else 'graded' if path == 'graded' else 'distributed'
+                key = 'uniform' if capture_path == 'uniform' else 'graded' if capture_path == 'graded' else 'distributed'
                 install(stack, key, stop_at(original(key), 'arguments'))
             elif path == 'uniform':
                 build_setup, build_core = original('setup'), original('core')
@@ -523,7 +523,7 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
                     return build_core(ctx, *args, **kwargs)
                 install(stack, 'setup', setup)
                 install(stack, 'core', core)
-            elif path == 'graded':
+            elif capture_path == 'graded':
                 build_scan = original('graded_step')
                 def build(*args, **kwargs):
                     remember_site('arguments')
@@ -536,7 +536,7 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
             invoke(sim, entry, path, n_steps, entry_options)
         raise CaptureFailure('entry returned without reaching the requested L1 seam')
     except Captured:
-        return {'outcome': 'fallback' if 'fallback_arguments' in captured else 'captured',
+        return {'outcome': 'captured', 'capture_path': capture_path,
                 'value': captured, 'seam_sites': sites}
     except CaptureFailure:
         raise

@@ -249,10 +249,6 @@ def assert_graded_admitted(sim, skip, distributed, monkeypatch):
     if distributed:
         assert len(jax.devices()) >= 2, "run this judge with two CPU devices"
         kwargs["devices"] = jax.devices()
-        # Main's dispatch refusal is retained; this is not a boundary rewrite.
-        with pytest.raises(ValueError, match=r"Distributed \+ non-uniform does not support TFSF"):
-            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
-        return
     with pytest.raises(Admitted):
         sim.run(n_steps=1, skip_preflight=skip, **kwargs)
 

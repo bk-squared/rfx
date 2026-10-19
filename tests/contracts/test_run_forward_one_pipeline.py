@@ -19,8 +19,6 @@ KNOWN_ROWS = (
     ('P-lumped', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
     ('P-lumped2', 'graded', 'L1', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
     ('P-lumped2', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
-    ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
-    ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
 )
 
 # Declarations with ports compare equal S requests in both directions (#1373):
@@ -114,6 +112,7 @@ ASSEMBLY_ROWS = (
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'uniform'),
     ('PW-A', 'graded'),
+    ('PW-A', 'multi-device-graded'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
     ('PW-closed', 'uniform'),
@@ -278,6 +277,7 @@ ADMISSION_ROWS = (
     ('P-wire', 'multi-device-uniform'),
     ('P-wire', 'uniform'),
     ('PW-A', 'graded'),
+    ('PW-A', 'multi-device-graded'),
     ('PW-A', 'multi-device-uniform'),
     ('PW-B', 'multi-device-uniform'),
     ('PW-oblique', 'multi-device-uniform'),
@@ -307,7 +307,6 @@ BOTH_REFUSE_ROWS = (
     ('P-lumped2', 'multi-device-uniform'),
     ('P-msl', 'multi-device-graded'),
     ('P-msl', 'multi-device-uniform'),
-    ('PW-A', 'multi-device-graded'),
     ('PW-B', 'graded'),
     ('PW-B', 'multi-device-graded'),
     ('PW-closed', 'graded'),
@@ -340,8 +339,6 @@ ID_PATTERNS = {
             'L2': ('s_params', 'freqs', 'freqs_hz', 'lumped_port_sparams/*',
                    'settling_witness/error_per_bin', 'settling_witness/share_per_bin',
                    'settling_witness/runs/*/error_per_bin', 'settling_witness/runs/*/share_per_bin')},
-    'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
-            'Waveguide ports are not supported on the distributed forward path')},
 }
 DISTRIBUTED_L1_SLOW = False
 
@@ -389,7 +386,7 @@ def outcomes(declaration, path, level, pair, direction=None):
                 record = pair[entry]
                 wanted = pattern[0]
                 if wanted == 'admitted' and level == 'L1':
-                    wanted = 'fallback' if ident == 'A5' and entry == 'run' else 'captured'
+                    wanted = 'captured'
                 ok = record['outcome'] == wanted
                 if pattern[0] == 'raised':
                     ok = ok and record.get('type') == pattern[1] and pattern[2] in record.get('message', '')
@@ -471,12 +468,20 @@ def test_assembly(declaration, path, direction):
                                    entry_options=entry_options(declaration), seams=SEAMS)
                     for entry in ('run', 'forward')}
         ids = outcomes(declaration, path, 'L1', pair, direction)
-        required = {'ctx', 'invariants', 'carry_init', 'init', 'xs'} if path == 'uniform' else (
-            {'arguments', 'result'} if path == 'graded' else {'arguments'})
+        capture_paths = {cap['capture_path'] for cap in pair.values()}
+        assert len(capture_paths) == 1, capture_paths
+        capture_path = capture_paths.pop()
+        required = {'ctx', 'invariants', 'carry_init', 'init', 'xs'} if capture_path == 'uniform' else (
+            {'arguments', 'result'} if capture_path == 'graded' and level == 'b' else {'arguments'})
         for cap in pair.values():
             assert set(cap['value']) == required, cap['seam_sites']
-        differences.extend(compare(normalize_inputs(pair['run']['value'], path),
-                                   normalize_inputs(pair['forward']['value'], path)))
+        if level == 'a' and capture_path == 'graded':
+            # Judge a full-domain fallback at the same scan-builder seam as
+            # a direct graded call, after driver defaults are resolved.
+            continue
+        comparison_path = path if level == 'a' else capture_path
+        differences.extend(compare(normalize_inputs(pair['run']['value'], comparison_path),
+                                   normalize_inputs(pair['forward']['value'], comparison_path)))
     classify(declaration, path, 'L1', differences, ids)
 
 

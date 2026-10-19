@@ -459,24 +459,27 @@ def one_device_reason(sim):
     return None
 
 
-def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics):
+def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics, entry="run"):
     """Run the full-domain fallback and record the requested and used devices."""
     import warnings
 
     from rfx._diagnostic_transport import result_with_diagnostics
     from rfx.diagnostic_records import Diagnostic
 
+    memory = ("the whole domain is held on one device; peak memory is that of a "
+              "one-device run, not divided over the requested devices")
     message = (
         f"Distributed runner does not yet support {reason}. "
-        "Falling back to single-device execution with the same arguments."
+        "Falling back to single-device execution with the same arguments. "
+        + memory
     )
     warnings.warn(message, stacklevel=3)
     diagnostic = Diagnostic(
         "distributed.one_device_fallback", "warning", reason, message,
-        {"requested_devices": requested_devices, "devices_used": 1},
-        path="run_distributed",
+        {"requested_devices": requested_devices, "devices_used": 1, "memory": memory},
+        path="fwd_distributed_nu" if entry == "forward" else "run_distributed",
     )
-    return result_with_diagnostics(sim.run(**run_kwargs), diagnostics + (diagnostic,))
+    return result_with_diagnostics(getattr(sim, entry)(**run_kwargs), diagnostics + (diagnostic,))
 
 
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):

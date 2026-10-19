@@ -1459,6 +1459,7 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
+        _call_args = dict(locals()); del _call_args["self"], _call_args["_removed_kwargs"]
         self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
             self, pinned_sheet_layout, distributed=distributed)
         refuse_forward_smoothing(self, subpixel_smoothing=subpixel_smoothing,
@@ -1561,6 +1562,12 @@ class _ExecuteMixin:
                 subpixel_smoothing=subpixel_smoothing, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
                 checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
                 emit_time_series=emit_time_series, ringdown=ringdown)
+        if plan.lane == "fwd_distributed_nu":
+            from rfx.runners._distributed_nu_execute import dispatch_forward
+            fallback = dispatch_forward(self, plan=plan, _solve_assembly=_solve_assembly,
+                                        _call_args=_call_args, fallback_only=True)
+            if fallback is not None:
+                return fallback
         checkpoint = True if checkpoint is None else checkpoint
         # No forward lane (and so no optimize()) applies Dey-Mittra weights.
         self._refuse_conformal_boundary(
@@ -1657,25 +1664,8 @@ class _ExecuteMixin:
             raise ValueError("interface_eps='dual_average' cannot combine with forward eps_override or distributed NU")
         if plan.lane == "fwd_distributed_nu":
             from rfx.runners._distributed_nu_execute import dispatch_forward
-            return dispatch_forward(self,
-                plan=plan, subpixel_smoothing=subpixel_smoothing,
-                _solve_assembly=_solve_assembly,
-                eps_override=eps_override,
-                sigma_override=sigma_override,
-                pec_mask_override=pec_mask_override,
-                pec_occupancy_override=pec_occupancy_override,
-                checkpoint=checkpoint,
-                emit_time_series=emit_time_series,
-                checkpoint_every=checkpoint_every,
-                n_warmup=n_warmup,
-                devices=devices,
-                exchange_interval=exchange_interval,
-                skip_preflight=skip_preflight,
-                port_s11_freqs=port_s11_freqs,
-                num_periods=num_periods,
-                design_sigma_override=design_sigma_override,
-                design_eps_override=design_eps_override,
-            )
+            return dispatch_forward(self, plan=plan, _solve_assembly=_solve_assembly,
+                                    _call_args=_call_args)
 
         if plan.lane == "fwd_nonuniform":
             _nu_design_spec = None

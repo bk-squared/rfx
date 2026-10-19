@@ -630,8 +630,10 @@ def _carried(name, feature, lane, *, parity, first_only=False):
 def _assert_falls_back(name, feature, lane, c):
     sim = _build(feature, lane, True)
     with pytest.warns(UserWarning, match="Falling back to single-device"):
-        fell = feature.read(sim.run(n_steps=feature.steps(lane), devices=_devices(),
-                                    skip_preflight=True))
+        entry = sim.forward if lane.startswith("fwd_") else sim.run
+        options = {"distributed": True} if lane.startswith("fwd_") else {}
+        fell = feature.read(entry(n_steps=feature.steps(lane), devices=_devices(),
+                                  skip_preflight=True, **options))
     target = _record((name, c.to, True), feature, c.to, True)
     # The same program on one device: equal to a few float32 rounding steps.
     ulp = 4 * float(np.finfo(np.float32).eps)
