@@ -1125,6 +1125,29 @@ def graded_lumped_default_s(sim):
     return require_isolated_s_drive(sim, implicit=True)
 
 
+def refuse_undriven_record_s(sim, *, implicit=False):
+    """S read from the main run's own record needs something that excites it.
+
+    With every impedance port passive and no plain source, TFSF or waveguide,
+    microstrip or coaxial port, the record holds no incident wave and every
+    ratio is 0/0: it returned S = 0 everywhere. A passive port lit by a plain
+    source stays the termination diagnostic (#1420).
+    """
+    if (any(p.impedance == 0.0 or getattr(p, "excite", True) for p in sim._ports)
+            or sim._tfsf is not None or sim._waveguide_ports or sim._msl_ports
+            or sim._coaxial_ports):
+        return True
+    reason = (
+        "Lumped/wire S read from the run's own record needs a driven port: "
+        "every port has excite=False and nothing else excites the structure, "
+        "so there is no incident wave to form S from. ")
+    if implicit:
+        _warn_implicit_s(reason + "Set excite=True on the port whose S column "
+                         "you want; returning no S-parameters.")
+        return False
+    raise ValueError(reason + "Set excite=True on the port whose S column you want.")
+
+
 def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     """A port drive must be the only excitation of a lumped/wire S solve.
 
@@ -1137,6 +1160,8 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     is the termination diagnostic and stays admitted (#1420).
     """
     ports = [p for p in sim._ports if p.impedance != 0.0]
+    if main_record and ports and not refuse_undriven_record_s(sim, implicit=implicit):
+        return False
     if not ports or not any(p.impedance == 0.0 for p in sim._ports):
         return True
     if main_record and not any(getattr(p, "excite", True) for p in ports):

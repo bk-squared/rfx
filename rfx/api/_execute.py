@@ -261,7 +261,7 @@ class _ExecuteMixin:
         pairs = getattr(result, "wire_port_sparams", None)
         warn_if_nonpassive_lumped_s11(
             observed_port_s(s_params, pairs) if pairs else s_params, freqs,
-            extractor="run(compute_s_params=True)")
+            extractor="run()")
 
     def _warn_postrun_energy_witness(
         self,
