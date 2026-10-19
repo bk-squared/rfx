@@ -579,7 +579,7 @@ def test_waveguide_forward_release_refused():
                      boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'},
                      dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
     sim.add_waveguide_port(x_position=.01, direction='+x',
-                           y_range=(0., .02286), z_range=(0., .01016), n_modes=1)
+                           y_range=(0., 11 * .002), z_range=(0., 5 * .002), n_modes=1)
     sim.add_pinned_sheet(normal_axis=0, plane_index=5, i_range=(3, 7),
                          j_range=(1, 3), name='aperture')
     with pytest.raises(ValueError, match=r"sheet 0 \('aperture'\).*waveguide port-release stage.*ey\(13, 3, 1\)"):

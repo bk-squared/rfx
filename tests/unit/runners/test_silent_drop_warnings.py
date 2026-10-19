@@ -97,7 +97,9 @@ def _subgrid_sim(pec=False):
 
 def _adi_sim(pec=False):
     def build():
-        sim = Simulation(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
+        dx = 0.5e-3 if pec else 299792458.0 / 10e9 / 20.0
+        domain = (0.02, 0.02, 0.01) if pec else (14 * dx, 14 * dx, 0.01)
+        sim = Simulation(freq_max=10e9, domain=domain, dx=dx,
                          boundary="pec", mode="2d_tmz", solver="adi")  # solved length; #1887
         if pec:
             sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),

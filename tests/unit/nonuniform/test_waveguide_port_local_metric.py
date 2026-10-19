@@ -124,7 +124,7 @@ def _peak_modal_voltage_at_reference(port_y: float) -> float:
         cpml_layers=8, dy_profile=_GATE_PROFILE)
     sim.add_waveguide_port(
         port_y, direction="+y", mode=(1, 0), mode_type="TE",
-        x_range=(0.0, _A_WG), z_range=(0.0, _B_WG),
+        x_range=(0.0, 15 * _DX_COARSE), z_range=(0.0, 7 * _DX_COARSE),
         freqs=_GATE_FREQS, f0=10.0e9, bandwidth=0.5, name="p1")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

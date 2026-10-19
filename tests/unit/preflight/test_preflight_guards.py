@@ -220,7 +220,7 @@ def _build_wr90_slab_nu_sim(dx_fine):
     dx_profile = smooth_grading(raw, max_ratio=1.3)
 
     sim = Simulation(
-        freq_max=12e9, domain=(float(_np.sum(dx_profile)), a_wg, 4 * dx_coarse),  # solved length; #1887
+        freq_max=12e9, domain=(float(_np.sum(dx_profile)), 23 * dx_coarse, 10 * dx_coarse),  # solved length; #1887
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),

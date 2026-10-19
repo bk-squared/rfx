@@ -357,7 +357,7 @@ def test_simulation_adi_lossy_material():
     block inside the box is; the block is refused."""
     def sim_with(lo, hi):
         sim = Simulation(
-            freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
+            freq_max=10e9, domain=(0.02, 0.02, 0.01), dx=1e-3,
             boundary="pec", mode="2d_tmz", solver="adi",
         )  # solved length; #1887
         sim.add_material("lossy", eps_r=2.2, sigma=0.1)

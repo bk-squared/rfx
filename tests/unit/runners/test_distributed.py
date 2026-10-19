@@ -586,7 +586,7 @@ class TestDistributedDebye:
 
         sim = Simulation(
             freq_max=5e9,
-            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
+            domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
         )  # solved length; #1887
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
@@ -608,7 +608,7 @@ class TestDistributedDebye:
 
         sim = Simulation(
             freq_max=5e9,
-            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
+            domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
         )  # solved length; #1887
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
@@ -627,7 +627,7 @@ class TestDistributedDebye:
 
         sim = Simulation(
             freq_max=5e9,
-            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
+            domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
         )  # solved length; #1887
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
