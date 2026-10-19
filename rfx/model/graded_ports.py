@@ -30,7 +30,7 @@ class GradedPorts(NamedTuple):
 
 
 def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
-                          pec_edge_masks, sizing_n, lane, s_param_freqs):
+                          pec_edge_masks, sizing_n, lane, s_param_freqs, compute_s_params=None):
     """Stamp positive-impedance ports without owning the source queue.
 
     Liveness precedes each port's release. Only lumped releases advance the
@@ -273,11 +273,9 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 drives.append((_port_index, (
                     idx, pe.component, pe.waveform, sigma_port, 1 / d_parallel)))
 
-            # Explicit bins opt lumped ports into the same V/I accumulators
-            # as a one-cell wire port (#1410). Graded forward returns a
-            # driven-column matrix (n, n, nf); uniform lumped forward
-            # returns per-port diagonals (n, nf), squeezed for one port.
-            # Leave the historical default (wire ports only) unchanged.
+            # Requested bins opt lumped ports into V/I/reference accumulators
+            # on both entries. An explicit run S request also admits default
+            # bins; no request keeps the historical wire-only default.
             lumped_port_specs.append({
                 'mid_i': i, 'mid_j': j, 'mid_k': k,
                 'component': pe.component,
@@ -287,7 +285,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 'live_cells': ((i, j, k),),
                 'n_live': 1,
                 'kind': 'lumped', 'port_id': _port_index,
-                'record_only': not (lane == 'fwd_nonuniform' and s_param_freqs is not None),
+                'record_only': not (s_param_freqs is not None or (lane == 'run_nonuniform' and compute_s_params is True)),
             })
 
     # Preserve wire indices when explicit bins also include lumped ports.

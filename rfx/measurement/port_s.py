@@ -7,8 +7,8 @@ def port_s_from_record(channels, metas, *, wire_mode):
     """Return (receive, drive, frequency); unmeasured drive columns are NaN.
 
     Uniform metadata are port specs; graded metadata use _build_wp_meta's
-    slots. The graded pre-injection reference is a record-only channel;
-    its whole-port wire decomposition continues to receive vr=None.
+    slots. All-lumped records share the uniform lumped decomposition;
+    graded records containing wires continue to receive vr=None.
     """
     from rfx.probes.probes import (
         decompose_lumped_s_matrix, decompose_wire_s_matrix, driven_port_reflection,
@@ -75,22 +75,20 @@ def port_s_from_record(channels, metas, *, wire_mode):
     v = jnp.zeros((n_wp, n_wp, nf), dtype=dtype)
     i = jnp.zeros_like(v)
     vp = jnp.zeros_like(v)
-    vr = None if graded else jnp.zeros_like(v)
+    vr = None if graded and wire_mode else jnp.zeros_like(v)
     d = genuinely_excited[0]
     for receive, ch in enumerate(channels):
         v = v.at[d, receive].set(ch[0])
         i = i.at[d, receive].set(ch[1])
         vp = vp.at[d, receive].set(ch[3] if wire_mode else ch[0])
         if vr is not None:
-            vr = vr.at[d, receive].set(ch[4] if wire_mode else ch[2])
+            vr = vr.at[d, receive].set(ch[4] if graded or wire_mode else ch[2])
     z0 = jnp.asarray([meta[4] for meta in metas])
     if wire_mode:
         counts = [len(meta[13]) for meta in specs] if graded else [
             len(spec.live_cells or ()) or 1 for spec in specs]
         S = decompose_wire_s_matrix(v, i, z0, counts, v_port=vp, v_ref=vr)
     else:
-        if vr is None:
-            raise ValueError("Graded lumped-port S requires a pre-injection reference channel.")
         S = decompose_lumped_s_matrix(v, i, z0, v_ref=vr)
     driven = jnp.asarray([meta[7] for meta in metas])
     missing = jnp.asarray(complex(float("nan"), float("nan")), dtype=S.dtype)
@@ -207,7 +205,6 @@ def assemble_graded_ports_result(wire_sparams, wp_meta, records, request):
     # per-cell `_ab` split above survives only in the all-passive
     # diagnostic fallback.
     if context.use_wire_ports and wire_sparams is not None:
-        result['s_params'] = port_s_from_record(wire_sparams, wp_meta, wire_mode=True)
         freqs = context.sp_freqs
         result['s_param_freqs'] = freqs if isinstance(freqs, jax.core.Tracer) else np.array(freqs)
         result['wire_sparams_raw'] = wire_sparams
@@ -216,6 +213,8 @@ def assemble_graded_ports_result(wire_sparams, wp_meta, records, request):
         # Ringdown's synthetic completion has only wire metadata and no owners.
         kinds = (tuple(request.port_owners[i].kind for i in request.port_acc_indices)
                  if request.port_acc_indices else tuple(p['kind'] for p in context.wire_ports))
+        result['s_params'] = port_s_from_record(
+            wire_sparams, wp_meta, wire_mode=any(kind == 'wire' for kind in kinds))
         result['wire_port_sparams'], result['lumped_port_sparams'] = pack_port_records(
             kinds, wire_sparams, wp_meta, graded=True, freqs=context.sp_freqs)
     result['sparam_time_records'] = from_owners(records, request.port_owners)

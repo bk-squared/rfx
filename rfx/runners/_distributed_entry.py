@@ -68,10 +68,21 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     # Resolve the default as the one-device lane of this mesh does: the
     # uniform runner computes S for every impedance port, the non-uniform
     # runner only for wire ports (extent set).
+    if compute_s_params is not False and s_param_freqs is not None:
+        compute_s_params = True
+    if self._uses_nonuniform_mesh and compute_s_params is True and s_param_freqs is None:
+        from rfx.measurement.monitors import default_frequency_grid
+        s_param_freqs = default_frequency_grid(self._freq_max, 50, host=True)
     if compute_s_params is None:
         if self._uses_nonuniform_mesh:
+            from rfx.runners._admission import graded_lumped_default_s
             compute_s_params = any(pe.impedance != 0.0 and pe.extent is not None
                                    for pe in self._ports)
+            if not compute_s_params and graded_lumped_default_s(self):
+                # The one-device graded default: lumped S on the default bins.
+                from rfx.measurement.monitors import default_frequency_grid
+                compute_s_params = True
+                s_param_freqs = default_frequency_grid(self._freq_max, 50, host=True)
         else:
             compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
         # Use the same refusal as an explicit S-parameter request.
@@ -110,7 +121,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     if plan.lane == "run_distributed_nu":
         # Same drive-isolation refusal as one-device run_nonuniform, before the solve.
         if (compute_s_params is not False
-                and any(p.impedance > 0 and p.extent is not None for p in self._ports)):
+                and any(p.impedance > 0 for p in self._ports)):
             from rfx.runners._admission import require_isolated_s_drive
             require_isolated_s_drive(self, fields_only=True)
         from rfx.runners.distributed_v2 import _spans_other_processes

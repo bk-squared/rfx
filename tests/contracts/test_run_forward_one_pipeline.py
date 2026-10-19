@@ -15,19 +15,13 @@ from tests.contracts.run_forward_census import (
 )
 
 KNOWN_ROWS = (
-    ('P-lumped', 'graded', 'L1', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
-    ('P-lumped', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
-    ('P-lumped2', 'graded', 'L1', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
-    ('P-lumped2', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
 )
 
 # Declarations with ports compare equal S requests in both directions (#1373):
 # (a) run's default against forward(port_s11_freqs=run's bins);
 # (b) run(compute_s_params=False) against forward's default.
 PORTED = tuple(d for d in BUILDERS if d.startswith('P-'))
-# The separate S drives exist only when S is requested.
-KNOWN_DIRECTIONS = {(d, 'graded', level, 'D9G'): ('a',)
-                    for d in ('P-lumped', 'P-lumped2') for level in ('L1', 'L2')}
+KNOWN_DIRECTIONS = {}
 # Under (a) both entries refuse the S request with the same error: a plain
 # source fires in every port drive.
 EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
@@ -102,9 +96,7 @@ ASSEMBLY_ROWS = (
     ('O-vector', 'multi-device-graded'),
     ('O-vector', 'uniform'),
     ('P-floquet', 'uniform'),
-    ('P-lumped', 'graded'),
     ('P-lumped', 'uniform'),
-    ('P-lumped2', 'graded'),
     ('P-lumped2', 'uniform'),
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
@@ -216,10 +208,8 @@ FIELD_ROWS = (
     ('O-vector', 'multi-device-uniform'),
     ('O-vector', 'uniform'),
     ('P-floquet', 'uniform'),
-    ('P-lumped', 'graded'),
     ('P-lumped', 'multi-device-uniform'),
     ('P-lumped', 'uniform'),
-    ('P-lumped2', 'graded'),
     ('P-lumped2', 'uniform'),
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
@@ -329,16 +319,6 @@ ID_PATTERNS = {
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),
            'L2': ('flux_monitors/*',)},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
-    # D9G: only forward's S request (bins, port accumulators, S records);
-    # run's side holds the no-S value. See d9g_difference.
-    'D9G': {'L1': ('/arguments/s_param_freqs', '/arguments/wire_ports/*/record_only',
-                   '/result/carry_init/wire_sparams/*', '/result/sp_freqs', '/result/use_wire_ports',
-                   '/result/wire_ports/*', '/result/wp_meta/*', '/result/step_fn*/sp_freqs',
-                   '/result/step_fn*/use_wire_ports', '/result/step_fn*/port_acc_indices/*',
-                   '/result/step_fn*/wp_meta/*', '/result/step_fn*/closure/[0-9]/[0-9]'),
-            'L2': ('s_params', 'freqs', 'freqs_hz', 'lumped_port_sparams/*',
-                   'settling_witness/error_per_bin', 'settling_witness/share_per_bin',
-                   'settling_witness/runs/*/error_per_bin', 'settling_witness/runs/*/share_per_bin')},
 }
 DISTRIBUTED_L1_SLOW = False
 
@@ -405,28 +385,6 @@ def outcomes(declaration, path, level, pair, direction=None):
     return ids
 
 
-D9G_NO_S = {'s_param_freqs': ('None', None), 'sp_freqs': ('None', None),
-            'use_wire_ports': ('False', 'True'), 'record_only': ('True', 'False')}
-
-
-def d9g_difference(level, difference):
-    """Forward holds S that run lacks; run's side is its no-S value."""
-    if level == 'L1':
-        if difference.get('present_only') == 'forward':
-            return True
-        leaf = difference['path'].rsplit('/', 1)[-1]
-        if leaf not in D9G_NO_S or 'present_only' in difference:
-            return False
-        run, forward = D9G_NO_S[leaf]
-        return (str(difference.get('run')) == run
-                and (forward is None or str(difference.get('forward')) == forward))
-    if 'bytes_equal' not in difference:
-        return difference.get('forward') == 'array' and difference.get('run') != 'array'
-    shapes = difference.get('shape')
-    return (difference['path'] in ('settling_witness/error_per_bin', 'settling_witness/share_per_bin')
-            and shapes is not None and list(shapes[0]) == [0] and list(shapes[1]) != [0])
-
-
 def classify(declaration, path, level, differences, ids):
     matched, unexplained = set(), []
     for difference in differences:
@@ -441,8 +399,6 @@ def classify(declaration, path, level, differences, ids):
                            and (declaration, path, ident) in CONSEQUENCE_PAIRS)
             pattern_match = any(fnmatchcase(difference['path'], pattern)
                                 for pattern in ID_PATTERNS[ident][level])
-            if ident == 'D9G':
-                pattern_match = pattern_match and d9g_difference(level, difference)
             if level == 'L2' and ident in ('D4', 'D7'):
                 pattern_match = pattern_match and run_only
             if consequence or pattern_match:
@@ -619,8 +575,4 @@ def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
 @pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2'])
 @pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-graded'])
 def test_port_s_equal_requests(declaration, path):
-    pair = port_s_pair(declaration, path)
-    if path in ('graded', 'multi-device-graded'):
-        assert pair is None  # public explicit lumped run S request is refused
-    else:
-        assert pair is not None
+    assert port_s_pair(declaration, path) is not None

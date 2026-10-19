@@ -231,13 +231,18 @@ def test_mixed_components_and_port_kinds_keep_owner_channel_order():
     assert error <= 9*np.spacing(np.float32(np.max(np.abs(expected))))
 
 
-def test_graded_run_still_refuses_lumped_sparameters():
+def test_graded_run_matches_forward_lumped_sparameters():
     from rfx import Simulation
     sim = Simulation(freq_max=10e9, domain=(.008,.008,.008), dx=.001,
                      boundary='pec', dz_profile=np.full(8,.001))
     sim.add_port(position=(.004,.004,.003), component='ez', impedance=50.)
-    with pytest.raises(NotImplementedError, match='wired only for add_port'):
-        sim.run(n_steps=2, compute_s_params=True, skip_preflight=True)
+    run = sim.run(n_steps=2, compute_s_params=True, skip_preflight=True)
+    forward = sim.forward(n_steps=2, port_s11_freqs=np.asarray(run.freqs),
+                          checkpoint=False, skip_preflight=True)
+    assert np.asarray(run.s_params).tobytes() == np.asarray(forward.s_params).tobytes()
+    assert run.lumped_port_sparams and forward.lumped_port_sparams
+    for actual, expected in zip(run.lumped_port_sparams[0][1], forward.lumped_port_sparams[0][1], strict=True):
+        assert np.asarray(actual).tobytes() == np.asarray(expected).tobytes()
 
 
 def test_numpy_combine_preserves_float64_with_x64_off():

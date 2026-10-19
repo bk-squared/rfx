@@ -1107,6 +1107,24 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     raise ValueError(message)
 
 
+def graded_lumped_default_s(sim):
+    """Graded run() with no S argument forms lumped S when one record can.
+
+    Only for an all-lumped port set, with exactly one driven port, no plain
+    source or 0-ohm port and no periodic axis; otherwise the run returns
+    fields with S=None (two driven ports also warn, as forward() does; with no
+    driven port there is no incident wave to form S from). A port
+    set with a wire port keeps the wire default. Never a refusal: the user did
+    not ask for S (rfx-lead D:6b5bd8, #1373).
+    """
+    ports = [p for p in sim._ports if p.impedance != 0.0]
+    if (not ports or any(p.extent is not None for p in ports)
+            or any(p.impedance == 0.0 for p in sim._ports) or sim._periodic_axes
+            or not any(p.excite for p in ports)):
+        return False
+    return require_isolated_s_drive(sim, implicit=True)
+
+
 def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     """A port drive must be the only excitation of a lumped/wire S solve.
 
@@ -1142,14 +1160,16 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     plain source or 0-ohm port is refused; the default request warns and
     resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
     # Subgridded runs opt into S explicitly; uniform/graded runs resolve
-    # None from the presence of lumped/wire or wire ports respectively.
+    # None from the presence of lumped/wire ports, graded lumped ports only
+    # when one is driven (graded_lumped_default_s).
     default_requested = (
         compute_s_params is None
         and sim._refinement is None
         and sim._solver != "adi"
         and any(
             pe.impedance != 0.0
-            and (not sim._uses_nonuniform_mesh or pe.extent is not None)
+            and (not sim._uses_nonuniform_mesh or pe.extent is not None
+                 or getattr(pe, "excite", True))
             for pe in sim._ports
         )
     )

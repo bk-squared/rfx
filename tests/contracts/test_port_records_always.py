@@ -55,10 +55,12 @@ def test_every_port_records_without_s_request(graded, wire, entry):
         assert not np.isclose(expected_v, expected_i, rtol=1e-3, atol=0)
 
 
-def test_graded_run_lumped_s_refuses():
-    with pytest.raises(NotImplementedError, match='Single-cell lumped-port S-parameters'):
-        model(True).run(n_steps=16, skip_preflight=True, compute_s_params=True,
-                        s_param_freqs=np.array([2e9]))
+def test_graded_run_lumped_s_is_returned():
+    # Graded run() forms lumped S as forward() does (tests/contracts/test_graded_lumped_s.py).
+    result = model(True).run(n_steps=16, skip_preflight=True, compute_s_params=True,
+                             s_param_freqs=np.array([2e9]))
+    assert np.asarray(result.s_params).shape == (1, 1, 1)
+    assert result.lumped_port_sparams is not None
 
 
 @pytest.mark.parametrize('graded', [False, True])

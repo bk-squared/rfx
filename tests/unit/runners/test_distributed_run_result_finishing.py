@@ -38,11 +38,10 @@ def test_default_lumped_port_s_request_matches_explicit():
     np.testing.assert_array_equal(results[0].freqs, results[1].freqs)
 
 
-def test_graded_lumped_port_default_is_no_s_request():
-    """On a graded mesh one device (the non-uniform lane) computes S by default
-    only for wire ports, so a single-cell port's default is no S request. The
-    graded multi-device runner carries the port (#1402 step 2) with the same
-    default."""
+def test_graded_lumped_port_default_forms_s():
+    """On a graded mesh one driven single-cell port forms S by default on one
+    device (#1373: graded run() lumped S); the graded multi-device runner
+    carries the port (#1402 step 2) with the same default."""
     def graded():
         sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 0.0),
                          dx=1e-3, boundary="pec",
@@ -52,7 +51,11 @@ def test_graded_lumped_port_default_is_no_s_request():
         return sim
     one = graded().run(n_steps=N_STEPS)
     multi = graded().run(n_steps=N_STEPS, devices=_devices())
-    assert one.s_params is None and multi.s_params is None
+    assert one.s_params is not None and multi.s_params is not None
+    a, b = np.asarray(one.s_params), np.asarray(multi.s_params)
+    assert a.shape == b.shape
+    peak = float(np.max(np.abs(a)))
+    assert float(np.max(np.abs(a - b))) <= 9 * float(np.spacing(np.float32(peak)))
     assert np.max(np.abs(np.asarray(multi.time_series))) > 0
     np.testing.assert_array_equal(np.asarray(multi.time_series), np.asarray(one.time_series))
 

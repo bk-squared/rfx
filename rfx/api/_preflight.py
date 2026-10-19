@@ -443,19 +443,6 @@ class _PreflightMixin:
                     "excite flag is False."
                 )
 
-        is_nonuniform = (
-            self._dz_profile is not None
-            or self._dx_profile is not None
-            or self._dy_profile is not None
-        )
-        if is_nonuniform and any(pe.extent is None for pe in port_entries):
-            raise NotImplementedError(
-                "run(compute_s_params=True) on a non-uniform mesh is wired "
-                "only for add_port(..., extent=...) WirePort extraction. "
-                "Single-cell lumped-port S-parameters require the uniform "
-                "reference lane."
-            )
-
         # The lumped/wire S-parameter extractor runs a SEPARATE eager FDTD
         # re-run that does NOT apply periodic boundaries, so it would silently
         # ignore BoundarySpec periodic faces and return an S-matrix for the wrong

@@ -562,12 +562,12 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     Result
     """
     if (lane == "run_nonuniform" and compute_s_params is not False
-            and any(p.impedance != 0.0 and p.extent is not None for p in sim._ports)):
+            and any(p.impedance != 0.0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import refuse_plain_sources_s_matrix
         refuse_plain_sources_s_matrix(sim, main_record=True)
 
     if (compute_s_params is not False
-            and any(p.impedance > 0 and p.extent is not None for p in sim._ports)):
+            and any(p.impedance > 0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import require_isolated_s_drive
         if not require_isolated_s_drive(
                 sim, implicit=lane == "fwd_nonuniform" and s_param_freqs is None,
@@ -815,10 +815,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     sources = PortSourceQueue()
     probes = []
     from rfx.model.graded_ports import assemble_graded_ports
+    from rfx.runners._admission import graded_lumped_default_s
     ports = assemble_graded_ports(
         sim, grid, materials, materials_drive, conductors,
         pec_edge_masks=pec_edge_masks, sizing_n=sizing_n, lane=lane,
-        s_param_freqs=s_param_freqs)
+        s_param_freqs=s_param_freqs,
+        compute_s_params=(True if lane == "run_nonuniform" and compute_s_params is None
+                          and s_param_freqs is None and graded_lumped_default_s(sim)
+                          else compute_s_params))
     materials, materials_drive, conductors = (
         ports.materials, ports.materials_drive, ports.conductors)
     # Wire publication leaves pec_edges unchanged; only lumped releases

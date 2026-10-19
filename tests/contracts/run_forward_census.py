@@ -808,10 +808,15 @@ def port_s_pair(declaration, path, *, n_steps=150):
         pe for pe in sim._ports if pe.impedance != 0) if not port.excite)
     run = invoke(sim, 'run', path, n_steps)
     if run.s_params is None:
-        # Explicit graded lumped S is currently refused by the public API.
-        with pytest.raises(NotImplementedError, match='Single-cell lumped-port S-parameters require the uniform reference lane'):
-            invoke(sim, 'run', path, 1, dict(compute_s_params=True,
-                    s_param_freqs=np.array([2e9, 5e9, 8e9])))
+        # A default run() that forms no S (two driven ports, a plain source,
+        # periodic axes): equal explicit requests still read one S path.
+        freqs = np.array([2e9, 5e9, 8e9])
+        explicit = invoke(sim, 'run', path, n_steps,
+                          dict(compute_s_params=True, s_param_freqs=freqs))
+        forward = invoke(BUILDERS[declaration](path), 'forward', path, n_steps,
+                         dict(port_s11_freqs=freqs))
+        np.testing.assert_array_equal(explicit.s_params, forward.s_params)
+        assert np.asarray(explicit.s_params).tobytes() == np.asarray(forward.s_params).tobytes()
         return None
     forward = invoke(BUILDERS[declaration](path), 'forward', path, n_steps,
                      dict(port_s11_freqs=np.asarray(run.freqs)))

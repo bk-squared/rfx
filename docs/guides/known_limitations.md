@@ -33,6 +33,26 @@ is solved 24.0 mm wide, and its TE10 cutoff comes out 4.75 % low; with an automa
 18 mm wide. Until the fix lands, choose dx so that every wall-to-wall length is a whole number of cells (WR-90:
 dx = 1.27 mm fits both a and b), and check the solved length the built grid reports.
 
+### Graded lumped S: mixed records, periodic run requests and the run() default
+
+Tracker: #1373
+
+Graded `run()` and `forward(port_s11_freqs=...)` use the uniform lumped wave
+decomposition for all-lumped records, with at most one driven port, and for
+equal bins and step counts return the same S and lumped spectra. `run()` with no
+S argument forms lumped S on the 50 default bins, as on a uniform mesh, when the
+ports are all lumped with exactly one driven port, no plain source or 0-ohm port
+and no periodic axis; with a plain source or 0-ohm port it warns and returns
+fields and S=None, as a uniform `run()` does. One row still differs from a
+uniform `run()` with no S argument: with two driven lumped ports the graded run
+returns fields and S=None with the isolated-drive warning (uniform drives each
+port in its own scan). An explicit graded S request with two driven ports is
+refused. Records containing
+any wire port, including mixed wire/lumped records, retain the wire
+decomposition and the wire default: the remaining exception to one wave
+definition per port kind. The periodic `run()` S refusal remains; graded
+`forward()` may return S for the same periodic declaration.
+
 ### S-parameters from a run with several excited ports
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_lumped_wire_s_isolated_drives.py::test_several_excited_ports_refused_before_step)

@@ -111,8 +111,19 @@ def _known_load_line(load_ratio, *, profile):
                  declared_separation=d)[0]
 
 
+def _known_load_entry(sim, entry, freqs, periods, record_property):
+    forward = sim.forward(port_s11_freqs=freqs, num_periods=periods, skip_preflight=True)
+    steps = forward.sparam_time_records[0].samples.shape[0]
+    record_property("realized_n_steps", steps)
+    if entry == "forward":
+        return forward
+    return sim.run(n_steps=steps, compute_s_params=True, s_param_freqs=freqs,
+                   skip_preflight=True)
+
+
+@pytest.mark.parametrize("entry", ["forward", "run"])
 @pytest.mark.parametrize("load_ratio", [2.0, 1.0])
-def test_lumped_known_load_graded(load_ratio, record_property):
+def test_lumped_known_load_graded(load_ratio, entry, record_property):
     from tests._interior_tem_line import (build, input_reflection, element_inductance,
                                           assert_predicted_residual, assert_solved_ports)
 
@@ -120,7 +131,7 @@ def test_lumped_known_load_graded(load_ratio, record_property):
     sim, line = build(ratio=load_ratio, profile=widths,
                       axial_positions=(.25e-3, 1.45e-3), declared_separation=1.2e-3)
     record_property("realized_d_m", line.length)
-    result = sim.forward(port_s11_freqs=[1e9], num_periods=20, skip_preflight=True)
+    result = _known_load_entry(sim, entry, [1e9], 20, record_property)
     assert_solved_ports(result, line)
     magnitude = float(np.abs(result.s_params[0, 0, 0]))
     expected = float(abs(input_reflection(line, [1e9], load_ratio * line.zc)[0]))
@@ -146,7 +157,7 @@ def test_lumped_uniform_profile_lane_parity(record_property):
     # Lane parity, not a continuum-accuracy solve: five axial 1 mm cells,
     # 8x8 transverse cells, 20 CPML cells per end (46x9x9 nodes), 100 steps.
     # Source/load are distinct interior nodes, with the same shunt load and
-    # all five requested frequencies; retain the original complex 1e-5 bar.
+    # all five requested frequencies; B3 tightens the complex bar to 1e-6.
     uniform_sim, line = build(dx=1e-3, cells=5, ratio=2.,
                               axial_positions=(1e-3, 3e-3), declared_separation=2e-3)
     graded_sim, graded_line = build(dx=1e-3, cells=5, ratio=2., profile=np.full(5, 1e-3),
@@ -167,7 +178,7 @@ def test_lumped_uniform_profile_lane_parity(record_property):
     delta = np.max(np.abs(np.asarray(graded.s_params[0, 0]) - uniform_s11))
     print(f"lumped lane parity max |dS|={delta:.9g}", file=sys.stderr)
     np.testing.assert_allclose(graded.s_params[0, 0], uniform_s11,
-                               rtol=0, atol=1e-5)
+                               rtol=0, atol=1e-6)
 
 
 def test_lumped_before_passive_wire_preserves_wire_index():
@@ -192,8 +203,9 @@ def test_lumped_before_passive_wire_preserves_wire_index():
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("entry", ["forward", "run"])
 @pytest.mark.parametrize("load_ratio", [1., 2.])
-def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
+def test_graded_known_load_three_mesh_trend(load_ratio, entry, record_property):
     """D1(i) on the graded fixture itself, at its always-on 1 GHz bin.
 
     Subdivide each axial interval by 1/2/4 and scale the transverse lattice
@@ -216,7 +228,7 @@ def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
                           profile=np.repeat(widths / refinement, refinement),
                           axial_positions=(.25e-3, 1.45e-3), declared_separation=1.2e-3)
         record_property(f"realized_d_{dx}", line.length)
-        result = sim.forward(port_s11_freqs=freqs, num_periods=40, skip_preflight=True)
+        result = _known_load_entry(sim, entry, freqs, 40, record_property)
         assert_solved_ports(result, line)
         measured = np.asarray(result.s_params).reshape(-1)
         pure = input_reflection(line, freqs, load_ratio * line.zc)

@@ -17,27 +17,21 @@ def test_main_port_records_match_forward(kind, path):
         return sim.add_port(SOURCE, 'ez', impedance=50., **options)
 
     bins = np.linspace(2e9, 20e9, 50, dtype=np.float32)
-    # Graded lumped S requests are refused; both entries leave lumped DFTs None.
-    spectra = not (kind == 'lumped' and path == 'graded')
-    actual = declaration().run(n_steps=150, skip_preflight=True,
-                               **({'s_param_freqs': bins} if spectra else {}))
+    actual = declaration().run(n_steps=150, skip_preflight=True, s_param_freqs=bins)
     expected = declaration().forward(n_steps=150, skip_preflight=True, checkpoint=False,
-                                     **({'port_s11_freqs': bins} if spectra else {}))
+                                     port_s11_freqs=bins)
     field = f'{kind}_port_sparams'
     got, want = getattr(actual, field), getattr(expected, field)
-    if not spectra:
-        assert got is want is None
-    else:
-        assert got is not None, field
-        assert want is not None
-        assert len(got) == len(want) == 1
-        for (meta, accs), (ref_meta, ref_accs) in zip(got, want, strict=True):
-            assert jax.tree.structure(meta) == jax.tree.structure(ref_meta)
-            for a, b in zip(jax.tree.leaves(meta), jax.tree.leaves(ref_meta), strict=True):
-                np.testing.assert_array_equal(a, b)
-            assert len(accs) == len(ref_accs)
-            for a, b in zip(accs, ref_accs, strict=True):
-                np.testing.assert_array_equal(a, b)
+    assert got is not None, field
+    assert want is not None
+    assert len(got) == len(want) == 1
+    for (meta, accs), (ref_meta, ref_accs) in zip(got, want, strict=True):
+        assert jax.tree.structure(meta) == jax.tree.structure(ref_meta)
+        for a, b in zip(jax.tree.leaves(meta), jax.tree.leaves(ref_meta), strict=True):
+            np.testing.assert_array_equal(a, b)
+        assert len(accs) == len(ref_accs)
+        for a, b in zip(accs, ref_accs, strict=True):
+            np.testing.assert_array_equal(a, b)
     assert len(actual.sparam_time_records) == len(expected.sparam_time_records) == 1
     for got_record, want_record in zip(actual.sparam_time_records, expected.sparam_time_records, strict=True):
         assert (got_record.id, got_record.kind, got_record.channels) == (
@@ -58,8 +52,6 @@ def test_run_settling_bins_follow_float64_request(kind):
         assert len(result.settling_witness[key]) == len(result.freqs), key
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason='#1373 D9 (graded): run() does not yet return lumped_port_sparams')
 def test_graded_run_returns_lumped_main_record():
     sim = base_scene('graded', source=False)
     sim.add_port(SOURCE, 'ez', impedance=50.)
