@@ -391,10 +391,10 @@ def test_direct_run_uniform_refuses():
 
 def test_uniform_waveguide_s_matrix_refuses():
     sim = Simulation(
-        freq_max=8e9, domain=(0.06, 0.02286, 0.01016), dx=3e-3,
+        freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=8)
+        cpml_layers=8)  # solved length; #1887
     for x_position, direction, name in ((0.012, "+x", "wg1"),
                                         (0.048, "-x", "wg2")):
         sim.add_waveguide_port(

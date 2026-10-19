@@ -631,7 +631,7 @@ def test_the_pinned_step_reaches_the_waveguide_s_matrix_lane(monkeypatch):
                                  + 1 / b_wg ** 2))
     freqs = np.linspace(9.0e9, 11.0e9, 3)
     sim = Simulation(
-        freq_max=12e9, domain=(lx, a_wg, b_wg), dx=dxc,
+        freq_max=12e9, domain=(lx, 9 * dxc, 4 * dxc), dx=dxc,  # solved length; #1887
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),

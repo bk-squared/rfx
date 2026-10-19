@@ -55,7 +55,7 @@ _F_MAX = 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
 
 
-def _make_wr90_nu_sim():
+def _make_wr90_nu_sim(*, solved_domain=False):
     """Minimal 2-port WR-90 sim with a graded dx_profile (triggers _nu path).
 
     Uses a coarse/fine/coarse dx_profile so dx_profile is not None and the
@@ -82,7 +82,7 @@ def _make_wr90_nu_sim():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, _A_WG, _B_WG),
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse) if solved_domain else (domain_x, _A_WG, _B_WG),  # solved length; #1887
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -375,7 +375,7 @@ def test_nu_assembly_ad_traceable():
 # ---------------------------------------------------------------------------
 
 def test_nu_dispatch_rejects_eps_override():
-    sim = _make_wr90_nu_sim()
+    sim = _make_wr90_nu_sim(solved_domain=True)
     with pytest.raises(NotImplementedError, match="eps_override"):
         sim.compute_waveguide_s_matrix(
             normalize=True, eps_override=jnp.ones((2, 2, 2)),
@@ -383,7 +383,7 @@ def test_nu_dispatch_rejects_eps_override():
 
 
 def test_nu_dispatch_rejects_sigma_override():
-    sim = _make_wr90_nu_sim()
+    sim = _make_wr90_nu_sim(solved_domain=True)
     with pytest.raises(NotImplementedError, match="sigma_override"):
         sim.compute_waveguide_s_matrix(
             normalize=True, sigma_override=jnp.zeros((2, 2, 2)),
@@ -391,6 +391,6 @@ def test_nu_dispatch_rejects_sigma_override():
 
 
 def test_nu_dispatch_rejects_subpixel_smoothing():
-    sim = _make_wr90_nu_sim()
+    sim = _make_wr90_nu_sim(solved_domain=True)
     with pytest.raises(NotImplementedError, match="subpixel_smoothing"):
         sim.compute_waveguide_s_matrix(normalize=True, subpixel_smoothing=True)

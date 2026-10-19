@@ -209,7 +209,7 @@ def test_plan_mesh_and_simulation_plan_share_schema_keys():
 def test_plan_simulation_mesh_reports_nonuniform_extrema_and_limiting_axis():
     sim = Simulation(
         freq_max=3.0e9,
-        domain=(0.0, 0.0, 0.01),
+        domain=(0.0, 0.0, sum([0.0015, 0.0025, 0.0035])),  # solved length; #1887
         boundary="pec",
         dx=0.005,
         dx_profile=np.array([0.005, 0.001, 0.002, 0.003, 0.005]),
@@ -241,7 +241,7 @@ def test_simulation_plan_mesh_method_matches_function():
 
 
 def test_simulation_planner_refuses_profiles_the_solver_cannot_build():
-    sim = Simulation(freq_max=3e9, domain=(.006, .006, .006), boundary="pec",
+    sim = Simulation(freq_max=3e9, domain=(.006, 1 * .005, 1 * .005),  boundary="pec",  # solved length; #1887
                      dx=.005, dx_profile=np.array([.001, .002, .003]))
     with pytest.raises(ValueError, match=r"dx_profile\[0\].*boundary"):
         plan_simulation_mesh(sim, n_steps=4)

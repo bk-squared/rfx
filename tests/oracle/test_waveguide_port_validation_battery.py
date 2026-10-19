@@ -66,6 +66,7 @@ def _build_sim(
     pec_short_x: float | None = None,
     waveform: str = "modulated_gaussian",
     n_modes: int = 1,
+    solved_domain: bool = False,
 ):
     """Two-port rectangular waveguide simulation.
 
@@ -90,9 +91,15 @@ def _build_sim(
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
 
+    domain = DOMAIN
+    if solved_domain:
+        dx = (0.75e-3 if obstacles else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
+        n_y = int(np.ceil(DOMAIN[1] / dx))
+        n_z = int(np.ceil(DOMAIN[2] / dx))
+        domain = (DOMAIN[0], n_y * dx, n_z * dx)  # solved length; #1887
     sim_kwargs = dict(
         freq_max=max(float(freqs[-1]), f0),
-        domain=DOMAIN,
+        domain=domain,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
     )
     if cpml_layers is not None:
@@ -236,7 +243,7 @@ def test_matched_load_s11_empty_waveguide():
     # the correct tool for a reflection/absorber-quality gate. The two-run
     # normalize=True subtraction cancels ALL reflection (real included) on
     # an empty guide, which is why the pre-#395 gate could not fail.
-    sim = _build_sim(freqs, cpml_layers=10, waveform="modulated_gaussian")
+    sim = _build_sim(freqs, solved_domain=True, cpml_layers=10, waveform="modulated_gaussian")
     s, sim_freqs, port_idx = _s_matrix(sim, num_periods=40, normalize=False)
 
     s11 = np.abs(s[port_idx["left"], port_idx["left"], :])
@@ -267,7 +274,7 @@ def test_matched_load_s11_empty_waveguide():
     # observes real absorber quality and is not vacuous. A regression that
     # re-vacuumed the gate (e.g. reverting to normalize=True) would let the
     # crippled run pass and trip this witness.
-    sim_bad = _build_sim(freqs, cpml_layers=4, waveform="modulated_gaussian")
+    sim_bad = _build_sim(freqs, solved_domain=True, cpml_layers=4, waveform="modulated_gaussian")
     s_bad, _, idx_bad = _s_matrix(sim_bad, num_periods=40, normalize=False)
     bad_refl = float(max(
         np.abs(s_bad[idx_bad["left"], idx_bad["left"], :]).max(),
@@ -309,7 +316,7 @@ def test_matched_load_s11_empty_waveguide():
 def test_tight_passivity_reflecting_dut():
     freqs = np.linspace(4.5e9, 8.0e9, 10)
     obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
-    sim = _build_sim(freqs, obstacles=obstacles, waveform="modulated_gaussian")
+    sim = _build_sim(freqs, solved_domain=True, obstacles=obstacles, waveform="modulated_gaussian")
     s, _, port_idx = _s_matrix(sim, num_periods=40, normalize="flux")
 
     s11 = np.abs(s[port_idx["left"], port_idx["left"], :])
@@ -353,7 +360,7 @@ def test_reciprocity_symmetric_obstacle():
     # Symmetric about domain midpoint (0.06 m), fills full y-cross-section
     # and is centered.
     obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
-    sim = _build_sim(freqs, obstacles=obstacles, waveform="modulated_gaussian")
+    sim = _build_sim(freqs, solved_domain=True, obstacles=obstacles, waveform="modulated_gaussian")
     s, _, port_idx = _s_matrix(sim, num_periods=40, normalize=True)
 
     s21 = np.abs(s[port_idx["right"], port_idx["left"], :])
@@ -430,7 +437,7 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
     freqs = np.linspace(4.5e9, 8.0e9, 10)
     # Half y-cross-section, off-center in x: the legacy test's geometry.
     obstacles = [((0.03, 0.0, 0.0), (0.05, 0.02, 0.02), 6.0)]
-    sim = _build_sim(freqs, obstacles=obstacles, waveform="modulated_gaussian")
+    sim = _build_sim(freqs, solved_domain=True, obstacles=obstacles, waveform="modulated_gaussian")
     s, _, port_idx = _s_matrix(sim, num_periods=40, normalize=True)
 
     s21 = np.abs(s[port_idx["right"], port_idx["left"], :])
@@ -541,7 +548,7 @@ def test_pec_short_s11_magnitude():
     """
     freqs = np.linspace(5.0e9, 7.0e9, 6)
     sim = _build_sim(
-        freqs,
+        freqs, solved_domain=True,
         pec_short_x=0.085,
         waveform="modulated_gaussian",
     )

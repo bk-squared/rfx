@@ -39,7 +39,7 @@ def _nu_sim():
     dx = 1.5e-3
     nx = int(round(0.064 / dx))
     sim = Simulation(
-        freq_max=_FMAX, domain=(nx * dx, _A, _B), dx=dx,
+        freq_max=_FMAX, domain=(nx * dx, _A, 7 * dx),  dx=dx,  # solved length; #1887
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),

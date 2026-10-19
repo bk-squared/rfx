@@ -310,9 +310,9 @@ class TestOptimizeWithProxy:
 
         sim = Simulation(
             freq_max=10e9,
-            domain=(0.06, 0.02, 0.02),
+            domain=(41 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_port(
             (0.01, 0.01, 0.01), "ez",
             impedance=50.0,
@@ -356,9 +356,9 @@ class TestOptimizeWithProxy:
 
         sim = Simulation(
             freq_max=10e9,
-            domain=(0.04, 0.01, 0.01),
+            domain=(27 * (299792458.0 / 10e9 / 20.0), 7 * (299792458.0 / 10e9 / 20.0), 7 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_port(
             (0.008, 0.005, 0.005), "ez",
             impedance=50.0,

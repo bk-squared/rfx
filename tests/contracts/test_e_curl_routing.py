@@ -187,7 +187,7 @@ def test_kernel_adapters(branch):
                                          1., .1, dx, boundary=boundary),
     }
     if branch == "upml":
-        grid = model(wall="pec")._build_grid()
+        grid = model(wall="pec", solved_domain=True)._build_grid()
         state = yee.init_state(grid.shape)
         coeff = upml.init_upml(grid, yee.init_materials(grid.shape))
         calls[branch] = lambda: upml.apply_upml_e(state, coeff, boundary=boundary)
@@ -238,7 +238,7 @@ def test_design_box_second_update_uses_boundary(graded):
 def test_coaxial_injection_parent_uses_shared_curl():
     from rfx.sources.coaxial_port import CoaxialPort, build_coaxial_tem_plane_source_specs
     from rfx import GaussianPulse
-    sim = model(wall="pec")
+    sim = model(wall="pec", solved_domain=True)
     grid = sim._build_grid()
     port = CoaxialPort(position=(6e-3, 5e-3, 4e-3), face="top",
                        pin_length=2e-3, impedance=50.0, pin_radius=.5e-3,
@@ -302,7 +302,7 @@ def test_tfsf_forward_uses_shared_curl():
 def test_baked_dispatch_passes_realized_boundary_on_cpu():
     # Exercise the production dispatch predicate and baked implementation on
     # CPU. This is not a native GPU measurement.
-    sim = model(wall="pec")
+    sim = model(wall="pec", solved_domain=True)
     invoked = []
     original = uniform.update_he_fast
     def baked(*args, **kwargs):

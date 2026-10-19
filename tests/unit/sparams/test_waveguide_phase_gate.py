@@ -30,7 +30,8 @@ geometric plane separation) are what make this a real catch rather than a
 tautology.
 
 R5 evidence + tolerance derivation: docs/research_notes/20260616_t2.1_phase_witness_r5.md
-(masked healthy residual ~3.8° both directions; a mis-selected-component
+(masked healthy residual then ~3.8°, since #1887 0.18° with the predictor on the
+solved guide width; a mis-selected-component
 extractor bug gave 58–180° — a >10× gate window).
 """
 
@@ -47,17 +48,18 @@ from rfx.model.waveguide_modes import _compute_beta
 # Canonical 40 mm x 20 mm guide (matches the validation battery), but with the
 # port moved interior so the reference/probe planes sit OUTSIDE the CPML, and
 # the band kept single-mode (< 0.9·fc_TE01 = 6.745 GHz) — both per the preflight
-# advisories the R5 prototype surfaced. fc_TE10 = c/(2·0.04) = 3.75 GHz.
+# advisories the R5 prototype surfaced. The guide is declared at the width it
+# is solved at (18 and 9 cells of the automatic dx, 41.51 x 20.75 mm; #1887),
+# and the predictor's TE10 cutoff c/(2a) reads that width from the built grid.
 DOMAIN = (0.12, 0.04, 0.02)
-F_CUTOFF_HZ = 3.75e9
 BAND_HZ = (4.2e9, 6.5e9)
 N_FREQS = 12
 
-# Gate tolerance: the masked (propagating-band) healthy residual is ~3.8° both
-# directions (R5); broken cases are 58–180°. 6° is a ~1.6× margin over health and
-# far below any gross phase error. (The 5.1° figure in early notes was UNmasked,
-# i.e. included the near-cutoff weak-signal edge bins the mask drops.)
-PHASE_TOL_DEG = 6.0
+# Gate tolerance: with the predictor on the solved width the masked residual is
+# 0.18° in both directions (#1887; the earlier 3.6° came from a predictor on the
+# drawn 40 mm width while the guide was solved 41.51 mm wide). 1° is ~5x the
+# measured residual; broken cases are 58–180°.
+PHASE_TOL_DEG = 1.0
 # Weak-signal mask: gate only bins with incident magnitude >= this fraction of
 # the band peak (drops the near-cutoff / band-edge bins where S/N collapses).
 # Mirrors cv11's |S_ref| FP-null mask and compare_sparameter_reference's
@@ -65,11 +67,11 @@ PHASE_TOL_DEG = 6.0
 MAG_MASK_FRAC = 0.05
 
 
-def _beta_continuous_np(freqs_hz: np.ndarray) -> np.ndarray:
+def _beta_continuous_np(freqs_hz: np.ndarray, a_built: float) -> np.ndarray:
     """INDEPENDENT analytic continuous β in numpy float64 (no rfx involvement)."""
     omega = 2.0 * np.pi * np.asarray(freqs_hz, dtype=np.float64)
     k = omega / float(C0_LOCAL)
-    kc = 2.0 * np.pi * float(F_CUTOFF_HZ) / float(C0_LOCAL)
+    kc = 2.0 * np.pi * (float(C0_LOCAL) / (2.0 * a_built)) / float(C0_LOCAL)
     return np.sqrt(np.maximum(k * k - kc * kc, 0.0))
 
 
@@ -83,8 +85,10 @@ def _measure_phase(direction: str, port_x: float):
     freqs = np.linspace(BAND_HZ[0], BAND_HZ[1], N_FREQS)
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
+    dx = 299792458.0 / float(freqs[-1]) / 20.0
+    domain = (DOMAIN[0], 18 * dx, 9 * dx)  # solved length; #1887
     sim = Simulation(
-        freq_max=float(freqs[-1]), domain=DOMAIN,
+        freq_max=float(freqs[-1]), domain=domain, dx=dx,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     sim.add_waveguide_port(
@@ -108,7 +112,9 @@ def _measure_phase(direction: str, port_x: float):
     dx_planes = float(cfg.probe_x_m) - float(cfg.reference_x_m)
     dx_local = step_sign * dx_planes  # local propagation distance, ref -> probe
 
-    beta_np = _beta_continuous_np(freqs)
+    grid = result.grid
+    a_built = (grid.interior[1].stop - grid.interior[1].start - 1) * grid.dx
+    beta_np = _beta_continuous_np(freqs, a_built)
     predicted = np.angle(np.exp(1j * (-beta_np * dx_local)))  # wrapped
 
     mag = np.abs(inc_ref)
@@ -163,12 +169,10 @@ def test_phase_slope_recovers_known_plane_separation(direction, port_x):
           f"expected={-d['dx_local']*1e3:.4f} mm  R²={r2:.6f}")
     # R² ≥ 0.998 (observed ~0.9991) — 0.999 sat on a knife-edge cross-machine.
     assert r2 >= 0.998, f"phase-vs-β fit not linear (R²={r2:.5f})"
-    # Slope recovers the physical plane separation to within 5 % (observed ~3.7 %
-    # deficit). The deficit is SYSTEMATIC, not noise: the predictor is continuous
-    # β while the FDTD propagates the Yee-discrete β, plus the first-order-only
-    # z_mode cancellation under ~6–15 % residual reflection. A wrong-sign / wrong-β
-    # extractor would be 100 %+ off, so 5 % still strongly discriminates.
-    assert abs(slope - (-d["dx_local"])) <= 0.05 * abs(d["dx_local"]), (
+    # Slope recovers the plane separation to within 1 % (measured +0.35 %). The
+    # 3.3 % deficit seen before #1887 was the geometry: the predictor used the
+    # drawn 40 mm width while the guide was solved 41.51 mm wide.
+    assert abs(slope - (-d["dx_local"])) <= 0.01 * abs(d["dx_local"]), (
         f"recovered plane sep {slope*1e3:.3f} mm != known {-d['dx_local']*1e3:.3f} mm"
     )
 
@@ -176,14 +180,9 @@ def test_phase_slope_recovers_known_plane_separation(direction, port_x):
 def test_perturbed_predictor_fails_the_gate():
     """Falsifier: a 10 % β error must break the gate (non-vacuous).
 
-    Proves the predicted leg is load-bearing. The healthy residual is
-    single-signed (measured lags β slightly), so the effect is ASYMMETRIC: a
-    −10 % perturbation ADDS to the residual (~12°, robustly fails) while a +10 %
-    perturbation partially CANCELS (~6.7°, clears the 6° gate by only ~0.7°). We
-    require BOTH the worst-sign to fail by a comfortable margin AND each sign to
-    measurably move the residual, so the assertion does not hinge on the fragile
-    +10 % arm. Honest statement: the gate robustly catches a 10 % β error in the
-    adding direction; one-sided sensitivity is ~10 %.
+    Proves the predicted leg is load-bearing: a ±10 % β error moves the
+    residual by several degrees, against a 0.18° healthy residual and a 1° gate.
+    Both signs must fail the gate with margin and measurably move the residual.
     """
     d = _measure_phase("+x", 0.025)
     healthy = float(np.degrees(np.abs(_wrap(d["measured"] - d["predicted"])))[d["mask"]].max())
@@ -225,8 +224,10 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     freqs = np.linspace(BAND_HZ[0], BAND_HZ[1], N_FREQS)
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
+    dx = 299792458.0 / float(freqs[-1]) / 20.0
+    domain = (DOMAIN[0], 18 * dx, 9 * dx)  # solved length; #1887
     sim = Simulation(
-        freq_max=float(freqs[-1]), domain=DOMAIN,
+        freq_max=float(freqs[-1]), domain=domain, dx=dx,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     sim.add_waveguide_port(
@@ -234,7 +235,8 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
         freqs=np.asarray(freqs), f0=f0, bandwidth=bandwidth,
         waveform="modulated_gaussian", n_modes=1, name="p",
     )
-    cfg = sim.run(num_periods=40, compute_s_params=False).waveguide_ports["p"]
+    result = sim.run(num_periods=40, compute_s_params=False)
+    cfg = result.waveguide_ports["p"]
 
     shift_m = 0.004  # 4 mm de-embed; β·Δ ~ 20–30° (no 2π wrap)
     a0, _ = extract_waveguide_port_waves(cfg, ref_shift=0.0)
@@ -244,7 +246,9 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     measured_rot = np.angle(a1 / np.where(np.abs(a0) > 0, a0, 1.0))
 
     step_sign = 1 if direction.startswith("+") else -1
-    beta_np = _beta_continuous_np(freqs)
+    grid = result.grid
+    a_built = (grid.interior[1].stop - grid.interior[1].start - 1) * grid.dx
+    beta_np = _beta_continuous_np(freqs, a_built)
     predicted_rot = _wrap(-beta_np * (step_sign * shift_m))  # CORRECT-sign prediction
 
     mag = np.abs(a0)
@@ -255,12 +259,13 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     wrong_resid = np.degrees(np.abs(_wrap(measured_rot - wrong_sign)))
     print(f"\n[de-embed {direction}] max|resid correct-sign|={resid_deg[mask].max():.3f}°  "
           f"max|resid wrong-sign|={wrong_resid[mask].max():.3f}° (bug would be caught)")
-    assert resid_deg[mask].max() <= 3.0, (
+    # Measured 0.03° on the solved width (#1887); 0.5° leaves room across machines.
+    assert resid_deg[mask].max() <= 0.5, (
         f"{direction} de-embed rotation {resid_deg[mask].max():.2f}° != analytic "
         f"-β·(step_sign·Δ) — _shift_modal_waves step_sign regression"
     )
     # Sign-discrimination witness: the opposite-sign rotation (what a step_sign
-    # bug produces on a "-x" port) is ~2·β·Δ (~50°) away — far outside the 3° gate,
+    # bug produces on a "-x" port) is ~2·β·Δ (~50°) away — far outside the 0.5° gate,
     # so the bug cannot hide. Holds for both directions (the rotation is signed).
     assert wrong_resid[mask].max() > 10.0, (
         "wrong-sign de-embed not distinguishable — gate would miss a step_sign bug"

@@ -60,7 +60,7 @@ def _wr90_dx_graded_sim(pre_m: float, fine_m: float, post_m: float):
     domain_x = float(np.sum(dx_profile))
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, _A_WG, _B_WG),
+        domain=(domain_x, 15 * _DX_COARSE, 7 * _DX_COARSE),  # solved length; #1887
         dx=_DX_COARSE,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -159,7 +159,7 @@ def test_z_directed_port_reads_the_dz_profile():
     domain_z = float(np.sum(dz_profile))
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(_A_WG, _B_WG, domain_z),
+        domain=(15 * _DX_COARSE, 7 * _DX_COARSE, domain_z),  # solved length; #1887
         dx=_DX_COARSE,
         boundary=BoundarySpec(
             x=Boundary(lo="pec", hi="pec"),

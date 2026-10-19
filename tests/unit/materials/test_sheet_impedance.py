@@ -745,13 +745,13 @@ def _design_cube():
     return sim
 
 
-def _wr90(n_modes=1):
+def _wr90(n_modes=1, *, solved_domain=False):
     """Coarse WR-90 two-port with a sheet across the guide."""
     sim = Simulation(
-        freq_max=8e9, domain=(0.06, 0.02286, 0.01016), dx=3e-3,
+        freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3) if solved_domain else (0.06, 0.02286, 0.01016), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=6)
+        cpml_layers=6)  # solved length; #1887
     _sheet(sim, Box((0.02, 0.0, 0.005), (0.04, 0.02286, 0.005)))
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
@@ -1073,7 +1073,7 @@ def test_fence_waveguide_s_matrix_subpixel():
     def go():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            _wr90().compute_waveguide_s_matrix(n_steps=4,
+            _wr90(solved_domain=True).compute_waveguide_s_matrix(n_steps=4,
                                                subpixel_smoothing=True)
     _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
            match=r"on the waveguide S-matrix method")
@@ -1083,7 +1083,7 @@ def test_fence_waveguide_s_matrix_multimode():
     def go():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            _wr90(n_modes=2).compute_waveguide_s_matrix(n_steps=4)
+            _wr90(n_modes=2, solved_domain=True).compute_waveguide_s_matrix(n_steps=4)
     _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
            match=r"on the multimode waveguide S-matrix path")
 

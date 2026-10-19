@@ -99,9 +99,9 @@ def _all_blocks(a, d, t, f, n_a=40):
     return _redheffer(_redheffer(s_step, (zero, prop, prop, zero)), s_rev)
 
 
-def oracle_s11(d_phys, t_phys=T_IRIS, freqs=FREQS):
+def oracle_s11(d_phys, t_phys=T_IRIS, freqs=FREQS, *, a=A_WR90):
     """|S11|(f) of the iris from the first implementation."""
-    return np.array([abs(iris_smatrix(A_WR90, d_phys, t_phys, float(f))[0])
+    return np.array([abs(iris_smatrix(a, d_phys, t_phys, float(f))[0])
                      for f in freqs])
 
 
@@ -198,7 +198,7 @@ def _build_iris(d_phys, cells, *, glen=GLEN_M, iris_frac=IRIS_FRAC,
     iris_lo = int(round(glen_c * iris_frac)) - t_c // 2
     sim = Simulation(
         freq_max=float(FREQS[-1]) * 1.1,
-        domain=(glen_c * dx, A_WR90, B_WR90), dx=dx,
+        domain=(glen_c * dx, A_WR90, int(np.ceil(B_WR90 / dx)) * dx), dx=dx,  # solved length; #1887
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
@@ -305,7 +305,9 @@ def test_coarse_mesh_s11_tracks_the_mode_matching_oracle():
     s = np.asarray(res.s_params)
     s11 = np.abs(s[0, 0, :])
     s21 = np.abs(s[1, 0, :])
-    orc = oracle_s11(D_ARM)
+    grid = sim._build_grid()
+    a_built = (grid.interior[1].stop - grid.interior[1].start - 1) * grid.dx
+    orc = oracle_s11(D_ARM, a=a_built)
     gap = np.abs(s11 - orc)
     gap_db = 20.0 * np.log10(s11 / orc)
 

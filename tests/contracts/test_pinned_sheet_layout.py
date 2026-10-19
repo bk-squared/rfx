@@ -575,7 +575,7 @@ def test_waveguide_forward_release_refused():
     # Full PEC-walled aperture: no y/z CPML pads. Feed x=10mm on 2mm
     # cells is node 5; eight x CPML cells place it at x=13. Ey edges
     # on the declared yz sheet start at (13,3,1), inside the aperture.
-    sim = Simulation(12e9, (.05, .02286, .01016), dx=.002, cpml_layers=8,
+    sim = Simulation(12e9, (.05, 11 * .002, 5 * .002),  dx=.002, cpml_layers=8,  # solved length; #1887
                      boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'},
                      dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
     sim.add_waveguide_port(x_position=.01, direction='+x',

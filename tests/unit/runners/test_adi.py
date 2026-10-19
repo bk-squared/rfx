@@ -255,12 +255,12 @@ def test_simulation_adi_run_high_level():
     """Simulation.run should expose ADI as a real solver path."""
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.02, 0.02, 0.01),
+        domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
         mode="2d_tmz",
         solver="adi",
         adi_cfl_factor=5.0,
-    )
+    )  # solved length; #1887
     sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
     sim.add_probe((0.01, 0.01, 0.0), "hx")
@@ -277,11 +277,11 @@ def test_simulation_adi_forward_contract():
     """Simulation.forward should work for ADI without exposing state."""
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.02, 0.02, 0.01),
+        domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
         mode="2d_tmz",
         solver="adi",
-    )
+    )  # solved length; #1887
     sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
 
@@ -357,9 +357,9 @@ def test_simulation_adi_lossy_material():
     block inside the box is; the block is refused."""
     def sim_with(lo, hi):
         sim = Simulation(
-            freq_max=10e9, domain=(0.02, 0.02, 0.01),
+            freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec", mode="2d_tmz", solver="adi",
-        )
+        )  # solved length; #1887
         sim.add_material("lossy", eps_r=2.2, sigma=0.1)
         sim.add(Box(lo, hi), material="lossy")
         sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
@@ -376,11 +376,11 @@ def test_simulation_adi_rejects_port_loaded_excitation():
     """ADI integration should reject unsupported impedance-loaded ports."""
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.02, 0.02, 0.01),
+        domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
         mode="2d_tmz",
         solver="adi",
-    )
+    )  # solved length; #1887
     sim.add_port((0.01, 0.01, 0.0), "ez", impedance=50.0)
 
     with pytest.raises(ValueError, match="soft sources"):

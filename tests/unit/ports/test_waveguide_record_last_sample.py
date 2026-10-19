@@ -14,11 +14,11 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 def _guide():
     kw = {}
     sim = Simulation(
-        freq_max=12.4e9, domain=(0.06, 0.02286, 0.01016), dx=1e-3,
+        freq_max=12.4e9, domain=(0.06, 0.02286, 11 * 1e-3), dx=1e-3,
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=8, **kw)
+        cpml_layers=8, **kw)  # solved length; #1887
     sim.add_waveguide_port(0.012, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=np.linspace(8.2e9, 12.4e9, 3), f0=10.3e9,
                            bandwidth=0.5, name="wg1")

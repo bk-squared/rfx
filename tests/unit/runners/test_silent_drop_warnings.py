@@ -97,8 +97,8 @@ def _subgrid_sim(pec=False):
 
 def _adi_sim(pec=False):
     def build():
-        sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.01),
-                         boundary="pec", mode="2d_tmz", solver="adi")
+        sim = Simulation(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
+                         boundary="pec", mode="2d_tmz", solver="adi")  # solved length; #1887
         if pec:
             sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),
                     material="pec")
@@ -306,14 +306,14 @@ def test_dispersive_lanes_refuse_smoothing_and_conformal(nonuniform, kw, val, pe
         sim.run(n_steps=4, skip_preflight=True, **{kw: val})
 
 
-def _wr90_sim(debye, conformal=False, dz=None):
+def _wr90_sim(debye, conformal=False, dz=None, *, solved_domain=False):
     """A short WR-90 section, optionally with a Debye slab inside."""
     def build():
         walls = Boundary(lo="pec", hi="pec", conformal=conformal)
-        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016) if not solved_domain else (0.06, 8 * 3e-3, 4 * 3e-3),
                          dx=3e-3, cpml_layers=6,
                          boundary=BoundarySpec(x="cpml", y=walls, z=walls),
-                         **({"dz_profile": dz} if dz is not None else {}))
+                         **({"dz_profile": dz} if dz is not None else {}))  # solved length; #1887
         if debye:
             sim.add_material("disp", eps_r=2.0, debye_poles=[
                 DebyePole(delta_eps=1.0, tau=1e-11)])
@@ -351,7 +351,7 @@ def test_waveguide_s_matrix_refuses_smoothing_and_conformal_with_debye(
 def test_waveguide_s_matrix_still_smooths_without_dispersion():
     """Control: the same call with a plain dielectric slab runs."""
     def build():
-        sim = _wr90_sim(debye=False)
+        sim = _wr90_sim(debye=False, solved_domain=True)
         sim.add(Box((0.024, 0.0, 0.0), (0.036, 0.02286, 0.01016)),
                 material="fr4")
         return sim
@@ -712,8 +712,8 @@ def test_uniform_lane_still_runs_a_separate_s_parameter_record():
     """Two lumped ports: the S-matrix is driven in its own runs, so a
     different s_param_n_steps is honoured there."""
     def build():
-        sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01),
-                         boundary="pec")
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
+                         boundary="pec")  # solved length; #1887
         sim.add_port((0.002, 0.005, 0.005), "ez")
         sim.add_port((0.008, 0.005, 0.005), "ez")
         return sim

@@ -33,7 +33,7 @@ NUM_PERIODS = 8.0
 def _wr90_sim():
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.12, 0.04, 0.02),
+        domain=(0.12, 14 * 0.003, 7 * 0.003),
         dx=0.003,
         boundary=BoundarySpec(
             x="cpml",
@@ -41,7 +41,7 @@ def _wr90_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )
+    )  # solved length; #1887
     freqs = jnp.linspace(5e9, 6.5e9, 4)
     sim.add_waveguide_port(0.010, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=6e9, bandwidth=0.5, name="left")

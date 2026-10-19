@@ -17,8 +17,8 @@ class TestWaveguideCutoff:
         from rfx.harminv import matrix_pencil
 
         L_wg = 40e-3  # waveguide length
-        dx = 0.5e-3
-        sim = Simulation(freq_max=10e9, domain=(self.A_WG, self.B_WG, L_wg),
+        dx = 0.5e-3  # y domain: 21 cells, solved length; #1887
+        sim = Simulation(freq_max=10e9, domain=(self.A_WG, 21 * dx, L_wg),
                          boundary='pec', dx=dx)
         # TE10 in a PEC cavity: f_mnp = C0/2 * sqrt((m/a)^2 + (n/b)^2 + (p/L)^2)
         # For TE101: f = C0/2 * sqrt((1/a)^2 + (1/L)^2)
@@ -28,6 +28,9 @@ class TestWaveguideCutoff:
         sim.add_probe((self.A_WG / 2, 2 * self.B_WG / 3, 2 * L_wg / 3), 'ey')
 
         grid = sim._build_grid()
+        a_built = (grid.interior[0].stop - grid.interior[0].start - 1) * grid.dx
+        l_built = (grid.interior[2].stop - grid.interior[2].start - 1) * grid.dx
+        f_101 = (C0 / 2) * np.sqrt((1 / a_built) ** 2 + (1 / l_built) ** 2)
         n_steps = grid.num_timesteps(num_periods=100)
         result = sim.run(n_steps=n_steps)
 

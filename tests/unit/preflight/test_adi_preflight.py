@@ -82,9 +82,9 @@ def test_adi_3d_within_envelope_is_silent():
 
 def test_adi_2d_tmz_is_silent():
     sim = Simulation(
-        freq_max=10e9, domain=(0.02, 0.02, 0.01),
+        freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.01), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec", mode="2d_tmz", solver="adi", adi_cfl_factor=5.0,
-    )
+    )  # solved length; #1887
     sim.add_source((0.01, 0.01, 0.0), "ez")
     sim.add_probe((0.012, 0.01, 0.0), "ez")
     issues = sim.preflight()

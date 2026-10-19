@@ -24,9 +24,10 @@ def _make_straight_waveguide_sim(
     ref_offset=3,
 ):
     """Build a Simulation for a straight empty PEC waveguide with two ports."""
+    dx = C0 / f_max / 20.0
     sim = Simulation(
-        freq_max=f_max,
-        domain=(length, a_wg, b_wg),
+        freq_max=f_max, dx=dx,
+        domain=(length, 27 * dx, 14 * dx),  # solved length; #1887
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )

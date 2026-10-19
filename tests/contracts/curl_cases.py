@@ -5,7 +5,7 @@ from rfx import Box, DebyePole, GaussianPulse, Simulation, Sphere, lorentz_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
-def model(feature="plain", mesh="uniform", mode="3d", wall="pmc"):
+def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=False):
     domain = (12.3e-3, 9.7e-3, 7.4e-3)
     if feature == "waveguide":
         domain = (30.3e-3, 12.7e-3, 6.4e-3)
@@ -37,6 +37,8 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc"):
         interior = np.linspace(.87, 1.13, n - 2)
         interior *= (length - 2e-3) / interior.sum()
         kwargs["dx_profile"] = np.r_[1e-3, interior, 1e-3]
+    if solved_domain:
+        domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)  # solved length; #1887
     sim = Simulation(freq_max=20e9, domain=domain, dx=1e-3, mode=mode,
                      boundary=boundary, cpml_layers=3, **kwargs)
     if wall == "periodic":

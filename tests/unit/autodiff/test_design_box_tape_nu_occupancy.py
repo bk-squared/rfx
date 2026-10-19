@@ -404,7 +404,7 @@ def test_nu_fence_waveguide_port():
 
     Addendum 5f: transverse PEC lets the design-box fence remain the subject.
     """
-    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX,
+    sim = Simulation(freq_max=2 * F0, domain=(DOMAIN[0], DOMAIN[1], float(DZ_PROFILE.sum())), dx=DX,  # solved length; #1887
                      boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=CPML, dz_profile=DZ_PROFILE)
     # No point source: a waveguide port refuses to share a run with one.

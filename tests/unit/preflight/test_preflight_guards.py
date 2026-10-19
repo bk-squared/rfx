@@ -220,7 +220,7 @@ def _build_wr90_slab_nu_sim(dx_fine):
     dx_profile = smooth_grading(raw, max_ratio=1.3)
 
     sim = Simulation(
-        freq_max=12e9, domain=(float(_np.sum(dx_profile)), a_wg, b_wg),
+        freq_max=12e9, domain=(float(_np.sum(dx_profile)), a_wg, 4 * dx_coarse),  # solved length; #1887
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),
@@ -286,8 +286,8 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
     monitor is present.
     """
     # εr=2, f_max=12 GHz, dx=1mm → λ_eff=17.7mm → 17.7 cells/λ_eff.
-    common = dict(freq_max=12e9, domain=(0.05, 0.02286, 0.01016),
-                  dx=1e-3, cpml_layers=4)
+    common = dict(freq_max=12e9, domain=(0.05, 0.02286, 11 * 1e-3),
+                  dx=1e-3, cpml_layers=4)  # solved length; #1887
 
     # Case A: same resolution, NO S-param — should be silent (17.7 > 15).
     sim_a = Simulation(**common)
@@ -844,7 +844,7 @@ def _bad_sim_probe_in_cpml():
 
 def _bad_sim_no_sources():
     # no_sources advisory
-    return Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="pec")
+    return Simulation(domain=(14 * (299792458.0 / 10e9 / 20.0),) * 3, freq_max=10e9, dx=299792458.0 / 10e9 / 20.0, boundary="pec")  # solved length; #1887
 
 
 def _bad_sim_lossless_q():

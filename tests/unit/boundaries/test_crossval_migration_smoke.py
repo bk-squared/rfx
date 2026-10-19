@@ -164,9 +164,9 @@ def test_crossval_07_inverse_smoke():
     after BoundarySpec migration. This test pins the shim equivalence."""
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.06, 0.02, 0.02),
+        domain=(41 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary=BoundarySpec.uniform("pec"),
-    )
+    )  # solved length; #1887
     sim.add_source((0.01, 0.01, 0.01), "ez")
     sim.add_probe((0.01, 0.01, 0.01), "ez")
     sim.add_probe((0.05, 0.01, 0.01), "ez")

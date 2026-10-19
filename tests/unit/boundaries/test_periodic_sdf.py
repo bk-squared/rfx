@@ -19,7 +19,8 @@ SHIFT = 8
 
 
 def grid_model(periodic=True):
-    return Simulation(20e9, (L, 7.3 * DX, 5.6 * DX), dx=DX, cpml_layers=0,
+    # solved length; #1887
+    return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0,
                       boundary=BoundarySpec(x='periodic' if periodic else 'pec',
                                             y=Boundary(lo='pec', hi='pmc'), z='pec'))
 

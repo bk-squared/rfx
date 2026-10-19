@@ -43,7 +43,7 @@ def test_build_grid_private_method():
     """`sim._build_grid()` stays a bound method returning a Grid."""
     from rfx.api import Simulation
 
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     grid = sim._build_grid()
     # Grid exposes a concrete shape — enough to prove the build ran.
     assert hasattr(grid, "shape")
@@ -61,7 +61,7 @@ def test_assemble_materials_private_method():
     """
     from rfx.api import Simulation
 
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     grid = sim._build_grid()
     result = sim._assemble_materials(grid)
     assert isinstance(result, tuple)

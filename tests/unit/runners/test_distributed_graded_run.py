@@ -21,7 +21,7 @@ def model(case):
                              z=Boundary(lo="cpml", hi="pec"))
                 if absorbing else "pec")
     sim = Simulation(
-        freq_max=15e9, domain=(15.3e-3, 7.7e-3, 8.2e-3), dx=1e-3,
+        freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,  # solved length; #1887
         dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3],
         boundary=boundary, cpml_layers=2 if absorbing else 0,
     )

@@ -33,7 +33,7 @@ from rfx.simulation import make_port_source, make_probe, run as low_level_run
 
 def test_basic_simulation():
     """Minimal simulation: PEC cavity with a source and probe."""
-    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     sim.add_port((0.015, 0.015, 0.015), "ez")
     sim.add_probe((0.02, 0.02, 0.02), "ez")
 
@@ -211,7 +211,7 @@ def test_tfsf_oblique_incidence_through_api():
 
 def test_dft_plane_probe_through_api():
     """High-level API should expose plane DFT monitors."""
-    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     sim.add_port((0.015, 0.015, 0.015), "ez")
     sim.add_dft_plane_probe(
         axis="x",
@@ -1095,7 +1095,7 @@ def test_fluent_api():
 
 def test_checkpoint_through_api():
     """Checkpoint mode works through the high-level API."""
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
@@ -1108,7 +1108,7 @@ def test_checkpoint_through_api():
 
 def test_gradient_through_api():
     """AD gradient flows through the high-level API."""
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
     grid = sim._build_grid()

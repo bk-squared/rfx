@@ -92,7 +92,7 @@ def test_optimize_nan_gradient_warns_and_returns_last_good():
     from rfx.api import Simulation
     from rfx.optimize import optimize, DesignRegion, OptimizeResult
 
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
     region = DesignRegion(

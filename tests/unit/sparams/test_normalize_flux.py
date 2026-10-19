@@ -36,7 +36,7 @@ def _wr90_pec_short_sim():
     """
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.12, 0.04, 0.02),
+        domain=(0.12, 14 * 0.003, 7 * 0.003),
         dx=0.003,
         boundary=BoundarySpec(
             x="cpml",
@@ -44,7 +44,7 @@ def _wr90_pec_short_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=10,
-    )
+    )  # solved length; #1887
     sim.add(Box((0.084, 0, 0), (0.087, 0.04, 0.02)), material="pec")
     freqs = jnp.linspace(5e9, 6.5e9, 6)
     sim.add_waveguide_port(
@@ -62,7 +62,7 @@ def test_normalize_flux_smoke():
     """normalize="flux" runs, shape is (2, 2, n_freqs), entries are finite."""
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.12, 0.04, 0.02),
+        domain=(0.12, 14 * 0.003, 7 * 0.003),
         dx=0.003,
         boundary=BoundarySpec(
             x="cpml",
@@ -70,7 +70,7 @@ def test_normalize_flux_smoke():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )
+    )  # solved length; #1887
     freqs = jnp.linspace(5e9, 6.5e9, 4)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",

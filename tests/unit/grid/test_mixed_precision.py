@@ -113,10 +113,10 @@ class TestSimulationMixedPrecision:
         """Mixed precision simulation completes without NaN."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=100)
         assert result is not None
@@ -137,9 +137,9 @@ class TestSimulationMixedPrecision:
         """
         kwargs = dict(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         n_steps = 50
 
         sim32 = Simulation(**kwargs, precision="float32")
@@ -164,10 +164,10 @@ class TestSimulationMixedPrecision:
         """Probes should work in mixed precision mode."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=50)
@@ -181,10 +181,10 @@ class TestSimulationMixedPrecision:
         """Field arrays in mixed mode should be half the size of float32."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=10)
         st = result.state
@@ -198,9 +198,9 @@ class TestSimulationMixedPrecision:
         """Default precision='float32' should produce float32 fields."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=10)
         assert result.state.ex.dtype == jnp.float32
@@ -208,10 +208,10 @@ class TestSimulationMixedPrecision:
     def test_repr_includes_precision(self):
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )
+        )  # solved length; #1887
         r = repr(sim)
         assert "precision='mixed'" in r
 
@@ -234,8 +234,8 @@ class TestSimulationMixedPrecision:
 
 def _cpml_grid():
     return Simulation(
-        freq_max=5e9, domain=(0.02, 0.02, 0.02), boundary="cpml",
-    )._build_grid()
+        freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="cpml",
+    )._build_grid()  # solved length; #1887
 
 
 class TestCPMLPsiDtype:
@@ -275,9 +275,9 @@ class TestMixedPrecisionCPML:
     @staticmethod
     def _sim(precision, *, boundary="cpml", probe=False):
         sim = Simulation(
-            freq_max=5e9, domain=(0.02, 0.02, 0.02),
+            freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary=boundary, precision=precision,
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez",
                        amplitude_kind="field")
         if probe:
@@ -388,8 +388,8 @@ def test_mixed_precision_refuses_oversized_current_before_stepping(boundary, lan
     from rfx import simulation as kernels
 
     def make_sim(amplitude):
-        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.02),
-                         boundary=boundary, precision="mixed")
+        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
+                         boundary=boundary, precision="mixed")  # solved length; #1887
         with pytest.warns(DeprecationWarning, match="now means 'current'"):
             sim.add_source((0.01, 0.01, 0.01), "ez",
                            waveform=GaussianPulse(f0=5e9, amplitude=amplitude))

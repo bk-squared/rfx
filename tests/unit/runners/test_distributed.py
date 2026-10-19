@@ -147,9 +147,9 @@ class TestDistributedRunner:
         # Lx=0.05 -> nx=12, divisible by 4
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.05, 0.02, 0.02),
+            domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -179,9 +179,9 @@ class TestDistributedRunner:
         # Lx=0.03 -> nx=8, divisible by 4
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.03, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.015, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -197,9 +197,9 @@ class TestDistributedRunner:
         # Lx=0.05 -> nx=12, divisible by 4
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.05, 0.02, 0.02),
+            domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         # Source at center
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         # Two symmetric probes along x
@@ -226,9 +226,9 @@ class TestDistributedRunner:
         # Lx=0.05 -> nx=12, divisible by 2
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.05, 0.02, 0.02),
+            domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.025, 0.01, 0.01), component="ez")
 
@@ -250,9 +250,9 @@ class TestDistributedRunner:
         # Lx=0.03 -> nx=8, divisible by 4
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.03, 0.02, 0.02),
+            domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.015, 0.01, 0.01), component="ez")
 
         devices = jax.devices()[:_N_MULTI]
@@ -264,9 +264,9 @@ class TestDistributedRunner:
         # Lx=0.04 -> nx=10, not divisible by 4 -> padded to 12
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.04, 0.02, 0.02),
+            domain=(9 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.02, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.02, 0.01, 0.01), component="ez")
 
@@ -513,9 +513,9 @@ class TestDistributedLumpedPort:
         """Distributed lumped port should match single-device result."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.08, 0.024, 0.024),
+            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -536,9 +536,9 @@ class TestDistributedLumpedPort:
         """Lumped port in distributed mode should produce non-zero probe signal."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.08, 0.024, 0.024),
+            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -556,9 +556,9 @@ class TestDistributedLumpedPort:
         """Lumped port should also work with 2 devices."""
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.08, 0.024, 0.024),
+            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -586,9 +586,9 @@ class TestDistributedDebye:
 
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.08, 0.024, 0.024),
+            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -608,9 +608,9 @@ class TestDistributedDebye:
 
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.08, 0.024, 0.024),
+            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -627,9 +627,9 @@ class TestDistributedDebye:
 
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.08, 0.024, 0.024),
+            domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -791,9 +791,9 @@ class TestExchangeInterval:
         """exchange_interval=1 should produce identical results to default."""
         sim = Simulation(
             freq_max=3e9,
-            domain=(0.05, 0.02, 0.02),
+            domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )
+        )  # solved length; #1887
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -824,7 +824,7 @@ class TestExchangeInterval:
     def _assert_refused(monkeypatch, entry, interval):
         from rfx.runners import distributed_v2
 
-        sim = Simulation(freq_max=3e9, domain=(0.05, 0.02, 0.02), boundary="pec")
+        sim = Simulation(freq_max=3e9, domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0), boundary="pec")  # solved length; #1887
 
         def unexpected_work(*args, **kwargs):
             pytest.fail("exchange_interval must be checked before preflight or grid setup")

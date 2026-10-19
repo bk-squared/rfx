@@ -229,9 +229,9 @@ def test_both_samplers_accept_traced_coordinates():
 
 def test_periodic_material_image_inherits_the_node_face_band():
     dx = DXS[0]
-    length = 17 * dx
+    length = 17 * dx  # domain uses solved cell counts; #1887
     sim = Simulation(
-        10e9, (length, 7.3 * dx, 5.6 * dx), dx=dx, cpml_layers=0,
+        10e9, (length, 8 * dx, 6 * dx), dx=dx, cpml_layers=0,
         boundary=BoundarySpec(x="periodic", y=Boundary("pec", "pmc"), z="pec"))
     sim.add_material("laminate", eps_r=3.7)
     grid = sim._build_grid()

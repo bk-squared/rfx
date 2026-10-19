@@ -281,9 +281,9 @@ def test_api_snapshot():
     """High-level API should support snapshot parameter."""
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.02, 0.02, 0.02),
+        domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
-    )
+    )  # solved length; #1887
     sim.add_probe((0.01, 0.01, 0.01), "ez")
 
     snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=5)

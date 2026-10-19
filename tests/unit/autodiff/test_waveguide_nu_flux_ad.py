@@ -69,7 +69,7 @@ def _wr90_nu_sim():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, _A_WG, _B_WG),
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),  # solved length; #1887
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),

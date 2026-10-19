@@ -211,7 +211,7 @@ def test_run_series_rlc_byte_identity():
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
     f0 = 1 / (2 * np.pi * np.sqrt(L * C))
-    sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
     sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",

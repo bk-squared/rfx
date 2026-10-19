@@ -89,10 +89,10 @@ def _msl_thru() -> Simulation:
 
 def _wr90() -> Simulation:
     sim = Simulation(
-        freq_max=8e9, domain=(0.06, 0.02286, 0.01016), dx=3e-3,
+        freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=6)
+        cpml_layers=6)  # solved length; #1887
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
         sim.add_waveguide_port(x, direction=d, mode=(1, 0), mode_type="TE",

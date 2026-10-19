@@ -49,9 +49,11 @@ CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW / _DX))
 
 
 def _build_twoport_sim(*, kind: str, left_ref=None, right_ref=None):
+    dx = 0.75e-3 if kind == "dielectric" else (_DX if kind == "empty" else None)
+    n_y, n_z = (54, 27) if kind == "dielectric" else (22, 11)
     sim = Simulation(
         freq_max=max(float(FREQS[-1]), F0),
-        domain=DOMAIN,
+        domain=(DOMAIN[0], n_y * dx, n_z * dx) if dx is not None else DOMAIN, dx=dx,  # solved length; #1887
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=CPML_LAYERS,
     )

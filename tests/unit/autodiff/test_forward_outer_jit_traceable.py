@@ -35,7 +35,7 @@ def _pulse_for_60_steps(sim):
 
 
 def _pec_sim():
-    s = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
+    s = Simulation(freq_max=6e9, domain=(17 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0)), dx=(299792458.0 / 6e9 / 20.0), boundary="pec")  # solved length; #1887
     s.add_source((0.02, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
@@ -87,7 +87,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     actual mask) must still be outer-jit-wrappable and match eager. `_pec_sim`
     has only a PEC *boundary* (separate grid path), which leaves ``pec_mask``
     empty — this exercises the non-trivial fallback branch."""
-    s = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
+    s = Simulation(freq_max=6e9, domain=(17 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0)), dx=(299792458.0 / 6e9 / 20.0), boundary="pec")  # solved length; #1887
     s.add(Box((0.018, 0.006, 0.006), (0.024, 0.014, 0.014)), material="pec")
     s.add_source((0.008, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))

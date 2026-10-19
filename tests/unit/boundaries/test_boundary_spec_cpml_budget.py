@@ -51,6 +51,8 @@ from rfx.core.yee import init_state
 # The reported fixture: 20 mm cube, 5 GHz, five PEC faces + one CPML face.
 _FREQ = 5.0e9
 _CUBE = (0.02, 0.02, 0.02)
+_DOMAIN_DX = 299792458.0 / _FREQ / 20.0
+_SOLVED_CUBE = (7 * _DOMAIN_DX,) * 3  # solved length; #1887
 _CENTRE = (0.01, 0.01, 0.008)
 _PROBE = (0.007, 0.007, 0.006)
 
@@ -60,7 +62,7 @@ def _cube_sim(cpml_layers, *, hi_thickness=None, hi_token="cpml",
     z = Boundary(lo="pec", hi=hi_token,
                  hi_thickness=hi_thickness if hi_token == "cpml" else None)
     sim = Simulation(
-        freq_max=_FREQ, domain=_CUBE, cpml_layers=cpml_layers,
+        freq_max=_FREQ, domain=_SOLVED_CUBE, dx=_DOMAIN_DX, cpml_layers=cpml_layers,
         boundary=BoundarySpec(x="pec", y="pec", z=z),
         precision=precision,
     )
@@ -364,7 +366,7 @@ def _split_pad_sim(budget, lo_thickness, hi_thickness, *, n_steps=120):
         hi_thickness=hi_thickness or None,
     )
     sim = Simulation(
-        freq_max=_FREQ, domain=_CUBE, cpml_layers=budget,
+        freq_max=_FREQ, domain=_SOLVED_CUBE, dx=_DOMAIN_DX, cpml_layers=budget,
         boundary=BoundarySpec(x="pec", y="pec", z=z),
     )
     sim.add_source(_CENTRE, "ez", amplitude_kind="field")
@@ -577,7 +579,7 @@ def test_absorber_budget_advisory_silent_on_a_pec_closed_axis():
     on cv11's three legs and 2x on cv18.
     """
     sim = Simulation(
-        freq_max=_FREQ, domain=_CUBE, cpml_layers=40,
+        freq_max=_FREQ, domain=_SOLVED_CUBE, dx=_DOMAIN_DX, cpml_layers=40,
         boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
                               y="pec", z="pec"),
     )
@@ -617,7 +619,7 @@ def test_preflight_thickness_follows_the_allocated_per_face_layers():
     """
     budget, thickness = 16, 2
     sim = Simulation(
-        freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=budget,
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length; #1887
         boundary=BoundarySpec(
             x="pec", y="pec",
             z=Boundary(lo="pec", hi="cpml", hi_thickness=thickness)),
@@ -632,7 +634,7 @@ def test_preflight_thickness_is_the_budget_without_an_override():
     """Sibling of the test above: no override, no change from before."""
     budget = 16
     sim = Simulation(
-        freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=budget,
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length; #1887
         boundary=BoundarySpec(x="pec", y="pec",
                               z=Boundary(lo="pec", hi="cpml")),
     )
@@ -645,7 +647,7 @@ def test_preflight_thickness_is_the_budget_without_an_override():
 def test_preflight_thickness_is_zero_on_every_reflector_face():
     """PEC / PMC / periodic faces allocate nothing, on either side."""
     sim = Simulation(
-        freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,  # solved length; #1887
         boundary=BoundarySpec(x="pmc", y="pec",
                               z=Boundary(lo="pec", hi="cpml")),
     )
@@ -827,11 +829,11 @@ def test_adi_uniform_boundary_runs_or_refuses_absorber(boundary):
     """Only the uniform PEC case remains executable."""
     if boundary != "pec":
         with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
-            Simulation(freq_max=_FREQ, domain=(0.06, 0.06, 0.06),
+            Simulation(freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  # solved length; #1887
                        cpml_layers=8, boundary=boundary, solver="adi")
         return
     sim = Simulation(
-        freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,  # solved length; #1887
         boundary=boundary, solver="adi",
     )
     sim.add_source((0.03, 0.03, 0.03), "ez", amplitude_kind="field")

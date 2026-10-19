@@ -135,9 +135,9 @@ def test_lumped_port_pec_cavity_s11():
 
 def _pec_cavity_simulation(*, wire):
     """The low-level cavity fixture's geometry and drive through the public API."""
-    grid = Grid(freq_max=5e9, domain=(0.05, 0.05, 0.025), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), cpml_layers=0)  # solved length; #1887
     sim = Simulation(
-        freq_max=5e9, domain=(0.05, 0.05, 0.025), boundary="pec",
+        freq_max=5e9, domain=(17 * grid.dx, 17 * grid.dx, 9 * grid.dx), boundary="pec",  # solved length; #1887
         cpml_layers=0, dx=grid.dx,
     )
     sim.add_port(

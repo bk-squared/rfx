@@ -40,9 +40,11 @@ def _build_waveguide_sim(
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
 
+    dx = (0.75e-3 if obstacle_specs else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
+    n_y, n_z = (54, 27) if dx == 0.75e-3 else (22, 11)
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
-        domain=WAVEGUIDE_DOMAIN,
+        domain=(WAVEGUIDE_DOMAIN[0], n_y * dx, n_z * dx),  # solved length; #1887
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=dx,

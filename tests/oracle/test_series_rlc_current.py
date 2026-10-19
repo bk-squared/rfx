@@ -180,7 +180,7 @@ class TestSeriesRLCCurrent:
         f0 = 1 / (2 * np.pi * np.sqrt(L * C))
         responses = {}
         for topo in ["series", "parallel"]:
-            sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
+            sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
             sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                            waveform=GaussianPulse(f0=f0, bandwidth=0.8))
             sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",
@@ -198,7 +198,7 @@ class TestSeriesRLCCurrent:
         R, C = 50.0, 1e-12
         responses = {}
         for label, c_val in [("r_only", 0.0), ("rc", C)]:
-            sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
+            sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
             sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                            waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
             if c_val > 0:
@@ -222,7 +222,7 @@ class TestSeriesRLCCurrent:
 
     def test_series_rlc_runs_all_components(self):
         """Series RLC with all three components should complete without error."""
-        sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
         sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                        waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",

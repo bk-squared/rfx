@@ -327,7 +327,7 @@ def test_nu_runner_hard_fails_on_kottke_pec():
     """
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.04, 0.04, 0.04),
+        domain=(0.04, 27 * (299792458.0 / 10e9 / 20.0), 0.04), dx=299792458.0 / 10e9 / 20.0,  # solved length; #1887
         dz_profile=[0.002] * 20,
         # No ``conformal=True`` here: on a non-uniform mesh that declaration
         # is refused on its own (conformal_pec) before kottke_pec is reached.
