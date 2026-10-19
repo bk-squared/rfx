@@ -104,6 +104,18 @@ def test_two_port_drive_witnesses_tell_driven_from_passive():
     driven, passive = row['per_drive']
     assert driven['status'] == passive['status'] == 'pass'
     assert not np.array_equal(driven['error_per_bin'], passive['error_per_bin'])
+    # Each entry judges the S it returns: run's S row (and its top level when
+    # that repeats per_drive) is the worst drive, the passive one here;
+    # forward's S row is its driven record (decision C).
+    worst = max((driven, passive), key=lambda drive: drive['db'])
+    assert worst is passive
+    forward_row = next(r for r in forward.settling_witness['runs'] if r.get('route') == 's_channels')
+    for key in ('db', 'error_per_bin', 'share_per_bin'):
+        np.testing.assert_array_equal(row[key], worst[key])
+        np.testing.assert_array_equal(forward_row[key], driven[key])
+        if 'per_drive' in run.settling_witness:
+            np.testing.assert_array_equal(run.settling_witness[key], worst[key])
+    assert row['db'] != forward_row['db']
     witness = deepcopy(run.settling_witness)
     for holder in [witness] + [r for r in witness['runs'] if r.get('route') == 's_channels']:
         if 'per_drive' in holder:
