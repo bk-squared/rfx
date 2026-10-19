@@ -87,7 +87,7 @@ class SlabNTFF:
         # XLA partition-id (#1441); replicate it first, which stays
         # differentiable. The multi-process caller passes an already
         # gathered host array, which needs neither.
-        if isinstance(buffer, jax.Array):
+        if isinstance(buffer, (jax.Array, jax.core.Tracer)):
             buffer = jax.device_put(buffer, NamedSharding(self.mesh, P()))
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
             part = self.unpack(buffer[rank], shapes, sizes)

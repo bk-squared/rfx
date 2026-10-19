@@ -235,15 +235,16 @@ def test_ntff_path_admission(kind):
         assert all(np.isfinite(np.asarray(a)).all() for a in result.ntff_data)
     else:
         sim._dz_profile = np.array([1e-3] * 3 + [0.5e-3] * 8)
-        with pytest.raises(NotImplementedError, match="NTFF|ntff|graded"):
-            if kind == "graded_forward":
-                sim.forward(n_steps=8, distributed=True, devices=jax.devices("cpu")[:2],
-                            skip_preflight=True)
-            elif kind == "graded_run":
-                sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True)
-            else:
-                from rfx.runners.distributed_v2 import run_distributed
+        if kind == "graded_direct":
+            from rfx.runners.distributed_v2 import run_distributed
+            with pytest.raises(NotImplementedError, match="uniform-grid runner"):
                 run_distributed(sim, n_steps=8, devices=jax.devices("cpu")[:2])
+        else:
+            call = sim.forward if kind == "graded_forward" else sim.run
+            result = call(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
+                          **({"distributed": True} if kind == "graded_forward" else {}))
+            assert result.ntff_data is not None and result.ntff_box is not None
+            assert all(np.isfinite(np.asarray(a)).all() for a in result.ntff_data)
 
 
 def test_no_box_does_not_allocate_ntff(monkeypatch):

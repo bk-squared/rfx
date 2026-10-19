@@ -1,4 +1,4 @@
-"""Uniform-only admission and named refusals for unimplemented records."""
+"""Distributed record admission and named refusals for unimplemented records."""
 import jax
 import numpy as np
 import pytest
@@ -8,8 +8,11 @@ from rfx.runners.distributed_v2 import run_distributed
 from tests.unit.runners.test_distributed_record_planes import model
 
 
-def test_global_zero_flux_is_native_only():
+@pytest.mark.parametrize("graded", [False, True])
+def test_global_zero_flux_is_native_only(graded):
     sim, grid, _ = model("pec", 2)
+    if graded:
+        sim._dz_profile = np.full(7, 1e-3)
     assert grid.pad_x_lo == 0
     sim.add_flux_monitor(axis="x", coordinate=0., freqs=[3e9], name="zero")
     result = sim.run(n_steps=4, skip_preflight=True)
@@ -20,23 +23,19 @@ def test_global_zero_flux_is_native_only():
 
 
 @pytest.mark.parametrize("entry,kind", [("run", "plane"), ("forward", "plane"), ("run", "snapshot")])
-def test_graded_refusals_unchanged(entry, kind):
+def test_graded_records_admitted(entry, kind):
+    from tests._multi_device_scene import host_devices
     sim, _, _ = model("pec", 2)
     sim._dz_profile = np.full(7, 1e-3)
-    kwargs = dict(n_steps=4, devices=jax.devices("cpu")[:2], skip_preflight=True)
+    kwargs = dict(n_steps=4, devices=host_devices(2), skip_preflight=True)
     if entry == "forward":
         kwargs["distributed"] = True
     if kind == "plane":
         sim.add_dft_plane_probe(axis="x", coordinate=6e-3, freqs=[3e9])
-        expected = ("add_dft_plane_probe() is not supported on the distributed "
-                    + ("multi-device run() path" if entry == "run" else "non-uniform forward path"))
     else:
         kwargs["snapshot"] = SnapshotSpec(interval=1)
-        expected = "this lane records no field snapshots"
-    with pytest.raises(NotImplementedError) as info:
-        getattr(sim, entry)(**kwargs)
-    assert expected in str(info.value), str(info.value)
-    print(str(info.value))
+    result = getattr(sim, entry)(**kwargs)
+    assert (result.dft_planes if kind == "plane" else result.snapshots)
 
 
 @pytest.mark.parametrize("name", ["record_dft", "dft_time_records", "dft_planes", "flux_monitors", "current_moments"])
@@ -70,7 +69,7 @@ def test_admission_mutations(mutation, monkeypatch, tmp_path):
         namespace = dict(vars(records))
         exec(compile(source, "<allow-global-zero-flux>", "exec"), namespace)
         monkeypatch.setattr(records.SlabRecords, "__init__", namespace["__init__"])
-        run = test_global_zero_flux_is_native_only
+        run = lambda: test_global_zero_flux_is_native_only(False)
     with pytest.raises(pytest.fail.Exception, match="DID NOT RAISE") as failure:
         run()
     (tmp_path / "mutation.txt").write_text(f"{mutation}: {failure.value}\n")

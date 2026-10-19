@@ -30,6 +30,7 @@ def execute_from_materials(
     gather_final_state: bool = False,
     s_param_freqs=None,
     compute_s_params=False,
+    snapshot=None,
 ):
     """Stage and execute the graded distributed solve shared by run/forward.
 
@@ -45,24 +46,8 @@ def execute_from_materials(
     # Defense-in-depth: the distributed-NU runner does not honour
     # stencil_order (both distributed and non-uniform are unsupported).
     self._check_stencil_order_supported(distributed=True)
-    if self._flux_monitors:
-        raise NotImplementedError(
-            "add_flux_monitor() is not supported on the distributed "
-            "non-uniform forward path; the sharded NU scan body does "
-            "not accumulate flux DFTs. Drop flux monitors (use "
-            "add_ntff_box() for far-field observables) or use the "
-            "uniform lane."
-        )
-    if self._dft_planes:
-        raise NotImplementedError(
-            "add_dft_plane_probe() is not supported on the distributed "
-            "non-uniform forward path (issue #579); the sharded NU scan "
-            "body does not accumulate DFT-plane fields. Drop DFT plane "
-            "probes or use the uniform lane."
-        )
-    from rfx.current_moments import refuse_current_moment_monitor
-    refuse_current_moment_monitor(
-        self, "distributed non-uniform forward path")
+    from rfx.runners._distributed_records import refuse_record_options
+    refuse_record_options(self, {})
     import warnings as _w
     from rfx.runners.distributed_nu import (
         build_sharded_nu_grid,
@@ -115,6 +100,12 @@ def execute_from_materials(
 
     # ---- Build the NU grid up front for preflight metrics ----
     grid = self._build_nonuniform_grid()
+    if self._current_moments is not None and any(value is not None for value in
+            (eps_override, sigma_override, pec_mask_override, pec_occupancy_override)):
+        from rfx.current_moments import monitor_for_simulation
+        monitor_for_simulation(self, grid, self._periodic_flags(), overrides={
+            "eps_r": eps_override, "sigma": sigma_override, "pec_mask": pec_mask_override,
+            "pec_occupancy": pec_occupancy_override})
 
     # ---- V3 §M4 distributed-specific preflight (5 checks).  Skipped
     # entirely when the caller requested skip_preflight=True. ----
@@ -279,6 +270,13 @@ def execute_from_materials(
             component=pe.component,
         ))
 
+    from rfx.runners._distributed_records import SlabRecords
+    with jax.ensure_compile_time_eval():
+        records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
+                              sharded_materials.eps_r.dtype, n_steps, snapshot)
+    if records.layouts and sharded_grid.step_kind != "wrapped":
+        raise NotImplementedError("Graded multi-device records require the wrapped step; PMC is not supported")
+
     # ---- Launch the sharded NU runner. ----
     result = run_nonuniform_distributed_pec(
         sharded_grid,
@@ -302,6 +300,7 @@ def execute_from_materials(
         pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         material_drive=tuple(material_drive),
         port_plan=port_plan,
+        slab_records=records,
         prepare_only=port_plan is not None,
     )
     if port_plan is not None:
@@ -334,7 +333,9 @@ def forward_from_materials(
         lumped_port_sparams=result.get('lumped_port_sparams'),
         sparam_time_records=result.get('sparam_time_records'),
         sparam_read_ids=result.get('sparam_read_ids'),
-        dft_planes=result.get('dft_planes'))
+        dft_planes=result.get('dft_planes'),
+        **{key: result.get(key) for key in ('flux_monitors', 'ntff_data', 'ntff_box',
+            'current_moment_data', 'current_moment_monitor')})
 
 
 def dispatch_forward(self, *, plan, _solve_assembly, _call_args, fallback_only=False):

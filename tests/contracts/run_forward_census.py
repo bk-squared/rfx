@@ -294,6 +294,12 @@ def freeze(value, _active=None):
         return observed[0] if len(observed) == 1 else 'UNFROZEN:' + type(value).__name__
     if isinstance(value, Enum):
         return (type(value).__name__, value.name)
+    if isinstance(value, np.dtype):
+        return ('dtype', value.str, freeze(value.descr, _active))
+    if isinstance(value, jax.sharding.Mesh):
+        return ('mesh', tuple(value.axis_names), tuple(value.devices.shape),
+                freeze(value.devices.tolist(), _active),
+                freeze(getattr(value, 'axis_types', None), _active))
     if isinstance(value, jax.Device):
         return ('device', value.platform, value.id)
     if isinstance(value, np.generic):

@@ -10,9 +10,8 @@ def refuse_distributed_options(self, *, subpixel_smoothing=False, **options):
     """Use the same option refusal on imperative and differentiable entries."""
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=True)
-    # One device on a graded mesh is the non-uniform lane, which
-    # carries neither snapshot nor conformal_pec, nor until_decay on
-    # closed boundaries.
+    # Preserve the native-lane remedies for unsupported options. Snapshots
+    # are handled by the distributed record adapter before this helper.
     _one_device = "omit devices= to run on one device"
     _dist_instead = _one_device
     if self._uses_nonuniform_mesh:
@@ -47,15 +46,6 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
                                  "exchange_interval": 1, "skip_preflight": True},
                                  reason=reason, requested_devices=len(devices),
                                  diagnostics=_diagnostics)
-    if self._dft_planes and plan.lane == "run_distributed_nu":
-        raise NotImplementedError(
-            "add_dft_plane_probe() is not supported on the "
-            "distributed multi-device run() path (issue #579); "
-            "rfx.runners.distributed_v2 does not accumulate DFT-plane fields, "
-            "so a registered plane would be silently dropped. Drop "
-            "DFT plane probes or omit devices=... (use a "
-            "single-device run() instead)."
-        )
     from rfx.model.distributed_ports import (
         refuse_unsupported_distributed_features,
     )
@@ -109,7 +99,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
 
     refuse_distributed_options(self, subpixel_smoothing=subpixel_smoothing,
         checkpoint=checkpoint,
-        snapshot=snapshot if plan.lane == "run_distributed_nu" else None,
+        snapshot=None,
         until_decay=until_decay,
         conformal_pec=_dist_conformal,
         **({} if report_every is None else {"report_every": report_every}))
@@ -142,6 +132,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             skip_preflight=skip_preflight,
             gather_final_state=True,
             lane="run_distributed_nu",
+            snapshot=snapshot,
             diagnostics=_diagnostics,
             s_param_freqs=s_param_freqs,
             compute_s_params=compute_s_params,
@@ -160,6 +151,9 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             dt=grid.dt,
             freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
             realized_geometry=geometry_record,
+            **{key: result.get(key) for key in ("dft_planes", "flux_monitors",
+                "ntff_data", "ntff_box", "current_moment_data", "current_moment_monitor",
+                "snapshots", "snapshot_axes")},
         )
     else:
         from rfx.runners.distributed_v2 import run_distributed

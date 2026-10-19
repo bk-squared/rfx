@@ -16,7 +16,7 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 devices, occupancy, checkpoint_every, n_warmup,
                 emit_time_series, gather_final_state, material_drive,
                 debye=None, lorentz=None, cpml=False, cpml_state=None, port_plan=None,
-                prepare_only=False):
+                prepare_only=False, slab_records=None):
     """Prepare local invariants; optionally defer steps until cell inputs die."""
     devices = jax.devices()[:sg.n_devices] if devices is None else devices
     if len(devices) != sg.n_devices:
@@ -40,15 +40,28 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                    port_table=setup.invariants.get('port_table'))
     run = partial(run_prepared, setup, layout, mesh, invariants, carry, waves, advance,
         n_steps=n_steps, n_warmup=n_warmup, checkpoint_every=checkpoint_every,
-        gather_final_state=gather_final_state, emit_time_series=emit_time_series, cpml=cpml)
+        gather_final_state=gather_final_state, emit_time_series=emit_time_series, cpml=cpml,
+        slab_records=slab_records)
     return run if prepare_only else run()
 
 
 def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
                  n_steps, n_warmup, checkpoint_every, gather_final_state,
-                 emit_time_series, cpml):
+                 emit_time_series, cpml, slab_records=None):
     """Run after callers have released the stamped cell inputs (D6)."""
     from rfx.runners import distributed_nu as nu
+    if slab_records is not None and slab_records.layouts:
+        carry = dict(carry, records=slab_records.initial())
+        field_advance = advance
+
+        def advance(carry, xs, invariants, *, ranks):
+            fields = {key: value for key, value in carry.items() if key != "records"}
+            previous = slab_records.prepare(fields['fdtd'], ranks=ranks)
+            final, samples = field_advance(fields, xs, invariants, ranks=ranks)
+            final['records'] = slab_records.update(carry['records'], final['fdtd'],
+                slab_records.grid.dt, xs[0], ranks=ranks, previous=previous)
+            return final, samples
+
     final, records = run_steps(carry, invariants, waves, mesh_ranks(mesh), advance,
         n_steps=n_steps, n_warmup=n_warmup, checkpoint_every=checkpoint_every,
         compile_loop=nu.jax.jit, scan_loop=nu.lax.scan)
@@ -63,6 +76,9 @@ def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
     final = sum_partials(final, mesh, mesh_ranks(mesh))
     port_result = assemble_graded_ports_result(final.get('wire_sparams'),
         setup.step_fn_inv.context.wp_meta, final.get('sparam_time_records', ()), setup.step_fn_inv)
-    return dict(**port_result, time_series=ts if emit_time_series else None, final_state=state,
+    measurements = (slab_records.assemble(final['records'],
+        multi_process=any(d.process_index != jax.process_index() for d in mesh.devices.flat))
+        if 'records' in final else {})
+    return dict(**port_result, **measurements, time_series=ts if emit_time_series else None, final_state=state,
                 final_state_sharded=final['fdtd'], cpml_state_sharded=cpml_state,
                 debye_state_sharded=final.get('debye'), lorentz_state_sharded=final.get('lorentz'))

@@ -199,9 +199,9 @@ def test_carry_contract(feature, graded):
     assert model == oracle, f"carry {feature}, graded={graded}: missing={oracle-model}, extra={model-oracle}"
     assert model_bytes == oracle_bytes
     if feature == "flux" and graded:
-        assert all(text in estimate.warning for text in
-                   ("flux monitors", "graded", "AttributeError", "position_to_index"))
-        assert not estimate.excluded_linear
+        assert estimate.warning is None
+        assert {row["name"] for row in estimate.excluded_linear} == {
+            f"flux_monitors[0][{i}]" for i in range(4)}
         rows = []
         for n in (800, 1600):
             def objective(eps, sigma):

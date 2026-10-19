@@ -498,6 +498,10 @@ _ADMITTED_ON: dict[Row, frozenset] = {
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    ('_dft_planes', 'dft_plane'),
+    ('_flux_monitors', 'flux'),
+    ('_ntff', 'ntff_box'),
+    ('_current_moments', 'block_moments'),
     ('_boundary_spec', 'pmc_face'),
     ('_adi_cfl_factor', ''),
     ('_boundary', 'cpml'),

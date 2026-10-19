@@ -126,16 +126,13 @@ def test_graded_run_empty_probes_and_resolved_steps(two_devices):
 
 # Ports are carried since #1402 step 2 (tests/unit/runners/test_distributed_nu_ports.py).
 @pytest.mark.parametrize("feature, message", [
-    ("ntff", "NTFF box"),
     ("cpml_kappa", "cpml_kappa_max"),
     ("s_params", "compute_s_params"),
 ])
 def test_graded_run_refuses_unimplemented_inputs(feature, message, two_devices):
     sim = model("cpml")
     kwargs = {}
-    if feature == "ntff":
-        sim.add_ntff_box((3e-3, 2e-3, 2e-3), (12e-3, 6e-3, 6e-3), freqs=[5e9])
-    elif feature == "cpml_kappa":
+    if feature == "cpml_kappa":
         sim._cpml_kappa_max = 2.
     else:
         kwargs["compute_s_params"] = True

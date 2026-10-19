@@ -136,7 +136,8 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None, *, periodic=None):
         axis_idx = axis_to_index[pe.axis]
         plane_pos = [0.0, 0.0, 0.0]
         plane_pos[axis_idx] = pe.coordinate
-        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
+        from rfx.measurement.plan import _index
+        grid_index = _index(grid, tuple(plane_pos))[axis_idx]
         freqs_arr = (
             pe.freqs
             if pe.freqs is not None

@@ -570,23 +570,6 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
             f"Remove the refinement, or {single_device_hint}."
         )
 
-    monitors = []
-    if getattr(sim, "_flux_monitors", None) and sim._uses_nonuniform_mesh:
-        monitors.append("add_flux_monitor() (flux monitors)")
-    if getattr(sim, "_ntff", None) is not None and sim._uses_nonuniform_mesh:
-        monitors.append("add_ntff_box() (NTFF box)")
-    if getattr(sim, "_dft_planes", None) and sim._uses_nonuniform_mesh:
-        # The run() dispatch refuses these first with its own message; this
-        # covers a direct call to either runner (issue #579).
-        monitors.append("add_dft_plane_probe() (DFT plane probes)")
-    if monitors:
-        raise NotImplementedError(
-            f"{' / '.join(monitors)} is not supported on the {lane} path; "
-            "the corresponding result.flux_monitors / result.ntff_data / "
-            "result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / "
-            "rfx.runners.distributed.run_distributed result assembly). "
-            f"Remove the flux monitors / NTFF box / DFT plane probes, or {single_device_hint}."
-        )
 
 
 def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,

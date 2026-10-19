@@ -619,7 +619,7 @@ def run_nonuniform_distributed_pec(
     gather_final_state: bool = True,
     material_drive=None,
     port_plan=None,
-    prepare_only=False,
+    prepare_only=False, slab_records=None,
 ) -> dict:
     """Phase 2B/2C/2D sharded NU scan body — hard PEC, ghost exchange,
     optional CPML, and optional Debye/Lorentz dispersion on x-slabs.
@@ -903,7 +903,7 @@ def run_nonuniform_distributed_pec(
             checkpoint_every=checkpoint_every, n_warmup=n_warmup,
             emit_time_series=emit_time_series, gather_final_state=gather_final_state,
             material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state, port_plan=port_plan,
-            prepare_only=prepare_only)
+            prepare_only=prepare_only, slab_records=slab_records)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

@@ -225,6 +225,22 @@ jobs:
           tests/unit/runners/test_distributed_graded_derivatives_parity.py
           tests/unit/runners/test_distributed_uniform_directivity_parity.py
 
+      - name: Run three-device graded record cases
+        if: matrix.group == 1
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: |
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_planes.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_flux.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_snapshots.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_ntff.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_moments.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_gradient.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_memory.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_poles.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_one_device.py
+
       - name: Shard time against the job limit
         if: always()
         # Tests are added daily: requiring zero unpriced tests would turn the lane

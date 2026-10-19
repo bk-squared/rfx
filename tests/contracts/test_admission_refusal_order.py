@@ -33,12 +33,16 @@ def test_distributed_nu_entries_share_runner_carriers():
     assert admission.ADMITS['run_distributed_nu'] == admission._DISTRIBUTED_NU_ROWS
 
 
-@pytest.mark.parametrize('row', (
-    ('_ntff', 'ntff_box'), ('_cpml_kappa_max', 'kappa'),
+@pytest.mark.parametrize('row,graded', (
+    (('_ntff', 'ntff_box'), True),
+    (('_dft_planes', 'dft_plane'), True),
+    (('_flux_monitors', 'flux'), True),
+    (('_current_moments', 'block_moments'), True),
+    (('_cpml_kappa_max', 'kappa'), False),
 ))
-def test_uniform_distributed_carriers_do_not_leak_to_graded(row):
+def test_distributed_carriers_match_graded_support(row, graded):
     assert row in admission.ADMITS['run_distributed']
-    assert row not in admission.ADMITS['run_distributed_nu']
+    assert (row in admission.ADMITS['run_distributed_nu']) is graded
 
 
 @pytest.mark.parametrize('lane', ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu'))

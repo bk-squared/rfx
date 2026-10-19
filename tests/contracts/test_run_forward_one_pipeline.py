@@ -30,6 +30,11 @@ EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
 ASSEMBLY_ROWS = (
+    ('O-cm', 'multi-device-graded'),
+    ('O-dft', 'multi-device-graded'),
+    ('O-flux', 'multi-device-graded'),
+    ('O-ntff', 'multi-device-graded'),
+
     ('B-asym', 'graded'),
     ('B-asym', 'multi-device-graded'),
     ('B-asym', 'uniform'),
@@ -124,6 +129,11 @@ ASSEMBLY_ROWS = (
 )
 
 FIELD_ROWS = (
+    ('O-cm', 'multi-device-graded'),
+    ('O-dft', 'multi-device-graded'),
+    ('O-flux', 'multi-device-graded'),
+    ('O-ntff', 'multi-device-graded'),
+
     ('B-asym', 'graded'),
     ('B-asym', 'multi-device-graded'),
     ('B-asym', 'multi-device-uniform'),
@@ -242,6 +252,11 @@ FIELD_ROWS = (
 )
 
 ADMISSION_ROWS = (
+    ('O-cm', 'multi-device-graded'),
+    ('O-dft', 'multi-device-graded'),
+    ('O-flux', 'multi-device-graded'),
+    ('O-ntff', 'multi-device-graded'),
+
     ('B-asym', 'multi-device-uniform'),
     ('B-closed', 'multi-device-uniform'),
     ('B-cpml', 'multi-device-uniform'),
@@ -291,10 +306,6 @@ BOTH_REFUSE_ROWS = (
     ('B-upml', 'multi-device-uniform'),
     ('C-smooth', 'multi-device-graded'),
     ('C-smooth', 'multi-device-uniform'),
-    ('O-cm', 'multi-device-graded'),
-    ('O-dft', 'multi-device-graded'),
-    ('O-flux', 'multi-device-graded'),
-    ('O-ntff', 'multi-device-graded'),
     ('P-coax', 'graded'),
     ('P-coax', 'multi-device-graded'),
     ('P-coax', 'multi-device-uniform'),

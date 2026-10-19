@@ -1,4 +1,4 @@
-"""Owned records at the uniform distributed step's sampling slot.
+"""Owned records at the uniform and graded distributed sampling slots.
 
 Ranks are data, and assembly replicates before indexing by rank (#1441).
 Only placement is performed for cell records; moment pairs are summed once.
@@ -17,16 +17,13 @@ from rfx.measurement import accumulators
 
 
 def refuse_record_options(sim, options):
-    if sim._uses_nonuniform_mesh:
-        from rfx.current_moments import refuse_current_moment_monitor
-        refuse_current_moment_monitor(sim, "distributed (v2) runner")
     names = [name for name in ("record_dft", "dft_time_records", "dft_planes",
                                "flux_monitors", "current_moments")
              if options.get(name) is not None and options.get(name) is not False]
     if sim._dft_planes and getattr(sim, "_internal_probe_indices", ()):
         names.append("dft_time_records (record_dft from _internal_probe_indices)")
     if names:
-        raise NotImplementedError(f"{', '.join(names)} is not supported on the uniform distributed record path")
+        raise NotImplementedError(f"{', '.join(names)} is not supported on the distributed record path")
 
 
 def _field_specs(state):
@@ -72,7 +69,7 @@ class Packed:
 
     def replicated(self, buffer):
         return (jax.device_put(buffer, NamedSharding(self.mesh, P()))
-                if isinstance(buffer, jax.Array) else buffer)
+                if isinstance(buffer, (jax.Array, jax.core.Tracer)) else buffer)
 
 
 def _cut(axis, index, region, start, end, nx_per):
@@ -89,8 +86,9 @@ def _cut(axis, index, region, start, end, nx_per):
 
 
 class PlaneRecords(Packed):
-    def __init__(self, mesh, templates, shape, nx_per, *, flux=False):
+    def __init__(self, mesh, templates, shape, nx_per, *, flux=False, window_from_state=True):
         self.templates, self.flux = templates, flux
+        self.window_from_state = window_from_state
         metadata = (accumulators.flux_metadata(templates, window=True) if flux
                     else accumulators.plane_metadata(templates))
         self.parts, shapes = [], []
@@ -137,7 +135,7 @@ class PlaneRecords(Packed):
                 if self.flux:
                     grouped = [tuple(arrays[i:i + 4]) for i in range(0, len(arrays), 4)]
                     values = accumulators.flux(fields, grouped, meta, dt, n,
-                                               window_step=fields.step)
+                                               window_step=fields.step if self.window_from_state else None)
                     arrays = [a for group in values for a in group]
                 else:
                     arrays, _ = accumulators.planes(fields, arrays, meta, dt, n)
@@ -301,11 +299,12 @@ class SlabRecords:
         planes = _host_arrays(build_planes(sim, grid, n_steps))
         flux = _host_arrays(build_flux_monitor_cfgs(sim, grid, n_steps))
         if any(m.axis == 0 and m.index == 0 for m in flux):
-            raise NotImplementedError("x-normal flux at global x index 0 is not supported on the uniform distributed path; use one device")
+            raise NotImplementedError("x-normal flux at global x index 0 is not supported on the distributed path; use one device")
         if planes:
             self.layouts["planes"] = PlaneRecords(mesh, planes, grid.shape, nx_per)
         if flux:
-            self.layouts["flux"] = PlaneRecords(mesh, flux, grid.shape, nx_per, flux=True)
+            self.layouts["flux"] = PlaneRecords(mesh, flux, grid.shape, nx_per, flux=True,
+                window_from_state=not sim._uses_nonuniform_mesh)
         self.monitor = _host_arrays(monitor_for_simulation(sim, grid, sim._periodic_flags()))
         if self.monitor is not None:
             self.layouts["moments"] = MomentRecords(mesh, self.monitor, nx_per, field_dtype)

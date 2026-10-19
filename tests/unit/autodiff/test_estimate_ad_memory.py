@@ -1247,7 +1247,7 @@ def test_checkpoint_every_none_leaves_segmented_null():
 
 
 @pytest.mark.parametrize("box,budget", ((False, .006), (True, 1e-6)))
-def test_segmented_plan_preserves_only_carry_warnings(box, budget):
+def test_segmented_plan_clears_resolved_graded_flux_warning(box, budget):
     sim = _graded_uniform_sim()
     sim.add_flux_monitor(axis="x", coordinate=.005, freqs=np.array([5e9]))
     options = dict(design_box=((.001,) * 3, (.003,) * 3)) if box else {}
@@ -1258,12 +1258,10 @@ def test_segmented_plan_preserves_only_carry_warnings(box, budget):
     plan = sim.plan_ad_memory(120, available_memory_gb=budget, **options)
     assert plan.checkpoint_mode == "checkpoint_every"
     assert plan.checkpoint is True
-    for text in ("flux monitors", "graded", "AttributeError", "position_to_index"):
-        assert text in plan.selected_estimate.warning
-    assert "exceeds 85%" not in plan.selected_estimate.warning
-    assert "box tape is a bound" not in plan.selected_estimate.warning
-    assert plan.selected_estimate.warning == " ".join(plan.selected_estimate.carry_warnings)
-    assert plan.selected_estimate.carry_warnings == full.carry_warnings
+    assert plan.selected_estimate.warning is None
+    assert plan.selected_estimate.carry_warnings == full.carry_warnings == ()
+    assert {row["name"] for row in plan.selected_estimate.excluded_linear} == {
+        f"flux_monitors[0][{i}]" for i in range(4)}
 
 
 def test_u_shaped_in_chunk_with_minimum_near_balanced_size():

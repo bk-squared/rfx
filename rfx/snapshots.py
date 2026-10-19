@@ -44,9 +44,9 @@ Times
     ``int(state.step)`` steps; a snapshot frame is the state after the step
     count in :attr:`SnapshotAxes.steps`.
 
-Uniform-grid runs, including multi-device runs, record snapshots. The graded
-multi-device run refuses snapshots. Non-uniform and subgridded lanes do not
-record snapshots, and ADI refuses them.
+Uniform-grid runs, including multi-device runs, record snapshots. Graded
+multi-device runs also record snapshots. Single-device non-uniform, subgridded
+and ADI lanes do not record snapshots.
 """
 
 from __future__ import annotations
@@ -146,15 +146,13 @@ def _check_component(component) -> str:
     return component
 
 
-def _check_uniform_grid(grid) -> None:
+def _check_snapshot_grid(grid) -> None:
     from rfx.grid import Grid
+    from rfx.nonuniform import NonUniformGrid
 
-    if not isinstance(grid, Grid):
+    if not isinstance(grid, (Grid, NonUniformGrid)):
         raise NotImplementedError(
-            f"snapshot sample positions are defined for a uniform rfx.Grid "
-            f"only, got {type(grid).__name__}. Uniform multi-device runs record "
-            f"field snapshots; graded multi-device runs refuse them. "
-            f"Non-uniform and subgridded lanes do not record field snapshots.")
+            f"snapshot sample positions require Grid or NonUniformGrid, got {type(grid).__name__}")
 
 
 def validate_snapshot_spec(snapshot) -> int:
@@ -205,18 +203,20 @@ def field_sample_coords(grid, component: str) -> dict[str, np.ndarray]:
     """Coordinates in metres of every sample of one full field array.
 
     For the ``(nx, ny, nz)`` arrays of ``Result.state`` and of a full-field
-    snapshot on a uniform ``grid``: ``{"x": (nx,), "y": (ny,), "z": (nz,)}``,
+    snapshot on a uniform or graded ``grid``: ``{"x": (nx,), "y": (ny,), "z": (nz,)}``,
     float64, in the model frame, CPML cells included (see the module
     docstring for the layout). The field ``F[i, j, k]`` of ``component`` sits
     at ``(x[i], y[j], z[k])``.
 
     In 2-D mode the z axis holds one sample and its coordinate is nominal.
     """
-    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid, coords_from_nonuniform_grid
+    from rfx.nonuniform import NonUniformGrid
 
     comp = _check_component(component)
-    _check_uniform_grid(grid)
-    nodes = coords_from_uniform_grid(grid)
+    _check_snapshot_grid(grid)
+    nodes = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+             else coords_from_uniform_grid(grid))
     out = {}
     for ax, name in enumerate(_AXIS_NAMES):
         node = np.array((nodes.x, nodes.y, nodes.z)[ax], dtype=np.float64)
@@ -232,7 +232,7 @@ def snapshot_axes(grid, snapshot, n_steps: int, *,
                   dt: float | None = None) -> dict[str, SnapshotAxes]:
     """Positions and times of the frames a run with ``snapshot`` records.
 
-    Needs no run: ``grid`` is the uniform grid the run steps on
+    Needs no run: ``grid`` is the grid the run steps on
     (``sim._build_grid()``, or ``result.grid`` afterwards), ``snapshot`` the
     ``SnapshotSpec`` and ``n_steps`` the number of time steps. ``dt`` is the
     run's time step; it defaults to ``grid.dt``, which is the step of every
@@ -246,7 +246,7 @@ def snapshot_axes(grid, snapshot, n_steps: int, *,
     (``slice_axis is None``).
     """
     interval = validate_snapshot_spec(snapshot)
-    _check_uniform_grid(grid)
+    _check_snapshot_grid(grid)
     n_steps = int(n_steps)
     if n_steps < 0:
         raise ValueError(f"n_steps must be >= 0, got {n_steps}")

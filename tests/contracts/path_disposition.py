@@ -936,13 +936,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("dft_plane_unvalidated"),
         run_adi=_adi("DFT planes", "does not support DFT plane probes"),
-        run_distributed=carries("uniform owned plane records; graded stays refused"),
-        run_distributed_nu=refuses("graded DFT planes remain refused",
-                                  raises="add_dft_plane_probe() is not supported on the distributed multi-device"),
+        run_distributed=carries("uniform owned plane records"),
+        run_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("DFT planes refused (#579)",
-                                   raises="add_dft_plane_probe() is not supported on the distributed non-uniform"),
+        fwd_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_adi=_adi("DFT planes", "does not support DFT plane probes"),
     )},
     "_flux_monitors": {"flux": lanes(
@@ -950,13 +948,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=admission("a flux monitor", RUN_SG, "result.flux_monitors came back None (#1313)"),
         run_adi=admission("a flux monitor", RUN_ADI, "result.flux_monitors came back None (#1313)"),
-        run_distributed=carries("uniform owned flux records; graded stays refused"),
-        run_distributed_nu=refuses("graded flux monitors remain refused",
-                                  raises="add_flux_monitor() (flux monitors)"),
+        run_distributed=carries("uniform owned flux records"),
+        run_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("flux monitors refused",
-                                   raises="add_flux_monitor() is not supported on the distributed non-uniform"),
+        fwd_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_adi=admission("a flux monitor", FWD_ADI, "forward() returned flux_monitors=None"),
     )},
     "_ntff": {"ntff_box": lanes(
@@ -965,10 +961,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=refuses("its x and y faces are always PEC (only a z lid may absorb)",
                                raises="an NTFF box radiates its surface currents into free space"),
         run_adi=_adi("NTFF", "does not support NTFF accumulation"),
-        run_distributed=carries("uniform mesh; owner-partitioned surface record; graded run refuses NTFF (#1461)"),
+        run_distributed=carries("uniform mesh; owner-partitioned surface record"),
+        run_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=admission("an NTFF box", FWD_DNU, "ntff_data came back None (#1313)"),
+        fwd_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_adi=_adi("NTFF", "does not support NTFF accumulation"),
     )},
     # Checked in a CPML box: the monitor refuses PEC domain faces on every lane.
@@ -979,12 +976,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                raises="add_current_moment_monitor() is not supported on the subgridded lane"),
         run_adi=refuses("the ADI kernel does not accumulate them",
                         raises="add_current_moment_monitor() is not supported on the ADI lane"),
-        run_distributed=carries("uniform owned current moments; graded stays refused"),
+        run_distributed=carries("uniform owned current moments"),
+        run_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses(
-            "the distributed graded kernel does not accumulate them",
-            raises="add_current_moment_monitor() is not supported on the distributed non-uniform"),
+        fwd_distributed_nu=carries("graded owned records through SlabRecords"),
         fwd_adi=refuses("the ADI kernel does not accumulate them",
                         raises="add_current_moment_monitor() is not supported on the ADI lane"),
     )},
@@ -1694,8 +1690,6 @@ for _attr, _feature in (
     TABLE[_attr][_feature]["run_distributed_nu"] = TABLE[_attr][_feature]["run_distributed"]
 TABLE["_cpml_kappa_max"]["kappa"]["run_distributed_nu"] = admission(
     "cpml_kappa_max != 1", "graded multi-device run(devices=...)", "the NU runner has no kappa carrier")
-TABLE["_ntff"]["ntff_box"]["run_distributed_nu"] = refuses(
-    "the NU runner has no NTFF accumulation", raises="add_ntff_box() (NTFF box) is not supported")
 TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = falls_back(
     "run_nonuniform", "single-device graded run with the same arguments and memory Diagnostic")
 TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = falls_back(
