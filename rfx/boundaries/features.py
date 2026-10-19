@@ -39,17 +39,17 @@ def _guide_axes(sim, extra=""):
 
 
 def full_aperture(sim, entry, grid):
-    """Compare the production port's snapped node bounds with the cross section."""
+    """Recognize declared full ranges before comparing snapped interior bounds."""
     for index, axis in enumerate("xyz"):
         if axis == entry.direction[1]:
             continue
         requested = getattr(entry, f"{axis}_range")
+        if requested is None or (requested[0] <= 1e-9
+                                  and requested[1] >= sim._domain[index] - 1e-9):
+            continue
         if sim._uses_nonuniform_mesh:
             from rfx.runners.nonuniform import _range_to_slice_nu
             span, _ = _range_to_slice_nu(grid, axis, requested)
-        elif requested is None:
-            pad = getattr(grid, f"pad_{axis}_lo")
-            span = (pad, grid.shape[index] - pad)
         else:
             # Like _range_to_slice, position_to_index retains the input
             # scalar division dtype and uses nearest_uniform_index.
@@ -123,13 +123,10 @@ def build_grid(sim, *, extra_waveguide_axes=""):
         pmc_faces=sim._boundary_spec.pmc_faces(),
         face_layers=sim._resolve_face_layers(),
         conformal_faces=sim._boundary_spec.conformal_faces())
-    # Resolve full-aperture guide defaults before count/fitting. This first
-    # lattice allocates no fields; periodic validation follows the fit below.
-    preview = _record_defaults(sim, Grid(**kwargs, dx=dx))
     depths = resolve_face_depths(
         budget=sim._cpml_layers, absorbing_axes=kwargs["cpml_axes"],
-        pec_faces={f.name for f in preview.boundary_depths if f.kind == Kind.PEC},
-        pmc_faces={f.name for f in preview.boundary_depths if f.kind == Kind.PMC},
+        pec_faces=kwargs["pec_faces"],
+        pmc_faces=kwargs["pmc_faces"],
         periodic_axes=periodic, mode=sim._mode, face_layers=kwargs["face_layers"])
     kinds = axis_kinds(depths)
     physical = periodic.replace("z", "") if sim._mode.startswith("2d") else periodic
@@ -138,10 +135,8 @@ def build_grid(sim, *, extra_waveguide_axes=""):
         wall_axes="".join(a for a in "xyz" if kinds[a] == "wall"
                           and not (a == "z" and sim._mode.startswith("2d"))))
     grid = Grid(**kwargs, dx=dx, periodic_axes=periodic, boundary_depths=depths)
-    if hasattr(preview, "_waveguide_admission"):
-        grid._waveguide_admission = preview._waveguide_admission
     judge_wall_axes(sim, grid)
-    return grid
+    return _record_defaults(sim, grid)
 
 
 def judge_wall_axes(sim, grid, *, boundary_depths=None):
@@ -196,7 +191,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
                 if key in warned:
                     continue
                 warnings.warn(PreflightWarning(
-                    text + "; set snap='declared' to accept.",
+                    text + "; accepted with snap='declared'.",
                     code="wall_axis_off_node", loc=axis, source="judge_wall_axes"),
                     stacklevel=3)
                 warned.add(key)

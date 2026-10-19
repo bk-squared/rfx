@@ -686,22 +686,12 @@ def _wall_sheet(mesh="uniform", height=2.1, extent=20.0, *, snap="strict", z="pe
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("snap", ["strict", "declared"])
 def test_wall_snap_verdict_before_runner(monkeypatch, entry, snap):
-    # ceil(5.5/1) = 6: lid 5.5 -> 6, sheet 2 -> 2.
-    # Drawn 5.5-2 = 3.5 mm; solved 6-2 = 4 mm; 4/3.5-1 = +14.29%.
-    # The strict id now witnesses the earlier domain refusal; declared still
-    # exercises the sheet-spacing warning and reaches the runner.
-    sim = _wall_sheet(height=2, extent=5.5, snap="declared")
-    assert_declared_wall_warning(sim)
-    if snap == "strict":
-        sim._snap = "strict"
-        calls = _stub_runners(monkeypatch)
-        with pytest.raises(ValueError, match="wall axis 'z'"):
-            getattr(sim, entry)(n_steps=1)
-        assert not calls
-        return
+    # 5.6 / .4 = 14 cells: the lid is on-node. Sheet 2.1 -> 2.0 mm.
+    # Floor gap: 2 / 2.1 - 1 = -4.76%; lid gap: 3.6 / 3.5 - 1 = +2.86%.
+    sim = _wall_sheet(height=2.1, extent=5.6, dx=.4 * MM, snap=snap)
     message = _assert_review_verdict(monkeypatch, sim, entry, snap,
-                                    "drawn spacing 3.5mm, solved spacing 4mm (+14.29%)")
-    assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
+                                    "drawn spacing 3.5mm, solved spacing 3.6mm (+2.86%)")
+    assert "domain wall z_hi (electric) plane at 5.6mm (drawn 5.6mm)" in message
     assert "divides the heights and the domain extent" in message
 
 

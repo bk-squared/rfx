@@ -167,11 +167,16 @@ def test_periodic_and_wall_fit_share_one_search():
     assert grid.shape == (12, 10, 8)
 
 
-@pytest.mark.parametrize('entry', [
-    'run', 'forward', 'compute_waveguide_s_matrix', 'compute_mixed_s_matrix',
-    'compute_msl_s_matrix', 'compute_lumped_wire_s_matrix_via_scan',
+@pytest.mark.parametrize('mesh,entry', [
+    (mesh, entry) for mesh, entries in [
+        ('uniform', ['run', 'forward', 'compute_waveguide_s_matrix',
+                     'compute_mixed_s_matrix', 'compute_msl_s_matrix',
+                     'compute_lumped_wire_s_matrix_via_scan']),
+        ('graded', ['run', 'forward', 'compute_waveguide_s_matrix']),
+    ] for entry in entries
 ])
-def test_simulation_entry_refuses_wr90_before_stepping(entry, monkeypatch):
+@pytest.mark.parametrize('explicit_ranges', [False, True])
+def test_simulation_entry_refuses_wr90_before_stepping(entry, explicit_ranges, mesh, monkeypatch):
     """Every drive entry must reach the common wall judgement before stepping."""
     import jax
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
@@ -188,11 +193,20 @@ def test_simulation_entry_refuses_wr90_before_stepping(entry, monkeypatch):
     monkeypatch.setattr(uniform, 'make_uniform_step', unexpected_step)
     monkeypatch.setattr(graded, 'make_graded_step', unexpected_step)
     monkeypatch.setattr(jax.lax, 'scan', unexpected_step)
-    sim = model(.0015)
+    sim = model(.0015, graded=mesh == 'graded')
+    if explicit_ranges and entry in ('run', 'forward', 'compute_waveguide_s_matrix'):
+        # Uniform guide allocation leaves transverse absorber faces at depth 0.
+        if mesh == 'uniform':
+            sim = Simulation(299792458.0 / .0015 / 20, (.060, .02286, .01016),
+                             dx=.0015, cpml_layers=8)
+        for position, direction in ((.015, '+x'), (.045, '-x')):
+            sim.add_waveguide_port(position, direction=direction, mode=(1, 0),
+                                   freqs=np.array([10e9]), f0=10e9,
+                                   y_range=(0., .02286), z_range=(0., .01016))
     freqs = np.array([10e9])
     if entry in ('run', 'forward'):
         sim.add_source((.015, .0105, .0045), component='ez', amplitude_kind='current')
-    elif entry == 'compute_waveguide_s_matrix':
+    elif entry == 'compute_waveguide_s_matrix' and not explicit_ranges:
         sim.add_waveguide_port(.015, direction='+x', mode=(1, 0), freqs=freqs, f0=10e9)
         sim.add_waveguide_port(.045, direction='-x', mode=(1, 0), freqs=freqs, f0=10e9)
     else:
@@ -214,5 +228,64 @@ def test_simulation_entry_refuses_wr90_before_stepping(entry, monkeypatch):
         else:
             sim.compute_waveguide_s_matrix(n_steps=1, normalize=True)
     assert "axis 'y'" in str(caught.value)
-    assert f"nearest dx={.02286 / 15 * 1e3:.12g} mm" in str(caught.value)
+    # 22.86 mm / 15 cells = 1.524 mm.
+    assert "nearest dx=1.524 mm" in str(caught.value)
     assert not stepping
+
+
+@pytest.mark.parametrize('entry', [
+    'run', 'run-skip-preflight', 'forward', 'compute_waveguide_s_matrix',
+])
+def test_graded_declared_full_aperture_refuses(entry, monkeypatch):
+    import jax
+
+    def unexpected_step(*args, **kwargs):
+        pytest.fail('time stepping reached before guide admission')
+
+    monkeypatch.setattr(jax.lax, 'scan', unexpected_step)
+    sim = Simulation(12e9, (.05, .02286, .01016), dx=.002, cpml_layers=8,
+                     boundary='cpml',
+                     dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
+    freqs = np.array([10e9])
+    for position, direction in ((.01, '+x'), (.04, '-x')):
+        sim.add_waveguide_port(position, direction=direction, mode=(1, 0),
+                               freqs=freqs, f0=10e9,
+                               y_range=(0., .02286), z_range=(0., .01016))
+    with pytest.raises(ValueError, match='full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo'):
+        if entry == 'run-skip-preflight':
+            sim.run(n_steps=1, skip_preflight=True)
+        elif entry in ('run', 'forward'):
+            getattr(sim, entry)(n_steps=1)
+        else:
+            sim.compute_waveguide_s_matrix(n_steps=1, normalize=True)
+
+
+def test_zero_depth_absorbers_round_and_are_judged():
+    # 10.4 / 1 = 10.4 cells -> 10 cells -> 10 mm on each wall axis.
+    sim = Simulation(10e9, (.0104, .0104, .0104), dx=.001, cpml_layers=0)
+    with pytest.raises(ValueError, match="wall axis 'x'.*solved 10 mm"):
+        sim._build_realized_grid()
+    sim._snap = 'declared'
+    with pytest.warns(UserWarning) as caught:
+        grid = sim._build_realized_grid()
+    assert grid.shape == (11, 11, 11)
+    assert spans(grid) == pytest.approx((.010, .010, .010), abs=1e-12)
+    assert [w.message.loc for w in caught] == ['x', 'y', 'z']
+    assert all("set snap='declared' to accept" not in str(w.message) for w in caught)
+
+
+def test_guide_admission_records_only_the_final_fitted_grid(monkeypatch):
+    from rfx.boundaries import features
+
+    seen = []
+    record = features._record_defaults
+
+    def observe(sim, grid):
+        seen.append(grid)
+        return record(sim, grid)
+
+    monkeypatch.setattr(features, '_record_defaults', observe)
+    with pytest.warns(UserWarning, match='snapped'):
+        grid = model(None, guide=True)._build_realized_grid()
+    assert seen == [grid]
+    assert hasattr(grid, '_waveguide_admission')
