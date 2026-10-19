@@ -153,7 +153,7 @@ def build_tm111_sim(a: float, b: float, dz_prof, dx_boundary, b_solved=None):
 
 
 def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000, b_solved=None) -> float:
-    sim, f = build_tm111_sim(a, b, dz_prof, dx_boundary, b_solved)
+    sim, f = build_tm111_sim(a, b, dz_prof, dx_boundary, b_solved=b_solved)
     res = sim.run(n_steps=steps, skip_preflight=True)
     modes = sorted((m.freq for m in res.find_resonances(
         freq_range=(0.6 * f, 1.5 * f))), key=lambda v: abs(v - f))
