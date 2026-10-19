@@ -138,10 +138,11 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None, *, periodic=None):
         plane_pos[axis_idx] = pe.coordinate
         from rfx.measurement.plan import _index
         grid_index = _index(grid, tuple(plane_pos))[axis_idx]
+        from rfx.measurement import default_frequency_grid
         freqs_arr = (
             pe.freqs
             if pe.freqs is not None
-            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+            else default_frequency_grid(sim._freq_max, pe.n_freqs)
         )
         # Compute tangential index bounds from size (finite flux region)
         tangential_axes = [a for a in range(3) if a != axis_idx]

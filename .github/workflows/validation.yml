@@ -231,6 +231,7 @@ jobs:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
         run: |
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_default_frequencies.py
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_planes.py
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_flux.py
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_snapshots.py

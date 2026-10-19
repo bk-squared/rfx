@@ -6,7 +6,10 @@ E_prev reads the saved state, not the current field. Geometry weights are the
 realized monitor's volume/displacement weights derived from grid.cells.
 """
 from itertools import product
+from functools import lru_cache
+from contextlib import nullcontext
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -19,7 +22,27 @@ def default_frequency_grid(freq_max, n_freqs, *, host=False):
     ``host=True`` gives the float64 numpy grid the graded run's S default has
     always used; it differs from the float32 device grid by up to 2 ULP.
     """
-    return (np if host else jnp).linspace(freq_max / 10, freq_max, n_freqs)
+    if host:
+        return np.linspace(freq_max / 10, freq_max, n_freqs)
+    return jnp.asarray(_eager_frequency_grid(float(freq_max), int(n_freqs), jax.config.x64_enabled))
+
+
+@lru_cache(maxsize=128)
+def _eager_frequency_grid(freq_max, n_freqs, x64):
+    """Host constant with eager linspace's arithmetic, independent of outer traces.
+
+    Reset the outer trace and its constant-folding switch while evaluating
+    linspace, then publish the same concrete bins in every caller.
+    Cache by precision as well as bounds/count; never cache a tracer.
+    """
+    from rfx.core.jax_utils import compile_time_switch
+    with jax.core.eval_context():
+        switch = compile_time_switch()
+        with switch(False) if switch is not None else nullcontext():
+            start, stop = freq_max / 10, freq_max
+            result = np.asarray(jnp.linspace(start, stop, n_freqs))
+    result.setflags(write=False)
+    return result
 
 
 def monitor_owners(sim, grid):

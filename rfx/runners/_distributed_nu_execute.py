@@ -10,6 +10,16 @@ from rfx.model.overrides import apply_material_overrides
 from rfx._diagnostic_transport import merge_diagnostics
 from rfx.api._spec import ForwardResult
 
+
+def _require_wrapped_records(records, step_kind):
+    if records.layouts and step_kind != "wrapped":
+        labels = {"planes": "DFT planes", "flux": "flux monitors", "ntff": "NTFF",
+                  "moments": "current moments", "snapshots": "field snapshots"}
+        names = ", ".join(labels[kind] for kind in records.layouts)
+        raise NotImplementedError(
+            f"Graded multi-device {names} require the wrapped step; PMC is not supported")
+
+
 def execute_from_materials(
     self,
     *, lane: str = "fwd_distributed_nu", subpixel_smoothing=False,
@@ -274,8 +284,7 @@ def execute_from_materials(
     with jax.ensure_compile_time_eval():
         records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
                               sharded_materials.eps_r.dtype, n_steps, snapshot)
-    if records.layouts and sharded_grid.step_kind != "wrapped":
-        raise NotImplementedError("Graded multi-device records require the wrapped step; PMC is not supported")
+    _require_wrapped_records(records, sharded_grid.step_kind)
 
     # ---- Launch the sharded NU runner. ----
     result = run_nonuniform_distributed_pec(

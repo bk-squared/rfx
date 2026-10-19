@@ -8,9 +8,6 @@ import numpy as np
 from tests._multi_device_scene import host_devices
 from tests.unit.runners.test_distributed_graded_run import model as base_model
 
-REPORT = Path(__file__).resolve().parents[4] / '_scratch/distributed/step4g'
-
-
 def model(boundary, n_devices):
     host_devices(n_devices)
     sim = base_model(boundary)
@@ -54,9 +51,9 @@ def with_bars(values, rule):
 
 def record(kind, metadata, values):
     report = dict(kind=kind, test=os.environ.get("PYTEST_CURRENT_TEST"), **metadata, values=values)
-    print(json.dumps(report))
-    if REPORT.exists():
-        with (REPORT / 'measurements.jsonl').open('a') as f:
+    target = os.environ.get('RFX_GRADED_RECORDS_REPORT')
+    if target:
+        with Path(target).open('a') as f:
             f.write(json.dumps(report) + '\n')
 
 
@@ -70,11 +67,8 @@ def pair(sim, n_devices, entry='run', steps=24, **kwargs):
 
 
 def mutation_result(kind, mutation, failure):
-    message = f'{kind}/{mutation}: RED {failure}\n'
-    print(message)
-    if REPORT.exists():
-        with (REPORT / 'mutations.log').open('a') as f:
-            f.write(message)
+    record('mutation', dict(record=kind, mutation=mutation, status='RED'),
+           dict(failure=str(failure)))
 
 
 def radiating_model(boundary, n_devices, pole=False, grading='x'):

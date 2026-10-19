@@ -39,6 +39,7 @@ def register_plane(sim, axis, coordinate, component, freqs, n_freqs, name, regio
 
 
 def build_planes(sim, grid, n_steps):
+    from rfx.measurement import default_frequency_grid
     from rfx.probes.probes import init_dft_plane_probe
     from rfx.measurement.plan import _index
     probes = []
@@ -48,7 +49,7 @@ def build_planes(sim, grid, n_steps):
         position[axis] = entry.coordinate
         with jax.ensure_compile_time_eval():
             bins = (entry.freqs if entry.freqs is not None else
-                    jnp.linspace(sim._freq_max/10, sim._freq_max, entry.n_freqs))
+                    default_frequency_grid(sim._freq_max, entry.n_freqs))
         probes.append(init_dft_plane_probe(
             axis=axis, index=_index(grid, tuple(position))[axis], component=entry.component,
             freqs=bins, grid_shape=grid.shape, dft_total_steps=n_steps,

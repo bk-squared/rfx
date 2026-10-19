@@ -3,24 +3,22 @@
 import ast
 from collections import Counter
 from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.source_scan
 
 
 ALLOWLIST = {
-    ('rfx/measurement/flux_weights.py', 'build_flux_monitor_cfgs'): 1,
-    ('rfx/measurement/plan.py', '_frequencies'): 1,
     ('rfx/measurement/plan.py', 'build_measurement_plan'): 1,
-    ('rfx/measurement/setup.py', 'build_planes'): 1,
     ('rfx/preflight/waveguide.py', 'resolve_waveguide_port_freqs'): 1,
-    ('rfx/runners/nonuniform.py', 'run_nonuniform_path'): 1,
     ('rfx/runners/subgridded.py', 'run_subgridded_path'): 1,
-    ('rfx/runners/uniform.py', 'run_uniform'): 5,
+    ('rfx/runners/uniform.py', 'run_uniform'): 4,
     ('rfx/sparams/coax.py', 'compute_coax_msl_transition'): 1,
     ('rfx/sparams/coax.py', 'compute_coaxial_line_reflection'): 1,
     ('rfx/sparams/coax.py', 'compute_coaxial_two_port'): 1,
     ('rfx/sparams/mixed.py', 'compute_mixed_s_matrix'): 1,
     ('rfx/sparams/msl.py', 'compute_msl_s_matrix'): 1,
     ('rfx/sparams/waveguide.py', '_compute_waveguide_s_matrix_nu'): 2,
-    ('rfx/vmap_sweep.py', '_build_full_scan_fn'): 1,
 }
 PERMITTED = ("rfx/measurement/monitors.py", "default_frequency_grid")
 

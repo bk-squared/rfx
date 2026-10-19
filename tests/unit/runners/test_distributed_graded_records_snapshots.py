@@ -195,8 +195,5 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
     if failures:
         mutation_result('snapshots', mutation, metadata)
     else:
-        from tests.unit.runners._graded_records_scene import REPORT
-        if REPORT.exists():
-            with (REPORT / 'mutations.log').open('a') as log:
-                log.write(f'snapshots/{mutation}: GREEN {metadata}\n')
+        record('mutation', dict(record='snapshots', mutation=mutation, status='GREEN'), metadata)
     assert failures, ('seam mutation did not exceed 9 ULP', metadata)

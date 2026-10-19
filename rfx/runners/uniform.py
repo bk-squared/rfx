@@ -455,10 +455,11 @@ def run_uniform(
         plane_pos = [0.0, 0.0, 0.0]
         plane_pos[axis_idx] = pe.coordinate
         grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
+        from rfx.measurement import default_frequency_grid
         freqs_arr = (
             pe.freqs
             if pe.freqs is not None
-            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+            else default_frequency_grid(sim._freq_max, pe.n_freqs)
         )
         dft_planes.append(
             init_dft_plane_probe(

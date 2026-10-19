@@ -117,11 +117,11 @@ class MeasurementPlan:
 
 
 def _frequencies(sim, entry=None, freqs=None):
+    from rfx.measurement import default_frequency_grid
     if freqs is None and entry is not None:
         freqs = getattr(entry, 'freqs', None)
     if freqs is None:
-        freqs = jnp.linspace(sim._freq_max / 10, sim._freq_max,
-                             getattr(entry, 'n_freqs', 50))
+        freqs = default_frequency_grid(sim._freq_max, getattr(entry, 'n_freqs', 50))
     return tuple(float(v) for v in np.asarray(freqs))
 
 

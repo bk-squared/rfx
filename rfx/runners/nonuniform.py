@@ -861,10 +861,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             plane_pos = [0.0, 0.0, 0.0]
             plane_pos[axis_idx] = pe.coordinate
             grid_index = pos_to_nu_index(grid, tuple(plane_pos))[axis_idx]
+            from rfx.measurement import default_frequency_grid
             freqs_arr = (
                 pe.freqs
                 if pe.freqs is not None
-                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+                else default_frequency_grid(sim._freq_max, pe.n_freqs)
             )
             dft_plane_probes.append(
                 init_dft_plane_probe(
