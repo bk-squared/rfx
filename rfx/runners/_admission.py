@@ -1129,13 +1129,13 @@ def refuse_undriven_record_s(sim, *, implicit=False):
     """S read from the main run's own record needs something that excites it.
 
     With every impedance port passive and no plain source, TFSF or waveguide,
-    microstrip or coaxial port, the record holds no incident wave and every
+    microstrip, coaxial or Floquet port, the record holds no incident wave and every
     ratio is 0/0: it returned S = 0 everywhere. A passive port lit by a plain
     source stays the termination diagnostic (#1420).
     """
     if (any(p.impedance == 0.0 or getattr(p, "excite", True) for p in sim._ports)
             or sim._tfsf is not None or sim._waveguide_ports or sim._msl_ports
-            or sim._coaxial_ports):
+            or sim._coaxial_ports or sim._floquet_ports):
         return True
     reason = (
         "Lumped/wire S read from the run's own record needs a driven port: "

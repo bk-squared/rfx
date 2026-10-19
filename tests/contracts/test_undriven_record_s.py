@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse, Simulation
+from rfx.boundaries.spec import BoundarySpec
 
 FREQS = np.linspace(3e9, 9e9, 7)
 UNDRIVEN = "needs a driven port"
@@ -68,3 +69,17 @@ def test_default_wire_request_warns_and_returns_no_s():
         result = sim.run(n_steps=200, skip_preflight=True)
     assert result.s_params is None
     assert any(UNDRIVEN in str(w.message) for w in caught)
+
+
+def test_a_floquet_port_counts_as_a_drive():
+    """A Floquet port injects a plane wave: the default run keeps its S."""
+    sim = Simulation(freq_max=12e9, domain=(12e-3, 12e-3, 30e-3), dx=1e-3, cpml_layers=6,
+                     boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
+    sim.add_port(position=(6e-3, 6e-3, 12e-3), component='ex', impedance=50.0,
+                 extent=2e-3, excite=False)
+    sim.add_floquet_port(20e-3, axis='z', f0=6e9)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        result = sim.run(n_steps=200, skip_preflight=True)
+    assert not any(UNDRIVEN in str(w.message) for w in caught)
+    assert result.s_params is not None and np.abs(np.asarray(result.s_params)).max() > 0
