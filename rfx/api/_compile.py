@@ -449,33 +449,41 @@ class _CompileMixin:
             field_dtype=jnp.float64 if self._precision == "float64" else jnp.float32,
         )
         return cfg
-    def _build_nonuniform_grid(self) -> NonUniformGrid:
+    def _build_nonuniform_grid(self, *, cpml_axes=None) -> NonUniformGrid:
         """Build a NonUniformGrid from stored dz_profile (and optional
         dx_profile / dy_profile). A uniform profile on any axis is
         synthesised from the scalar ``dx`` when the profile is not set.
         """
         from rfx.runners.nonuniform import build_nonuniform_grid
+        from rfx.boundaries.depths import resolve_face_depths
+        periodic = self._periodic_axes or ""
+        if cpml_axes is None:
+            cpml_axes = "".join(a for a in "xyz" if a not in periodic)
+        face_layers = self._resolve_face_layers()
+        pec_faces = self._boundary_spec.pec_faces() if self._boundary_spec is not None else set()
+        pmc_faces = self._boundary_spec.pmc_faces() if self._boundary_spec is not None else set()
+        depths = resolve_face_depths(
+            budget=self._cpml_layers, absorbing_axes=cpml_axes,
+            pec_faces=pec_faces, pmc_faces=pmc_faces,
+            periodic_axes=periodic, face_layers=face_layers)
         # dz=None is synthesised locally inside build_nonuniform_grid()
         # (pure — sim state is never mutated by a grid build).
-        return build_nonuniform_grid(
+        grid = build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
             self._dz_profile, periodic_axes=self._periodic_axes or "",
             dx_profile=self._dx_profile,
             dy_profile=self._dy_profile,
-            face_layers=self._resolve_face_layers(),
-            pec_faces=self._boundary_spec.pec_faces()
-                if self._boundary_spec is not None else None,
-            pmc_faces=self._boundary_spec.pmc_faces()
-                if self._boundary_spec is not None else None,
-            cpml_axes="".join(
-                ax for ax in "xyz"
-                if ax not in (self._periodic_axes or "")
-            ),
+            face_layers=face_layers, pec_faces=pec_faces, pmc_faces=pmc_faces,
+            cpml_axes=cpml_axes, boundary_depths=depths,
             dt=getattr(self, "_dt_pin", None),
             dt_min_cell=getattr(self, "_dt_min_cell", None),
             dt_caller="Simulation",
             nominal_profiles=getattr(self, "_nominal_profiles", None),
+            automatic=self._declared_mesh["_dx"] is None,
         )
+        from rfx.boundaries.features import judge_wall_axes
+        judge_wall_axes(self, grid, boundary_depths=depths)
+        return grid
 
     def _assemble_materials_nu(
         self, grid: NonUniformGrid, sheet_specs: list | None = None,

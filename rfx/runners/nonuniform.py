@@ -121,6 +121,8 @@ def build_nonuniform_grid(
     dt_caller: str | None = None,
     nominal_profiles: dict | None = None,
     periodic_axes: str = "",
+    automatic: bool | None = None,
+    boundary_depths: tuple | None = None,
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -132,16 +134,23 @@ def build_nonuniform_grid(
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
     ``nominal_profiles`` is handed to it unchanged.
     """
-    automatic = dx is None
+    automatic = dx is None if automatic is None else automatic
     if dx is None:
         dx = C0 / freq_max / 20.0
-    from rfx.grid import _periodic_resolution, cells_spanning
+    from rfx.grid import _periodic_resolution, cells_spanning, axis_kinds, realized_cells
+    from rfx.boundaries.depths import resolve_face_depths
+    depths = boundary_depths if boundary_depths is not None else resolve_face_depths(
+        budget=cpml_layers, absorbing_axes=cpml_axes, pec_faces=pec_faces or (),
+        pmc_faces=pmc_faces or (), periodic_axes=periodic_axes, face_layers=face_layers)
+    kinds = axis_kinds(depths)
     profiles = dict(zip("xyz", (dx_profile, dy_profile, dz_profile)))
     # Unsupported profiles retain their old grid until the lane's refusal.
     periodic_axes = "".join(a for a in periodic_axes if profiles[a] is None or (
         not is_tracer(profiles[a]) and np.all(np.asarray(profiles[a]) == np.asarray(profiles[a])[0])))
     implicit = "".join(a for a in periodic_axes if profiles[a] is None)
-    dx = _periodic_resolution(domain, implicit, dx, automatic=automatic)
+    dx = _periodic_resolution(
+        domain, implicit, dx, automatic=automatic,
+        wall_axes="".join(a for a in "xyz" if kinds[a] == "wall" and profiles[a] is None))
     for axis in periodic_axes:
         profile = profiles[axis]
         if profile is not None:
@@ -157,7 +166,7 @@ def build_nonuniform_grid(
         # forward()/run()/runner call site via
         # ``sim._dz_profile = np.full(...)``, permanently mutating sim
         # state as a side effect of execution (roadmap W1.3).
-        nz_phys = max(1, int(round(domain[2] / dx)))
+        nz_phys = realized_cells(domain[2], dx, kinds["z"])
         dz_profile = np.full(nz_phys, float(dx))
     domain_xy = (domain[0], domain[1])
     # An outer jit must not turn a STATIC mesh into traced coordinates:
@@ -171,7 +180,7 @@ def build_nonuniform_grid(
             domain_xy, dz_profile, dx, cpml_layers,
             dx_profile=dx_profile, dy_profile=dy_profile,
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
-            face_layers=face_layers,
+            face_layers=face_layers, boundary_depths=depths,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
             nominal_profiles=nominal_profiles, periodic_axes=periodic_axes, domain=tuple(map(float, domain)),
         )

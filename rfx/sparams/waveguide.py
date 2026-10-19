@@ -1136,7 +1136,7 @@ def _compute_waveguide_s_matrix_nu(
 
     n_ports = len(entries)
 
-    # Build the grid directly so we can restrict ``cpml_axes`` to
+    # Use the judged Simulation builder while restricting ``cpml_axes`` to
     # axes that are not fully PEC/PMC-bounded. The rasteriser (see
     # ``rfx/geometry/rasterize_grid.py::coords_from_nonuniform_grid``)
     # uses a single ``grid.cpml_layers`` offset for every axis;
@@ -1145,7 +1145,6 @@ def _compute_waveguide_s_matrix_nu(
     # Dropping that axis from ``cpml_axes`` keeps the physical
     # grid identical (PEC faces already have pad=0) but zeroes the
     # offset so the rasteriser snaps cells to 0 cleanly.
-    from rfx.runners.nonuniform import build_nonuniform_grid
     pec_set = (self._boundary_spec.pec_faces()
                if self._boundary_spec is not None else None) or set()
     pmc_set = (self._boundary_spec.pmc_faces()
@@ -1161,26 +1160,7 @@ def _compute_waveguide_s_matrix_nu(
     )
     # Missing z profiles are synthesized locally, preserving the declared
     # auto mesh and its cached resolution throughout device/reference runs.
-    grid = build_nonuniform_grid(
-        self._freq_max, self._domain, self._dx, self._cpml_layers,
-        self._dz_profile,
-        dx_profile=self._dx_profile,
-        dy_profile=self._dy_profile,
-        face_layers=self._resolve_face_layers(),
-        pec_faces=pec_set or None,
-        pmc_faces=pmc_set or None,
-        cpml_axes=cpml_axes,
-        # This lane builds its own grid (it drops fully-closed axes from
-        # cpml_axes, which _build_nonuniform_grid does not), so the pinned
-        # step has to be handed over explicitly. Without it a board declared
-        # with Simulation(dt=..., dx_profile=...) ran its waveguide
-        # S-parameters at the derived Courant step while every other lane ran
-        # at the pin — two different steps for one declared model.
-        dt=getattr(self, "_dt_pin", None),
-        dt_min_cell=getattr(self, "_dt_min_cell", None),
-        dt_caller="Simulation",
-        nominal_profiles=getattr(self, "_nominal_profiles", None),
-    )
+    grid = self._build_nonuniform_grid(cpml_axes=cpml_axes)
     if n_steps is None:
         n_steps = steps_for_periods(grid.dt, self._freq_max, num_periods)
 

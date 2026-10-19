@@ -51,75 +51,52 @@ def _wall_closed_axes(pec_faces, pmc_faces, *, is_2d=False):
 
 def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                          wall_axes: str = '') -> float:
-    """Preserve periods and closed walls within 0.75 * requested dx..dx.
+    """Fit automatic spacing to periods and the one-percent wall envelope.
 
-    Otherwise retain the periodic-only snap and report every displaced wall.
-    Search down to requested dx/16 only for an explicit-spacing suggestion.
-    Explicit spacing and non-periodic grids keep their existing arithmetic.
+    Candidates never coarsen the request. Search below the 0.75 adoption
+    bound only to report the largest fitting explicit spacing (down to /16).
     """
-    if not axes:
-        return dx
     lengths = [float(domain['xyz'.index(a)]) for a in axes]
     if any(not np.isfinite(length) or length <= 0 for length in lengths):
         raise ValueError(f"periodic axes {axes!r} require positive finite lengths; L={lengths} m")
-    walls = {a: float(domain['xyz'.index(a)]) for a in wall_axes
-             if a not in axes and float(domain['xyz'.index(a)]) > 0}
-    common_below_bound = None
+    walls = {a: float(domain['xyz'.index(a)]) for a in wall_axes if a not in axes}
+
+    def fits(spacing):
+        return (all(_divides_period(length, spacing) for length in lengths)
+                and all(abs(realized_cells(length, spacing, "wall") * spacing / length - 1) <= .01
+                        for length in walls.values()))
+
     if automatic:
-        constrained = lengths + list(walls.values())
-        if all(_divides_period(length, dx) for length in constrained):
+        if fits(dx):
             return dx
         minimum = dx / PERIODIC_COMMON_SEARCH_REFINEMENT
-        anchor = min(constrained)
-        # Every common spacing divides this length. Increasing the integer
-        # cell count enumerates candidates from largest to smallest.
-        for count in range(cells_spanning(anchor, dx), cells_spanning(anchor, minimum) + 1):
-            candidate = min(dx, max(minimum, anchor / count))
-            if all(_divides_period(length, candidate) for length in constrained):
-                if candidate < dx * PERIODIC_AUTO_MIN_FRACTION:
-                    common_below_bound = candidate
-                    break
-                warnings.warn(
-                    f"Periodic axes {axes!r}, L={lengths} m: automatic dx={dx:.12g} m "
-                    f"snapped to dx={candidate:.12g} m to divide every period"
-                    + (f" and wall-closed axes {''.join(walls)!r}" if walls else '')
-                    + f" (minimum automatic common spacing: {PERIODIC_AUTO_MIN_FRACTION:g} "
-                    "* requested dx).",
-                    UserWarning, stacklevel=3)
-                return candidate
-    if all(_divides_period(length, dx) for length in lengths):
-        candidate = dx
-    else:
-        candidate = min(length / cells_spanning(length, dx) for length in lengths) if automatic else dx
-    if all(_divides_period(length, candidate) for length in lengths):
-        moved = [
-            f"wall-closed axis {axis!r}: declared {length * 1e3:.12g} mm, "
-            f"realized {cells_spanning(length, candidate) * candidate * 1e3:.12g} mm"
-            for axis, length in walls.items() if not _divides_period(length, candidate)]
-        if automatic and (candidate != dx or moved):
+        anchors = list(walls.values()) or lengths[:1]
+        candidates = sorted({length / n for length in anchors
+                             for n in range(max(1, int(np.ceil(length / dx))),
+                                            int(np.floor(length / minimum)) + 1)}, reverse=True)
+        fitting = next((candidate for candidate in candidates if fits(candidate)), None)
+        if fitting is not None and fitting >= PERIODIC_AUTO_MIN_FRACTION * dx:
             warnings.warn(
-                f"Periodic axes {axes!r}, L={lengths} m: automatic dx={dx:.12g} m "
-                + (f"snapped to dx={candidate:.12g} m" if candidate != dx
-                   else f"kept at dx={candidate:.12g} m")
-                + " to divide every period."
-                + (f" No common spacing within {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx "
-                   f"through requested dx; {'; '.join(moved)}." if moved else '')
-                + (f" Exact common spacing exists at {common_below_bound * 1e3:.12g} mm, "
-                   f"below that bound; set dx={common_below_bound:.12g} m explicitly to use it."
-                   if moved and common_below_bound is not None else '')
-                + (f" Suggestion search limit: requested dx/{PERIODIC_COMMON_SEARCH_REFINEMENT}."
-                   if moved else ''),
+                f"Automatic dx={dx:.12g} m snapped to dx={fitting:.12g} m: "
+                f"periodic axes {axes!r} divide exactly and wall axes {''.join(walls)!r} "
+                f"are within 1 % (minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
                 UserWarning, stacklevel=3)
-        return candidate
-    # Rationally related periods may require a smaller common cell. This is
-    # a suggestion only: never silently refine two axes by an unbounded factor.
+            return fitting
+        advice = (f"largest fitting dx={fitting:.12g} m ({fitting * 1e3:.12g} mm); "
+                  "set dx explicitly to use it" if fitting is not None
+                  else "no fitting spacing found")
+        raise ValueError(
+            f"Automatic dx={dx:.12g} m cannot fit periodic axes {axes!r} and wall axes "
+            f"{''.join(walls)!r} within 1 % at >= {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx; "
+            f"{advice}. Suggestion search limit: requested dx/{PERIODIC_COMMON_SEARCH_REFINEMENT}.")
+    if all(_divides_period(length, dx) for length in lengths):
+        return dx
     ratios = [Fraction(length / lengths[0]).limit_denominator(10000) for length in lengths]
     common_length = lengths[0] / lcm(*(r.denominator for r in ratios))
     suggestion = _nearest_period_dx(common_length, dx)
-    if not all(_divides_period(length, suggestion) for length in lengths):
-        advice = "choose commensurate lengths and an explicit dx that divides every period"
-    else:
-        advice = f"nearest common dividing dx={suggestion:.12g} m"
+    advice = (f"nearest common dividing dx={suggestion:.12g} m"
+              if all(_divides_period(length, suggestion) for length in lengths)
+              else "choose commensurate lengths and an explicit dx that divides every period")
     details = "; ".join(
         f"axis {axis}: L={length:.12g} m, dx={dx:.12g} m, "
         f"nearest dividing dx={_nearest_period_dx(length, dx):.12g} m"
@@ -165,6 +142,37 @@ def cells_spanning(length: float, dx: float, *,
     return cells
 
 
+def realized_cells(length: float, dx: float, kind: str) -> int:
+    """Count wall, absorber or periodic cells from the realized axis kind.
+
+    Walls round to nearest, with true half ties rounding half up. The same
+    node-tie/ULP band as ``cells_spanning`` snaps the shifted ratio at a
+    half tie; absorbers and periodic axes retain ``cells_spanning``.
+    """
+    if kind != "wall":
+        if kind not in ("absorber", "periodic"):
+            raise ValueError(f"Unknown axis kind {kind!r}")
+        return cells_spanning(length, dx)
+    shifted = length / dx + .5
+    nearest = round(shifted)
+    tolerance = max(node_tie_tol(shifted, 1.0),
+                    CELL_COUNT_ULP_BUDGET * np.finfo(float).eps * max(1.0, abs(shifted)))
+    return max(1, int(np.floor(nearest if abs(shifted - nearest) <= tolerance else shifted)))
+
+
+def axis_kinds(boundary_depths):
+    """Classify axes from resolved faces, including mixed absorber faces."""
+    from rfx.boundaries.depths import Kind
+    faces = {face.name: face for face in boundary_depths}
+    result = {}
+    for axis in "xyz":
+        pair = [faces[f"{axis}_{side}"] for side in ("lo", "hi")]
+        result[axis] = ("periodic" if all(f.kind == Kind.PERIODIC for f in pair)
+                        else "wall" if all(f.kind in (Kind.PEC, Kind.PMC) and f.realized == 0
+                                           for f in pair) else "absorber")
+    return result
+
+
 class Grid:
     """Rectilinear FDTD grid with uniform cell size.
 
@@ -205,6 +213,7 @@ class Grid:
         face_layers: dict | None = None,
         conformal_faces: set[str] | None = None,
         periodic_axes: str = "",
+        boundary_depths: tuple | None = None,
     ):
         if mode not in ("3d", "2d_tmz", "2d_tez"):
             raise ValueError(f"mode must be '3d', '2d_tmz', or '2d_tez', got {mode!r}")
@@ -237,27 +246,21 @@ class Grid:
         # Auto-resolution: λ_min / 20
         lambda_min = C0 / freq_max
         requested_dx = dx if dx is not None else lambda_min / 20.0
-        self.dx = _periodic_resolution(
-            domain, self.periodic_axes, requested_dx, automatic=dx is None,
-            wall_axes=_wall_closed_axes(self.pec_faces, self.pmc_faces, is_2d=self.is_2d))
-
-        # Courant-stable timestep: √2 for 2D, √3 for 3D
-        ndim = 2 if self.is_2d else 3
-        self.dt = self.dx / (C0 * np.sqrt(float(ndim))) * 0.99
-
-        if self.is_2d:
-            self.cpml_axes = self.cpml_axes.replace("z", "")
-
-        # Per-face CPML allocation (2026-04). A face whose BoundarySpec
-        # token is ``pec``/``pmc``/``periodic`` gets ``pad=0`` on that
-        # side even when the axis as a whole participates in CPML —
-        # this is the Meep / OpenEMS / Tidy3D convention and the
-        # architectural fix for PMC + CPML composition.
-        self.boundary_depths = resolve_face_depths(
+        self.boundary_depths = boundary_depths if boundary_depths is not None else resolve_face_depths(
             budget=cpml_layers, absorbing_axes=self.cpml_axes,
             pec_faces=self.pec_faces, pmc_faces=self.pmc_faces,
             periodic_axes=self.periodic_axes, mode=mode, face_layers=face_layers,
         )
+        kinds = axis_kinds(self.boundary_depths)
+        self.dx = _periodic_resolution(
+            domain, self.periodic_axes, requested_dx, automatic=dx is None,
+            wall_axes="".join(a for a in "xyz" if kinds[a] == "wall"
+                              and not (self.is_2d and a == "z")))
+        ndim = 2 if self.is_2d else 3
+        self.dt = self.dx / (C0 * np.sqrt(float(ndim))) * 0.99
+        if self.is_2d:
+            self.cpml_axes = self.cpml_axes.replace("z", "")
+
         # Legacy view retains declared depths, including scalar defaults on walls.
         self.face_layers = {record.name: record.declared for record in self.boundary_depths}
         for record in self.boundary_depths:
@@ -295,15 +298,15 @@ class Grid:
         # ``cells_spanning`` rather than a bare ``ceil`` (#1070): a declared
         # length is an arithmetic expression, and one ULP of float dust in
         # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
-        self.nx = (cells_spanning(domain[0], self.dx) + ("x" not in self.periodic_axes)
+        self.nx = (realized_cells(domain[0], self.dx, kinds["x"]) + ("x" not in self.periodic_axes)
                    + self.pad_x_lo + self.pad_x_hi)
-        self.ny = (cells_spanning(domain[1], self.dx) + ("y" not in self.periodic_axes)
+        self.ny = (realized_cells(domain[1], self.dx, kinds["y"]) + ("y" not in self.periodic_axes)
                    + self.pad_y_lo + self.pad_y_hi)
 
         if self.is_2d:
             self.nz = 1  # single cell in z, use periodic z BC
         else:
-            self.nz = (cells_spanning(domain[2], self.dx) + ("z" not in self.periodic_axes)
+            self.nz = (realized_cells(domain[2], self.dx, kinds["z"]) + ("z" not in self.periodic_axes)
                        + self.pad_z_lo + self.pad_z_hi)
 
         self.shape = (self.nx, self.ny, self.nz)
