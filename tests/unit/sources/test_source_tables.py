@@ -90,9 +90,8 @@ def _sweep_oracle(case):
             fraction = 1. if mask is None else sum(float(mask[cell]) for cell in cells) / 4
             beta += EPS * pole.delta_eps * dt / (2 * pole.tau + dt) * fraction
     reference = dt / (EPS * eps + beta + sigma * dt / 2) / grid.dx**3
-    # Sweep's fallback defaults to an S-matrix, which refuses a soft source
-    # together with a port. Exercise its raw-record construction on both arms;
-    # the public refusal is checked separately below.
+    # Exercise the raw-record construction on both arms; the public default
+    # warning for a plain source together with a port is checked below.
     original = Simulation.run
     def raw_run(self, **kw):
         return original(self, **dict(kw, compute_s_params=False, skip_preflight=True))
@@ -111,8 +110,16 @@ def test_sweep_current_reads_update_coefficient(case):
 
 def test_sweep_later_port_public_refusal():
     from rfx.vmap_sweep import vmap_material_sweep
-    with pytest.raises(NotImplementedError, match='S-matrix requests do not support plain sources'):
-        vmap_material_sweep(_sweep_model('later_load'), 'slab.eps_r', [2.], n_steps=2)
+    original = Simulation.run
+    records = []
+    def record_run(self, **kwargs):
+        result = original(self, **kwargs)
+        records.append(result)
+        return result
+    with patch.object(Simulation, 'run', record_run):
+        with pytest.warns(UserWarning, match='S-matrix requests do not support plain sources'):
+            vmap_material_sweep(_sweep_model('later_load'), 'slab.eps_r', [2.], n_steps=2)
+    assert records and all(result.s_params is None for result in records)
 
 
 def _subgrid_sample(order, kind='current', driven=False):

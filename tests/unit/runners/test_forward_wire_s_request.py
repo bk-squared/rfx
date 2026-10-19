@@ -19,8 +19,12 @@ def test_plain_source_forward_only_requests_s_on_opt_in(path):
     np.testing.assert_array_equal(actual.time_series, expected.time_series)
     assert np.asarray(actual.time_series).tobytes() == np.asarray(expected.time_series).tobytes()
 
+    with pytest.warns(UserWarning, match="plain sources.*compute_s_params=False"):
+        default = build_p_wire(path).run(**options)
+    assert default.s_params is None
+    np.testing.assert_array_equal(default.time_series, expected.time_series)
     with pytest.raises(NotImplementedError) as run_error:
-        build_p_wire(path).run(**options)
+        build_p_wire(path).run(compute_s_params=True, **options)
     bins = np.linspace(2e9, 20e9, 50)
     with pytest.raises(NotImplementedError) as forward_error:
         build_p_wire(path).forward(port_s11_freqs=bins, **options)

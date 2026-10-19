@@ -277,9 +277,10 @@ def test_pec_plain_source_refused(case, distributed):
     sim = _model(boundary="pec")
     sim.add_source((4e-3, 3e-3, 3e-3), "ez",
                    **({} if case == "legacy_soft_pec" else {"amplitude_kind": "field"}))
-    with pytest.raises(NotImplementedError, match="plain sources.*compute_s_params=False"):
-        sim.run(n_steps=8, skip_preflight=True,
-                devices=jax.devices("cpu")[:2] if distributed else None)
+    with pytest.warns(UserWarning, match="plain sources.*compute_s_params=False"):
+        result = sim.run(n_steps=8, skip_preflight=True,
+                         devices=jax.devices("cpu")[:2] if distributed else None)
+    assert result.s_params is None
 
 
 def test_long_record():

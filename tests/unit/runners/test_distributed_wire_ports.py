@@ -186,6 +186,9 @@ def test_single_wire_with_plain_source_is_refused_on_both_lanes():
     for devices in (None, jax.devices("cpu")[:2]):
         with pytest.raises(NotImplementedError, match="plain sources"):
             sim.run(devices=devices, **options)
+        with pytest.warns(UserWarning, match="plain sources.*compute_s_params=False"):
+            result = sim.run(n_steps=320, skip_preflight=True, devices=devices)
+        assert result.s_params is None
 
 
 def test_single_wire_zero_wave():

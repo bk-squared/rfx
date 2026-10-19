@@ -2128,7 +2128,7 @@ class _ExecuteMixin:
                 "probe-feed S-parameters."
             )
 
-        self._validate_run_sparameter_request(
+        compute_s_params = self._validate_run_sparameter_request(
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
             s_param_n_steps=s_param_n_steps,

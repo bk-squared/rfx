@@ -352,8 +352,8 @@ class _PreflightMixin:
         s_param_freqs,
         s_param_n_steps: int | None,
         devices: list | None = None,
-    ) -> None:
-        """Reject unsupported explicit S requests and contaminated default S solves."""
+    ) -> bool | None:
+        """Resolve contaminated default S requests and reject unsupported explicit ones."""
 
         requested = (
             compute_s_params is True
@@ -381,9 +381,12 @@ class _PreflightMixin:
             _main_record = (
                 _one_device and self._refinement is None and self._solver != "adi"
                 and (self._uses_nonuniform_mesh or not _s_matrix_ports(self)))
-            refuse_plain_sources_s_matrix(self, main_record=_main_record)
+            if not refuse_plain_sources_s_matrix(
+                    self, main_record=_main_record,
+                    implicit=compute_s_params is None and not requested):
+                compute_s_params = False
         if not requested:
-            return
+            return compute_s_params
 
         port_entries = self._port_sparameter_entries()
         source_only_entries = [pe for pe in self._ports if pe.impedance == 0.0]
@@ -489,6 +492,7 @@ class _PreflightMixin:
                 "periodic axes for the S-parameter run, or use a port family that "
                 "supports periodicity (e.g. a Floquet port)."
             )
+        return compute_s_params
 
     def _validate_forward_sparameter_request(self) -> None:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""

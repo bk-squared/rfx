@@ -42,7 +42,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
     if reason := one_device_reason(self):
         del _solve_assembly  # the fallback performs its own solve assembly
-        return run_on_one_device(self, {**_call_args, "devices": None,
+        return run_on_one_device(self, {**_call_args, "compute_s_params": compute_s_params,
+                                 "devices": None,
                                  "exchange_interval": 1, "skip_preflight": True},
                                  reason=reason, requested_devices=len(devices),
                                  diagnostics=_diagnostics)
@@ -74,7 +75,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
         else:
             compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
         # Use the same refusal as an explicit S-parameter request.
-        self._validate_run_sparameter_request(
+        compute_s_params = self._validate_run_sparameter_request(
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
             s_param_n_steps=s_param_n_steps,

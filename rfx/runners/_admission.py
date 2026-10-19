@@ -1069,6 +1069,24 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 
 
+def _warn_implicit_s(message):
+    """Attribute implicit S warnings to the first caller outside rfx."""
+    import sys
+    import warnings
+    stacklevel = 2
+    frame = sys._getframe(1)
+    try:
+        while frame is not None and (
+            frame.f_globals.get("__name__", "") == "rfx"
+            or frame.f_globals.get("__name__", "").startswith("rfx.")
+        ):
+            stacklevel += 1
+            frame = frame.f_back
+    finally:
+        del frame
+    warnings.warn(message, UserWarning, stacklevel=stacklevel)
+
+
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
     excited = [(index, port) for index, port in enumerate(sim._ports)
@@ -1084,25 +1102,12 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     if fields_only:
         message += "; use run(compute_s_params=False) for fields only"
     if implicit:
-        import sys
-        import warnings
-        stacklevel = 2
-        frame = sys._getframe(1)
-        try:
-            while frame is not None and (
-                frame.f_globals.get("__name__", "") == "rfx"
-                or frame.f_globals.get("__name__", "").startswith("rfx.")
-            ):
-                stacklevel += 1
-                frame = frame.f_back
-        finally:
-            del frame
-        warnings.warn(message + "; returning no S-parameters.", UserWarning, stacklevel=stacklevel)
+        _warn_implicit_s(message + "; returning no S-parameters.")
         return False
     raise ValueError(message)
 
 
-def refuse_plain_sources_s_matrix(sim, *, main_record=False):
+def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     """A port drive must be the only excitation of a lumped/wire S solve.
 
     Routes that build S drive by drive (the scan driver, run()'s scan S, the
@@ -1115,16 +1120,22 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False):
     """
     ports = [p for p in sim._ports if p.impedance != 0.0]
     if not ports or not any(p.impedance == 0.0 for p in sim._ports):
-        return
+        return True
     if main_record and not any(getattr(p, "excite", True) for p in ports):
-        return
-    raise NotImplementedError(
+        return True
+    message = (
         "Lumped/wire S-matrix requests do not support plain sources / "
         "0-ohm ports (add_source, add_polarized_source or "
         "add_port(impedance=0)): they fire in every port drive. "
         "Remove the plain source, or call run(compute_s_params=False) "
         "to get raw port waves with the source included."
     )
+    if implicit:
+        _warn_implicit_s(
+            message + " remove the plain source, or pass compute_s_params=False "
+            "to silence this warning; returning no S-parameters.")
+        return False
+    raise NotImplementedError(message)
 
 
 def admit_forward_s_matrix(sim):

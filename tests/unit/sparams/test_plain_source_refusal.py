@@ -35,6 +35,12 @@ def test_plain_source_s_request_refused(
         monkeypatch, path, wire, s_request, scan_devices, boundary):
     assert PLAIN_SOURCE_S_REQUEST[path].kind == REFUSES
     sim = _model(wire, graded=path == "run_nonuniform", boundary=boundary)
+    if path != "s_matrix_scan" and s_request is None:
+        with pytest.warns(UserWarning, match="plain sources.*compute_s_params=False"):
+            result = sim.run(n_steps=4, skip_preflight=True,
+                             devices=jax.devices("cpu")[:2] if path == "run_distributed" else None)
+        assert result.s_params is None
+        return
     monkeypatch.setattr(jax.lax, "scan", _before_step)
     monkeypatch.setattr(jax.lax, "while_loop", _before_step)
     message = (r"plain sources.*add_source.*Remove the plain source.*"
@@ -155,6 +161,11 @@ def test_passive_ports_on_drive_by_drive_routes_refused(monkeypatch, route):
     """Drive-by-drive S routes drive every impedance port, passive ones too, so
     a plain source fires in every drive even when no port is excite=True."""
     sim = _two_passive_lumped()
+    if route == "run_default":
+        with pytest.warns(UserWarning, match="plain sources.*compute_s_params=False"):
+            result = sim.run(n_steps=4, skip_preflight=True)
+        assert result.s_params is None
+        return
     monkeypatch.setattr(jax.lax, "scan", _before_step)
     monkeypatch.setattr(jax.lax, "while_loop", _before_step)
     with pytest.raises(NotImplementedError, match="plain sources"):

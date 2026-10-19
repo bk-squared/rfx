@@ -616,9 +616,11 @@ def run_l2(builder, entry, path, n_steps=150, *, entry_options=None):
 
 def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                        entry_options=None, seams=SEAMS):
-    """The same S request on both entries: (a) run's default, (b) none.
+    """The same S request on both entries: (a) S requested, (b) none.
 
-    (a) forward receives exactly the bins run's default returned. When
+    (a) P-wire explicitly requests S on run; its contaminated default now
+    returns fields only. Other declarations retain run's default.
+    Forward receives exactly the bins run returned. When
     run's default returns no bins (it refused before running, or it was
     admitted and returned no S), forward receives run's declared request:
     the default grid of the built simulation's freq_max. L1 has no result,
@@ -636,7 +638,13 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                            n_steps=n_steps, entry_options=requested, seams=seams)
         return run_l2(BUILDERS[declaration], entry, path, n_steps=n_steps,
                       entry_options=requested)
-    run = call('run', options if direction == 'a' else
+    run_options = options
+    if direction == 'a' and declaration == 'P-wire':
+        sim = BUILDERS[declaration](path)
+        run_options = {**options, 'compute_s_params': True,
+                       's_param_freqs': default_frequency_grid(
+                           sim._freq_max, 50, host='graded' in path)}
+    run = call('run', run_options if direction == 'a' else
                {**options, 'compute_s_params': False})
     if direction == 'a':
         sim = BUILDERS[declaration](path)
