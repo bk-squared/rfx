@@ -618,12 +618,13 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                        entry_options=None, seams=SEAMS):
     """The same S request on both entries: (a) run's default, (b) none.
 
-    (a) forward receives exactly the bins run's default returned. Run's
-    default has no returned bins in two cases: it refused before running
-    (then its request was the default grid), or it admitted without S
-    (then forward gets no bins either). L1 has no result, so run's bins
-    come from a one-step run of the same declaration. A declaration with
-    no impedance port makes no S request on run, so forward gets none.
+    (a) forward receives exactly the bins run's default returned. When
+    run's default returns no bins (it refused before running, or it was
+    admitted and returned no S), forward receives run's declared request:
+    the default grid of the built simulation's freq_max. L1 has no result,
+    so run's bins come from a one-step run of the same declaration. A
+    declaration with no impedance port makes no S request on run, so
+    forward gets none.
     (b) run(compute_s_params=False) against forward's default.
     """
     from rfx.measurement import default_frequency_grid
@@ -638,15 +639,14 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
     run = call('run', options if direction == 'a' else
                {**options, 'compute_s_params': False})
     if direction == 'a':
-        if any(port.impedance != 0 for port in BUILDERS[declaration](path)._ports):
+        sim = BUILDERS[declaration](path)
+        if any(port.impedance != 0 for port in sim._ports):
             returned = run if level is None else run_l2(BUILDERS[declaration], 'run', path,
                                                          n_steps=1, entry_options=options)
-            if returned['outcome'] == 'admitted':
-                bins = returned['result'].freqs
-            else:
-                bins = default_frequency_grid(20e9, 50, host='graded' in path)
-            if bins is not None:
-                options = {**options, 'port_s11_freqs': bins}
+            bins = returned['result'].freqs if returned['outcome'] == 'admitted' else None
+            if bins is None:
+                bins = default_frequency_grid(sim._freq_max, 50, host='graded' in path)
+            options = {**options, 'port_s11_freqs': bins}
     forward = call('forward', options)
     return {'run': run, 'forward': forward}
 
