@@ -791,6 +791,7 @@ def make_nonuniform_grid(
     nominal_profiles: dict | None = None,
     periodic_axes: str = "",
     domain: tuple | None = None,
+    boundary_depths: tuple | None = None,
 ) -> NonUniformGrid:
     """Create a non-uniform Yee grid.
 
@@ -847,16 +848,18 @@ def make_nonuniform_grid(
     """
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
-    boundary_depths = resolve_face_depths(
+    boundary_depths = boundary_depths if boundary_depths is not None else resolve_face_depths(
         budget=cpml_layers, absorbing_axes="".join(a for a in cpml_axes if a not in periodic_axes),
-        pec_faces=_pec, pmc_faces=_pmc, face_layers=face_layers,
+        pec_faces=_pec, pmc_faces=_pmc, face_layers=face_layers, periodic_axes=periodic_axes,
     )
     (pad_x_lo, pad_x_hi, pad_y_lo, pad_y_hi, pad_z_lo, pad_z_hi) = (
         record.realized for record in boundary_depths
     )
+    from rfx.grid import axis_kinds, realized_cells
+    kinds = axis_kinds(boundary_depths)
     # --- x profile (uniform or provided) ---
     if dx_profile is None:
-        nx_interior = int(round(domain_xy[0] / dx))
+        nx_interior = realized_cells(domain_xy[0], dx, kinds["x"])
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
         # Tracer path (mesh-as-design-variable): stay in jnp and skip the
@@ -888,7 +891,7 @@ def make_nonuniform_grid(
     # --- y profile ---
     if dy_profile is None:
         # Uniform y uses `dx` as the cell size (legacy behaviour)
-        ny_interior = int(round(domain_xy[1] / dx))
+        ny_interior = realized_cells(domain_xy[1], dx, kinds["y"])
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):

@@ -100,29 +100,82 @@ def _record_defaults(sim, grid):
 
 def build_grid(sim, *, extra_waveguide_axes=""):
     """Build the uniform legacy lattice, then record its full-guide defaults."""
-    from rfx.grid import Grid, _periodic_resolution, _wall_closed_axes
+    from rfx.grid import C0, Grid, _periodic_resolution, axis_kinds
     sim._require_uniform_mesh("uniform grid construction")
     periodic = "".join(a for a, yes in zip("xyz", sim._periodic_flags()) if yes)
-    dx = sim._dx
-    if dx is not None and sim._declared_mesh["_dx"] is None:
-        physical = periodic.replace("z", "") if sim._mode.startswith("2d") else periodic
-        dx = _periodic_resolution(
-            sim._domain, physical, dx, automatic=True,
-            wall_axes=_wall_closed_axes(sim._boundary_spec.pec_faces(),
-                                       sim._boundary_spec.pmc_faces(),
-                                       is_2d=sim._mode.startswith("2d")))
-    # Smaller apertures retain the legacy rewrite, PR3b; Addendum 5.
+    dx = sim._dx if sim._dx is not None else C0 / sim._freq_max / 20.0
     axes = _guide_axes(sim, extra_waveguide_axes) if sim._waveguide_ports or extra_waveguide_axes else "xyz"
-    grid = Grid(
-        freq_max=sim._freq_max, domain=sim._domain, dx=dx,
+    kwargs = dict(
+        freq_max=sim._freq_max, domain=sim._domain,
         cpml_layers=sim._cpml_layers,
         cpml_axes="".join(axis for axis in axes if axis not in periodic),
         mode=sim._mode, kappa_max=sim._cpml_kappa_max,
         pec_faces=sim._boundary_spec.pec_faces(),
         pmc_faces=sim._boundary_spec.pmc_faces(),
         face_layers=sim._resolve_face_layers(),
-        conformal_faces=sim._boundary_spec.conformal_faces(), periodic_axes=periodic)
-    return _record_defaults(sim, grid)
+        conformal_faces=sim._boundary_spec.conformal_faces())
+    # Resolve full-aperture guide defaults before count/fitting. This first
+    # lattice allocates no fields; periodic validation follows the fit below.
+    preview = _record_defaults(sim, Grid(**kwargs, dx=dx))
+    depths = resolve_face_depths(
+        budget=sim._cpml_layers, absorbing_axes=kwargs["cpml_axes"],
+        pec_faces={f.name for f in preview.boundary_depths if f.kind == Kind.PEC},
+        pmc_faces={f.name for f in preview.boundary_depths if f.kind == Kind.PMC},
+        periodic_axes=periodic, mode=sim._mode, face_layers=kwargs["face_layers"])
+    kinds = axis_kinds(depths)
+    physical = periodic.replace("z", "") if sim._mode.startswith("2d") else periodic
+    dx = _periodic_resolution(
+        sim._domain, physical, dx, automatic=sim._declared_mesh["_dx"] is None,
+        wall_axes="".join(a for a in "xyz" if kinds[a] == "wall"
+                          and not (a == "z" and sim._mode.startswith("2d"))))
+    grid = Grid(**kwargs, dx=dx, periodic_axes=periodic, boundary_depths=depths)
+    if hasattr(preview, "_waveguide_admission"):
+        grid._waveguide_admission = preview._waveguide_admission
+    judge_wall_axes(sim, grid)
+    return grid
+
+
+def judge_wall_axes(sim, grid, *, boundary_depths=None):
+    """Judge the built unprofiled wall lengths where Simulation owns snap.
+
+    Low-level grid builders have no declaration acceptance policy.
+    """
+    from rfx.grid import axis_kinds, realized_cells
+    depths = grid_face_depths(grid) if boundary_depths is None else boundary_depths
+    messages = []
+    for index, (axis, kind) in enumerate(axis_kinds(depths).items()):
+        if kind != "wall" or (axis == "z" and sim._mode.startswith("2d")):
+            continue
+        if getattr(sim, f"_d{axis}_profile") is not None:
+            continue
+        length = float(sim._domain[index])
+        if hasattr(grid, "dx_arr_f64"):
+            from rfx.model.graded_grid import interior_cells
+            widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[index]
+            cells = interior_cells(widths, getattr(grid, f"pad_{axis}_lo"),
+                                   getattr(grid, f"pad_{axis}_hi"))
+            n, solved = len(cells), float(sum(cells))
+        else:
+            span = grid.interior[index]
+            n = span.stop - span.start - 1
+            solved = n * grid.dx
+        rel = solved / length - 1
+        if abs(rel) <= .01:
+            continue
+        nearest_n = realized_cells(length, grid.dx, "wall")
+        adjacent = min((length / count for count in (nearest_n - 1, nearest_n + 1) if count >= 1),
+                       key=lambda spacing: abs(spacing - grid.dx))
+        messages.append(
+            f"wall axis {axis!r}: declared {length * 1e3:.12g} mm, solved {solved * 1e3:.12g} mm, "
+            f"rel {rel * 100:+.12g} %, {n} cells, dx={grid.dx * 1e3:.12g} mm; "
+            f"nearest dx={length / nearest_n * 1e3:.12g} mm, next dx={adjacent * 1e3:.12g} mm "
+            "(both pass 1 %)")
+    if messages:
+        message = "; ".join(messages) + "; set snap='declared' to accept."
+        if sim._snap == "declared":
+            warnings.warn(message, UserWarning, stacklevel=3)
+        else:
+            raise ValueError(message)
 
 
 def _warn_caller(message):
