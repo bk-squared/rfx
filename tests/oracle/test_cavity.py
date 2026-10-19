@@ -143,7 +143,7 @@ def test_pec_cavity_resonance(cavity_params):
 
 def test_pec_zeros_boundary():
     """PEC should zero tangential E at boundaries."""
-    grid = Grid(freq_max=3e9, domain=(0.05, 0.05, 0.05), cpml_layers=0)
+    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     state = init_state(grid.shape)
 
     # Set non-zero fields
@@ -164,7 +164,7 @@ def test_pec_zeros_boundary():
 
 def test_energy_conservation_pec():
     """In a lossless PEC cavity, total EM energy should be approximately conserved."""
-    grid = Grid(freq_max=3e9, domain=(0.05, 0.05, 0.05), cpml_layers=0)
+    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 

@@ -9,7 +9,7 @@ from rfx.geometry.csg import Box, Sphere, union, difference, rasterize
 
 @pytest.fixture
 def grid():
-    return Grid(freq_max=3e9, domain=(0.1, 0.1, 0.1), cpml_layers=0)
+    return Grid(freq_max=3e9, domain=(21 * (299792458.0 / 3e9 / 20.0), 21 * (299792458.0 / 3e9 / 20.0), 21 * (299792458.0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
 
 
 def test_box_mask(grid):

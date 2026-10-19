@@ -39,7 +39,7 @@ def _pec_cavity_port_s11():
     closed PEC box, shared by the two cavity tests below. Returns
     ``(freqs_hz, s11, f_tm110_hz)`` with TM110 from the REALIZED box."""
     a, b, d = 0.05, 0.05, 0.025
-    grid = Grid(freq_max=5e9, domain=(a, b, d), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(17 * (_C0 / 5e9 / 20.0), 17 * (_C0 / 5e9 / 20.0), 9 * (_C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
@@ -192,7 +192,7 @@ def test_lumped_port_pec_cavity_ringdown_refused():
 
 def test_lumped_port_injects_energy():
     """Lumped port should inject energy into the simulation."""
-    grid = Grid(freq_max=3e9, domain=(0.05, 0.05, 0.025), cpml_layers=0)
+    grid = Grid(freq_max=3e9, domain=(11 * (_C0 / 3e9 / 20.0), 11 * (_C0 / 3e9 / 20.0), 6 * (_C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 

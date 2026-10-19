@@ -19,7 +19,7 @@ from rfx.probes.probes import (
 
 def test_dft_point_probe_matches_fft():
     """DFT probe at a point should match post-hoc FFT of stored time series."""
-    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     state = init_state(grid.shape)
 
@@ -75,7 +75,7 @@ def test_dft_point_probe_matches_fft():
 
 def test_dft_plane_probe_matches_point():
     """DFT plane probe should match point DFT probe at corresponding locations."""
-    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     state = init_state(grid.shape)
 
@@ -128,7 +128,7 @@ def test_dft_plane_probe_matches_point():
 
 def test_dft_plane_probe_spatial_pattern():
     """DFT plane probe should capture the spatial mode pattern of a PEC cavity."""
-    grid = Grid(freq_max=8e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=8e9, domain=(17 * (299792458.0 / 8e9 / 20.0), 17 * (299792458.0 / 8e9 / 20.0), 17 * (299792458.0 / 8e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     state = init_state(grid.shape)
 

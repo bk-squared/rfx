@@ -139,7 +139,7 @@ def test_a_waveguide_port_is_not_dropped_by_the_baked_path(monkeypatch):
     from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 
     def peak():
-        grid = Grid(freq_max=12e9, domain=(0.060, 0.02286, 0.01016), dx=1.27e-3, cpml_layers=0)
+        grid = Grid(freq_max=12e9, domain=(48 * 1.27e-3, 0.02286, 0.01016), dx=1.27e-3, cpml_layers=0)  # main's solved length; #1887
         port = WaveguidePort(x_index=8, y_slice=(0, grid.shape[1]), z_slice=(0, grid.shape[2]),
                              a=0.02286, b=0.01016, mode=(1, 0), mode_type="TE", direction="+x")
         cfg = init_waveguide_port(port, grid.dx, jnp.linspace(8e9, 11e9, 5), f0=10e9,

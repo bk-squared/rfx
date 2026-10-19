@@ -94,7 +94,7 @@ def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
 
 
 def test_zero_scalar_still_reports_absorbing_declarations():
-    sim = Simulation(freq_max=3e9, domain=(0.0123, 0.0107, 0.0091),
+    sim = Simulation(freq_max=3e9, domain=(0.013000000000000001, 0.011, 0.01),  # main's solved length; #1887
                      dx=1e-3, cpml_layers=0, boundary="cpml")
     issue, = sim.preflight().by_code("thin_absorber")
     assert set(issue.loc.split(", ")) == {f"{ax}_{side}" for ax in "xyz" for side in ("lo", "hi")}
@@ -151,7 +151,7 @@ def test_floquet_periodic_faces_are_not_absorbers(thin):
 def test_waveguide_pec_walls_are_not_absorbers(thin):
     boundary = (BoundarySpec(x=Boundary("cpml", "cpml", 4, 16), y="cpml", z="cpml")
                 if thin else "cpml")
-    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.01016),
+    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.011),  # main's solved length; #1887
                      dx=1e-3, boundary=boundary)
     sim.add_waveguide_port(x_position=0.024, direction="+x",
                           y_range=(0, 0.02286), z_range=(0, 0.01016),

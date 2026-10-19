@@ -496,8 +496,8 @@ def test_w1_literal_waveguide_cells(axis, direction):
     if axis == 'x' and direction == '+':
         sim, grid = waveguide_model()
     else:
-        domain = {'x': (.05,.02286,.01016), 'y': (.02286,.05,.01016),
-                  'z': (.02286,.01016,.05)}[axis]
+        domain = {'x': (.05,.024,.012), 'y': (.024,.05,.012),  # main's solved length; #1887
+                  'z': (.024,.012,.05)}[axis]  # main's solved length; #1887
         ranges = {'x': dict(y_range=(0.,.02286), z_range=(0.,.01016)),
                   'y': dict(x_range=(0.,.02286), z_range=(0.,.01016)),
                   'z': dict(x_range=(0.,.02286), y_range=(0.,.01016))}[axis]

@@ -574,7 +574,7 @@ def _hz_drive_sim(kind):
                          boundary="pec")
         sim.add_coaxial_port((0.01, 0.01, 0.02), face="top", waveform=hz)
     elif kind.startswith("waveguide"):
-        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.01016),
+        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.011),  # main's solved length; #1887
                          dx=1e-3, boundary="cpml", cpml_layers=8)
         sim.add_waveguide_port(0.012, f0=10e9, bandwidth=5e9, direction="+x",
                                waveform=kind.split(":")[1])

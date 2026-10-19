@@ -16,7 +16,7 @@ FREQS = np.linspace(8.5e9, 11.5e9, 3)
 
 
 def _sim():
-    sim = Simulation(freq_max=12e9, domain=(LX, A, B), dx=DX, boundary="cpml", cpml_layers=8)
+    sim = Simulation(freq_max=12e9, domain=(LX, 0.024, 0.012), dx=DX, boundary="cpml", cpml_layers=8)  # main's solved length; #1887
     sim.add_material("slab", eps_r=2.0)
     sim.add(Box((0.026, 0, 0), (0.035, A, B)), material="slab")
     for direction, x in (("+x", 0.01), ("-x", LX - 0.01)):

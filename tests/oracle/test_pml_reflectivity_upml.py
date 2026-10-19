@@ -80,7 +80,7 @@ def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     pulse = GaussianPulse(f0=f0, bandwidth=0.5)
 
     # dt is fixed by freq_max; probe it to size the reference domain.
-    dt_probe = Grid(freq_max=freq_max, domain=(0.02, 0.02, 0.02),
+    dt_probe = Grid(freq_max=freq_max, domain=(7 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0)),  # main's solved length; #1887
                     cpml_layers=0).dt
     ref_extent = 1.15 * n_steps * dt_probe * C0  # echo step ~1.15*n_steps
 
