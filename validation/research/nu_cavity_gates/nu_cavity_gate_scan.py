@@ -128,7 +128,7 @@ def _tm110_error(dx_prof, dy_prof, dz_prof, dx_boundary, steps=8000) -> float:
     return abs(modes[0] - f) / f * 100.0
 
 
-def build_tm111_sim(a: float, b: float, dz_prof, dx_boundary):
+def build_tm111_sim(a: float, b: float, dz_prof, dx_boundary, b_solved=None):
     """z-lane cavity: returns (Simulation, analytic TM111 in Hz), UNSOLVED.
 
     Imitates tests/oracle/test_nonuniform_cavity_accuracy.py: uniform xy from
@@ -136,10 +136,13 @@ def build_tm111_sim(a: float, b: float, dz_prof, dx_boundary):
     analytic TM111 from NOMINAL a, b and the REALIZED graded z extent d —
     exactly the quantities the test feeds its closed form. Split out of
     ``_tm111_error`` for the #737 gate, same as build_tm110_sim above.
+    ``b_solved`` declares the wall-to-wall y length the grid solves when the
+    nominal ``b`` is not a whole number of cells (#1887); the closed form and
+    the source and probe positions keep the nominal ``b``.
     """
     d = float(np.sum(dz_prof))
     f = (C0 / 2) * np.sqrt((1 / a) ** 2 + (1 / b) ** 2 + (1 / d) ** 2)
-    sim = Simulation(freq_max=2 * f, domain=(a, b), boundary="pec",
+    sim = Simulation(freq_max=2 * f, domain=(a, b if b_solved is None else b_solved), boundary="pec",
                      dx=dx_boundary, dz_profile=np.asarray(dz_prof))
     # ez source/probe at z = d/4 (NOT d/2, a TM111 node), xy at thirds — the
     # test's own placement.
@@ -149,8 +152,8 @@ def build_tm111_sim(a: float, b: float, dz_prof, dx_boundary):
     return sim, float(f)
 
 
-def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000) -> float:
-    sim, f = build_tm111_sim(a, b, dz_prof, dx_boundary)
+def _tm111_error(a: float, b: float, dz_prof, dx_boundary, steps=8000, b_solved=None) -> float:
+    sim, f = build_tm111_sim(a, b, dz_prof, dx_boundary, b_solved)
     res = sim.run(n_steps=steps, skip_preflight=True)
     modes = sorted((m.freq for m in res.find_resonances(
         freq_range=(0.6 * f, 1.5 * f))), key=lambda v: abs(v - f))
@@ -257,7 +260,10 @@ def main(argv=None) -> int:
         for dx_mm, ratio in ((1.0, 4), (1.0, 2), (1.0, 1), (0.5, 4), (2.0, 4)):
             d_ = dx_mm * 1e-3
             f_ = d_ / ratio if ratio > 1 else d_
-            e = _tm111_error(az, bz, _graded(17.0, 2.0, d_, f_), d_)
+            # At dx = 2 mm b = 35 mm is 17.5 cells; the grid solves 18 cells
+            # (36 mm) and the recorded point keeps that offset (#1887).
+            b_solved = 36e-3 if dx_mm == 2.0 else None
+            e = _tm111_error(az, bz, _graded(17.0, 2.0, d_, f_), d_, b_solved=b_solved)
             note = "   <- z envelope" if (dx_mm, ratio) == (1.0, 4) else ""
             if (dx_mm, ratio) == (2.0, 4):
                 note = "   <- 50x warning point (b=35 mm snaps at dx=2 mm)"
