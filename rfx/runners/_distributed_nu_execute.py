@@ -345,7 +345,7 @@ def dispatch_forward(self, *, plan, _solve_assembly, _call_args, fallback_only=F
         del _solve_assembly
         devices = _call_args["devices"]
         return run_on_one_device(
-            self, {**_call_args, "distributed": False, "devices": None},
+            self, {**_call_args, "distributed": False, "devices": None, "skip_preflight": True},
             reason=reason, requested_devices=len(jax.devices() if devices is None else devices),
             diagnostics=diagnostics, entry="forward")
     if fallback_only:

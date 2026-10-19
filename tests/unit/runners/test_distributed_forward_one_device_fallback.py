@@ -135,7 +135,8 @@ def test_forward_fallback_gradient_equals_one_device(kind):
 
 @pytest.mark.parametrize("kind", ["waveguide", "tfsf"])
 @pytest.mark.parametrize("automatic_devices", [False, True])
-def test_fallback_record_on_both_entries(kind, automatic_devices):
+@pytest.mark.parametrize("skip_preflight", [True, False])
+def test_fallback_record_on_both_entries(kind, automatic_devices, skip_preflight, capsys):
     devices = host_devices(2)
     sim, _ = scene(kind)
     for entry in ("forward", "run"):
@@ -144,10 +145,13 @@ def test_fallback_record_on_both_entries(kind, automatic_devices):
         native_options = {} if entry == "forward" else {"compute_s_params": False}
         with warnings.catch_warnings(record=True) as native_warnings:
             warnings.simplefilter("always")
-            getattr(sim, entry)(n_steps=4, skip_preflight=True, **native_options)
+            getattr(sim, entry)(n_steps=4, skip_preflight=skip_preflight, **native_options)
+        native_printed = capsys.readouterr().out.count("[PREFLIGHT]")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            result = getattr(sim, entry)(n_steps=4, skip_preflight=True, **options)
+            result = getattr(sim, entry)(n_steps=4, skip_preflight=skip_preflight, **options)
+        # The fallback runs preflight once (the entry's), never again inside.
+        assert capsys.readouterr().out.count("[PREFLIGHT]") == native_printed
         # The short physical record can warn about settling on either entry.
         # The distributed request adds exactly one fallback warning.
         assert len(caught) == len(native_warnings) + 1
@@ -158,8 +162,13 @@ def test_fallback_record_on_both_entries(kind, automatic_devices):
         message = (f"Distributed runner does not yet support {reason}. "
                    "Falling back to single-device execution with the same arguments. " + MEMORY)
         assert record.message == message
-        assert [str(w.message) for w in caught] == [message] + [
-            str(w.message) for w in native_warnings]
+        if skip_preflight:
+            assert [str(w.message) for w in caught] == [message] + [
+                str(w.message) for w in native_warnings]
+        else:
+            # Preflight warns before the fallback warning; the set is the same.
+            assert sorted(str(w.message) for w in caught) == sorted(
+                [message] + [str(w.message) for w in native_warnings])
         assert record.subject == reason and record.severity == "warning"
         assert record.values == {"requested_devices": 2, "devices_used": 1, "memory": MEMORY}
         assert record.path == ("fwd_distributed_nu" if entry == "forward" else "run_distributed")
