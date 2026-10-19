@@ -711,6 +711,56 @@ def l2_differences(comparison):
     return failures
 
 
+def port_drive_witness_leaves(sim, run, forward):
+    """Check separate S drives before excluding their eight run-only leaves.
+
+    Decision C: forward judges its declared drive's port record; run also
+    judges the passive port's separate drive. The driver stores these rows in
+    impedance-port order (there is no separate drive-id field in a witness).
+    """
+    ports = [(i, port) for i, port in enumerate(sim._ports) if port.impedance != 0]
+    port_ids = [f'port:{i}:mode:0' for i, _ in ports]
+    for result in (run, forward):
+        assert [record.id for record in result.sparam_time_records
+                if record.kind == 'lumped'] == port_ids
+    actual, expected = run.settling_witness, forward.settling_witness
+    run_rows = [(i, row) for i, row in enumerate(actual['runs'])
+                if row.get('route') == 's_channels']
+    forward_rows = [row for row in expected['runs'] if row.get('route') == 's_channels']
+    assert len(run_rows) == len(forward_rows) == 1
+    row_index, run_row = run_rows[0]
+    forward_row = forward_rows[0]
+    assert 'per_drive' not in expected
+    assert all('per_drive' not in row for row in expected['runs'])
+    leaves = []
+    for prefix, witness in (('settling_witness', actual),
+                            (f'settling_witness/runs/{row_index}', run_row)):
+        # (a) One witness per impedance port, indexed in declaration order.
+        assert len(witness['per_drive']) == len(ports), prefix
+        for column, ((_, port), port_id, drive) in enumerate(
+                zip(ports, port_ids, witness['per_drive'], strict=True)):
+            location = f'{prefix}/per_drive/{column}'
+            assert drive['route'] == 's_channels', (location, port_id)
+            assert drive['scored_port_record_ids'] == port_ids, (location, port_id)
+            if port.excite:
+                # (b) Compare the port-record row, not the probe aggregate.
+                for key in drive.keys() & forward_row.keys():
+                    np.testing.assert_array_equal(drive[key], forward_row[key],
+                                                  err_msg=f'{location}/{key}: {port_id}')
+            else:
+                # (c) This ordinal is the passive port's run-only drive.
+                assert port_id in drive['scored_port_record_ids'], (location, port_id)
+                assert np.isnan(np.asarray(forward.s_params)[:, column]).all()
+            # Both stored representations must retain the same drive fields.
+            if witness is run_row:
+                assert drive.keys() == actual['per_drive'][column].keys(), location
+                for key in drive:
+                    np.testing.assert_array_equal(drive[key], actual['per_drive'][column][key],
+                                                  err_msg=f'{location}/{key}')
+            leaves.extend(f'{location}/{key}' for key in ('error_per_bin', 'share_per_bin'))
+    return tuple(leaves)
+
+
 def port_s_pair(declaration, path, *, n_steps=150):
     """Equal bin requests; run is the independent reference for measured columns."""
     sim = BUILDERS[declaration](path)
@@ -736,5 +786,3 @@ def port_s_pair(declaration, path, *, n_steps=150):
         assert np.isnan(actual[:, column]).all()
     return {'run': {'outcome': 'admitted', 'result': run},
             'forward': {'outcome': 'admitted', 'result': forward}}
-
-

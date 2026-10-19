@@ -11,7 +11,7 @@ import pytest
 
 from tests.contracts.run_forward_census import (
     BUILDERS, SEAMS, capture, compare, compare_l2, equal_request_pair, l2_differences,
-    normalize_inputs, observables, run_l2, port_s_pair,
+    normalize_inputs, observables, run_l2, port_s_pair, port_drive_witness_leaves,
 )
 
 KNOWN_ROWS = (
@@ -19,7 +19,6 @@ KNOWN_ROWS = (
     ('P-lumped', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
     ('P-lumped2', 'graded', 'L1', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
     ('P-lumped2', 'graded', 'L2', 'D9G', '#1373 D9 (graded, nu): run() asks lumped-port S by default but returns none and refuses an explicit S request; forward(port_s11_freqs) computes it (pinned); nu/graded-lumped-s opens graded run() lumped S and removes this row'),
-    ('P-lumped2', 'uniform', 'L2', 'D5', '#1373 D8: per_drive witnesses remain for the separate S drives, including the passive port column'),
     ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
 )
@@ -29,9 +28,8 @@ KNOWN_ROWS = (
 # (b) run(compute_s_params=False) against forward's default.
 PORTED = tuple(d for d in BUILDERS if d.startswith('P-'))
 # The separate S drives exist only when S is requested.
-KNOWN_DIRECTIONS = {('P-lumped2', 'uniform', 'L2', 'D5'): ('a',),
-                    **{(d, 'graded', level, 'D9G'): ('a',)
-                       for d in ('P-lumped', 'P-lumped2') for level in ('L1', 'L2')}}
+KNOWN_DIRECTIONS = {(d, 'graded', level, 'D9G'): ('a',)
+                    for d in ('P-lumped', 'P-lumped2') for level in ('L1', 'L2')}
 # Under (a) both entries refuse the S request with the same error: a plain
 # source fires in every port drive.
 EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
@@ -331,7 +329,6 @@ ID_PATTERNS = {
                   '/ctx/flux_meta/*', '/invariants/ctx/flux_meta/*',
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),
            'L2': ('flux_monitors/*',)},
-    'D5': {'L1': (), 'L2': ('settling_witness/*',)},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
     # D9G: only forward's S request (bins, port accumulators, S records);
     # run's side holds the no-S value. See d9g_difference.
@@ -451,13 +448,6 @@ def classify(declaration, path, level, differences, ids):
                 pattern_match = pattern_match and d9g_difference(level, difference)
             if level == 'L2' and ident in ('D4', 'D7'):
                 pattern_match = pattern_match and run_only
-            if level == 'L2' and ident == 'D5':
-                shapes = difference.get('shape')
-                shape_change = common and shapes is not None and shapes[0] != shapes[1]
-                # Item 21: both spellings represent per-drive witness channels.
-                run_record = run_only and difference['path'].startswith(
-                    ('settling_witness/runs/', 'settling_witness/per_drive/'))
-                pattern_match = pattern_match and (shape_change or run_record)
             if consequence or pattern_match:
                 explained.add(ident)
         matched.update(explained)
@@ -506,6 +496,14 @@ def check_fields(declaration, path, direction=None):
         # S was checked above on its measured column, with the cross-trace bar.
         for value in values.values():
             value['arrays'].pop('s_params', None)
+        if declaration == 'P-lumped2':
+            leaves = port_drive_witness_leaves(BUILDERS[declaration](path),
+                                               pair['run']['result'], pair['forward']['result'])
+            assert len(leaves) == 8
+            for leaf in leaves:
+                assert leaf in values['run']['arrays'], leaf
+                assert leaf not in values['forward']['arrays'], leaf
+                values['run']['arrays'].pop(leaf)
     comparison = compare_l2(values['run']['arrays'], values['forward']['arrays'],
                             left_raises=values['run']['raises'], right_raises=values['forward']['raises'])
     differences = l2_differences(comparison)
@@ -514,7 +512,7 @@ def check_fields(declaration, path, direction=None):
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
-    ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform')) or any(
+    ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
 
 

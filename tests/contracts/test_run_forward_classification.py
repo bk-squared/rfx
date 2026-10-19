@@ -13,11 +13,9 @@ def synthetic_consequence(monkeypatch):
     return 'X-field', 'D0'
 
 
-def test_d4_fixed_while_d5_open():
+def test_fixed_id_must_be_removed():
     with pytest.raises(pytest.fail.Exception, match='D4 no longer applies to O-flux/uniform/L2'):
-        contract.classify('O-flux', 'uniform', 'L2', [
-            {'path': 'settling_witness/residual', 'bytes_equal': False, 'shape': [[1], [2]]},
-        ], {'D4': 'flux absent', 'D5': 'witness shape'})
+        contract.classify('O-flux', 'uniform', 'L2', [], {'D4': 'flux absent'})
 
 
 def test_consequences_do_not_explain_witness(synthetic_consequence):
@@ -43,15 +41,12 @@ def test_same_shape_witness_value_is_unexplained():
     with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/residual'):
         contract.classify('P-waveguide', 'uniform', 'L2', [
             {'path': 'settling_witness/residual', 'bytes_equal': False, 'shape': [[2], [2]]},
-        ], {'D5': 'witness shape'})
+        ], contract.known('P-waveguide', 'uniform', 'L2'))
 
 
 @pytest.mark.parametrize('declaration,ident,leaf', [
     ('O-flux', 'D4', 'flux_monitors/0/flux'),
     ('P-waveguide', 'D7', 'waveguide_ports/0/voltage'),
-    ('P-waveguide', 'D5', 'settling_witness/runs/0/residual'),
-    ('P-lumped', 'D5', 'settling_witness/per_drive/0/error_per_bin'),
-    ('P-lumped2', 'D5', 'settling_witness/per_drive/1/share_per_bin'),
 ])
 def test_only_run_side_missing_records_are_explained(declaration, ident, leaf):
     with pytest.raises(pytest.xfail.Exception):
@@ -64,11 +59,11 @@ def test_only_run_side_missing_records_are_explained(declaration, ident, leaf):
         ], {ident: 'run-only record'})
 
 
-def test_witness_shape_change_is_explained():
-    with pytest.raises(pytest.xfail.Exception):
+def test_witness_shape_change_is_unexplained():
+    with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/residual'):
         contract.classify('P-waveguide', 'uniform', 'L2', [
             {'path': 'settling_witness/residual', 'bytes_equal': False, 'shape': [[2], [3]]},
-        ], {'D5': 'witness shape'})
+        ], contract.known('P-waveguide', 'uniform', 'L2'))
 
 
 def test_unmeasured_waveguide_flux_is_unexplained():
@@ -91,4 +86,18 @@ def test_per_drive_same_shape_value_is_unexplained():
         contract.classify('P-lumped', 'uniform', 'L2', [
             {'path': 'settling_witness/per_drive/0/error_per_bin',
              'bytes_equal': False, 'shape': [[2], [2]]},
-        ], {'D5': 'witness channels'})
+        ], contract.known('P-lumped', 'uniform', 'L2'))
+
+
+@pytest.mark.parametrize('prefix', ['settling_witness', 'settling_witness/runs/0'])
+@pytest.mark.parametrize('column', [0, 1])
+@pytest.mark.parametrize('key', ['error_per_bin', 'share_per_bin'])
+@pytest.mark.parametrize('run,forward', [('array', 'absent'), ('absent', 'array')])
+def test_unchecked_per_drive_leaf_is_unexplained(prefix, column, key, run, forward):
+    assert 'D5' not in contract.ID_PATTERNS
+    ids = contract.known('P-lumped2', 'uniform', 'L2', 'a')
+    assert ids == {}
+    with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/'):
+        contract.classify('P-lumped2', 'uniform', 'L2', [
+            {'path': f'{prefix}/per_drive/{column}/{key}', 'run': run, 'forward': forward},
+        ], ids)
