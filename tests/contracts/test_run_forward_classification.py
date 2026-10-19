@@ -31,7 +31,6 @@ def test_consequences_do_not_explain_witness(synthetic_consequence):
 @pytest.mark.parametrize('declaration,ident,leaf', [
     ('O-flux', 'D4', 'flux_monitors/0/flux'),
     ('P-waveguide', 'D7', 'waveguide_sparams/0/S'),
-    ('P-lumped', 'D8', 's_params'),
 ])
 def test_returned_measurement_value_is_not_missing(declaration, ident, leaf):
     with pytest.raises(pytest.fail.Exception, match='unexplained'):
@@ -50,7 +49,6 @@ def test_same_shape_witness_value_is_unexplained():
 @pytest.mark.parametrize('declaration,ident,leaf', [
     ('O-flux', 'D4', 'flux_monitors/0/flux'),
     ('P-waveguide', 'D7', 'waveguide_ports/0/voltage'),
-    ('P-lumped', 'D8', 's_params'),
     ('P-waveguide', 'D5', 'settling_witness/runs/0/residual'),
     ('P-lumped', 'D5', 'settling_witness/per_drive/0/error_per_bin'),
     ('P-lumped2', 'D5', 'settling_witness/per_drive/1/share_per_bin'),

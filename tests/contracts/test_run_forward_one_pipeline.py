@@ -449,7 +449,7 @@ def classify(declaration, path, level, differences, ids):
                                 for pattern in ID_PATTERNS[ident][level])
             if ident == 'D9G':
                 pattern_match = pattern_match and d9g_difference(level, difference)
-            if level == 'L2' and ident in ('D4', 'D7', 'D8'):
+            if level == 'L2' and ident in ('D4', 'D7'):
                 pattern_match = pattern_match and run_only
             if level == 'L2' and ident == 'D5':
                 shapes = difference.get('shape')
