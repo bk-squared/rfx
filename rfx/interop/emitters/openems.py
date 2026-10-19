@@ -66,9 +66,8 @@ docs/design_notes/geometry_setup_interop.md):
         the per-face pads, and ``PML_<N>`` eats exactly the added margin.
         Getting this wrong silently compares a different structure; the repo's
         own hand-written scripts get it wrong.
-``D2``  Cell counts follow rfx's realized face kinds: walls round,
-        positive-depth absorber axes span the declaration. The emitted extent
-        is ``n_cells * dx`` and may differ from ``domain``.
+``D2``  Cell counts follow rfx (walls round, absorber axes span the
+        declaration), so the emitted extent may differ from ``domain``.
 ``D3``  ``PML_<N>`` is parameterised from ``cpml_layers``; the scripts'
         hard-coded ``PML_8`` is stale against the current rfx default of 16.
 ``D4``  ``MUR`` is never emitted (measured 8 % resonance error on a patch, and
@@ -1283,11 +1282,9 @@ def plan_openems_projection(
 
     # --- mesh lines (D1, D2) ------------------------------------------------
     from rfx.boundaries.depths import resolve_face_depths
-    from rfx.grid import axis_kinds, realized_cells
-    kinds = axis_kinds(resolve_face_depths(
+    from rfx.grid import domain_cells
+    n_cells = domain_cells(extent, dx_m, resolve_face_depths(
         spec, budget=cpml_layers, periodic_axes=periodic_axes))
-    n_cells = tuple(realized_cells(float(extent[i]), dx_m, kinds[axis])
-                    for i, axis in enumerate(_AXES))
     pad_lo = tuple(pads[f"{ax}_lo"] for ax in _AXES)
     pad_hi = tuple(pads[f"{ax}_hi"] for ax in _AXES)
     lines: dict[str, tuple[float, ...]] = {
@@ -1318,10 +1315,8 @@ def plan_openems_projection(
         "formulations, so the same layer count does not mean the same absorber."
     )
     notes.append(
-        f"[D2] cell counts use rfx's realized face kinds (walls round; "
-        f"positive-depth absorber axes span the declaration), so the emitted clear "
-        f"extent is {tuple(n_cells[i] * dx_m for i in range(3))} m and may differ from "
-        f"the requested domain {tuple(float(v) for v in extent)} m."
+        f"[D2] cell counts follow rfx (walls round, absorber axes span), so the clear extent is "
+        f"{tuple(n_cells[i] * dx_m for i in range(3))} m for the requested {tuple(float(v) for v in extent)} m."
     )
     if upml_faces:
         notes.append(

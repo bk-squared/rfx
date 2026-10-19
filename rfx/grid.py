@@ -173,6 +173,13 @@ def axis_kinds(boundary_depths):
     return result
 
 
+def domain_cells(domain, dx, boundary_depths):
+    """Interior cell count per axis of ``domain`` from its resolved faces."""
+    kinds = axis_kinds(boundary_depths)
+    return tuple(realized_cells(float(length), dx, kinds[axis])
+                 for axis, length in zip("xyz", domain))
+
+
 class Grid:
     """Rectilinear FDTD grid with uniform cell size.
 
