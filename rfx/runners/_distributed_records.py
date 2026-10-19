@@ -13,6 +13,7 @@ from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.runners._rank import rank_shard_map
 from rfx.runners._distributed_ntff import SlabNTFF
+from rfx.stepping.slab import place
 from rfx.measurement import accumulators
 
 
@@ -40,7 +41,7 @@ class Packed:
         self.capacity = max(map(sum, self.sizes))
 
     def initial(self):
-        return jax.device_put(np.zeros((self.mesh.size, self.capacity), self.dtype),
+        return place(np.zeros((self.mesh.size, self.capacity), self.dtype),
                               NamedSharding(self.mesh, P("x")))
 
     def unpack(self, buffer, rank):
@@ -68,7 +69,7 @@ class Packed:
         return apply(ranks, *inputs)
 
     def replicated(self, buffer):
-        return (jax.device_put(buffer, NamedSharding(self.mesh, P()))
+        return (place(buffer, NamedSharding(self.mesh, P()))
                 if isinstance(buffer, (jax.Array, jax.core.Tracer)) else buffer)
 
 
@@ -178,7 +179,7 @@ class SnapshotRecords:
 
     def initial(self):
         shape = (self.mesh.size, self.frames) + self.frame_shape
-        return tuple(jax.device_put(np.zeros(shape, self.dtype), NamedSharding(self.mesh, P("x")))
+        return tuple(place(np.zeros(shape, self.dtype), NamedSharding(self.mesh, P("x")))
                      for _ in self.spec.components)
 
     def update(self, buffer, state, dt, step, *, ranks):
@@ -221,8 +222,8 @@ class SnapshotRecords:
         return apply(ranks, buffer, state, step)
 
     def assemble(self, buffer):
-        buffer = jax.tree.map(lambda a: (jax.device_put(a, NamedSharding(self.mesh, P()))
-                                        if isinstance(a, jax.Array) else a), buffer)
+        buffer = jax.tree.map(lambda a: (place(a, NamedSharding(self.mesh, P()))
+                                        if isinstance(a, (jax.Array, jax.core.Tracer)) else a), buffer)
         result = {c: jnp.zeros((self.frames,) + self.full_shape, self.dtype) for c in self.spec.components}
         for rank, (start, end, owned) in enumerate(self.parts):
             if owned:

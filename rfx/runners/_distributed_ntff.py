@@ -11,6 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import lax
 from rfx.runners._rank import rank_shard_map
+from rfx.stepping.slab import place
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.farfield import (NTFFData, accumulate_ntff, init_ntff_data,
@@ -40,7 +41,7 @@ class SlabNTFF:
         self.capacity = max(sum(part[-1]) for part in self.parts)
 
     def initial(self):
-        return jax.device_put(jnp.zeros((self.n_devices, self.capacity), self.dtype),
+        return place(jnp.zeros((self.n_devices, self.capacity), self.dtype),
                               NamedSharding(self.mesh, P("x")))
 
     @staticmethod
@@ -88,7 +89,7 @@ class SlabNTFF:
         # differentiable. The multi-process caller passes an already
         # gathered host array, which needs neither.
         if isinstance(buffer, (jax.Array, jax.core.Tracer)):
-            buffer = jax.device_put(buffer, NamedSharding(self.mesh, P()))
+            buffer = place(buffer, NamedSharding(self.mesh, P()))
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
             part = self.unpack(buffer[rank], shapes, sizes)
             for index, value in enumerate(part):

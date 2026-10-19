@@ -598,10 +598,21 @@ def _nu_sim_with_dft_plane() -> Simulation:
     return sim
 
 
-def test_forward_distributed_nu_dft_planes_fence_raises():
-    sim = _nu_sim_with_dft_plane()
-    with pytest.raises(NotImplementedError, match="add_dft_plane_probe"):
-        sim.forward(distributed=True, n_steps=2, skip_preflight=True)
+def test_forward_distributed_nu_dft_planes_match_native():
+    """Graded forward(distributed=True) carries DFT planes since #1402 step 4g.
+
+    CPML: compile-form rounding of the wrapped step (rfx-archive DESIGN.md 4g
+    amendment 1), so the record-summed bar 1e-4 of the peak.
+    """
+    from tests._multi_device_scene import host_devices
+    one = _nu_sim_with_dft_plane().forward(n_steps=8, skip_preflight=True)
+    multi = _nu_sim_with_dft_plane().forward(
+        n_steps=8, skip_preflight=True, distributed=True, devices=host_devices(2))
+    for name, expected in one.dft_planes.items():
+        a = np.asarray(multi.dft_planes[name].accumulator).astype(np.complex128)
+        b = np.asarray(expected.accumulator).astype(np.complex128)
+        assert np.any(b), name
+        assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b)), name
 
 
 def test_run_distributed_dft_planes_match_native():

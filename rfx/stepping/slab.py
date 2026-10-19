@@ -150,11 +150,11 @@ def forward_sharding(arr):
 
 def place(array, sharding):
     """Place a logical array, allowing batching to insert unpartitioned axes."""
-    tracer = array
-    while isinstance(tracer, jax.core.Tracer):
-        if getattr(tracer, 'batch_dim', None) is not None:
-            return _placement_map(sharding)(array)
-        tracer = getattr(tracer, 'primal', None)
+    # Let jit transform the logical sharding with the value. In vmap(jvp),
+    # only the tangent may be batched; inspecting the primal misses that axis
+    # and device_put applies the slab spec to the tangent's batch dimension.
+    if isinstance(array, jax.core.Tracer):
+        return _placement_map(sharding)(array)
     return jax.device_put(array, sharding)
 
 

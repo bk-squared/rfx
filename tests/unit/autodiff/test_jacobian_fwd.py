@@ -558,14 +558,13 @@ def test_g6a_uniform_distributed_raises_a_different_earlier_check():
         jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
 
 
-def test_g6a_distributed_nu_dft_plane_fence_raises():
-    """The fence jacobian_fwd's own docstring actually names as fence #1
-    (issue #619, inherited from forward()): non-uniform + distributed=True
-    WITH a registered DFT-plane probe raises NotImplementedError naming
-    add_dft_plane_probe, and that raise propagates through
-    jax.jvp/jacobian_fwd unchanged -- no new code in jacobian_fwd needed.
-    Same NU-sim construction as
-    tests/unit/autodiff/test_observables_dft_field.py::test_forward_distributed_nu_dft_planes_fence_raises."""
+def test_g6a_distributed_nu_dft_plane_jacobian_matches_one_device():
+    """Graded forward(distributed=True) carries DFT planes since #1402 step 4g,
+    so the former fence #1 is gone: jacobian_fwd of a DFT-plane objective
+    through the graded multi-device forward equals the one-device one within
+    the summed-quantity cross-trace bar (CPML: compile-form rounding,
+    rfx-archive DESIGN.md 4g amendment 1)."""
+    from tests._multi_device_scene import host_devices
     nx, ny, nz = 16, 12, 12
     dx = 1e-3
     sim = Simulation(
@@ -581,14 +580,22 @@ def test_g6a_distributed_nu_dft_plane_fence_raises():
     sim.add_dft_plane_probe(
         axis="x", coordinate=10 * dx, component="ez", freqs=_FREQS,
     )
+    eps = jnp.asarray(sim._assemble_materials_nu(sim._build_nonuniform_grid())[0].eps_r)
 
-    def sim_fn(alpha):
-        # alpha is unused: the fence fires during forward()'s Python-level
-        # dispatch, before any traced computation touches eps/alpha at all.
-        return sim.forward(distributed=True, n_steps=2, skip_preflight=True)
+    def objective(alpha, **options):
+        result = sim.forward(eps_override=eps * alpha, n_steps=8, skip_preflight=True,
+                             checkpoint=False, **options)
+        plane = next(iter(result.dft_planes.values())).accumulator
+        return jnp.sum(jnp.abs(plane) ** 2)
 
-    with pytest.raises(NotImplementedError, match="add_dft_plane_probe"):
-        jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
+    alpha = jnp.asarray(1.0, dtype=jnp.float32)
+    one_primal, one = (np.asarray(v) for v in jacobian_fwd(objective, alpha))
+    multi_primal, multi = (np.asarray(v) for v in jacobian_fwd(
+        lambda a: objective(a, distributed=True, devices=host_devices(2)), alpha))
+    # through jax.vmap/jvp the compiled program differs (cross-trace rule, rfx CLAUDE.md)
+    assert np.all(np.isfinite(one)) and np.any(one != 0)
+    assert np.max(np.abs(multi_primal - one_primal)) <= 1e-4 * np.max(np.abs(one_primal))
+    assert np.max(np.abs(multi - one)) <= 1e-4 * np.max(np.abs(one))
 
 
 def test_g6_design_mask_kwarg_raises_type_error_not_a_fence():

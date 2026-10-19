@@ -2367,16 +2367,21 @@ def test_a_multi_device_run_carries_it():
     assert np.any(np.asarray(result.current_moment_data[0]))
 
 
-def test_the_distributed_nu_forward_lane_refuses_it():
-    """Reached through the private entry, with no devices needed.
+def test_the_distributed_nu_forward_lane_carries_it():
+    """Graded forward(distributed=True) carries the monitor since #1402 step 4g.
 
-    The refusal sits beside this lane's existing ``add_flux_monitor()`` and
-    ``add_dft_plane_probe()`` refusals and fires before any sharding.
+    CPML: the wrapped step differs from one device by compile-form rounding
+    (rfx-archive DESIGN.md 4g amendment 1), so the record-summed bar 1e-4.
     """
+    from tests._multi_device_scene import host_devices
     dz = np.full(10, DX)
-    sim = _sim_with_monitor(dz_profile=dz)
-    with pytest.raises(NotImplementedError, match="add_current_moment_monitor"):
-        sim._forward_distributed_nonuniform_from_materials(n_steps=4)
+    one = _sim_with_monitor(dz_profile=dz).forward(n_steps=4, skip_preflight=True)
+    multi = _sim_with_monitor(dz_profile=dz).forward(
+        n_steps=4, skip_preflight=True, distributed=True, devices=host_devices(2))
+    a = np.asarray(multi.current_moment_data[0]).astype(np.complex128)
+    b = np.asarray(one.current_moment_data[0]).astype(np.complex128)
+    assert np.any(b)
+    assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b))
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
