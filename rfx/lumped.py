@@ -517,12 +517,12 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
 # Per-timestep ADE update
 # ---------------------------------------------------------------------------
 
-def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta,
+def _parallel_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
                      e_prev=None):
     """Parallel topology: the inductor, solved WITH the edge field; R and C
     are folded into the material arrays.
 
-    ``state`` holds ``e_std`` at the element edge (the standard Yee update,
+    ``e_std`` is the field at the element edge (the standard Yee update,
     folded R and C included, before the inductor's current has acted);
     ``e_prev`` is ``E^n``, the edge field at the START of this step.
 
@@ -543,18 +543,13 @@ def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta,
     is a no-op (``has_inductor`` is a static Python bool).
     """
     if not meta.has_inductor:
-        return state, rlc_state
+        return e_std, rlc_state
     if e_prev is None:
         raise ValueError(
             "a parallel lumped inductor is solved together with its edge "
             "field (issue #1245) and needs E^n, the edge field at the start "
             "of the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
             "the E update")
-
-    i, j, k = meta.i, meta.j, meta.k
-
-    e_field = getattr(state, meta.component)
-    e_std = e_field[i, j, k]
 
     i_L = rlc_state.inductor_current
 
@@ -574,18 +569,15 @@ def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta,
     e_new = e_std - correction
     i_L_new = i_L + 0.5 * meta.dt_dx_over_L * (e_new + e_prev)
 
-    field_new = e_field.at[i, j, k].set(e_new.astype(e_field.dtype))
-    state_new = state._replace(**{meta.component: field_new})
-
-    return state_new, RLCState(
+    return e_new, RLCState(
         inductor_current=jnp.asarray(i_L_new).astype(i_L.dtype),
         capacitor_charge=rlc_state.capacitor_charge)
 
 
-def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
+def _series_values(e_std, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
     """Series topology: R, L, C share one current, solved WITH the edge field.
 
-    ``state`` holds ``e_std`` at the element edge (the standard Yee update,
+    ``e_std`` is the field at the element edge (the standard Yee update,
     ``Ca*E^n + Cb*curl H``, before the element's current has acted);
     ``e_prev`` is ``E^n``, the edge field at the START of this step.
 
@@ -607,11 +599,6 @@ def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
     Carries: ``inductor_current`` holds I^{n+1} with an inductor and I_avg
     (the current at n+1/2) without one; ``capacitor_charge`` holds Q^{n+1}.
     """
-    i, j, k = meta.i, meta.j, meta.k
-
-    e_field = getattr(state, meta.component)
-    e_std = e_field[i, j, k]
-
     i_old = rlc_state.inductor_current
     q_old = rlc_state.capacitor_charge
 
@@ -650,17 +637,14 @@ def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
     else:
         i_new = i_avg
 
-    field_new = e_field.at[i, j, k].set(e_new.astype(e_field.dtype))
-    state_new = state._replace(**{meta.component: field_new})
-
-    return state_new, RLCState(
+    return e_new, RLCState(
         inductor_current=jnp.asarray(i_new).astype(i_old.dtype),
         capacitor_charge=jnp.asarray(q_new).astype(q_old.dtype))
 
 
-def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
+def rlc_element_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
                        e_prev=None):
-    """Update ADE and correct the E-field at the element cell.
+    """Compute the corrected edge scalar and the element ADE state.
 
     Dispatches between series and parallel topology at Python trace
     time (``meta.is_series`` is a static bool), so only the needed
@@ -671,7 +655,7 @@ def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
     the E update); the series update (#1163) and the parallel inductor
     (#1245) need it, a folded-only parallel element does not.
 
-    Returns (new_fdtd_state, new_rlc_state).
+    Returns (new_edge_value, new_rlc_state); does not write a field.
     """
     if meta.is_series:
         if e_prev is None:
@@ -680,5 +664,35 @@ def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
                 "(issue #1163) and needs E^n, the edge field at the start of "
                 "the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
                 "the E update")
+        return _series_values(e_std, rlc_state, meta, e_prev)
+    return _parallel_values(e_std, rlc_state, meta, e_prev)
+
+
+def _update_element(state, rlc_state: RLCState, meta: RLCCellMeta,
+                       e_prev=None):
+    """Update one element; stepping batches these scalar solves by component."""
+    field = getattr(state, meta.component)
+    cell = (meta.i, meta.j, meta.k)
+    value, updated = rlc_element_values(field[cell], rlc_state, meta, e_prev)
+    if not (meta.is_series or meta.has_inductor):
+        return state, updated
+    return state._replace(**{meta.component: field.at[cell].set(
+        value.astype(field.dtype))}), updated
+
+
+def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev=None):
+    """Single parallel-element field update (compatibility entry)."""
+    return _update_element(state, rlc_state, meta, e_prev)
+
+
+def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
+    """Single series-element field update (compatibility entry)."""
+    return _update_element(state, rlc_state, meta, e_prev)
+
+
+def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
+                       e_prev=None):
+    """Update one element's field and ADE state using its declared topology."""
+    if meta.is_series:
         return _update_series(state, rlc_state, meta, e_prev)
     return _update_parallel(state, rlc_state, meta, e_prev)

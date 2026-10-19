@@ -933,6 +933,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
         # #1245: at most one element with its own solve per realized edge.
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
+        from rfx.model.lumped_admission import refuse_rlc_overlap
+        refuse_rlc_overlap(sim._lumped_rlc, rlc_metas, sim._ports, grid)
         rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``

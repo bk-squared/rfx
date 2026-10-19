@@ -51,11 +51,12 @@ What is checked:
    the runner kept before the fix), sends 1-3 red by the factors recorded
    in each test;
 6. at build time, every source kind the graded lane drives (wire,
-   single-cell lumped, MSL feed, a wire or lumped port with a capacitor
-   across its edge, and a soft current source) under an override: the Cb
+   single-cell lumped, MSL feed, and a soft current source) under an override: the Cb
    each drive is built from equals the Cb the stepper applies on that edge;
    and an override, traced or concrete, reaches the MSL feed's Cb without
    touching its static launch fixture, which reads the drawn eps_r.
+   Capacitors sharing wire or lumped port edges are now refused before
+   drive construction, including under an override.
 
 The drive is traced when the override is (as on the uniform lane); the MSL
 launch fixture's substrate eps_r -- a static mode shape, the uniform
@@ -531,6 +532,14 @@ _BUILD_CASES = {
 }
 
 
+@pytest.mark.parametrize("case", ["wire+C", "lumped+C"])
+@pytest.mark.parametrize("mutated", [False, True])
+def test_capacitor_on_port_edge_is_refused(case, mutated):
+    # Admission precedes drive construction, including the old-drive mutation.
+    with pytest.raises(NotImplementedError, match=r"add_lumped_rlc #0 .*add_port #0"):
+        _worst_cb_mismatch(case, mutated=mutated)
+
+
 def _worst_cb_mismatch(case, *, mutated=False):
     port, cap = _BUILD_CASES[case]
     sim = _board(EPS_LO, EPS_LO, port=port, cap=cap)
@@ -555,7 +564,7 @@ def _worst_cb_mismatch(case, *, mutated=False):
     return worst, len(handed)
 
 
-@pytest.mark.parametrize("case", list(_BUILD_CASES))
+@pytest.mark.parametrize("case", [k for k, v in _BUILD_CASES.items() if v[1] is None])
 def test_every_graded_port_drive_under_an_override_uses_the_steppers_cb(case):
     worst, n = _worst_cb_mismatch(case)
     print(f"[build] {case}: {n} driven edges, "
@@ -563,7 +572,7 @@ def test_every_graded_port_drive_under_an_override_uses_the_steppers_cb(case):
     assert worst <= 1e-6, worst
 
 
-@pytest.mark.parametrize("case", list(_BUILD_CASES))
+@pytest.mark.parametrize("case", [k for k, v in _BUILD_CASES.items() if v[1] is None])
 def test_the_build_check_sees_a_drive_from_the_drawn_arrays(case):
     worst, _ = _worst_cb_mismatch(case, mutated=True)
     print(f"[build-mutation] {case}: max |Cb_drive/Cb_step - 1| = {worst:.3e}")

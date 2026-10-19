@@ -676,6 +676,8 @@ def _forward_from_materials(
         # #1245: at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
         refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
+        from rfx.model.lumped_admission import refuse_rlc_overlap
+        refuse_rlc_overlap(self._lumped_rlc, rlc_metas, self._ports, grid)
 
     # Validate the operators handed to the scan, after every port fold
     # and PEC clearing. A passive load can reach the source shell even

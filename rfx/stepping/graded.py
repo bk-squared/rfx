@@ -322,12 +322,9 @@ def make_graded_step(
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         frame.new_rlc_states = None
         if ctx.use_lumped_rlc:
-            from rfx.lumped import update_rlc_element
-            frame.new_rlc_states = []
-            for rlc_st, meta, e_prev in zip(
-                    frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev):
-                frame.st, rlc_st_new = update_rlc_element(frame.st, rlc_st, meta, e_prev)
-                frame.new_rlc_states.append(rlc_st_new)
+            from rfx.stepping.lumped import update_rlc_elements
+            frame.st, frame.new_rlc_states = update_rlc_elements(
+                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev)
 
     def sources(frame: GradedFrame):
         # Sources (point sources + wire port excitation)

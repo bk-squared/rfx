@@ -12,6 +12,7 @@ from rfx.core.yee import curl_h, init_materials, init_state, update_e, update_h
 from rfx.grid import Grid
 from rfx.model.materials import with_components
 from rfx.model.occupancy import with_edge_keep
+from rfx.stepping.lumped import update_rlc_elements
 from rfx.lumped import LumpedRLCSpec, build_rlc_meta, init_rlc_state, update_rlc_element
 from rfx.materials.thin_conductor import (
     SheetImpedanceCtx, apply_sheet_impedance_e, sheet_update_coeffs,
@@ -50,7 +51,7 @@ def _scene(kind):
                              position=(0., .002, .002), component='ez')
         meta = build_rlc_meta(grid, spec, ctx.materials)
         ctx = replace(ctx, use_lumped_rlc=True, rlc_meta=(meta,),
-                      update_rlc_element=update_rlc_element)
+                      update_rlc_elements=update_rlc_elements)
         carry['rlc_states'] = [init_rlc_state()]
     return ctx, carry
 

@@ -375,7 +375,7 @@ class _StepContext:
     accumulate_ntff: Callable | None = None
     accumulate_current_moments: Callable | None = None
     apply_kerr_ade: Callable | None = None
-    update_rlc_element: Callable | None = None
+    update_rlc_elements: Callable | None = None
 
     @property
     def src_meta(self):

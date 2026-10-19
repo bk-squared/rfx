@@ -471,7 +471,7 @@ def _build_step_setup(
     _bloch = None
     init_ntff_data_fn = accumulate_ntff_fn = None
     apply_kerr_ade = None
-    update_rlc_element = None
+    update_rlc_elements = None
     debye_coeffs = lorentz_coeffs = None
 
     # ---- initialise states ----
@@ -642,7 +642,7 @@ def _build_step_setup(
     rlc_meta: tuple = ()
     if use_lumped_rlc:
         from rfx.lumped import init_rlc_state, rlc_carry_dtype
-        from rfx.lumped import update_rlc_element
+        from rfx.stepping.lumped import update_rlc_elements
         # Thread the ADE-carry dtype from the metas (WP 4-E).  Concrete run()
         # metas are all Python floats + float32 fields -> float32 (byte-identical
         # to the historical init_rlc_state() pin); a traced float64 component
@@ -786,7 +786,7 @@ def _build_step_setup(
         accumulate_ntff=accumulate_ntff_fn,
         accumulate_current_moments=accumulate_current_moments_fn,
         apply_kerr_ade=apply_kerr_ade if use_kerr else None,
-        update_rlc_element=update_rlc_element if use_lumped_rlc else None,
+        update_rlc_elements=update_rlc_elements if use_lumped_rlc else None,
     )
 
     return _SimSetup(

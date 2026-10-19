@@ -379,12 +379,8 @@ def make_uniform_step(
                     _sheet_coeffs)
 
         if ctx.use_lumped_rlc:
-            frame.new_rlc_states = []
-            for rlc_st, meta, e_prev in zip(
-                    frame.carry["rlc_states"], ctx.rlc_meta, frame.rlc_e_prev):
-                frame.st, rlc_st_new = ctx.update_rlc_element(
-                    frame.st, rlc_st, meta, e_prev)
-                frame.new_rlc_states.append(rlc_st_new)
+            frame.st, frame.new_rlc_states = ctx.update_rlc_elements(
+                frame.st, frame.carry["rlc_states"], ctx.rlc_meta, frame.rlc_e_prev)
 
     def before_sources(frame: UniformFrame):
         """Sample drive references before electric source injection."""
