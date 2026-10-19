@@ -297,7 +297,7 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     so these unused profiles no longer absorb inside the x/y physical domain.
     This is a runner contract change, not a change to init_cpml's allocation.
     """
-    grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+    grid = Grid(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.02),  # main's solved length; #1887
                 cpml_axes="z", cpml_layers=8)
     assert grid.cpml_axes == "z"
     assert (grid.pad_x_lo, grid.pad_x_hi) == (0, 0)

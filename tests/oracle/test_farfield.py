@@ -59,7 +59,7 @@ def _run_dipole_ntff(boundary="cpml"):
 
 def test_ntff_accumulation_runs():
     """NTFF accumulation completes without error."""
-    grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.02), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
     src = make_source(grid, (0.01, 0.01, 0.01), "ez", pulse, 30)
@@ -80,7 +80,7 @@ def test_ntff_accumulation_runs():
 
 def test_maximize_directivity_works_with_low_level_simresult():
     """Far-field objective should work on the low-level SimResult contract."""
-    grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.02), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
     src = make_source(grid, (0.01, 0.01, 0.01), "ez", pulse, 30)
@@ -183,7 +183,7 @@ def test_dipole_directivity():
 
 def test_ntff_without_ntff_returns_none():
     """SimResult.ntff_data is None when no NTFF box is used."""
-    grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.02), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     result = run(grid, materials, 10)
     assert result.ntff_data is None

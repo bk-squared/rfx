@@ -128,7 +128,7 @@ def _build_wg_sim() -> Simulation:
     """Tiny 2-port WR-90 sim (minimal domain, CPU-fast, above-cutoff freqs)."""
     sim = Simulation(
         freq_max=12e9,
-        domain=(_WR90_LX, _WR90_A, _WR90_B),
+        domain=(_WR90_LX, 0.024, 0.012),  # main's solved length; #1887
         dx=_WR90_DX,
         boundary="cpml",
         cpml_layers=8,

@@ -26,7 +26,7 @@ def _total_energy(state, dx):
 
 def test_lossy_cavity_energy_decay():
     """Energy in a lossy PEC cavity decays monotonically after source turns off."""
-    grid = Grid(freq_max=5e9, domain=(0.05, 0.05, 0.05), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
 
     sigma = 0.1  # S/m — moderate loss

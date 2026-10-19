@@ -159,7 +159,7 @@ def test_the_pec_sampler_is_not_the_dielectric_sampler():
 def test_probes_update_sparam_probe_traceable_with_traced_step():
     """probes: update_sparam_probe must not float() the traced
     state.step (a tracer inside the jitted scan)."""
-    grid = Grid(freq_max=5e9, domain=(0.05, 0.05, 0.025), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     port = LumpedPort(

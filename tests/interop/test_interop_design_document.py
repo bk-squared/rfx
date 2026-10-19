@@ -97,7 +97,7 @@ def _waveguide_with_dispersive_slab() -> Simulation:
     """Two-port WR-90-like guide loaded with Debye and Lorentz materials."""
     sim = Simulation(
         freq_max=12e9,
-        domain=(0.10, 0.02286, 0.01016),
+        domain=(0.10, 0.02286, 0.011),  # main's solved length; #1887
         dx=1e-3,
         boundary="cpml",
         cpml_layers=4,

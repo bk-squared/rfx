@@ -292,7 +292,7 @@ def test_late_time_stability():
     In a lossless PEC cavity the scheme is energy-conserving; any
     exponential growth would indicate instability.
     """
-    grid = Grid(freq_max=3e9, domain=(0.05, 0.05, 0.05), cpml_layers=0)
+    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 

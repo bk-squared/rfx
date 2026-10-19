@@ -47,7 +47,7 @@ def test_compiled_runner_energy_conservation():
     dx = 0.003
     0.99 * dx / (C0 * np.sqrt(3))
     # Build a minimal Grid-like object or use raw parameters
-    grid = Grid(freq_max=5e9, domain=(shape[0]*dx, shape[1]*dx, shape[2]*dx),
+    grid = Grid(freq_max=5e9, domain=((shape[0] + 1) * (C0 / 5e9 / 20.0), (shape[1] + 1) * (C0 / 5e9 / 20.0), (shape[2] + 1) * (C0 / 5e9 / 20.0)),  # main's solved length; #1887
                 cpml_layers=0)
     materials = init_materials(grid.shape)
 
@@ -141,7 +141,7 @@ def test_run_until_decay_supports_upml_boundary():
 
 def test_compiled_runner_source_and_probe():
     """Compiled runner with a point source produces non-zero probe data."""
-    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     n_steps = 200
 
@@ -164,7 +164,7 @@ def test_compiled_runner_source_and_probe():
 
 def test_compiled_runner_matches_python_loop():
     """Compiled runner should produce identical results to a Python loop."""
-    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     n_steps = 100
 
@@ -202,7 +202,7 @@ def test_compiled_runner_matches_python_loop():
 
 def test_compiled_runner_dft_plane_matches_manual_loop():
     """Compiled runner should match manual DFT plane accumulation."""
-    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     n_steps = 80
 
@@ -811,7 +811,7 @@ def test_s_matrix_two_port_reciprocity():
     Two lumped ports in a PEC cavity. Since the system is linear and
     reciprocal, S12 = S21 at all frequencies.
     """
-    grid = Grid(freq_max=5e9, domain=(0.05, 0.05, 0.025), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(17 * (C0 / 5e9 / 20.0), 17 * (C0 / 5e9 / 20.0), 9 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0)
