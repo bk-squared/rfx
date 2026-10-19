@@ -75,6 +75,8 @@ def port_s_from_record(channels, metas, *, wire_mode):
     v = jnp.zeros((n_wp, n_wp, nf), dtype=dtype)
     i = jnp.zeros_like(v)
     vp = jnp.zeros_like(v)
+    if graded and not wire_mode and any(len(ch) < 5 for ch in channels):
+        raise ValueError("Graded lumped-port S requires a pre-injection reference channel.")
     vr = None if graded and wire_mode else jnp.zeros_like(v)
     d = genuinely_excited[0]
     for receive, ch in enumerate(channels):

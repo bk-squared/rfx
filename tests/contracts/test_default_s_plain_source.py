@@ -54,14 +54,11 @@ def test_default_fields_equal_explicit_false(graded, wire, distributed):
         warnings.simplefilter("always")
         actual = model(graded, wire).run(**options)
     mixed = [w for w in caught if "S-matrix requests do not support plain sources" in str(w.message)]
-    # Main's graded lumped default does not request S at all (#1892).
-    if graded and not wire:
-        assert mixed == []
-    else:
-        assert len(mixed) == 1
-        assert mixed[0].category is UserWarning
-        assert str(mixed[0].message) == REASON + FIX
-        assert Path(mixed[0].filename).resolve() == Path(__file__).resolve()
+    # A driven graded lumped port requests S by default too (#1892).
+    assert len(mixed) == 1
+    assert mixed[0].category is UserWarning
+    assert str(mixed[0].message) == REASON + FIX
+    assert Path(mixed[0].filename).resolve() == Path(__file__).resolve()
     assert actual.s_params is expected.s_params is None
     assert np.any(np.asarray(expected.time_series))
     assert_bytes(actual.time_series, expected.time_series)
