@@ -219,7 +219,7 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
 
     The de-embed rotation is a pure analytic ``exp(-jβ·shift)`` multiply (no
     reflection contamination), so the healthy residual is just the
-    continuous-vs-Yee β gap (<1°); the tolerance is 3°.
+    continuous-vs-Yee β gap (<1°); the tolerance is 0.5° (measured 0.03°, #1887).
     """
     freqs = np.linspace(BAND_HZ[0], BAND_HZ[1], N_FREQS)
     f0 = float(freqs.mean())
