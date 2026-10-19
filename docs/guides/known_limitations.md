@@ -22,6 +22,17 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### A domain bounded by PEC or PMC walls is solved at a whole number of cells, with no message
+
+Tracker: #1887
+
+When the domain length between two PEC or PMC walls is not a whole number of cells, the uniform mesh rounds the cell
+count up, so the walls are solved up to one cell farther apart. The graded mesh, on an axis without a profile, rounds
+to the nearest count. Nothing reports the difference. An empty WR-90 guide (a = 22.86 mm, b = 10.16 mm) at dx = 1.5 mm
+is solved 24.0 mm wide, and its TE10 cutoff comes out 4.75 % low; with an automatic dx a 15 mm PEC box can be solved
+18 mm wide. Until the fix lands, choose dx so that every wall-to-wall length is a whole number of cells (WR-90:
+dx = 1.27 mm fits both a and b), and check the solved length the built grid reports.
+
 ### S-parameters from a run with several excited ports
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_lumped_wire_s_isolated_drives.py::test_several_excited_ports_refused_before_step)
