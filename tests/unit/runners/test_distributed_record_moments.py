@@ -3,6 +3,7 @@ import json
 from time import perf_counter
 
 import jax
+from tests._multi_device_scene import host_devices
 import numpy as np
 import pytest
 
@@ -23,7 +24,7 @@ def test_moments_and_forward(n_devices, entry, tmp_path):
     start = perf_counter()
     run = getattr(sim, entry)
     reference = run(n_steps=40, skip_preflight=True)
-    actual = run(n_steps=40, skip_preflight=True, devices=jax.devices("cpu")[:n_devices],
+    actual = run(n_steps=40, skip_preflight=True, devices=host_devices(n_devices),
                  **({"distributed": True} if entry == "forward" else {}))
     jax.block_until_ready(actual.current_moment_data)
     theta, phi = np.linspace(0, np.pi, 9), np.linspace(0, 2 * np.pi, 11)
@@ -72,7 +73,7 @@ def test_moment_weights_not_cut_mutation(tmp_path):
     sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), (9e-3, 7e-3, 6e-3),
                                    block_size=2e-3, freqs=[3e9, 7e9])
     native = sim.run(n_steps=4, skip_preflight=True)
-    layout = MomentRecords(Mesh(np.array(jax.devices("cpu")[:3]), ("x",)),
+    layout = MomentRecords(Mesh(np.array(host_devices(3)), ("x",)),
                            native.current_moment_monitor, seam, native.state.ex.dtype)
     ratios = _weight_ownership(layout, native.current_moment_monitor)
     # Remove the cuts on the actual monitor weights. The ownership invariant

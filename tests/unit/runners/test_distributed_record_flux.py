@@ -3,6 +3,7 @@ import json
 from time import perf_counter
 
 import jax
+from tests._multi_device_scene import host_devices
 import numpy as np
 import pytest
 
@@ -30,7 +31,7 @@ def test_flux(boundary, n_devices, monkeypatch, tmp_path):
     monkeypatch.setattr(accumulators, "flux", observe)
     start = perf_counter()
     reference = sim.run(n_steps=40, skip_preflight=True)
-    actual = sim.run(n_steps=40, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    actual = sim.run(n_steps=40, devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(actual.flux_monitors)
     jax.effects_barrier()
     differences = {}
@@ -89,7 +90,7 @@ def test_finite_flux(boundary, n_devices, tmp_path):
                          name="finite_z", dft_window="hann")
     start = perf_counter()
     reference = sim.run(n_steps=47, skip_preflight=True)
-    actual = sim.run(n_steps=47, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    actual = sim.run(n_steps=47, devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(actual.flux_monitors)
     differences = {}
     for name, mon in reference.flux_monitors.items():

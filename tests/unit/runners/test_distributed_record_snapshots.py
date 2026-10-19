@@ -3,6 +3,7 @@ import json
 from time import perf_counter
 
 import jax
+from tests._multi_device_scene import host_devices
 import numpy as np
 import pytest
 
@@ -19,7 +20,7 @@ def test_snapshots(n_devices, boundary, interval, axis, tmp_path):
                         slice_axis=axis, slice_index=index)
     start = perf_counter()
     reference = sim.run(n_steps=11, snapshot=spec, skip_preflight=True)
-    actual = sim.run(n_steps=11, snapshot=spec, devices=jax.devices("cpu")[:n_devices],
+    actual = sim.run(n_steps=11, snapshot=spec, devices=host_devices(n_devices),
                      skip_preflight=True)
     jax.block_until_ready(actual.snapshots)
     differences = {}
@@ -107,7 +108,7 @@ def test_snapshot_scan_does_not_rebuild_history(n_devices, interval, monkeypatch
 
     monkeypatch.setattr(jax.lax, "scan", inspect_scan)
     result = sim.run(n_steps=frames * interval + interval - 1, snapshot=spec,
-                     devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+                     devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(result.snapshots)
     assert len(reports) == 1, "inspect the actual distributed scan body"
     print(reports[0])

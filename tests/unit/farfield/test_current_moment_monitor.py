@@ -45,6 +45,7 @@ import numpy as np
 import pytest
 
 import jax
+from tests._multi_device_scene import host_devices
 import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, init_materials
@@ -2343,7 +2344,7 @@ def test_lanes_that_do_not_accumulate_it_refuse_it(lane):
 def test_uniform_distributed_moments_match_native(n_devices):
     from rfx.runners.distributed_v2 import run_distributed
     sim = _sim_with_monitor()
-    devices = jax.devices("cpu")[:n_devices]
+    devices = host_devices(n_devices)
     assert len(devices) == n_devices
     reference = sim.run(n_steps=4, skip_preflight=True)
     actual = run_distributed(sim, n_steps=4, devices=devices)

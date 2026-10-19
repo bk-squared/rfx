@@ -4,6 +4,7 @@ import json
 from time import perf_counter
 
 import jax
+from tests._multi_device_scene import host_devices
 import numpy as np
 import pytest
 
@@ -15,7 +16,7 @@ from rfx.farfield import compute_far_field
 @pytest.mark.parametrize("boundary", ["cpml", "pec"])
 def test_ntff_exact_one_device_baseline(n_devices, boundary, monkeypatch, tmp_path):
     """Use actual one-device output; no adapter helper supplies expectations."""
-    devices = jax.devices("cpu")[:n_devices]
+    devices = host_devices(n_devices)
     assert len(devices) == n_devices
     if boundary == "pec":
         # Match the existing NTFF test's accumulator-only PEC witness.

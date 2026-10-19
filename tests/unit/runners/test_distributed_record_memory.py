@@ -4,6 +4,7 @@ import json
 from time import perf_counter
 
 import jax
+from tests._multi_device_scene import host_devices
 import numpy as np
 import pytest
 
@@ -78,7 +79,7 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
         return buffers
 
     monkeypatch.setattr(records.SlabRecords, "initial", observe)
-    actual = sim.run(n_steps=11, snapshot=snapshot, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    actual = sim.run(n_steps=11, snapshot=snapshot, devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(actual.current_moment_data)
     report = dict(devices=n_devices, boundary="cpml", grid_shape=grid.shape,
                   n_steps=11, seconds=perf_counter() - start, memory=rows)

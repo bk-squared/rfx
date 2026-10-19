@@ -3,6 +3,7 @@ import json
 from time import perf_counter
 
 import jax
+from tests._multi_device_scene import host_devices
 import numpy as np
 import pytest
 
@@ -50,7 +51,7 @@ def test_planes(boundary, n_devices, tmp_path):
     add_planes(sim, grid, seam)
     start = perf_counter()
     reference = sim.run(n_steps=40, skip_preflight=True)
-    actual = sim.run(n_steps=40, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    actual = sim.run(n_steps=40, devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(actual.dft_planes)
     compare(actual, reference, tmp_path,
             dict(boundary=boundary, devices=n_devices, grid_shape=grid.shape, n_steps=40),
@@ -98,7 +99,7 @@ def test_plane_explicit_region(boundary, n_devices, tmp_path):
                             freqs=[2.5e9, 6.1e9, 11.7e9], region=region, name="finite_y")
     start = perf_counter()
     reference = sim.run(n_steps=47, skip_preflight=True)
-    actual = sim.run(n_steps=47, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    actual = sim.run(n_steps=47, devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(actual.dft_planes)
     assert np.max(np.abs(reference.dft_planes["finite_y"].accumulator)) > 0
     compare(actual, reference, tmp_path,
