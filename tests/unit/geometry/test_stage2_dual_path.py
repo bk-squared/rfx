@@ -15,6 +15,7 @@ scan body, runners/uniform.py public API, and NU runner hard-fail.
 
 from __future__ import annotations
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -289,7 +290,8 @@ def test_pec_short_s11_with_kottke_pec_path():
             z=Boundary(lo="pec", hi="pec", conformal=True),
         ),
         cpml_layers=10,
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add(Box((0.084, 0, 0), (0.087, 0.04, 0.02)), material="pec")
     # 5–6.5 GHz: TE20 evanescent contamination < 0.3 % at this port–short
     # spacing (74 mm). Extending to 7 GHz adds 1.5 % TE20 contamination

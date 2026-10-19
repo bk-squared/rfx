@@ -17,6 +17,7 @@ coordinates (the CPML pad offset is compensated).
 """
 from __future__ import annotations
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import numpy as np
 
 from rfx import Simulation, Box
@@ -299,15 +300,16 @@ def test_commensurate_domain_reports_zero_domain_findings():
 def test_incommensurate_domain_reports_the_ceil_realized_length():
     """WR-90 at dx=1mm. The expected extents below are hand-computed from
     the grid's own construction rule (rfx/grid.py:151, "N cells need N+1
-    nodes"): ceil(22.86/1)=23 cells -> 23.000 mm, ceil(10.16/1)=11 -> 11.000
+    nodes"): round(22.86/1)=23 cells -> 23.000 mm, round(10.16/1)=10 -> 10.000
     mm, 30/1=30 -> 30.000 mm exactly. Literals, not a re-run of the code
-    under test: a node-count regression reports 24/12/31 and fails here."""
+    under test: a node-count regression reports 24/11/31 and fails here."""
     sim = Simulation(freq_max=12e9, domain=(22.86e-3, 10.16e-3, 30e-3),
-                     dx=1e-3, boundary="pec")
+                     dx=1e-3, boundary="pec", snap="declared")
+    assert_declared_wall_warning(sim)
     dom = _dom(sim.fidelity_report(print_report=False))
     assert dom["axes"][0]["n_cells"] == 23
     assert abs(dom["axes"][0]["realized_extent_um"] - 23000.0) < 1e-3
-    assert abs(dom["axes"][1]["realized_extent_um"] - 11000.0) < 1e-3
+    assert abs(dom["axes"][1]["realized_extent_um"] - 10000.0) < 1e-3
     assert abs(dom["axes"][2]["realized_extent_um"] - 30000.0) < 1e-3
     assert [(f["kind"], f["axis"]) for f in dom["findings"]] == [
         ("domain-extent-quantized", "x"), ("domain-extent-quantized", "y")]

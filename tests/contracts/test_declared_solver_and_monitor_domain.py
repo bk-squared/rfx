@@ -30,7 +30,7 @@ def test_auto_mesh_cannot_substitute_yee_for_declared_adi(entry, conductor, prev
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [None, .002])
 def test_supported_uniform_model_reaches_the_declared_adi_solver(entry, dx, monkeypatch):
-    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008),
+    sim = Simulation(freq_max=10e9, domain=((6 * (299792458.0 / 10e9 / 20),)*3 if dx is None else (.008,)*3),
                      dx=dx, boundary="pec", solver="adi")
     sim.add_source((.004, .004, .004), "ez", amplitude_kind="field")
     sim.add_probe((.004, .004, .004), "ez")

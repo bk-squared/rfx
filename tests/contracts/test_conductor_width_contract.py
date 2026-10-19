@@ -312,7 +312,7 @@ def _extractor_context_cell(monkeypatch, lane, model):
             with pytest.raises(HandoffReached):
                 compute_lumped_wire_s_matrix_via_scan(sim, np.array([F0]), n_steps=4)
         elif lane == 'waveguide_s_matrix':
-            sim = set_model(_wr90())
+            sim = set_model(_wr90(solved_domain=True))
             if model == 'pec':
                 # This context/ownership cell pins no S value: align the cavity.
                 sim._domain = (0.06, 0.024, 0.012)

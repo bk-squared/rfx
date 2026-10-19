@@ -82,6 +82,11 @@ solver error: above cutoff the guide is nearly lossless, so any residual
 reflection is set by the CPML thickness.
 </Aside>
 
+At 1 mm spacing the walls are realized at 23 mm and 10 mm. The example uses
+`snap="declared"` to accept the warning for the narrow wall's 1.57% length
+change. Use `dx=1.27e-3` for exactly 18 broad-wall cells and 8 narrow-wall cells,
+which preserve both nominal WR-90 dimensions.
+
 ## Geometry check (before running)
 
 The render above confirms the guide before committing compute: broad wall a,
@@ -104,6 +109,7 @@ domain_x = 0.200
 sim = Simulation(
     freq_max=float(freqs[-1]) * 1.1,
     domain=(domain_x, a_wg, b_wg), dx=dx,
+    snap="declared",  # Accept the warned 23 x 10 mm realized cross-section.
     boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                           y=Boundary(lo="pec", hi="pec"),
                           z=Boundary(lo="pec", hi="pec")),

@@ -61,7 +61,8 @@ sim.run(until_after_sources=mp.stop_when_fields_decayed(50, mp.Ez, mp.Vector3(),
 # rfx equivalent
 from rfx import Simulation
 
-sim = Simulation(freq_max=5e9, domain=(0.1, 0.1, 0.05), boundary="pec")
+sim = Simulation(freq_max=5e9, domain=(0.1, 0.1, 0.05),
+                 dx=2.5e-3, boundary="pec")  # 40 x 40 x 20 cells
 sim.add_source(position=(0.03, 0.03, 0.02), component="ez",
                amplitude_kind="current")
 sim.add_probe(position=(0.06, 0.06, 0.02), component="ez")
@@ -101,7 +102,7 @@ from rfx import Simulation
 # guide walls, declared PEC; the absorber sits on the port axis only.
 freqs = jnp.linspace(8e9, 11.5e9, 8)   # above the 6.56 GHz TE10 cutoff
 sim = Simulation(freq_max=12e9, domain=(0.10, 0.02286, 0.01016),
-                 dx=2e-3, boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                 dx=1.27e-3, boundary={"x": "cpml", "y": "pec", "z": "pec"},
                  cpml_layers=16)
 sim.add_waveguide_port(0.024, direction="+x", freqs=freqs, f0=9.75e9, name="in")
 sim.add_waveguide_port(0.076, direction="-x", freqs=freqs, f0=9.75e9, name="out")

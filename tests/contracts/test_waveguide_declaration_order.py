@@ -15,7 +15,7 @@ MESSAGE = ("Waveguide port measurement planes exceed the physical x-domain "
 
 
 def _repro(order):
-    sim = Simulation(freq_max=10e9, domain=(.03, .02, .01), dx=None,
+    sim = Simulation(freq_max=10e9, domain=(.03, 67 * .0003, 34 * .0003), dx=None,
                      boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=4)
 

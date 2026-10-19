@@ -150,7 +150,7 @@ def _make_wr90_nu_sim_with_slab():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, _A_WG, _B_WG),
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -193,7 +193,7 @@ def _make_wr90_uniform_sim_with_slab():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(dom_x, _A_WG, _B_WG),
+        domain=(dom_x, 15 * 1.5e-3, 7 * 1.5e-3),
         dx=1.5e-3,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),

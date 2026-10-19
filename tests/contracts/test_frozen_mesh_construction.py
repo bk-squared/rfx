@@ -11,7 +11,7 @@ from tests._realized_geometry import assert_wall_planes, node_index, realized
 def test_short_fixture_faces_stay_on_final_nodes(dx):
     from tests.oracle.test_waveguide_port_validation_battery import _build_sim, SHORT_CELLS
 
-    sim = _build_sim(np.linspace(5e9, 7e9, 6), dx=dx, pec_short_x=.085)
+    sim = _build_sim(np.linspace(5e9, 7e9, 6), solved_domain=True, dx=dx, pec_short_x=.085)
     grid = realized(sim).grid
     lo, hi = sim._pec_short_faces_m
     for face in (lo, hi):
@@ -25,7 +25,7 @@ def test_short_fixture_faces_stay_on_final_nodes(dx):
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_freeze_before_first_geometry_survives_execution(entry):
-    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008), boundary="pec")
+    sim = Simulation(freq_max=10e9, domain=(6 * (299792458.0 / 10e9 / 20),)*3, boundary="pec")
     declared = sim._declared_mesh
     grid = sim.freeze_mesh()
     d = float(grid.dx)
@@ -39,7 +39,7 @@ def test_freeze_before_first_geometry_survives_execution(entry):
 
 
 def test_freezing_does_not_legalize_unresolved_volume():
-    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008), boundary="pec")
+    sim = Simulation(freq_max=10e9, domain=(6 * (299792458.0 / 10e9 / 20),)*3, boundary="pec")
     grid = sim.freeze_mesh()
     d = grid.dx
     sim.add(Box((2*d, d, d), (2.2*d, 4*d, 4*d)), material="pec")

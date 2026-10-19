@@ -479,12 +479,12 @@ def waveguide_model(lane='uniform'):
     sim = _wr90_sim()
     if lane in ('graded', 'graded-partial'):
         partial = lane == 'graded-partial'
-        sim = Simulation(freq_max=12e9, domain=(.05, .032, .020) if partial else (.05, .02286, .01016), dx=.002,
+        sim = Simulation(freq_max=12e9, domain=(.05, .032, .020) if partial else (.05, 11 * .002, 5 * .002), dx=.002,
                          boundary='cpml' if partial else {'x': 'cpml', 'y': 'pec', 'z': 'pec'}, cpml_layers=8,
                          dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
         sim.add_waveguide_port(direction='+x', x_position=.01,
-                               y_range=(.004, .026) if partial else (0., .02286),
-                               z_range=(.004, .014) if partial else (0., .01016), n_modes=1)
+                               y_range=(.004, .026) if partial else (0., 11 * .002),
+                               z_range=(.004, .014) if partial else (0., 5 * .002), n_modes=1)
         sim.add_probe(position=(.03, .01143, .00508), component='ey')
     grid = sim._build_nonuniform_grid() if lane.startswith('graded') else sim._build_grid()
     return sim, grid

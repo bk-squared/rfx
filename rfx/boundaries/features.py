@@ -10,8 +10,17 @@ from dataclasses import replace
 import inspect
 from pathlib import Path
 import warnings
+import weakref
 
 from rfx.boundaries.depths import Kind, grid_face_depths, resolve_face_depths, simulation_face_depths
+
+
+_WALL_AXIS_WARNED = weakref.WeakKeyDictionary()
+
+
+def share_wall_warning_history(sim, diagnostic_copy):
+    """An internal preflight reader represents the same Simulation warning scope."""
+    _WALL_AXIS_WARNED[diagnostic_copy] = _WALL_AXIS_WARNED.setdefault(sim, set())
 
 
 class WaveguideBoundaryWarning(UserWarning):
@@ -138,11 +147,13 @@ def build_grid(sim, *, extra_waveguide_axes=""):
 def judge_wall_axes(sim, grid, *, boundary_depths=None):
     """Judge the built unprofiled wall lengths where Simulation owns snap.
 
-    Low-level grid builders have no declaration acceptance policy.
+    Low-level grid builders have no declaration acceptance policy. Declared
+    warnings are emitted once per axis/declared/solved/dx tuple on this sim.
     """
     from rfx.grid import axis_kinds, realized_cells
     depths = grid_face_depths(grid) if boundary_depths is None else boundary_depths
     messages = []
+    findings = []
     for index, (axis, kind) in enumerate(axis_kinds(depths).items()):
         if kind != "wall" or (axis == "z" and sim._mode.startswith("2d")):
             continue
@@ -170,10 +181,21 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
             f"rel {rel * 100:+.12g} %, {n} cells, dx={grid.dx * 1e3:.12g} mm; "
             f"nearest dx={length / nearest_n * 1e3:.12g} mm, next dx={adjacent * 1e3:.12g} mm "
             "(both pass 1 %)")
+        findings.append((axis, length, solved, float(grid.dx), messages[-1]))
     if messages:
         message = "; ".join(messages) + "; set snap='declared' to accept."
         if sim._snap == "declared":
-            warnings.warn(message, UserWarning, stacklevel=3)
+            from rfx.preflight._common import PreflightWarning
+            warned = _WALL_AXIS_WARNED.setdefault(sim, set())
+            for axis, length, solved, dx, text in findings:
+                key = (axis, length, solved, dx)
+                if key in warned:
+                    continue
+                warnings.warn(PreflightWarning(
+                    text + "; set snap='declared' to accept.",
+                    code="wall_axis_off_node", loc=axis, source="judge_wall_axes"),
+                    stacklevel=3)
+                warned.add(key)
         else:
             raise ValueError(message)
 

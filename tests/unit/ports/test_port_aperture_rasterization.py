@@ -35,6 +35,7 @@ it.
 """
 from __future__ import annotations
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import contextlib
 import io
 
@@ -85,7 +86,8 @@ def _transverse_pec(direction):
 def _build(*, dx, domain, y_range=None, z_range=None, freqs, f0=None,
            mode_profile=None):
     sim = Simulation(freq_max=12e9, domain=domain, dx=dx,
-                      boundary=_pec_walls(), cpml_layers=_CPML_LAYERS)
+                      boundary=_pec_walls(), cpml_layers=_CPML_LAYERS, snap="declared")
+    assert_declared_wall_warning(sim)
     kw = {}
     if y_range is not None:
         kw["y_range"] = y_range
@@ -152,7 +154,9 @@ def test_non_dividing_declared_width_names_both_numbers():
 def test_margin_heuristic_is_evaluated_on_the_rasterized_guide():
     """11.5 GHz clears 0.90 x fc_next on the declared 22.86 mm guide and
     violates it on the 24.000 mm guide this PEC-walled domain rasterizes."""
-    sim = _build(dx=2e-3, domain=(0.10, _A_WR90, _B_WR90),
+    # Both domain walls lie inside their last solved cells (fraction .75),
+    # retaining the 12-by-6-cell guide and its violated 11.242 GHz margin.
+    sim = _build(dx=2e-3, domain=(0.10, 11.75 * 2e-3, 5.75 * 2e-3),
                  y_range=(0.0, _A_WR90), z_range=(0.0, _B_WR90),
                  freqs=jnp.linspace(8e9, 11.5e9, 8))
     ev = [i for i in _issues(sim) if getattr(i, "code", None) == "port_evanescent"]
@@ -597,9 +601,10 @@ def test_a_port_with_one_unrasterizable_axis_asserts_nothing_about_the_cutoff():
 _UV_CASES = [
     # (id, direction, domain, long axis, short axis)
     # The long transverse wall is 22.86 mm (23 cells at dx = 1 mm), the short
-    # one 10.16 mm (11 cells); the launch axis is 100 mm.
-    ("y_normal", "+y", (_A_WR90, 0.10, _B_WR90), "x", "z"),
-    ("z_normal", "+z", (_A_WR90, _B_WR90, 0.10), "x", "y"),
+    # one 10.75 mm (11 cells); both fractions exceed .5, and the launch
+    # axis is 100 mm. Keep the unequal 23/11 counts under nearest rounding.
+    ("y_normal", "+y", (_A_WR90, 0.10, 10.75e-3), "x", "z"),
+    ("z_normal", "+z", (_A_WR90, 10.75e-3, 0.10), "x", "y"),
 ]
 
 
@@ -608,7 +613,8 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
     _id, direction, domain, long_ax, short_ax = case
     sim = Simulation(freq_max=12e9, domain=domain, dx=1e-3,
                      boundary=_transverse_pec(direction),
-                     cpml_layers=_CPML_LAYERS)
+                     cpml_layers=_CPML_LAYERS, snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_waveguide_port(0.024, direction=direction, mode=(1, 0),
                            mode_type="TE", freqs=jnp.asarray([9e9]),
                            f0=9e9, name="p0")
@@ -621,7 +627,7 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
         f"{_id}: expected a snap row on both transverse axes, got "
         f"{sorted(rows)}"
     )
-    # 22.860 mm -> 23 cells, 10.160 mm -> 11 cells at dx = 1 mm. Different
+    # 22.860 mm -> 23 cells, 10.750 mm -> 11 cells at dx = 1 mm. Different
     # counts on the two axes is what makes a swapped mapping visible.
     assert "23 cells = 23.0000 mm" in rows[long_ax], (
         f"{_id}: the {long_ax} row must carry the 23-cell count of the "
@@ -629,7 +635,7 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
     )
     assert "11 cells = 11.0000 mm" in rows[short_ax], (
         f"{_id}: the {short_ax} row must carry the 11-cell count of the "
-        f"10.160 mm wall; got {rows[short_ax]!r}"
+        f"10.750 mm wall; got {rows[short_ax]!r}"
     )
 
 
@@ -647,7 +653,8 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
 
 def _multimode_sim(dx, n_modes=3):
     sim = Simulation(freq_max=12e9, domain=(0.10, _A_WR90, _B_WR90), dx=dx,
-                     boundary=_pec_walls(), cpml_layers=_CPML_LAYERS)
+                     boundary=_pec_walls(), cpml_layers=_CPML_LAYERS, snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_waveguide_port(0.024, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=jnp.asarray([9e9]), f0=9e9, name="p0",
                            n_modes=n_modes)

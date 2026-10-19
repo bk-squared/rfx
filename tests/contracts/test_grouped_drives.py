@@ -62,7 +62,8 @@ def run_case(lane, n=4, amplitude=1., component="ez"):
         if lane.endswith('graded'):
             profile = np.r_[np.full(4, .001), np.full(4, .0011), np.full(4, .001)]
             options = dict(dx_profile=profile, dy_profile=profile, dz_profile=profile)
-        sim = Simulation(freq_max=1e9, domain=(.012,)*3, dx=.001,
+        sim = Simulation(freq_max=1e9, domain=((float(profile.sum()),)*3
+                         if lane.endswith('graded') else (.012,)*3), dx=.001,
                          boundary='pec', cpml_layers=0, **options)
         for i in range(n):
             sim.add_source(position=(.003+i%4*.001, .003+(i//4)%4*.001,
@@ -207,7 +208,7 @@ def port_scene(kind, lane):
     from rfx.sources import GaussianPulse
     profile = np.r_[np.full(6, .001), np.full(4, .0011), np.full(14, .001)]
     options = dict(dx_profile=profile, dy_profile=profile, dz_profile=profile) if lane == 'graded' else {}
-    sim = Simulation(freq_max=3e9, domain=(float(profile.sum()),)*3,
+    sim = Simulation(freq_max=3e9, domain=(float(profile.sum()),)*3 if lane == 'graded' else (25 * .001,)*3,
                      dx=.001, boundary='pec', cpml_layers=0, snap='declared', **options)
     wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=2.5)  # >= 2.5 (issue 1668)
     if kind == 'wire':

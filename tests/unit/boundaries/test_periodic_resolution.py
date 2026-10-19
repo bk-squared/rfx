@@ -27,22 +27,10 @@ def wall_model(*, geometry=False, domain=(.0103, .008, .006), dx=None, mode='3d'
 def test_automatic_periodic_mesh_reports_costly_exact_wall_spacing(
         geometry, period_cells, wall_cells):
     sim = wall_model(geometry=geometry)
-    with pytest.warns(UserWarning) as caught:
-        grid = sim._build_grid()
-        axes = sim.fidelity_report(print_report=False)[0]['axes']
-    expected_dx = .0103 / period_cells
-    assert grid.dx == expected_dx
-    assert grid.shape == (period_cells, wall_cells[0] + 1, wall_cells[1] + 1)
-    assert [a['realized_extent_um'] for a in axes] == pytest.approx(
-        [10300, *(n * expected_dx * 1e6 for n in wall_cells)], rel=2e-14)
-    text = '\n'.join(str(w.message) for w in caught)
-    for axis, declared, cells in zip('yz', (8, 6), wall_cells):
-        assert (f"wall-closed axis {axis!r}: declared {declared} mm, "
-                f"realized {cells * expected_dx * 1e3:.12g} mm") in text
-    # gcd(103,80,60) = 1 in units of 0.1 mm. That exact common spacing
-    # is too costly to adopt automatically for either planner request.
-    assert 'exact common spacing exists at 0.1 mm' in text.lower()
-    assert '0.75 * requested dx' in text
+    # Wall anchors are multiples of 0.1 mm; only 0.1 mm also divides 10.3 mm.
+    with pytest.raises(ValueError, match="largest fitting dx=0.0001 m") as caught:
+        sim._build_grid()
+    assert "0.75 * requested dx" in str(caught.value)
 
 
 @pytest.mark.parametrize('domain,expected_dx,shape', [
@@ -80,31 +68,24 @@ def test_automatic_wall_snap_ignores_the_invariant_axis(mode):
 @pytest.mark.parametrize('length', [.0103, .010])
 def test_bounded_snap_warning_names_every_moved_wall(length):
     sim = wall_model(domain=(length, .008123, .006157))
-    # The exact common spacing is 1 um, below the 1 mm / 16 search floor.
-    with pytest.warns(UserWarning) as caught:
-        grid = sim._build_grid()
-    expected_dx = length / (11 if length == .0103 else 10)
-    assert grid.dx == expected_dx
-    text = '\n'.join(str(w.message) for w in caught)
-    for axis, declared, cells in [('y', 8.123, 9), ('z', 6.157, 7)]:
-        assert (f"wall-closed axis {axis!r}: declared {declared} mm, "
-                f"realized {cells * expected_dx * 1e3:.12g} mm") in text
-    assert 'requested dx/16' in text
-    assert '0.75 * requested dx' in text
-    assert 'exact common spacing exists' not in text.lower()
+    # No wall-anchored candidate down to dx/16 divides this period exactly.
+    with pytest.raises(ValueError, match="no fitting spacing found") as caught:
+        sim._build_grid()
+    assert "requested dx/16" in str(caught.value)
+    assert "0.75 * requested dx" in str(caught.value)
 
 
 def test_explicit_periodic_spacing_and_nonperiodic_auto_spacing_are_unchanged():
     explicit = .0103 / 11
     with warnings.catch_warnings(record=True) as caught:
-        grid = wall_model(dx=explicit)._build_grid()
+        grid = wall_model(dx=explicit, domain=(.0103, 9 * explicit, 7 * explicit))._build_grid()
     assert grid.dx == explicit and grid.shape == (11, 10, 8)
     assert not caught
     with pytest.raises(ValueError, match='common dx dividing each L'):
         wall_model(dx=.001)._build_grid()
-    nonperiodic = Simulation(C0 / .020, (.0103, .008123, .006157),
+    nonperiodic = Simulation(C0 / .020, (.010, .008, .006),
                              boundary='pec', cpml_layers=0)._build_grid()
-    assert nonperiodic.dx == .001 and nonperiodic.shape == (12, 10, 8)
+    assert nonperiodic.dx == .001 and nonperiodic.shape == (11, 9, 7)
 
 
 def test_an_absorber_face_excludes_its_axis_from_the_wall_snap():
@@ -121,7 +102,7 @@ def test_an_absorber_face_excludes_its_axis_from_the_wall_snap():
 
 
 def test_msl_point_probe_ladder_uses_the_realized_periodic_cell():
-    sim = wall_model(geometry=True)
+    sim = wall_model(geometry=True, domain=(.0103, 17 * .0103 / 21, 13 * .0103 / 21))
     probes = register_msl_wave_probes(
         sim, feed_x=.0023, direction='+x', y_centre=.0037,
         z_ez=.0026, z_hy=.0031, n_offset_cells=5, n_spacing_cells=3)

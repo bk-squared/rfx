@@ -82,7 +82,8 @@ def _make_wr90_nu_sim(*, solved_domain=False):
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse) if solved_domain else (domain_x, _A_WG, _B_WG),  # solved length; #1887
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse) if solved_domain else (domain_x, _A_WG, _B_WG),
+        snap="declared",  # Preserve the declared-geometry reporting fixture.
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -102,6 +103,8 @@ def _make_wr90_nu_sim(*, solved_domain=False):
         freqs=_FREQS, f0=10.3e9, bandwidth=0.5,
         reference_plane=domain_x - 0.020, name="right",
     )
+    # Do not build merely to assert the once-per-sim warning here: preflight
+    # must be able to capture it in the declared-geometry snapshot/report.
     return sim
 
 
@@ -267,7 +270,7 @@ def test_nu_vs_uniform_finite_and_comparable():
     dom_x = 0.100
     sim_u = Simulation(
         freq_max=_F_MAX,
-        domain=(dom_x, _A_WG, _B_WG),
+        domain=(dom_x, 15 * 1.5e-3, 7 * 1.5e-3),
         dx=1.5e-3,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),

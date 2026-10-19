@@ -4,6 +4,7 @@ The 12.3 x 13.1 x 12.7 mm box has 1 mm cells and an off-centre PEC
 sphere. Identity comparisons use zero tolerance on raw field arrays.
 """
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -39,7 +40,8 @@ def _sim(
         solver=solver,
         cpml_layers=4,
         cpml_kappa_max=kappa,
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     z_shift = 0.004 if periodic_tfsf else 0.0
     if solver != "adi":
         sim.add(Sphere(center=(0.0061, 0.0062, 0.0064 + z_shift), radius=0.0012), material="pec")
@@ -93,7 +95,8 @@ def _mixed(on):
         boundary=BoundarySpec(
             x="cpml", y=Boundary(lo="pec", hi="pec", conformal=on), z="cpml"
         ),
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0.001), (0.0123, 0.0061, 0.002)), material="sub")
     sim.add(Box((0, 0, 0.001), (0.0123, 0.0061, 0.001)), material="pec")
@@ -285,7 +288,8 @@ def test_waveguide_device_fallback_preserves_staircase(two_devices):
         boundary=BoundarySpec(
             x="cpml", y=Boundary(lo="pec", hi="pec", conformal=True), z="pec"
         ),
-    )
+     snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_waveguide_port(
         0.004,
         direction="+x",
@@ -338,7 +342,8 @@ def _no_pec(kind):
     if kind == "graded":
         kw["dz_profile"] = np.array([0.001] * 6 + [0.0007] * 4 + [0.001] * 4)
         kw["domain"] = (0.0123, 0.0131, float(np.sum(kw["dz_profile"])))
-    sim = Simulation(**kw)
+    sim = Simulation(**kw, snap="declared")
+    assert_declared_wall_warning(sim)
     sim.add_material("d", eps_r=2.0)
     # ADI refuses a material interface (#1373): its dielectric fills the box.
     lo, hi = (((0.0, 0.0, 0.0), kw["domain"]) if kind == "adi"

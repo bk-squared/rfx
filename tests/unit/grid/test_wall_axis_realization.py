@@ -48,6 +48,44 @@ def test_wr90_declared_rounds_walls(guide):
     assert spans(grid) == pytest.approx((40 * .0015, 15 * .0015, 7 * .0015), abs=1e-12)
 
 
+def test_declared_wall_warning_is_coded_once_per_axis_per_simulation():
+    sim = model(.0015, snap='declared')
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        for _ in range(3):
+            sim._build_realized_grid()
+    assert len(caught) == 2
+    assert [(w.message.code, w.message.loc, w.message.source) for w in caught] == [
+        ('wall_axis_off_node', axis, 'judge_wall_axes') for axis in 'yz']
+    assert all(w.message.severity == 'warning' for w in caught)
+
+    # A new Simulation owns a separate history; preflight preserves the code
+    # while its internal validators repeatedly build the same grid.
+    other = model(.0015, snap='declared')
+    report = other.preflight()
+    assert [issue.loc for issue in report.by_code('wall_axis_off_node')] == ['y', 'z']
+    with warnings.catch_warnings(record=True) as repeated:
+        warnings.simplefilter('always')
+        other._build_realized_grid()
+        other._build_realized_grid()
+    assert not repeated
+
+    # A changed tuple warns again; restoring a previously warned tuple does not.
+    original = sim._domain
+    sim._domain = (original[0], .0232, original[2])
+    with pytest.warns(UserWarning) as changed:
+        sim._build_realized_grid()
+    assert [(w.message.code, w.message.loc) for w in changed] == [('wall_axis_off_node', 'y')]
+    sim._domain = original
+    with warnings.catch_warnings(record=True) as restored:
+        warnings.simplefilter('always')
+        sim._build_realized_grid()
+    assert not restored
+    sim._snap = 'strict'
+    with pytest.raises(ValueError, match="axis 'y'.*nearest dx=1.524 mm"):
+        sim._build_realized_grid()
+
+
 @pytest.mark.parametrize('guide', [False, True])
 def test_wr90_exact_spacing_has_no_length_warning(guide):
     with warnings.catch_warnings(record=True) as caught:

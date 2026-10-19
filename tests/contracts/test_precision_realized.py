@@ -91,7 +91,8 @@ def model(precision, entry):
         return sim
     exterior = ({'boundary': 'cpml', 'cpml_layers': 2}
                 if entry.endswith('_ntff') or entry == 'ntff_sweep' else {'boundary': 'pec'})
-    sim = Simulation(freq_max=5e9, domain=(.018, .012, .012), dx=.003,
+    domain = (.018,)*3 if entry == 'quick_convergence' else (.018, .012, .012)
+    sim = Simulation(freq_max=5e9, domain=domain, dx=.003,
                      precision=precision, **exterior)
     for i, x in enumerate((.006, .012)[:1 if 'single' in entry else 2]):
         # forward S from one record needs one driven port (isolated drives); the

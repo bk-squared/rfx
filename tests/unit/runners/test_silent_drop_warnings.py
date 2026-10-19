@@ -21,6 +21,7 @@ the P2.7 preflight checks (PMC/PEC face plus CPML on one axis).
 
 from __future__ import annotations
 
+from tests._wall_axis_declaration import assert_declared_wall_warning
 import re
 import sys
 import warnings
@@ -315,7 +316,8 @@ def _wr90_sim(debye, conformal=False, dz=None, *, solved_domain=False):
         sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016) if not solved_domain else (0.06, 8 * 3e-3, 4 * 3e-3),
                          dx=3e-3, cpml_layers=6,
                          boundary=BoundarySpec(x="cpml", y=walls, z=walls),
-                         **({"dz_profile": dz} if dz is not None else {}))  # solved length; #1887
+                         **({"dz_profile": dz} if dz is not None else {}), snap="declared")  # solved length; #1887
+        assert_declared_wall_warning(sim)
         if debye:
             sim.add_material("disp", eps_r=2.0, debye_poles=[
                 DebyePole(delta_eps=1.0, tau=1e-11)])
@@ -378,7 +380,8 @@ def _conformal_cavity(conformal, nonuniform=False):
                          dx=1e-3, cpml_layers=0,
                          boundary=BoundarySpec(x="pec", y=walls, z="pec"),
                          **({"dz_profile": np.full(12, 1e-3)}
-                            if nonuniform else {}))
+                            if nonuniform else {}), snap="declared")
+        assert_declared_wall_warning(sim)
         sim.add(Cylinder((0.0085, 0.0085, 0.006), 0.0017, 0.008, axis="z"),
                 material="pec")
         sim.add_source((0.004, 0.009, 0.006), "ez", amplitude_kind="field")
@@ -450,12 +453,14 @@ def test_forward_without_a_conformal_boundary_still_runs(nonuniform):
 # --------------------------------------------------------------------
 
 def _wr90_probe_sim(conformal):
-    """WR-90 section, conformal walls with a fractional cell, one port."""
+    """Guide with both conformal walls strictly inside their last solved cells."""
     def build():
         walls = Boundary(lo="pec", hi="pec", conformal=conformal)
-        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+        # y/dx=7.62 and z/dx=3.75 retain the old 8-by-4-cell solved guide.
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 3.75 * 3e-3),
                          dx=3e-3, cpml_layers=6,
-                         boundary=BoundarySpec(x="cpml", y=walls, z=walls))
+                         boundary=BoundarySpec(x="cpml", y=walls, z=walls), snap="declared")
+        assert_declared_wall_warning(sim)
         sim.add_waveguide_port(0.009, direction="+x", mode=(1, 0),
                                mode_type="TE",
                                freqs=np.linspace(6e9, 7e9, 3), f0=6.5e9,
@@ -486,7 +491,8 @@ def _wr90_post_sim():
     def build():
         sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
                          dx=3e-3, cpml_layers=6,
-                         boundary=BoundarySpec(x="cpml", y="pec", z="pec"))
+                         boundary=BoundarySpec(x="cpml", y="pec", z="pec"), snap="declared")
+        assert_declared_wall_warning(sim)
         sim.add(Cylinder((0.03, 0.0114, 0.00508), 0.0026, 0.01016, axis="z"),
                 material="pec")
         sim.add_waveguide_port(0.009, direction="+x", mode=(1, 0),
@@ -520,7 +526,8 @@ def _copper_sheet_sim(nonuniform):
               if nonuniform else {})
         sim = Simulation(freq_max=10e9,
                          domain=(0.012, 0.012, 0.0 if nonuniform else 0.0122),
-                         dx=1e-3, boundary="pec", cpml_layers=0, **kw)
+                         dx=1e-3, boundary="pec", cpml_layers=0, **kw, snap="declared")
+        assert_declared_wall_warning(sim)
         sim.add_thin_conductor(Box((0.0033, 0.0033, 0.0063),
                                    (0.0087, 0.0087, 0.0063)))
         sim.add_source((0.002, 0.006, 0.003), "ez", amplitude_kind="field")

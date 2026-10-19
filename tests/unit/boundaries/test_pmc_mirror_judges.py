@@ -26,7 +26,7 @@ def test_asymmetric_low_high_mirror(graded, entry):
         profile = np.r_[1., np.linspace(.8, 1.2, 22), 1.] * .001
         if high:
             profile = profile[::-1].copy()
-        sim = Simulation(freq_max=20e9, domain=(.024, .0137, .0053), dx=.001,
+        sim = Simulation(freq_max=20e9, domain=(.024, 14 * .001, 6 * .001), dx=.001,
                          boundary=BoundarySpec(x=Boundary("pec", "pmc") if high else
                                                Boundary("pmc", "pec"), y="pec", z="pec"),
                          cpml_layers=0,
