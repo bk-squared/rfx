@@ -10,21 +10,26 @@ from pathlib import Path
 import pytest
 
 from tests.contracts.run_forward_census import (
-    BUILDERS, SEAMS, capture, compare, compare_l2, l2_differences,
+    BUILDERS, SEAMS, capture, compare, compare_l2, equal_request_pair, l2_differences,
     normalize_inputs, observables, run_l2, port_s_pair,
 )
 
 KNOWN_ROWS = (
-    ('P-lumped', 'multi-device-uniform', 'L2', 'D5', "#1402: forward's distributed path has no port records yet"),
-    ('P-lumped', 'multi-device-uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-lumped2', 'uniform', 'L2', 'D5', '#1373 D8: per_drive witnesses remain for the separate S drives, including the passive port column'),
     ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
-    ('P-wire', 'multi-device-graded', 'admission', 'A2', 'A2 expected: equal S requests refuse the extra source; forward without an S request admits'),
-    ('P-wire', 'graded', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
-    ('P-wire', 'multi-device-uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
-    ('P-wire', 'uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
 )
+
+# Declarations with ports compare equal S requests in both directions (#1373):
+# (a) run's default against forward(port_s11_freqs=run's bins);
+# (b) run(compute_s_params=False) against forward's default.
+PORTED = tuple(d for d in BUILDERS if d.startswith('P-'))
+# The separate S drives exist only when S is requested.
+KNOWN_DIRECTIONS = {('P-lumped2', 'uniform', 'L2', 'D5'): ('a',)}
+# Under (a) both entries refuse the S request with the same error: a plain
+# source fires in every port drive.
+EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
+    'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
 ASSEMBLY_ROWS = (
     ('B-asym', 'graded'),
@@ -322,29 +327,31 @@ ID_PATTERNS = {
            'L2': ('flux_monitors/*',)},
     'D5': {'L1': (), 'L2': ('settling_witness/*',)},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
-    'D8': {'L1': (), 'L2': ('s_params', 'freqs', 'freqs_hz')},
-    'A2': {'run': ('raised', 'NotImplementedError',
-            'Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports'),
-           'forward': ('admitted',)},
     'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             'Waveguide ports are not supported on the distributed forward path')},
 }
 DISTRIBUTED_L1_SLOW = False
 
 
+def directions(declaration):
+    return ('a', 'b') if declaration in PORTED else (None,)
+
+
 def parameters(rows, level, *, slow=False):
-    return [pytest.param(d, p, id=f'{d}-{p}', marks=[pytest.mark.slow] if
+    return [pytest.param(d, p, direction, id=f'{d}-{p}' + (f'-{direction}' if direction else ''),
+                         marks=[pytest.mark.slow] if
                          slow or (level == 'L1' and p == 'multi-device-graded' and DISTRIBUTED_L1_SLOW)
-                         else []) for d, p in rows]
+                         else []) for d, p in rows for direction in directions(d)]
 
 
 def entry_options(declaration):
     return {'subpixel_smoothing': True} if declaration == 'C-smooth' else {}
 
 
-def known(declaration, path, level):
+def known(declaration, path, level, direction=None):
     return {ident: reason for d, p, lev, ident, reason in KNOWN_ROWS
-            if (d, p, lev) == (declaration, path, level)}
+            if (d, p, lev) == (declaration, path, level)
+            and direction in KNOWN_DIRECTIONS.get((d, p, lev, ident), (direction,))}
 
 
 def finish(declaration, path, level, ids, matched, unexplained):
@@ -357,8 +364,8 @@ def finish(declaration, path, level, ids, matched, unexplained):
         pytest.xfail('; '.join(ids.values()))
 
 
-def outcomes(declaration, path, level, pair):
-    ids = known(declaration, path, level)
+def outcomes(declaration, path, level, pair, direction=None):
+    ids = known(declaration, path, level, direction)
     capabilities = {i: reason for i, reason in ids.items() if i.startswith('A')}
     success = 'captured' if level == 'L1' else 'admitted'
     if capabilities:
@@ -419,26 +426,21 @@ def classify(declaration, path, level, differences, ids):
     finish(declaration, path, level, ids, matched, unexplained)
 
 
-@pytest.mark.parametrize('declaration,path', parameters(ASSEMBLY_ROWS, 'L1'))
-def test_assembly(declaration, path):
+@pytest.mark.parametrize('declaration,path,direction', parameters(ASSEMBLY_ROWS, 'L1'))
+def test_assembly(declaration, path, direction):
     # Uniform seam spelling resolves before the step. Compare the complete ctx,
     # effective invariants, setup carry, actual scan init and xs. Graded compares
     # its scan builder, not the outer seam's conductor maps.
-    def options(entry):
-        requested = entry_options(declaration)
-        if entry == 'forward' and path == 'uniform' and declaration in ('P-lumped', 'P-lumped2'):
-            from rfx.measurement import default_frequency_grid
-            # run's main scan now registers its default S bins. Compare equal
-            # requests here too, as port_s_pair already does for L2.
-            requested = {**requested, 'port_s11_freqs': default_frequency_grid(20e9, 50)}
-        return requested
-
     differences = []
     for level in (('a', 'b') if path == 'multi-device-graded' else ('b',)):
-        pair = {entry: capture(BUILDERS[declaration], entry, path, level,
-                               entry_options=options(entry), seams=SEAMS)
-                for entry in ('run', 'forward')}
-        ids = outcomes(declaration, path, 'L1', pair)
+        if direction:
+            pair = equal_request_pair(declaration, path, direction, level=level,
+                                      entry_options=entry_options(declaration))
+        else:
+            pair = {entry: capture(BUILDERS[declaration], entry, path, level,
+                                   entry_options=entry_options(declaration), seams=SEAMS)
+                    for entry in ('run', 'forward')}
+        ids = outcomes(declaration, path, 'L1', pair, direction)
         required = {'ctx', 'invariants', 'carry_init', 'init', 'xs'} if path == 'uniform' else (
             {'arguments', 'result'} if path == 'graded' else {'arguments'})
         for cap in pair.values():
@@ -448,18 +450,22 @@ def test_assembly(declaration, path):
     classify(declaration, path, 'L1', differences, ids)
 
 
-def check_fields(declaration, path):
-    pair = port_s_pair(declaration, path) if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform' else None
-    if pair is None:
+def check_fields(declaration, path, direction=None):
+    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2') and path == 'uniform'
+    if port_s:
+        pair = port_s_pair(declaration, path)
+    elif direction:
+        pair = equal_request_pair(declaration, path, direction,
+                                  entry_options=entry_options(declaration))
+    else:
         pair = {entry: run_l2(BUILDERS[declaration], entry, path,
                               entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
-    ids = outcomes(declaration, path, 'L2', pair)
+    ids = outcomes(declaration, path, 'L2', pair, direction)
     values = {entry: observables(value['result']) for entry, value in pair.items()}
-    if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform':
+    if port_s:
         # S was checked above on its measured column, with the cross-trace bar.
         for value in values.values():
             value['arrays'].pop('s_params', None)
-            value['arrays'].pop('freqs_hz', None)  # run alias of the bins checked above
     comparison = compare_l2(values['run']['arrays'], values['forward']['arrays'],
                             left_raises=values['run']['raises'], right_raises=values['forward']['raises'])
     differences = l2_differences(comparison)
@@ -468,30 +474,36 @@ def check_fields(declaration, path):
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
-    ('B-closed', 'uniform')) or any(
+    ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
 
 
-@pytest.mark.parametrize('declaration,path', parameters(ALWAYS_ON_FIELDS, 'L2'))
-def test_fields(declaration, path):
-    check_fields(declaration, path)
+@pytest.mark.parametrize('declaration,path,direction', parameters(ALWAYS_ON_FIELDS, 'L2'))
+def test_fields(declaration, path, direction):
+    check_fields(declaration, path, direction)
 
 
-@pytest.mark.parametrize('declaration,path', parameters(FIELD_ROWS, 'L2', slow=True))
-def test_fields_slow(declaration, path):
-    check_fields(declaration, path)
+@pytest.mark.parametrize('declaration,path,direction', parameters(FIELD_ROWS, 'L2', slow=True))
+def test_fields_slow(declaration, path, direction):
+    check_fields(declaration, path, direction)
 
 
-@pytest.mark.parametrize('declaration,path', parameters(ADMISSION_ROWS, 'admission', slow=True))
-def test_admission(declaration, path):
-    pair = {entry: run_l2(BUILDERS[declaration], entry, path,
-                          entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
-    if declaration == 'P-wire' and path in ('uniform', 'graded'):
-        with pytest.raises(NotImplementedError) as exc:
-            BUILDERS[declaration](path).forward(n_steps=1, skip_preflight=True,
-                                               port_s11_freqs=[2e9])
-        assert str(exc.value) == pair['run']['message']
-    ids = outcomes(declaration, path, 'admission', pair)
+@pytest.mark.parametrize('declaration,path,direction', parameters(ADMISSION_ROWS, 'admission', slow=True))
+def test_admission(declaration, path, direction):
+    if direction:
+        pair = equal_request_pair(declaration, path, direction,
+                                  entry_options=entry_options(declaration))
+    else:
+        pair = {entry: run_l2(BUILDERS[declaration], entry, path,
+                              entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
+    if (declaration, path, direction) in EQUAL_S_REFUSAL_ROWS:
+        run, forward = pair['run'], pair['forward']
+        assert run['outcome'] == forward['outcome'] == 'raised', pair
+        assert (run['type'], run['message']) == (forward['type'], forward['message']), pair
+        assert run['type'] == 'NotImplementedError', pair
+        assert 'Lumped/wire S-matrix requests do not support plain sources' in run['message'], pair
+        return
+    ids = outcomes(declaration, path, 'admission', pair, direction)
     finish(declaration, path, 'admission', ids, set(), [])
 
 
@@ -520,12 +532,16 @@ def both_refused(declaration, path, pair):
             and raising_path.is_relative_to(source_root))
 
 
-@pytest.mark.parametrize('declaration,path', parameters(BOTH_REFUSE_ROWS, 'refusal'))
-def test_both_refuse(declaration, path):
+@pytest.mark.parametrize('declaration,path,direction', parameters(BOTH_REFUSE_ROWS, 'refusal'))
+def test_both_refuse(declaration, path, direction):
     # Refusals occur before stepping; one step bounds an unexpectedly admitted call.
-    pair = {entry: run_l2(BUILDERS[declaration], entry, path, n_steps=1,
-                          entry_options=entry_options(declaration))
-            for entry in ('run', 'forward')}
+    if direction:
+        pair = equal_request_pair(declaration, path, direction, n_steps=1,
+                                  entry_options=entry_options(declaration))
+    else:
+        pair = {entry: run_l2(BUILDERS[declaration], entry, path, n_steps=1,
+                              entry_options=entry_options(declaration))
+                for entry in ('run', 'forward')}
     assert both_refused(declaration, path, pair), pair
 
 
@@ -546,10 +562,10 @@ def test_declaration_refusal_does_not_extend_to_unlisted_rows():
     assert not both_refused('PW-A', 'graded', pair), pair
 
 
+@pytest.mark.parametrize('direction', ('a', 'b'))
 @pytest.mark.parametrize('declaration', ('P-lumped', 'P-lumped2'))
-def test_multi_device_graded_ports_reach_both_entries(declaration):
-    pair = {entry: run_l2(BUILDERS[declaration], entry, 'multi-device-graded', n_steps=16)
-            for entry in ('run', 'forward')}
+def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
+    pair = equal_request_pair(declaration, 'multi-device-graded', direction, n_steps=16)
     assert all(item['outcome'] == 'admitted' for item in pair.values()), pair
     import numpy as np
     for a, b in zip(pair['run']['result'].sparam_time_records,

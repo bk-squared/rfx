@@ -12,7 +12,7 @@ so the suite is headless-safe.
 import numpy as np
 import pytest
 
-from rfx.api._spec import Result
+from rfx.api._spec import ForwardResult, Result
 
 try:
     import matplotlib
@@ -56,6 +56,27 @@ def _no_sparams():
 def test_freqs_hz_matches_field():
     r = _two_port()
     np.testing.assert_array_equal(r.freqs_hz, FREQS)
+
+
+@pytest.mark.parametrize('array_kind', ('numpy', 'jax', 'list'))
+def test_forward_freqs_hz_matches_result(array_kind):
+    import jax.numpy as jnp
+    bins = {'numpy': FREQS, 'jax': jnp.asarray(FREQS), 'list': FREQS.tolist()}[array_kind]
+    forward = ForwardResult(time_series=np.zeros((10, 2)), freqs=bins)
+    run = _two_port()._replace(freqs=bins)
+    assert isinstance(forward.freqs_hz, np.ndarray)
+    np.testing.assert_array_equal(forward.freqs_hz, run.freqs_hz)
+    assert forward.freqs_hz.dtype == run.freqs_hz.dtype
+    assert 'freqs_hz' not in forward._asdict()
+
+
+def test_forward_freqs_hz_absence_matches_result():
+    forward = ForwardResult(time_series=np.zeros((10, 2)))
+    with pytest.raises(ValueError) as run_error:
+        _ = _no_sparams().freqs_hz
+    with pytest.raises(ValueError) as forward_error:
+        _ = forward.freqs_hz
+    assert str(forward_error.value) == str(run_error.value)
 
 
 def test_s_mn_uses_real_layout():

@@ -537,6 +537,15 @@ def _auto_source_decay_time(fr, waveform=None) -> float:
     return 2.0 * float(getattr(waveform, "t0", 3.0 * tau))
 
 
+def _frequency_vector_hz(freqs) -> np.ndarray:
+    """Return stored Hz bins as a host array, preserving the absent-bin error."""
+    if freqs is None:
+        raise ValueError(
+            "no frequencies in this Result — run with compute_s_params=True"
+        )
+    return np.asarray(freqs)
+
+
 class Result(NamedTuple):
     """Structured simulation result.
 
@@ -755,11 +764,7 @@ class Result(NamedTuple):
         ValueError
             If this Result carries no frequency vector.
         """
-        if self.freqs is None:
-            raise ValueError(
-                "no frequencies in this Result — run with compute_s_params=True"
-            )
-        return np.asarray(self.freqs)
+        return _frequency_vector_hz(self.freqs)
 
     def _require_s_params(self) -> np.ndarray:
         """Return ``s_params`` as an ndarray or raise a clear error."""
@@ -1019,6 +1024,22 @@ class ForwardResult(NamedTuple):
     waveguide_ports: object = None
     waveguide_sparams: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
+
+
+    @property
+    def freqs_hz(self) -> np.ndarray:
+        """Frequency vector in Hz (``freqs`` is already stored in Hz).
+
+        Returns
+        -------
+        (n_freqs,) float array
+
+        Raises
+        ------
+        ValueError
+            If this result carries no frequency vector.
+        """
+        return _frequency_vector_hz(self.freqs)
 
 
     @property

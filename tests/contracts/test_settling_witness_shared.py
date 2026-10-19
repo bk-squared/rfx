@@ -48,8 +48,9 @@ def test_forward_keeps_waveguide_witness_rows(path):
     ('P-waveguide', 'uniform'), ('P-waveguide', 'graded'),
     ('P-waveguide', 'multi-device-uniform'), ('P-lumped', 'multi-device-uniform'),
 ])
-def test_d5_census_disposition(declaration, path):
-    check_fields(declaration, path)
+@pytest.mark.parametrize('direction', ('a', 'b'))  # equal S requests (#1373)
+def test_d5_census_disposition(declaration, path, direction):
+    check_fields(declaration, path, direction)
 
 
 

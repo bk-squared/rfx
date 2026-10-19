@@ -1912,7 +1912,7 @@ class _ExecuteMixin:
         checkpoint : bool
             Enable gradient checkpointing for reverse-mode AD.
         compute_s_params : bool or None
-            Compute S-parameter matrix. Default: True when ports exist.
+            run() computes the port S-matrix by default (pass compute_s_params=False to skip it); forward() computes it only when port_s11_freqs is given.
         s_param_freqs : array or None
             Frequencies for S-parameters. Default: 50 points from
             freq_max/10 to freq_max.
