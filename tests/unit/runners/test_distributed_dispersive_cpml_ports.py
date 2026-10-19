@@ -116,12 +116,16 @@ def test_port_s_bar_catches(mutation, monkeypatch):
     assert relative > bar, (mutation, relative, bar)
 
 
-def test_run_lumped_s_retains_one_device_refusal():
-    """Item 5 leaves the one-device graded lumped-S run API unchanged."""
+def test_run_lumped_s_equals_forward():
+    """Graded run() forms the lumped-port S that forward() forms (#1892)."""
+    one, bar = _reference()
     sim = scene('debye', cells=False, port=True)
     for devices in (None, jax.devices('cpu')[:2], jax.devices('cpu')[:3]):
-        with pytest.raises(NotImplementedError, match='only for add_port') as exc:
-            sim.run(n_steps=400, devices=devices, skip_preflight=True,
-                    compute_s_params=True, s_param_freqs=np.linspace(2e9, 10e9, 20))
+        s = sim.run(n_steps=N_STEPS, devices=devices, skip_preflight=True,
+                    compute_s_params=True, s_param_freqs=BINS).s_params
+        s = np.asarray(s, np.complex128)
+        assert s.shape == one.shape
+        relative = _relative(s, one)
         record(dict(kind='debye', entry='port_run', devices=1 if devices is None else len(devices),
-                    status='refuses', reason=str(exc.value)))
+                    relative=relative, bar=bar))
+        assert relative == 0.0 if devices is None else relative <= bar, (devices, relative, bar)
