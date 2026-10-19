@@ -165,22 +165,24 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
             cells = interior_cells(widths, getattr(grid, f"pad_{axis}_lo"),
                                    getattr(grid, f"pad_{axis}_hi"))
             n, solved = len(cells), float(sum(cells))
+            cell = float(cells[0])  # an unprofiled axis has one interior width
         else:
             span = grid.interior[index]
             n = span.stop - span.start - 1
-            solved = n * grid.dx
+            cell = float(grid.cells(axis)[span.start])
+            solved = n * cell
         rel = solved / length - 1
         if abs(rel) <= .01:
             continue
-        nearest_n = realized_cells(length, grid.dx, "wall")
+        nearest_n = realized_cells(length, cell, "wall")
         adjacent = min((length / count for count in (nearest_n - 1, nearest_n + 1) if count >= 1),
-                       key=lambda spacing: abs(spacing - grid.dx))
+                       key=lambda spacing: abs(spacing - cell))
         messages.append(
             f"wall axis {axis!r}: declared {length * 1e3:.12g} mm, solved {solved * 1e3:.12g} mm, "
-            f"rel {rel * 100:+.12g} %, {n} cells, dx={grid.dx * 1e3:.12g} mm; "
+            f"rel {rel * 100:+.12g} %, {n} cells, dx={cell * 1e3:.12g} mm; "
             f"nearest dx={length / nearest_n * 1e3:.12g} mm, next dx={adjacent * 1e3:.12g} mm "
             "(both pass 1 %)")
-        findings.append((axis, length, solved, float(grid.dx), messages[-1]))
+        findings.append((axis, length, solved, cell, messages[-1]))
     if messages:
         message = "; ".join(messages) + "; set snap='declared' to accept."
         if sim._snap == "declared":
