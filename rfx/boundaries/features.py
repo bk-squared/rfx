@@ -157,6 +157,10 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
     for index, (axis, kind) in enumerate(axis_kinds(depths).items()):
         if kind != "wall" or (axis == "z" and sim._mode.startswith("2d")):
             continue
+        # The lattice counts a periodic axis without its closing node, whatever
+        # the face table says (a PEC box with a Floquet port, refused later).
+        if axis in getattr(grid, "periodic_axes", ""):
+            continue
         if getattr(sim, f"_d{axis}_profile") is not None:
             continue
         length = float(sim._domain[index])

@@ -34,10 +34,12 @@ from rfx.interop import design_to_dict, simulation_from_design
 # These are literal policy answers, never obtained from the admission function.
 # The final column names the reason for an exception to public guide admission.
 EXPECTED = {
+    # Both meshes count an absorber axis up (#1887): 22.86 mm at 2 mm is 12
+    # cells, 24 mm, so the port is not full-aperture on either mesh.
     "wr90-nonwhole-cells": (
         ("admitted", None, ""),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        "until S1 boundaries PR3b-1 (one cell-count rule): the uniform mesh rounds the transverse domain up, so the port is not full-aperture there",
+        ("admitted", None, ""),
+        "",
     ),
     "perpendicular-pec-z": (
         ("admitted", None, ""),
@@ -262,9 +264,6 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
         assert answers[0] != answers[1]
     elif (declaration, entry) in PUBLIC_OVERRIDES:
         assert "uniform run two-port refusal" in row[2]
-        assert answers[0] != answers[1]
-    elif declaration == "wr90-nonwhole-cells":
-        assert row[2] == "until S1 boundaries PR3b-1 (one cell-count rule): the uniform mesh rounds the transverse domain up, so the port is not full-aperture there"
         assert answers[0] != answers[1]
     elif declaration.startswith("perpendicular-"):
         assert row[2] == "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b"
