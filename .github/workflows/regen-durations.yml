@@ -1,7 +1,8 @@
 name: regen-durations
 # One-off, manual: measure per-test durations for pytest-split on the SAME runner
 # class the fast and slow lanes use, and upload them as artifacts. The merged
-# result becomes .test_durations (see scripts/ci/merge_test_durations.py).
+# fast result becomes .test_durations; slow becomes .test_durations_weekly
+# (see scripts/ci/merge_test_durations.py and scripts/ci/DURATIONS.md).
 # Why: after the 2026-09-03 test consolidation renamed files and #936 added
 # ~740 tests, the committed durations matched almost nothing, pytest-split
 # fell back to a count split in collection order, and the fast lane ran with
@@ -65,14 +66,15 @@ jobs:
   slow:
     if: inputs.lanes != 'fast'
     runs-on: ubuntu-latest
-    # 360, the hosted maximum, was 180. With no durations file this job splits by test count, so one
+    # Seed from weekly prices; --clean-durations uploads only fresh measurements.
+    # 360, the hosted maximum, was 180. Historically, without prices this split by count, so one
     # shard can hold most of the expensive tests: on run 36394962310 slow (5) was cut at 180 min with
     # 2,361 of its 2,567 tests done, and pytest-split writes its file only when the session ends.
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6]
+        group: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - name: Raise the memory-mapping limit for the test process
@@ -91,21 +93,29 @@ jobs:
       # shards run: no cad extra (tests/unit/geometry/test_mesh_import.py killed slow (3) here on
       # 2026-09-16 and 2026-09-21 and does not run in that lane) and no docs_consistency tests.
       - run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
-      - name: Slow selection, shard ${{ matrix.group }} of 6, store durations
+      - name: Slow selection, shard ${{ matrix.group }} of 8, store durations
         env:
           RFX_WEEKLY_RSS: "1"
           # As in validation.yml: without it the 457 weekly-only cells of the
           # path-equivalence matrix are never measured and stay unpriced.
           RFX_S0_FULL: "1"
         run: >
-          mkdir -p durations &&
+          cp .test_durations_weekly "$RUNNER_TEMP/weekly-seed" &&
           pytest -v -ra -p no:cacheprovider
           -m "not gpu and not highmem and not docs_consistency"
-          --splits 6 --group ${{ matrix.group }}
-          --store-durations --durations-path durations/slow_${{ matrix.group }}.json
+          --splits 8 --group ${{ matrix.group }}
+          --store-durations --clean-durations --durations-path .test_durations_weekly
           || true
+      # pytest-split writes the file only when the session ends: a killed session leaves the seed,
+      # which must not be uploaded as a measurement (review P2).
+      - name: Refuse an unmeasured price file
+        run: |
+          if cmp -s .test_durations_weekly "$RUNNER_TEMP/weekly-seed"; then
+            echo "durations file unchanged from its seed: the session did not finish"; exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: durations-slow-${{ matrix.group }}
-          path: durations/slow_${{ matrix.group }}.json
+          path: .test_durations_weekly
+          include-hidden-files: true
           if-no-files-found: error

@@ -11,11 +11,11 @@ regeneration closes that, and scripts/ci/DURATIONS.md states how many collected
 tests have none.
 
 It does not predict a shard either. It bounds the MEAN: the recorded seconds of every
-test, divided by the number of weekly shards, scaled by the runner spread the
-fast lane was sized with (x1.22, `.github/workflows/pr-tests.yml`, fast-suite
+test in `.test_durations_weekly`, divided by the number of weekly shards, scaled
+by the runner spread the fast lane was sized with (x1.22, `.github/workflows/pr-tests.yml`, fast-suite
 timeout comment) plus ten minutes of install and import, must fit the weekly
-job limit. The weekly selection runs every test except the gpu and highmem
-ones, so the file's total is its recorded load to within those few entries.
+job limit. The weekly file contains only tests collected by the weekly selection
+(`not gpu and not highmem and not docs_consistency`).
 When this fails, add a shard to `validation.yml` (and to `regen-durations.yml`);
 do not raise the factor.
 """
@@ -49,7 +49,7 @@ def projected_shard_seconds(total_recorded_s: float, shards: int) -> float:
 
 def test_the_mean_weekly_shard_fits_its_job_limit():
     shards, limit_s = _weekly_shards_and_limit_s()
-    total = sum(json.loads((REPO_ROOT / ".test_durations").read_text(encoding="utf-8")).values())
+    total = sum(json.loads((REPO_ROOT / ".test_durations_weekly").read_text(encoding="utf-8")).values())
     projected = projected_shard_seconds(total, shards)
     assert projected <= limit_s, (
         f"weekly lane: {total:.0f} s recorded over {shards} shards projects to "

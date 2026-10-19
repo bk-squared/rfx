@@ -388,6 +388,7 @@ DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_support_matrix_parity.py::test_status_token_polarity_agrees",
     "tests/contracts/test_test_durations_provenance.py::test_the_doc_reports_a_carried_count_that_fits_the_file",
     "tests/contracts/test_test_durations_provenance.py::test_the_doc_reports_the_entry_count_the_file_has",
+    "tests/contracts/test_test_durations_provenance.py::test_the_doc_reports_the_weekly_entry_count_and_fallback_bounds",
     "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_allowlist_entry_is_stale",
     "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_live_two_plane_outside_the_allowlist",
     "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_pending_entry_is_stale",

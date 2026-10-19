@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # slow-tests (6-shard since 2026-10-10, was 5) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
+  # slow-tests (8-shard since 2026-10-19, was 6) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
   #
   # Weekly run 31103127491 (2026-08-06, first run with both the #566 rebalance
   # AND the RSS reporter live) proved the recurring shard-1/2/3 kills (exit 143,
@@ -67,6 +67,9 @@ jobs:
   # was cancelled at 180 min with no test failure; the others took 74–119 min.
   # With regenerated durations (PR #1592), five groups hold 6731–7482 s of
   # recorded tests each, about 36,300 s total for the lane.
+  # 2026-10-19: eight shards, with uncached weekly prices from run 39220415396.
+  # pytest-split's default duration_based_chunks keeps each module in one shard, as the prices were
+  # measured; it predicts <=117 min per group (scripts/ci/DURATIONS.md).
   slow-tests:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
@@ -98,7 +101,7 @@ jobs:
       # report all of its failures.
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6]
+        group: [1, 2, 3, 4, 5, 6, 7, 8]
 
     steps:
       - name: Check out repository
@@ -161,16 +164,16 @@ jobs:
       # "not docs_consistency": for the same reason this -m would re-include the
       # tests that compare documentation prose. Those run in docs-consistency.yml;
       # a documentation mismatch must not turn this physics lane red.
-      - name: Run slow suite — shard ${{ matrix.group }} of 6
+      - name: Run slow suite — shard ${{ matrix.group }} of 8
         env:
           RFX_WEEKLY_RSS: "1"
           RFX_S0_FULL: "1"
         run: >
           mkdir -p durations &&
-          cp .test_durations durations/weekly_${{ matrix.group }}.json &&
+          cp .test_durations_weekly durations/weekly_${{ matrix.group }}.json &&
           pytest -v -ra -s
           -m "not gpu and not highmem and not docs_consistency"
-          --splits 6 --group ${{ matrix.group }}
+          --splits 8 --group ${{ matrix.group }}
           --store-durations --durations-path durations/weekly_${{ matrix.group }}.json
 
       - name: Run three-device x-wall alignment cases
@@ -227,12 +230,12 @@ jobs:
         # Tests are added daily: requiring zero unpriced tests would turn the lane
         # red every week. Time is the quantity that cancels a shard.
         # pytest-split reads prices from and stores measurements to ONE file
-        # (--durations-path), so the test step seeds that file with .test_durations
+        # (--durations-path), so the test step seeds that file with .test_durations_weekly
         # and --prune here keeps only what this shard measured, for the upload.
         run: >
           python scripts/ci/weekly_shard_budget.py --start "$SHARD_T0"
           --limit-minutes 180 --fraction 0.85
-          --measured durations/weekly_${{ matrix.group }}.json --recorded .test_durations
+          --measured durations/weekly_${{ matrix.group }}.json --recorded .test_durations_weekly
           --prune
 
       - name: Upload weekly shard durations

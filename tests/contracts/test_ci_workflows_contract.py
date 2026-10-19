@@ -839,6 +839,7 @@ def test_the_runbook_tells_authors_to_run_it_before_every_push() -> None:
         (["pyproject.toml"], True),
         (["setup.cfg"], True),
         ([".test_durations"], True),
+        ([".test_durations_weekly"], True),
         (["conftest.py"], True),
         ([".github/workflows/pr-tests.yml"], True),
         (["scripts/ci/changed_paths.py"], True),
@@ -847,7 +848,7 @@ def test_the_runbook_tells_authors_to_run_it_before_every_push() -> None:
     ids=[
         "empty", "docs-only", "scripts-only", "other-workflows", "changelog-and-readme",
         "one-rfx-file", "docs-plus-one-test", "validation", "examples", "pyproject",
-        "setup-cfg", "durations", "root-conftest", "the-lane-itself", "the-classifier",
+        "setup-cfg", "durations", "weekly-durations", "root-conftest", "the-lane-itself", "the-classifier",
         "the-classifier-shell",
     ],
 )
@@ -872,6 +873,7 @@ def test_a_nested_conftest_or_durations_file_counts() -> None:
     # a directory that is NOT in CODE_DIRECTORIES, so only the basename rule can say yes
     assert changed_paths.code_changed(["gallery-deploy/conftest.py"]) is True
     assert changed_paths.code_changed(["gallery-deploy/.test_durations"]) is True
+    assert changed_paths.code_changed(["gallery-deploy/.test_durations_weekly"]) is True
 
 
 def test_matching_paths_names_what_forced_the_verdict() -> None:

@@ -96,6 +96,8 @@ CODE_BASENAME_GLOBS: tuple[str, ...] = (
     "conftest.py",
     ".test_durations",
     "*.test_durations",
+    ".test_durations_weekly",
+    "*.test_durations_weekly",
 )
 
 #: A changed file at the repository ROOT matching one of these globs is code.

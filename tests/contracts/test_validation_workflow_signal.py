@@ -201,6 +201,20 @@ def test_the_durations_regeneration_prices_what_the_slow_shards_run() -> None:
     assert not regen["-k"], "regen-durations slow narrows its selection with -k"
     for name, lane in (("validation slow-tests", weekly), ("regen-durations slow", regen)):
         assert lane["splits"] == len(lane["groups"]), f"{name}: --splits {lane['splits']} but groups {lane['groups']}"
+    for workflow, job in (("validation.yml", "slow-tests"), ("regen-durations.yml", "slow")):
+        step = _weekly_test_step(_workflow(workflow)["jobs"][job])
+        # The prices are measured with modules kept together; least_duration would split them.
+        assert "--splitting-algorithm" not in step["run"]
+    regen_step = _weekly_test_step(_workflow("regen-durations.yml")["jobs"]["slow"])
+    assert "--clean-durations" in shlex.split(regen_step["run"])
+    assert "--durations-path .test_durations_weekly" in regen_step["run"]
+    assert 'cp .test_durations_weekly "$RUNNER_TEMP/weekly-seed"' in regen_step["run"]
+    refuse = [s for s in _workflow("regen-durations.yml")["jobs"]["slow"]["steps"]
+              if "cmp -s .test_durations_weekly" in s.get("run", "")]
+    assert len(refuse) == 1 and "exit 1" in refuse[0]["run"]
+    regen_upload = _workflow("regen-durations.yml")["jobs"]["slow"]["steps"][-1]
+    assert regen_upload["with"]["path"] == ".test_durations_weekly"
+    assert regen_upload["with"]["include-hidden-files"] is True
     assert regen == weekly, f"regen-durations slow {regen} != validation slow-tests {weekly}"
 
 
@@ -210,12 +224,12 @@ def _weekly_test_step(job: dict[str, Any]) -> dict[str, Any]:
     return steps[0]
 
 
-def test_weekly_uses_six_shards() -> None:
+def test_weekly_uses_eight_shards() -> None:
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
-    assert job["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6]
-    assert _slow_shards(job)["splits"] == 6
+    assert job["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert _slow_shards(job)["splits"] == 8
     step = _weekly_test_step(job)
-    assert step["name"] == "Run slow suite — shard ${{ matrix.group }} of 6"
+    assert step["name"] == "Run slow suite — shard ${{ matrix.group }} of 8"
     assert "--group ${{ matrix.group }}" in step["run"]
     three_device = next(s for s in job["steps"] if s.get("name") == "Run three-device x-wall alignment cases")
     assert three_device["if"] == "matrix.group == 1"
@@ -231,7 +245,7 @@ def test_weekly_stores_and_always_uploads_durations() -> None:
     # pytest-split reads prices from the path it stores to: an unseeded path
     # would price every test the same and undo the shard balance.
     assert "|| true" not in step["run"], "a failing test must turn the weekly shard red"
-    seed = "cp .test_durations durations/weekly_${{ matrix.group }}.json &&"
+    seed = "cp .test_durations_weekly durations/weekly_${{ matrix.group }}.json &&"
     assert seed in step["run"]
     assert step["run"].index(seed) < step["run"].index("pytest ")
     assert step["env"]["RFX_WEEKLY_RSS"] == "1"
@@ -273,7 +287,7 @@ def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None
     assert args == [
         "python", "scripts/ci/weekly_shard_budget.py", "--start", "$SHARD_T0",
         "--limit-minutes", "180", "--fraction", "0.85",
-        "--measured", "durations/weekly_1.json", "--recorded", ".test_durations",
+        "--measured", "durations/weekly_1.json", "--recorded", ".test_durations_weekly",
         "--prune",
     ]
     assert int(args[args.index("--limit-minutes") + 1]) == job["timeout-minutes"]

@@ -136,6 +136,7 @@
           - "tests/contracts/**"
           - "conftest.py"
           - ".test_durations"
+          - ".test_durations_weekly"
           - "docker/**"
 
 "lane:examples-docs":

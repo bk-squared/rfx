@@ -1,4 +1,4 @@
-"""`scripts/ci/DURATIONS.md` must describe the `.test_durations` beside it.
+"""`scripts/ci/DURATIONS.md` must describe both lane-specific durations files.
 
 The doc is the only record of where the numbers came from and what was done to
 them, and it went stale twice: its header claimed 7594 entries and "nothing is
@@ -28,6 +28,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DURATIONS = REPO_ROOT / ".test_durations"
+WEEKLY_DURATIONS = REPO_ROOT / ".test_durations_weekly"
 DOC = REPO_ROOT / "scripts" / "ci" / "DURATIONS.md"
 
 # Two distinct phrasings so neither regex can match the other's sentence. If the
@@ -51,13 +52,14 @@ def _doc_text() -> str:
     return DOC.read_text(encoding="utf-8")
 
 
-def _durations() -> dict:
-    assert DURATIONS.is_file(), f"{DURATIONS} is missing"
-    return json.loads(DURATIONS.read_text(encoding="utf-8"))
+def _durations(path: Path = DURATIONS) -> dict:
+    assert path.is_file(), f"{path} is missing"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_the_durations_file_is_well_formed():
-    data = _durations()
+@pytest.mark.parametrize("path", [DURATIONS, WEEKLY_DURATIONS], ids=["fast", "weekly"])
+def test_the_durations_file_is_well_formed(path):
+    data = _durations(path)
     assert isinstance(data, dict) and data, "expected a non-empty JSON object of nodeid -> seconds"
 
     bad_types = [k for k, v in data.items() if not isinstance(v, (int, float)) or isinstance(v, bool)]
@@ -105,9 +107,10 @@ def test_the_doc_reports_a_carried_count_that_fits_the_file():
     )
 
 
-def test_the_retired_floor_has_not_come_back():
+@pytest.mark.parametrize("path", [DURATIONS, WEEKLY_DURATIONS], ids=["fast", "weekly"])
+def test_the_retired_floor_has_not_come_back(path):
     """The floor was additive, so applying it puts a 0.3 s sill under the file."""
-    data = _durations()
+    data = _durations(path)
     smallest = min(data.values())
     assert smallest < RETIRED_FLOOR_S, (
         f"the smallest entry is {smallest} s, at or above the {RETIRED_FLOOR_S} s floor that was "
@@ -115,3 +118,16 @@ def test_the_retired_floor_has_not_come_back():
         "floor is wanted again, measure the per-test overhead on the lane that needs it and write "
         "the measurement into scripts/ci/DURATIONS.md before re-adding one."
     )
+
+
+@pytest.mark.docs_consistency
+def test_the_doc_reports_the_weekly_entry_count_and_fallback_bounds():
+    data = _durations(WEEKLY_DURATIONS)
+    text = _doc_text()
+    entries = re.findall(r"\*\*([\d,]+) entries in the weekly file\*\*", text)
+    fallback = re.findall(r"\*\*([\d,]+) fast-lane fallback prices\*\*", text)
+    assert len(entries) == len(fallback) == 1
+    assert int(entries[0].replace(",", "")) == len(data)
+    # Source ownership needs the original inputs; like the fast carried count,
+    # the committed file alone can only establish this bound.
+    assert 0 <= int(fallback[0].replace(",", "")) <= len(data)

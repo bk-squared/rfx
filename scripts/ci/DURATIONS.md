@@ -241,16 +241,101 @@ runner measurement, and it is: 54.40078801575026 s, the 39.56420946600019 s of `
 38828042377 (an EPYC 9V74) times 1.375. It is the one highmem-marked entry the regeneration
 refreshed; the other 14 are carried. When regenerating, do not overwrite this one from the a6000 map.
 
+## .test_durations_weekly — weekly prices (2026-10-19)
+
+The uncached weekly lane uses its own file; the fast lane and gate keep
+`.test_durations`. Weekly run `39220415396`, at main `f0e3805d9` on 2026-10-19,
+measured the uncached prices. The old fast-lane prices underpredicted measured
+weekly work by x1.05–1.48 (leader's per-shard comparison); shard 4 used 9270 s,
+above the 85 % budget, and shard 5 was cancelled at the 180-minute limit.
+
+**27,382 entries in the weekly file**, with **87 fast-lane fallback prices**.
+Values are rounded to 0.01 s and the file keeps only test ids the weekly selection collects
+(rfx-lead D:b089a0): 3,290,060 bytes.
+Weekly collection contains 27,440 tests, of which 58 have no entry in any
+input and receive pytest-split's mean-of-recorded-selection estimate. The fast-lane
+fallback count refers to retained `.test_durations` entries with no weekly source,
+not these entirely unpriced tests.
+Collection was measured on `ci/weekly-shards`, based on
+`d21f02905ef8594eb49c7039c0c24983e24d89d5`, including this update's contract
+and labeler changes, using `~/Documents/rfx/.venv/bin/python` on macOS.
+
+Merge order is `.test_durations`, then `s5_from_log.json`, then measured
+`weekly-durations-1`, `-2`, `-3`, `-4`, `-6` from run `39220415396`, in that order.
+Use `scripts/ci/merge_test_durations.py` semantics: convert values to floats,
+later input wins, sort nodeids, then retain only the current weekly collection.
+The shard-5 artifact is empty; its replacement map is an **approximation** from
+GitHub log timestamps, test i's start to test i+1's start, including per-test
+setup/teardown. Its sum is approximately 177.9 minutes. Weekly measurements are
+raw runner seconds, without the fast lane's cached-compile normalisation.
+
+| Source (merge order) | Input entries | In weekly collection | Final owned entries |
+|---|---:|---:|---:|
+| `.test_durations (fast-lane fallback)` | 24,652 | 24,514 | 87 |
+| `s5_from_log.json` | 3,251 | 3,226 | 3,226 |
+| `weekly_1.json` | 11,221 | 11,214 | 11,214 |
+| `weekly_2.json` | 3,139 | 3,138 | 3,138 |
+| `weekly_3.json` | 3,751 | 3,751 | 3,751 |
+| `weekly_4.json` | 3,964 | 3,964 | 3,964 |
+| `weekly_6.json` | 2,002 | 2,002 | 2,002 |
+
+### Weekly balance: eight groups
+
+pytest-split 0.11.0's default `duration_based_chunks` algorithm was applied to the
+collected items in collection order and the weekly map, with `--splits 8`. It keeps each
+module's tests together in one group, which is how the weekly prices were measured: a module's
+fixture setup and first compile sit in its first test's price. (`least_duration` was tried and
+rejected in review: it spreads modules over every group, paying that setup once per group,
+and it put all 11,826 tests priced 0.00 s into one group.) Missing prices use the selection
+mean. These are predictions of test time, not job wall times; install/import and shard 1's
+three-device steps (about 12 min on run 39220415396) are additional.
+
+```sh
+RFX_S0_FULL=1 ~/Documents/rfx/.venv/bin/python -m pytest --collect-only -q -p no:cacheprovider \
+  -m "not gpu and not highmem and not docs_consistency"
+# To reproduce a group, append (k = 1..8):
+# --splits 8 --group "$k" --durations-path .test_durations_weekly
+```
+
+| Group | Tests | Predicted minutes |
+|---|---:|---:|
+| 1 | 7,414 | 111.7 |
+| 2 | 5,432 | 112.8 |
+| 3 | 2,162 | 112.3 |
+| 4 | 3,154 | 111.6 |
+| 5 | 3,858 | 113.5 |
+| 6 | 452 | 111.6 |
+| 7 | 2,968 | 116.6 |
+| 8 | 2,000 | 102.2 |
+| **Max** | | **116.6** |
+
+The maximum meets the <=130-minute acceptance target (group 1 about 124 min with its three-device steps). The job limit remains
+180 minutes, its wall-time budget fraction remains 0.85 (153 minutes), and the
+headroom contract retains RUNNER_SPREAD=1.22 and SETUP_S=600.
+
+Regenerate the weekly file separately: seed with the previous weekly file (and
+fast prices only for previously unpriced tests), then merge fresh weekly maps in
+numeric shard order, with any named log approximation before measured artifacts;
+prune to a fresh weekly collection. Update these counts and balance. Do not merge
+weekly prices back into the fast file. `regen-durations.yml` already has a `slow`
+lane: it now uses eight splits, reads and writes `.test_durations_weekly` in each
+job, and uses `--clean-durations` so artifacts contain only fresh measurements. Merge
+those artifacts into `.test_durations_weekly`; fast regeneration is unchanged.
+
 ## Regenerating
 
 Each weekly run uploads `weekly-durations-N` artifacts measured on the weekly
-selection; merge them as slow inputs using the existing procedure below. A shard
+selection; merge them into `.test_durations_weekly` as described above. A shard
 using more than 85 % of its 180-minute job limit fails its final budget check:
-add a weekly shard or regenerate `.test_durations`. Unpriced test counts are
+add a weekly shard or regenerate `.test_durations_weekly`. Unpriced test counts are
 reported without failing the check.
 pytest-split reads prices from and stores measurements to one file, so the
-weekly step seeds that file with `.test_durations` and the budget check prunes
+weekly step seeds that file with `.test_durations_weekly` and the budget check prunes
 it to the entries the shard measured before the upload.
+
+The following fast-file procedure predates the weekly-file separation; slow inputs
+are fallback prices for fast-file entries, not the weekly output. Keep fresh weekly
+measurements in the weekly file using the procedure above.
 
 1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts. Read each job's CPU from its
    "Runner CPU" step and multiply each FAST job's artifact values by its factor to the EPYC 7763 (table in the

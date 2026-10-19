@@ -45,6 +45,7 @@ _SPEC.loader.exec_module(budget)
     "a/report.xml", "a/mesh.msh", "a/b.npz", "a/b.npy", "a/b.h5", "a/b.hdf5",
     "a/b.pkl", "a/logs.tar.gz", "a/b.JSON", "a/line.s2p", "a/line.s12p",
     ".test_durations",
+    ".test_durations_weekly",
 ])
 def test_data_files_are_recognised(path: str) -> None:
     assert budget.is_data(path)
@@ -61,6 +62,7 @@ def test_code_prose_and_images_are_not_data(path: str) -> None:
 
 @pytest.mark.parametrize("path", [
     ".test_durations",
+    ".test_durations_weekly",
     "docs/guides/api_symbol_inventory.json",
     "docs/guides/sparameter_support_matrix.json",
     "docs/guides/support_matrix.json",
@@ -90,6 +92,7 @@ def test_the_allowlist_covers_the_measured_paths(path: str) -> None:
     "tests/unit/x.json",
     "xtests/fixtures/a.json",
     "sub/.test_durations",
+    "sub/.test_durations_weekly",
 ])
 def test_the_allowlist_does_not_leak(path: str) -> None:
     """`*` stays inside one directory, and every pattern is anchored at both ends."""
@@ -352,6 +355,7 @@ def test_the_size_cap_is_inclusive_and_test_durations_is_exempt(repo: Path) -> N
     _write(repo, "tests/fixtures/case/fixture.json", "x" * 1_000_000)
     _write(repo, "tests/unit/test_case.py", 'FIX = "fixture.json"\n')
     _write(repo, ".test_durations", "x" * 1_200_000)
+    _write(repo, ".test_durations_weekly", "x" * 1_200_000)
     head = _commit(repo)
     assert _check(repo, base, head) == []
 
