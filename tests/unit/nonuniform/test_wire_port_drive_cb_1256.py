@@ -34,10 +34,12 @@ What is checked, at 4 GHz, below the patch resonance:
 3. the defect restored with every helper call kept -- the drive handed the
    materials with the port's own stamp removed -- sends both red, by the
    factor the closed form predicts;
-4. a build-time check on wire, single-cell lumped, and MSL feeds: the Cb
-   each drive is built from equals the Cb the stepper applies on that edge;
-5. a capacitor across a wire or lumped port edge is refused by admission,
-   including before the old-drive mutation can run.
+4. a build-time check on every port kind the graded lane drives (wire,
+   single-cell lumped, MSL feed, and a wire or lumped port with a lumped
+   capacitor across its edge): the Cb each drive is built from equals the
+   Cb the stepper applies on that edge. It needs no time stepping;
+5. end to end, a 0.3 pF capacitor across the middle edge of the wire port:
+   the two lanes agree on |S11| at 2 and 4 GHz within 1e-4.
 
 Both lanes use the shared Thevenin drive ``Cb * w / (Z0 * A_dual)`` (#1266).
 Lane parity compares the absolute fields directly, without a unit conversion.
@@ -367,14 +369,6 @@ _BUILD_CASES = {
 }
 
 
-@pytest.mark.parametrize("case", ["wire+C", "lumped+C"])
-@pytest.mark.parametrize("mutated", [False, True])
-def test_capacitor_on_port_edge_is_refused(case, mutated):
-    # Admission precedes drive construction, including the old-drive mutation.
-    with pytest.raises(NotImplementedError, match=r"add_lumped_rlc #0 .*add_port #0"):
-        _worst_cb_mismatch(case, mutated=mutated)
-
-
 def _worst_cb_mismatch(case, *, mutated=False):
     port, cap, strip = _BUILD_CASES[case]
     handed, stepper, dt = _drive_and_stepper_materials(
@@ -395,7 +389,7 @@ def _worst_cb_mismatch(case, *, mutated=False):
     return worst, len(handed)
 
 
-@pytest.mark.parametrize("case", [k for k, v in _BUILD_CASES.items() if v[1] is None])
+@pytest.mark.parametrize("case", list(_BUILD_CASES))
 def test_every_graded_port_drive_uses_the_steppers_cb(case):
     worst, n = _worst_cb_mismatch(case)
     print(f"[build] {case}: {n} driven edges, "
@@ -405,7 +399,7 @@ def test_every_graded_port_drive_uses_the_steppers_cb(case):
         f"stepper's -- a lumped load on the driven edge is missing from it")
 
 
-@pytest.mark.parametrize("case", [k for k, v in _BUILD_CASES.items() if v[1] is None])
+@pytest.mark.parametrize("case", list(_BUILD_CASES))
 def test_the_build_check_sees_a_drive_without_the_load(case):
     """Mutation (b) of the build check: every drive builder is handed the
     materials without the port's load (or without the capacitor's fold),
@@ -421,6 +415,7 @@ def test_the_build_check_sees_a_drive_without_the_load(case):
 
 CAP_E2E = 0.3e-12
 F_RLC = (2e9, 4e9)
+RLC_LANE_ATOL = 1e-4
 
 
 @functools.lru_cache(maxsize=None)
@@ -446,8 +441,22 @@ def _s11_with_cap(lane, mutated=False):
     return np.abs(np.asarray(r.s_params).reshape(-1))
 
 
-@pytest.mark.parametrize("lane,mutated", [
-    ("uniform", False), ("graded", False), ("graded", True)])
-def test_run_refuses_a_capacitor_across_the_port_edge(lane, mutated):
-    with pytest.raises(NotImplementedError, match=r"add_lumped_rlc #0 .*add_port #0"):
-        _s11_with_cap(lane, mutated=mutated)
+def test_lanes_agree_on_s11_with_a_capacitor_across_the_port_edge():
+    """A lumped capacitor in parallel with the port's middle edge makes the
+    three port cells unequal, so a drive that leaves the capacitor out of
+    one cell's Cb is mis-shaped along the wire and S11 itself moves."""
+    uni = _s11_with_cap("uniform")
+    grd = _s11_with_cap("graded")
+    diff = np.max(np.abs(grd - uni))
+    print(f"[rlc] |S11| uniform {20*np.log10(uni)} dB, graded "
+          f"{20*np.log10(grd)} dB, max |d|S11|| = {diff:.2e}")
+    assert diff <= RLC_LANE_ATOL, (uni, grd)
+
+
+def test_mutation_a_drive_without_the_capacitor_fold_breaks_s11_parity():
+    uni = _s11_with_cap("uniform")
+    grd = _s11_with_cap("graded", mutated=True)
+    diff = np.max(np.abs(grd - uni))
+    print(f"[rlc-mutation] |S11| uniform {20*np.log10(uni)} dB, graded "
+          f"{20*np.log10(grd)} dB, max |d|S11|| = {diff:.2e}")
+    assert diff > 10 * RLC_LANE_ATOL

@@ -18,11 +18,9 @@ and so does a folded 1 pF beside one series element: folded R and C have no
 solve of their own and add into the edge material that the one solved
 element reads through D0.
 
-The original refusal counted elements with their own solve per REALIZED edge (two
+So the refusal counts elements with their own solve per REALIZED edge (two
 declarations 0.3 mm apart on a 1 mm mesh land on one edge), on every lane
 that builds them: run() on a uniform and on a graded mesh, and forward().
-The batched path now requires disjoint RLC and port edges, including folded
-elements; the historical folded-pair acceptance is replaced by a refusal.
 """
 from __future__ import annotations
 
@@ -99,29 +97,20 @@ def _probe(sim, n=300):
     return np.asarray(sim.run(n_steps=n, skip_preflight=True).time_series)
 
 
-@pytest.mark.parametrize("folded", [dict(R=100.0), dict(C=1e-12)])
-def test_batched_update_refuses_folded_elements_on_a_solved_edge(folded):
+def test_folded_elements_share_an_edge_with_one_solved_element():
+    """A folded 1 pF declared beside a 2 nH is the 2 nH + 1 pF element, bit
+    for bit; a folded R and a folded C may share an edge with ONE solved
+    element (here the series 50 ohm + 1 F)."""
     here = (4e-3, 4e-3, 4e-3)
-    sim = _box([(here, "ez", folded), (here, "ez", dict(L=2e-9))])
-    _assert_refused(lambda s: s.run(n_steps=10, skip_preflight=True), sim)
+    split = _probe(_box([(here, "ez", dict(C=1e-12, topology="parallel")),
+                         (here, "ez", dict(L=2e-9, topology="parallel"))]))
+    joined = _probe(_box([(here, "ez", dict(L=2e-9, C=1e-12, topology="parallel"))]))
+    assert np.all(np.isfinite(split)) and np.array_equal(split, joined)
 
-
-@pytest.mark.parametrize("graded", [False, True])
-@pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("extent", [None, 2e-3], ids=["lumped", "wire"])
-def test_batched_update_refuses_rlc_on_port_edge(graded, entry, extent):
-    dz = np.array([1e-3] * 3 + [0.5e-3] * 4 + [1e-3] * 3) if graded else None
-    here = (4e-3, 4e-3, 4e-3)
-    sim = _box([(here, "ez", dict(L=2e-9))], dz_profile=dz)
-    sim.add_port(here, "ez", extent=extent, excite=False)
-    kwargs = {"compute_s_params": False} if entry == "run" else {}
-    with pytest.raises(NotImplementedError) as info:
-        getattr(sim, entry)(n_steps=10, skip_preflight=True, **kwargs)
-    message = str(info.value)
-    assert "add_lumped_rlc #0" in message
-    # _box's source is port declaration zero.
-    assert "add_port #1" in message
-    assert "disjoint" in message
+    folded = _probe(_box([(here, "ez", dict(R=100.0, topology="parallel")),
+                          (here, "ez", dict(C=1e-12, topology="parallel")),
+                          (here, "ez", dict(R=50.0, C=1.0, topology="series"))]))
+    assert np.all(np.isfinite(folded))
 
 
 def test_solved_elements_on_different_edges_of_one_cell_are_allowed():

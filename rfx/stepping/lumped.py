@@ -6,25 +6,27 @@ from rfx.lumped import rlc_element_values
 
 
 def update_rlc_elements(state, rlc_states, metas, e_prevs):
-    """Read every element from the pre-RLC field, then publish all writes."""
+    """Read every element from the pre-RLC field, then publish all writes.
+
+    Only solved elements (series, or parallel with an inductor) write their
+    edge; folded elements write nothing. Admission already refuses two solved
+    elements on one edge (#1245), so the written edges are disjoint and one
+    scatter equals the old element-by-element writes.
+    """
     updated_states = []
     writes = {}
-    occupied = {}
-    for number, (rlc_state, meta, e_prev) in enumerate(
-            zip(rlc_states, metas, e_prevs, strict=True)):
+    for rlc_state, meta, e_prev in zip(rlc_states, metas, e_prevs, strict=True):
         field = getattr(state, meta.component)
         cell = (meta.i, meta.j, meta.k)
-        edge = (meta.component, cell)
-        if edge in occupied:
-            raise NotImplementedError(
-                f"RLC element #{occupied[edge]} and RLC element #{number} share "
-                f"the {meta.component} edge of cell {cell}; batched RLC updates "
-                "require disjoint edges.")
-        occupied[edge] = number
         value, updated = rlc_element_values(field[cell], rlc_state, meta, e_prev)
         updated_states.append(updated)
         if meta.is_series or meta.has_inductor:
             indices, values = writes.setdefault(meta.component, ([], []))
+            if cell in indices:
+                raise NotImplementedError(
+                    f"two solved RLC elements share the {meta.component} edge "
+                    f"of cell {cell}; refuse_stacked_solved_elements (#1245) "
+                    "must run before the step is built.")
             indices.append(cell)
             values.append(value.astype(field.dtype))
     fields = {}

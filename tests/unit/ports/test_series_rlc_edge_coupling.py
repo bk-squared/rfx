@@ -21,8 +21,8 @@ What is checked here (fast, always on)
    resistor (``topology="parallel"``, R only, which stamps sigma = d/(R*A)) on
    the same edge, to float32 rounding, through the public API -- in vacuum,
    on an eps 1|4 surface edge (where the edge's own permittivity, not the
-   cell's, is the element's D0). A folded load sharing a series element's
-   edge is now refused. The two sides
+   cell's, is the element's D0), and next to a folded load already on the
+   same edge (whose stamp is part of that D0). The two sides
    share no helper: one is the series ADE, the other is the Yee update's own
    conductivity term. The fixture is a one-cell-wide parallel-plate line (PEC
    plates, magnetic side walls) because there the Ex and Ey edges of the
@@ -173,16 +173,26 @@ def test_series_r_with_infinite_c_is_the_folded_resistor_on_a_dielectric_surface
         "the element's D0 is not the edge's own E-update denominator")
 
 
-def test_series_element_on_an_edge_that_already_carries_a_folded_load_is_refused():
-    """Folded and solved elements must now occupy disjoint realized edges."""
+def test_series_element_on_an_edge_that_already_carries_a_folded_load():
+    """Lumped stamps enter the edge's D0: a folded R1 already on the edge plus
+    a series R2 (C = 1 F) must be the folded R1 || R2, on the same surface."""
+    r1, r2 = 200.0, 100.0
+
     def both(s, p):
-        s.add_lumped_rlc(position=p, component="ez", R=200., topology="parallel")
-        s.add_lumped_rlc(position=p, component="ez", R=100., C=1., topology="series")
+        s.add_lumped_rlc(position=p, component="ez", R=r1, topology="parallel")
+        s.add_lumped_rlc(position=p, component="ez", R=r2, C=1.0, topology="series")
 
     series = _line(both, eps_beyond=_EPS_SURFACE)
+    folded = _line(lambda s, p: s.add_lumped_rlc(
+        position=p, component="ez", R=r1 * r2 / (r1 + r2), topology="parallel"),
+        eps_beyond=_EPS_SURFACE)
     _assert_on_the_surface(series)
-    with pytest.raises(NotImplementedError, match=r"add_lumped_rlc #0 .*add_lumped_rlc #1"):
-        series.run(n_steps=1, compute_s_params=False)
+    assert [e.topology for e in series._lumped_rlc] == ["parallel", "series"]
+    rel = _compare(series, folded)
+    assert rel <= _F32_REL, (
+        f"folded {r1} ohm + series {r2} ohm (C = 1 F) on one edge differs from a "
+        f"folded {r1 * r2 / (r1 + r2):.2f} ohm by {rel:.3e} of the peak "
+        f"(bound {_F32_REL:.1e})")
 
 
 # ---------------------------------------------------------------------------

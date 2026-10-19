@@ -608,8 +608,6 @@ def run_uniform(
         # #1245: at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
-        from rfx.model.lumped_admission import refuse_rlc_overlap
-        refuse_rlc_overlap(sim._lumped_rlc, rlc_metas, sim._ports, grid)
 
     # #677: assemble the surface-impedance sheet ctx against the FINAL
     # realized PEC edges of this run (after the port clearing above —

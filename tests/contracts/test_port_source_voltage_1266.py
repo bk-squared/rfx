@@ -72,9 +72,7 @@ def response(case, loaded, independent_current=False, mutation=False):
                      waveform=PULSE, extent=float(sum(lengths)) if n > 1 else None)
     if loaded:
         for pos in positions:
-            # A passive port supplies the external resistive termination.
-            # RLC elements may no longer share the driven port's edge.
-            sim.add_port(pos, 'ez', impedance=RESISTANCE/n, excite=False)
+            sim.add_lumped_rlc(pos, 'ez', R=RESISTANCE/n, topology='parallel')
     for pos in positions:
         sim.add_probe(pos, 'ez')
     grid = sim._build_grid() if case in ('uniform', 'offgrid', 'wire_uniform') else sim._build_nonuniform_grid()
