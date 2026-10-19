@@ -270,7 +270,7 @@ error message tells you to do; the last names the test that pins the refusal.
 
 ## S-parameters
 
-`run()` computes the port S-matrix by default (pass `compute_s_params=False` to skip it); `forward()` computes it only when `port_s11_freqs` is given.
+`run()` computes the port S-matrix by default where its path supports it (pass `compute_s_params=False` to skip it; on the graded mesh lumped ports return none yet); `forward()` computes it only when `port_s11_freqs` is given.
 
 This part answers three questions for each public primitive: does it define a
 port impedance and a reference plane, which calculator computes its
