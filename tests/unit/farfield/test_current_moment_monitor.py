@@ -1277,7 +1277,7 @@ _ACC_UNI = ("        if ctx.use_current_moments:\n"
             "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab,\n"
             "                ctx.current_moments, dt, frame.step_idx)\n")
 _RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
-            "            frame.new_rlc_states = []")
+            "            frame.st, frame.new_rlc_states = ctx.update_rlc_elements(")
 
 _SNAP_NU = ("        if ctx.use_current_moments:\n"
             "            frame.e_prev_slab = ctx._slab_e_snapshot(frame.st, ctx.current_moments)\n")
