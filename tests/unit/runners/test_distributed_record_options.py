@@ -55,6 +55,7 @@ def test_internal_plane_time_records_refused():
         sim.run(n_steps=4, devices=jax.devices("cpu")[:2], skip_preflight=True)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mutation", ["record_options", "global_zero"])
 def test_admission_mutations(mutation, monkeypatch, tmp_path):
     from rfx.runners import _distributed_records as records
