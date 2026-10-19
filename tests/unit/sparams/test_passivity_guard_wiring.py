@@ -84,7 +84,7 @@ def test_run_uniform_epilogue_warns_for_patched_extractor(monkeypatch):
     monkeypatch.setattr("rfx.runners.uniform.run_uniform", lambda *a, **k: fake_result)
     monkeypatch.setattr("rfx.api._execute._warn_if_nonfinite_result", lambda *a, **k: None)
 
-    with pytest.warns(UserWarning, match=r"run\(compute_s_params=True\).*non-passive"):
+    with pytest.warns(UserWarning, match=r"run\(\): .*non-passive"):
         result = sim.run(
             n_steps=1,
             compute_s_params=True,
