@@ -711,12 +711,31 @@ def l2_differences(comparison):
     return failures
 
 
+def _assert_same_witness_value(left, right, where):
+    """Bit-for-bit (NaN-equal) through the nested dicts and lists a witness holds."""
+    if isinstance(left, dict) or isinstance(right, dict):
+        assert isinstance(left, dict) and isinstance(right, dict) and left.keys() == right.keys(), where
+        for key in left:
+            _assert_same_witness_value(left[key], right[key], f'{where}/{key}')
+    elif isinstance(left, (list, tuple)) and not np.isscalar(left) and any(
+            isinstance(item, (dict, list, tuple)) for item in left):
+        assert isinstance(right, (list, tuple)) and len(left) == len(right), where
+        for index, (a, b) in enumerate(zip(left, right)):
+            _assert_same_witness_value(a, b, f'{where}/{index}')
+    else:
+        np.testing.assert_array_equal(left, right, err_msg=where)
+
+
 def port_drive_witness_leaves(sim, run, forward):
     """Check separate S drives before excluding their eight run-only leaves.
 
     Decision C: forward judges its declared drive's port record; run also
-    judges the passive port's separate drive. The driver stores these rows in
-    impedance-port order (there is no separate drive-id field in a witness).
+    judges the passive port's separate drive. A witness has no drive-id field:
+    attribution rests on the driver's loop order (rfx/probes/sparam_driver.py
+    drives the impedance ports in registration order, one per_drive entry each).
+    At the census's 150 steps the two entries are byte-identical (undetermined),
+    so the driven/passive distinction is pinned at a determined record length
+    in test_settling_witness_shared.py.
     """
     ports = [(i, port) for i, port in enumerate(sim._ports) if port.impedance != 0]
     port_ids = [f'port:{i}:mode:0' for i, _ in ports]
@@ -731,10 +750,20 @@ def port_drive_witness_leaves(sim, run, forward):
     row_index, run_row = run_rows[0]
     forward_row = forward_rows[0]
     assert 'per_drive' not in expected
+    # (d) Top-level record selection, each side by its definition: run's S
+    # comes from its separate drives, so its main-record port records are
+    # skipped as unread; forward scores them (decision C).
+    assert actual.get('run_records_scored') is True and 'run_records_scored' not in expected
+    assert actual['scored_port_record_ids'] == [] and expected['scored_port_record_ids'] == port_ids
+    assert [(row['id'], row['reason']) for row in actual['skipped_port_records']] == [
+        (port_id, 'S not read') for port_id in port_ids]
+    assert expected['skipped_port_records'] == []
     assert all('per_drive' not in row for row in expected['runs'])
     leaves = []
-    for prefix, witness in (('settling_witness', actual),
-                            (f'settling_witness/runs/{row_index}', run_row)):
+    # The top level repeats per_drive only when the S row is the worst row.
+    places = ((('settling_witness', actual),) if 'per_drive' in actual else ()) + (
+        (f'settling_witness/runs/{row_index}', run_row),)
+    for prefix, witness in places:
         # (a) One witness per impedance port, indexed in declaration order.
         assert len(witness['per_drive']) == len(ports), prefix
         for column, ((_, port), port_id, drive) in enumerate(
@@ -747,18 +776,17 @@ def port_drive_witness_leaves(sim, run, forward):
                 shared = drive.keys() & forward_row.keys()
                 assert {'db', 'status', 'error_per_bin', 'share_per_bin'} <= shared, (location, shared)
                 for key in shared:
-                    np.testing.assert_array_equal(drive[key], forward_row[key],
-                                                  err_msg=f'{location}/{key}: {port_id}')
+                    _assert_same_witness_value(drive[key], forward_row[key],
+                                               f'{location}/{key}: {port_id}')
             else:
                 # (c) This ordinal is the passive port's run-only drive.
-                assert port_id in drive['scored_port_record_ids'], (location, port_id)
                 assert np.isnan(np.asarray(forward.s_params)[:, column]).all()
             # Both stored representations must retain the same drive fields.
-            if witness is run_row:
+            if witness is run_row and 'per_drive' in actual:
                 assert drive.keys() == actual['per_drive'][column].keys(), location
                 for key in drive:
-                    np.testing.assert_array_equal(drive[key], actual['per_drive'][column][key],
-                                                  err_msg=f'{location}/{key}')
+                    _assert_same_witness_value(drive[key], actual['per_drive'][column][key],
+                                               f'{location}/{key}')
             leaves.extend(f'{location}/{key}' for key in ('error_per_bin', 'share_per_bin'))
     return tuple(leaves)
 

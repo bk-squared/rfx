@@ -92,6 +92,26 @@ def test_two_port_drive_witnesses_follow_run_row_location(two_port_s_results):
     }
 
 
+def test_two_port_drive_witnesses_tell_driven_from_passive():
+    # 600 steps: both drive witnesses are determined and differ, so the
+    # driven entry's equality with forward's port row is not a constant.
+    from copy import deepcopy
+    pair = port_s_pair('P-lumped2', 'uniform', n_steps=600)
+    run, forward = (pair[entry]['result'] for entry in ('run', 'forward'))
+    sim = BUILDERS['P-lumped2']('uniform')
+    port_drive_witness_leaves(sim, run, forward)
+    row = next(r for r in run.settling_witness['runs'] if r.get('route') == 's_channels')
+    driven, passive = row['per_drive']
+    assert driven['status'] == passive['status'] == 'pass'
+    assert not np.array_equal(driven['error_per_bin'], passive['error_per_bin'])
+    witness = deepcopy(run.settling_witness)
+    for holder in [witness] + [r for r in witness['runs'] if r.get('route') == 's_channels']:
+        if 'per_drive' in holder:
+            holder['per_drive'] = type(holder['per_drive'])(reversed(holder['per_drive']))
+    with pytest.raises(AssertionError):
+        port_drive_witness_leaves(sim, run._replace(settling_witness=witness), forward)
+
+
 @pytest.mark.parametrize('mode,drives', [('passive', 1), ('two_ports', 2), ('no_s', 0),
                                          ('other_length', 1)])
 def test_other_lumped_s_requests_keep_their_drive_scans(monkeypatch, mode, drives):
