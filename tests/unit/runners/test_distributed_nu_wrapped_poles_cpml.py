@@ -41,7 +41,7 @@ def _loss_at_kernel(name, monkeypatch):
     """Pin the operands received by the real E boundary, before stepping."""
     from dataclasses import replace
     import jax
-    from rfx import nonuniform
+    from rfx.stepping import graded_loop
     from rfx.boundaries import cpml
     from rfx.runners import _distributed_nu_wrapped as runner
     from tests._distributed_dispersive_cpml import record
@@ -50,12 +50,12 @@ def _loss_at_kernel(name, monkeypatch):
     )
     from tests.unit.runners.test_distributed_nu_wrapped_step import assert_same_tree
     sim, saved, expected = _lorentz_scene(name), {}, {}
-    build = nonuniform._build_nu_scan
+    build = graded_loop._build_nu_scan
     def capture_one(*args, **kwargs):
         saved['one'] = build(*args, **kwargs)
         raise BeforeStepping
     with monkeypatch.context() as patch:
-        patch.setattr(nonuniform, '_build_nu_scan', capture_one)
+        patch.setattr(graded_loop, '_build_nu_scan', capture_one)
         with pytest.raises(BeforeStepping):
             sim.forward(n_steps=2, checkpoint=False, skip_preflight=True)
     one = saved['one']

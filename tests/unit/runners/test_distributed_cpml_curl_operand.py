@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import nonuniform
+from rfx.stepping import graded_loop
 from rfx.boundaries import cpml
 from rfx.runners import _distributed_nu_wrapped as runner
 from rfx.stepping import graded
@@ -47,12 +47,12 @@ def test_wrapped_cpml_receives_one_device_curl(kind, devices, monkeypatch):
     drawn = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r)
     assert np.all(drawn[:, grid.ny//2, grid.nz//2] == 4.), 'Scene T must fill all x cells'
     canonical, staged = {}, {}
-    build = nonuniform._build_nu_scan
+    build = graded_loop._build_nu_scan
     def capture_one(*args, **kwargs):
         canonical['setup'] = build(*args, **kwargs)
         raise BeforeStepping
     with monkeypatch.context() as patch:
-        patch.setattr(nonuniform, '_build_nu_scan', capture_one)
+        patch.setattr(graded_loop, '_build_nu_scan', capture_one)
         with pytest.raises(BeforeStepping):
             sim.forward(n_steps=2, checkpoint=False, skip_preflight=True)
     one = canonical['setup']
