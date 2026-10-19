@@ -217,6 +217,10 @@ jobs:
           tests/unit/runners/test_distributed_record_memory.py
           tests/unit/runners/test_distributed_records_ntff_baseline.py
           tests/unit/farfield/test_current_moment_monitor.py::test_uniform_distributed_moments_match_native
+          tests/unit/runners/test_distributed_uniform_forward_media_parity.py
+          tests/unit/runners/test_distributed_graded_run_poles_parity.py
+          tests/unit/runners/test_distributed_graded_derivatives_parity.py
+          tests/unit/runners/test_distributed_uniform_directivity_parity.py
 
       - name: Shard time against the job limit
         if: always()
