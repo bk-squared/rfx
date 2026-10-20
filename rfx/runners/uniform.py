@@ -911,6 +911,7 @@ def run_uniform(
             conformal_pec=conformal_pec,
             return_settling=True,
             skip_preflight=True,
+            subpixel_smoothing=subpixel_smoothing,
         )
 
     declared_measurements = package_declared_measurements(

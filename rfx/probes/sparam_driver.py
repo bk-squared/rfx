@@ -60,6 +60,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     return_settling=False,
     _forward_port_s11=False,
     skip_preflight: bool = False,
+    subpixel_smoothing=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -119,12 +120,19 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     Notes
     -----
-    Mixed lumped + wire port sets are not supported.
+    Mixed lumped + wire port sets are not supported on the uniform mesh. On a
+    graded mesh each drive is the graded record with only that port excited and
+    its column is formed as forward() forms it; mixed sets are supported, and S
+    lists wire ports before lumped ones, the graded record's (and forward()'s) order.
     """
     # A plain source fires in every port drive, so it is refused here (#1420).
     resolve_field_dtype(sim._precision)
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim)
+    if subpixel_smoothing and devices is not None:
+        raise NotImplementedError(
+            "subpixel_smoothing is not applied by the multi-device S drives; "
+            "use one device (omit devices=) or subpixel_smoothing=False.")
     # Graded: each drive is the graded record with only that port excited, its
     # column formed as forward() forms it (port_s_from_record).
     graded = sim._uses_nonuniform_mesh
@@ -284,7 +292,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 if pe.impedance != 0 else pe for pe in sim._ports]
             record = run_nonuniform_path(drive, n_steps=n_steps, compute_s_params=True,
                                          s_param_freqs=freqs, conformal_pec=conformal_pec,
-                                         _drive_scan=True)
+                                         subpixel_smoothing=subpixel_smoothing, _drive_scan=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
             raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt}
         elif devices is not None:
@@ -307,7 +315,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 _sparam_drive_idx=j,
                 _return_raw_port_sparams=True,
                 sheet_impedance=_sheet_ctx, conductors=conductors,
-                conformal_pec=conformal_pec,
+                conformal_pec=conformal_pec, subpixel_smoothing=subpixel_smoothing,
             )
 
         if return_settling:
