@@ -1318,7 +1318,7 @@ def _sheet_solved_spans(ctx, boxes):
     sheets = [e for e in boxes if e.kind == "sheet"]
     fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
     union, volume_edges = sheet_continuation_masks(
-        ctx.interior_pec_entries(), ctx.periodic, ctx.grid.shape)
+        ctx.interior_pec_entries() + ctx.impedance_sheet_entries(), ctx.periodic, ctx.grid.shape)
     from rfx.model.conductors import port_fed_nodes
     fed = (port_fed_nodes(ctx.sim, ctx.realized())
            if any(not hasattr(e.sheet, 'solved_spans') for e in sheets) else None)
@@ -1343,7 +1343,7 @@ def _sheet_solved_spans(ctx, boxes):
 
 
 def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
-    """A PEC sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
+    """A PEC or f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
     in-plane end than the nodes it covers (measured:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
     sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.
@@ -1352,6 +1352,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
+    boxes = list(boxes) + ctx.impedance_sheet_entries()
     rows = []
     for e, a, span in _sheet_solved_spans(ctx, boxes):
         if not (span.free_lo or span.free_hi):
@@ -1422,6 +1423,7 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
               if not (e.kind in ("volume", "sheet")
                       and isinstance(e.shape, Box))]
     if not boxes:
+        _warn_sheet_effective_size(_w, ctx, boxes)
         return
     offenders = []
     n_axes = 0

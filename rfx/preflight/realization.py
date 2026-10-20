@@ -610,6 +610,31 @@ class _CampaignStaticsContext:
         """Realized (not refused, not lossy) conductor entries."""
         return [e for e in self.entry_realizations() if e.is_pec]
 
+    def impedance_sheet_entries(self) -> list:
+        """f0 sheets for the solved-size check, without classifying them as PEC."""
+        from rfx.geometry.rasterize_grid import sheet_spec_from_shape
+        from rfx.geometry.smoothing import continued_conductor_shape
+        out = []
+        for i, tc in enumerate(self.sim._thin_conductors):
+            if tc.surface_impedance_f0 is None:
+                continue
+            bounds = _shape_bounds(tc.shape)
+            if bounds is None:
+                continue
+            lo, hi, _ = bounds
+            solved = continued_conductor_shape(self.sim, self.grid, tc.shape, entry=tc)
+            try:
+                sheet = sheet_spec_from_shape(
+                    solved, self.coords, self.cell_sizes, name=f'thin_conductor[{i}]',
+                    lane=self.lane or '', refuse_thick=True, grid=self.grid)
+            except self._NARROW_EXCS:
+                continue  # Assembly owns structural refusals.
+            out.append(_EntryRealization(
+                label='add_thin_conductor(surface_impedance_f0=...)',
+                name=f'thin_conductor[{i}]', shape=tc.shape, kind='sheet',
+                sheet=sheet, lo=lo, hi=hi, solved_shape=solved))
+        return out
+
     def interior_pec_entries(self) -> list:
         """Per-entry conductors for comparisons with the user's drawing.
 
