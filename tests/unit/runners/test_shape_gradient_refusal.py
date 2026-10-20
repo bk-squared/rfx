@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Cylinder
+from rfx import Box, Cylinder, Simulation, Sphere
 from rfx.sources.sources import GaussianPulse
 from tests.unit.runners.test_forward_subpixel_smoothing import sphere_sim
 
@@ -95,4 +95,44 @@ def test_g_amplitude_gradient_with_jit_traced_radius(entry):
     expected = jax.grad(lambda a: loss(.0023, a))(1.0)
     actual = jax.grad(jax.jit(loss), argnums=1)(.0023, 1.0)
     assert float(expected) > 0
+    np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=0)
+
+
+def pec_box_objective(radius, smoothing):
+    """The same sphere in a closed PEC box: no absorber, so no pad-reach decision."""
+    sim = Simulation(freq_max=20e9, domain=(.012, .012, .012), dx=.001, boundary="pec")
+    sim.add_material("sphere", eps_r=4.0)
+    sim.add(Sphere((.00537, .00613, .00573), radius), material="sphere")
+    sim.add_source((.0031, .0042, .0043), "ez", waveform=GaussianPulse(f0=10e9, bandwidth=.8),
+                   amplitude_kind="current")
+    sim.add_probe((.0072, .0051, .0064), "ez")
+    result = sim.forward(n_steps=20, skip_preflight=True, subpixel_smoothing=smoothing)
+    return jnp.sum(jnp.asarray(result.time_series) ** 2)
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("smoothing", [True, "full_tensor", "kottke_pec"])
+@pytest.mark.parametrize("transform", ["jit", "vmap"])
+def test_d_smoothed_shape_transform_in_cpml_refuses(entry, graded, smoothing, transform):
+    # Whether a traced shape reaches the absorber has no concrete answer; this
+    # was a raw ConcretizationTypeError. Graded full_tensor and kottke_pec keep
+    # their own earlier refusals.
+    def loss(radius):
+        return objective(radius, entry, graded=graded, smoothing=smoothing)
+
+    match = ("continued into it" if not graded or smoothing is True
+             else "uniform single-device|non-uniform mesh")
+    with pytest.raises(NotImplementedError, match=match):
+        if transform == "jit":
+            jax.jit(loss)(.0023)
+        else:
+            jax.vmap(loss)(jnp.asarray((.0023, .0027)))
+
+
+@pytest.mark.parametrize("smoothing", [True, "full_tensor"])
+def test_d_smoothed_shape_jit_in_pec_box_matches_plain(smoothing):
+    expected = pec_box_objective(.0023, smoothing)
+    actual = jax.jit(lambda r: pec_box_objective(r, smoothing))(.0023)
+    # Measured 3e-7 / 6e-7 relative (float32 reassociation under jit).
     np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=0)

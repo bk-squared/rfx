@@ -436,9 +436,20 @@ def _continue_cylinder(shape, axis: int, side: str, target: float):
     return Cylinder(tuple(centre), shape.radius, hi - lo, shape.axis)
 
 
+TRACED_SHAPE_PAD_MESSAGE = (
+    "jax.jit or jax.vmap over a declared shape dimension is not supported with "
+    "subpixel_smoothing in a domain with an absorbing boundary: whether the shape "
+    "reaches the absorber, and is continued into it, depends on that dimension. "
+    "Call run()/forward() with a concrete shape, run without subpixel_smoothing, "
+    "or use a closed PEC domain, which has no absorber.")
+
+
 def _reaches_pad_face(bounds, axis, side, edge, cell, declared_domain,
                       occupied_faces=None):
+    from rfx.core.jax_utils import is_tracer
     lo, hi = bounds
+    if is_tracer(lo[axis]) or is_tracer(hi[axis]):
+        raise NotImplementedError(TRACED_SHAPE_PAD_MESSAGE)
     reaches = ((float(lo[axis]) <= edge + _PAD_REACH_TOL_CELLS*cell
                 if side == "lo" else
                 float(hi[axis]) >= edge - _PAD_REACH_TOL_CELLS*cell)
