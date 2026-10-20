@@ -12,8 +12,8 @@ script's feed and probe points; maximum directivity 6.83 dBi (openEMS's
 near-to-far-field transform on the finest mesh, in the run fed by the 50 ohm
 lumped port, at its |S11| dip, 2.455 GHz).  The same
 openEMS build first reproduced its own tutorial's documented |S11| dip
-(2.4330 GHz against 2.430 GHz).  Run: VESSL 369367270650; record: rfx-archive
-rfx/records/20261011-examples-recheck/openems/o2/.
+(2.4330 GHz against 2.430 GHz).  Measured (VESSL 369367270650); record kept
+with the project.
 
 What this tutorial teaches, in order:
 

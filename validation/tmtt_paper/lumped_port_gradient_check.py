@@ -37,8 +37,8 @@ decision A, the convention preflight states): against the declared Zc and
 2 Zc the line looks like Zc/2.  On that reading the air line follows the
 closed form of a Zc/2 line (length fitted once, 30.84 mm) within 0.0012 in
 |S11|^2, and this scene, with the section taken as permittivity 1.9 (the
-mean over the two Ez rows), within 0.009 (rfx-archive
-records/20261011-examples-recheck/lumped_gradient_main/MIRROR-CLOSED-FORM.md).
+mean over the two Ez rows), within 0.009 (measured; record kept with the
+project).
 That is context only: the check compares rfx's gradient with rfx's own
 finite difference.
 
