@@ -104,14 +104,20 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # pulse is declared) joined on 2026-10-17; OPEN, checked with
 # `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
 # #1812 left with the declared-pulse fix and its always-on contract pins.
-CITED_ISSUES = frozenset({737, 1221, 1230, 1373, 1512})
+CITED_ISSUES = frozenset({737, 1230, 1373, 1512})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
 # allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1255, 1381, 1419})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1255, 1381, 1419,
+                                 1524, 1563, 1571, 1761})
+# #1221 (boundary campaign) closed 2026-10-17 with its 2.0 parts in main; its three entries are now
+# accepted limitations pinned by their refusal tests, so it left CITED_ISSUES.
+# #1524 was folded into #1373 (2026-10-07); #1563 (PI decision on the absorber write-back), #1571
+# (conductivity-gradient mechanism) and #1761 (PMC on the multi-device runners) are merged PRs
+# named for provenance.
 # #1419 (weak-port ring-down gradient) is closed by the PR that added the
 # identification-probe option; the entry stays because port-only identification
 # is still the default, and names the issue as provenance.

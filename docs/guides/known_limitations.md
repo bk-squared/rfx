@@ -336,13 +336,15 @@ What to do: record well past the slowest mode's decay, or use a one-cell wire po
 
 ### Magnetic faces require the single-device second-order Yee image.
 
-Tracker: none — accepted limitation (refused: tests/unit/sparams/test_pmc_waveguide_refusal.py::test_pmc_waveguide_mode_solver_refuses, tests/contracts/test_distributed_graded_pmc_records.py::test_pmc_record_refusal; the subgridded and ADI cells of the `pmc_face` row in tests/contracts/path_disposition.py)
+Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_pmc_waveguide_refusal.py::test_pmc_waveguide_mode_solver_refuses)
 
 Uniform and graded run/forward place the wall on the declared E-node face.
 The multi-device runners take a magnetic face through the same single-device
 image (#1761). There, wire ports and lumped-port S-parameters refuse it, and on
 the graded mesh so do DFT planes, flux monitors, snapshots and current moments.
-Subgridded and ADI paths refuse magnetic faces.
+Subgridded and ADI paths refuse magnetic faces (the `pmc_face` row of
+`tests/contracts/path_disposition.py`; the graded multi-device records:
+`tests/contracts/test_distributed_graded_pmc_records.py`).
 Waveguide-port execution also refuses magnetic faces: its aperture mode solver
 implements PEC walls only. The fourth-order stencil refuses them because
 its far neighbors have no magnetic image. Subpixel smoothing refuses a material surface within half
@@ -365,7 +367,7 @@ cell except the outermost row on the +x and +y faces.
 
 ### A plane wave requires compatible transverse faces and an invariant absorber replacement.
 
-Tracker: none — accepted limitation (refused at dispatch: tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused, tests/contracts/test_plane_wave_admission_both_meshes.py::test_finite_cube_refused)
+Tracker: none — accepted limitation (refused at default: tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused)
 
 At normal incidence, on the uniform and the graded mesh alike, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
 materials on the grid, conductors or localized field updates vary along that axis,
@@ -415,12 +417,13 @@ Tracker: #1373
 
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
-Tracker: none — accepted limitation (mechanism measured in #1571; forward() reports it: tests/unit/autodiff/test_conductivity_gradient_record.py::test_lossless_design)
+Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_conductivity_gradient_record.py::test_lossless_design)
 
 `jax.grad` through `forward()` admits a conductivity design. Where T·σ/ε on
 those design cells is not large, the gradient depends on the phase at each frequency bin set by the simulation time: a static sensitivity remains although the field
 decays. A longer record does not help.
-`gradient_record_length_witness` detects it. `gradient="adjoint"` refuses every
+`gradient_record_length_witness` detects it; the mechanism was measured in #1571.
+`gradient="adjoint"` refuses every
 conductivity design (`design_sigma_override`), lossy or not, and returns
 settled-spectrum gradients only.
 `forward()` now attaches an advisory record `conductivity_gradient_record_length` to `result.diagnostics` when a conductivity design is supplied.
