@@ -426,11 +426,16 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
 
 
 def _build_waveguide_wr90(quick: bool) -> CaseResult:
-    """Empty WR-90 waveguide port: matched-load reference (|S11|=0, |S21|=1).
+    """Empty WR-90 waveguide port: matched-guide reference (|S11|=0, |S21|=1).
 
     Reuses the canonical ``add_waveguide_port`` + ``compute_waveguide_s_matrix``
-    pipeline for the empty-guide geometry. The matched-load analytic reference
+    pipeline for the empty-guide geometry. The matched-guide analytic reference
     is exact, so this is an E5 case.
+
+    ``normalize=False`` because it is the only lane without a reference run:
+    ``True`` and ``"flux"`` divide by an empty-guide reference run, which for
+    an empty guide is the device run itself, so they return |S11| = 0 and
+    |S21| = 1 by construction and check nothing about the port.
     """
     import jax.numpy as jnp
 
@@ -442,8 +447,9 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     f_cutoff = C0 / (2.0 * a_wg)
     n_freqs = 7 if quick else 21
     freqs = np.linspace(8.2e9, 12.4e9, n_freqs)
-    dx = 0.001
-    cpml_layers = 12 if quick else 20
+    dx = 0.00127  # 18 x 8 cells: both walls land on the grid (22.86 x 10.16 mm)
+    # 26 layers = 33 mm, half a guide wavelength at 8.2 GHz.
+    cpml_layers = 12 if quick else 26
     num_periods = 30 if quick else 200
     domain_x = 0.120 if quick else 0.200
     port_left_x = 0.030 if quick else 0.040
@@ -491,7 +497,7 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
         name="right",
     )
 
-    result = sim.compute_waveguide_s_matrix(num_periods=num_periods, normalize=True)
+    result = sim.compute_waveguide_s_matrix(num_periods=num_periods, normalize=False)
     s_raw = np.asarray(result.s_params)
     port_idx = {name: i for i, name in enumerate(result.port_names)}
     f_hz = np.asarray(result.freqs)
@@ -511,20 +517,11 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     # produced by compute_waveguide_s_matrix() with two waveguide ports, which
     # Simulation.run() (the snapshot path) cannot drive — so a source-fed empty
     # guide reproduces the same TE10 propagation purely for the visual.
-    #
-    # CPML bug note: Simulation._build_grid() sets face_layers[y/z] = cpml_layers
-    # regardless of boundary type (PEC y,z walls get pad=0 but the CPML arrays
-    # are still allocated with size cpml_layers). When cpml_layers (e.g. 20)
-    # exceeds the guide cross-section cell count (b_wg/dx ≈ 10), XLA's shape
-    # inference fails with a broadcasting error. Fix: pad b_wg so nz > 2*cpml
-    # (still hollow air — only the domain extent changes, not the physics).
     from rfx.sources.sources import GaussianPulse
 
-    anim_cpml = 8  # fixed, safe for the guide cross-section in both quick/full runs
-    # Ensure the guide cross-section fits at least 2*anim_cpml+4 cells in each
-    # transverse direction so CPML arrays never exceed the grid extent.
-    b_wg_anim = max(b_wg, (2 * anim_cpml + 4) * dx)
-    a_wg_anim = max(a_wg, (2 * anim_cpml + 4) * dx)
+    anim_cpml = 8
+    b_wg_anim = b_wg
+    a_wg_anim = a_wg
     anim_domain_x = 0.100  # compact x: enough for one clear pulse transit
     anim_src_x = anim_domain_x * 0.15  # source near the left CPML exit
 
@@ -561,7 +558,8 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
             "num_periods": num_periods,
             "domain_x_m": domain_x,
         },
-        notes="Empty matched-load guide; analytic reference |S11|=0, |S21|=1.",
+        notes=("Empty matched guide; analytic reference |S11|=0, |S21|=1; "
+               "normalize=False (no reference run)."),
     )
 
 
@@ -830,9 +828,9 @@ CASE_REGISTRY: list[GalleryCase] = [
             "(empty) guide, against the exact |S11|=0 / |S21|=1 reference."
         ),
         validation_tier="E5",
-        metric="max|S11| < 0.02, min|S21| > 0.97 vs analytic matched load",
+        metric="max|S11| < 0.02, min|S21| > 0.97 vs analytic matched guide",
         tolerance="max|S11| < 0.02, min|S21| > 0.97",
-        reference_solver="analytic matched-load (+ MEEP/OpenEMS/Palace cross-check)",
+        reference_solver="analytic matched guide",
         builder=_build_waveguide_wr90,
         n_ports=2,
         has_smith=True,
