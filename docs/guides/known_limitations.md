@@ -165,7 +165,9 @@ Tracker: #1632
 `conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
 with w the edge's open fraction (down to 0.1); only edges with w = 0 are metal. The cut cells become a high-permittivity
 skin about one cell thick, which makes the body electrically larger. On a PEC sphere against Mie, its extinction and
-backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). A run with conformal PEC warns. Until the Dey-Mittra update (cut H-face areas)
+backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). A run with conformal PEC warns, except together with
+`subpixel_smoothing="kottke_pec"`: that combination forms no conformal weights (the smoothed tensor treats the metal
+edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut H-face areas)
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 Tracker: #1651
 
