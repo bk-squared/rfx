@@ -316,7 +316,7 @@ class TestBackwardCompatibility:
         """
         from rfx.stepping.uniform_loop import _update_e_with_optional_dispersion
 
-        cavity_size = 0.04
+        cavity_size = 14 * (299792458.0 / 5e9 / 20.0)  # main's solved length; #1887
         freq_max = 5e9
         grid = Grid(freq_max=freq_max, domain=(cavity_size, cavity_size, cavity_size),
                      cpml_layers=0)

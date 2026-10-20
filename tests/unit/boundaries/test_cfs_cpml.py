@@ -118,7 +118,7 @@ def test_cfs_cpml_evanescent_absorption():
 
     freq_max = 5e9
     cpml_n = 12
-    domain = (0.12, a, 0.02)
+    domain = (0.12, 21 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0))  # main's solved length; #1887
     n_steps = 800
 
     # --- Standard CPML ---

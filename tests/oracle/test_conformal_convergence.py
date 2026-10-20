@@ -42,7 +42,7 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.grid import Grid, C0
+from rfx.grid import Grid, C0, cells_spanning
 from rfx.core.yee import (
     init_state, init_materials, update_e, update_e_aniso, update_h,
 )
@@ -83,9 +83,9 @@ def _measure_cavity_energy_at_boundary(radius, height, dx, n_steps, use_conforma
     Also returns total field energy for normalization.
     """
     margin = 4 * dx
-    Lx = 2 * radius + 2 * margin
+    Lx = cells_spanning(2 * radius + 2 * margin, dx) * dx  # main's solved length; #1887
     Ly = Lx
-    Lz = height + 2 * margin
+    Lz = cells_spanning(height + 2 * margin, dx) * dx  # main's solved length; #1887
     center = (Lx / 2, Ly / 2, Lz / 2)
 
     grid = Grid(freq_max=_tm010_freq(radius) * 3, domain=(Lx, Ly, Lz),
@@ -244,9 +244,9 @@ class TestConformalConvergence:
         height = 0.04
         dx = 0.003
         margin = 6 * dx  # larger margin so source is well outside PEC
-        Lx = 2 * radius + 2 * margin
+        Lx = cells_spanning(2 * radius + 2 * margin, dx) * dx  # main's solved length; #1887
         Ly = Lx
-        Lz = height + 2 * margin
+        Lz = cells_spanning(height + 2 * margin, dx) * dx  # main's solved length; #1887
         center = (Lx / 2, Ly / 2, Lz / 2)
 
         grid = Grid(freq_max=_tm010_freq(radius) * 3, domain=(Lx, Ly, Lz),

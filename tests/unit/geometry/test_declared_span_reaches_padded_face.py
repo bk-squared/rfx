@@ -53,6 +53,8 @@ def _size_by_plain_ceil(monkeypatch) -> None:
 
     monkeypatch.setattr(grid_mod, "cells_spanning",
                         lambda length, dx, **kw: int(math.ceil(length / dx)))
+    monkeypatch.setattr(grid_mod, "realized_cells",  # wall axes too (#1887)
+                        lambda length, dx, kind: int(math.ceil(length / dx)))
 
 
 def test_the_rig_that_found_this_is_silent_now() -> None:
