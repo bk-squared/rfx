@@ -28,6 +28,7 @@ def entry_planes(entry, grid):
         source = grid.node_of(axis, index)
         metric_grid = None
     sign = 1 if entry.direction.startswith("+") else -1
-    reference = offset_plane(source, index, sign * entry.ref_offset, grid.dx,
+    reference = offset_plane(source, index, sign * entry.ref_offset,
+                             float(grid.cells(axis)[index]),
                              grid=metric_grid, axis=axis)
     return source, reference
