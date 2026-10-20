@@ -84,3 +84,31 @@ def test_t5_touching_box_is_nearer():
     assert len(hits) == 1
     assert "h = 1.6mm" in str(hits[0])
     assert "t/h = 3.12 %" in str(hits[0])
+
+
+def test_t6_ground_coverage_excluded_strip_reported():
+    sim = _sim(35e-6, 0.0005)
+    strip = sim._thin_conductors[0]
+    sim._thin_conductors[0] = replace(
+        strip, shape=Box((0.0004, 0.0004, 0.002), (0.0036, 0.0036, 0.002)),
+    )
+    assert sim.preflight().by_code(CODE) == []
+    sim._thin_conductors.append(strip)
+    hits = sim.preflight().by_code(CODE)
+    assert len(hits) == 1
+    assert hits[0].loc == "thin_conductors[1]"
+    assert "t/h = 7 %" in str(hits[0])
+
+
+def test_t7_exactly_two_percent_is_silent():
+    assert _sim(10e-6, 0.0005).preflight().by_code(CODE) == []
+
+
+def test_t8_two_significant_figures_keep_trailing_zero():
+    hits = _sim(22.5e-6, 0.0005).preflight().by_code(CODE)
+    assert len(hits) == 1
+    assert "+0.45 %" in str(hits[0])
+    # 0.45 + (r - 4.5) * (0.57 - 0.45) / 4 = 0.50 at r = 6.1667 %.
+    hits = _sim(30.8335e-6, 0.0005).preflight().by_code(CODE)
+    assert len(hits) == 1
+    assert "+0.50 %" in str(hits[0])

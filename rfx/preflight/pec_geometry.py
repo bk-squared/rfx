@@ -147,7 +147,8 @@ _CAMPAIGN_MAX_OFFENDERS = 5
 
 
 def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
-    """Report the unmodelled metal thickness relative to the nearest dielectric."""
+    """Report unmodelled metal thickness relative to the nearest dielectric,
+    excluding sheets that cover that dielectric's in-plane footprint."""
     from rfx.materials.thin_conductor import sheet_bounds, sheet_normal_axis
 
     sheets = []
@@ -192,10 +193,12 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
                 continue
             height = float(bhi[axis] - blo[axis])
             distance = max(float(blo[axis]) - plane, plane - float(bhi[axis]), 0.0)
-            candidates.append((distance, height))
+            candidates.append((distance, height, blo, bhi))
         if not candidates:
             continue
-        _, height = min(candidates)
+        _, height, blo, bhi = min(candidates, key=lambda candidate: candidate[:2])
+        if all(lo[a] <= blo[a] + 1e-12 and hi[a] >= bhi[a] - 1e-12 for a in inplane):
+            continue
         thickness = float(tc.thickness)
         ratio = thickness / height if height else math.inf
         if ratio <= 0.02:
@@ -206,7 +209,8 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
             shift_percent = np.interp(
                 ratio, (0.005, 0.045, 0.085, 0.175), (0.115, 0.45, 0.57, 0.99),
             )
-            shift = f"about +{shift_percent:.2g} %"
+            shift_value = f"{shift_percent:#.2g}".rstrip(".")
+            shift = f"about +{shift_value} %"
         coverage = (
             f" {nonbox_dielectrics} non-Box dielectric entr(y/ies) ignored."
             if nonbox_dielectrics else ""
