@@ -170,3 +170,27 @@ def test_uniform_forward_settling_warning_names_forward():
     assert settling
     assert all(t.startswith("no ring-down settling witness on this forward() call")
                for t in settling)
+
+
+def test_pmc_lumped_s_refusal_names_forward():
+    sim = Simulation(freq_max=10e9, domain=(0.02,) * 3, dx=1e-3,
+                     boundary=BoundarySpec(x="pec", y="pmc", z="pec"))
+    sim.add_port((10e-3, 10e-3, 5e-3), "ez", impedance=50.0)
+    sim.add_probe((10e-3, 10e-3, 14e-3), "ez")
+    with pytest.raises(NotImplementedError) as exc:
+        sim.forward(n_steps=4, distributed=True, devices=host_devices(2),
+                    skip_preflight=True, port_s11_freqs=[5e9])
+    assert ("are not supported with distributed=True; use one device "
+            "(omit distributed=True).") in str(exc.value)
+
+
+def test_reference_plane_wire_refusal_names_forward():
+    sim = Simulation(freq_max=10e9, domain=(0.02,) * 3, dx=1e-3, boundary="pec")
+    sim.add_port((10e-3, 10e-3, 5e-3), "ez", impedance=50.0, extent=3e-3,
+                 reference_plane_cells=1, direction="+x")
+    sim.add_probe((10e-3, 10e-3, 14e-3), "ez")
+    with pytest.raises(NotImplementedError) as exc:
+        sim.forward(n_steps=4, distributed=True, devices=host_devices(2),
+                    skip_preflight=True)
+    assert ("Wire ports with reference_plane_cells are not supported with "
+            "distributed=True;") in str(exc.value)
