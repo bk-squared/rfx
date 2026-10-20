@@ -69,13 +69,13 @@ def predict_legacy_spec(boundary, pec_faces, periodic_axes):
     return BoundarySpec(x=axes["x"], y=axes["y"], z=axes["z"])
 
 
-def design_constructor_boundary(spec, scalar, pec_faces):
-    """Preserve absorber shorthand when a document records its exact expansion.
+def design_constructor_boundary(spec, scalar, pec_faces, *, has_floquet):
+    """Preserve absorber shorthand only for Floquet design documents.
 
     Floquet registration adds periodic axes later. Rebuilding this scalar as
     an explicit spec would invent a declaration of absorbing lateral faces.
     """
-    if (scalar in ("cpml", "upml") and not pec_faces
+    if (has_floquet and scalar in ("cpml", "upml") and not pec_faces
             and predict_legacy_spec(scalar, pec_faces, "") == spec):
         return scalar
     return spec

@@ -642,6 +642,37 @@ def test_both_boundary_construction_paths_are_reproduced():
         assert_designs_equivalent(original, simulation_from_design(design_to_dict(original)))
 
 
+def test_non_floquet_tmz_explicit_cpml_keeps_main_boundary_model():
+    from rfx.boundaries.model import Axis, BoundaryModel, Face, Features, Kind
+
+    original = Simulation(
+        freq_max=10e9, domain=(.012, .013, .001), dx=.001, mode="2d_tmz",
+        boundary=BoundarySpec.uniform("cpml"), cpml_layers=4,
+    )
+    rebuilt = simulation_from_design(json.loads(json.dumps(design_to_dict(original))))
+    # Full descriptor measured on main 4c383a82c46a8f72f2b7be48446ee4a1352b1bcf.
+    expected = BoundaryModel(
+        faces=tuple(Face(f"{axis}_{side}", Kind.ABSORBER, "declared", 4)
+                    for axis in "xy" for side in ("lo", "hi"))
+        + (Face("z_lo", Kind.PEC, "declared"), Face("z_hi", Kind.PEC, "declared")),
+        axes=(Axis("x", False, None, False), Axis("y", False, None, False),
+              Axis("z", True, None, False)),
+        absorber_type="cpml",
+        absorber_parameters=(("R_asymptotic", 1e-15), ("alpha_max", 0.05000000074505806),
+                             ("kappa_max", 1.0), ("order", 3)),
+        requirements=(),
+        departures=("z_lo: declared ABSORBER; 2d_tmz equivalent PEC; fixed in B5",
+                    "z_hi: declared ABSORBER; 2d_tmz equivalent PEC; fixed in B5"),
+        mode="2d_tmz",
+        declaration=Features(layers=4, absorber_parameters=(("kappa_max", 1.0),),
+                             explicit_faces=True, origin="declared",
+                             domain=(.012, .013, .001)),
+    )
+    assert original._floquet_ports == rebuilt._floquet_ports == []
+    assert original.boundary_model() == expected
+    assert rebuilt.boundary_model() == expected
+
+
 def test_all_periodic_legacy_design_keeps_its_absorber_fields():
     """The legacy fallback branch: the spec alone would derive pec/0 layers."""
     original = _legacy_all_periodic()

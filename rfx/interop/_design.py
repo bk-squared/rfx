@@ -1054,7 +1054,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
         and periodic_ok
     ):
         return _BoundaryPlan(
-            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces), "cpml_layers": cpml_layers, **common},
+            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces, has_floquet=has_floquet), "cpml_layers": cpml_layers, **common},
             legacy_views=None,
         )
 
