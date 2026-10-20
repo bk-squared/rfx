@@ -216,3 +216,112 @@ def test_dielectric_step_inside_the_interval_refused():
         warnings.simplefilter("always")
         _validate_cfg_waveguide_port_span(sim, warnings)
     assert any("has a face at 85 mm" in str(w.message) for w in caught)
+
+
+@pytest.mark.parametrize("carve", [
+    pytest.param(((0.084, 0.015, 0), (0.087, 0.027, B)), id="a_centre_slot"),
+    pytest.param(((0.084, 0.015, 0.006), (0.087, 0.027, 0.015)), id="b_centre_hole"),
+    pytest.param(((0.084, A / 2, 0), (0.087, A, B)), id="c_half_removed"),
+    pytest.param(((0, 0.015, 0), (0.12, 0.027, B)), id="d_full_length_strip"),
+])
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded_transverse"])
+def test_carved_pec_plate_refused(carve, graded):
+    # The centre is vacuum on both sides, but PEC remains elsewhere on the
+    # 84/87 mm faces. Graded transverse cells must sample that remaining PEC.
+    profiles = (dict(dy_profile=np.array([0.003, 0.006] * 4 + [0.003, 0.003]),
+                     dz_profile=np.array([0.003, 0.006, 0.003, 0.006, 0.003]))
+                if graded else {})
+    sim = _guide(1, **profiles)
+    sim.add(Box(*carve), material="vacuum")
+    plate = [issue for issue in _findings(sim) if "pec (geometry[0])" in str(issue)]
+    assert len(plate) == 1
+    assert plate[0].severity == "error"
+    for text in ("right", "face at 87 mm", "at 81 mm"):
+        assert text in str(plate[0])
+
+
+def test_two_side_pec_boxes_stay_refused():
+    sim = _guide()
+    sim.add(Box((0.084, 0, 0), (0.087, 0.015, B)), material="pec")
+    sim.add(Box((0.084, 0.027, 0), (0.087, A, B)), material="pec")
+    findings = _findings(sim)
+    assert len(findings) == 2
+    for i in range(2):
+        assert any(f"pec (geometry[{i}])" in str(issue) and "face at 87 mm" in str(issue)
+                   and issue.severity == "error" for issue in findings)
+
+
+def test_half_filled_guide_with_full_pec_short_stays_refused():
+    sim = _guide()
+    sim.add_material("fill", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (0.12, A / 2, B)), material="fill")
+    sim.add(Box((0.084, 0, 0), (0.087, A, B)), material="pec")
+    findings = _findings(sim)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert "pec (geometry[1])" in str(findings[0])
+    assert "face at 87 mm" in str(findings[0])
+
+
+def test_abutting_boxes_differing_only_in_chi3_refused():
+    sim = _guide()
+    sim.add_material("linear", eps_r=2.2, chi3=0.0)
+    sim.add_material("kerr", eps_r=2.2, chi3=1e-18)
+    sim.add(Box((0.050, 0, 0), (0.085, A, B)), material="linear")
+    sim.add(Box((0.085, 0, 0), (0.110, A, B)), material="kerr")
+    findings = _findings(sim)
+    assert len(findings) == 2
+    for name in ("linear", "kerr"):
+        assert any(name in str(issue) and "face at 85 mm" in str(issue)
+                   and issue.severity == "error" for issue in findings)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize("axis", [0, 1, 2])
+def test_face_samples_use_realized_transverse_cell_centres(axis, graded):
+    from rfx.preflight.waveguide_port_span import _face_sample_points
+    transverse = [a for a in range(3) if a != axis]
+    domain = np.zeros(3)
+    domain[axis], domain[transverse] = 0.12, [A, B]
+    profiles = ({f"d{'xyz'[transverse[0]]}_profile": np.array([0.003, 0.006] * 4 + [0.003, 0.003]),
+                 f"d{'xyz'[transverse[1]]}_profile": np.array([0.003, 0.006, 0.003, 0.006, 0.003])}
+                if graded else {})
+    sim = Simulation(freq_max=10e9, domain=tuple(domain), dx=DX, **profiles)
+    lo, hi = np.zeros(3), domain.copy()
+    lo[transverse], hi[transverse] = [0.005, 0.004], [0.030, 0.016]
+    aperture = {transverse[0]: (0.004, 0.035), transverse[1]: (0, B)}
+    points = np.array(list(_face_sample_points(sim._build_realized_grid(), lo, hi, aperture)))
+    # Explicit centres from the declared cell widths, clipped to the overlap.
+    first = ([6, 10.5, 15, 19.5, 24, 28.5] if graded
+             else [7.5, 10.5, 13.5, 16.5, 19.5, 22.5, 25.5, 28.5])
+    second = [6, 10.5, 15] if graded else [4.5, 7.5, 10.5, 13.5]
+    expected = [[17.5, 10]] + [[u, v] for u in first for v in second]
+    np.testing.assert_allclose(points[:, transverse], np.array(expected) * 1e-3, atol=1e-12)
+
+
+def test_face_samples_cap_and_include_overlap_centre():
+    from rfx.preflight.waveguide_port_span import _face_sample_points
+    sim = Simulation(freq_max=10e9, domain=(0.12, A, B), dx=0.0003)
+    points = np.array(list(_face_sample_points(
+        sim._build_realized_grid(), np.zeros(3), np.array([0.12, A, B]),
+        {1: (0, A), 2: (0, B)})))
+    assert len(points) == 64 * 64
+    np.testing.assert_allclose(points[0], [0, A / 2, B / 2], atol=1e-12)
+    # The 140 x 70 cell-centre lattice is subsampled across its full extent.
+    for a, count in ((1, 140), (2, 70)):
+        indices = np.unique(np.rint(points[1:, a] / 0.0003 - 0.5).astype(int))
+        assert len(indices) == 64
+        assert indices[0] == 0 and indices[-1] == count - 1
+        gaps = np.diff(indices)
+        assert gaps.max() - gaps.min() <= 1
+        np.testing.assert_allclose(points[1:, a] / 0.0003 - 0.5,
+                                   np.rint(points[1:, a] / 0.0003 - 0.5), atol=1e-10)
+
+
+def test_face_samples_keep_centre_when_overlap_contains_no_cell_centres():
+    from rfx.preflight.waveguide_port_span import _face_sample_points
+    sim = _guide()
+    points = list(_face_sample_points(
+        sim._build_realized_grid(), np.array([0.084, 0.0209, 0.0104]),
+        np.array([0.087, 0.0211, 0.0106]), {1: (0, A), 2: (0, B)}))
+    np.testing.assert_allclose(points, [[0, 0.021, 0.0105]], atol=1e-12)

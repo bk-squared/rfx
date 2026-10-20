@@ -20,7 +20,7 @@ def _bounds(shape):
         return None
 
 
-_VACUUM = (1.0, 0.0, 1.0, None, None)
+_VACUUM = (1.0, 0.0, 1.0, None, None, 0.0)
 
 
 def _medium_at(sim, point):
@@ -38,11 +38,46 @@ def _medium_at(sim, point):
         if isinstance(g.shape, Box):
             spec = sim._resolve_material(g.material_name)
             medium = (float(spec.eps_r), float(spec.sigma), float(spec.mu_r),
-                      repr(spec.debye_poles), repr(spec.lorentz_poles))
-            medium = _VACUUM if medium[:3] == _VACUUM[:3] and medium[3:] == ("None", "None") else medium
+                      repr(spec.debye_poles), repr(spec.lorentz_poles), float(spec.chi3))
+            medium = _VACUUM if medium[:3] == _VACUUM[:3] and medium[3:] == ("None", "None", 0.0) else medium
         else:
             medium = ("shape", i)
     return medium
+
+
+def _face_sample_points(grid, lo, hi, aperture):
+    """Overlap centre first, then realised cell centres, at most 64 x 64."""
+    from rfx.geometry.rasterize_grid import (
+        centres_from_nonuniform_grid, centres_from_uniform_grid,
+    )
+    from rfx.nonuniform import NonUniformGrid
+
+    centres = (centres_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+               else centres_from_uniform_grid(grid))
+    centre = np.zeros(3)
+    axes = []
+    for a, limits in aperture.items():
+        lower, upper = max(lo[a], limits[0]), min(hi[a], limits[1])
+        centre[a] = 0.5 * (lower + upper)
+        cells = np.asarray(centres[a])
+        cells = cells[(cells >= lower) & (cells <= upper)]
+        if cells.size > 64:
+            cells = cells[np.linspace(0, cells.size - 1, 64, dtype=int)]
+        axes.append(cells)
+    yield centre
+    if any(cells.size == 0 for cells in axes):
+        return
+    transverse = list(aperture)
+    samples = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 2)
+    # Reserve the centre's slot at the cap by replacing its nearest sample.
+    distances = np.sum((samples - centre[transverse]) ** 2, axis=1)
+    omit = int(np.argmin(distances)) if len(samples) == 64 * 64 else None
+    for i, sample in enumerate(samples):
+        if i == omit or distances[i] == 0:
+            continue
+        point = centre.copy()
+        point[transverse] = sample
+        yield point
 
 
 def _objects(sim, grid, axis):
@@ -92,21 +127,22 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 continue
             faces = [face for face in (lo[axis], hi[axis])
                      if start + tol < face < end - tol]
-            if volume:
+            if volume and faces:
                 # A face counts only where the medium changes across it: two
                 # abutting boxes of one material, or a vacuum box, are a
-                # uniform guide (#1913 review). Sampled at the centre of the
-                # object's overlap with the aperture, 10 um either side.
-                point = np.zeros(3)
-                for a, limits in aperture.items():
-                    point[a] = 0.5 * (max(lo[a], limits[0]) + min(hi[a], limits[1]))
+                # uniform guide (#1913 review). Sample the realised transverse
+                # cell centres and overlap centre, 10 um either side.
+                points = tuple(_face_sample_points(grid, lo, hi, aperture))
 
                 def changes(face):
                     if hi[axis] - lo[axis] <= tol:  # a sheet: always a reflector
                         return True
-                    before, after = point.copy(), point.copy()
-                    before[axis], after[axis] = face - 1e-5, face + 1e-5
-                    return _medium_at(self, before) != _medium_at(self, after)
+                    for point in points:
+                        before, after = point.copy(), point.copy()
+                        before[axis], after[axis] = face - 1e-5, face + 1e-5
+                        if _medium_at(self, before) != _medium_at(self, after):
+                            return True
+                    return False
 
                 faces = [face for face in faces if changes(face)]
             if faces:
