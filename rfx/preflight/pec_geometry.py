@@ -680,15 +680,17 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     ))
 
 def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
-    """Design note §6 (cv11): a PEC face one cell shy of a domain wall.
+    """Design note §6 (the WR-90 waveguide case): a PEC face one cell shy of a domain wall.
 
-    ``Grid`` realizes a declared extent by ``ceil(extent / dx)`` cells,
-    so a 22.86 x 10.16 mm WR-90 declared on a 1 mm mesh is a
-    23 x 11 mm guide and the domain-face PEC (§1.8, BC-owned) stands
-    on the last INTERIOR node. A conductor meant to reach that wall —
-    a shorting plug, a full-width iris — must be drawn to THAT plane,
-    because a volume's face rounds to the NEAREST node (§1.1): drawn
-    to the declared 10.16 mm the plug's top realizes at 10.000 mm
+    The domain-face PEC (§1.8, BC-owned) stands on the last INTERIOR
+    node, where the grid puts the wall: since #1887 a wall-to-wall
+    length is solved at the nearest whole number of cells (more than
+    1 % off only under snap='declared'); before it, ``ceil(extent / dx)``
+    made a 22.86 x 10.16 mm WR-90 on a 1 mm mesh a 23 x 11 mm guide.
+    A conductor meant to reach that wall — a shorting plug, a
+    full-width iris — must be drawn to THAT plane, because a volume's
+    face rounds to the NEAREST node (§1.1): under the old rule, drawn
+    to the declared 10.16 mm the plug's top realized at 10.000 mm
     under a wall at 11.000 mm, and the one-cell gap between them is a
     parallel-plate line along the broad wall, open at both ends.
 
@@ -744,14 +746,15 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         for e, a, side, face, wall in rows[:_CAMPAIGN_MAX_OFFENDERS])
     _w.warn(PreflightWarning(
         f"{len(rows)} PEC volume face(s) stop ONE cell short of a "
-        f"domain wall instead of reaching it: {desc}. WHY: Grid "
-        "realizes a declared domain by ceil(extent/dx) cells, so the "
+        f"domain wall instead of reaching it: {desc}. WHY: the grid "
+        "solves a wall-to-wall length at the nearest whole number "
+        "of cells (snap='declared' accepts one more than 1 % off), so the "
         "wall stands where the mesh puts it, not at the declared "
         "number; a volume's face rounds to the NEAREST node (lattice "
         "ownership contract #931 §1.1), so a body drawn to the "
         "DECLARED cross-section realizes short of the realized wall. "
         "The vacuum cell left between them is a parallel-plate line "
-        "along that wall, open at both ends (measured on cv11 "
+        "along that wall, open at both ends (measured on the WR-90 waveguide case on "
         "2026-09-07: |S21| 0.22-0.33 past a PEC short, and the "
         "pec-short |S11| deficit 0.0146 -> 0.0560). REMEDY: draw the "
         "face to the REALIZED wall plane quoted above, not to the "
