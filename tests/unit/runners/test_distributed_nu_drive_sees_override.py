@@ -58,6 +58,9 @@ e. Slow, Linux only: the x-sharded override across two processes gives the
 Mutations (slow): the drive handed the arrays as drawn, every builder call
 kept, sends a, b and c red; the drive reading the seam edge's own row for its
 i-1 cells sends a red.
+Since #1813 the graded forward builds the drive in the wrapped slab step
+(``rfx.stepping.slab_setup.slab_drive_columns``, from the slabs it stages for
+the E update); the mutations patch it there and fail if it is not reached.
 """
 
 from __future__ import annotations
@@ -493,41 +496,64 @@ def test_a_large_objective_gives_a_finite_gradient_on_both_lanes():
 # --------------------------------------------------------------------------
 
 @contextmanager
+def _drive_reads(materials_for_drive):
+    """The graded forward builds its drive in the wrapped slab step (#1813),
+    from the slabs ``realize_materials`` stages for the E update. Hand the
+    drive slabs realized from ``materials_for_drive(materials, layout, mesh)``
+    instead, every builder call kept; the E update keeps the real ones. The
+    drive must be built there: a mutation the run never reaches is no
+    mutation (#1847; this file's were silent from #1813 to the weekly red)."""
+    from rfx.stepping import slab_setup
+    realize, drive = slab_setup.realize_materials, slab_setup.slab_drive_columns
+    staged, built = [], []
+
+    def recording(materials, grid, layout, mesh, *args, **kwargs):
+        staged.append((materials, grid, layout, mesh, args, kwargs))
+        return realize(materials, grid, layout, mesh, *args, **kwargs)
+
+    def mutated(materials, *args, **kwargs):
+        m, grid, layout, mesh, a, k = staged[-1]
+        built.append(1)
+        return drive(realize(materials_for_drive(m, layout, mesh), grid, layout, mesh, *a, **k)[0],
+                     *args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(slab_setup, "realize_materials", recording)
+        patch.setattr(slab_setup, "slab_drive_columns", mutated)
+        yield
+    assert built, "the drive was not built in the wrapped slab step"
+
+
 def _drive_from_drawn(sim):
-    """Mutation (b): the in-program four-cell mean and Cb are still what
-    builds the drive, but the arrays handed to them are the materials as
-    DRAWN, staged the way the runner stages a geometry array."""
+    """Mutation (b): the drive's four-cell mean and Cb are still what the
+    step builds, but from the materials as DRAWN, staged the way the runner
+    stages a geometry array."""
     drawn_grid = sim._build_nonuniform_grid()
     drawn = _drawn(sim)
-    real = nu.material_drive_scales
 
-    def from_drawn(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None, **film):
+    def from_drawn(materials, layout, mesh):
         sg = nu.build_sharded_nu_grid(drawn_grid, mesh.devices.size)
-        return real(nu.stage_concrete_forward_array(drawn.eps_r, sg, mesh, 1.0),
-                    nu.stage_concrete_forward_array(drawn.sigma, sg, mesh, 0.0),
-                    mesh, drives, dt, ranks=ranks, grid=grid, **film)
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(nu, "material_drive_scales", from_drawn)
-        yield
+        return materials._replace(
+            eps_r=nu.stage_concrete_forward_array(drawn.eps_r, sg, mesh, 1.0),
+            sigma=nu.stage_concrete_forward_array(drawn.sigma, sg, mesh, 0.0))
+    return _drive_reads(from_drawn)
 
 
-@contextmanager
 def _seam_reads_its_own_row():
-    """The drive reads the override, at the wrong cells: every slab is read
-    from its first real row, so an Ey/Ez edge on a rank's first real cell
-    replicates its own row where its i-1 cells (the neighbour's) belong."""
-    real = nu.material_drive_scales
+    """The drive reads the override, at the wrong cells: the seam owner's
+    halo row replaced by its own first real row, so an Ey/Ez edge on rank 1's
+    first real cell replicates its own row where its i-1 cells (rank 0's)
+    belong."""
+    i = nu.build_sharded_nu_grid(_edge_board()._build_nonuniform_grid(), N_DEVICES).nx_per_rank
 
-    def own_row(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None, **film):
-        ghost = 1
-        drives = tuple((dev, ghost, (cell[0] + row0 - ghost, cell[1], cell[2]), comp, dV, pole)
-                       for dev, row0, cell, comp, dV, pole in drives)
-        return real(eps_r, sigma, mesh, drives, dt, ranks=ranks, grid=grid, **film)
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(nu, "material_drive_scales", own_row)
-        yield
+    def own_row(materials, layout, mesh):
+        # The slabs arrive cut, (device, row, y, z): rank r's row n is global
+        # cell r * nx_per_rank + n - 2 (rfx.stepping.slab_view.uniform_from_cut).
+        rank = i // layout.nx_per_rank
+        n = i - rank * layout.nx_per_rank + 2
+        return materials._replace(**{name: getattr(materials, name).at[rank, n - 1].set(
+            getattr(materials, name)[rank, n]) for name in ("eps_r", "sigma")})
+    return _drive_reads(own_row)
 
 
 @pytest.mark.slow
