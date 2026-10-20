@@ -116,3 +116,26 @@ def test_single_device_argument_refusals(declaration, reason, options, two_devic
         with pytest.raises(type(expected.value)) as actual:
             BUILDERS[declaration]('graded').forward(distributed=True, devices=two_devices, **kwargs)
     assert str(actual.value) == str(expected.value)
+
+
+@pytest.mark.parametrize('declaration,reason', CASES)
+def test_grading_above_sharded_limit_falls_back_on_both_entries(declaration, reason, two_devices):
+    # The 5:1 grading limit guards only the sharded shared time step, so a
+    # one-device feature falls back on run() and forward() alike above it.
+    sims = {}
+    for entry in ('run', 'forward'):
+        sim = BUILDERS[declaration]('graded')
+        axis = next(a for a in 'zyx' if getattr(sim, f'_d{a}_profile') is not None
+                    and len(getattr(sim, f'_d{a}_profile')) > 1)
+        profile = np.array(getattr(sim, f'_d{axis}_profile'), dtype=float)
+        profile[-1] = 6.5 * profile.min()
+        setattr(sim, f'_d{axis}_profile', profile)
+        sims[entry] = sim
+    kw = dict(n_steps=2, skip_preflight=True)
+    with pytest.warns(UserWarning, match='Falling back to single-device'):
+        run = sims['run'].run(devices=two_devices, **kw)
+    with pytest.warns(UserWarning, match='Falling back to single-device'):
+        forward = sims['forward'].forward(distributed=True, devices=two_devices, **kw)
+    for result in (run, forward):
+        assert [d.subject for d in result.diagnostics
+                if d.code == 'distributed.one_device_fallback'] == [reason]
