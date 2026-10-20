@@ -9,7 +9,7 @@ from tests._multi_device_scene import host_devices
 from tests.unit.runners._graded_records_scene import pair, measure, record, mutation_result, with_bars
 
 
-DOMAIN = (15.3e-3, 8.7e-3, 10.1e-3)
+DOMAIN = (15e-3, 9e-3, 10e-3)  # main's solved lengths on the graded mesh (round); #1887
 SOURCE = (5.1e-3, 2.7e-3, 4.3e-3)
 PROBE = (10.2e-3, 5.6e-3, 6.7e-3)
 BOX = ((1.7e-3, 1.3e-3, 2.2e-3), (14.1e-3, 7.1e-3, 8.1e-3))

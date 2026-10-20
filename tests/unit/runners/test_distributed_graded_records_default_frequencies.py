@@ -10,7 +10,9 @@ from tests.unit.runners._graded_records_scene import measure, record, mutation_r
 
 
 def scene(mesh, kind):
-    sim = Simulation(freq_max=15e9, domain=(15.3e-3, 8.7e-3, 10.1e-3), dx=1e-3,
+    # main's solved lengths: ceil on the uniform mesh, round on the graded one; #1887
+    domain = (16e-3, 9e-3, 11e-3) if mesh == 'uniform' else (15e-3, 9e-3, 10e-3)
+    sim = Simulation(freq_max=15e9, domain=domain, dx=1e-3,
         boundary='pec', **(dict(dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3])
                           if mesh == 'graded' else {}))
     sim.add_source((5.1e-3, 2.7e-3, 4.3e-3), 'ez', amplitude_kind='field',
