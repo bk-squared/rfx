@@ -82,7 +82,7 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
 
 # MEASURED maxima of the DECLARED absorber (n = 200, R_asym = 1e-28, re-derived at
 # 82 deg -- see the module comment) at the FAST rig. Reproduced by the gate below to
-# 5 % (except a row marked "floor"); the bar is derived from the measurement through gate_from_envelope, so widening
+# 5 % (except a row marked "floor" or "f0_bound", an upper bound at the f0 bin); the bar is derived from the measurement through gate_from_envelope, so widening
 # it means editing a shared, reviewer-visible object rather than a local literal (#528).
 FAST_MEASURED = {
     # 6.4413e-06 -> 3.7855e-07;
@@ -103,9 +103,15 @@ FAST_MEASURED = {
     # 7.5086e-05 -> 7.0387e-05;
     # #1234: the auxiliary H profile at the Yee half cell.
     45.0: {"max": 7.0387e-05, "quantum": 1e6},
-    # 3.1941e-04 -> 3.2714e-04;
-    # #1234: the auxiliary H profile at the Yee half cell.
-    60.0: {"max": 3.2714e-04, "quantum": 1e5},
+    # 60 deg is an upper bound, not a lock (#1845). At f0 this rig reads its own floor, which sits above
+    # the auxiliary absorber's reflection: the f0-bin |B/A| falls about as 1/record length (1.71e-05 /
+    # 1.08e-05 / 8.06e-06 at 2500 / 3750 / 5000 steps), and cutting the absorber from 200 to 30 cells moves
+    # nothing (1.71e-05 -> 1.76e-05). The band maximum (3.25e-04 here) sits at band-edge bins, where the
+    # forward wave is weak, and moves with record length, so it is not pinned. The row catches the
+    # absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 1.61e-04, 4.7x the bound)
+    # and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the largest of the three
+    # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
+    60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06)},
 }
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
@@ -240,9 +246,13 @@ def test_the_declared_absorber_meets_its_bar(theta_deg):
     assert r["fit_resid_max"] < FIT_RESID_LIMIT, (
         f"the rig did not resolve {theta_deg} deg (residual "
         f"{r['fit_resid_max']:.2e}); its |B/A| is not a measurement")
-    if not m.get("floor"):
-        assert r["max"] == pytest.approx(m["max"], rel=0.05)
-    assert r["max"] <= bar(m["max"], m["quantum"])
+    if "f0_bound" in m:
+        assert r["f0_bin"] <= m["f0_bound"], (
+            f"{theta_deg} deg f0-bin reading {r['f0_bin']:.6e} exceeds bound {m['f0_bound']:.6e}")
+    else:
+        if not m.get("floor"):
+            assert r["max"] == pytest.approx(m["max"], rel=0.05)
+        assert r["max"] <= bar(m["max"], m["quantum"])
 
 
 # ==========================================================================
@@ -284,9 +294,17 @@ DOMAIN_MEASURED = {
     # 1.2462e-04 -> 4.9831e-05;
     # #1234: the auxiliary H profile at the Yee half cell.
     70.0: {"max": 4.9831e-05, "quantum": 1e6, "inside": True},
-    # 9.0631e-04 -> 1.3212e-04;
-    # #1234: the auxiliary H profile at the Yee half cell.
-    80.0: {"max": 1.3212e-04, "quantum": 1e5, "inside": True},
+    # 80 deg is an upper bound, not a lock (#1845). At f0 this rig reads its own floor, which sits above
+    # the auxiliary absorber's reflection: the f0-bin |B/A| reads 1.03e-06 / 1.11e-06 / 1.26e-06 at
+    # 40000 / 60000 / 80000 steps, cutting the absorber from 200 to 30 cells moves nothing (1.11e-06), and
+    # a target reflection of 1e-40 instead of 1e-28 moves it 4 %. The row catches the target rising to
+    # 1e-20 (reads 1.08e-04, 43x the bound; review of this change) and anything worse (1e-6 reads
+    # 7.7e-02), not finer; a finer test of the absorber needs another rig. The band maximum (1.35e-04 here)
+    # sits at band-edge bins, where the forward wave is weak. Those bins see the absorber more obliquely and
+    # do respond to it (1e-40 halves the maximum), but the maximum also moves with record length, so it is
+    # not pinned; it still carries the domain check against LEAK_BAR. Bound: 2x the largest of the three
+    # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
+    80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
     # #1234: the auxiliary H profile at the Yee half cell.
     82.0: {"max": 4.3980e-04, "quantum": 1e5, "inside": True},
@@ -300,8 +318,12 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
     m = DOMAIN_MEASURED[theta_deg]
     r = measure_aux_reflection_2d(theta_deg, bw=bandwidth_for(theta_deg), **GRAZE_RIG)
     assert r["fit_resid_max"] < FIT_RESID_LIMIT, (theta_deg, r["fit_resid_max"])
-    assert r["max"] == pytest.approx(m["max"], rel=0.10), (theta_deg, r["max"])
-    assert r["max"] <= bar(m["max"], m["quantum"])
+    if "f0_bound" in m:
+        assert r["f0_bin"] <= m["f0_bound"], (
+            f"{theta_deg} deg f0-bin reading {r['f0_bin']:.6e} exceeds bound {m['f0_bound']:.6e}")
+    else:
+        assert r["max"] == pytest.approx(m["max"], rel=0.10), (theta_deg, r["max"])
+        assert r["max"] <= bar(m["max"], m["quantum"])
     if m["inside"]:
         assert r["max"] <= LEAK_BAR, f"{theta_deg} deg is declared INSIDE the domain and reads {r['max']:.3e}"
     else:

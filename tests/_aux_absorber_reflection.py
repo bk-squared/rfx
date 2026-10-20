@@ -152,6 +152,7 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
     ``aux`` is forwarded to ``init_tfsf_2d`` (``aux_n_cpml``,
     ``aux_cpml_order``, ``aux_cpml_kappa_max``, ``aux_cpml_r_asymptotic``);
     passing nothing measures the SHIPPED absorber.
+    Also returns freqs_hz, ratio, resid, f0_bin_hz, f0_bin, f0_bin_resid, and median.
     """
     bw = bandwidth_for(theta_deg) if bw is None else float(bw)
     cfg, st = init_tfsf_2d(nx, 4, DX_M, DT_2D, cpml_layers=20, tfsf_margin=5,
@@ -185,11 +186,15 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
         sol, *_ = np.linalg.lstsq(M, Eb[m], rcond=None)
         ratio[m] = abs(sol[1]) / max(abs(sol[0]), 1e-300)
         resid[m] = np.abs(M @ sol - Eb[m]).max() / max(np.abs(Eb[m]).max(), 1e-300)
+    f0_idx = int(np.argmin(np.abs(fb - F0_HZ)))
     return {"theta_deg": float(theta_deg), "bw": bw, "n2x": n2x,
             "n_cpml": n_cpml, "src_x": int(cfg.src_x), "i0_x": int(cfg.i0_x),
             "n_steps": int(n_steps), "n_bins": int(fb.size),
             "mean": float(ratio.mean()), "max": float(ratio.max()),
-            "fit_resid_max": float(resid.max())}
+            "fit_resid_max": float(resid.max()),
+            "freqs_hz": fb.tolist(), "ratio": ratio.tolist(), "resid": resid.tolist(),
+            "f0_bin_hz": float(fb[f0_idx]), "f0_bin": float(ratio[f0_idx]),
+            "f0_bin_resid": float(resid[f0_idx]), "median": float(np.median(ratio))}
 
 
 def _run_1d(nx: int, n_steps: int, probe_rel, dt: float, bw: float, **aux):
