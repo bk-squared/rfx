@@ -37,8 +37,8 @@ decision A, the convention preflight states): against the declared Zc and
 2 Zc the line looks like Zc/2.  On that reading the air line follows the
 closed form of a Zc/2 line (length fitted once, 30.84 mm) within 0.0012 in
 |S11|^2, and this scene, with the section taken as permittivity 1.9 (the
-mean over the two Ez rows), within 0.009 (rfx-archive
-records/20261011-examples-recheck/lumped_gradient_main/MIRROR-CLOSED-FORM.md).
+mean over the two Ez rows), within 0.009 (measured; record kept with the
+project).
 That is context only: the check compares rfx's gradient with rfx's own
 finite difference.
 
@@ -56,6 +56,9 @@ agree; G5 the gradient from an 80-period record equals the 40-period one
 within 1e-2 of its peak.  On main (Mac CPU, 2026-10-12): mean |S11|^2 0.2516;
 directional agreement 4.6e-6; per-cell vector agreement 4.9e-6; the 80-period
 gradient differs by at most 4.4e-7 against a 6.0e-3 peak.  All gates pass.
+
+On a GPU it needs more than 10 GB of memory at these settings (on 2026-10-11 a
+10 GB card ran out of memory); a 24 GB card runs it.
 
 Run (CPU, about 20 minutes, most of it the float64 finite differences):
     JAX_PLATFORMS=cpu python validation/tmtt_paper/lumped_port_gradient_check.py

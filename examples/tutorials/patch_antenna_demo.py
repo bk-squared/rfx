@@ -12,8 +12,8 @@ script's feed and probe points; maximum directivity 6.83 dBi (openEMS's
 near-to-far-field transform on the finest mesh, in the run fed by the 50 ohm
 lumped port, at its |S11| dip, 2.455 GHz).  The same
 openEMS build first reproduced its own tutorial's documented |S11| dip
-(2.4330 GHz against 2.430 GHz).  Run: VESSL 369367270650; record: rfx-archive
-rfx/records/20261011-examples-recheck/openems/o2/.
+(2.4330 GHz against 2.430 GHz).  Measured (VESSL 369367270650); record kept
+with the project.
 
 What this tutorial teaches, in order:
 
@@ -133,6 +133,8 @@ pre-#1375 script on the VESSL CPU lane was 587 s of FDTD in 600 s wall
 (369367259020) — the shared pod, not the migration, is what the 22 min was
 measuring.  This board on an 8-CPU VESSL CPU pod: 968 s of FDTD in 989 s
 (369367265975).
+GPU: at these settings it needs more than 10 GB of GPU memory (on 2026-10-11
+a 10 GB card ran out of memory in the far-field step); a 24 GB card runs it.
 ``NUM_PERIODS = 125`` is sized from measurement on the PRE-contract board:
 90 periods gave -36.5 dB and 204 periods gave -52.6 dB, which put the -40 dB
 settling bar near 115 on the average slope, and the multi-mode tail beats
