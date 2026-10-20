@@ -326,13 +326,13 @@ def oblique_reflection_magnitude(
     dt: float,
     n_gate: int | None = None,
 ) -> jnp.ndarray:
-    """Differentiable |Γ|(θ) MAGNITUDE for OBLIQUE incidence from the complex Bloch envelope.
+    """Differentiable |Γ|(θ) MAGNITUDE for OBLIQUE incidence from probe traces.
 
-    For oblique TFSF, ``Simulation.forward()`` returns the RAW complex Bloch envelope P
-    (``time_series`` is complex64), not a real physical field. Two differences from the
-    normal-incidence :func:`fresnel_reflection_coefficient`:
+    ``Simulation.run()`` and ``Simulation.forward()`` return reconstructed real
+    fields for oblique TFSF. This helper also accepts complex Bloch envelopes.
+    Two differences from the normal-incidence :func:`fresnel_reflection_coefficient`:
 
-    * **+j (conjugate) DFT kernel** — the envelope ``P(t) ∝ exp(-j2πf0t)`` has its f0 content
+    * **+j (conjugate) DFT kernel** — for a complex envelope, ``P(t) ∝ exp(-j2πf0t)`` has its f0 content
       at ``-f0``, so it is extracted with ``exp(+j2πf0t)``. A ``-j`` kernel averages the
       incident to noise ⇒ nonphysical |Γ|≫1 (the #404 trap).
     * **magnitude ratio, de-embed-free** — ``mean|T−I| / mean|I|``. At oblique the reflected
@@ -346,8 +346,9 @@ def oblique_reflection_magnitude(
 
     Parameters
     ----------
-    total_series, incident_series : (n_steps, n_probes) COMPLEX arrays
-        Bloch-envelope probe series from the scatterer and vacuum runs (oblique forward()).
+    total_series, incident_series : (n_steps, n_probes) arrays
+        Reconstructed real probe series from the scatterer and vacuum runs,
+        or complex Bloch envelopes.
     f0, dt : float
     n_gate : int, optional
         DFT window (time-gate). Defaults to the full series.
@@ -410,13 +411,14 @@ def oblique_reflection_coefficient(
 
     Because ``S`` is derived from the incident (vacuum) reference it is a CONSTANT w.r.t. the
     scatterer, so ``Γ`` stays differentiable in ``total_series``. Uses the +j (conjugate) DFT
-    kernel (the oblique complex Bloch envelope; the #404 sign trap). Same oblique physics
+    kernel for complex Bloch envelopes and reconstructed real fields. Same oblique physics
     protocol as :func:`oblique_reflection_magnitude` (narrowband, thick slab, time-gate, plateau).
 
     Parameters
     ----------
-    total_series, incident_series : (n_steps, n_probes) COMPLEX arrays
-        Bloch-envelope probe series (scatterer / vacuum) from an oblique ``forward()``.
+    total_series, incident_series : (n_steps, n_probes) arrays
+        Reconstructed real probe series (scatterer / vacuum) from oblique
+        ``run()`` or ``forward()``, or complex Bloch envelopes.
         ``incident_series`` is the design-independent reference (its phase sets ``S``).
     f0, dt : float
     probe_index : (n_probes,) array

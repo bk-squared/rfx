@@ -50,7 +50,7 @@ from rfx.core.yee import EPS_0, MU_0
 from rfx.probes.msl_wave_decomp import extract_msl_nprobe
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 
-# The MSL phase-referee board (validation/crossval/20_msl_phase_referee.py):
+# The MSL phase-referee board (validation/crossval/20_msl_phase_referee.py, removed in #1232):
 # RO4350B, 600 um trace, 254 um declared substrate.  Only the ANCHOR matters
 # here -- the scan is centred on it -- so this is the anchor production would
 # compute for that port, not a claim about the board.

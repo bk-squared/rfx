@@ -11,6 +11,8 @@ sources, point probes, lumped ports, and dispersive materials
 (Debye / Lorentz / Drude).
 
 A direct one-device call uses the same ``shard_map`` path on a one-device mesh.
+The TFSF/modal-port fallback refuses extra keyword arguments and non-None
+``_source_port_indices`` or ``_record_probes`` instead of dropping them.
 
 Declared PEC volumes, sheets and sub-cell wires share the conductor object's
 edge masks. Each slab applies only owned rows after source injection and
@@ -582,7 +584,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     Debye/Lorentz dispersive materials.
 
     TFSF sources and waveguide ports warn and fall back to one device;
-    excited wire ports without radius or reference planes run.
+    that fallback refuses extra keyword arguments and non-None
+    ``_source_port_indices`` or ``_record_probes``. Excited wire ports
+    without radius or reference planes run.
 
     Parameters
     ----------

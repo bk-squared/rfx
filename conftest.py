@@ -82,8 +82,8 @@ def pytest_configure(config):
 # memory footprint upward, to discriminate an OOM-adjacent kill from a pure
 # infra shutdown.
 #
-# Opt-in via RFX_WEEKLY_RSS=1 (wired into validation.yml's slow-tests shard
-# steps only) so it never touches the PR-gating fast suite. When the env var
+# Opt-in via RFX_WEEKLY_RSS=1 (wired into validation.yml's slow-tests shards
+# and pr-tests.yml's fast suite). When the env var
 # is unset, `_maybe_register_rss_reporter` returns before registering
 # anything with pytest's pluginmanager — no hook exists at all, so there is
 # no per-test overhead beyond the one `os.environ.get` check done once at
@@ -214,7 +214,7 @@ class _RSSLiveSampler:
                 # Narrow teardown-race guard ONLY: if the main thread has
                 # already moved past pytest_sessionfinish / interpreter
                 # shutdown by the time this daemon thread wakes for its next
-                # sample, stdout (or the pipe under it) can already be
+                # sample, stderr (or the pipe under it) can already be
                 # closed -- CPython raises ValueError ("I/O operation on
                 # closed file") or OSError/BrokenPipeError in that case.
                 # Deliberately NOT a bare `except Exception`: see

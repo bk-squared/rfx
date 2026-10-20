@@ -52,7 +52,7 @@ run: |-
   out="$primary/.omx/gpu-suite/$(date -u +%Y%m%dT%H%M%SZ)-$short"
   mkdir -p "$out"
   uv pip freeze --python "$PY" > "$out/pip_freeze.txt"
-  echo "=== gpu-marked suite (249 tests at authoring time) ==="
+  echo "=== gpu-marked suite (185 tests collected on 2026-10-20) ==="
   # NOTE: the 'distributed' pytest marker is declared but currently has ZERO
   # tests — distributed coverage lives in regular test files that set their
   # own XLA --xla_force_host_platform_device_count sentinel and run in the
@@ -75,6 +75,7 @@ run: |-
   # while the same command at 0c3d3c61 eleven hours later finished (180 passed): the stall is
   # intermittent, which is what the per-test timeout is for (thread method: a stall inside
   # XLA holds the main thread outside Python bytecode, where a SIGALRM handler never runs).
+  # The thread-method timeout ends the whole run with a stack dump when a test stalls.
   timeout 20000 "$PY" -m pytest -m "gpu and not crossval_ladder" -v -ra -p no:cacheprovider \
     --durations=40 --timeout=5400 --timeout-method=thread \
     > "$out/gpu_suite.log" 2>&1

@@ -150,7 +150,8 @@ importing it no longer solves).
   crossval comparator subdirs, and the two research RCWA scripts) -- out
   of scope BY CONSTRUCTION.
 
-WHAT THIS DOES NOT COVER. Against #722's own list of eight scripts that
+HISTORICAL COVERAGE (2026-09-23; the MSL phase-referee script was removed
+in #1232 and the RT/Duroid patch script in #1315). Against #722's own list of eight scripts that
 solved geometry other than what they declared (the MSL notch filter, cv20,
 cv11, cv16, cv17, the Sheen low-pass filter, cv09, cv15), this gate now
 reaches ONE: cv15 (it arrived with its build-only entry point; the WR-90
@@ -158,7 +159,7 @@ waveguide-port case left the table with its case on 2026-09-21, the MSL notch
 filter on 2026-09-22 and the Sheen low-pass filter on 2026-09-23).
 cv20/cv16/cv17 are ``no_simulation`` and cv09 is
 ``builder_fused_with_solve``, so a no-solve gate cannot see them as those
-scripts stand today. It DOES pin
+scripts stood at that measurement. It DOES pin
 differentiable_s11_design's two domain widths (#738); that script's third
 declared width, the port aperture, falls under fidelity_report's own
 out-of-scope port row. A green run here is not evidence that the #722

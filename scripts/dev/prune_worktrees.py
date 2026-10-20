@@ -12,7 +12,7 @@ Usage::
     python scripts/dev/prune_worktrees.py --apply    # perform the removals
     python scripts/dev/prune_worktrees.py --no-gh    # offline, conservative
 
-Python 3.10, standard library, ``git``, and optionally ``gh`` for pull-request
+Python 3.11, standard library, ``git``, and optionally ``gh`` for pull-request
 state.  ``git worktree list`` already knows every worktree of this repository
 wherever it lives on disk, so no directory is ever scanned.
 

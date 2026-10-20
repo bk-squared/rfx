@@ -1,5 +1,8 @@
 # Group X-E post-#931 recompute — what was submitted, and what each run decides
 
+Historical instructions: the MSL thru-line phase case and its old
+`_20_msl_phase_referee_logs/` artifacts were removed in #1232.
+
 Branch `feat/931-crossval-E`, worktree
 `/root/workspace/byungkwan-workspace/research/rfx-931-XE-crossvalE`.
 Every run is one case, submitted with `vessl run create -f <this dir>/<file>`

@@ -57,7 +57,7 @@ a backslash or a newline as a C-quoted string wrapped in double quotes, so
 `"rfx/od\"d.py"` would not start with `rfx/` and would read as not-code. Line
 splitting cannot recover from that at all when the path contains a newline.
 
-Standard library only, Python 3.10.
+Standard library only, Python 3.11.
 """
 
 from __future__ import annotations

@@ -183,11 +183,12 @@ def phase_direction_findings(label: str, freqs, stored, live, *, deep=None,
     falls across the band; with the other time convention (a conjugated S) it
     rises by the same amount. Neither the magnitude nor the frequencies of the
     notches and zeros can tell the two apart. The angle is unwrapped over the
-    whole band and only the fit leaves the core out: unwrapping the bins
-    outside the core on their own makes the gap one step folded into
-    (-pi, pi], which turns a transmission zero's half-turn against the line's
-    own phase (on the microstrip record, -1.8 rad across the band instead of
-    -11.1).
+    whole band and only the fit leaves the core out. On the microstrip
+    record, 50 MHz bins cannot resolve which way a transmission zero's
+    half-turn unwraps; that depends on the zero's position relative to the
+    real frequency axis, hence on loss. Either -1.8 or -11.1 rad across the
+    band can result without a solver change. Both retain the negative sign
+    set by the line's delay, which is all this check compares.
     """
     f = np.asarray(freqs, dtype=float)
     keep = (np.ones(f.size, dtype=bool) if deep is None

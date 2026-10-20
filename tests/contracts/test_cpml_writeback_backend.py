@@ -80,8 +80,9 @@ def test_selected_backend_probe_plain_vs_jit(graded, steps, record_property):
     sim = _lumped_open(graded)
 
     def solve():
-        # Retain the contract's summed output in the traced program as well.
-        # Returning only the probe permits different compiler elimination.
+        # On CPU the padded form's spread depends on requesting S11
+        # accumulation, not on returning S11: 32 / 63 ULP with the
+        # request, 0 without it.
         return _run(sim, graded, None if graded else "s", "box", steps, None)
 
     measurements = []

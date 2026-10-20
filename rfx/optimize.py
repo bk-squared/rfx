@@ -394,7 +394,8 @@ def optimize(
         to eager execution with one warning naming the reason. ``jit=False``
         selects the eager loop without a fallback warning. A multi-device run
         on GPUs refuses an enclosing jit, so ``distributed=True`` stays eager
-        unless ``jit=True`` is passed.
+        unless ``jit=True`` is passed. A wire port with a conductor and a
+        traced ``dz_profile`` does not trace under jit.
 
         The jitted loss and gradient can differ from the eager ones in the
         last float32 bits, because XLA compiles the whole step as one

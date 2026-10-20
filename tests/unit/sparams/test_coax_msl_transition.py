@@ -3451,12 +3451,12 @@ def test_junction_pin_axis_is_pec_continuous_stub_to_trace(fixture):
 
 @pytest.mark.parametrize("fixture", sorted(_JUNCTION_FIXTURES))
 def test_junction_coax_shell_contacts_ground(fixture):
-    """INVARIANT (did-not-over-carve, shell side): at the junction node every
-    cell with shell_inner (0.5 mm) < r <= OUTER_R is PEC (32/32 -- the
-    stamped shell lands on ground) AND every cell with CLEAR_R < r <=
-    shell_inner is PEC (32/32 -- the predeclared 0.4 mm clearance leaves a
-    one-cell ground lip over the coax dielectric). Passes on attempt 2 by
-    construction (everything is PEC there); its discriminating partner is
+    """INVARIANT (did-not-over-carve, shell side): the realized outer
+    conductor's footprint lands entirely on PEC ground at the junction node.
+    The wall starts at the declared OUTER_R and grows outward, clamped by
+    absorber clearance. The geometric ring between CLEAR_R_CELLS and
+    SHELL_INNER_CELLS also remains PEC, forming the ground lip over the
+    coax dielectric. Its discriminating partner is
     test_attempt3_ground_clearance_annulus_is_open."""
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)

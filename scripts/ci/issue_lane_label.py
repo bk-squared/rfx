@@ -61,7 +61,7 @@ Usage::
     ISSUE_BODY="$(gh issue view 1111 --json body --jq .body)" \\
         python scripts/ci/issue_lane_label.py
 
-Standard library only, Python 3.10.
+Standard library only, Python 3.11.
 """
 
 from __future__ import annotations

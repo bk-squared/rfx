@@ -285,7 +285,7 @@ VACUUM_BAR = {kind: 10.0 * v for kind, v in VACUUM_FLOOR.items()}
 # to float32 arithmetic. What sets the floor is the phase: both sides form
 # exp(-j w t) from a float32 time, whose last bit is worth eps32 * w * t, and
 # t runs to the record length. That is 3.8e-06 at 10 GHz on the uniform
-# fixture (a 1.0 ns record) and 8e-07 on the graded one (0.23 ns); measured
+# fixture (a 1.0 ns record) and 8e-07 on the graded one (approximately 0.39 ns); measured
 # (CPU, JAX 0.6.2): 5.3e-06 and 2.2e-06 worst over P, Q, T and frequency,
 # loaded or not. The bar is ten times the worst; the smallest monitor defect
 # in the mutation table below reads 3.2e-02. A one-step stamp error is

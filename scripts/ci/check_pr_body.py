@@ -94,7 +94,7 @@ Usage
     python scripts/ci/check_pr_body.py --file /tmp/body.md
 
 Exit 0 silently on success. Exit 1 with the failing condition and the lines to
-fill in. Standard library only, Python 3.10.
+fill in. Standard library only, Python 3.11.
 """
 
 from __future__ import annotations

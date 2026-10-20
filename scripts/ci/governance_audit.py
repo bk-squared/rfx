@@ -44,7 +44,7 @@ allows 5,000,000 bytes per PR in the frozen-data homes, which bounds each PR and
 not their sum, so the sum is watched here, with the total on main in the header.
 
 Reads GitHub through ``gh``; classification is a pure function over the JSON so
-the tests need no network. Stdlib only, Python 3.10.
+the tests need no network. Stdlib only, Python 3.11.
 
 Usage::
 

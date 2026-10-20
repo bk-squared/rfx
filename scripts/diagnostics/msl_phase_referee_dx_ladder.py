@@ -182,7 +182,7 @@ CANONICAL_PROBE_X_M = {
 
 # --- comparison constants ---------------------------------------------------
 # Exact SI definition of the speed of light. The crossval case
-# validation/crossval/20_msl_phase_referee.py uses _C0 = 2.998e8 instead, which
+# validation/crossval/20_msl_phase_referee.py (removed in #1232) used _C0 = 2.998e8 instead, which
 # is 2.5e-5 low and shifts a beta deviation by +0.0025 % -- small next to the
 # ~1.3 % being attributed, but it is a different number and this script does
 # not silently inherit it.

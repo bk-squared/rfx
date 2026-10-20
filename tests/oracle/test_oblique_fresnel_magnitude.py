@@ -1,8 +1,8 @@
 """Differentiable OBLIQUE Fresnel |Γ|(θ) magnitude via forward() — ground-truth-gated.
 
 Extends the normal-incidence complex Γ helper (#419) to oblique incidence (the RIS/absorber
-condition), MAGNITUDE ONLY. forward() returns the raw complex Bloch envelope for oblique, so
-``oblique_reflection_magnitude`` uses the +j (conjugate) DFT kernel and a de-embed-free
+condition), MAGNITUDE ONLY. run() and forward() return reconstructed real fields for oblique;
+``oblique_reflection_magnitude`` uses a +j (conjugate) DFT kernel and a de-embed-free
 magnitude ratio (a de-embedded complex mean cancels at oblique — the reflected phase spans
 many π across the plateau).
 

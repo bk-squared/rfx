@@ -22,9 +22,9 @@ transmission notch.
 
 THE TUTORIAL, ITS SOURCE AND ITS ATTRIBUTION
 --------------------------------------------
-Copied from the docstring of ``validation/crossval/20_msl_phase_referee.py``
-(that script's STAGE A section), which is where this repository's faithful port
-of the tutorial already lives:
+Copied from the docstring of ``validation/crossval/20_msl_phase_referee.py`` (removed in #1232)
+(that script's STAGE A section), where this repository's faithful port of
+the tutorial originally lived:
 
     ``python/Tutorials/MSL_NotchFilter.py`` (fetched verbatim 2026-08-04 via
     ``gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py``;
@@ -53,13 +53,14 @@ number the Stage A gate below is built on:
                                    eps_eff; recomputed below as F_NOTCH_AN_HZ)
     deviation         0.44 %
     VESSL run         369367251705 (2026-08-04)
-    log               validation/crossval/_20_msl_phase_referee_logs/
-                      20260804T070702Z_run.log  (its lines 10-17)
+    log               tests/crossval/msl_notch_filter/reference/
+                      tutorial_reproduction_20260804T070702Z_run.log  (its lines 10-17)
     wall time         41.6 s for the real pass, 8 threads
 
 THAT RECORD IS AN AUDIT TRAIL, NEVER A CASE'S GATE
 --------------------------------------------------
-``validation/crossval/07_sheen_lpf.py``'s own reproduce-gate record names the
+The reproduce-gate record of ``validation/crossval/07_sheen_lpf.py``
+(removed in #1251) names the
 failure this distinction exists to stop, and it is quoted here rather than
 summarised because a summary is how the decisive sentence gets dropped:
 
@@ -79,7 +80,8 @@ from the tutorial's own declared geometry, not copied from any case.
 
 THE SANITY GATES, AND FROM WHERE
 --------------------------------
-All from ``validation/crossval/20_msl_phase_referee.py`` (byte-identical copies,
+Originally copied from ``validation/crossval/20_msl_phase_referee.py``
+(removed in #1232), with the helpers
 pinned by ``tests/crossval/msl_notch_filter/test_reference_maker.py``), applied
 unchanged to EVERY real pass of EVERY case:
 
@@ -119,7 +121,7 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Constants -- the tutorial's own, copied from validation/crossval/
-# 20_msl_phase_referee.py's Stage A block.
+# 20_msl_phase_referee.py's Stage A block (script removed in #1232).
 # ---------------------------------------------------------------------------
 _C0 = 2.998e8  # m/s -- matches the coax/notch precedent's own constant
 
@@ -181,7 +183,7 @@ REPRODUCE_GATE_RECORD = {
 }
 
 # STAGE_A_GATE -- copied, with its justification, from the port's own
-# REPRODUCE_GATE_RECORD["gate"] (validation/crossval/20_msl_phase_referee.py):
+# REPRODUCE_GATE_RECORD["gate"] (validation/crossval/20_msl_phase_referee.py, removed in #1232):
 #
 #   One-sided-low-biased band: docs/agent-memory/rfx-known-issues.md records
 #   openEMS reading ~7% LOW vs the fringing-free analytic on a DIFFERENT (not
@@ -256,8 +258,8 @@ _BAD_STDOUT_PATTERNS = ("Unused primitive", "not on the mesh", "unused excitatio
 # EndCriteria=0.0/"-infdB", see ``_build_stage_a_notch_tutorial``/
 # ``_build_stage_b``'s own smoke calls), so their excitation pulse (tens of
 # thousands of timesteps at this script's own f0/fc) is ALWAYS clipped by
-# construction -- run-1's own committed log (``validation/crossval/
-# _20_msl_phase_referee_logs/20260804T070702Z_run.log``) shows both strings
+# construction -- run-1's own committed log (``tests/crossval/msl_notch_filter/
+# reference/tutorial_reproduction_20260804T070702Z_run.log``) shows both strings
 # firing for the smoke portion of BOTH stages while the REAL portion (which
 # reached its own EndCriteria, per REPRODUCE_GATE_RECORD["settling_evidence"])
 # shows neither -- the exact positive control this scoping relies on: same
@@ -329,8 +331,8 @@ def _run_openems_capturing_stdout(fdtd, sim_path: str, *, threads: int) -> str:
     warnings on STDERR, not stdout -- e.g. "Unused primitive (type: Box)
     detected in property: port0_metal!/port1_metal!", which appears 4x in
     run-1's own VESSL-captured ``run.log`` (a terminal capture that sees
-    BOTH fds; see ``validation/crossval/_20_msl_phase_referee_logs/
-    20260804T070702Z_run.log`` lines 24-25/29-30) but was ABSENT from this
+    BOTH fds; see ``tests/crossval/msl_notch_filter/reference/
+    tutorial_reproduction_20260804T070702Z_run.log`` lines 24-25/29-30) but was ABSENT from this
     function's own fd-1-only capture file -- ``_scan_stdout_for_bad_
     patterns`` never saw it and the pre-solve fail-fast gate below silently
     passed (rc=0) despite the warning having actually occurred. Both fds are
@@ -1057,7 +1059,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
     """Smoke pass, real pass, CalcPort, the ported sanity gates, the features.
 
     The sequence and every gate call is the precedent's
-    ``_run_stage_a_reproduce_gate`` (validation/crossval/20_msl_phase_referee.py).
+    ``_run_stage_a_reproduce_gate`` (validation/crossval/20_msl_phase_referee.py, removed in #1232).
     Six things differ, all declared:
 
       1. the builder, the frequency grid, the witness band and the real pass's

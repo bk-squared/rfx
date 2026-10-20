@@ -144,7 +144,7 @@ class TestDistributedRunner:
 
     def test_distributed_matches_single_pec(self):
         """Distributed 4-device PEC result should match single-device."""
-        # Lx=0.05 -> nx=12, divisible by 4
+        # The declared solved length gives nx=12, divisible by 4
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -176,7 +176,7 @@ class TestDistributedRunner:
 
     def test_distributed_source_at_center(self):
         """Source at domain center should produce non-zero probe signal."""
-        # Lx=0.03 -> nx=8, divisible by 4
+        # The declared solved length gives nx=8, divisible by 4
         sim = Simulation(
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -194,7 +194,7 @@ class TestDistributedRunner:
     def test_distributed_pec_symmetry(self):
         """Symmetric PEC cavity with center source should produce
         symmetric probe readings at equidistant points."""
-        # Lx=0.05 -> nx=12, divisible by 4
+        # The declared solved length gives nx=12, divisible by 4
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -223,7 +223,7 @@ class TestDistributedRunner:
 
     def test_distributed_2_devices(self):
         """Should also work with 2 devices."""
-        # Lx=0.05 -> nx=12, divisible by 2
+        # The declared solved length gives nx=12, divisible by 2
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -247,7 +247,7 @@ class TestDistributedRunner:
 
     def test_distributed_no_probe(self):
         """Distributed run with no probes should not crash."""
-        # Lx=0.03 -> nx=8, divisible by 4
+        # The declared solved length gives nx=8, divisible by 4
         sim = Simulation(
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -261,7 +261,7 @@ class TestDistributedRunner:
 
     def test_nx_not_divisible_pads(self):
         """Non-divisible nx should be padded automatically, not raise."""
-        # Lx=0.04 -> nx=10, not divisible by 4 -> padded to 12
+        # The declared solved length gives nx=10, padded to 12 for 4 devices
         sim = Simulation(
             freq_max=3e9,
             domain=(9 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),

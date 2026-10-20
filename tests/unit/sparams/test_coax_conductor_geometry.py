@@ -14,8 +14,8 @@ from the stamped arrays alone:
    dielectric stays within half a cell of the declared one at every cell size.
    Before the wall's inner radius was pinned to the declared ``b`` it was
    ``b - min(dx, (b-a)/2)``, so a dx ladder refined the GEOMETRY as well as the
-   mesh: the annulus ran to 1680 um at 375 um cells and to 1897 um at 158 um
-   cells, moving the line's characteristic impedance 40.7 -> 45.3 ohm against a
+   mesh: the annulus ran to 1700.0 um at 355.00 um cells and to 1897.2 um at
+   157.78 um cells, moving the characteristic impedance 40.74 -> 45.29 ohm against a
    declared 48.59.
 
 Measured, not asserted in prose: `docs/design_notes/coax_conductor_realization.md`.

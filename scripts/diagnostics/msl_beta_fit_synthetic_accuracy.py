@@ -76,7 +76,7 @@ FIXTURE = REPO_ROOT / "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json"
 OUT_DIR = Path(__file__).resolve().parent / "msl_beta_fit_synthetic_accuracy"
 FIG_DIR = REPO_ROOT / "docs" / "crossval" / "figures"
 
-# The referee's gate band (validation/crossval/20_msl_phase_referee.py).
+# The referee's gate band (validation/crossval/20_msl_phase_referee.py, removed in #1232).
 GATE_F_LO_HZ = 3.0e9
 GATE_F_HI_HZ = 4.5e9
 # Declared board -- what production anchors beta0 on (add_msl_port height).

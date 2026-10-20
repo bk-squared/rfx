@@ -189,8 +189,8 @@ def test_every_stored_summary_follows_from_the_stored_s(fixture, key):
         assert entry["notch"]["interp_on"] == "|S21|^2"
         # 1e-6, not 1e-9: this file's three-point Lagrange form and the
         # assembler's vertex-offset form are the same parabola written two
-        # ways, and on the measured record they land 21 Hz apart on 3.808 GHz.
-        # 1e-6 still rejects any hand edit above 3.8 kHz.
+        # ways; this comparison permits their floating-point cancellation
+        # to differ while rejecting a changed notch at the fixture's scale.
         assert entry["notch"]["interp_hz"] == pytest.approx(_notch_hz(freqs, S[1, 0, :], k),
                                                             rel=1e-6)
         assert entry["notch"]["interp_hz_on_magnitude"] == pytest.approx(
@@ -243,8 +243,8 @@ def test_the_record_at_every_rung_is_settled(fixture):
             "before the structure rang down, so its S is not interpretable")
 
 
-# The pre-declaration gates criterion 2 at the claims rung and REPORTS the two
-# coarser ones ("25 um (others reported)"); their values are in the ladder.
+# The power and reciprocity checks use CLAIMS_RUNGS; all stored solves
+# also report their physics numbers below.
 CLAIMS_RUNGS = ("notch_25um", "thru_25um")
 
 
@@ -283,9 +283,9 @@ def test_the_coarser_rungs_report_their_physics_numbers(fixture):
 
 
 # The measured envelope of the reference-plane rotation residual: moving both
-# observation planes 500 um leaves S11's phase within this of the 2*beta*Delta
-# the line's own fitted beta predicts. The opposite sign misses by 0.488 rad,
-# 220 times worse, which is what makes the sign assertion below a real check.
+# observation planes by the fixture's displacement is compared with
+# 2*beta*Delta from the line's own fitted beta. The sign assertion below
+# also requires the opposite rotation to miss this bar.
 PLANE_ROTATION_RESIDUAL_RAD = 0.005
 
 

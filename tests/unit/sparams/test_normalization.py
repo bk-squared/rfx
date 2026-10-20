@@ -24,6 +24,8 @@ def _make_straight_waveguide_sim(
     ref_offset=3,
 ):
     """Build a Simulation for a straight empty PEC waveguide with two ports."""
+    # The cross-section stays at 27 by 14 cells: a_wg and b_wg do not
+    # set its dimensions. f_max sets dx, and a_wg sets the default band.
     dx = C0 / f_max / 20.0
     sim = Simulation(
         freq_max=f_max, dx=dx,

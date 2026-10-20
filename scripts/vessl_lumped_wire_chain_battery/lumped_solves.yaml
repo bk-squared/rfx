@@ -1,5 +1,5 @@
 name: rfx-lw-battery-lumped-solves
-description: "Lumped/wire chain battery: every lumped-port DUT at every rung. The lumped lane is known not to reproduce the line; these records are the measurement of that. CPU only."
+description: "Lumped/wire chain battery: every lumped-port DUT at every rung. The lumped and wire lanes return the same S11; these records measure the lumped lane against the closed forms. CPU only."
 tags: [rfx, chain-closure, lumped-wire-battery]
 resources:
   cluster: remilab-c0

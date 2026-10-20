@@ -15,8 +15,8 @@ Four kinds of test live here.
   each verdict.  These need no record.
 * The windows on the committed records.  Pinned means pinned: a window that
   fired is pinned fired.
-* The second note's Results section, byte for byte against what its
-  ``--tables`` prints today, because the third note adds functions to the
+* The second note's Results section, within one unit in the last printed
+  digit of its ``--tables`` output, because the third note adds functions to the
   same instrument and may not change any of the second note's output.
 * This note's own Results against its ``--tables``, its sections 0-7 against
   the pre-declaration commit, and the two earlier records and R2's replay
@@ -642,7 +642,7 @@ def test_w12_on_the_record_is_reported_without_a_verdict(v):
     assert r["finest_arm"] == "Z16m"
 
 
-# ------------------------------- the second note's Results, byte for byte
+# ------------------------------- the second note's Results, to the last printed digit
 R2_NOTE = _ROOT / ins.FZ_NOTE_PATH
 
 
@@ -742,7 +742,7 @@ def test_the_earlier_records_and_r2s_replay_are_byte_for_byte_mains(path):
     assert _blob((_ROOT / path).read_bytes()) == UNEDITED_BLOBS[path], path
 
 
-# ---------------------------------------- this note's Results, byte for byte
+# ---------------------------------------- this note's Results, to the last printed digit
 NOTE = _ROOT / ins.AFTER_1213_NOTE_PATH
 #: The note's blob as the pre-declaration commit 64ce5cd2 holds it, before
 #: any arm ran.  Sections 0-7 are frozen from that commit.

@@ -921,8 +921,8 @@ def current_moment_far_field(result, theta, phi):
                               freqs=np.asarray(monitor.freqs,
                                                dtype=np.float64))
 
-    # Under an outer jax.jit the monitor was built inside the trace, so its
-    # frequencies are a tracer too: k stays a jnp scalar here.
+    # With x64 enabled an outer jax.jit can trace the monitor frequencies;
+    # keep k a jnp scalar for both traced and concrete frequencies.
     freqs = jnp.asarray(monitor.freqs)
     P, Q, T = moments_to_PQT_jax(acc, monitor)
     th_out, ph_out = [], []

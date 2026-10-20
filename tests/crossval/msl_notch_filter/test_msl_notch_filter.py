@@ -1006,17 +1006,10 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
     # (PI 2026-09-22) — states the numbers and xfails; it is not a failure.
     # Every witness above has already hard-failed a bad rung.
     if mesh_stmt["verdict"] != CONVERGED:
-        # Known limitation, PI decision 2026-09-22: on a uniform staircase mesh
-        # the notch converges from above with an observed order of about 0.65
-        # in dx (the realized strip steps 4 -> 9 -> 14 node rows), so the last
-        # two rungs of this ladder were 1.31 % apart (3.8034 -> 3.7537 GHz,
-        # VESSL 369367263215) and the finest rung sat 2.16 % above the openEMS
-        # tutorial's 3.6744 GHz; the extrapolated limit is 3.67 GHz, -0.2 %.
-        # h/8 (25 M cells) did not finish in 73 min on an RTX 4090. The bar is
-        # unchanged; the case states its numbers and stops here. When the mesh
-        # converges (a graded mesh, #810's question), this branch is no longer
-        # taken and the comparison below judges for real. Every witness above
-        # (ring-down, passivity, the arm-length premise) still fails the test.
+        # The current solve supplies the notch ladder to mesh_statement above.
+        # This branch is taken only when that ladder is not converged; a
+        # converged ladder proceeds to the reference comparison below.
+        # Ring-down, passivity and arm-length witnesses have already run.
         pytest.xfail(
             "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
             f"not shown to converge — {mesh_stmt['reason']}. The finest rung "

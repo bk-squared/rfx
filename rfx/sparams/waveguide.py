@@ -183,10 +183,9 @@ def compute_waveguide_s_matrix(
         translated to the NU runner's ``checkpoint_every`` chunk size — the
         divisor of ``n_steps`` nearest to ``n_steps/K`` — and applied to the
         *device* run only (the vacuum reference is constant in the design
-        variable). The chunk MUST divide ``n_steps`` (same as the uniform
-        path): a non-divisor chunk would let the NU runner's zero-padding add
-        spurious ring-down steps to the carry-accumulated flux DFT and shift
-        the S-matrix. With an exact divisor the result is forward-IDENTICAL
+        variable). The NU runner runs a non-divisor chunk as a real tail
+        segment rather than padding the record; this calculator passes a
+        divisor anyway. The result is forward-IDENTICAL
         and the ≈O(√n_steps) tape reduction is realised under ``jax.grad``
         with ``normalize='flux'`` + an ``eps_override`` / ``sigma_override``
         design variable.
@@ -1230,13 +1229,9 @@ def _compute_waveguide_s_matrix_nu(
             # rtol<=1e-5 (float reassociation only, per uniform PR #172).
             # issue #73: translate the uniform `checkpoint_segments` (K
             # segments) → the NU runner's `checkpoint_every` (chunk size).
-            # The chunk MUST exactly divide n_steps (pad=0): the NU runner
-            # zero-pads non-divisor chunks and those extra ring-down steps
-            # would corrupt the carry-accumulated flux DFT (the time_series
-            # is truncated to n_steps but the flux accumulator is NOT), so a
-            # non-divisor chunk is NOT forward-identical for the flux
-            # S-matrix — same divisor rule as the uniform V/I-DFT path. Pick
-            # the divisor of n_steps nearest to n_steps/K. Checkpoint ONLY the
+            # This calculator chooses a divisor of n_steps nearest to
+            # n_steps/K. The NU runner handles non-divisors with a real tail
+            # segment; it does not pad the time record. Checkpoint ONLY the
             # *device* run — the vacuum reference is constant in the design
             # variable so it carries no AD tape. The √N tape win is realised
             # under jax.grad (normalize='flux' + eps_override); plain forward

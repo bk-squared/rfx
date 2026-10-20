@@ -236,7 +236,7 @@ jobs:
           python -m pytest -q -ra -p no:cacheprovider -o addopts="" \
             -m "not gpu and not docs_consistency" --strict-markers $FILES
 
-      - name: Conformal stale-check tripwire (slow-marked; xfails today, HARD-FAILS when the NaN is fixed)
+      - name: Conformal finite-value and mesh-convergence tripwire (slow-marked)
         if: needs.changes.outputs.code_changed != 'false'
         run: |
           python -m pytest -q -p no:cacheprovider -o addopts="" \

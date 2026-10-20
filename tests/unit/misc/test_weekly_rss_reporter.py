@@ -34,7 +34,7 @@ post-test hook, so the RSS at the exact SIGKILL instant is never captured):
     directly) -- they do NOT prove that string is ever DELIVERED anywhere a
     human or CI log could see it. Only a real subprocess pytest run, killed
     with SIGKILL and inspected from OUTSIDE pytest's own capture layer
-    (subprocess.run's stdout pipe), proves delivery. See
+    (subprocess.run's stderr pipe), proves delivery. See
     test_live_sampler_line_survives_sigkill_with_dash_s and its
     without-`-s` regression-pin sibling below.
 
@@ -330,9 +330,9 @@ def test_reporter_updates_live_sampler_current_nodeid_during_test():
 # THE property (PR #592 review, CRITICAL): does an [rss-live] line actually
 # survive a real SIGKILL, observed from OUTSIDE pytest's own capture layer?
 # The tests above bind the sampler's output STRING via capfd; none of them
-# prove DELIVERY through pytest's real stdout capture machinery. Only a
+# prove DELIVERY through pytest's real stderr capture machinery. Only a
 # subprocess pytest run, killed for real and inspected via subprocess.run's
-# own stdout pipe (a wholly separate capture layer from pytest's internal
+# own stderr pipe (a wholly separate capture layer from pytest's internal
 # one), proves that.
 
 
@@ -388,7 +388,7 @@ def _run_sigkill_helper_subprocess(extra_pytest_args):
 )
 def test_live_sampler_line_survives_sigkill_with_dash_s():
     """THE property (PR #592 review, CRITICAL fix): with -s (--capture=no),
-    the live sampler's background-thread prints reach the real stdout fd, so
+    the live sampler's background-thread prints reach the real stderr fd, so
     flush=True actually lands the line before a SIGKILL. This is what
     validation.yml's -s flag (added in this fix) is load-bearing for --
     without it, this exact scenario prints nothing (see the sibling
@@ -408,8 +408,8 @@ def test_live_sampler_line_survives_sigkill_with_dash_s():
 def test_live_sampler_line_lost_without_dash_s():
     """Regression pin for WHY -s is required in validation.yml: under
     pytest's DEFAULT capture (no -s), the identical scenario prints nothing
-    to the outer process's stdout -- pytest's fd-level capture redirects the
-    real stdout fd to its own internal per-test buffer, which is lost (not
+    to the outer process's stderr -- pytest's fd-level capture redirects the
+    real stderr fd to its own internal per-test buffer, which is lost (not
     replayed) on a SIGKILL mid-test. If a future edit drops -s from the
     workflow, THIS is the silent loss it would reintroduce; if this
     assertion ever starts failing (i.e. the line DOES show up here), that

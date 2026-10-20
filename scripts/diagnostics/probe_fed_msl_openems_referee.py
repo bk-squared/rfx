@@ -3,8 +3,8 @@
 transition (lumped/wire feed -> MSL port) that ``tests/
 test_mixed_port_sparam.py``'s #488 fixture measures in rfx.
 
-SCOPE FENCE (same fence as ``validation/crossval/20_msl_phase_referee.py``
-and ``scripts/diagnostics/openems_thru_referee/thru_openems.py``): this is a
+SCOPE FENCE (same fence as ``validation/crossval/20_msl_phase_referee.py``,
+removed in #1232, and ``scripts/diagnostics/openems_thru_referee/thru_openems.py``): this is a
 COMPARATOR LEG. It builds and runs an INDEPENDENT openEMS model and reports
 its own S-parameters. It does NOT import rfx and it does NOT run any rfx
 simulation. rfx's side enters -- optionally -- as ONE committed JSON data
@@ -20,8 +20,8 @@ STAGE CONTRACT (the repo's external-comparator law, enforced in code)
 STAGE 1  reproduce-gate.  TWO legs, because the DUT uses TWO port classes:
          A1  openEMS ``python/Tutorials/MSL_NotchFilter.py`` (the MSL-port
              leg), built by the repository's one faithful port in
-             ``tests/crossval/_openems_tutorial_gate.py`` (byte-identical
-             to the port that produced the recorded number) and run by
+             ``tests/crossval/_openems_tutorial_gate.py`` (derived from
+             the port that produced the recorded number) and run by
              ``_run_stage_a_reproduce_gate`` below, moved here from the
              MSL thru-line phase case when it was removed (2026-09-23).
          A2  openEMS ``python/Tutorials/Simple_Patch_Antenna.py`` (the
@@ -41,7 +41,7 @@ STAGE 2  the #488 probe-fed microstrip transition.  It REFUSES TO RUN
          ``status="RUN"`` and inside its gate.
 
 ``REPRODUCE_GATE_RECORD`` (below) is serialized into EVERY artifact this
-script writes -- the ``20_msl_phase_referee.py`` pattern, chosen because
+script writes -- the ``20_msl_phase_referee.py`` (removed in #1232) pattern, chosen because
 prose that lives only in a docstring never reaches the artifact.
 
 ============================================================================
@@ -1523,8 +1523,8 @@ def _run_stage_a_reproduce_gate(gate, *, sim_root: str, threads: int) -> dict:
     cross-validation case (``validation/crossval/20_msl_phase_referee.py``,
     removed 2026-09-23). The statements are that function's; only where the
     names resolve changed: each helper and constant is read from ``gate``,
-    the loaded tutorial gate module, whose copies are byte-identical to the
-    case's, and the band is ``gate.STAGE_A_GATE`` (the case's
+    the loaded tutorial gate module, whose helpers were copied from that
+    case, and the band is ``gate.STAGE_A_GATE`` (the case's
     ``REPRODUCE_GATE_RECORD["gate"]``, the same 0.80/1.05 x F_NOTCH_AN_HZ)."""
     ContinuousStructure, openEMS, MSLPort = gate._import_openems()
 
@@ -1536,8 +1536,8 @@ def _run_stage_a_reproduce_gate(gate, *, sim_root: str, threads: int) -> dict:
     smoke_log = gate._run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
     gate._scan_stdout_for_bad_patterns(smoke_log, "stage_a_smoke")
 
-    # Tutorial's own defaults (NrTS~=1e9, EndCriteria=1e-5) -- verbatim,
-    # not overridden.
+    # Tutorial's own defaults, not overridden: NrTS~=1e9, and EndCriteria is not
+    # passed, so the pinned build runs its C++ default 1e-6.
     fdtd, port0, port1 = gate._build_stage_a_notch_tutorial(
         ContinuousStructure, openEMS, MSLPort, nrts=None, end_criteria=None)
 

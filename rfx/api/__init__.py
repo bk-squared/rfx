@@ -1154,8 +1154,8 @@ class Simulation(
             ``sigma_bulk <= 0`` with ``f0`` set each raise ``ValueError``,
             as does a shape with no ``mask_on_coords`` or no bounding box.
             The rasterized one-layer and non-empty checks need the grid, so
-            they raise at build time, on BOTH lanes (the legacy DC path
-            also refuses non-Box shapes on a non-uniform mesh).
+            they raise at build time, on BOTH lanes. Non-Box DC films use
+            the same layer and footprint admission on both grids.
 
         Notes
         -----
@@ -2293,9 +2293,6 @@ class Simulation(
             2 (the only accepted value) keeps P, Q and T — 30 numbers per
             block. Lower orders are refused; the low-level
             ``rfx.current_moments.build_current_moment_monitor`` keeps them.
-
-        Notes
-        -----
         margin_cells : int or (mx, my, mz)
             Extra cells around the declared corners.
         off_cells : int
@@ -2315,6 +2312,12 @@ class Simulation(
         ``mode="eigenmode"``, and any dielectric, conductor, dispersive cell,
         port, lumped element or source that is not inside the slab (its
         outermost edge layer counts as outside).
+
+        A block is refused when k·|delta| exceeds 0.5 at the highest
+        monitor frequency, |delta| being the largest distance from an edge
+        to its block's centre with the whole slab thickness in one block:
+        use a smaller ``block_size``, a thinner slab or the NTFF box. The
+        Kottke PEC paths that zero H inside a conductor are refused too.
 
         The named arguments here are the whole public surface. The low-level
         builder additionally takes deliberately wrong metrics, centres, curl

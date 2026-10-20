@@ -14,8 +14,8 @@ The source revision below uses DX=H_SUB/3 after #931 and must not inherit
 those old numbers as current measurements.
 
 The build function is retained only to reproduce the invalid geometry;
-see docs/research_notes/issue726/audit_original_short.py. Use
-msl_probe_clearance_bias.py for a current, source-fixed cv06b comparison.
+see docs/research_notes/issue726/audit_original_short.py. The source-fixed
+comparison script was removed in #1177.
 """
 from __future__ import annotations
 

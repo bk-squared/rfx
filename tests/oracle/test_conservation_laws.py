@@ -41,6 +41,7 @@ def _build_waveguide_sim(
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
 
     dx = (0.75e-3 if obstacle_specs else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
+    # These cross-section counts cover only the two dx values used here.
     n_y, n_z = (54, 27) if dx == 0.75e-3 else (22, 11)
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),

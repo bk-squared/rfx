@@ -128,11 +128,11 @@ def test_crossval_05_patch_smoke():
 
 
 def test_crossval_06b_notch_smoke():
-    """06b_msl_notch_filter_uniform.py —
+    """The MSL notch filter —
     BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml')).
-    Originally pinned the pec_faces={'z_lo'} migration of the retired
-    nonuniform wire-port lane cv06 (issue #339); 06b builds the
-    identical mixed spec, so the pin is retargeted rather than dropped.
+    Originally pinned the pec_faces={'z_lo'} migration of a retired
+    nonuniform wire-port case (issue #339). This self-contained simulation
+    builds the same mixed boundary spec and retains that migration check.
     Explicitly asserts no DeprecationWarning about pec_faces fires."""
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")

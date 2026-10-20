@@ -22,11 +22,9 @@ substrate cells here too (identical substrate), so the same precedent
 applies.
 
 Writes a JSON fixture (freqs, S, Z0, beta, reference-plane geometry)
-that ``validation/crossval/20_msl_phase_referee.py`` (promoted 2026-08-04,
-formerly ``validation/research/msl_phase_referee/
-openems_msl_phase_referee.py``) reads for its own Stage B comparison --
-keeping that script openEMS-only (no rfx import), matching the
-coax/floquet referee precedent.
+that ``validation/crossval/20_msl_phase_referee.py`` read for its Stage B
+comparison before its removal in #1232. That comparator was openEMS-only
+(no rfx import), matching the coax/floquet referee precedent.
 
 HISTORICAL REALIZED GEOMETRY (issue #723, 2026-08-27; superseded
 by the #931 committed realization below): H_SUB=254um at DX=50um is
@@ -43,7 +41,7 @@ is NOT centred on the realized substrate: realized trace y
 because this script draws the trace symmetric about the DECLARED
 LY/2 while the substrate box realizes asymmetrically. NOTE what that
 does and does not change downstream: the trace centre 1250.0um IS
-``ly_clear/2``, which is what ``20_msl_phase_referee.py``'s Stage B
+``ly_clear/2``, which is what the removed phase referee's Stage B
 already used, so sourcing the trace bounds from these fields moves the
 Stage B trace by 1.5e-18 m -- a no-op at this fixture. The substantive
 field is ``h_sub_realized_m`` (300um vs the declared 254um). This
@@ -53,7 +51,7 @@ script now writes the REALIZED values into ``meta``
 ``n_z_sub_realized``) alongside the existing DECLARED
 ``h_sub_m``/``w_trace_m`` (kept for ``_assert_matches_rfx_fixture``'s
 declared-vs-declared drift guard). ``validation/crossval/
-20_msl_phase_referee.py``'s Stage B build reads the REALIZED fields, so
+20_msl_phase_referee.py`` (removed in #1232) read the REALIZED fields, so
 both solvers land on the SAME 300um board, and the trace bounds are
 carried as an invariant against a future fixture whose trace does NOT
 sit on ``ly_clear/2`` (see that script's own "Mesh convention"
@@ -203,9 +201,9 @@ def _realized_trace_geometry(sim: Simulation) -> dict:
     Build-time only: grid construction plus material assembly, no time
     stepping -- the same cost class as ``_realized_board_geometry``.
 
-    Why this belongs in the fixture's meta: ``20_msl_phase_referee.py``
-    builds its openEMS Stage B trace one cell thick and its
-    ``conductor_thickness_one_cell`` tolerance term assumes rfx builds the
+    Why this belongs in the fixture's meta: the phase referee removed in
+    #1232 built its openEMS Stage B trace one cell thick and its
+    ``conductor_thickness_one_cell`` tolerance term assumed rfx built the
     same object. Before the lattice ownership contract that assumption was
     false and nothing checked it (a 1-cell PEC Box realized ONE wall plane
     with Ez live through the metal). Carrying the realized planes lets
@@ -344,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.time()
     # record taken under the projected default; kept explicit until the v2.0
     # MSL battery re-measures on raw S (this artifact is the committed rfx
-    # leg that validation/crossval/20_msl_phase_referee.py reads)
+    # leg read by validation/crossval/20_msl_phase_referee.py before #1232)
     result = sim.compute_msl_s_matrix(n_freqs=N_FREQS, num_periods=NUM_PERIODS,
                                       enforce_passivity=True)
     elapsed = time.time() - t0

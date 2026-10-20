@@ -62,7 +62,7 @@ solved.
 A separate earlier reproduction of the same tutorial is recorded in
 `meta.reproduce_gate_record`: 3.671101 GHz against the analytic 3.687193 GHz,
 0.436 %, VESSL run 369367251705, log
-`validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log`
+`tests/crossval/msl_notch_filter/reference/tutorial_reproduction_20260804T070702Z_run.log`
 lines 10-17, verified 2026-08-04.
 
 ### The three rungs

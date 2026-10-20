@@ -165,8 +165,11 @@ def export_geometry_sdf(
     """Export simulation geometry as a signed distance field.
 
     Builds a 3-D grid at the requested *resolution* covering the
-    simulation domain and evaluates the geometry mask.  The SDF is
-    approximated from the binary mask via a distance transform:
+    simulation domain and samples each shape at node coordinates. A Box
+    face flush with the domain's high edge may fall just outside the last
+    sample plane. A shape covering no sample point raises ValueError naming
+    ``geometry[i]``, including dielectrics; use a finer ``resolution``.
+    The SDF is approximated from the binary mask via a distance transform:
 
     - negative inside geometry (material regions)
     - positive outside

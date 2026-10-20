@@ -19,7 +19,7 @@ WHAT LIVES IN THE SHARED MODULE, AND WHY
 case's: the tutorial's own constants and attribution, the recorded reproduction
 that is its audit trail, the verbatim Stage A builder, the analytic notch
 frequency and the Stage A gate, the thirteen sanity helpers copied
-byte-identically from ``validation/crossval/20_msl_phase_referee.py``, the
+byte-identically from ``validation/crossval/20_msl_phase_referee.py`` (removed in #1232), the
 generalized stage runner, the energy summary, the version probe and the record /
 evidence writers. Read that module's docstring for the tutorial's citation, the
 recorded reproduction, the list of sanity gates and the reason the Stage A
@@ -94,7 +94,7 @@ parameter's DEFAULT is the tutorial's own 50 000 um.
 DO-NOT-REPEAT, TICKED (the task recipe's 2026-08-03 addendum: quote the
 precedent's header IN FULL and tick each recorded failure BEFORE writing code)
 ------------------------------------------------------------------------------
-From ``validation/crossval/20_msl_phase_referee.py``'s own DO-NOT-REPEAT block,
+From ``validation/crossval/20_msl_phase_referee.py`` (removed in #1232)'s own DO-NOT-REPEAT block,
 which quotes ``build_msl_notch_openems_comparison.py``:
 
     "at dx=80 um the substrate is only 3.175 cells (the 'mixed-cell danger zone'
