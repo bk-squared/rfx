@@ -103,21 +103,24 @@ from rfx import Simulation
 freqs = jnp.linspace(8e9, 11.5e9, 8)   # above the 6.56 GHz TE10 cutoff
 sim = Simulation(freq_max=12e9, domain=(0.10, 0.02286, 0.01016),
                  dx=1.27e-3, boundary={"x": "cpml", "y": "pec", "z": "pec"},
-                 cpml_layers=16)
+                 cpml_layers=26)
 sim.add_waveguide_port(0.024, direction="+x", freqs=freqs, f0=9.75e9, name="in")
 sim.add_waveguide_port(0.076, direction="-x", freqs=freqs, f0=9.75e9, name="out")
 
-result = sim.compute_waveguide_s_matrix(num_periods=45)
+result = sim.compute_waveguide_s_matrix(num_periods=48)
 s11 = result.s_params[0, 0, :]   # shape (n_ports, n_ports, n_freqs)
 ```
 
-The mesh here is coarse so the example runs quickly. The calculator's
-warnings name the absorber depth and record length it needs; 16 layers and 45
-periods satisfy them here. `normalize=False` (the default) is the modal V/I
-decomposition; `normalize="flux"` gives a power-normalized transmission
-magnitude. There is no single `CalcPort`
-equivalent: `run(compute_s_params=True)` is only for lumped and wire
-`add_port(...)` ports. See [Probes and S-Parameters](/rfx/measure/s-parameters/).
+`dx=1.27e-3` puts 18 cells across the broad wall and 8 across the narrow one,
+so the solved guide is the declared 22.86 × 10.16 mm. A cell size that misses
+a PEC- or PMC-walled length by more than 1 % is refused (`snap="declared"`
+accepts it with a warning). The example runs in seconds on a CPU. The
+calculator's warnings name the absorber depth and record length it needs; 26
+layers and 48 periods satisfy them here. `normalize=False` (the default) is the
+modal V/I decomposition; `normalize="flux"` gives a power-normalized
+transmission magnitude. There is no single `CalcPort` equivalent:
+`run(compute_s_params=True)` is only for lumped and wire `add_port(...)` ports.
+See [Probes and S-Parameters](/rfx/measure/s-parameters/).
 
 ### Meep adjoint: inverse design
 
