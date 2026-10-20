@@ -16,7 +16,7 @@ import jax.numpy as jnp
 from rfx.core.jax_utils import is_tracer
 from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
-from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
+from rfx.geometry.csg import Box, Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _clear_pole_masks,
@@ -329,6 +329,8 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=
     non-periodic uniform shapes may implement only mask(grid).
     """
     from rfx._periodic import periodic_mask, periodic_shape
+    if isinstance(shape, Box):
+        _box_zero_axes(shape.corner_lo, shape.corner_hi)
     shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
         return periodic_mask(grid, shape, centres[:3])
@@ -771,6 +773,10 @@ def _node_tie_band(c, xp):
 
 
 def _box_zero_axes(lo, hi):
+    if any(is_tracer(v) for corner in (lo, hi) for v in corner):
+        raise NotImplementedError(
+            "A Box with a traced extent cannot choose sheet or volume "
+            "ownership. Use concrete Box corners outside jit/vmap.")
     return [i for i in range(3) if float(hi[i]) - float(lo[i]) == 0.0]
 
 
@@ -937,6 +943,10 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     from rfx._periodic import periodic_shape
     pts = getattr(shape, "points", None)
     radius = getattr(shape, "radius", None)
+    if isinstance(shape, Sphere) and is_tracer(radius):
+        raise NotImplementedError(
+            "A PEC Sphere with a traced radius cannot check its resolved "
+            "volume. Use a concrete radius outside jit/vmap.")
     # Periodic filament validation also needs a concrete radius.
     if pts is not None and is_tracer(radius):
         raise NotImplementedError(

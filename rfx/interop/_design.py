@@ -850,9 +850,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_snap",
     "_stencil_order",
     "_dt_pin",
-    # nominal_profiles= is accepted only beside a TRACED profile, and the dump
-    # refuses a traced profile, so a dumped design never carries one: None.
-    "_dt_min_cell", "_nominal_profiles",
+    "_dt_min_cell",
     "_tfsf",
     "_pinned_sheets",
     "_thin_conductors",
@@ -891,10 +889,11 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
 
 #: Attributes deliberately absent from the document.  These are derived,
 #: transient, or run-time state — see the module docstring, rule 4.  A
-#: ``Simulation`` does not carry them at construction (or carries them only
-#: as empty run-time bookkeeping); they matter only inside a
-#: preflight/driver pass, which is exactly why they are not design state.
+#: Entries may be initialized by the constructor, but their supported uses
+#: cannot be serialized into a concrete design.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
+    # Nominal profiles require traced widths, which design export refuses.
+    "_nominal_profiles",
     "_mesh_resolution",
     "_boundary_default_warned",
     # crop rectangles for the internal MSL DFT planes; exists only while

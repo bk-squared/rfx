@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+import jax
+
 from rfx._grid_metric import field_index
 from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
 from rfx.core.yee import MaterialArrays
@@ -100,6 +102,12 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 cell[axis] = k
                 _cells_ijk.append(tuple(cell))
             if pec_edge_masks is not None:
+                if any(isinstance(mask, jax.core.Tracer)
+                       for mask in jax.tree.leaves(pec_edge_masks)):
+                    raise NotImplementedError(
+                        "A graded wire port beside a conductor cannot choose "
+                        "live cells from traced PEC edge masks. Use jit=False "
+                        "or a concrete mesh.")
                 live_flags = [
                     not _edge_is_pec(pec_edge_masks, pe.component,
                                      c[0], c[1], c[2])

@@ -529,14 +529,14 @@ def test_every_simulation_attribute_is_classified():
         f"add each name to EXPORTED_SIMULATION_ATTRS or "
         f"EXCLUDED_SIMULATION_ATTRS in rfx/interop/_design.py"
     )
-    assert set(EXPORTED_SIMULATION_ATTRS) == live, (
+    supported = live - set(EXCLUDED_SIMULATION_ATTRS)
+    assert set(EXPORTED_SIMULATION_ATTRS) == supported, (
         "EXPORTED_SIMULATION_ATTRS has drifted from the live constructor: "
-        f"stale={sorted(set(EXPORTED_SIMULATION_ATTRS) - live)}, "
-        f"missing={sorted(live - set(EXPORTED_SIMULATION_ATTRS))}"
+        f"stale={sorted(set(EXPORTED_SIMULATION_ATTRS) - supported)}, "
+        f"missing={sorted(supported - set(EXPORTED_SIMULATION_ATTRS))}"
     )
-    assert not set(EXCLUDED_SIMULATION_ATTRS) & live, (
-        "an attribute listed as excluded is set by the constructor: "
-        f"{sorted(set(EXCLUDED_SIMULATION_ATTRS) & live)}"
+    assert not set(EXCLUDED_SIMULATION_ATTRS) & set(EXPORTED_SIMULATION_ATTRS), (
+        "an attribute cannot be both exported and excluded"
     )
 
 

@@ -1341,18 +1341,9 @@ class RingdownRun:
                                 "where the graded lane's probes cannot be placed. "
                                 "Move the port at least one cell inside.")
                         add(hname, back)
-        identification_keys = []
-        for position, component in self.spec.identification_probes:
-            # Refuse clamping as well as absorber samples before calling a lane.
-            for ax, coord in enumerate(position):
-                lo = pads[ax]
-                hi = self.grid.shape[ax] - int(getattr(self.grid, f"pad_{'xyz'[ax]}_hi", 0))
-                if not (self.grid.node_of(ax, lo) <= coord <= self.grid.node_of(ax, hi - 1)):
-                    raise ValueError("identification probe position is outside the probeable interior (absorber pad or domain)")
-            idx = tuple(int(v) for v in field_index(self.grid, position, component))
-            identification_keys.append((component, idx))
-            add(component, idx, wire=False)
-        self.identification_keys = tuple(identification_keys)
+        from rfx.measurement.identification import resolve_identification_probes
+        self.identification_keys = resolve_identification_probes(
+            self.spec.identification_probes, self.grid, pads, add)
         for comp, idx in keys:
             pos = _node_position(self.grid, idx)
             got = tuple(int(v) for v in field_index(self.grid, pos, comp))
