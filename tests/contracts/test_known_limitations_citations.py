@@ -112,12 +112,13 @@ CITED_ISSUES = frozenset({737, 1230, 1373, 1512})
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
 RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1255, 1381, 1419,
-                                 1524, 1563, 1571, 1761})
+                                 1524, 1571, 1761})
 # #1221 (boundary campaign) closed 2026-10-17 with its 2.0 parts in main; its three entries are now
 # accepted limitations pinned by their refusal tests, so it left CITED_ISSUES.
-# #1524 was folded into #1373 (2026-10-07); #1563 (PI decision on the absorber write-back), #1571
-# (conductivity-gradient mechanism) and #1761 (PMC on the multi-device runners) are merged PRs
-# named for provenance.
+# #1524 was folded into #1373 (2026-10-07); #1571 (conductivity-gradient mechanism)
+# and #1761 (PMC on the multi-device runners) are merged PRs named for provenance.
+# #1563 left with the CPU padded write-back entry on 2026-10-21: the spread is
+# gone since #1621 and pinned by test_padded_writeback_cpu_cross_trace.py.
 # #1419 (weak-port ring-down gradient) is closed by the PR that added the
 # identification-probe option; the entry stays because port-only identification
 # is still the default, and names the issue as provenance.
