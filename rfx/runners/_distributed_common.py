@@ -48,7 +48,7 @@ from rfx.materials.debye import (
 )
 from rfx.materials.lorentz import (
     LorentzCoeffs, LorentzPole, LorentzState, init_lorentz, lorentz_e_coeffs,
-    lorentz_pole_coeffs, lorentz_e_component,
+    lorentz_pole_coeffs,
     lorentz_p_component, mixed_e_component_coeffs,
 )
 
