@@ -4,8 +4,9 @@ Produces into docs/public/gallery/assets/waveguide_wr90/:
   - field_te10.png  a TE10 propagation map (E_z on the broad-wall mid-plane of a
                     source-fed empty guide: the half-sine across the broad wall,
                     travelling down the guide)
-  - validation.png  |S11| and |S21| vs the exact matched empty-guide answer
-                    (|S11| = 0, |S21| = 1), read from the committed sparams.json
+  - validation.png  |S11| and |S21| - 1, the residual against the exact matched
+                    empty-guide answer (|S11| = 0, |S21| = 1), read from the
+                    committed sparams.json
   - autodiff.png    d|S21|^2/d(eps_r) of the dielectric fill via jax.value_and_grad
                     through compute_waveguide_s_matrix(normalize="flux", ...),
                     cross-checked against central finite differences (5% gate,
@@ -51,7 +52,8 @@ _HALO = [pe.withStroke(linewidth=2.5, foreground="white")]
 # --- WR-90 geometry (matches _build_waveguide_wr90) ------------------------
 A_WG = 0.02286            # broad wall (sets the TE10 cutoff)
 B_WG = 0.01016            # narrow wall
-DX = 0.001
+DX = 0.00127              # 18 x 8 cells: both walls land on the grid
+CPML_LAYERS = 26          # the builder's full-run absorber (33 mm)
 F_CUTOFF = C0 / (2.0 * A_WG)   # ~6.557 GHz
 
 # Per-case AD/FD gate for the dielectric-fill |S21|^2 sensitivity (h=0.05, 5%);
@@ -82,7 +84,7 @@ def _despeckle(frame, size=3):
 # ===========================================================================
 # Figure 1: TE10 propagation map (source-fed companion guide)
 # ===========================================================================
-def _run_te10_frames(bandwidth=0.5, num_periods=60):
+def _run_te10_frames(bandwidth=0.5, num_periods=60, interval=8):
     """Run the source-fed empty WR-90 guide and return the broad-wall mid-plane
     E_z snapshots plus geometry indices: (interior (n_frames,nx,ny), src_i,
     down_lo, nx). Shared by the static snapshot and the animation.
@@ -102,10 +104,8 @@ def _run_te10_frames(bandwidth=0.5, num_periods=60):
     from rfx.simulation import SnapshotSpec
 
     f0 = 10.2e9
-    # CPML must fit the guide cross-section: pad b so nz > 2*cpml (still hollow
-    # air — only the extent changes, not the physics), as the builder does.
     anim_cpml = 8
-    b_anim = max(B_WG, (2 * anim_cpml + 4) * DX)
+    b_anim = B_WG
     a_anim = A_WG
     domain_x = 0.120
     src_x = domain_x * 0.12
@@ -128,7 +128,7 @@ def _run_te10_frames(bandwidth=0.5, num_periods=60):
     grid = sim._build_grid()
     # slice on the broad-wall mid-plane (constant z), giving an (x, y) map
     _, _, kz = grid.position_to_index((src_x, a_anim / 2, b_anim / 2))
-    snap = SnapshotSpec(interval=8, components=("ez",), slice_axis=2,
+    snap = SnapshotSpec(interval=interval, components=("ez",), slice_axis=2,
                         slice_index=int(kz))
     res = sim.run(num_periods=num_periods, snapshot=snap, skip_preflight=True)
     g = res.grid
@@ -186,7 +186,7 @@ def make_field():
                 ha="center", va="bottom", fontsize=9, color="0.12")
     t.set_path_effects(_HALO)
     cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cb.set_label("E$_z$  (normalised, divergent scale)")
+    cb.set_label("E$_z$  (arbitrary units, divergent scale)")
     out = os.path.join(ASSETS, "field_te10.png")
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
@@ -207,7 +207,9 @@ def make_field_anim():
     than aliasing into an apparent crawl).
     """
     import matplotlib.animation as manim
-    interior, src_i, down_lo, nx = _run_te10_frames()
+    # A snapshot every 2 steps: at 1.27 mm cells every 8 steps left about a
+    # dozen frames for one transit.
+    interior, src_i, down_lo, nx = _run_te10_frames(interval=2)
     x_show = min(src_i + 8, nx - 2)
     cropped = interior[:, x_show:, :]                          # (n, ncrop, ny)
     n, ncrop, ny = cropped.shape
@@ -248,7 +250,7 @@ def make_field_anim():
     ax.set_aspect("equal")
     ax.set_title("TE$_{10}$ mode travelling +x down the empty WR-90 guide — E$_z$")
     cb = fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
-    cb.set_label("E$_z$  (normalised, divergent scale)")
+    cb.set_label("E$_z$  (arbitrary units, divergent scale)")
 
     def _upd(i):
         mesh.set_array(sel[i].T.ravel())
@@ -284,13 +286,10 @@ def make_field_anim():
 # ===========================================================================
 def _committed_s():
     """Read the committed sparams.json (the single source of truth produced by
-    precompute_gallery_artifacts.py::_build_waveguide_wr90 at the published
-    thick-CPML configuration) and return (f, |S11|, |S21|).
+    precompute_gallery_artifacts.py::_build_waveguide_wr90, normalize=False) and
+    return (f, |S11|, |S21|).
 
-    The figure plots THIS data so figure == Touchstone == manifest. The earlier
-    standalone thin-CPML re-sim (normalize=False) reported a different |S11|
-    (~0.09 CPML floor) and is no longer rendered; that floor is disclosed in the
-    page prose, not in this validation figure.
+    The figure plots THIS data so figure == Touchstone == manifest.
     """
     d = json.load(open(os.path.join(ASSETS, "sparams.json")))
     f = np.asarray(d["freqs_hz"])
@@ -301,46 +300,48 @@ def _committed_s():
 
 
 def make_validation():
+    """The residual against the exact matched empty-guide answer.
+
+    |S11| and |S21| - 1 are both zero for the exact guide, so the figure plots
+    them on one deviation axis; on a 0..1 linear axis a 10^-3 residual would
+    read as an exact match.
+    """
     f, abs_s11, abs_s21 = _committed_s()
     f_ghz = f / 1e9
     max_s11 = float(abs_s11.max())
-    min_s21 = float(abs_s21.min())
+    lo_s21, hi_s21 = float(abs_s21.min()), float(abs_s21.max())
 
     fig, ax = plt.subplots(figsize=(7.6, 4.6), layout="constrained")
-    # exact matched empty-guide reference: |S11| = 0, |S21| = 1
-    ax.axhline(1.0, color="#1f7a3a", ls="-", lw=1.6, alpha=0.6,
-               label="exact: |S21| = 1")
-    ax.axhline(0.0, color="#b00000", ls="-", lw=1.6, alpha=0.6,
-               label="exact: |S11| = 0")
-    ax.plot(f_ghz, abs_s21, "o", color="#1f7a3a", ms=5, mfc="white", mew=1.3,
-            label="|S21|  — rfx FDTD")
-    ax.plot(f_ghz, abs_s11, "s", color="#b00000", ms=4.5, mfc="white",
+    ax.axhline(0.0, color="0.35", ls="-", lw=1.2,
+               label="exact matched guide: |S11| = 0, |S21| - 1 = 0")
+    ax.plot(f_ghz, abs_s11 * 1e3, "-s", color="#b00000", ms=4.5, mfc="white",
             mew=1.3, label="|S11|  — rfx FDTD")
+    ax.plot(f_ghz, (abs_s21 - 1.0) * 1e3, "-o", color="#1f7a3a", ms=5,
+            mfc="white", mew=1.3, label="|S21| - 1  — rfx FDTD")
     ax.set_xlabel("Frequency  (GHz)")
-    ax.set_ylabel("|S|  (linear)")
-    ax.set_ylim(-0.03, 1.08)
+    ax.set_ylabel(r"deviation from the matched guide  ($\times 10^{-3}$)")
     ax.set_xlim(f_ghz[0], f_ghz[-1])
-    ax.set_title("Empty WR-90 guide: |S11| / |S21| vs the exact matched answer")
+    ax.set_title("Empty WR-90 guide: residual against the exact matched answer")
     ax.grid(True, alpha=0.3)
-    ax.legend(loc="center right", framealpha=0.9)
-    txt = (f"max |S11| = {max_s11:.3f}   (matched-guide reference)\n"
-           f"min |S21| = {min_s21:.3f}   (near-lossless transmission)\n"
-           f"f_c(TE10) = {F_CUTOFF/1e9:.3f} GHz  (band well above cutoff)")
-    ax.text(0.015, 0.10, txt, transform=ax.transAxes, fontsize=8.5,
-            va="bottom", ha="left",
+    ax.legend(loc="upper left", framealpha=0.9)
+    txt = (f"max |S11| = {max_s11:.4f}  ({20 * np.log10(max_s11):.1f} dB)\n"
+           f"|S21| from {lo_s21:.4f} to {hi_s21:.4f}\n"
+           f"f_c(TE10) = {F_CUTOFF/1e9:.3f} GHz,  dx = {DX*1e3:.2f} mm")
+    ax.text(0.985, 0.04, txt, transform=ax.transAxes, fontsize=8.5,
+            va="bottom", ha="right",
             bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.92))
     out = os.path.join(ASSETS, "validation.png")
     fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
-    print("wrote", out, f"(max|S11|={max_s11:.4f}, min|S21|={min_s21:.4f})")
+    print("wrote", out, f"(max|S11|={max_s11:.4f}, |S21| {lo_s21:.4f}..{hi_s21:.4f})")
 
 
 def make_result():
     """Headline |S11|/|S21| in dB across the X-band, from the committed
-    sparams.json (the published thick-CPML S-matrix): |S21| sits at ~0 dB
-    (near-lossless) and |S11| is the matched-guide reference. This is the
-    conventional dB sweep an engineer reads; the validation figure compares the
-    same data, linearly, against the exact matched-guide reference.
+    sparams.json: |S21| sits at ~0 dB (near-lossless) and |S11| is the port's
+    residual reflection. This is the conventional dB sweep an engineer reads;
+    the validation figure shows the same data as the deviation from the exact
+    matched guide.
     """
     f, abs_s11, abs_s21 = _committed_s()
     f_ghz = f / 1e9
@@ -355,13 +356,13 @@ def make_result():
     ax.set_xlabel("Frequency  (GHz)")
     ax.set_ylabel("|S|  (dB)")
     ax.set_xlim(f_ghz[0], f_ghz[-1])
-    ax.set_ylim(-42, 8)
+    ax.set_ylim(-70, 8)
     ax.set_title("Empty WR-90 guide: TE10 reflection and transmission")
     ax.grid(True, alpha=0.3)
     ax.legend(loc="center right", framealpha=0.9)
     ax.text(0.015, 0.06,
             f"|S21| >= {s21_db.min():.2f} dB   (near-lossless)\n"
-            f"|S11| <= {s11_db.max():.1f} dB   (matched-guide reference)",
+            f"|S11| <= {s11_db.max():.1f} dB   (exact matched guide: 0)",
             transform=ax.transAxes, fontsize=8.5, va="bottom", ha="left",
             bbox=dict(boxstyle="round", fc="white", ec="0.7", alpha=0.92))
     out = os.path.join(ASSETS, "sparams.png")
@@ -415,7 +416,7 @@ def make_autodiff():
     def eps_override_for(sim, deps):
         grid = sim._build_grid()
         eps = jnp.ones(grid.shape, dtype=jnp.float32)
-        # dielectric-fill plug, mid-guide (~8-cell region along x)
+        # dielectric-fill plug, mid-guide (8 mm along x)
         i_lo = grid.position_to_index((0.056, 0.0, 0.0))[0]
         i_hi = grid.position_to_index((0.064, 0.0, 0.0))[0]
         return eps.at[i_lo:i_hi, :, :].add(deps)
@@ -492,7 +493,7 @@ def make_geometry():
     """
     a_mm, b_mm = A_WG * 1e3, B_WG * 1e3
     Lx_mm = 200.0
-    cpml_mm = 20.0
+    cpml_mm = CPML_LAYERS * DX * 1e3   # padded outside the declared domain
     port_lo, port_hi = 40.0, Lx_mm - 40.0
     ref_lo, ref_hi = 50.0, Lx_mm - 50.0
 
@@ -530,15 +531,16 @@ def make_geometry():
     # ---- longitudinal top view (x-y at z = b/2) ---------------------------
     axl.add_patch(plt.Rectangle((0, 0), Lx_mm, a_mm, facecolor="#dcecff",
                                 edgecolor="none", zorder=1))
-    for x0 in (0.0, Lx_mm - cpml_mm):
+    for x0 in (-cpml_mm, Lx_mm):
         axl.add_patch(plt.Rectangle((x0, 0), cpml_mm, a_mm, facecolor="#f3c9c0",
                                     edgecolor="none", alpha=0.85, zorder=2))
-    axl.text(cpml_mm / 2, a_mm * 1.12, "CPML", ha="center", va="bottom",
+    axl.text(-cpml_mm / 2, a_mm * 1.12, "CPML", ha="center", va="bottom",
              fontsize=8.5, color="#8a2d1c")
-    axl.text(Lx_mm - cpml_mm / 2, a_mm * 1.12, "CPML", ha="center", va="bottom",
+    axl.text(Lx_mm + cpml_mm / 2, a_mm * 1.12, "CPML", ha="center", va="bottom",
              fontsize=8.5, color="#8a2d1c")
-    axl.plot([0, Lx_mm], [0, 0], color="#222", lw=3.0, zorder=4)
-    axl.plot([0, Lx_mm], [a_mm, a_mm], color="#222", lw=3.0, zorder=4)
+    axl.plot([-cpml_mm, Lx_mm + cpml_mm], [0, 0], color="#222", lw=3.0, zorder=4)
+    axl.plot([-cpml_mm, Lx_mm + cpml_mm], [a_mm, a_mm], color="#222", lw=3.0,
+             zorder=4)
     axl.plot([port_lo, port_lo], [0, a_mm], color="#1f6f3f", lw=2.2, zorder=5)
     axl.plot([port_hi, port_hi], [0, a_mm], color="#1f6f3f", lw=2.2, zorder=5)
     axl.annotate("", xy=(port_lo + 24, a_mm / 2), xytext=(port_lo + 4, a_mm / 2),
@@ -557,7 +559,7 @@ def make_geometry():
     axl.text(Lx_mm / 2, a_mm / 2, "hollow WR-90 guide  (air)", ha="center",
              va="center", fontsize=9.5, color="#33506e", path_effects=_HALO,
              zorder=6)
-    axl.set_xlim(-6, Lx_mm + 6)
+    axl.set_xlim(-cpml_mm - 6, Lx_mm + cpml_mm + 6)
     axl.set_ylim(-0.62 * a_mm, 1.30 * a_mm)
     axl.set_xlabel("propagation axis x  (mm)")
     axl.set_title("Longitudinal view: ports, reference planes, CPML")
