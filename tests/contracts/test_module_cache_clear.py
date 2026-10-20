@@ -53,7 +53,10 @@ def _events(tmp_path: Path, enabled: bool) -> list[str]:
         (tmp_path / f"test_{name}.py").write_text(_MODULE.format(name=name))
     (tmp_path / "conftest.py").write_text(_CONFTEST)
     events = tmp_path / "events.txt"
-    env = {k: v for k, v in os.environ.items() if k != "RFX_CLEAR_JAX_CACHES_PER_MODULE"}
+    # The cluster gate exports PYTEST_ADDOPTS with -n (xdist); the child must
+    # run its two modules in one process, in order.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("RFX_CLEAR_JAX_CACHES_PER_MODULE", "PYTEST_ADDOPTS", "PYTEST_PLUGINS")}
     env.update(EVENTS=str(events), PYTHONPATH=str(ROOT), JAX_PLATFORMS="cpu")
     if enabled:
         env["RFX_CLEAR_JAX_CACHES_PER_MODULE"] = "1"
