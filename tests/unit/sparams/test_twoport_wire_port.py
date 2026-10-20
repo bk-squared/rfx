@@ -228,9 +228,15 @@ def test_two_port_s_envelope_on_matched_line():
     )
     S = np.asarray(result.s_params)
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
-    # Port 2 is passive: its column is never measured and reads NaN (#1373 decision C).
-    assert np.all(np.isfinite(S[:, 0])), "non-finite entry in the driven column"
-    assert np.all(np.isnan(S[:, 1])), "the passive port's column must read NaN"
+    # Port 2 is passive; graded run() drives each port in turn (#1915), so
+    # its column is measured too. Measured 2026-10-20: column power
+    # 0.99913-1.00009, |S12| 0.695-0.990 (|S21| 0.696-0.990),
+    # max|S12 - S21| = 1.0e-3 of max|S|.
+    assert np.all(np.isfinite(S)), "non-finite entry in the scanned S matrix"
+    p_passive = np.abs(S[0, 1]) ** 2 + np.abs(S[1, 1]) ** 2
+    assert float(np.max(p_passive)) < 1.0 + 1e-2, "the passive port's column is over unity"
+    assert float(np.min(np.abs(S[0, 1]))) > 0.5, "the passive port's column collapsed (|S12|)"
+    assert np.abs(S[0, 1] - S[1, 0]).max() <= 1e-2 * np.abs(S).max(), "S12 != S21 on a passive line"
     p_total = np.abs(S11) ** 2 + np.abs(S21) ** 2
     assert float(np.max(p_total)) < 1.0 + 1e-2, (
         f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} above the "

@@ -36,8 +36,8 @@ def test_binary_constant_lumped_s(entry, pair, record_property):
     build = lumped_pair if pair else (lambda nu: constant_scene(nu, 'lumped'))
     with enable_x64(False):
         uniform, graded = [evaluate(build(nu), entry) for nu in (False, True)]
-    # The driven column (port 0); the other column is unmeasured (NaN) on graded,
-    # and uniform run() fills it from its own separately driven scan.
+    # The driven column (port 0); run() on either mesh forms the other column
+    # from its own separately driven scan (#1915), forward() leaves it NaN.
     a, b = np.asarray(uniform.s_params)[:, :1], np.asarray(graded.s_params)[:, :1]
     delta = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128))))
     ulp = float(np.spacing(np.float32(np.max(np.abs(a)))))
