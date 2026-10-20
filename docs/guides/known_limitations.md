@@ -101,19 +101,6 @@ A resistive sheet or lumped RLC element on such an edge is NOT scaled: its updat
 Tracker: #1373
 → [#1373](https://github.com/bk-squared/rfx/issues/1373)
 
-### Placing a solve on CPU in a process whose default backend is GPU
-
-Tracker: none — accepted limitation (PI decision 2026-10-09, #1563; the backend choice is pinned by tests/contracts/test_cpml_writeback_backend.py::test_backend_choice_is_python_at_trace_time)
-
-The absorber write-back is selected from the process's default backend at trace
-time. A process whose default backend is GPU but which places a solve on its CPU
-device therefore uses the GPU form there. A plain call and a `jax.jit` call of
-the same solve can then differ by up to 63 float32 ULP at the probe peak
-(5×10⁻⁶ of the peak, measured in #1563). Why the GPU form does this on a CPU is
-not known: #1563 tested four mechanisms and ruled each out. Results on the GPU,
-and in a CPU-only process, are not affected. Use the GPU device or a CPU-only
-process to avoid this spread.
-
 ### Lossy Box film area on a traced mesh is checked only on a concrete grid
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_film_drawn_size.py::test_t1_box_area_strict_refusal_and_declared_warning)
