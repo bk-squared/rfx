@@ -509,6 +509,9 @@ def test_fz_verdicts_reports_only_the_windows_whose_arms_are_present():
 # ------------------------------------------------- the windows, on the records
 #: What the two records hold, transcribed from the committed files.  Pinned
 #: means pinned: a window that FIRED is pinned fired.
+#: The record length every arm was solved at.  The live case moved to 40
+#: periods (#1912); these frozen records stay at the 20 they were taken at.
+RECORDED_NUM_PERIODS = 20.0
 #: The arms the committed FZ record holds.
 RECORDED_FZ_ARMS = ("C_off_re", "F16Z6", "ON13", "Z16", "Z6", "Z8")
 #: Declared by the module but not yet solved.  A pre-declaration names its
@@ -636,7 +639,7 @@ def test_the_fz_record_holds_the_arms_it_is_pinned_to_hold(fz_file, arms):
     for key, rec in sorted(fz_file["arms"].items()):
         assert rec["arm"] == key
         assert rec["smoke"] is False, f"{key} was recorded from a capped run"
-        assert rec["num_periods"] == case.NUM_PERIODS
+        assert rec["num_periods"] == RECORDED_NUM_PERIODS
         for field in ("freqs_hz", "s11_re", "s11_im", "s21_re", "s21_im"):
             assert len(rec[field]) == case.N_FREQS, (key, field)
     # The windows' own constants, as the record froze them.

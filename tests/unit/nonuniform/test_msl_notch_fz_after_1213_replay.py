@@ -368,6 +368,9 @@ def test_an_after_1213_arm_whose_export_is_not_its_tree_is_refused():
 # ------------------------------------------------- the windows, on the record
 #: What the committed record holds, transcribed from it and from the note's
 #: Results.  Pinned means pinned: W11 FIRED and is pinned FIRED.
+#: The record length every arm was solved at.  The live case moved to 40
+#: periods (#1912); these frozen records stay at the 20 they were taken at.
+RECORDED_NUM_PERIODS = 20.0
 RECORDED_ARMS = ("Cm", "Z16m", "Z6m", "Z6r", "Z8m")
 #: Each new arm's notch (GHz): the |S21|^2 vertex, then the log vertex.
 RECORDED_NOTCH_GHZ = {
@@ -477,7 +480,7 @@ def test_the_record_holds_the_arms_and_windows_it_is_pinned_to_hold(
     for key, rec in sorted(record_file["arms"].items()):
         assert rec["arm"] == key
         assert rec["smoke"] is False, f"{key} was recorded from a capped run"
-        assert rec["num_periods"] == case.NUM_PERIODS
+        assert rec["num_periods"] == RECORDED_NUM_PERIODS
         for field in ("freqs_hz", "s11_re", "s11_im", "s21_re", "s21_im"):
             assert len(rec[field]) == case.N_FREQS, (key, field)
 
@@ -719,8 +722,11 @@ UNEDITED_BLOBS = {
     # Re-pinned in #1289: that file's notes checks became numeric or moved to
     # the docs-consistency workflow, and F.6's printed numbers gained a
     # required pin; its record pins are unchanged. Main's blob was e8733b79.
+    # Re-pinned in #1921: the live case moved to 40 periods, so the record's
+    # 20 is pinned as its own constant; the asserted value is unchanged.
+    # Main's blob was 55fb97f9.
     "tests/unit/nonuniform/test_msl_notch_fz_replay.py":
-        "55fb97f976876f57078c6653015fff0803baa448",
+        "c6067489ae741a3e83415aa12e05e5da3a2285b5",
 }
 
 
