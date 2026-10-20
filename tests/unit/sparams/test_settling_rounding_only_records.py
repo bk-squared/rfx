@@ -63,10 +63,10 @@ def test_null_record_is_named_and_result_matches_main_without_it(dtype, amplitud
     assert row['name'] == 'a_null'
     assert row['group'] == 'H'
     assert row['peak_ratio'] == pytest.approx(amplitude)
-    assert row['threshold'] == 1e4*np.finfo(dtype).eps
+    assert row['threshold'] == 2e4*np.finfo(dtype).eps
     assert row['reason'] == (
         f"peak {row['peak_ratio']:.3g} of the largest co-located record (H), below "
-        f"10000 x eps({np.dtype(dtype)}): rounding only")
+        f"20000 x eps({np.dtype(dtype)}): rounding only")
     assert np.isnan(detail['per_record_db']['a_null'])
     assert detail['n_witnessed'] == 3
     assert detail['worst_record'] == 'decay0'
@@ -102,13 +102,13 @@ def test_skip_uses_complex_storage_peak_over_all_columns():
         [('peak', peak), ('null', null)], {'peak': 'V', 'null': 'V'})
     row, = skipped
     assert row['peak_ratio'] == pytest.approx(5e-6)
-    assert row['threshold'] == 1e4*np.finfo(np.float32).eps
+    assert row['threshold'] == 2e4*np.finfo(np.float32).eps
 
 
 @pytest.mark.parametrize('dtype', [np.float32, np.float64])
 def test_peak_exactly_at_margin_is_kept(dtype):
     records = [('large', np.ones(20, dtype=dtype)),
-               ('edge', np.full(20, 1e4*np.finfo(dtype).eps, dtype=dtype))]
+               ('edge', np.full(20, 2e4*np.finfo(dtype).eps, dtype=dtype))]
     assert witness._rounding_only_records(records, dict.fromkeys(dict(records), 'H')) == ()
 
 
@@ -169,7 +169,7 @@ def test_every_record_skipped_is_undetermined(monkeypatch):
 
 
 def test_float16_records_are_scored_as_before():
-    # precision='mixed' stores float16 records: 1e4 x eps(float16) is 9.8, a
+    # precision='mixed' stores float16 records: 2e4 x eps(float16) is 19.5, a
     # margin above every peak, so nothing is skipped (main's behaviour).
     records = [('large', np.ones(20, dtype=np.float16)),
                ('small', np.full(20, 1e-3, dtype=np.float16))]
@@ -249,7 +249,7 @@ def test_run_and_forward_skip_the_two_hz_rounding_records():
         assert all(row['group'].startswith('H at cell (') for row in detail['skipped_records'])
         for row in detail['skipped_records']:
             assert 0 < row['peak_ratio'] < row['threshold']
-            assert row['threshold'] == 1e4*np.finfo(np.float32).eps
+            assert row['threshold'] == 2e4*np.finfo(np.float32).eps
         assert detail['n_witnessed'] == 2
         results.append(result.settling_db)
     assert max(results) - min(results) <= 1e-9

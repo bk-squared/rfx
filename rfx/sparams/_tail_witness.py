@@ -6,8 +6,10 @@ import numpy as np
 
 
 # #1909: a probe on a field null holds eps times the fields cancelling at its
-# own point; measured at 4.3e2..8.3e2 x eps of the co-located same-kind peak.
-_ROUNDING_ONLY_EPS_MULTIPLE = 1e4
+# own point, measured up to ~1.2e3 eps of the co-located same-kind peak. A record
+# at 2e4 eps has its own rounding near 0.06 of its peak (-24 dB), above the -40 dB
+# the settling bar reads, so nothing skipped could be judged at that bar anyway.
+_ROUNDING_ONLY_EPS_MULTIPLE = 2e4
 
 
 def _rounding_only_records(records, groups):
