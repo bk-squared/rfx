@@ -181,12 +181,23 @@ DOMAIN_Y_M = (TRACE_WIDTH_M + 2.0 * LATERAL_CLEARANCE_M
               + STUB_LENGTH_M + 2.0 * LATERAL_CLEARANCE_M)               # 18.800 mm
 DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754 mm
 
-# Record length in periods of freq_max — the value the retired script ran
-# with, kept because the ring-down witness (SETTLING_DB) confirms it on this
-# board: −82, −88 and −96 dB at h/2, h/4 and h/6 (VESSL run 369367263176,
-# 2026-09-22; log on the lab share under research/rfx/.omx/msl-notch-ladder/
-# 20260922T012225Z-9332ee87/).
-NUM_PERIODS = 20.0
+# Record length in periods of freq_max (#1912). The notch is a transmission
+# zero: the far port's in-record signal there is about 53 dB below the drive,
+# so a small ring-down tail is a large fraction of it, and the record must ring
+# down at the notch bin first (measured: the worst bin is the notch bin, in the
+# far port's record; the poles were not identified). The per-bin ring-down
+# witness at dx = 127 µm, worst over both drives, and |S21| at the notch bin
+# 3.6842 GHz:
+#   20 periods  −17.4 dB (fails −40 dB)  |S21| −52.80 dB
+#   40 periods  −87.8 dB                 |S21| −53.91 dB
+#   80 periods  −105.8 dB (the witness's identification floor)  |S21| −53.91 dB
+# 20 periods understated the notch depth by 1.11 dB; 40 and 80 agree to
+# 0.0005 dB in |S21| over the band. The 20 periods of the retired script had
+# passed the old end-level witness (−65 dB at this rung on 2026-10-01), which
+# is not a record-length witness for a resonance. Remi job
+# ci-1912-notch-witness-sxk77, 2026-10-20; records in rfx-archive
+# rfx/records/20261020-1912-notch-witness/.
+NUM_PERIODS = 40.0
 # Frequency points of rfx's sweep (DFT bins; they cost nothing in time steps).
 # 400 over 0.7–7 GHz is a 15.8 MHz bin, under half the 1 % frequency bar at
 # the notch (36.7 MHz), so the three-point parabola's grid-phase spread stays
@@ -207,7 +218,8 @@ REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
 # a passive structure cannot scatter more power than it receives, so a raw
 # extraction more than one percent above the passive bound is a measurement
 # artefact — the rung stops instead of being compared.  Measured on this
-# board (run 369367263176): settling −82 … −96 dB, excess 0.003 … 0.006.
+# board: settling in the NUM_PERIODS note above; passivity excess 0.0008 …
+# 0.0022 over the 40-period ladder (remi job ci-1912-ladder-40p-wkcls).
 SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
 
