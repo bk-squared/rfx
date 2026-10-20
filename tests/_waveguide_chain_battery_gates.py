@@ -55,7 +55,6 @@ from build_waveguide_band_broad_e5_phase_envelope import (  # type: ignore  # no
 from rfx.api._sparams import _SETTLING_WITNESS_DB  # noqa: E402
 from rfx.sources.waveguide_port import C0_LOCAL
 from rfx.model.waveguide_modes import _compute_beta
-from rfx.measurement.settling import _settling_db_for_record, _settling_record_floor_amplitude
 
 from tests import _waveguide_chain_battery_fixture as F  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402
@@ -738,6 +737,28 @@ def rung_label(dx_m: float) -> str:
     raise ValueError(dx_m)
 
 
+def _settling_record_floor_amplitude(tiny_normal: float) -> float:
+    """Normal-range amplitude floor for replaying the stored power witness.
+
+    At the shared -40 dB bar, end power is 1e-4 of peak power, so tail rms
+    amplitude is 1e-2 of peak amplitude. Equating that rms to the storage
+    format's smallest normal gives a peak floor of 100 * tiny_normal.
+    """
+    return float(tiny_normal) * 10.0 ** (abs(float(_SETTLING_WITNESS_DB)) / 20.0)
+
+
+def _settling_db_for_record(peak_power: float,
+                            end_power: float,
+                            floor_amplitude: float) -> float | None:
+    """Replay one stored end/peak power ratio, dropping peaks below the floor."""
+    if not (peak_power > 0.0):
+        return None
+    if float(np.sqrt(peak_power)) < floor_amplitude:
+        return None
+    tiny = float(np.finfo(float).tiny)
+    return float(10.0 * np.log10((end_power + tiny) / (peak_power + tiny)))
+
+
 def settling_db_per_drive(block: dict) -> dict[str, float]:
     """Per-drive ring-down witness recomputed from a block's stored records.
 
@@ -749,8 +770,8 @@ def settling_db_per_drive(block: dict) -> dict[str, float]:
     that had underflowed float32 -- 0.00 dB on an exactly-zero record, and a
     -40.85 dB "pass" carried by subnormal noise -- so the replay re-derives
     it here from the same stored records through the corrected arithmetic
-    (``rfx.sources.waveguide_port``: one copy of the floor and one copy of
-    the dB formula, not a hand copy of either). No FDTD is re-run and no
+    (the private replay helpers in this module hold the floor and the dB
+    formula). No FDTD is re-run and no
     measured quantity changes.
 
     Solve-to-drive mapping: the solves are stored drive-major and every drive

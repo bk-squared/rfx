@@ -304,7 +304,7 @@ class _ExecuteMixin:
         return probe_record_info(
             getattr(result, "time_series", None), self._probes,
             getattr(self, "_internal_probe_indices", ()),
-            source_dominated=dominated,
+            source_dominated=dominated, grid=grid,
         )
 
     def _attach_run_settling_witness(self, result, *, n_steps=None,
