@@ -1824,7 +1824,7 @@ class Simulation(
                 f"got {direction!r}"
             )
         if waveform != "modulated_gaussian":
-            from rfx.model.waveguide_waveform import waveguide_waveform_error
+            from rfx.model import waveguide_waveform_error
             raise ValueError(
                 waveguide_waveform_error(waveform)
             )
