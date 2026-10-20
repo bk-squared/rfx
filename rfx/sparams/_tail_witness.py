@@ -31,7 +31,9 @@ def _rounding_only_records(records, kinds):
         if not np.issubdtype(dtype, np.floating):
             continue
         threshold = _ROUNDING_ONLY_EPS_MULTIPLE * float(np.finfo(dtype).eps)
-        if peak < threshold * largest[kind]:
+        # float16 (precision='mixed'): the margin reaches the peak itself,
+        # so it separates nothing; those records are scored as before.
+        if threshold < 1. and peak < threshold * largest[kind]:
             ratio = peak / largest[kind]
             skipped.append(dict(
                 name=name, kind=kind, peak_ratio=ratio, threshold=float(threshold),

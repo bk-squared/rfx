@@ -148,19 +148,27 @@ def test_skipped_names_survive_unavailable_returns(missing):
         check(kwargs['freqs'])
 
 
-@pytest.mark.parametrize('force', [False, True])
-def test_every_record_skipped_is_undetermined(monkeypatch, force):
-    if force:
-        monkeypatch.setattr(witness, '_ROUNDING_ONLY_EPS_MULTIPLE', 1e8)
-    # float16's specified 1e4 * eps exceeds one, exercising the real guard too.
-    dtype = np.float32 if force else np.float16
+def test_every_record_skipped_is_undetermined(monkeypatch):
+    # Unreachable with the strict rule (the largest record is never below its
+    # own peak), so the skip list is forced.
+    monkeypatch.setattr(witness, '_rounding_only_records', lambda records, kinds: tuple(
+        dict(name=name, kind=kinds[name], peak_ratio=1., threshold=1., reason='forced')
+        for name, _ in records))
     result = witness.tail_share_witness(
-        [('only', np.ones(20, dtype=dtype))], 1., 0, [.07], freq_max=.15,
+        [('only', np.ones(20, dtype=np.float32))], 1., 0, [.07], freq_max=.15,
         kinds={'only': 'H'})
     assert result.status == 'undetermined'
     assert np.isnan(result.db)
     assert result.reason == 'every record is rounding only: only'
     assert [row['name'] for row in result.skipped_records] == ['only']
+
+
+def test_float16_records_are_scored_as_before():
+    # precision='mixed' stores float16 records: 1e4 x eps(float16) is 9.8, a
+    # margin above every peak, so nothing is skipped (main's behaviour).
+    records = [('large', np.ones(20, dtype=np.float16)),
+               ('small', np.full(20, 1e-3, dtype=np.float16))]
+    assert witness._rounding_only_records(records, dict.fromkeys(dict(records), 'H')) == ()
 
 
 def test_port_records_supply_separate_voltage_and_current_kinds():
