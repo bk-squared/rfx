@@ -14,7 +14,8 @@ def test_pmc_record_refusal(kind, entry):
     grading = (dict(dz_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 8), 1e-3])
                if kind == 'moments' else
                dict(dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3]))
-    sim = Simulation(freq_max=15e9, domain=(15.3e-3, 8.7e-3, 10.1e-3), dx=1e-3,
+    # main's solved lengths on the graded mesh (round): 15.3 -> 15, 8.7 -> 9 mm; #1887
+    sim = Simulation(freq_max=15e9, domain=(15e-3, 9e-3, 10.1e-3), dx=1e-3,
         **grading,
         boundary=BoundarySpec(x=Boundary('pec', 'pmc'), y='pec', z='pec'))
     sim.add_source((5.1e-3, 2.7e-3, 4.3e-3), 'ez', amplitude_kind='field')
