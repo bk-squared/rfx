@@ -699,7 +699,7 @@ def line_source_value(cfg, t, amplitude):
     box's discrete-plane-wave line (``tfsf_discrete_plane_wave.update_line_e``),
     which passes its amplitude already scaled by the polarization weight.
     Waveform selection (baked into cfg at init):
-      differentiated_gaussian (legacy): s = -2·arg · exp(-arg²)
+      differentiated_gaussian: s = charge_free_dg(t, tau, t0/tau)
       modulated_gaussian (Meep-equivalent): s = cos(2π·fcen·(t-t0)) · exp(-arg²)
     MethodBConfig also uses the legacy kernel and keeps the original waveform
     fields; absent opt-in fields retain that legacy behavior.
@@ -716,7 +716,8 @@ def line_source_value(cfg, t, amplitude):
         # raised-cosine ramp 0->1 over src_t0, then constant amplitude
         ramp = 0.5 * (1.0 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0.0, 1.0)))
         return amplitude * ramp * jnp.sin(2.0 * jnp.pi * cfg.src_fcen * t)
-    return amplitude * (-2.0 * arg) * env
+    from rfx.sources.sources import charge_free_dg
+    return amplitude * charge_free_dg(t, cfg.src_tau, cfg.src_t0 / cfg.src_tau)
 
 
 def measure_normal_incident_spectrum(

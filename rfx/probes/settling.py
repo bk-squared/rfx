@@ -159,7 +159,8 @@ def tfsf_source_drive(cfg, grid):
             return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
         if kind == "analytic":
             return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        return cfg.src_amp * (-2 * arg) * env
+        from rfx.sources.sources import charge_free_dg
+        return cfg.src_amp * charge_free_dg(t, cfg.src_tau, cfg.src_t0 / cfg.src_tau)
 
     lengths = []
     for axis in "xyz":
