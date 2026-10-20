@@ -1152,7 +1152,7 @@ def refuse_undriven_record_s(sim, *, implicit=False):
     raise ValueError(reason + "Set excite=True on the port whose S column you want.")
 
 
-def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
+def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False, entry="run"):
     """A port drive must be the only excitation of a lumped/wire S solve.
 
     Routes that build S drive by drive (the scan driver, run()'s scan S, the
@@ -1179,6 +1179,10 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
             reason + "Remove the plain source, or pass compute_s_params=False "
             "to silence this warning; returning no S-parameters.")
         return False
+    if entry == "forward":
+        raise NotImplementedError(
+            reason + "Remove the plain source, or call forward() without port_s11_freqs "
+            "to get the fields and probe records with the source included.")
     raise NotImplementedError(
         reason + "Remove the plain source, or call run(compute_s_params=False) "
         "to get raw port waves with the source included.")
@@ -1224,7 +1228,7 @@ def admit_forward_s_matrix(sim):
     admit_msl_auto_probes(sim)
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(sim)
-    refuse_plain_sources_s_matrix(sim, main_record=True)
+    refuse_plain_sources_s_matrix(sim, main_record=True, entry="forward")
     require_isolated_s_drive(sim)
 
 
