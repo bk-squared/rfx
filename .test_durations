@@ -9811,7 +9811,7 @@
     "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_a_plain[grad]": 0.0002787840000877395,
     "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_b_refused[jit_forward]": 0.000267542000017329,
     "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_b_refused[jit_grad]": 0.0002594886249909223,
-    "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_c_flag_gradient_bitwise": 0.00028698862507781087,
+    "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_c_flag_gradient_within_cross_trace_bar": 0.00028698862507781087,
     "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_d_entries[checkpoint]": 0.0003331501249306257,
     "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_d_entries[jit_checkpoint]": 0.0003024298749778609,
     "tests/gpu/test_multi_device_outer_jit_gpu.py::test_G_d_entries[jit_uniform_run]": 0.00024984437490616074,

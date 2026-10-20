@@ -55,12 +55,23 @@ def test_G_b_refused(cuda_devices, tmp_path, case):
     worker(case, tmp_path)
 
 
-def test_G_c_flag_gradient_bitwise(cuda_devices, tmp_path, plain_gradient):
+def within_cross_trace_bar(baseline, compiled, ulps=9):
+    peak = np.float32(np.abs(baseline).max())
+    difference = np.abs(baseline.astype(np.float64) - compiled.astype(np.float64)).max()
+    return bool(difference <= ulps * float(np.spacing(peak))), float(difference / np.spacing(peak))
+
+
+def test_G_c_flag_gradient_within_cross_trace_bar(cuda_devices, tmp_path, plain_gradient):
     baseline = plain_gradient
     compiled = np.load(worker("off_grad", tmp_path,
                               flags="--xla_gpu_enable_command_buffer="))
     assert baseline.dtype == compiled.dtype and baseline.shape == compiled.shape
-    assert baseline.tobytes() == compiled.tobytes()
+    # The enclosing jit compiles a different program than the plain call; float32 rounding then
+    # differs (inferred from #1905: 1 ULP of the peak at 4 cells, plain runs repeat bit-equal).
+    # Cross-trace rule, rfx CLAUDE.md: the per-step 9 ULP is chosen on purpose, tighter than the
+    # 1e-4 of the peak the rule allows for this record-summed gradient.
+    ok, ulps = within_cross_trace_bar(baseline, compiled)
+    assert ok, f"jitted gradient differs from the plain one by {ulps:.2f} ULP of the peak"
 
 
 @pytest.mark.parametrize("case", ["checkpoint", "vmap", "uniform_run",
