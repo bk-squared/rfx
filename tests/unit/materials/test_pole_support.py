@@ -10,6 +10,24 @@ from rfx.materials.lorentz import drude_pole, init_lorentz, lorentz_pole
 from rfx.materials.pole_support import align_pole_states
 
 
+def test_add_box_matches_write_box_and_full_addition():
+    from rfx.materials.pole_support import PoleBox, add_box, full_box, slices, write_box
+
+    rng = np.random.default_rng(1825)
+    shape = (9, 10, 11)
+    base = jnp.asarray(rng.standard_normal(shape).astype(np.float32))
+    for box in (PoleBox(((2, 6), (3, 7), (4, 8)), shape),
+                PoleBox(((0, 4), (3, 7), (7, 11)), shape),
+                None, full_box(shape)):
+        correction = jnp.asarray(rng.standard_normal(
+            shape if box is None else box.shape).astype(np.float32))
+        expected = write_box(base, base[slices(box)] + correction, box)
+        actual = add_box(base, correction, box)
+        assert np.all(np.asarray(actual) == np.asarray(expected))
+        if box is None or box == full_box(shape):
+            assert np.all(np.asarray(actual) == np.asarray(base + correction))
+
+
 def numpy_fractions(mask, periodic=(False,) * 3):
     """Four incident cell masks, using NumPy only, without product helpers."""
     result = []

@@ -40,7 +40,7 @@ from rfx.core.yee import (
 )
 from rfx.materials.debye import per_component, pole_reach
 from rfx.materials.pole_support import (
-    PoleBox, mask_support, support_box, slices, pole_slice, write_box,
+    PoleBox, mask_support, support_box, slices, pole_slice, add_box,
 )
 
 
@@ -297,11 +297,8 @@ def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,
     ca = per_component(coeffs.ca, "ca")[comp]
     cb = per_component(coeffs.cb, "cb")[comp]
     cc = per_component(coeffs.cc, "cc")[comp][slices(box)]
-    base = ca * e_old + cb * curl
-    e_box = base[slices(box)] - cc * dp
-    if fdtype is not None:
-        base, e_box = base.astype(fdtype), e_box.astype(fdtype)
-    return write_box(base, e_box, box)
+    e_new = add_box(ca * e_old + cb * curl, -(cc * dp), box)
+    return e_new if fdtype is None else e_new.astype(fdtype)
 
 
 def mixed_e_component_coeffs(debye_coeffs, lorentz_coeffs, comp: int, dt):

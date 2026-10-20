@@ -115,3 +115,10 @@ def write_box(base, value, box):
     if box is None:
         return value
     return jax.lax.dynamic_update_slice(base, value, tuple(lo for lo, _ in box.bounds))
+
+
+def add_box(base, value, box):
+    """Add a box correction with static zero padding to the component shape."""
+    widths = ((0, 0),) * base.ndim if box is None else tuple(
+        (lo, int(n) - hi) for n, (lo, hi) in zip(base.shape, box.bounds))
+    return base + jnp.pad(value, widths, mode="constant", constant_values=0)
