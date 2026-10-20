@@ -159,6 +159,9 @@ class _CompileMixin:
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
                                    field_dtype=field_dtype, periodic=periodic,
                                    budget=budget if debye_spec is None else None, grid_kind=grid_kind)
+            if debye_spec is not None and budget is not None:
+                from rfx.materials.lorentz import JudgedLorentzCoeffs
+                lorentz = (JudgedLorentzCoeffs(*lorentz[0]), lorentz[1])
 
         return materials, debye, lorentz
 

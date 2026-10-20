@@ -348,7 +348,8 @@ def _build_nu_scan(
     flux_monitors = flux_monitors or []
     dt = grid.dt
     from rfx.model.pole_stability import judge_prebuilt_poles
-    judge_prebuilt_poles(grid, lorentz, debye)
+    if lorentz is not None and not getattr(lorentz[0], "pole_sets_judged", False):
+        judge_prebuilt_poles(grid, lorentz, debye)
     use_wire_ports = len(wire_ports) > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None

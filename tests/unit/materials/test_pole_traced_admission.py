@@ -61,3 +61,37 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
     jax.block_until_ready(checked(left, ~left))
     with pytest.raises(Exception, match="unstable at this model's time step"):
         jax.block_until_ready(checked(left, left))
+
+
+@pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])
+@pytest.mark.parametrize("n_poles", [8, 9])
+def test_traced_mask_pattern_cap(n_poles, transform):
+    from rfx.materials.debye import DebyePole
+    from rfx.model.pole_stability import judge_pole_sets, pole_set_extremes
+    shape = (1, 1, 1)
+    materials = MaterialArrays(jnp.ones(shape), jnp.zeros(shape), None)
+
+    def checked(value):
+        mask = jnp.full(shape, value > 0)
+        # Count both families; concrete eager primals must remain uncapped.
+        records = pole_set_extremes(materials, ([(0., 0., 1.)] * (n_poles - 1), mask),
+                                   debye_spec=([DebyePole(1., 1.)], mask))
+        judge_pole_sets(records, .1, 0., grid_kind="Grid")
+        return value ** 2 + sum(r.count for r in records)
+
+    def call():
+        if transform == "jit":
+            result = jax.jit(checked)(1.)
+        elif transform == "vmap":
+            result = jax.vmap(checked)(jnp.ones(1))
+        elif transform == "jvp":
+            result = jax.jvp(checked, (1.,), (1.,))
+        else:
+            result = jax.grad(checked)(1.)
+        jax.block_until_ready(result)
+
+    if n_poles == 9 and transform in ("jit", "vmap"):
+        with pytest.raises(ValueError, match=r"cannot judge: 9 poles give 2\^9 patterns"):
+            call()
+    else:
+        call()

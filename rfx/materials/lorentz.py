@@ -120,6 +120,13 @@ class LorentzState(NamedTuple):
     pz_prev: jnp.ndarray
 
 
+class JudgedLorentzCoeffs(LorentzCoeffs):
+    """The assembled cell spec was judged; preserve that fact through pytrees."""
+
+    __slots__ = ()
+    pole_sets_judged = True
+
+
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
     """Material-independent Lorentz ADE terms from per-pole edge fractions."""
     a_list, b_list = [], []
@@ -264,6 +271,8 @@ def init_lorentz(
     a, b, c = (realized.coefficients if realized.coefficients is not None else
                   lorentz_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
+    if components.pole_sets_judged:
+        coeffs = JudgedLorentzCoeffs(*coeffs)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(

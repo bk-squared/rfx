@@ -196,6 +196,8 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     if len(masks) != len(poles):
         raise ValueError(f"Expected {len(poles)} Lorentz masks, got {len(masks)}")
     abstract_masks = any(is_tracer(m) for m in masks)
+    if abstract_masks and len(poles) > 8:
+        raise ValueError(f"pole stability cannot judge: {len(poles)} poles give 2^{len(poles)} patterns")
     if view is not None:
         from types import SimpleNamespace
         input_shape = materials.eps_r.shape
@@ -350,8 +352,9 @@ def judge_prebuilt_poles(grid, lorentz, debye=None):
     Invert the coefficients actually used: gamma=1/cc, eps=(1+ca)gamma/2,
     sigma=(1-ca)gamma/dt; 1+delta dt=2/(1-b), w0^2 dt^2=2-a(1+delta dt),
     kappa=c(1+delta dt)/(eps0 dt^2). Debye tau and delta_eps follow from
-    alpha and beta by the same inversion. Group equal component rows and
-    use their own occupied cells and neighbours, never a global surrogate.
+    alpha and beta by the same inversion. Undo the clipped backward edge
+    means used by direct initializers, then group pole parameters, reducing
+    eps/sigma over their occupied cells and neighbours, never a global surrogate.
     """
     if lorentz is None:
         return
@@ -365,42 +368,89 @@ def judge_prebuilt_poles(grid, lorentz, debye=None):
     dc = None if debye is None else debye[0]
 
     def check(step, widths, coeffs, debye_coeffs):
-        from types import SimpleNamespace
         step = float(step)
         budget = CourantBudget(widths)
+        groups = {}
         for component in range(3):
             ca = np.asarray(per_component(coeffs.ca, "ca")[component], dtype=np.float64)
             cc = np.asarray(per_component(coeffs.cc, "cc")[component])
             a, b = np.asarray(coeffs.a), np.asarray(coeffs.b)
             c = np.asarray(per_component(coeffs.c, "c")[component])
             shape, n = ca.shape, a.shape[0]
-            columns = [ca.reshape(-1), cc.reshape(-1)]
-            columns.extend(v.reshape(-1) for terms in (a, b, c) for v in terms)
+            def unaverage(values):
+                # Direct init_lorentz without a judged grid uses the equal-cell
+                # backward edge mean. Its clipped low face makes each pass
+                # triangular: cell[0]=edge[0], cell[i]=2*edge[i]-cell[i-1].
+                values = np.array(values, dtype=np.float64, copy=True)
+                for axis in range(3):
+                    if axis == component:
+                        continue
+                    rows = np.moveaxis(values, axis, 0)
+                    for i in range(1, len(rows)):
+                        rows[i] = 2. * rows[i] - rows[i - 1]
+                return values
+
+            def pole_cells(values):
+                result = unaverage(values)
+                scale = np.max(abs(result))
+                if not scale:
+                    return result
+                # Multiplication by a three-quarter fraction rounds once.
+                # Undo that roundoff, rather than inventing tiny extra poles
+                # in empty cells. Only a recovered binary cell mask qualifies.
+                binary = np.rint(result / scale)
+                transverse = np.prod([shape[t] for t in range(3) if t != component])
+                error = 4 * np.finfo(values.dtype).eps * transverse * scale
+                if np.all(abs(result - binary * scale) <= error) and np.all((binary == 0) | (binary == 1)):
+                    quarters = np.rint(4 * values / scale)
+                    for q in (4, 2, 1):
+                        if np.any(quarters == q):
+                            scale = np.median(values[quarters == q]) * (4 / q)
+                            break
+                    result = binary * scale
+                return result
+
+            eps = unaverage((1. + ca) / (2. * cc * EPS_0))
+            sigma = unaverage((1. - ca) / (cc * step))
+            cell_c = np.stack([pole_cells(v) for v in c])
+            columns = [v.reshape(-1) for terms in (a, b, cell_c) for v in terms]
             nd = 0 if debye_coeffs is None else debye_coeffs.alpha.shape[0]
             if nd:
                 beta = per_component(debye_coeffs.beta, "beta")[component]
-                columns.extend(np.asarray(v).reshape(-1) for terms in (debye_coeffs.alpha, beta) for v in terms)
+                cell_beta = np.stack([pole_cells(v) for v in beta])
+                columns.extend(np.asarray(v).reshape(-1) for terms in
+                               (debye_coeffs.alpha, cell_beta) for v in terms)
             rows, inverse = np.unique(np.stack(columns, axis=1), axis=0, return_inverse=True)
             for index, row in enumerate(rows):
-                av, bv, cv = row[2:2 + 3 * n].reshape(3, n)
-                if not np.any(cv):
+                av, bv, cv = row[:3 * n].reshape(3, n)
+                present = cv != 0.
+                if not np.any(present):
                     continue
+                av, bv, cv = av[present], bv[present], cv[present]
                 denom = 2. / (1. - bv)
                 poles = tuple(zip(np.sqrt(np.maximum(2. - av * denom, 0.)) / step,
                                   (denom - 1.) / step, cv * denom / (EPS_0 * step * step)))
-                eps = (1. + row[0]) / (2. * row[1] * EPS_0)
-                sigma = (1. - row[0]) / (row[1] * step)
                 selected = (inverse == index).reshape(shape)
-                debye_spec = None
+                dp = ()
                 if nd:
-                    alpha, beta = row[2 + 3 * n:].reshape(2, nd)
+                    alpha, beta = row[3 * n:].reshape(2, nd)
                     present = beta != 0.
                     dp = tuple(zip(2. * beta[present] / (EPS_0 * (1. - alpha[present])),
                                    step * (1. + alpha[present]) / (2. * (1. - alpha[present]))))
-                    debye_spec = (dp, selected)
-                materials = SimpleNamespace(eps_r=np.full(shape, eps), sigma=np.full(shape, sigma))
-                refuse_unstable_cells(materials, (poles, selected), step, budget,
-                    grid_kind=type(grid).__name__, debye_spec=debye_spec)
+                key = (poles, dp)
+                low, sig_low, sig_high = np.min(eps[selected]), np.min(sigma[selected]), np.max(sigma[selected])
+                if key in groups:
+                    previous, e, lo, hi = groups[key]
+                    groups[key] = (previous | selected, min(e, low), min(lo, sig_low), max(hi, sig_high))
+                else:
+                    groups[key] = (selected, low, sig_low, sig_high)
+        records = []
+        for code, ((poles, dp), (selected, eps, low, high)) in enumerate(groups.items()):
+            occupied = tuple(np.any(selected, axis=tuple(a for a in range(3) if a != axis))
+                             for axis in range(3))
+            records.append(PoleSetExtremes(code, poles, eps, low, high,
+                                          np.count_nonzero(selected), occupied, dp))
+        judge_pole_sets(records, step, budget, grid_kind=type(grid).__name__)
 
     import jax
     operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
