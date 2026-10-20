@@ -8,15 +8,22 @@ import numpy as np
 
 
 _SETTLING_RECORD_NAMES = ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")
+# #1909: only co-located records tell a field null's rounding from signal.
+_LONE_PROBE_NOTE = (
+    " (no other component is recorded at its cell: a probe on a field null "
+    "holds only rounding and cannot be judged alone; record the co-located "
+    "components, e.g. add_vector_probe(), so the check can tell rounding "
+    "from signal)")
 
 
 def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    freq_max=None, source_end_index=None,
                                    record_noun="port records", return_detail=False,
-                                   kinds=None, _warn_stacklevel=2):
+                                   rounding_groups=None, _warn_stacklevel=2):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
-    ``kinds`` maps record names to quantities compared for rounding-only peaks.
+    ``rounding_groups`` maps record names to co-located same-kind groups
+    compared for rounding-only peaks (#1909).
     sensitivities are judged by a separate witness
     """
     from rfx.sparams._tail_witness import tail_share_witness
@@ -24,7 +31,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
     named = tuple(named_records)
     per_record = {}
     result = tail_share_witness(named, dt, source_end_index, freqs, freq_max=freq_max,
-                                kinds=kinds,
+                                rounding_groups=rounding_groups,
                                 _record_results=per_record if return_detail else None)
     if not return_detail:
         return result.db
@@ -76,8 +83,6 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         freq_max = float(np.max(bins)) if np.size(bins) else None
     return settling_db_from_named_records(
         named, source_end_index=source_end,
-        kinds={name: 'V' if name.rsplit('/', 1)[1].startswith('v_') else 'I'
-               for name, _ in named},
         dt=getattr(final_cfgs[0], "dt", None) if final_cfgs else None,
         freqs=bins, freq_max=freq_max, record_noun="port records",
         return_detail=return_detail, _warn_stacklevel=3)
@@ -226,7 +231,9 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             n_steps=None if n_steps is None else int(n_steps),
             num_periods=None if n_steps is not None else num_periods,
             drive_labels=(
-                f"worst probe record {witness['worst_record']}",),
+                f"worst probe record {witness['worst_record']}"
+                + (_LONE_PROBE_NOTE if witness['worst_record']
+                   in witness.get('lone_records', ()) else ""),),
             consequence=(
                 f"every DFT-derived quantity of this {operation} — NTFF far "
                 "fields, field-DFT planes, Harminv modes — integrates a "

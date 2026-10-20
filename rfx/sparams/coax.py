@@ -1051,7 +1051,7 @@ def compute_coaxial_two_port(
                 if _channels:
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
                 settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
-                    _channels, source_end_index=source_end, kinds={name: 'V' for name, _ in _channels if name.endswith('/V')},
+                    _channels, source_end_index=source_end,
                     dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True)
 
 
@@ -1989,7 +1989,7 @@ def compute_coax_msl_transition(
             if _channels:
                 _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
             settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
-                _channels, source_end_index=source_end, kinds={name: 'V' for name, _ in _channels if name.endswith('/V')},
+                _channels, source_end_index=source_end,
                 dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
 
 
