@@ -2026,8 +2026,8 @@ class Simulation(
                 "add_floquet_port(polarization='tm'): TM Floquet S-parameter extraction is not "
                 "implemented — the extractor is hardwired to the TE (Ex,Hy) pair and TE wave "
                 "impedance, so a TM drive yields wrong S-parameters. Use polarization='te'. "
-                "(For a TM plane-wave field study without S-parameters, use add_tfsf_source, "
-                "which supports oblique TM incidence.)"
+                "(For an oblique TM, p-polarized, plane wave without S-parameters on a finite structure, use "
+                "add_tfsf_source(closed_box=True, theta_deg=..., polarization='p'); the open plane wave is TE at oblique incidence.)"
             )
         if self._tfsf is not None:
             raise ValueError(
