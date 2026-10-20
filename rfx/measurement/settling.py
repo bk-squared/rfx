@@ -10,7 +10,7 @@ import numpy as np
 _SETTLING_RECORD_NAMES = ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")
 # #1909: only co-located records tell a field null's rounding from signal.
 _LONE_PROBE_NOTE = (
-    " (no other component is recorded at its cell: a probe on a field null "
+    " (no other component of its field (E or H) is recorded at its cell: a probe on a field null "
     "holds only rounding and cannot be judged alone; record the co-located "
     "components, e.g. add_vector_probe(), so the check can tell rounding "
     "from signal)")

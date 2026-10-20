@@ -274,7 +274,7 @@ def test_lone_null_probe_is_scored_and_the_warning_says_why():
     assert detail['worst_record'] == 'probe0(hz)'
     assert result.settling_db == pytest.approx(MAIN_LONE_NULL_DB, abs=1e-9)
     message, = [str(row.message) for row in caught if 'cut transient' in str(row.message)]
-    assert ('worst probe record probe0(hz) (no other component is recorded at its '
+    assert ('worst probe record probe0(hz) (no other component of its field (E or H) is recorded at its '
             'cell: a probe on a field null holds only rounding and cannot be judged '
             'alone; record the co-located components') in message
 
