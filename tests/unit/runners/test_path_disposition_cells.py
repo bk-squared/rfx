@@ -252,10 +252,11 @@ def _plane_wave(lane, on, ref=False):
 
 def _floquet_cell(scan_theta):
     """A 6 mm periodic cell absorbing on z, the Floquet port the only drive.
-    On the ADI lanes a PEC box, to reach the port refusal."""
+    On the ADI lanes PEC z faces, to reach the port refusal."""
     def build(lane, on, ref=False):
-        spec = "pec" if lane in ADI else BoundarySpec(x="periodic", y="periodic", z="cpml")
-        sim = _simulation(lane, (6, 6, 20), ref=ref, boundary=spec)
+        spec = BoundarySpec(x="periodic", y="periodic", z="pec" if lane in ADI else "cpml")
+        sim = _simulation(lane, (6, 6, 20), ref=ref, boundary=spec,
+                          **({"cpml_layers": 0} if lane in ADI else {}))
         if on or scan_theta:
             sim.add_floquet_port(4e-3, axis="z", f0=5e9, scan_theta=scan_theta if on else 0.0)
         sim.add_probe(mm(3, 3, 14), "ez")

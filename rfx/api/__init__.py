@@ -376,9 +376,9 @@ class Simulation(
         else:
             # Legacy scalar path — validated below, lifted to BoundarySpec
             # after scalar boundary fields have been resolved.
-            if boundary not in ("pec", "cpml", "upml"):
+            if boundary not in ("pec", "pmc", "cpml", "upml"):
                 raise ValueError(
-                    f"boundary must be 'pec', 'cpml', or 'upml', got {boundary!r}"
+                    f"boundary must be 'pec', 'pmc', 'cpml', or 'upml', got {boundary!r}"
                 )
             spec = None  # deferred; folded in after legacy fields settle
         if freq_max <= 0:
@@ -1953,7 +1953,7 @@ class Simulation(
         ))
         return self
 
-    from rfx.boundaries.serialization import legacy_spec as _build_spec_from_legacy
+    from rfx.boundaries.serialization import constructor_scalar_spec as _build_spec_from_legacy
 
     def __getattr__(self, name):
         if name == "set_periodic_axes":
@@ -1993,8 +1993,8 @@ class Simulation(
 
         The Floquet port injects a plane wave at the given scan angle
         and extracts Floquet mode amplitudes (S-parameters) from the
-        unit cell response.  Requires periodic BC on the two axes
-        perpendicular to the port normal.
+        unit cell response. Scalar CPML/UPML (including the default) absorbs
+        along the port axis and makes the transverse axes periodic.
 
         Parameters
         ----------

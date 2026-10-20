@@ -260,14 +260,12 @@ def with_requirements(model: BoundaryModel, requirements: tuple[Requirement, ...
 def require_floquet_lateral_faces(sim, axis: str) -> str:
     """Admit a port against the current declaration, before periodic auto-fill.
 
-    An omitted boundary is the sole default exemption. Keep its immutable
-    spec identity so replacing it after registration is an explicit declaration,
-    even when the replacement spells the same CPML defaults.
+    Scalar absorbers mean absorb along the port axis and auto-fill transverse
+    periodicity. Their original spec identity distinguishes that shorthand
+    from a later explicit face declaration, even one with identical kinds.
     """
     transverse = "".join(a for a in "xyz" if a != axis)
-    explicit = (sim._boundary_explicit is not False
-                or sim._boundary_spec is not getattr(
-                    sim, "_floquet_default_spec", sim._boundary_spec))
+    explicit = sim._boundary_spec is not getattr(sim._boundary, "spec", None)
     conflicts = [
         f"{a}_{side}={kind!r}"
         for a, side, kind in sim._boundary_spec.faces()
@@ -283,8 +281,6 @@ def require_floquet_lateral_faces(sim, axis: str) -> str:
             f"declared {', '.join(conflicts)}. Declare periodic on "
             f"{' and '.join(transverse)}, or omit those faces; "
             "a Floquet port's modes need periodic lateral faces.")
-    if not explicit:
-        sim._floquet_default_spec = sim._boundary_spec
     return transverse
 
 
