@@ -1987,6 +1987,24 @@
           ],
           "severity": "warning",
           "source": "_validate_cfg_lossless_resonator_in_absorber"
+        },
+        {
+          "code": "thin_conductor_thickness_unmodelled",
+          "loc": "thin_conductors[1]",
+          "numbers": [
+            1.0,
+            35.0,
+            1.5,
+            2.33,
+            0.27,
+            50.0,
+            3.4,
+            20.0,
+            40.0,
+            1523.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_conductor_thickness"
         }
       ]
     },
@@ -2307,6 +2325,24 @@
           ],
           "severity": "warning",
           "source": "_validate_ntff_small_ground_plane"
+        },
+        {
+          "code": "thin_conductor_thickness_unmodelled",
+          "loc": "thin_conductors[1]",
+          "numbers": [
+            1.0,
+            35.0,
+            1.524,
+            2.3,
+            0.27,
+            50.0,
+            3.4,
+            20.0,
+            40.0,
+            1523.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_conductor_thickness"
         }
       ]
     },
@@ -3009,6 +3045,24 @@
           ],
           "severity": "warning",
           "source": "_validate_cfg_thin_absorber"
+        },
+        {
+          "code": "thin_conductor_thickness_unmodelled",
+          "loc": "thin_conductors[1]",
+          "numbers": [
+            1.0,
+            35.0,
+            1000.0,
+            3.5,
+            0.37,
+            50.0,
+            3.4,
+            20.0,
+            40.0,
+            1523.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_conductor_thickness"
         }
       ]
     },
