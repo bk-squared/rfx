@@ -83,12 +83,14 @@ def _measure_cavity_energy_at_boundary(radius, height, dx, n_steps, use_conforma
     Also returns total field energy for normalization.
     """
     margin = 4 * dx
-    Lx = cells_spanning(2 * radius + 2 * margin, dx) * dx  # main's solved length; #1887
+    Lx = 2 * radius + 2 * margin
     Ly = Lx
-    Lz = cells_spanning(height + 2 * margin, dx) * dx  # main's solved length; #1887
+    Lz = height + 2 * margin
     center = (Lx / 2, Ly / 2, Lz / 2)
 
-    grid = Grid(freq_max=_tm010_freq(radius) * 3, domain=(Lx, Ly, Lz),
+    # Placement uses the declared lengths; the grid gets main's solved lengths (#1887).
+    grid = Grid(freq_max=_tm010_freq(radius) * 3,
+                domain=tuple(cells_spanning(L, dx) * dx for L in (Lx, Ly, Lz)),
                 dx=dx, cpml_layers=0)
 
     cyl = Cylinder(center=center, radius=radius, height=height, axis="z")
@@ -244,12 +246,14 @@ class TestConformalConvergence:
         height = 0.04
         dx = 0.003
         margin = 6 * dx  # larger margin so source is well outside PEC
-        Lx = cells_spanning(2 * radius + 2 * margin, dx) * dx  # main's solved length; #1887
+        Lx = 2 * radius + 2 * margin
         Ly = Lx
-        Lz = cells_spanning(height + 2 * margin, dx) * dx  # main's solved length; #1887
+        Lz = height + 2 * margin
         center = (Lx / 2, Ly / 2, Lz / 2)
 
-        grid = Grid(freq_max=_tm010_freq(radius) * 3, domain=(Lx, Ly, Lz),
+        # Placement uses the declared lengths; the grid gets main's solved lengths (#1887).
+        grid = Grid(freq_max=_tm010_freq(radius) * 3,
+                    domain=tuple(cells_spanning(L, dx) * dx for L in (Lx, Ly, Lz)),
                     dx=dx, cpml_layers=0)
         cyl = Cylinder(center=center, radius=radius, height=height, axis="z")
 
