@@ -1953,7 +1953,7 @@ class Simulation(
         ))
         return self
 
-    from rfx.boundaries.serialization import constructor_scalar_spec as _build_spec_from_legacy
+    from rfx.boundaries.serialization import legacy_spec as _build_spec_from_legacy
 
     def __getattr__(self, name):
         if name == "set_periodic_axes":

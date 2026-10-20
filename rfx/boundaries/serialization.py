@@ -70,13 +70,8 @@ def predict_legacy_spec(boundary, pec_faces, periodic_axes):
 
 
 def legacy_spec(sim):
-    """The constructor and old-design importer share one scalar face rule."""
-    return predict_legacy_spec(sim._boundary, sim._pec_faces, sim._periodic_axes)
-
-
-def constructor_scalar_spec(sim):
-    """Remember the original scalar absorber, without exempting later specs."""
-    spec = legacy_spec(sim)
+    """Expand the constructor's scalar and remember its original face spec."""
+    spec = predict_legacy_spec(sim._boundary, sim._pec_faces, sim._periodic_axes)
     if sim._boundary in ("cpml", "upml"):
         sim._boundary = _ScalarAbsorber(sim._boundary, spec)
     return spec
