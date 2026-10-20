@@ -149,7 +149,9 @@ def _measure_cavity(ppw, conformal):
 _E_PIN = {12: 0.0496, 16: 0.0424, 24: 0.0352}
 _CONFORMAL_XFAIL = pytest.mark.xfail(
     strict=True,
-    reason="#1651 conformal eps/w skin: hollow-cylinder TM010 accuracy and order fail",
+    reason=("#1651 conformal eps/w skin: TM010 accuracy and order fail; hand-built "
+            "kernel (update_h, update_e_aniso, eps/w, apply_conformal_pec; no "
+            "apply_pec_edges) must use the production kernel before removing xfail"),
 )
 
 
@@ -194,7 +196,9 @@ def test_t1_staircase_pin(cavity_measurements, ppw):
     result = cavity_measurements[ppw, False]
     _assert_identified(result)
     assert result["err"] > 0, result
-    # 3e-3 is below a 1% radius shift and above measured float32 frequency noise.
+    # 3e-3 is below a 1% radius shift and above measured float32 frequency noise,
+    # but the staircase wall moves only in whole cells: at 12 ppw a 1% radius
+    # change may not move it.
     assert abs(result["err"] - _E_PIN[ppw]) <= 3e-3, result
 
 
@@ -204,7 +208,10 @@ def test_t1_staircase_refinement(cavity_measurements):
 
 
 @_CONFORMAL_XFAIL
-@pytest.mark.parametrize("ppw", _PPW)
+# At 12 ppw, Courant 0.572, Yee dispersion is -7.7e-3 (axis) to -2.0e-3
+# (diagonal), ~-4.9e-3 angle-averaged: only 1e-4 inside the 5e-3 bar.
+# At 16 and 24 ppw it is -2.7e-3 and -1.2e-3, respectively.
+@pytest.mark.parametrize("ppw", (16, 24))
 def test_t2_conformal_accuracy(cavity_measurements, ppw):
     result = cavity_measurements[ppw, True]
     _assert_identified(result)
