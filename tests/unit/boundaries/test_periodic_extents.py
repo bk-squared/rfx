@@ -118,7 +118,8 @@ def test_thin_sheet_at_period_has_zero_plane_edges(kind, snap):
     from rfx.boundaries.pec import realized_pec_edge_masks
     footprints = []
     for x in (0., .010):
-        sim = model(snap=snap)
+        # f0 sheet size is not this test's subject (sheet_effective_size)
+        sim = model(snap="declared" if kind == "surface_impedance" else snap)
         options = {'surface_impedance_f0': 10e9} if kind == 'surface_impedance' else {}
         if kind == 'dc':
             options = {'sigma_bulk': 1e4}

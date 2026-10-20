@@ -312,6 +312,8 @@ def _extractor_context_cell(monkeypatch, lane, model):
             with pytest.raises(HandoffReached):
                 compute_lumped_wire_s_matrix_via_scan(sim, np.array([F0]), n_steps=4)
         elif lane == 'waveguide_s_matrix':
+            # f0 sheet size is not this test's subject (sheet_effective_size)
+            # _wr90 declares its snap policy; this cell stops at kernel handoff.
             sim = set_model(_wr90())
             if model == 'pec':
                 # This context/ownership cell pins no S value: align the cavity.

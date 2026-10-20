@@ -747,11 +747,12 @@ def _design_cube():
 
 def _wr90(n_modes=1, *, solved_domain=False):
     """Coarse WR-90 two-port with a sheet across the guide."""
+    # f0 sheet size is not this test's subject (sheet_effective_size)
     sim = Simulation(
         freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3) if solved_domain else (0.06, 0.02286, 0.01016), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=6)  # solved length; #1887
+        cpml_layers=6, snap="declared")  # solved length; #1887
     _sheet(sim, Box((0.02, 0.0, 0.005), (0.04, 0.02286, 0.005)))
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
@@ -1113,8 +1114,9 @@ def test_vmap_sweep_fallback_still_applies_the_sheet():
     from rfx.vmap_sweep import vmap_material_sweep
 
     def build(with_sheet):
+        # f0 sheet size is not this test's subject (sheet_effective_size)
         sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
-                         boundary="pec")
+                         boundary="pec", snap="declared")
         sim.add_material("substrate", eps_r=4.0)
         sim.add(Box((2e-3, 2e-3, 2e-3), (18e-3, 18e-3, 9e-3)),
                 material="substrate")
@@ -1470,8 +1472,9 @@ def test_coplanar_abutting_one_cell_strips_keep_both_in_plane_components():
 
 
 def _stacked_gap_sim():
+    # f0 sheet size is not this test's subject (sheet_effective_size)
     sim = Simulation(freq_max=20e9, domain=(4e-3, 4e-3, 4e-3), dx=DX,
-                     boundary="pec")
+                     boundary="pec", snap="declared")
     for zc in (2.0e-3, 2.25e-3):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -1601,8 +1604,9 @@ def test_periodic_seam_gap_edge_stays_vetoed():
 
 
 def _tmz_sim(kind):
+    # f0 sheet size is not this test's subject (sheet_effective_size)
     sim = Simulation(freq_max=30e9, domain=(0.02, 0.02, 0.001), dx=1e-3,
-                     boundary="pec", mode="2d_tmz")
+                     boundary="pec", mode="2d_tmz", snap="declared")
     if kind == "pec":
         sim.add(TMZ_PATCH, material="pec")
     elif kind == "f0":
