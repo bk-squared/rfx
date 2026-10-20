@@ -123,6 +123,12 @@ Run it from the command line:
 python scripts/precompute_gallery_artifacts.py --case waveguide_wr90
 ```
 
+The run prints two notes. Preflight says the top of the band, 12.4 GHz, is above
+0.9 of the TE20 cutoff (13.1 GHz): TE20 is odd across the broad wall, so the
+symmetric TE10 launch does not excite it in an empty guide, and `|S11|` stays
+smooth to 12.4 GHz. The calculator says that with `normalize=False` the S21
+phase includes Yee dispersion; this page reads magnitudes.
+
 ## Fields
 
 E_z on the broad-wall mid-plane of a source-fed empty guide, captured once the
