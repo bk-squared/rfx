@@ -328,7 +328,7 @@ before a release. Record pass/fail
 counts in tracked release notes or a committed validation artifact suitable
 for the claim.
 
-**Before a release**, the `crossval-ladder` workflow (`.github/workflows/crossval-ladder.yml`: the `crossval_ladder` cases this suite excludes, monthly and on dispatch) must be green on the commit being released.
+**Before a release**, the `crossval-ladder` kind in the merge train Mac runner (agent-rules `_configs/scripts/merge_train_weekly_gpu.py`: the `crossval_ladder` cases this suite excludes, monthly and on request on remi `gpu-24gb`; results to `rfx-lead`, records in `bk-workspace/.localci/weekly-gpu/`) must be green on the commit being released.
 
 One-off investigation YAMLs live in `scripts/archive/`. Do not resurrect them — write a
 new YAML off the gpu_suite template.

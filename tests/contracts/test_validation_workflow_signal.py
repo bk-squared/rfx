@@ -15,10 +15,9 @@ reddening anything:
    literal stops matching the moment the schedule is edited, and the job then
    skips on every scheduled run forever with nothing saying so.
 3. The workflow declares exactly one cron. Every job here runs on every
-   trigger, so a second cron entry would put the slow suite and a GPU seat
-   (``weekly-a6000-lane``) on that schedule too. Adding one is allowed; doing it
-   without re-reading what it starts is not. (Until 2026-09-21 the reason was a
-   120-minute Meep job, ``crossval-external``; it left with the last scheduled
+   trigger, so a second cron entry would put the slow suite on that schedule
+   too. Adding one is allowed; doing it without re-reading what it starts is
+   not. (Until 2026-09-21 the reason was a 120-minute Meep job, ``crossval-external``; it left with the last scheduled
    cross-validation case.)
 4. The notifier counts ``skipped`` as not green. No job here is supposed to skip
    on either trigger, so a skip means the lane quietly stopped covering
@@ -31,13 +30,13 @@ reddening anything:
    lane loses their results.
 7. ``regen-durations.yml``'s ``slow`` job installs and selects what ``slow-tests``
    does, so the prices it measures are for the tests those shards actually run.
-8. Six weekly shards store and upload their durations, record their start after
+8. Eight weekly shards store and upload their durations, record their start after
    checkout, and finish with an always-run check against 85 % of the job limit.
 
-The tests parse the workflow instead of grepping it, so reformatting the file
-cannot fool them. They run on every scheduled lane that carries this notifier:
-``validation.yml`` and, since the full-ladder cases moved out of it (2026-09-27),
-the monthly ``crossval-ladder.yml``.
+The notifier tests parse ``validation.yml`` so reformatting cannot fool them.
+A separate contract scans every workflow for forbidden VESSL dependencies.
+GPU and monthly full-ladder checks now run from the merge train's Mac runner
+in agent-rules.
 """
 
 from __future__ import annotations
@@ -58,7 +57,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 NOTIFY_JOB = "notify"
 #: Each scheduled lane with the #717 notifier, and the one cron it declares.
-LANES = {"validation.yml": "0 6 * * 1", "crossval-ladder.yml": "0 12 1 * *"}
+LANES = {"validation.yml": "0 6 * * 1"}
 lanes = pytest.mark.parametrize("name", sorted(LANES))
 
 
@@ -135,7 +134,7 @@ def test_validation_declares_exactly_one_cron(name: str) -> None:
     crons = _crons(_workflow(name))
     assert crons == [LANES[name]], (
         f"{name} now declares {crons}. Every cron here starts the whole lane, "
-        "and each of these lanes holds a GPU seat. Re-read what a new schedule "
+        "including every slow-tests shard. Re-read what a new schedule "
         "starts before adding it, then update LANES."
     )
 
@@ -373,40 +372,17 @@ def test_weekly_budget_survives_a_truncated_measured_file(tmp_path: Path) -> Non
     assert "measured durations file unreadable" in under.stdout.splitlines()
 
 
-TWO_CARD_JOB = "weekly-a6000x2-multigpu"
-TWO_CARD_FILE = REPO_ROOT / "scripts" / "vessl_validation_multigpu_a6000x2.yaml"
-
-
-def test_two_card_job_follows_the_single_card_lane_even_when_it_fails() -> None:
-    # One GPU job at a time, and a red single-card lane must not hide the two-card result.
-    job = _workflow("validation.yml")["jobs"][TWO_CARD_JOB]
-    assert job["needs"] == ["weekly-a6000-lane"]
-    assert job["if"].replace(" ", "") == "${{!cancelled()}}"
-    run = next(s["run"] for s in job["steps"] if "vessl run create" in s.get("run", ""))
-    assert "scripts/vessl_validation_multigpu_a6000x2.yaml" in run
-    assert 'RFX_SHA: \\"origin/main\\"' in run, "the step pins the SHA by rewriting this exact line"
-    assert run.strip().splitlines()[-1].strip() == '[ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }'
-
-
-def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
-    spec = yaml.safe_load(TWO_CARD_FILE.read_text(encoding="utf-8"))
-    assert spec["resources"]["preset"] == "gpu-a6000-2"
-    assert spec["env"]["RFX_SHA"] == "origin/main"
-    assert spec["mount"] == {"/results": "volume://remilab-fs/rfx-vessl-tests"}
-    lines = [line.strip() for line in spec["run"].splitlines()]
-    # Whole lines, so a commented-out guard, an appended `|| true` or a collect-only
-    # pytest call does not pass. Without the guard a node with one visible card skips
-    # every test and ends green.
-    guard = lines.index(
-        '"$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; '
-        "assert jax.__version__ == '0.10.2', jax.__version__; "
-        "gpus = [d for d in jax.devices() if d.platform == 'gpu']; "
-        'assert len(gpus) >= 2, jax.devices()"'
+def test_no_workflow_uses_vessl() -> None:
+    workflows = sorted(
+        path for path in WORKFLOWS_DIR.rglob("*")
+        if path.is_file() and path.suffix in {".yml", ".yaml"}
     )
-    tests = lines.index(
-        'timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests/gpu > "$OUT/multi_gpu.log" 2>&1'
-    )
-    assert lines[0] == "set -eu", "a failed guard must stop the job"
-    assert guard < tests
-    assert lines[tests + 1] == "RC=$?"
-    assert lines[-1] == '[ "$RC" -eq 0 ]'
+    assert workflows, "no workflows found"
+    forbidden = ("vessl run create", "VESSL_ACCESS_TOKEN", "vars.VESSL_", "environment: vessl")
+    violations = [
+        f"{path.relative_to(WORKFLOWS_DIR)}:{number}: {token}"
+        for path in workflows
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        for token in forbidden if token in line
+    ]
+    assert not violations, "VESSL workflow dependencies:\n" + "\n".join(violations)

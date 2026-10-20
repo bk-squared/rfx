@@ -45,9 +45,8 @@ _B = r"""(?:^|(?<=[\s;{(|&"'=]))"""
 PY_ASSIGN = re.compile(_B + r"(?:export\s+)?PY=")
 IMAGE_PYTHON = re.compile(_B + r"(?:/[^\s\"']*/)?python[0-9.]*(?=[\s\"';)]|$)")
 PYTEST = re.compile(_B + r"(?:/[^\s\"']*/)?pytest(?=[\s\"';)]|$)")
-JOBS = ["scripts/vessl_gpu_suite.yaml",                 # per release and after GPU-touching merges
-        "scripts/vessl_validation_lane_a6000.yaml",     # weekly A6000 lane (validation.yml cron)
-        "scripts/vessl_crossval_ladder.yaml"]           # monthly crossval-ladder lane (crossval-ladder.yml cron)
+# Weekly A6000 and monthly ladder job pins now live in agent-rules.
+JOBS = ["scripts/vessl_gpu_suite.yaml"]  # per release and after GPU-touching merges
 
 
 def _job_text(path):

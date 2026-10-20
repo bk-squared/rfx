@@ -57,8 +57,8 @@ under test. The remedy is to measure the battery again, not to move anything in
 this file.
 
 Lane: gpu and slow, the gpu step of the weekly A6000 lane
-(scripts/vessl_validation_lane_a6000.yaml, submitted by validation.yml's
-weekly-a6000-lane job). That step runs ``pytest -m gpu``; its run of
+(agent-rules _configs/scripts/merge_train_weekly_gpu.py on the merge train's
+Mac runner, remi gpu-a6000). Its gpu selection excludes crossval_ladder. The historical run of
 2026-09-23 at 3247dc0e ended gpu_rc=0 with 171 passed. Wall time: 60 s on the
 A6000 for the notch (run 369367264070); 75 s for the notch and 68 s for the
 thru on an RTX 3080 (run 369367264556). The notch's solve takes 34 min on four

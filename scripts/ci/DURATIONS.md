@@ -1,5 +1,9 @@
 # .test_durations — provenance
 
+2026-10-20: Removed 12 obsolete workflow/job test node IDs from each duration file
+after moving the A6000 and monthly ladder jobs to agent-rules. Remaining prices
+are unchanged; the entry counts below reflect this pruning.
+
 Regenerated 2026-10-16 at `edd70b41efe86a5cf09fc15424a0e1efe5dea363` (branch `ci/cached-durations`,
 whose base is `main` `2202b0565`, the merge of #1779) from `regen-durations` run
 [38828042377](https://github.com/bk-squared/rfx/actions/runs/38828042377) with `lanes=fast`,
@@ -7,7 +11,7 @@ measured 2026-10-16 00:11-01:15 UTC on `ubuntu-latest` with Python 3.11.17 / JAX
 pytest 9.1.1, pytest-split 0.11.0 and trimesh 5.1.1 (the `cad` extra). Only the fast lane was
 re-measured: each fast job ran with JAX's on-disk compilation cache in one empty directory per job,
 as pr-tests' fast suite does since #1779, so the fast prices are what that lane now pays.
-**24652 entries in the file**, of which **347 of them carried unchanged** from the
+**24640 entries in the file**, of which **347 of them carried unchanged** from the
 20407-entry file this replaces. All 12 fast jobs succeeded; slow was skipped. The fast (6) pytest
 summary reports one failed test,
 `tests/locks/test_lock_provenance_gate.py::test_lock_is_not_expired[test_cpml_axis_params_refactor_bit_identical]`
@@ -249,9 +253,9 @@ measured the uncached prices. The old fast-lane prices underpredicted measured
 weekly work by x1.05–1.48 (leader's per-shard comparison); shard 4 used 9270 s,
 above the 85 % budget, and shard 5 was cancelled at the 180-minute limit.
 
-**27,382 entries in the weekly file**, with **87 fast-lane fallback prices**.
+**27,370 entries in the weekly file**, with **87 fast-lane fallback prices**.
 Values are rounded to 0.01 s and the file keeps only test ids the weekly selection collects
-(rfx-lead D:b089a0): 3,290,060 bytes.
+(rfx-lead D:b089a0): 3,290,060 bytes at regeneration, before the pruning noted above.
 Weekly collection contains 27,440 tests, of which 58 have no entry in any
 input and receive pytest-split's mean-of-recorded-selection estimate. The fast-lane
 fallback count refers to retained `.test_durations` entries with no weekly source,

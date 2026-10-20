@@ -94,7 +94,9 @@ The current reference lane should remain tied to concrete reproducible evidence,
 
 The former `validation/crossval/manifest.json` and script runner were removed.
 Full comparison ladders use the `crossval_ladder` marker and the
-`.github/workflows/crossval-ladder.yml` workflow.
+merge train Mac runner in agent-rules `_configs/scripts/merge_train_weekly_gpu.py`
+(kind `crossval-ladder`, monthly on remi `gpu-24gb`; results to `rfx-lead`,
+records in `bk-workspace/.localci/weekly-gpu/`).
 
 ## Shadow-lane relationship
 The nonuniform graded-z lane is preserved, but it is not claims-bearing until its own contract and benchmark ladder exist.

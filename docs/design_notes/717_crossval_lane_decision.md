@@ -1,5 +1,7 @@
 # Which lane runs the crossval CPU tier and the external-solver legs (#717 item 2)
 
+> 2026-10-20: Historical analysis below; the referenced VESSL weekly-lane file has been deleted. A6000 checks and the monthly crossval-ladder now run via the merge train Mac runner, agent-rules `_configs/scripts/merge_train_weekly_gpu.py`, with records in `bk-workspace/.localci/weekly-gpu/` and results to `rfx-lead`.
+
 Decision note. No code change here — issue #717 item 2 asks a question only the PI can
 answer, so this file is the inventory and the options, not a lane.
 
