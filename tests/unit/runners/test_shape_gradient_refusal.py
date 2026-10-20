@@ -117,12 +117,12 @@ def pec_box_objective(radius, smoothing):
 @pytest.mark.parametrize("transform", ["jit", "vmap"])
 def test_d_smoothed_shape_transform_in_cpml_refuses(entry, graded, smoothing, transform):
     # Whether a traced shape reaches the absorber has no concrete answer; this
-    # was a raw ConcretizationTypeError. Graded full_tensor and kottke_pec keep
-    # their own earlier refusals.
+    # was a raw ConcretizationTypeError. Graded kottke_pec keeps its own
+    # earlier refusal; graded full_tensor is admitted and reaches this one.
     def loss(radius):
         return objective(radius, entry, graded=graded, smoothing=smoothing)
 
-    match = ("continued into it" if not graded or smoothing is True
+    match = ("continued into it" if not graded or smoothing != "kottke_pec"
              else "uniform single-device|non-uniform mesh")
     with pytest.raises(NotImplementedError, match=match):
         if transform == "jit":
