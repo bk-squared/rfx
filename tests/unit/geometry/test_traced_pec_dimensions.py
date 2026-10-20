@@ -7,13 +7,15 @@ import pytest
 from rfx import Box, Simulation, Sphere
 
 
-def _shape_run(value, kind, smoothing, graded):
+def _shape_run(value, kind, smoothing, graded, material="pec"):
     sim = Simulation(
         freq_max=10e9, domain=(.008, .008, .008), dx=.001, boundary="pec",
         **({"dz_profile": np.full(8, .001)} if graded else {}))
     shape = (Box((.002, .002, .002), (.005 + value, .005, .005))
              if kind == "Box" else Sphere((.004, .004, .004), .002 + value))
-    sim.add(shape, material="pec")
+    if material == "dielectric":
+        sim.add_material("dielectric", eps_r=2.25)
+    sim.add(shape, material=material)
     return jnp.sum(sim.forward(n_steps=2, skip_preflight=True,
                               subpixel_smoothing=smoothing).time_series**2)
 
@@ -40,3 +42,15 @@ def test_pec_shape_derivative_keeps_existing_refusal(kind, route):
             jax.jvp(fn, (jnp.float32(0.),), (jnp.float32(1.),))
         else:
             jax.grad(fn)(jnp.float32(0.))
+
+
+@pytest.mark.parametrize("smoothing", [False, True])
+@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize("route", ["jit", "vmap"])
+def test_dielectric_box_refuses_traced_bounds(smoothing, graded, route):
+    fn = lambda value: _shape_run(value, "Box", smoothing, graded, material="dielectric")
+    with pytest.raises(NotImplementedError, match="Box.*traced extent.*any material.*concrete Box"):
+        if route == "jit":
+            jax.jit(fn)(jnp.float32(0.))
+        else:
+            jax.vmap(fn)(jnp.zeros(2))

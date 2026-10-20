@@ -32,29 +32,6 @@ def concrete_distributed_x_cells(grid):
     return np.asarray(grid.dx_arr, dtype=np.float64)
 
 
-def check_traced_z_extent(profile, domain):
-    """Judge eager primals now and abstract widths through the shared callback."""
-    if domain is None or not is_tracer(profile):
-        return
-    from rfx._traced_check import traced_check
-
-    def check(widths):
-        widths = np.asarray(widths)
-        total = float(np.sum(widths, dtype=np.float64))
-        extent = float(domain[2])
-        # Input-width rounding, without adding float32 reduction error.
-        rounding = np.finfo(widths.dtype).eps * float(np.sum(np.abs(widths), dtype=np.float64))
-        if not np.isfinite(total) or abs(total - extent) > max(1e-12, rounding):
-            raise ValueError(
-                f"Traced dz_profile sums to {total:.12g} m but the declared "
-                f"z extent is {extent:.12g} m. Make the cell widths sum to "
-                "the declared domain extent.")
-
-    concrete = profile.to_concrete_value()
-    traced_check("graded mesh", "z profile extent", check,
-                 profile if concrete is None else concrete)
-
-
 class NominalProfile(NamedTuple):
     """Concrete interior widths and optional half-open deformation windows.
 

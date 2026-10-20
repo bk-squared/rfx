@@ -846,8 +846,6 @@ def make_nonuniform_grid(
         on this profile's node line. Validated by
         :func:`rfx.model.graded_admission.admit_nominal_profiles`.
     """
-    from rfx.model.graded_admission import check_traced_z_extent
-    check_traced_z_extent(dz_profile, domain)
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
     boundary_depths = boundary_depths if boundary_depths is not None else resolve_face_depths(

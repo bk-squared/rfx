@@ -1,4 +1,6 @@
 """A traced mesh must not reach Python truth conversion of PEC edge masks."""
+import warnings
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -24,11 +26,14 @@ def _observable(delta):
 
 @pytest.mark.parametrize("route", ["jit", "vmap"])
 def test_traced_wire_conductor_live_cells_refuse(route):
-    with pytest.raises(NotImplementedError, match="graded wire port.*conductor.*concrete mesh"):
+    with pytest.raises(NotImplementedError, match="graded wire port.*conductor.*concrete mesh") as exc:
         if route == "jit":
             jax.jit(_observable)(jnp.float32(0.))
         else:
             jax.vmap(_observable)(jnp.zeros(2))
+    assert isinstance(exc.value, jax.errors.TracerArrayConversionError)
+    assert "eager jax.jvp/jax.grad" in str(exc.value)
+    assert "optimize(jit=False)" in str(exc.value)
 
 
 @pytest.mark.parametrize("route", ["jvp", "grad"])
@@ -42,12 +47,14 @@ def test_eager_wire_mesh_derivative(route):
 def test_optimize_wire_conductor_mesh(jit):
     # The nested simulation's mesh is a design variable on the objective tape.
     objective = lambda result: _observable(jnp.sum(result.time_series) * 1e-6)
-    kwargs = dict(n_iters=1, n_steps=4, verbose=False, skip_preflight=True, jit=jit)
+    kwargs = dict(n_iters=2, n_steps=4, verbose=False, skip_preflight=True, jit=jit)
     region = DesignRegion((.005, .005, .002), (.007, .007, .004))
-    if jit:
-        with pytest.raises(NotImplementedError, match="graded wire port.*conductor"):
-            optimize(_board(0.), region, objective, **kwargs)
-    else:
+    with warnings.catch_warnings(record=True) as records:
+        warnings.simplefilter("always")
         result = optimize(_board(0.), region, objective, **kwargs)
-        assert len(result.loss_history) == 1
-        assert np.isfinite(result.loss_history).all()
+    assert len(result.loss_history) == 2
+    assert np.isfinite(result.loss_history).all()
+    fallback = [r for r in records if "every iteration now recompiles" in str(r.message)]
+    assert len(fallback) == int(jit)
+    if jit:
+        assert "TracedWireLiveCellsError" in str(fallback[0].message)

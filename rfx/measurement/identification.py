@@ -1,10 +1,11 @@
 """Resolve ring-down identification channels before the time loop."""
+import inspect
 import warnings
 
 from rfx._grid_metric import field_index
 
 
-def resolve_identification_probes(probes, grid, pads, add):
+def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=True):
     """Keep declared columns and warn once for repeated cell/component keys."""
     keys = []
     groups = {}
@@ -20,10 +21,16 @@ def resolve_identification_probes(probes, grid, pads, add):
         groups.setdefault(key, []).append(number)
         add(component, idx, wire=False)
     duplicates = [indices for indices in groups.values() if len(indices) > 1]
-    if duplicates:
+    if duplicates and warn_duplicates:
+        frame = inspect.currentframe().f_back
+        stacklevel = 2
+        while frame is not None and frame.f_globals.get("__name__", "").startswith("rfx."):
+            stacklevel += 1
+            frame = frame.f_back
+        del frame
         warnings.warn(
             f"Duplicate ring-down identification probe indices {duplicates} "
             "(zero-based) resolve to the same cell and component and produce "
             "identical columns. Remove the repeated probes or move them to "
-            "different cells.", UserWarning, stacklevel=3)
+            "different cells.", UserWarning, stacklevel=stacklevel)
     return tuple(keys)

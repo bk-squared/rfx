@@ -775,8 +775,8 @@ def _node_tie_band(c, xp):
 def _box_zero_axes(lo, hi):
     if any(is_tracer(v) for corner in (lo, hi) for v in corner):
         raise NotImplementedError(
-            "A Box with a traced extent cannot choose sheet or volume "
-            "ownership. Use concrete Box corners outside jit/vmap.")
+            "A Box with a traced extent cannot resolve its bounds on grid "
+            "cells, for any material. Use concrete Box corners outside jit/vmap.")
     return [i for i in range(3) if float(hi[i]) - float(lo[i]) == 0.0]
 
 

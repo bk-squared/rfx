@@ -31,6 +31,13 @@ class GradedPorts(NamedTuple):
     port_specs: list
 
 
+class TracedWireLiveCellsError(NotImplementedError, jax.errors.TracerArrayConversionError):
+    """Named host-read refusal compatible with the optimizer's eager fallback."""
+
+    def __init__(self, message):
+        NotImplementedError.__init__(self, message)
+
+
 def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                           pec_edge_masks, sizing_n, lane, s_param_freqs, compute_s_params=None):
     """Stamp positive-impedance ports without owning the source queue.
@@ -104,10 +111,11 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             if pec_edge_masks is not None:
                 if any(isinstance(mask, jax.core.Tracer)
                        for mask in jax.tree.leaves(pec_edge_masks)):
-                    raise NotImplementedError(
+                    raise TracedWireLiveCellsError(
                         "A graded wire port beside a conductor cannot choose "
-                        "live cells from traced PEC edge masks. Use jit=False "
-                        "or a concrete mesh.")
+                        "live cells from traced PEC edge masks. Use a concrete "
+                        "mesh, or eager jax.jvp/jax.grad. For optimization, "
+                        "use optimize(jit=False) to select the eager route.")
                 live_flags = [
                     not _edge_is_pec(pec_edge_masks, pe.component,
                                      c[0], c[1], c[2])

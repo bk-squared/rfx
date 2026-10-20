@@ -48,6 +48,7 @@ from rfx.interop import (
 from rfx.interop._design import (
     EXCLUDED_SIMULATION_ATTRS,
     EXPORTED_SIMULATION_ATTRS,
+    TRACED_ONLY_SIMULATION_ATTRS,
     _PINNED_RECORDS,
     _WAVEFORM_CODECS,
     _predict_legacy_spec,
@@ -522,22 +523,24 @@ def test_every_simulation_attribute_is_classified():
     """
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="cpml")
     live = set(vars(sim))
-    classified = set(EXPORTED_SIMULATION_ATTRS) | set(EXCLUDED_SIMULATION_ATTRS)
+    constructor = set(EXPORTED_SIMULATION_ATTRS) | set(TRACED_ONLY_SIMULATION_ATTRS)
+    classified = constructor | set(EXCLUDED_SIMULATION_ATTRS)
 
     assert not live - classified, (
         f"Simulation carries unclassified design state {sorted(live - classified)}; "
         f"add each name to EXPORTED_SIMULATION_ATTRS or "
-        f"EXCLUDED_SIMULATION_ATTRS in rfx/interop/_design.py"
+        f"TRACED_ONLY_SIMULATION_ATTRS in rfx/interop/_design.py"
     )
-    supported = live - set(EXCLUDED_SIMULATION_ATTRS)
-    assert set(EXPORTED_SIMULATION_ATTRS) == supported, (
-        "EXPORTED_SIMULATION_ATTRS has drifted from the live constructor: "
-        f"stale={sorted(set(EXPORTED_SIMULATION_ATTRS) - supported)}, "
-        f"missing={sorted(supported - set(EXPORTED_SIMULATION_ATTRS))}"
+    assert constructor == live, (
+        "the constructor-state inventory has drifted: "
+        f"stale={sorted(constructor - live)}, "
+        f"missing={sorted(live - constructor)}"
     )
-    assert not set(EXCLUDED_SIMULATION_ATTRS) & set(EXPORTED_SIMULATION_ATTRS), (
-        "an attribute cannot be both exported and excluded"
+    assert not set(EXCLUDED_SIMULATION_ATTRS) & live, (
+        "an attribute listed as excluded is set by the constructor: "
+        f"{sorted(set(EXCLUDED_SIMULATION_ATTRS) & live)}"
     )
+    assert not set(EXPORTED_SIMULATION_ATTRS) & set(TRACED_ONLY_SIMULATION_ATTRS)
 
 
 def test_every_builder_method_is_covered_by_the_document():
