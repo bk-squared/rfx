@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from rfx.boundaries.axes import hi_face_is_wall
 from rfx.core.yee import EPS_0, MU_0
+from rfx.model.waveguide_waveform import waveguide_waveform_error
 from rfx.model.waveguide_mode_solver import (
     _aperture_area,
     _cell_centred_gradient,
@@ -124,7 +125,7 @@ class WaveguidePortConfig(NamedTuple):
     dft_total_steps: int
 
     # Source waveform parameters. ``waveform`` selects the pulse shape:
-    # ``"differentiated_gaussian"`` (legacy, src = -2·arg·exp(-arg²)) or
+    # ``"differentiated_gaussian"`` is refused (circular precursor, #1942);
     # ``"modulated_gaussian"`` (Meep-style, src = cos(2π·f₀·(t-t₀))·exp(-arg²)).
     # ``src_fcen`` is only used by the modulated-Gaussian dispatch.
     src_amp: float
@@ -745,10 +746,9 @@ def init_waveguide_port(
             )
         f_c = cutoff_frequency(port.a, port.b, m, n)
 
-    if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+    if waveform != "modulated_gaussian":
         raise ValueError(
-            "waveform must be 'differentiated_gaussian' or 'modulated_gaussian', "
-            f"got {waveform!r}"
+            waveguide_waveform_error(waveform)
         )
     if waveform == "modulated_gaussian":
         # Meep gaussian_src_time convention: width = 1/fwidth,

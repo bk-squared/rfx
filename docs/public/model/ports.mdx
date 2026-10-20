@@ -324,6 +324,9 @@ print(guide.s_matrix_lane())
 ```
 
 Compute the matrix with `guide.compute_waveguide_s_matrix(normalize=...)`.
+`waveform="differentiated_gaussian"` is refused on waveguide ports: its
+zero-phase incident filter wraps the precursor to the record end and
+re-injects there (#1942). Use `waveform="modulated_gaussian"` (the default).
 [Waveguide Ports](/rfx/guide/waveguide-ports/) covers normalization,
 calibration planes and junctions.
 

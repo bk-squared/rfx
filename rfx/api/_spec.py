@@ -1179,7 +1179,7 @@ class _WaveguidePortEntry:
     reference_plane: float | None
     probe_plane: float | None
     n_modes: int = 1
-    waveform: str = "differentiated_gaussian"
+    waveform: str = "modulated_gaussian"
     mode_profile: str = "analytic"
 
 

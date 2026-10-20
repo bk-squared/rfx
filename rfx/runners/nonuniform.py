@@ -349,6 +349,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
             ref_offset=entry.ref_offset,
             dft_total_steps=n_steps,
             dt=float(grid.dt),
+            waveform=entry.waveform,
         )
     return init_waveguide_port(
         port, grid, freqs,
@@ -359,6 +360,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         ref_offset=entry.ref_offset,
         dft_total_steps=n_steps,
         dt=float(grid.dt),
+        waveform=entry.waveform,
     )
 
 

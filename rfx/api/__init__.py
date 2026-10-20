@@ -1780,10 +1780,10 @@ class Simulation(
         ``"modulated_gaussian"`` is the Meep-style bandpass pulse — no
         sub-cutoff DC content, so the in-band TFSF filter collapses to
         identity, reducing directional leakage in the H+E injection pair.
-        ``"differentiated_gaussian"`` matches historical (legacy) rfx behaviour.
-        Preliminary measurement shows directionality backward/forward
-        ratio 13.3 % → 8.2 % for a WR-90 at f₀=10 GHz; further gains
-        await the discrete-eigenmode profile work (P3).
+        ``"differentiated_gaussian"`` is refused on waveguide ports: its
+        zero-phase incident filter wraps the precursor to the record end
+        and re-injects there (#1942). Use ``"modulated_gaussian"``
+        (the default).
         """
         scalar_checks = [
             ("x_position", x_position, False),
@@ -1823,10 +1823,10 @@ class Simulation(
                 "direction must be one of '+x', '-x', '+y', '-y', '+z', or '-z', "
                 f"got {direction!r}"
             )
-        if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+        if waveform != "modulated_gaussian":
+            from rfx.model.waveguide_waveform import waveguide_waveform_error
             raise ValueError(
-                "waveform must be 'differentiated_gaussian' or "
-                f"'modulated_gaussian', got {waveform!r}"
+                waveguide_waveform_error(waveform)
             )
         if mode_profile not in ("analytic", "discrete"):
             raise ValueError(
