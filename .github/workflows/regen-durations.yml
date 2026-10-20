@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Raise the memory-mapping limit for the test process
-        # JAX keeps every compiled program mapped until its test module ends. On
+        # JAX keeps compiled programs mapped; some files release none at module end. On
         # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
         # the default 65,530 mappings and it died inside the compiler (measured
         # on the pre-push gate machine). The first command prints this runner's
@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Raise the memory-mapping limit for the test process
-        # JAX keeps every compiled program mapped until its test module ends. On
+        # JAX keeps compiled programs mapped; some files release none at module end. On
         # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
         # the default 65,530 mappings and it died inside the compiler (measured
         # on the pre-push gate machine). The first command prints this runner's

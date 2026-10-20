@@ -75,3 +75,11 @@ def test_set_clears_once_per_module_after_its_teardown(tmp_path: Path) -> None:
 
 def test_unset_registers_nothing(tmp_path: Path) -> None:
     assert "clear" not in _events(tmp_path, enabled=False)
+
+
+def test_the_repo_conftest_loads_the_plugin() -> None:
+    # The child runs above load the plugin with -p; the weekly lane gets it
+    # only through conftest.py's pytest_plugins.
+    import conftest
+
+    assert "tests._module_cache_clear" in conftest.pytest_plugins
