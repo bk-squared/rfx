@@ -18,10 +18,8 @@ from tests._x64_compat import enable_x64
 MAIN_DB = {"float32": -69.48420364272383, "float64": -69.48420282431248}
 MAIN_WEAK_DB = {"float32": -69.48420216761977, "float64": -69.48420282431276}
 MAIN_RUN_DB = -57.23354351101009
-# Main 0bdf8ccd9: the weak high-Q port set, and a lone Hz null probe beside an
-# Hy probe at another cell (30 x 30 x 15 mm box, 2099 steps).
+# Main 0bdf8ccd9: the weak high-Q port set.
 MAIN_WEAK_PORT_DB = -0.9814364822109212
-MAIN_LONE_NULL_DB = 2.517795377364957
 OPTIONS = dict(dt=1., freqs=[.07], freq_max=.15, source_end_index=0, return_detail=True)
 
 
@@ -272,7 +270,12 @@ def test_lone_null_probe_is_scored_and_the_warning_says_why():
     assert detail['skipped_records'] == []
     assert detail['lone_records'] == ['probe0(hz)', 'probe1(hy)']
     assert detail['worst_record'] == 'probe0(hz)'
-    assert result.settling_db == pytest.approx(MAIN_LONE_NULL_DB, abs=1e-9)
+    # The record holds only rounding, so its score depends on the platform's
+    # arithmetic (main: +2.52 dB on macOS, -19.3 dB on the Linux gate). Only
+    # the verdict is portable: it is scored, and it fails the -40 dB bar.
+    assert detail['status'] == 'fail'
+    assert np.isfinite(detail['per_record_db']['probe0(hz)'])
+    assert result.settling_db > -40.0
     message, = [str(row.message) for row in caught if 'cut transient' in str(row.message)]
     assert ('worst probe record probe0(hz) (no other component of its field (E or H) is recorded at its '
             'cell: a probe on a field null holds only rounding and cannot be judged '
