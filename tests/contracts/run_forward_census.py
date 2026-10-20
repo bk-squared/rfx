@@ -812,6 +812,12 @@ def port_s_pair(declaration, path, *, n_steps=150):
     # columns of non-excited ports run-only BY CONSTRUCTION.
     RUN_ONLY_PORT_COLUMNS = tuple(k for k, port in enumerate(
         pe for pe in sim._ports if pe.impedance != 0) if not port.excite)
+    if path == 'multi-device-graded' and RUN_ONLY_PORT_COLUMNS:
+        # Stated fact: graded run() forms a passive port's column only on one
+        # device (one drive per port); on several it refuses that request by name.
+        with pytest.raises(NotImplementedError, match='needs a drive of its own'):
+            invoke(sim, 'run', path, n_steps, dict(compute_s_params=True))
+        return {'run': {'outcome': 'refused'}, 'forward': {'outcome': 'not compared'}}
     run = invoke(sim, 'run', path, n_steps)
     if run.s_params is None:
         # A default run() that forms no S (two driven ports, a plain source,

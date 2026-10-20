@@ -495,7 +495,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                         lane: str = "run_nonuniform",
                         stop_fn=None,
                         stop_interval: int = 250,
-                        conformal_pec=None):
+                        conformal_pec=None,
+                        _drive_scan: bool = False):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -561,12 +562,30 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
-    if (lane == "run_nonuniform" and compute_s_params is not False
+    # run()'s S for the port sets uniform run() scans: one drive per port through
+    # the shared driver (compute_lumped_wire_s_matrix_via_scan), not this record.
+    from rfx.runners._admission import _s_matrix_ports, graded_lumped_default_s
+    # One excited lumped port alone reads S from the main record, as uniform run() does.
+    single_lumped = (len(sim._ports) == 1 and sim._ports[0].extent is None
+                     and sim._ports[0].impedance != 0.0 and sim._ports[0].excite)
+    scan = (lane == "run_nonuniform" and not _drive_scan and compute_s_params is not False
+            and _s_matrix_ports(sim) and not single_lumped
+            and (compute_s_params is True or s_param_freqs is not None
+                 or any(p.impedance != 0.0 and p.extent is not None for p in sim._ports)
+                 or graded_lumped_default_s(sim)))
+    if scan:
+        # The main record keeps its port records at the scan's bins; its S is not formed.
+        from rfx.measurement.monitors import default_frequency_grid
+        compute_s_params = True
+        s_param_freqs = (s_param_freqs if s_param_freqs is not None
+                         else default_frequency_grid(sim._freq_max, 50, host=True))
+
+    if not scan and (lane == "run_nonuniform" and compute_s_params is not False
             and any(p.impedance != 0.0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import refuse_plain_sources_s_matrix
         refuse_plain_sources_s_matrix(sim, main_record=True)
 
-    if (compute_s_params is not False
+    if not scan and (compute_s_params is not False
             and any(p.impedance > 0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import require_isolated_s_drive
         if not require_isolated_s_drive(
@@ -829,6 +848,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # advance them inside assembly, as in the original port loop.
     pec_edge_masks = conductors.pec_edges
     wire_port_specs = ports.port_specs
+    if scan:
+        for spec in wire_port_specs:
+            spec['record_s'] = False
     drives_by_port = {}
     for port_index, drive in ports.drives:
         drives_by_port.setdefault(port_index, []).append(drive)
@@ -1228,6 +1250,13 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     s_params = r.get("s_params")
     freqs_out = r.get("s_param_freqs")
+    s_settling = None
+    if scan:
+        from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+        # The main record's bins, as a record-read run() reports them.
+        s_params, _, s_settling = compute_lumped_wire_s_matrix_via_scan(
+            sim, freqs_out, n_steps=n_steps, conformal_pec=conformal_pec, return_settling=True,
+            skip_preflight=True, subpixel_smoothing=subpixel_smoothing)
 
     from rfx.measurement import package_declared_measurements
     declared_measurements = package_declared_measurements(
@@ -1271,6 +1300,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         time_series=r["time_series"],
         s_params=s_params,
         freqs=freqs_out,
+        **({} if s_settling is None else dict(settling_db=s_settling["db"], settling_witness=s_settling)),
         ntff_data=r.get("ntff_data"),
         ntff_box=ntff_box,
         current_moment_data=r.get("current_moment_data"),

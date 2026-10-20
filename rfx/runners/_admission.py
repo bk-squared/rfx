@@ -1101,7 +1101,7 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     message = (
         f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
         "set excite=False on every port but the driven one and run once per driven port, "
-        "or use the uniform run(compute_s_params=True), which drives one port per run"
+        "or use run(compute_s_params=True) on one device, which drives one port per run"
     )
     if fields_only:
         message += "; use run(compute_s_params=False) for fields only"
@@ -1205,11 +1205,20 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     if compute_s_params is False or not (requested or default_requested):
         return compute_s_params
     _one_device = devices is None or len(devices) <= 1
-    # S read from the main run's own record: the graded wire path and
-    # the uniform single-wire fast path (no scan, _s_matrix_ports False).
+    # S read from the main run's own record: the single-wire fast path on
+    # either mesh (no scan, _s_matrix_ports False).
     _main_record = (
         _one_device and sim._refinement is None and sim._solver != "adi"
-        and (sim._uses_nonuniform_mesh or not _s_matrix_ports(sim)))
+        and not _s_matrix_ports(sim))
+    if (not _one_device and sim._uses_nonuniform_mesh
+            and any(p.impedance != 0.0 and not getattr(p, "excite", True) for p in sim._ports)):
+        reason = ("A passive port's S column needs a drive of its own: graded run() drives each "
+                  "port in turn on one device; on several devices it reads S from one record. ")
+        if compute_s_params is None and not requested:
+            _warn_implicit_s(reason + "Run on one device for every column; returning no S-parameters.")
+            return False
+        raise NotImplementedError(reason + "Run on one device (omit devices=), or call "
+                                  "run(compute_s_params=False) for fields only.")
     if not refuse_plain_sources_s_matrix(
             sim, main_record=_main_record,
             implicit=compute_s_params is None and not requested):

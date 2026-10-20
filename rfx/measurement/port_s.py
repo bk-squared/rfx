@@ -215,8 +215,10 @@ def assemble_graded_ports_result(wire_sparams, wp_meta, records, request):
         # Ringdown's synthetic completion has only wire metadata and no owners.
         kinds = (tuple(request.port_owners[i].kind for i in request.port_acc_indices)
                  if request.port_acc_indices else tuple(p['kind'] for p in context.wire_ports))
-        result['s_params'] = port_s_from_record(
+        # A run() whose S comes from the drive scan keeps the records, not record S.
+        result['s_params'] = (port_s_from_record(
             wire_sparams, wp_meta, wire_mode=any(kind == 'wire' for kind in kinds))
+            if all(p.get('record_s', True) for p in getattr(context, 'wire_ports', ())) else None)
         result['wire_port_sparams'], result['lumped_port_sparams'] = pack_port_records(
             kinds, wire_sparams, wp_meta, graded=True, freqs=context.sp_freqs)
     result['sparam_time_records'] = from_owners(records, request.port_owners)

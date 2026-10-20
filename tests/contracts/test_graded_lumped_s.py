@@ -36,8 +36,8 @@ def test_binary_constant_lumped_s(entry, pair, record_property):
     build = lumped_pair if pair else (lambda nu: constant_scene(nu, 'lumped'))
     with enable_x64(False):
         uniform, graded = [evaluate(build(nu), entry) for nu in (False, True)]
-    # The driven column (port 0); the other column is unmeasured (NaN) on graded,
-    # and uniform run() fills it from its own separately driven scan.
+    # The driven column (port 0); run() on either mesh forms the other column
+    # from its own separately driven scan (#1915), forward() leaves it NaN.
     a, b = np.asarray(uniform.s_params)[:, :1], np.asarray(graded.s_params)[:, :1]
     delta = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128))))
     ulp = float(np.spacing(np.float32(np.max(np.abs(a)))))
@@ -68,13 +68,18 @@ def same_bits(a, b):
     assert a.tobytes() == b.tobytes()
 
 
-@pytest.mark.parametrize('case', ['lumped', 'lumped_wire', 'wire_lumped', 'passive'])
+@pytest.mark.parametrize('case', ['lumped', 'lumped_wire', 'wire_lumped'])
 @pytest.mark.parametrize('default_bins', [False, True])
 def test_equal_requests(case, default_bins):
+    # run() drives each port in turn; its driven port's column is forward()'s
+    # one record bit for bit, and the passive port's column is formed (NaN in forward).
     run = evaluate(scene(case), 'run', bins=None if default_bins else BINS)
     forward = evaluate(scene(case), 'forward', bins=np.asarray(run.freqs) if default_bins else BINS)
     same_bits(run.freqs, forward.freqs)
-    same_bits(run.s_params, forward.s_params)
+    measured = ~np.isnan(np.asarray(forward.s_params)).all(axis=(0, 2))
+    assert measured.sum() == 1      # forward(): the driven port's column only
+    same_bits(np.asarray(run.s_params)[:, measured], np.asarray(forward.s_params)[:, measured])
+    assert np.isfinite(np.asarray(run.s_params)).all()
     assert run.lumped_port_sparams and forward.lumped_port_sparams
     for field in ('lumped_port_sparams', 'wire_port_sparams'):
         left, right = getattr(run, field) or (), getattr(forward, field) or ()
@@ -84,14 +89,11 @@ def test_equal_requests(case, default_bins):
                 same_bits(x, y)
 
 
-def test_two_driven_refusal_prefix():
-    errors = []
-    for entry in ('forward', 'run'):
-        with pytest.raises(ValueError) as caught:
-            evaluate(scene('two_driven'), entry)
-        errors.append(caught.value)
-    assert type(errors[0]) is type(errors[1])
-    assert str(errors[1]).startswith(str(errors[0]))
+def test_two_driven_ports_forward_refuses_run_drives_each():
+    with pytest.raises(ValueError, match='isolated drive'):
+        evaluate(scene('two_driven'), 'forward')
+    s = np.asarray(evaluate(scene('two_driven'), 'run').s_params)
+    assert s.shape == (2, 2, len(BINS)) and np.isfinite(s).all()
 
 
 def test_s_off_keeps_lumped_records_only():
@@ -159,7 +161,8 @@ def test_all_lumped_graded_record_takes_the_lumped_decomposition(entry, monkeypa
     monkeypatch.setattr(probes, 'decompose_lumped_s_matrix', counted)
     with enable_x64(False):
         evaluate(lumped_pair(True), entry)
-    assert calls == [True]
+    # forward() reads one record; run() one per driven port.
+    assert calls == [True] * (2 if entry == 'run' else 1)
 
 
 def test_default_run_forms_lumped_s_as_an_explicit_request():
@@ -199,9 +202,9 @@ def test_default_run_never_refuses_for_s_it_was_not_asked_for(case):
     plain = [w for w in caught if 'do not support plain sources' in str(w.message)]
     assert bool(plain) == (case == 'plain_source')
     if case == 'two_driven':
-        # An explicit request graded cannot form still refuses.
-        with pytest.raises(ValueError, match='isolated drive'):
-            scene('two_driven').run(n_steps=32, skip_preflight=True, compute_s_params=True)
+        # An explicit request drives each port in turn and forms every column.
+        s = scene('two_driven').run(n_steps=32, skip_preflight=True, compute_s_params=True).s_params
+        assert np.isfinite(np.asarray(s)).all()
 
 
 @pytest.mark.distributed

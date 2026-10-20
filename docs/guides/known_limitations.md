@@ -71,9 +71,9 @@ before stepping when two or more impedance ports have excite=True. Graded
 forward() with neither port_s11_freqs nor ringdown warns once and returns
 s_params=None while the run proceeds.
 Set excite=False on every port but the driven one and run once per driven port,
-or use the uniform run(compute_s_params=True), which drives one port per run.
-Uniform run(), including its multi-device S driver, is unchanged. One excited
-port with passive receiver ports is unchanged.
+or use run(compute_s_params=True) on one device, which drives one port per run
+on the uniform and the graded mesh. Uniform run(), including its multi-device S
+driver, is unchanged. One excited port with passive receiver ports is unchanged.
 
 ### A partly metal cell edge (metal density between 0 and 1) is an artificial loss; a source on such an edge is scaled by the same weight
 

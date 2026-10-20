@@ -1,10 +1,10 @@
 """S read from one run's record needs something that excites it.
 
 Two 50 ohm lumped ports, both excite=False, in a small CPML box. With nothing
-else exciting the structure the record has no incident wave, and forward() and
-graded run() returned S = 0 at every bin. They now refuse; a plain source that
-lights the passive ports keeps the termination diagnostic (#1420). Uniform
-run() drives each port in turn, so it is not a record route and still forms S.
+else exciting the structure the record has no incident wave, and forward()
+returned S = 0 at every bin. It now refuses; a plain source that lights the
+passive ports keeps the termination diagnostic (#1420). run() on one device
+drives each port in turn on either mesh, so it is not a record route and forms S.
 """
 import warnings
 
@@ -40,23 +40,22 @@ def _call(sim, entry):
 
 
 @pytest.mark.parametrize('mesh,entry,wire', [
-    ('uniform', 'forward', False), ('graded', 'forward', False),
-    ('graded', 'run', False), ('graded', 'run', True), ('graded', 'forward', True)])
+    ('uniform', 'forward', False), ('graded', 'forward', False), ('graded', 'forward', True)])
 def test_undriven_record_refuses(mesh, entry, wire):
     with pytest.raises(ValueError, match=UNDRIVEN):
         _call(_box(mesh, wire=wire), entry)
 
 
-@pytest.mark.parametrize('mesh,entry', [
-    ('uniform', 'forward'), ('graded', 'forward'), ('graded', 'run')])
+@pytest.mark.parametrize('mesh,entry', [('uniform', 'forward'), ('graded', 'forward')])
 def test_passive_ports_lit_by_a_plain_source_keep_the_diagnostic(mesh, entry):
     s = np.asarray(_call(_box(mesh, source=True), entry))
     assert s.shape == (2, 2, FREQS.size) and np.isfinite(s).all() and np.abs(s).max() > 0
 
 
-def test_uniform_run_drives_each_port():
-    s = np.asarray(_call(_box('uniform'), 'run'))
-    assert s.shape == (2, 2, FREQS.size) and np.abs(s).max() > 0
+@pytest.mark.parametrize('mesh,wire', [('uniform', False), ('graded', False), ('graded', True)])
+def test_run_drives_each_port(mesh, wire):
+    s = np.asarray(_call(_box(mesh, wire=wire), 'run'))
+    assert s.shape == (2, 2, FREQS.size) and np.isfinite(s).all() and np.abs(s).max() > 0
 
 
 def test_default_wire_request_warns_and_returns_no_s():
