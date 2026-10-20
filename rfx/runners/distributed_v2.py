@@ -432,6 +432,8 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         single_device_hint = (
             "omit devices=... (use a single-device run() instead)"
             if lane == "distributed multi-device run()"
+            else "omit distributed=True (use a single-device forward() instead)"
+            if lane == "distributed multi-device forward()"
             else "call sim.run(...) without devices= instead of calling this runner"
         )
         remedy = f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
@@ -497,6 +499,8 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     single_device_hint = (
         "omit devices=... (use a single-device run() instead)"
         if lane == "distributed multi-device run()"
+        else "omit distributed=True (use a single-device forward() instead)"
+        if lane == "distributed multi-device forward()"
         else "call sim.run(...) without devices= instead of calling this runner"
     )
     refuse_distributed_periodic(sim, lane=lane, bloch=bloch)

@@ -1526,7 +1526,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         the GEOMETRIC condition, and neither is the other's proxy — on the
         board runs that opened #726 ``reliable`` was True on 100 % of in-band
         bins while the fitted Z0 was 2.4x the analytic value. What the
-        geometric condition costs was measured (VESSL 369367260508, cv06b
+        geometric condition costs was measured (VESSL 369367260508, the MSL notch filter,
         fixed-source, same source/load/DUT with only the p1 observation
         offset varied, both arms settled below −118 dB): the FITTED Z0/beta
         are what corrupt — the near-reflector arm's β scan railed on 51/51
@@ -1537,7 +1537,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         passive structure, by 0.31 % and 0.21 %, which is never reported here
         as physics: they are raw, unprojected values carrying the coherent
         power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one
-        fixture (cv06b), one bin (3.77125 GHz), an arm-to-arm difference —
+        fixture (the MSL notch filter), one bin (3.77125 GHz), an arm-to-arm difference —
         NOT a bound on ``S`` — and the comparison's producer verdict was
         ``not_read``. What it does show is that ``S`` moves far less than the
         fit, because it normalizes with the analytic Hammerstad–Jensen Z0

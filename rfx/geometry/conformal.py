@@ -63,7 +63,10 @@ CONFORMAL_MODEL_ADVISORY = (
 
 
 def warn_conformal_model():
-    """Say once per run that the conformal-PEC model enlarges a body (#1651)."""
+    """Warn on every conformal run that the conformal-PEC model enlarges a body (#1651).
+
+    Under Python's default warning filter it is shown once per process.
+    """
     warnings.warn(CONFORMAL_MODEL_ADVISORY, UserWarning, stacklevel=3)
 
 

@@ -1,8 +1,7 @@
-"""The rfx curves behind three cross-validation comparisons, saved as arrays at the judged rung.
+"""The rfx curves behind two cross-validation comparisons, saved as arrays at the judged rung.
 
-For the RT/Duroid 5880 probe-fed patch (|S11| and its input impedance), the
-MSL open-stub notch filter and the Sheen stepped-impedance low-pass filter
-(|S21|, |S11|), this script imports the case's own test module by path
+For the RT/Duroid 5880 probe-fed patch (|S11| and its input impedance) and the
+MSL open-stub notch filter (|S21|, |S11|), this script imports the case's own test module by path
 (``tests/crossval/<case>/test_<case>.py``, read-only), calls its ``run_rung``
 at the finest rung of its ``LADDER_M`` (the rung each test compares with the
 openEMS record's ``stage_b_fine``), and saves the curves together with the

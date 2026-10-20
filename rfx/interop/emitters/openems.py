@@ -91,7 +91,7 @@ docs/design_notes/geometry_setup_interop.md):
         of ``build_wire_openems_broad_envelope.py:12-16``, set "because the
         wire-port mid-cell convention has known mismatch with openEMS's
         lumped-port multi-cell averaging".  That is the floor on any agreement
-        claim for an emitted lumped/wire setup, looser than the cv06b mean gate
+        claim for an emitted lumped/wire setup, looser than the MSL notch filter's mean gate
         (0.13) and comparable to its max gate (0.25).
         The two rfx port builders use **opposite** ``direction=`` conventions,
         so the emitter resolves the sense per builder from the implementation:
@@ -1360,7 +1360,7 @@ def plan_openems_projection(
         "openEMS's lumped-port multi-cell averaging', and states that broad "
         "calibrated E5 still requires resolving the wire-port absolute "
         "calibration convention. 0.20 is therefore the FLOOR on any agreement "
-        "claim for an emitted lumped/wire setup — looser than the cv06b mean "
+        "claim for an emitted lumped/wire setup — looser than the MSL notch filter's mean "
         "gate (0.13) and comparable to its max gate (0.25), so a passing "
         "comparison at this tolerance is NOT evidence that the port models "
         "agree. Reference planes differ too: compare magnitudes only, because "

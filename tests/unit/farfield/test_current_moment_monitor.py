@@ -2436,9 +2436,9 @@ def test_every_user_facing_return_carries_the_backstop():
     for path in sorted((REPO_ROOT / "rfx").rglob("*.py")):
         text = path.read_text()
         returns = len(re.findall(
-            r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
+            r'_warn_if_nonfinite_result\(_res, context=(?:"(?:run|forward)"|entry)\)', text))
         guards = len(re.findall(
-            r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
+            r'require_accumulated_current_moments\(self, _res, (?:"(?:run|forward)"|entry)\)',
             text))
         if returns or guards:
             counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)

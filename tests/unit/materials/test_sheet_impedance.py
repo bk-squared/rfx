@@ -899,8 +899,18 @@ def test_fence_distributed_multidevice_run():
     process-global ``XLA_FLAGS`` device-count flip at import time)."""
     d = jax.devices()[0]
     _fence(lambda: _cube().run(n_steps=4, skip_preflight=True, devices=[d, d]),
-           where=("_execute.py", "run"),
+           where=("_distributed_entry.py", "execute_distributed"),
            match=r"on the distributed multi-device run\(\) lane")
+
+
+def test_fence_distributed_multidevice_forward():
+    from tests._multi_device_scene import host_devices
+
+    devices = host_devices(2)
+    _fence(lambda: _cube().forward(n_steps=4, skip_preflight=True,
+                                  distributed=True, devices=devices),
+           where=("_distributed_entry.py", "execute_distributed"),
+           match=r"on the distributed multi-device forward\(\) lane")
 
 
 def test_fence_distributed_nonuniform_forward():
@@ -1157,6 +1167,9 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/_distributed_entry.py", "execute_distributed",
      "distributed multi-device run()"):
         (__name__, "test_fence_distributed_multidevice_run"),
+    ("rfx/runners/_distributed_entry.py", "execute_distributed",
+     "distributed multi-device forward()"):
+        (__name__, "test_fence_distributed_multidevice_forward"),
     ("rfx/api/_execute.py", "run", "ADI run()"):
         (__name__, "test_fence_adi_run"),
     ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):

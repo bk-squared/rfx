@@ -47,8 +47,14 @@ def execute_from_materials(
     Run requests gathered fields and an assembly record; forward keeps the
     fields sharded. Sources, materials, ADE, CPML and PEC staging are shared.
     """
+    is_run = lane == "run_distributed_nu"
+    if n_steps < 1:
+        entry = "run(devices=...)" if is_run else "forward(distributed=True)"
+        raise ValueError(f"{entry} on a non-uniform mesh requires n_steps >= 1; got {n_steps}")
     from rfx.runners._distributed_entry import refuse_distributed_options
-    refuse_distributed_options(self, subpixel_smoothing=subpixel_smoothing)
+    refuse_distributed_options(self,
+        entry="run" if is_run else "forward",
+        subpixel_smoothing=subpixel_smoothing)
     from rfx.runners.distributed_v2 import refuse_distributed_periodic
     refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
     if self._interface_eps == "dual_average":
@@ -79,6 +85,7 @@ def execute_from_materials(
     if devices is None:
         devices = list(jax.devices())
     else:
+        call = "run(devices=...)" if is_run else "forward(distributed=True, devices=...)"
         available = list(jax.devices())
         # Reject lists longer than the available device count.  This
         # catches both "more devices than exist" and the duplicate-
@@ -87,7 +94,7 @@ def execute_from_materials(
         # opaque ``safe_zip`` traceback.
         if len(devices) > len(available):
             raise ValueError(
-                f"forward(distributed=True, devices=...): requested "
+                f"{call}: requested "
                 f"{len(devices)} devices but only {len(available)} are "
                 "available in jax.devices()."
             )
@@ -95,14 +102,14 @@ def execute_from_materials(
         # device to appear at most once.
         if len(set(map(id, devices))) != len(devices):
             raise ValueError(
-                "forward(distributed=True, devices=...): duplicate "
+                f"{call}: duplicate "
                 "device entries are not allowed; each device must "
                 "appear at most once."
             )
         for d in devices:
             if d not in available:
                 raise ValueError(
-                    f"forward(distributed=True, devices=...): device "
+                    f"{call}: device "
                     f"{d!r} is not in jax.devices() "
                     f"(available={len(available)} devices)."
                 )
