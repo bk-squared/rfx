@@ -77,6 +77,16 @@ def measured(case, entry):
     return departures(sim.boundary_model(), grid, faces, entry)
 
 
+def floquet_refused(entry):
+    """#1944 supersedes B1's floquet cells: they record explicit CPML lateral faces
+    silently made periodic, which a Floquet port now refuses by name. The graded-z
+    and ADI refusals fire first, at registration and construction. Keep B1 immutable."""
+    match = {"nonuniform": "do not support non-uniform z mesh",
+             "adi": "refuses absorbing boundaries"}.get(entry, "requires periodic lateral faces")
+    with pytest.raises(ValueError, match=match):
+        measured("floquet", entry)
+
+
 def key(departure):
     return departure["face"], departure["code"]
 
@@ -89,6 +99,8 @@ def compare_departures(problems):
 @pytest.mark.parametrize("cell", [pytest.param(c, id=f"{c['case']}--{c['entry']}",
                                               marks=pytest.mark.xdist_group(f"{c['case']}--{c['entry']}")) for c in CELLS])
 def test_no_unlisted_departures(cell):
+    if cell["case"] == "floquet":
+        return floquet_refused(cell["entry"])
     if cell["status"] == "REFUSED_AT_DISPATCH":
         with pytest.raises(ValueError) as caught:
             measured(cell["case"], cell["entry"])
@@ -126,6 +138,7 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
             for cell in CELLS if cell["status"] == "MEASURED"
             and not adi_absorber_cell(cell["case"], cell["entry"])
+            and cell["case"] != "floquet"  # refused since #1944; pinned in test_no_unlisted_departures
             for departure in cell["departures"]]
 # PMC images are checked at the declared plane on both device counts.
 EXPECTED += [pytest.param(case, entry, face, code,
