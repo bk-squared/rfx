@@ -6,6 +6,9 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from rfx.boundaries.pec import apply_pec_occupancy
+from rfx.core.yee import init_state
+from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
 from rfx.model import occupancy
 
 
@@ -98,3 +101,76 @@ def test_t3_forward_bits_unchanged(mesh, fractional, monkeypatch):
     jax.clear_caches()
     expected = np.asarray(_forward(sim, cells))
     np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+
+
+@pytest.fixture(scope="module")
+def design_box_derivatives():
+    sim = _scene("uniform")
+    box = ((.006, .007, .005), (.011, .009, .007))
+    grid = sim._build_grid()
+    lo, hi = (grid.position_to_index(corner) for corner in box)
+    window = tuple(slice(a, b + 1) for a, b in zip(lo, hi))
+    cells = _binary()[window]
+
+    def loss(m):
+        result = sim.forward(design_box=box, design_occupancy_override=m,
+                             n_steps=200, skip_preflight=True)
+        return jnp.sum(result.time_series[:, 0] ** 2)
+
+    value, ad = jax.value_and_grad(loss)(cells)
+    readings = {}
+    for cell, step in zip(CELLS, (-1e-2, 1e-2)):
+        local = tuple(c - a for c, a in zip(cell, lo))
+        assert all(0 <= c < n for c, n in zip(local, cells.shape))
+        first = float(loss(cells.at[local].add(step)))
+        second = float(loss(cells.at[local].add(2 * step)))
+        fd = (-3 * float(value) + 4 * first - second) / (2 * step)
+        readings[cell] = (float(ad[local]), fd)
+    return readings
+
+
+@pytest.mark.parametrize("cell", CELLS, ids=["occupied", "empty"])
+def test_t4_design_box_binary_ad_matches_one_sided_fd(design_box_derivatives, cell):
+    ad, fd = design_box_derivatives[cell]
+    assert np.isfinite(ad) and np.isfinite(fd) and fd != 0.0, (cell, ad, fd)
+    ratio = ad / fd
+    print(f"T4 cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
+    # Same second-order one-sided FD and 5e-2 bar; see T2's reason comment.
+    assert abs(ratio - 1.0) <= 5e-2, (
+        f"cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
+
+
+@pytest.mark.parametrize("fill, step", [(1.0, -1e-2), (0.0, 1e-2)],
+                         ids=["occupied", "empty"])
+def test_t5_apply_pec_occupancy_binary_ad_matches_one_sided_fd(fill, step):
+    shape, cell = (5, 5, 5), (2, 2, 2)
+    state = init_state(shape)._replace(ex=jnp.ones(shape, jnp.float32))
+    cells = jnp.zeros(shape, jnp.float32).at[cell].set(fill)
+
+    def loss(m):
+        return apply_pec_occupancy(state, m).ex[cell]
+
+    ad = float(jax.grad(loss)(cells)[cell])
+    fd = (float(loss(cells.at[cell].add(step))) - float(loss(cells))) / step
+    print(f"T5 fill={fill:g} AD={ad:.12g} FD={fd:.12g} AD/FD={ad / fd:.12g}")
+    # The other three incident cells are empty and Ex starts at 1:
+    # Ex_out = 1 - fill, so its derivative is exactly -1 at either bound.
+    assert ad == -1.0
+    np.testing.assert_allclose(ad, fd, rtol=1e-5, atol=0.0)
+
+
+def test_t6_kottke_occupied_ad_matches_one_sided_fd():
+    grid = _scene("uniform")._build_grid()
+    cells, cell, step = _binary(), CELLS[0], -1e-2
+
+    def loss(m):
+        inv_xx, _, _ = kottke_inv_eps_from_occupancy(
+            grid, m, background_eps=4.0)
+        return inv_xx[cell]
+
+    ad = float(jax.grad(loss)(cells)[cell])
+    fd = (float(loss(cells.at[cell].add(step))) - float(loss(cells))) / step
+    print(f"T6 fill=1 AD={ad:.12g} FD={fd:.12g} AD/FD={ad / fd:.12g}")
+    # An isolated occupied cell gives inv_xx = (1 - fill) / 4.
+    # Step down from 1; the floor below 1e-3 is outside this interval.
+    np.testing.assert_allclose(ad, fd, rtol=1e-5, atol=0.0)
