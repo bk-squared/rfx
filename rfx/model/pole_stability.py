@@ -93,6 +93,7 @@ class CourantBudget(float):
             return _ArrayBudget(self.cells).local_axes(occupied_per_axis)
         total = 0.0
         for occupied, sizes in zip(occupied_per_axis, self.cells):
+            occupied = np.asarray(_concrete(occupied), dtype=bool)
             if sizes.size == occupied.size - 1:      # cell metrics omit the terminal node
                 sizes = np.append(sizes, sizes[-1])
             if sizes.size != occupied.size or not occupied.any():
