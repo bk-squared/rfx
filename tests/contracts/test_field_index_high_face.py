@@ -353,8 +353,8 @@ def test_c7_ringdown_wire_to_wall(graded, full, monkeypatch, record_property):
     planned = []
     original = RingdownRun._plan_probes
 
-    def capture(self):
-        keys = original(self)
+    def capture(self, **kwargs):
+        keys = original(self, **kwargs)
         planned.extend(keys)
         return keys
 
