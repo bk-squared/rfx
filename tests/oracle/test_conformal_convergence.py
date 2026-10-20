@@ -1,45 +1,18 @@
-"""Convergence order validation for Dey-Mittra conformal PEC.
+"""Hollow PEC cylinder TM010 resonance oracle for the conformal update.
 
-Tests that conformal PEC achieves better accuracy than staircase PEC on
-curved PEC geometries. Uses a PEC cylindrical cavity (TM010 mode) as the
-analytical reference.
-
-Approach: Rather than extracting resonant frequency from FFT (limited by
-frequency resolution), we measure the field pattern error at a specific
-time after many cycles. The analytical TM010 mode has a known spatial
-pattern (J_0 profile), so we compare the simulated radial profile to
-the analytical one.
-
-LATTICE OWNERSHIP CONTRACT (#931) — WHY THIS MODULE IS NOT SAFE TO ASSUME
-UNCHANGED. The staircase leg builds ``pec_mask = cyl.mask(grid)`` and calls
-``apply_pec_mask`` per step. That function is now the VOLUME rule (§1.2):
-every E edge incident to an occupied cell is zeroed, where the pre-#931
-rule zeroed a component only where the cell's neighbour ALONG that
-component's own axis was occupied. So the staircase cylinder gains its
-outer face and its interior normal edges, both of which sit inside the
-``|R - radius| < 1.5*dx`` ring this module integrates ``Ez^2`` over.
-
-Two things must be re-measured, and PRE-DECLARED here before the run
-(this module is ``pytest.mark.gpu``, so the run is on the GPU lane —
-RECOMPUTE.md names it):
-
-1. the staircase ``boundary_error`` should FALL (a fully shorted body
-   leaks less tangential E into the ring than one whose far face was
-   live), so the 1.2x conformal-over-staircase margin may shrink;
-2. if BOTH legs collapse toward zero the ring observable has stopped
-   discriminating and the comparison needs a different observable —
-   not a widened margin. That outcome is a redesign, not a re-tune.
-
-The conformal leg goes through ``apply_conformal_pec`` and its own
-interior selection, which §1.8 leaves alone; but the waveguide lane's
-conformal path now applies the realized PEC edges AND Dey-Mittra where it
-used to apply a sigma fold, so "conformal unchanged" is not literally true
-either (design note §6). No test in the tree pins a curved conformal body,
-which is why this one is worth re-running rather than assuming.
+An off-axis Ez pulse excites the hollow cylinder; two ringdown windows must
+identify the dominant TM010 pole consistently without significant growing
+poles. Staircase errors are positive, pinned, and fall under mesh refinement.
+Independent radial-distance weights check the cavity complement. Conformal
+frequency accuracy and convergence remain strict expected failures until
+#1651 replaces the eps/w skin with the Dey-Mittra update.
 """
 
-import numpy as np
+import time
+
+import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0, cells_spanning
@@ -54,15 +27,10 @@ from rfx.geometry.conformal import (
     conformal_eps_correction,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
+from rfx.ringdown import identify
 from rfx.sources.sources import GaussianPulse
 
-pytestmark = pytest.mark.gpu
-
-
-# ---------------------------------------------------------------------------
-# Analytical: TM010 cylindrical cavity resonance
-# ---------------------------------------------------------------------------
-_X01 = 2.4048255577  # first zero of J_0
+_X01 = 2.4048255577
 _PI = np.pi
 
 
@@ -71,175 +39,194 @@ def _tm010_freq(radius):
     return _X01 * C0 / (2.0 * _PI * radius)
 
 
-def _measure_cavity_energy_at_boundary(radius, height, dx, n_steps, use_conformal=False):
-    """Run a cylindrical cavity and measure energy leakage at the PEC boundary.
+_RADIUS = 0.015
+_F0 = 2.4048255577 * C0 / (2 * np.pi * _RADIUS)
+_N_STEPS = 6000
+_PPW = (12, 16, 24)
 
-    A perfect PEC cylinder should have E_tangential = 0 at the boundary.
-    Staircase PEC has larger spurious tangential fields at the curved surface;
-    conformal PEC should have much smaller spurious fields.
 
-    Returns the L2 norm of Ez at cells just inside the PEC boundary
-    (these should be zero for a perfect PEC, but staircase has leakage).
-    Also returns total field energy for normalization.
-    """
-    margin = 4 * dx
-    Lx = 2 * radius + 2 * margin
-    Ly = Lx
-    Lz = height + 2 * margin
-    center = (Lx / 2, Ly / 2, Lz / 2)
-
-    # Placement uses the declared lengths; the grid gets main's solved lengths (#1887).
-    grid = Grid(freq_max=_tm010_freq(radius) * 3,
-                domain=tuple(cells_spanning(L, dx) * dx for L in (Lx, Ly, Lz)),
+def _cavity_geometry(ppw):
+    dx = (C0 / _F0) / ppw
+    n_xy = round((2 * _RADIUS + 4 * dx) / dx)
+    length = n_xy * dx
+    length_z = 4 * dx
+    grid = Grid(freq_max=2 * _F0, domain=(length, length, length_z),
                 dx=dx, cpml_layers=0)
+    assert grid.dx == dx, (grid.dx, dx)
+    assert grid.shape == (n_xy + 1, n_xy + 1, 5), grid.shape
+    assert grid.face_pads == (0, 0, 0, 0, 0, 0), grid.face_pads
+    center = (length / 2 + 0.17 * dx, length / 2 - 0.23 * dx, length_z / 2)
+    cylinder = Cylinder(center=center, radius=_RADIUS, height=10 * length, axis="z")
+    return grid, cylinder
 
-    cyl = Cylinder(center=center, radius=radius, height=height, axis="z")
 
+def _cavity_trace(ppw, conformal):
+    grid, cylinder = _cavity_geometry(ppw)
+    cx, cy, cz = cylinder.center
+    source = grid.position_to_index((cx + 0.31 * _RADIUS, cy + 0.12 * _RADIUS, cz))
+    probe = grid.position_to_index((cx - 0.22 * _RADIUS, cy + 0.37 * _RADIUS, cz))
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
-    pec_mask = cyl.mask(grid)
+    if conformal:
+        weights = tuple(1 - w for w in compute_conformal_weights_sdf(grid, [cylinder]))
+        weights = clamp_conformal_weights(*weights, 0.1)
+        eps = conformal_eps_correction(materials.eps_r, *weights)
+    else:
+        pec_mask = ~cylinder.mask(grid)
+    pulse = GaussianPulse(f0=_F0, bandwidth=1.0)
 
-    if use_conformal:
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [cyl])
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
-        eps_ex, eps_ey, eps_ez = conformal_eps_correction(
-            materials.eps_r, w_ex, w_ey, w_ez)
-
-    # Source near center (offset to excite TM010)
-    src_idx = grid.position_to_index(center)
-    src_idx = (src_idx[0] + 1, src_idx[1], src_idx[2])
-
-    f_target = _tm010_freq(radius)
-    pulse = GaussianPulse(f0=f_target, bandwidth=1.5)
-
-    for n in range(n_steps):
-        t = n * grid.dt
-        if n < int(6.0 / (f_target * 0.8 * _PI) / grid.dt):
-            state = state._replace(ez=state.ez.at[src_idx].add(pulse(t)))
-
+    def step(state, n):
+        state = state._replace(ez=state.ez.at[source].add(pulse(n * grid.dt)))
         state = update_h(state, materials, grid.dt, grid.dx)
-
-        if use_conformal:
-            state = update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                   grid.dt, grid.dx)
+        if conformal:
+            state = update_e_aniso(state, materials, *eps, grid.dt, grid.dx)
         else:
             state = update_e(state, materials, grid.dt, grid.dx)
-
         state = apply_pec(state)
-
-        if use_conformal:
-            state = apply_conformal_pec(state, w_ex, w_ey, w_ez)
+        if conformal:
+            state = apply_conformal_pec(state, *weights)
         else:
             state = apply_pec_mask(state, pec_mask)
+        return state, state.ez[probe]
 
-    # Measure total field energy
-    total_energy = float(jnp.sum(state.ex**2 + state.ey**2 + state.ez**2))
+    _, trace = jax.lax.scan(step, state, jnp.arange(_N_STEPS))
+    trace = np.asarray(trace)
+    assert trace.dtype == np.float32, trace.dtype
+    return grid, trace
 
-    # Measure Ez at a z-slice through the middle
-    mid_z = grid.position_to_index(center)[2]
-    ez_slice = np.array(state.ez[:, :, mid_z])
 
-    # Build radial distance map
-    x_coords = (np.arange(grid.nx) - grid.pad_x) * grid.dx - center[0]
-    y_coords = (np.arange(grid.ny) - grid.pad_y) * grid.dx - center[1]
-    X, Y = np.meshgrid(x_coords, y_coords, indexing='ij')
-    R = np.sqrt(X**2 + Y**2)
+def _read_cavity_poles(trace, dt):
+    windows = []
+    for start in (int(0.3 * _N_STEPS), int(0.5 * _N_STEPS)):
+        model = identify(trace[:, None], dt, start, _N_STEPS, freq_max=2 * _F0)
+        frequencies = model.s.imag / (2 * np.pi)
+        near = np.flatnonzero(np.abs(frequencies / _F0 - 1) <= 0.25)
+        broad = np.flatnonzero((frequencies >= 0.5 * _F0) & (frequencies <= 1.5 * _F0))
+        tm = int(near[np.argmax(model.amplitude[near])]) if near.size else None
+        largest = int(broad[np.argmax(model.amplitude[broad])]) if broad.size else None
+        windows.append({
+            "n_start": start,
+            "tm010_hz": float(frequencies[tm]) if tm is not None else None,
+            "tm010_amplitude": float(model.amplitude[tm]) if tm is not None else None,
+            "largest_hz": float(frequencies[largest]) if largest is not None else None,
+            "largest_amplitude": float(model.amplitude[largest]) if largest is not None else None,
+            "tm010_is_largest": tm is not None and tm == largest,
+            "n_kept": int(model.s.size),
+            "n_growing_discarded": int(model.n_growing_discarded),
+            "max_growing_amplitude": float(np.max(model.growing_amplitude, initial=0)),
+        })
+    frequencies = [w["tm010_hz"] for w in windows]
+    relative_window_difference = (
+        abs(frequencies[1] / frequencies[0] - 1)
+        if all(f is not None for f in frequencies) else None
+    )
+    identification_ok = (
+        relative_window_difference is not None
+        and relative_window_difference <= 1e-4
+        and all(w["max_growing_amplitude"] <= 1e-3 and w["tm010_is_largest"]
+                for w in windows)
+    )
+    return {
+        "err": frequencies[0] / _F0 - 1 if frequencies[0] is not None else None,
+        "windows": windows,
+        "relative_window_difference": relative_window_difference,
+        "identification_ok": identification_ok,
+    }
 
-    # Cells near the boundary (within 1 dx of the radius)
-    boundary_ring = (R > radius - 1.5 * dx) & (R < radius + 1.5 * dx)
-    # These cells should have near-zero Ez for a perfect PEC
-    boundary_ez = ez_slice[boundary_ring]
-    boundary_error = float(np.sum(boundary_ez**2))
 
-    return boundary_error, total_energy
+def _measure_cavity(ppw, conformal):
+    wall_start, cpu_start = time.perf_counter(), time.process_time()
+    grid, trace = _cavity_trace(ppw, conformal)
+    result = _read_cavity_poles(trace, grid.dt)
+    result.update(ppw=ppw, arm="conformal" if conformal else "staircase",
+                  shape=grid.shape, dx=grid.dx, dt=grid.dt,
+                  wall_seconds=time.perf_counter() - wall_start,
+                  cpu_seconds=time.process_time() - cpu_start)
+    return result
+
+
+# Step A, 6000 float32 steps, W1=[1800,6000), W2=[3000,6000).
+_E_PIN = {12: 0.0496, 16: 0.0424, 24: 0.0352}
+_CONFORMAL_XFAIL = pytest.mark.xfail(
+    strict=True,
+    reason="#1651 conformal eps/w skin: hollow-cylinder TM010 accuracy and order fail",
+)
+
+
+@pytest.fixture(scope="module")
+def cavity_measurements():
+    return {(ppw, conformal): _measure_cavity(ppw, conformal)
+            for ppw in _PPW for conformal in (False, True)}
+
+
+def _assert_identified(result):
+    for window in result["windows"]:
+        assert window["tm010_hz"] is not None, window
+        assert window["max_growing_amplitude"] <= 1e-3, window
+        assert window["tm010_is_largest"], window
+    assert result["relative_window_difference"] <= 1e-4, result
+
+
+def test_t0_complement_weights():
+    """The cavity's open-edge weights follow an independent radial formula."""
+    grid, cylinder = _cavity_geometry(16)
+    weights = tuple(1 - w for w in compute_conformal_weights_sdf(grid, [cylinder]))
+    clamped = clamp_conformal_weights(*weights, 0.1)
+    cx, cy, _ = cylinder.center
+    # Independent float64 Yee edge midpoints; no rfx SDF/coordinate helper.
+    for component, (weight, bounded) in enumerate(zip(weights, clamped)):
+        x = (np.arange(grid.nx, dtype=float) + (0.5 if component == 0 else 0)) * grid.dx
+        y = (np.arange(grid.ny, dtype=float) + (0.5 if component == 1 else 0)) * grid.dx
+        radial_sdf = np.sqrt((x[:, None, None] - cx)**2
+                             + (y[None, :, None] - cy)**2) - _RADIUS
+        expected = np.broadcast_to(np.clip(0.5 - radial_sdf / grid.dx, 0, 1), grid.shape)
+        actual, bounded = np.asarray(weight), np.asarray(bounded)
+        # Float32 Yee coordinates near 40 mm have one ulp ~1.5e-6 of dx
+        # per coordinate; the complement error guarded here is O(1).
+        assert np.max(np.abs(actual - expected)) <= 1e-5
+        assert np.any(actual == 0) and np.any(actual == 1)
+        np.testing.assert_array_equal(bounded[actual == 0], 0)
+        np.testing.assert_array_equal(bounded[actual == 1], 1)
+
+
+@pytest.mark.parametrize("ppw", _PPW)
+def test_t1_staircase_pin(cavity_measurements, ppw):
+    result = cavity_measurements[ppw, False]
+    _assert_identified(result)
+    assert result["err"] > 0, result
+    # 3e-3 is below a 1% radius shift and above measured float32 frequency noise.
+    assert abs(result["err"] - _E_PIN[ppw]) <= 3e-3, result
+
+
+def test_t1_staircase_refinement(cavity_measurements):
+    errors = [cavity_measurements[ppw, False]["err"] for ppw in _PPW]
+    assert errors[0] > errors[1] > errors[2] > 0, errors
+
+
+@_CONFORMAL_XFAIL
+@pytest.mark.parametrize("ppw", _PPW)
+def test_t2_conformal_accuracy(cavity_measurements, ppw):
+    result = cavity_measurements[ppw, True]
+    _assert_identified(result)
+    # 5e-3 is the sub-1% oracle bar: a 1% radius error must be red.
+    assert abs(result["err"]) <= 5e-3, result
+
+
+@_CONFORMAL_XFAIL
+def test_t2_conformal_order(cavity_measurements):
+    results = [cavity_measurements[ppw, True] for ppw in _PPW]
+    for result in results:
+        _assert_identified(result)
+    errors = np.abs([result["err"] for result in results])
+    assert np.all(errors > 0), errors
+    slope = np.polyfit(np.log([result["dx"] for result in results]), np.log(errors), 1)[0]
+    assert slope >= 1.5, slope
 
 
 class TestConformalConvergence:
-    """Convergence order tests for conformal PEC."""
+    """Retained GPU stability and API checks."""
 
-    def test_conformal_reduces_boundary_error(self):
-        """Conformal PEC should have less boundary field leakage than staircase."""
-        radius = 0.015
-        height = 0.05
-        f_analytical = _tm010_freq(radius)
-        wavelength = C0 / f_analytical
-        dx = wavelength / 10
-
-        n_steps = 3000
-
-        err_s, energy_s = _measure_cavity_energy_at_boundary(
-            radius, height, dx, n_steps, use_conformal=False)
-        err_c, energy_c = _measure_cavity_energy_at_boundary(
-            radius, height, dx, n_steps, use_conformal=True)
-
-        # Normalize by total energy
-        norm_err_s = err_s / max(energy_s, 1e-30)
-        norm_err_c = err_c / max(energy_c, 1e-30)
-
-        print(f"\nBoundary field error at dx=lambda/{wavelength/dx:.0f}:")
-        print(f"  Staircase: {norm_err_s:.6e}")
-        print(f"  Conformal: {norm_err_c:.6e}")
-        print(f"  Improvement ratio: {norm_err_s/(norm_err_c+1e-30):.2f}x")
-
-        # Conformal should have lower boundary error
-        assert norm_err_c <= norm_err_s * 1.1, \
-            f"Conformal boundary error ({norm_err_c:.4e}) should be <= " \
-            f"staircase ({norm_err_s:.4e})"
-
-    def test_cylindrical_cavity_2nd_order(self):
-        """Conformal PEC should give higher convergence order on cylinder cavity.
-
-        Run at 3 resolutions and verify conformal error decreases faster than
-        staircase error as dx is refined.
-        """
-        radius = 0.015
-        height = 0.05
-        f_analytical = _tm010_freq(radius)
-        wavelength = C0 / f_analytical
-
-        dx_values = [wavelength / 8, wavelength / 12, wavelength / 16]
-
-        errors_staircase = []
-        errors_conformal = []
-
-        for dx in dx_values:
-            n_steps = 3000
-
-            err_s, energy_s = _measure_cavity_energy_at_boundary(
-                radius, height, dx, n_steps, use_conformal=False)
-            err_c, energy_c = _measure_cavity_energy_at_boundary(
-                radius, height, dx, n_steps, use_conformal=True)
-
-            norm_err_s = err_s / max(energy_s, 1e-30)
-            norm_err_c = err_c / max(energy_c, 1e-30)
-
-            errors_staircase.append(norm_err_s)
-            errors_conformal.append(norm_err_c)
-
-        print("\nConvergence study:")
-        for i, dx in enumerate(dx_values):
-            ppw = wavelength / dx
-            print(f"  dx=lambda/{ppw:.0f}: staircase={errors_staircase[i]:.4e}, "
-                  f"conformal={errors_conformal[i]:.4e}")
-
-        # Check that conformal error decreases with resolution
-        # (conformal should improve faster than staircase)
-        if all(e > 1e-30 for e in errors_conformal) and len(dx_values) >= 3:
-            log_dx = np.log(dx_values)
-            log_err_c = np.log([max(e, 1e-30) for e in errors_conformal])
-            log_err_s = np.log([max(e, 1e-30) for e in errors_staircase])
-
-            slope_c = np.polyfit(log_dx, log_err_c, 1)[0]
-            slope_s = np.polyfit(log_dx, log_err_s, 1)[0]
-
-            print(f"\n  Staircase slope: {slope_s:.2f}")
-            print(f"  Conformal slope: {slope_c:.2f}")
-
-        # At finest resolution, conformal should be better
-        assert errors_conformal[-1] <= errors_staircase[-1] * 1.2, \
-            f"Conformal should be more accurate at finest dx: " \
-            f"conformal={errors_conformal[-1]:.4e}, staircase={errors_staircase[-1]:.4e}"
-
+    @pytest.mark.gpu
     def test_conformal_stability_long_run(self):
         """Conformal PEC cavity should be stable for many timesteps."""
         radius = 0.012
@@ -298,6 +285,7 @@ class TestConformalConvergence:
         assert final_energy < max_energy * 5, \
             f"Energy grew: final={final_energy:.4e}, max={max_energy:.4e}"
 
+    @pytest.mark.gpu
     def test_api_conformal_convergence(self):
         """End-to-end API test: conformal should give different results than staircase."""
         from rfx.api import Simulation

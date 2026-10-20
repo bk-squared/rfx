@@ -174,6 +174,7 @@ backscatter errors were larger than the staircase's at each of three meshes, and
 `subpixel_smoothing="kottke_pec"`: that combination forms no conformal weights (the smoothed tensor treats the metal
 edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut H-face areas)
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
+A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
 Tracker: #1651
 
 ## Ports and extraction
