@@ -165,6 +165,10 @@ jobs:
           # Every test phase as it ends, so a session that aborts still leaves its
           # durations (pytest-split stores them only at session end).
           RFX_DURATIONS_LOG: durations/weekly_${{ matrix.group }}.log
+          # JAX keeps compiled programs mapped across modules; on 2026-10-20 shard 5
+          # aborted at 258,831 of 262,144 mappings. Cleared at each module end the
+          # same shard peaks at 65,610 (#1932, tests/_module_cache_clear.py).
+          RFX_CLEAR_JAX_CACHES_PER_MODULE: "1"
         run: >
           mkdir -p durations &&
           cp .test_durations_weekly durations/weekly_${{ matrix.group }}.json &&

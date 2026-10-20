@@ -251,6 +251,10 @@ def test_weekly_stores_and_always_uploads_durations() -> None:
     assert step["run"].index(seed) < step["run"].index("pytest ")
     assert step["env"]["RFX_WEEKLY_RSS"] == "1"
     assert step["env"]["RFX_S0_FULL"] == "1"
+    assert step["env"]["RFX_CLEAR_JAX_CACHES_PER_MODULE"] == "1"
+    regen_slow = next(s for s in _workflow("regen-durations.yml")["jobs"]["slow"]["steps"]
+                      if "--splits" in s.get("run", ""))
+    assert regen_slow["env"]["RFX_CLEAR_JAX_CACHES_PER_MODULE"] == "1"
     uploads = [s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
     assert len(uploads) == 1
     upload = uploads[0]

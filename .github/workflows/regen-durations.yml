@@ -99,6 +99,8 @@ jobs:
           # As in validation.yml: without it the 457 weekly-only cells of the
           # path-equivalence matrix are never measured and stay unpriced.
           RFX_S0_FULL: "1"
+          # As in validation.yml, so the prices are measured as the shards run.
+          RFX_CLEAR_JAX_CACHES_PER_MODULE: "1"
         run: >
           cp .test_durations_weekly "$RUNNER_TEMP/weekly-seed" &&
           pytest -v -ra -p no:cacheprovider
