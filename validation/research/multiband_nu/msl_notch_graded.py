@@ -3385,6 +3385,12 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None,
         w("")
 
     if build_only:
+        # The rows' own record length: they were costed at the case's value
+        # then, which need not be the live case's now (#1912 moved it to 40).
+        periods = {float(r["num_periods"]) for r in build_only}
+        if len(periods) != 1:
+            raise ValueError(f"build-only rows mix record lengths {sorted(periods)}")
+        (row_periods,) = periods
         w("### F.4b Meshes costed but not solved")
         w("")
         w("Built through the same `build_graded` every arm uses and put "
@@ -3394,7 +3400,7 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None,
         w("grid's own Courant number read off the lattice, and the step count "
           "is the one a run would")
         w("derive from it for the case's "
-          f"{case.NUM_PERIODS:.0f} periods.  No field is stepped and no S "
+          f"{row_periods:.0f} periods.  No field is stepped and no S "
           "parameter exists for")
         w("these rows.")
         w("")

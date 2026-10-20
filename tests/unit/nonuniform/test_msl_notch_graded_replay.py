@@ -35,6 +35,9 @@ from tests.crossval.msl_notch_filter import test_msl_notch_filter as case
 RESULTS = (Path(__file__).resolve().parents[3] / "validation" / "research"
            / "multiband_nu" / "results" / "msl_notch_graded.json")
 
+#: The record length every arm was solved at.  The live case moved to 40
+#: periods (#1912); these frozen records stay at the 20 they were taken at.
+RECORDED_NUM_PERIODS = 20.0
 #: What the record holds, typed from the committed file.  Frequencies in GHz.
 RECORDED_NOTCH_GHZ = {
     "A_off": 3.747389,
@@ -107,7 +110,7 @@ def test_the_record_holds_every_declared_arm(arms):
         assert rec["arm"] == key
         assert rec["smoke"] is False, f"{key} was recorded from a capped run"
         assert len(rec["freqs_hz"]) == case.N_FREQS
-        assert rec["num_periods"] == case.NUM_PERIODS
+        assert rec["num_periods"] == RECORDED_NUM_PERIODS
         for field in ("s11_re", "s11_im", "s21_re", "s21_im"):
             assert len(rec[field]) == case.N_FREQS, (key, field)
 
