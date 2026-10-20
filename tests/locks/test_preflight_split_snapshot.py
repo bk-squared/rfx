@@ -735,6 +735,9 @@ _REBOUND_ON_MIXIN = {
     # Leg 3. None of these twelve was a @staticmethod, so the frozenset
     # below stays a one-element set and every qualname here is restored to
     # "Simulation.<name>".
+    # #1913: the port-span admission (an object face between a waveguide
+    # port's source and its measured reflection plane).
+    "rfx.preflight.waveguide_port_span": ("_validate_cfg_waveguide_port_span",),
     "rfx.preflight.waveguide": (
         "_check_waveguide_port_aperture_snap",
         "_check_waveguide_port_evanescent",

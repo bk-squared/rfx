@@ -71,10 +71,25 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_waveguide_reference_plane"
+      },
+      {
+        "code": "waveguide_port_obstacle_before_reference",
+        "loc": "waveguide_port[0]",
+        "numbers": [
+          12.7,
+          20.32,
+          3.0,
+          0.0,
+          15.24,
+          20.32,
+          3.0
+        ],
+        "severity": "error",
+        "source": "_validate_cfg_waveguide_port_span"
       }
     ],
-    "n_errors": 0,
-    "n_issues": 5,
-    "ok": true
+    "n_errors": 1,
+    "n_issues": 6,
+    "ok": false
   }
 }

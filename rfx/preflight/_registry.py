@@ -401,6 +401,10 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_adi_boundary",
                 lambda sim, c: sim._validate_cfg_adi_boundary(c.warn),
                 "execution"),
+    # #1913: shipped admission appended; extras remain explicit opt-in.
+    ConfigCheck("_validate_cfg_waveguide_port_span",
+                lambda sim, c: sim._validate_cfg_waveguide_port_span(c.warn),
+                "waveguide_port_span"),
 )
 
 

@@ -372,6 +372,7 @@ SIGMA_READS = {
     ('rfx/preflight/pec_geometry.py', '_validate_cfg_campaign_statics', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/pec_geometry.py', '_validate_cfg_sheet_cavity_thickness', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/pec_geometry.py', '_validate_cfg_sheet_cavity_thickness', 'self._resolve_material(g.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
+    ('rfx/preflight/waveguide_port_span.py', '_medium_at', 'spec'): (1, 'declared material returned by _resolve_material; compared across a face for a medium change (#1913), not assembled cells'),
     ('rfx/preflight/ports.py', '_validate_cfg_port_inside_pec', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/ports.py', 'half_node_split_findings', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/realization.py', '_CampaignStaticsContext.entry_realizations', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),

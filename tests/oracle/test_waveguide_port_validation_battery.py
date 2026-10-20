@@ -155,6 +155,12 @@ def _build_sim(
         )
         # What the fixture declares, for the build-time realization check.
         sim._pec_short_faces_m = (x_lo, x_hi)
+        # #1913: the right port stands 4 cells behind the short's far face,
+        # so its 3-cell reflection plane is in front of the short; at
+        # PORT_RIGHT_X it read the far side. |S11| is bit-identical.
+        right_x = (k_lo + SHORT_CELLS + 4) * d
+    else:
+        right_x = PORT_RIGHT_X
 
     port_freqs = jnp.asarray(freqs)
     sim.add_waveguide_port(
@@ -170,7 +176,7 @@ def _build_sim(
         name="left",
     )
     sim.add_waveguide_port(
-        PORT_RIGHT_X,
+        right_x,
         direction="-x",
         mode=(1, 0),
         mode_type="TE",

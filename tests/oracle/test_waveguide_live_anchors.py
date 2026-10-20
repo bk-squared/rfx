@@ -93,8 +93,12 @@ def _live_build_sim(freqs_hz, *, pec_short_x=None):
             material="pec",
         )
     port_freqs = jnp.asarray(freqs)
+    # #1913: with a short, the right port stands 4 cells behind its far face
+    # so its 3-cell reflection plane is in front of it; |S11| is bit-identical.
+    right_x = (PORT_RIGHT_X if pec_short_x is None
+               else pec_short_x + PEC_SHORT_THICKNESS + 4 * LIVE_DX)
     for x, direction, name in ((PORT_LEFT_X, "+x", "left"),
-                               (PORT_RIGHT_X, "-x", "right")):
+                               (right_x, "-x", "right")):
         sim.add_waveguide_port(
             x, direction=direction, mode=(1, 0), mode_type="TE",
             freqs=port_freqs, f0=f0, bandwidth=bandwidth,

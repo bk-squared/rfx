@@ -478,7 +478,8 @@ def _enumerate_emission_sites():
 # new code ``sheet_cavity_spacing`` -- two parallel PEC sheets solved more than
 # 1 % off their drawn spacing: an error under snap='strict', a warning under
 # snap='declared'.
-_FROZEN_TOTAL_SITES = 137
+# #1913: one blocking waveguide span emission site.
+_FROZEN_TOTAL_SITES = 138
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -514,7 +515,8 @@ _FROZEN_TOTAL_SITES = 137
 # 88 -> 89 (issue 1668): undriven_pulse.
 # 89 -> 90 (#1691): wire_port_no_radius.
 # 90 -> 91 (#1800): sheet_cavity_spacing.
-_FROZEN_LITERAL_CODE_COUNT = 91
+# #1913: waveguide_port_obstacle_before_reference.
+_FROZEN_LITERAL_CODE_COUNT = 92
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
