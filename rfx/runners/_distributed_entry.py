@@ -88,17 +88,20 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     if compute_s_params:
         _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
         if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
+            _graded = plan.lane == "run_distributed_nu"
             self._refuse_unsupported_run_kwargs(
-                "uniform single-wire-port S-parameter", {
+                f"{'graded' if _graded else 'uniform'} single-wire-port S-parameter", {
                     "s_param_n_steps": self._s_param_n_steps_off_record(
                         s_param_n_steps, n_steps, until_decay),
                 }, instead=None,
                 reason_overrides={"s_param_n_steps":
+                    "this lane reads S11 from the main run's wire-port record"
+                    if _graded else
                     "this lane computes S11 from a second distributed "
                     "wire-port recording run using the main run's n_steps "
                     "and the port's declared excitation"})
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
-        refuse_distributed_lumped_s_pmc(self)
+        refuse_distributed_lumped_s_pmc(self, entry=entry)
 
     refuse_distributed_options(self, entry=entry, subpixel_smoothing=subpixel_smoothing,
         checkpoint=checkpoint,
