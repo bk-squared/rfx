@@ -58,7 +58,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
-from rfx.boundaries import refresh_boundary_model
+from rfx.boundaries import refresh_boundary_model, require_floquet_lateral_faces
 from rfx.boundaries.model import DEFAULT_BOUNDARY
 
 # ---------------------------------------------------------------------------
@@ -2052,18 +2052,6 @@ class Simulation(
                 "Floquet ports are not supported together with TFSF sources"
             )
 
-        # Auto-set periodic axes for the two transverse directions
-        transverse = "".join(a for a in "xyz" if a != axis)
-        if not self._periodic_axes:
-            self._periodic_axes = transverse
-        else:
-            for a in transverse:
-                if a not in self._periodic_axes:
-                    raise ValueError(
-                        f"Floquet port on axis={axis!r} requires periodic BC on {transverse!r}, "
-                        f"but periodic_axes={self._periodic_axes!r}"
-                    )
-
         # Reject an explicit incompatible declaration at registration. Auto
         # mesh depends on the completed model and is checked by preflight.
         if self._declared_mesh["_dz_profile"] is not None:
@@ -2071,6 +2059,10 @@ class Simulation(
                 "Floquet ports do not support non-uniform z mesh (dz_profile). "
                 "Set dx explicitly to prevent auto-mesh from creating NU grid."
             )
+
+        transverse = require_floquet_lateral_faces(self, axis)
+        if not self._periodic_axes:
+            self._periodic_axes = transverse
 
         if name is None:
             name = f"floquet_{len(self._floquet_ports)}"

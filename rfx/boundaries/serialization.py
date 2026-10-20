@@ -4,7 +4,8 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 def constructor_boundary(sim):
     from rfx.boundaries.features import boundary_was_explicit
-    from rfx.boundaries.model import DEFAULT_BOUNDARY
+    from rfx.boundaries.model import DEFAULT_BOUNDARY, refresh_boundary_model
+    refresh_boundary_model(sim)
     if sim._boundary_explicit is None:
         return resolved_guide_spec(sim)
     return sim._boundary_spec if boundary_was_explicit(sim) else DEFAULT_BOUNDARY

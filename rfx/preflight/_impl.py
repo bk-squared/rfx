@@ -27,6 +27,8 @@ def _preflight_impl(
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
     import warnings
+    from rfx.boundaries.model import refresh_boundary_model
+    refresh_boundary_model(self)
     if _conductors is not None:
         # Execution lends its assembled, pre-port products for this call only.
         # Bind the legacy validators to an isolated reader, never the public
