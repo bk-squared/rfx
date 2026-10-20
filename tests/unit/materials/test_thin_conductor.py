@@ -34,7 +34,7 @@ def test_thin_conductor_sigma_eff():
     tc_lossy = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk_lossy, thickness=thickness)
 
     materials = init_materials(grid.shape)
-    # f0 sheet size is not this test's subject (sheet_effective_size)
+    # lossy film area is not this test's subject (dc_film_area)
     materials, pec_mask = apply_thin_conductor(grid, tc_lossy, materials, snap="declared")
 
     mask = shape_box.mask(grid)
@@ -83,7 +83,7 @@ def test_thin_conductor_preserves_outside():
     shape_box = Box((0.005, 0.005, 0.0), (0.01, 0.01, 0.001))
     # A lossy conductor (below PEC threshold) writes the film record, not pec_mask.
     tc = ThinConductor(shape=shape_box, sigma_bulk=1e4, thickness=35e-6, eps_r=1.0)
-    # f0 sheet size is not this test's subject (sheet_effective_size)
+    # lossy film area is not this test's subject (dc_film_area)
     materials, _ = apply_thin_conductor(grid, tc, materials, snap="declared")
 
     mask = shape_box.mask(grid)

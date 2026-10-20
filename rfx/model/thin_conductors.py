@@ -284,10 +284,14 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
             for a in range(3) if a != normal)
         reason = ('cannot judge: no positive footprint_area(normal)' if error is None
                   else f'e={exponent}-1={error:+.12g}, bar={_SHEET_EFFECTIVE_SIZE_TOL:.12g}')
-        remedy = ('Implement footprint_area(normal) to make this custom shape judgeable'
+        box = isinstance(shape, Box)
+        remedy = ('The Box has no in-plane extent inside the grid; draw it inside the domain'
+                  if error is None and box else
+                  'Implement footprint_area(normal) to make this custom shape judgeable'
                   if error is None else
                   'The in-plane bounding box is clipped by the grid extent; enlarge the '
                   'domain/grid or move the film inside it' if clipped else
+                  'Put the in-plane edges on mesh nodes or refine the in-plane mesh' if box else
                   'Refine the in-plane mesh or draw a Box')
         message = (f'{name} DC film: A_d={declared!r} m^2, A_r={realized:.12g} m^2; '
                    f'{reason}. {remedy}, or use '

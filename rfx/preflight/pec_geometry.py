@@ -1352,7 +1352,10 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
-    boxes = list(boxes) + ctx.impedance_sheet_entries()
+    # f0 sheets join on the PEC rule's terms: Box drawings only (no analytic
+    # face coordinates for other shapes; the 0.35-cell offset was measured on a fin).
+    boxes = list(boxes) + [e for e in ctx.impedance_sheet_entries()
+                           if isinstance(e.shape, Box)]
     rows = []
     for e, a, span in _sheet_solved_spans(ctx, boxes):
         if not (span.free_lo or span.free_hi):
