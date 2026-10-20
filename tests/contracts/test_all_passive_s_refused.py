@@ -236,3 +236,10 @@ def test_mixed_uniform_record_selects_the_driven_family():
     assert result.s_params.shape == (1, 1, 3)
     assert result.lumped_port_sparams and result.wire_port_sparams
     assert result.sparam_read_ids.ids == ("port:0:mode:0",)
+    # The value is the driven wire's own reflection, (V_port - Z0 I)/(V_port + Z0 I),
+    # not the passive lumped port's load ratio that main selected here.
+    (meta, accs), = result.wire_port_sparams
+    v_port, i = np.asarray(accs[3]), np.asarray(accs[1])
+    expected = (v_port - meta.impedance * i) / (v_port + meta.impedance * i)
+    np.testing.assert_allclose(np.asarray(result.s_params)[0, 0], expected, rtol=1e-5)
+    assert np.all(np.abs(expected) > 0.9)
