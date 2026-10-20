@@ -457,6 +457,18 @@ def test_assembly(declaration, path, direction):
                 freqs = arguments.get('s_param_freqs')
                 if isinstance(freqs, FrozenArray):
                     arguments['s_param_freqs'] = freeze(freqs.array().astype(np.float32))
+            # Stated fact (#1373 decision C): a graded run() that asks for S (direction
+            # a) on two ports takes it from its drive scan, so its main record's port
+            # specs say record_s=False; forward's one record forms S and carries no
+            # such key. One excited lumped port reads its main record, as on uniform.
+            for section in ('arguments', 'result'):
+                ran = pair['run']['value'].get(section, {}).get('wire_ports') or ()
+                fwd = pair['forward']['value'].get(section, {}).get('wire_ports') or ()
+                assert len(ran) == len(fwd)
+                assert [port.pop('record_s', None) for port in ran] == (
+                    [False] * len(ran) if direction == 'a' and declaration == 'P-lumped2'
+                    else [None] * len(ran))
+                assert all('record_s' not in port for port in fwd)
         if level == 'a' and capture_path == 'graded':
             # Judge a full-domain fallback at the same scan-builder seam as
             # a direct graded call, after driver defaults are resolved.
@@ -468,7 +480,7 @@ def test_assembly(declaration, path, direction):
 
 
 def check_fields(declaration, path, direction=None):
-    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2') and path == 'uniform'
+    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2') and path in ('uniform', 'graded')
     if port_s:
         pair = port_s_pair(declaration, path)
     elif direction:

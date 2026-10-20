@@ -78,9 +78,9 @@ def test_graded_wire_thru_run_checks_only_the_driven_column():
         warnings.simplefilter('always')
         result = sim.run(n_steps=1000, skip_preflight=True,
                          compute_s_params=True, s_param_freqs=[3e9, 5e9, 7e9])
-    driven = np.asarray(result.s_params)[:, 0]
-    assert np.isfinite(driven).all() and np.all(np.abs(driven) <= 1)
-    assert np.isnan(np.asarray(result.s_params)[:, 1]).all()
+    # run() drives each port in turn: both columns are measured.
+    S = np.asarray(result.s_params)
+    assert np.isfinite(S).all() and np.all(np.abs(S) <= 1)
     assert not [w for w in caught if 'non-passive' in str(w.message)
                 or 'non-finite' in str(w.message)]
 

@@ -283,15 +283,16 @@ def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
         sim.add_port(pos, 'ex', impedance=50., extent=_axis_node_position(grid, 0, 7) - pos[0],
             waveform=GaussianPulse(f0=20e9, bandwidth=.9))
         return sim
-    with pytest.raises(ValueError, match='isolated drive') as one:
-        two_excited().run(n_steps=8, compute_s_params=True, s_param_freqs=BINS, skip_preflight=True)
+    # One device drives each port in turn; several devices read one record.
+    s = two_excited().run(n_steps=8, compute_s_params=True, s_param_freqs=BINS,
+                          skip_preflight=True).s_params
+    assert np.isfinite(np.asarray(s)).all()
     def staging(*args, **kwargs):
         pytest.fail('refusal reached material staging')
     monkeypatch.setattr(electric_metrics, 'stage_forward_materials', staging)
-    with pytest.raises(ValueError, match='isolated drive') as multi:
+    with pytest.raises(ValueError, match='isolated drive'):
         two_excited().run(n_steps=8, devices=jax.devices(), compute_s_params=True,
             s_param_freqs=BINS, skip_preflight=True)
-    assert str(multi.value) == str(one.value)
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])

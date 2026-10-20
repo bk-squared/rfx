@@ -125,6 +125,16 @@ def compute_lumped_wire_s_matrix_via_scan(
     resolve_field_dtype(sim._precision)
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim)
+    # Graded: each drive is the graded record with only that port excited, its
+    # column formed as forward() forms it (port_s_from_record).
+    graded = sim._uses_nonuniform_mesh
+    if graded and (devices is not None or return_vi_dump or return_refplane_diagnostics
+                   or _main_wire_record or n_steps is None
+                   or any(getattr(pe, "reference_plane_cells", None) for pe in sim._ports)):
+        raise NotImplementedError(
+            "compute_lumped_wire_s_matrix_via_scan on a graded mesh drives each port on one "
+            "device with an explicit n_steps; devices=, return_vi_dump, reference planes and "
+            "refplane diagnostics are uniform-mesh only.")
     if devices is not None:
         if return_vi_dump and any(pe.impedance > 0 and pe.extent is not None
                                   for pe in sim._ports):
@@ -140,15 +150,16 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     # The distributed runner owns slab staging: do not retain a second
     # whole-domain material assembly across its scans.
-    sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
-    from rfx.runners._admission import admit
-    admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+    if not graded:
+        sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
+        from rfx.runners._admission import admit
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
     if not skip_preflight:
         from rfx._diagnostic_transport import report_diagnostics
         report_diagnostics(sim._auto_preflight(
             context="compute_lumped_wire_s_matrix_via_scan", check_ntff="advisory"))
-    grid = sim._build_grid()
-    if devices is None:
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    if devices is None and not graded:
         _sheet_specs: list = []
         _pec_sheets: list = []
         _pec_wires: list = []
@@ -180,7 +191,8 @@ def compute_lumped_wire_s_matrix_via_scan(
         )
 
     is_wire = [pe.extent is not None for pe in eligible]
-    if any(is_wire) and not all(is_wire):
+    # Graded drives form each column from one record, which mixes lumped and wire ports.
+    if any(is_wire) and not all(is_wire) and not graded:
         raise NotImplementedError(
             "compute_lumped_wire_s_matrix_via_scan: mixed lumped + wire port "
             "sets are not supported in Stage 1 (the off-diagonal wave-"
@@ -206,7 +218,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     # state BEFORE
     # any port-cell clearing — exactly the "live" definition. With no dead
     # cells this is the historical all-cells count.
-    if wire_mode:
+    if wire_mode and not graded:
         from rfx.sources.sources import WirePort, _wire_port_live_cells
         axis_map = {"ex": 0, "ey": 1, "ez": 2}
         port_cell_counts = np.zeros(n_ports, dtype=np.int64)
@@ -256,8 +268,26 @@ def compute_lumped_wire_s_matrix_via_scan(
     plane_outboard = np.zeros(n_ports, dtype=np.int64)
 
     settling_runs = []
+    columns = []
+    # A graded record lists wire ports before lumped ones; its S keeps that order.
+    record_order = sorted(range(n_ports), key=lambda k: not is_wire[k])
     for j in range(n_ports):
-        if devices is not None:
+        if graded:
+            from copy import copy
+            from dataclasses import replace
+            from rfx.runners.nonuniform import run_nonuniform_path
+            from rfx.sources.sources import GaussianPulse
+            drive = copy(sim)
+            drive._ports = [replace(pe, excite=(pe is eligible[j]), waveform=(
+                pe.waveform if pe.waveform is not None or pe is not eligible[j]
+                else GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)))
+                if pe.impedance != 0 else pe for pe in sim._ports]
+            record = run_nonuniform_path(drive, n_steps=n_steps, compute_s_params=True,
+                                         s_param_freqs=freqs, conformal_pec=conformal_pec,
+                                         _drive_scan=True)
+            columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
+            raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt}
+        elif devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
                                                   n_steps, devices,
                                                   None if _main_wire_record else j,
@@ -312,6 +342,8 @@ def compute_lumped_wire_s_matrix_via_scan(
             settling_runs.append(port_record_witness(
                 raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
                 end, freqs, freq_max=sim._freq_max))
+        if graded:
+            continue
         accs = raw["wire"] if wire_mode else raw["lumped"]
         if accs is None or len(accs) != n_ports:
             raise RuntimeError(
@@ -372,6 +404,8 @@ def compute_lumped_wire_s_matrix_via_scan(
         driven = np.asarray([bool(pe.excite) for pe in eligible])
         return np.where(driven[None, :, None], S, np.asarray(np.nan + 1j * np.nan, dtype=S.dtype))
 
+    if graded:
+        S = np.stack([column for _, column in sorted(columns, key=lambda c: c[0])], axis=1)
     if wire_mode and plane_v is not None:
         # issue #313 reference-plane path: byte-frozen legacy diagonals +
         # plane-wave off-diagonals where both ports opted in.  The V/I
@@ -409,7 +443,9 @@ def compute_lumped_wire_s_matrix_via_scan(
                 **worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
         return _forward_columns(np.asarray(out, dtype=result_dtype)), freqs
 
-    if wire_mode:
+    if graded:
+        pass
+    elif wire_mode:
         # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
         # gap-voltage channel feeds BOTH (frame-consistent whole-port
         # wave pair; the per-cell #308 frame is refuted physics kept only

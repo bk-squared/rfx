@@ -187,11 +187,10 @@ def test_lumped_before_passive_wire_preserves_wire_index():
                  extent=2e-3, excite=False)
     default = sim.run(n_steps=100, skip_preflight=True)
     selected = _forward(sim, port_s11_freqs=np.linspace(1e9, 10e9, 50))
-    assert default.s_params.shape == (1, 1, 50)
+    # run() drives each port in turn (every column); forward() reads one record.
+    assert default.s_params.shape == (2, 2, 50)
     assert selected.s_params.shape == (2, 2, 50)
     # These ordered specs/accumulators define the matrix's port indices.
-    # run's default has only a passive-port diagnostic; explicit bins include
-    # the driven lumped column, so their S values need not be equal.
     default_spec, default_acc = default.wire_port_sparams[0]
     selected_spec, selected_acc = selected.wire_port_sparams[0]
     assert selected_spec == default_spec

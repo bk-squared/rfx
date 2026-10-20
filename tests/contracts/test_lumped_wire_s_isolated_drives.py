@@ -13,7 +13,7 @@ from rfx.ringdown import RingdownSpec
 FREQS = np.array([4e9, 5e9])
 POSITIONS = ((.003, .004, .003), (.006, .004, .003))
 REMEDY = ("set excite=False on every port but the driven one and run once per driven port, "
-          "or use the uniform run(compute_s_params=True), which drives one port per run")
+          "or use run(compute_s_params=True) on one device, which drives one port per run")
 
 
 def _model(graded, second_excited, wire=True):
@@ -43,8 +43,7 @@ def _assert_message(message):
 
 
 PATHS = [("uniform_forward", False, True), ("uniform_forward", False, False),
-         ("graded_forward", True, True), ("graded_forward", True, False),
-         ("graded_run", True, True)]
+         ("graded_forward", True, True), ("graded_forward", True, False)]
 
 
 @pytest.mark.parametrize("path,graded,wire", PATHS)
@@ -59,8 +58,13 @@ def test_several_excited_ports_refused_before_step(monkeypatch, path, graded, wi
     with pytest.raises(ValueError) as error:
         _call(sim, path)
     _assert_message(str(error.value))
-    if path == "graded_run":
-        assert "run(compute_s_params=False) for fields only" in str(error.value)
+
+
+@pytest.mark.parametrize("second_excited", [False, True])
+def test_graded_run_drives_each_port(second_excited):
+    # run() on one device forms every column, one drive per port, as on a uniform mesh.
+    S = np.asarray(_call(_model(True, second_excited), "graded_run").s_params)
+    assert S.shape == (2, 2, len(FREQS)) and np.all(np.isfinite(S))
 
 
 def test_graded_forward_ringdown_without_bins_refused_before_step(monkeypatch):
