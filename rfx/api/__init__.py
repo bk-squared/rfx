@@ -2311,13 +2311,9 @@ class Simulation(
         face, a waveguide, coaxial or Floquet port, a microstrip port with
         ``mode="eigenmode"``, and any dielectric, conductor, dispersive cell,
         port, lumped element or source that is not inside the slab (its
-        outermost edge layer counts as outside).
-
-        A block is refused when k·|delta| exceeds 0.5 at the highest
-        monitor frequency, |delta| being the largest distance from an edge
-        to its block's centre with the whole slab thickness in one block:
-        use a smaller ``block_size``, a thinner slab or the NTFF box. The
-        Kottke PEC paths that zero H inside a conductor are refused too.
+        outermost edge layer counts as outside). So are the Kottke PEC paths
+        and blocks with k·|delta| > 0.5 at the top frequency (|delta|: edge to
+        block centre, slab thickness included): use smaller blocks or NTFF.
 
         The named arguments here are the whole public surface. The low-level
         builder additionally takes deliberately wrong metrics, centres, curl
