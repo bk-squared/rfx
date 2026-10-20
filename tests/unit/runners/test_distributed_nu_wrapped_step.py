@@ -513,8 +513,16 @@ def test_pole_one_slab_invariants(name, monkeypatch):
                 value = jax.tree.map(lambda a: a[:, owned], value)
             assert_same_tree(getattr(coeffs, field), value, family + '.' + field,
                              owned=owned if field in spatial_fields else None)
-        assert_same_tree(expected.carry_init[family],
-                         jax.tree.map(lambda a: a[:, owned], carry[family]), family + '.state')
+        # One device crops x to the pole box; slabs carry full local x (zeros outside).
+        want = expected.carry_init[family]
+        (lo, hi), nx = want.box.bounds[0], layout.nx
+        want = jax.tree.map(lambda a: jnp.pad(a, ((0, 0), (lo, nx - hi)) + ((0, 0),) * (a.ndim - 2)),
+                            want)._replace(box=want.box.full_x(nx))
+        box = carry[family].box
+        assert box == box.full_x(box.domain_shape[0]), family + '.box'
+        assert box.bounds[1:] == want.box.bounds[1:], family + '.box'
+        got = jax.tree.map(lambda a: a[:, owned], carry[family])._replace(box=want.box)
+        assert_same_tree(want, got, family + '.state')
         # FILL covers both physical ghosts and alignment rows (2/3 slabs).
         from rfx.stepping.slab import vacuum_dispersion_values
         vacuum = vacuum_dispersion_values(coeffs, expected.step_fn_inv.context.dt)
@@ -705,7 +713,12 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
                     value = jax.tree.map(lambda a: a[:, owned], value)
                 assert_same_tree(getattr(coeffs, field), value, family + '.' + field,
                                  owned=owned if field in spatial else None)
-            assert_same_tree(initial[family], jax.tree.map(lambda a: a[:, owned], carry[family]), family)
+            # The carried box spans the wrapped local x; y/z must match the initial box.
+            box = carry[family].box
+            assert box == box.full_x(box.domain_shape[0]), family + '.box'
+            assert box.bounds[1:] == initial[family].box.bounds[1:], family + '.box'
+            owned_state = jax.tree.map(lambda a: a[:, owned], carry[family])
+            assert_same_tree(initial[family], owned_state._replace(box=initial[family].box), family)
         # Tables are checked with the existing slice-1 identity helper.
         tables = {key: inv[key] for key in ('drives', 'probe_table')}
         check_one_slab_cut(expected._replace(invariants=tables), actual, layout)

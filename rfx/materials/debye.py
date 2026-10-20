@@ -122,7 +122,7 @@ class DebyeState(NamedTuple):
     Stored as (n_poles,) + box.shape for each component. ``box`` is static
     pytree metadata; legacy manually constructed states may leave it None.
     """
-    px: jnp.ndarray  # (n_poles, nx, ny, nz)
+    px: jnp.ndarray  # (n_poles,) + box.shape
     py: jnp.ndarray
     pz: jnp.ndarray
     box: PoleBox | None = None

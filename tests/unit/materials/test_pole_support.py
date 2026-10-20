@@ -98,6 +98,23 @@ def test_traced_fractions_keep_full_state():
     assert state.px.shape == (1,) + shape
 
 
+def test_non_addressable_masks_and_fractions_keep_full_box():
+    from rfx.materials.pole_support import mask_support, support_box
+
+    shape = (4, 5, 6)
+
+    class NonAddressableMask:
+        is_fully_addressable = False
+
+        def __array__(self, *args, **kwargs):
+            raise AssertionError("a global mask must not be read on the host")
+
+    mask = NonAddressableMask()
+    expected = tuple((0, n) for n in shape)
+    assert support_box(shape, [(mask,) * 3]).bounds == expected
+    assert mask_support(shape, mask, 1).bounds == expected
+
+
 @pytest.mark.parametrize('model', ('debye', 'lorentz'))
 def test_state_split_extends_original_x_and_preserves_transverse_support(model):
     from rfx.runners._distributed_common import _split_debye_state, _split_lorentz_state

@@ -304,10 +304,6 @@ def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,
     return write_box(base, e_box, box)
 
 
-
-
-
-
 def mixed_e_component_coeffs(debye_coeffs, lorentz_coeffs, comp: int, dt):
     """``(ca, cb, cc_debye, cc_lorentz)`` of the combined Debye + Lorentz E
     update for component ``comp`` (#1260: each from that component's own

@@ -249,8 +249,9 @@ def _measure(case, multi_process):
             if case == "nu" or material in _dispersion_kinds(case):  # NU has no dummy ADE carry
                 continue
             for slot, value in (("state", carry[material]), ("coeffs", coeffs[coeff_type])):
-                for name, array in zip(value._fields, value):
-                    placeholder_shapes[f"{material}.{slot}.{name}"] = array.shape
+                for path, array in jax.tree_util.tree_leaves_with_path(value):
+                    name = jax.tree_util.keystr(path)
+                    placeholder_shapes[f"{material}.{slot}{name}"] = array.shape
         records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes,
                         "captured": captured, "hlo_constants": hlo_constants,
                         "hlo_constants_parsed": hlo_constants_parsed,
@@ -484,6 +485,7 @@ def _addressable_dispersion_slabs():
         shape = mask.shape
         ndim = mask.ndim
         dtype = mask.dtype
+        is_fully_addressable = False
 
         def __getitem__(self, index):
             reads.append(index)
@@ -493,8 +495,9 @@ def _addressable_dispersion_slabs():
         assert shape == (12, 3, 4) and sharding is local_only
         return jax.device_put(callback((slice(6, 12), slice(None), slice(None))), devices[1])
 
-    def pole_setup(poles, masks, dt, kind, got_mesh, nx_per, nx, shape):
+    def pole_setup(poles, masks, dt, kind, got_mesh, nx_per, nx, shape, *, box):
         assert got_mesh is mesh and (nx_per, nx, shape) == (4, 8, (12, 3, 4))
+        assert box.bounds == ((0, 8), (0, 3), (0, 4))
         assert masks[0].devices() == {devices[1]}
         expected = np.pad(np.asarray(mask[3:8]), ((0, 1), (0, 0), (0, 0)))
         assert np.array_equal(np.asarray(masks[0]), expected)

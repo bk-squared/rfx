@@ -38,10 +38,11 @@ def full_box(shape):
 
 
 def support_box(shape, fractions, *, full_x=False):
-    """Bounding box of the realized pole reach; tracers/everywhere stay full."""
+    """Bound realized pole reach; traced or non-addressable arrays stay full."""
     if fractions is None or any(f is None for f in fractions):
         return full_box(shape)
-    if any(isinstance(a, jax.core.Tracer) for f in fractions for a in f):
+    if any(isinstance(a, jax.core.Tracer) or not getattr(a, "is_fully_addressable", True)
+           for f in fractions for a in f):
         return full_box(shape)
     reach = np.zeros(shape, dtype=bool)
     for components in fractions:
@@ -58,7 +59,8 @@ def mask_support(shape, masks, n_poles, periodic=(False,) * 3, *, full_x=False):
     """Realize concrete mask fractions once, before a mapped slab builder."""
     from rfx.materials.debye import pole_edge_fractions
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * n_poles
-    if any(m is None or isinstance(m, jax.core.Tracer) for m in masks):
+    if any(m is None or isinstance(m, jax.core.Tracer)
+           or not getattr(m, "is_fully_addressable", True) for m in masks):
         return full_box(shape)
     with jax.ensure_compile_time_eval():
         fractions = tuple(pole_edge_fractions(m, periodic) for m in masks)

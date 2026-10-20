@@ -854,16 +854,10 @@ def run_nonuniform_distributed_pec(
     use_lorentz = lorentz is not None
     from rfx.materials.pole_support import align_pole_states
     debye, lorentz = align_pole_states(debye, lorentz, (sharded_grid.nx_local, sharded_grid.ny, sharded_grid.nz))
-    if use_debye:
-        debye_coeffs, debye_state_init = debye
-    else:
-        debye_coeffs = None
-        debye_state_init = None
-    if use_lorentz:
-        lorentz_coeffs, lorentz_state_init = lorentz
-    else:
-        lorentz_coeffs = None
-        lorentz_state_init = None
+    debye_coeffs, debye_state_init = debye if use_debye else (None, None)
+    lorentz_coeffs, lorentz_state_init = lorentz if use_lorentz else (None, None)
+    debye_box = debye_state_init.box if use_debye else None
+    lorentz_box = lorentz_state_init.box if use_lorentz else None
     from rfx.boundaries.depths import distributed_wall_faces
     e_wall_faces, curl_boundary = distributed_wall_faces(sharded_grid.global_grid, pmc_faces)
     use_dispersion = use_debye or use_lorentz
@@ -1177,7 +1171,7 @@ def run_nonuniform_distributed_pec(
                             DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc,
                                         alpha=d_alpha, beta=d_beta),
                             means, dt, nx_per, nx_real, rank=rank),
-                        DebyeState(px=d_px, py=d_py, pz=d_pz, box=debye_state_init.box),
+                        DebyeState(px=d_px, py=d_py, pz=d_pz, box=debye_box),
                     )
                 else:
                     db_local = None
@@ -1217,7 +1211,7 @@ def run_nonuniform_distributed_pec(
                             means, dt, nx_per, nx_real, rank=rank),
                         LorentzState(px=l_px, py=l_py, pz=l_pz,
                                      px_prev=l_pxp, py_prev=l_pyp,
-                                     pz_prev=l_pzp, box=lorentz_state_init.box),
+                                     pz_prev=l_pzp, box=lorentz_box),
                     )
                 else:
                     lr_local = None
@@ -1286,13 +1280,11 @@ def run_nonuniform_distributed_pec(
             new_db_st = None
             new_lr_st = None
             if _has_db:
-                from rfx.materials.debye import DebyeState
                 new_db_st = db_st_in._replace(
                     px=results[ridx], py=results[ridx + 1], pz=results[ridx + 2],
                 )
                 ridx += 3
             if _has_lr:
-                from rfx.materials.lorentz import LorentzState
                 new_lr_st = lr_st_in._replace(
                     px=results[ridx], py=results[ridx + 1], pz=results[ridx + 2],
                     px_prev=results[ridx + 3], py_prev=results[ridx + 4],

@@ -936,6 +936,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             pz_prev=jax.device_put(_lz5, shd),
         )
 
+    debye_box = debye_state_sharded.box
+    lorentz_box = lorentz_state_sharded.box
     del debye, lorentz
 
     # ------------------------------------------------------------------
@@ -1070,10 +1072,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                                   sigma_lumped=sigma_lumped,
                                   eps_r_lumped=eps_r_lumped)
             _db = (DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc, alpha=d_alpha, beta=d_beta),
-                   DebyeState(px=d_px, py=d_py, pz=d_pz, box=debye_state_sharded.box)) if has_debye else None
+                   DebyeState(px=d_px, py=d_py, pz=d_pz, box=debye_box)) if has_debye else None
             _lr = (LorentzCoeffs(ca=l_ca, cb=l_cb, cc=l_cc, a=l_a, b=l_b, c=l_c),
                    LorentzState(px=l_px, py=l_py, pz=l_pz,
-                                px_prev=l_px_prev, py_prev=l_py_prev, pz_prev=l_pz_prev, box=lorentz_state_sharded.box)) \
+                                px_prev=l_px_prev, py_prev=l_py_prev, pz_prev=l_pz_prev, box=lorentz_box)) \
                    if has_lorentz else None
             from rfx.stepping.absorber import local_e_with_absorber
             new_st, new_db, new_lr, absorber = local_e_with_absorber(

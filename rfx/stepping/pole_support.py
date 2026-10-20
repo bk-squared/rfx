@@ -67,4 +67,3 @@ def update_e_box_fields(state, curls, dt, debye=None, lorentz=None, *, e_old=Non
     ls_new = None if ls is None else ls._replace(px=pl[0], py=pl[1], pz=pl[2],
         px_prev=ls.px, py_prev=ls.py, pz_prev=ls.pz)
     return st, ds_new, ls_new
-

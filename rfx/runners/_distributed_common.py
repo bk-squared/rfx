@@ -123,26 +123,27 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
     component materials as the plain E update and CPML. No whole-domain
     coefficient array or device-axis stack is constructed.
     """
+    from rfx.materials.pole_support import align_pole_states, mask_support
     out = []
     for kind, spec in zip(("debye", "lorentz"), (debye_spec, lorentz_spec)):
         if spec is None:
             out.append(None)
             continue
         poles, masks = spec
+        box = mask_support(materials.eps_r.shape, masks, len(poles), full_x=True)
         masks = jax.tree.map(
             lambda a: cut(a, Slab(nx, n_devices, ghost), "pole_mask", mesh=sharding),
             masks)
         out.append(stage_slab_pole_coeffs(
             poles, masks, dt, kind, sharding.mesh, nx_per, nx,
-            (n_devices * (nx_per + 2 * ghost),) + materials.eps_r.shape[1:]))
-    from rfx.materials.pole_support import align_pole_states
+            (n_devices * (nx_per + 2 * ghost),) + materials.eps_r.shape[1:], box=box))
     return align_pole_states(*out, (nx_per + 2 * ghost,) + materials.eps_r.shape[1:])
 
 
 from rfx.model.electric_metrics import slab_cell_sizes, slab_metric_kwargs
 
 
-def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, grid=None):
+def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, box, grid=None):
     """Fixed ADE terms and zero carry; E coefficient slots stay ``None``.
 
     The compiled setup contains only pole-mask means and their fixed ADE
@@ -167,7 +168,7 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, g
     state_type = DebyeState if kind == "debye" else LorentzState
     return stage_poles(local, masks, Slab(nx, mesh.size), shape[1:], mesh=mesh,
                        n_poles=len(poles), state_type=state_type,
-                       dtype=ade_state_dtype(), kind=kind)
+                       dtype=ade_state_dtype(), kind=kind, box=box)
 
 
 

@@ -90,10 +90,9 @@ BUILDERS = {
         "Lorentz ADE ca/cb/cc, including distributed in-loop builders",
     ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"):
         "mixed Debye+Lorentz ca/cb/cc on every supported lane",
-    ("rfx/stepping/uniform_setup.py", "_update_e_with_optional_dispersion"):
-        "uniform mixed Debye+Lorentz update",
-    ("rfx/stepping/graded_setup.py", "_update_e_nu_dispersive"):
-        "graded mixed Debye+Lorentz update",
+    ("rfx/stepping/pole_support.py", "mixed_box_component"):
+        "the mixed Debye+Lorentz box update shared by the uniform and graded "
+        "steps (#1825)",
 }
 
 _HOST = "host arithmetic on Python/NumPy values"

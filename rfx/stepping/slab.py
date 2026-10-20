@@ -451,15 +451,14 @@ def zero_pole_state(state_type, n_poles, layout, shape, *, mesh, dtype, kind, bo
     return state_type(**{name: zeros for name in state_type._fields if name != 'box'}, box=box)
 
 
-def stage_poles(build_coeffs, masks, layout, shape, *, mesh, n_poles, state_type, dtype, kind):
+def stage_poles(build_coeffs, masks, layout, shape, *, mesh, n_poles, state_type, dtype, kind, box):
     """Place locally built pole factors and their zero state in rank/pole order.
 
     The callback owns pole arithmetic on local masks; this module owns its
-    partition spec, rank data and the matching packed state layout.
+    partition spec, rank data and the matching packed state layout. The box
+    is computed from host masks before their slab cut.
     """
-    from rfx.materials.pole_support import mask_support
-    box = mask_support((layout.n_devices * layout.nx_local,) + tuple(shape),
-                       masks, n_poles, full_x=True).full_x(layout.nx_local)
+    box = box.full_x(layout.nx_local)
     local = rank_shard_map(build_coeffs, mesh=mesh, in_specs=P('x'),
                            out_specs=P('x'), check_rep=False)
     coeffs = jax.jit(local)(mesh_ranks(mesh), masks)

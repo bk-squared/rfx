@@ -141,13 +141,15 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
         step_kind = select_step(cpml=bool(sharded_grid.cpml_layers), **{kind: True})
     if step_kind == 'legacy':
         import jax
+        from rfx.materials.pole_support import mask_support
         from rfx.stepping.slab import cut
         from rfx.runners._distributed_common import stage_slab_pole_coeffs
         poles, masks = spec
+        box = mask_support(sharded_grid.global_grid.shape, masks, len(poles), full_x=True)
         masks = jax.tree.map(lambda mask: cut(mask, Slab.from_grid(sharded_grid),
                                              'pole_mask', mesh=mesh), masks)
         return stage_slab_pole_coeffs(poles, masks, dt, kind, mesh,
-            sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
+            sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape, box=box, grid=sharded_grid)
     from rfx.stepping.slab_setup import stage_dispersion
     return stage_dispersion(materials, dt, spec, sharded_grid.global_grid,
                             Slab.from_grid(sharded_grid), mesh, kind)

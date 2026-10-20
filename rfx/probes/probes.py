@@ -1598,6 +1598,7 @@ def extract_s_matrix(
     from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye
     from rfx.materials.lorentz import init_lorentz
+    from rfx.materials.pole_support import align_pole_states
     from rfx.sources.sources import setup_lumped_port
 
     n_ports = len(ports)
@@ -1616,15 +1617,11 @@ def extract_s_matrix(
     for p in ports:
         mats = setup_lumped_port(grid, p, mats)
 
-    debye = None
-    if debye_spec is not None:
-        debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, mats, dt, mask=debye_masks)
-
-    lorentz = None
-    if lorentz_spec is not None:
-        lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks, grid=grid)
+    debye = (None if debye_spec is None
+             else init_debye(debye_spec[0], mats, dt, mask=debye_spec[1]))
+    lorentz = (None if lorentz_spec is None
+               else init_lorentz(lorentz_spec[0], mats, dt, mask=lorentz_spec[1], grid=grid))
+    debye, lorentz = align_pole_states(debye, lorentz, grid.shape)
 
     # FDTD-sign V/I phasors per (drive j, receive i) for the shared decomposer.
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
