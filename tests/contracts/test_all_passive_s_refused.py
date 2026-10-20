@@ -180,6 +180,18 @@ def test_graded_multi_device_default_and_explicit(wire, monkeypatch):
                 n_steps=64, skip_preflight=True, **request)
 
 
+@pytest.mark.parametrize("wire", [False, True])
+def test_uniform_multi_device_explicit_refuses_before_dispatch(wire, monkeypatch):
+    devices = jax.devices("cpu")[:2]
+    assert len(devices) == 2
+    monkeypatch.setattr(jax.lax, "scan", _before_step)
+    monkeypatch.setattr(jax.lax, "while_loop", _before_step)
+    with pytest.raises(ValueError, match=REFUSAL):
+        _scene(wire=wire).forward(
+            n_steps=64, skip_preflight=True, port_s11_freqs=BINS,
+            distributed=True, devices=devices)
+
+
 def test_forward_without_s_request_keeps_named_records():
     # forward() has no implicit port-S request; run() owns the defaults above.
     with warnings.catch_warnings(record=True) as caught:
