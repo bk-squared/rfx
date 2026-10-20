@@ -205,7 +205,7 @@ def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(st
         sim.add_thin_conductor(shape, **options)
     sim.add_source((.007, .002, .001), 'ex', amplitude_kind='field')
     sim.add_probe((.005, .003, .001), 'ex')
-    if kind in ("box", "thin") and snap == "strict":
+    if kind in ("box", "thin", "surface_impedance") and snap == "strict":
         assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
         with pytest.raises(ValueError, match="conductor sheet dimension"):
             sim.run(n_steps=8, compute_s_params=False)

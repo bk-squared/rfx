@@ -92,3 +92,35 @@ def test_t4_whole_plane_on_cpml_grid(graded):
     assert admitted.realized_area == pytest.approx(.000896, abs=1e-16)
     assert abs(np.sqrt(admitted.realized_area / admitted.declared_area) - 1) <= 1e-12
     assemble_cells(sim, grid)
+
+
+def test_t5a_2d_whole_line_is_admitted_under_strict():
+    # The analytic R/T/A drawing, on a smaller domain; z has one sample.
+    sim = Simulation(15e9, (.024, .010, .0005), dx=.0005,
+                     boundary='cpml', cpml_layers=8, mode='2d_tmz', snap='strict')
+    shape = Box((.012, -1., -1.), (.0125, 1., 1.))
+    sim.add_thin_conductor(shape, sigma_bulk=(2. / 376.730) / 35e-6, thickness=35e-6)
+    grid = sim._build_realized_grid()
+    admitted = admit_dc_film(shape, grid)
+    # y: 10 + 2*8*0.5 = 18 mm; invariant z contributes a factor of 1.
+    assert admitted.declared_area == pytest.approx(.018, abs=1e-16)
+    assert admitted.realized_area == pytest.approx(.018, abs=1e-16)
+    assert abs(admitted.realized_area / admitted.declared_area - 1) <= 1e-12
+    assemble_cells(sim, grid)
+
+
+def test_t5b_2d_half_cell_end_is_refused_under_strict():
+    sim = Simulation(15e9, (.024, .010, .0005), dx=.0005,
+                     boundary='pec', mode='2d_tmz', snap='strict')
+    # y=3.25..7 mm draws 3.75 mm; selected cells 3.5..7 mm span 3.5 mm.
+    shape = Box((.012, .00325, -1.), (.0125, .007, 1.))
+    sim.add_thin_conductor(shape, sigma_bulk=(2. / 376.730) / 35e-6, thickness=35e-6)
+    grid = sim._build_realized_grid()
+    with pytest.raises(DCFilmAdmissionError) as caught:
+        assemble_cells(sim, grid)
+    assert caught.value.code == 'dc_film_area'
+    message = str(caught.value)
+    assert float(re.search(r'A_d=([^ ]+)', message)[1]) == pytest.approx(.00375, abs=1e-18)
+    assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(.0035, abs=1e-18)
+    # By hand: 3.5/3.75 - 1 = -1/15 (one tangential dimension).
+    assert 'e=(A_r/A_d)^(1/1)-1=-0.0666666666667' in message

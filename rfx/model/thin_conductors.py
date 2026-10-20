@@ -141,6 +141,10 @@ def dc_footprint_areas(shape, grid, mask, normal):
         coords = _grid_coords(grid)
         spans = []
         for i, a in enumerate(tangents):
+            if len(coords[a]) == 1:
+                widths[i] = np.ones_like(widths[i])
+                spans.append(1.0)
+                continue
             lo, hi = shape.corner_lo[a], shape.corner_hi[a]
             if 'xyz'[a] in getattr(grid, 'periodic_axes', ''):
                 spans.append(min(max(hi - lo, 0.0), float(np.sum(grid.cells(a)))))
@@ -269,14 +273,17 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
     name = type(shape).__name__
     lo, hi = sheet_bounds(shape)
     coords = _grid_coords(grid)
-    error = None if declared is None or declared <= 0 else np.sqrt(realized / declared) - 1
+    k = sum(len(coords[a]) > 1 for a in range(3) if a != normal) if isinstance(shape, Box) else 2
+    exponent = 'sqrt(A_r/A_d)' if k == 2 else f'(A_r/A_d)^(1/{k})'
+    error = (None if declared is None or declared <= 0 or k == 0 else
+             np.sqrt(realized / declared) - 1 if k == 2 else (realized / declared)**(1 / k) - 1)
     if error is None or abs(error) > _SHEET_EFFECTIVE_SIZE_TOL:
         clipped = any(
             'xyz'[a] not in getattr(grid, 'periodic_axes', '')
             and (lo[a] < float(coords[a][0]) or hi[a] > float(coords[a][-1]))
             for a in range(3) if a != normal)
         reason = ('cannot judge: no positive footprint_area(normal)' if error is None
-                  else f'e=sqrt(A_r/A_d)-1={error:+.12g}, bar={_SHEET_EFFECTIVE_SIZE_TOL:.12g}')
+                  else f'e={exponent}-1={error:+.12g}, bar={_SHEET_EFFECTIVE_SIZE_TOL:.12g}')
         remedy = ('Implement footprint_area(normal) to make this custom shape judgeable'
                   if error is None else
                   'The in-plane bounding box is clipped by the grid extent; enlarge the '
