@@ -1,9 +1,9 @@
-"""S read from one run's record needs something that excites it.
+"""A main-record S column requires a driven impedance port.
 
 Two 50 ohm lumped ports, both excite=False, in a small CPML box. With nothing
 else exciting the structure the record has no incident wave, and forward()
 returned S = 0 at every bin. It now refuses; a plain source that lights the
-passive ports keeps the termination diagnostic (#1420). run() on one device
+passive ports also refuses S. run() on one device
 drives each port in turn on either mesh, so it is not a record route and forms S.
 """
 import warnings
@@ -47,9 +47,9 @@ def test_undriven_record_refuses(mesh, entry, wire):
 
 
 @pytest.mark.parametrize('mesh,entry', [('uniform', 'forward'), ('graded', 'forward')])
-def test_passive_ports_lit_by_a_plain_source_keep_the_diagnostic(mesh, entry):
-    s = np.asarray(_call(_box(mesh, source=True), entry))
-    assert s.shape == (2, 2, FREQS.size) and np.isfinite(s).all() and np.abs(s).max() > 0
+def test_passive_ports_lit_by_a_plain_source_refuse_s(mesh, entry):
+    with pytest.raises(ValueError, match=UNDRIVEN + ".*lumped_port_sparams"):
+        _call(_box(mesh, source=True), entry)
 
 
 @pytest.mark.parametrize('mesh,wire', [('uniform', False), ('graded', False), ('graded', True)])
@@ -70,8 +70,8 @@ def test_default_wire_request_warns_and_returns_no_s():
     assert any(UNDRIVEN in str(w.message) for w in caught)
 
 
-def test_a_floquet_port_counts_as_a_drive():
-    """A Floquet port injects a plane wave: the default run keeps its S."""
+def test_a_floquet_port_does_not_drive_an_impedance_s_column():
+    """Plane-wave illumination keeps fields and spectra, without impedance S."""
     sim = Simulation(freq_max=12e9, domain=(12e-3, 12e-3, 30e-3), dx=1e-3, cpml_layers=6,
                      boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
     sim.add_port(position=(6e-3, 6e-3, 12e-3), component='ex', impedance=50.0,
@@ -80,5 +80,6 @@ def test_a_floquet_port_counts_as_a_drive():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         result = sim.run(n_steps=200, skip_preflight=True)
-    assert not any(UNDRIVEN in str(w.message) for w in caught)
-    assert result.s_params is not None and np.abs(np.asarray(result.s_params)).max() > 0
+    assert sum(UNDRIVEN in str(w.message) for w in caught) == 1
+    assert result.s_params is None
+    assert result.wire_port_sparams

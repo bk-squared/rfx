@@ -1,4 +1,11 @@
-"""Non-uniform vs uniform wire-port S-parameter lane parity (issue #673).
+"""
+All passive witnesses below now read raw wire_port_sparams through
+run(compute_s_params=False). Their historical S11 names and closed forms
+refer to the per-cell termination ratio, not to Result.s_params. The
+explicit S refusal is covered by test_all_passive_s_refused.py.
+
+Historical measurements and normalization provenance follow.
+Non-uniform vs uniform wire-port S-parameter lane parity (issue #673).
 
 Covers ONE defect, D1. A second candidate, D2, was pulled from this branch
 before merge and is now issue #683 — see "The D2 question" below.
@@ -214,6 +221,21 @@ def _s11(sim, n_steps=N_STEPS):
     return np.asarray(r.s_params)[0, 0, :]
 
 
+def _passive_result(sim, n_steps=N_STEPS, freqs=FREQS):
+    result = sim.run(n_steps=n_steps, compute_s_params=False,
+                     s_param_freqs=freqs, skip_preflight=True)
+    assert result.s_params is None
+    return result
+
+
+def _termination_ratio(sim, n_steps=N_STEPS):
+    result = _passive_result(sim, n_steps=n_steps)
+    meta, channels = result.wire_port_sparams[0]
+    z0 = meta.impedance if hasattr(meta, "impedance") else meta[4]
+    v, i = np.asarray(channels[0]), np.asarray(channels[1])
+    return (v + z0 * i) / (v - z0 * i)
+
+
 def _n_live(extent):
     """Live wire cells, read from the runner's OWN spelling of the rule.
 
@@ -312,7 +334,7 @@ def test_raw_port_ratio_matches_the_analytic_admittance(extent):
     """``V/I`` off the raw DFT accumulators must equal ``-Z0/n_live``.
 
     This is the only oracle-grade check in the file: it reads the accumulators
-    directly (``forward(port_s11_freqs=...)``), so it cannot be satisfied by
+    directly (``run(compute_s_params=False, s_param_freqs=...)``), so it cannot be satisfied by
     any (a, b) convention, and it stops short of the extractor's mixed
     normalization. It also pins ``Re(r) <= 0`` and ``|r| <= Z0/n_live``.
 
@@ -322,7 +344,7 @@ def test_raw_port_ratio_matches_the_analytic_admittance(extent):
     """
     z0 = 50.0
     sim = _build(False, extent=extent, z0=z0)
-    fr = sim.forward(n_steps=N_STEPS, port_s11_freqs=FREQS)
+    fr = _passive_result(sim)
     _spec, accs = fr.wire_port_sparams[0]
     # Issue #764: the accumulator tuple grew a 4th slot (whole-port
     # v_port_dft). This test's channels — the single-cell v_dft/i_dft and
@@ -355,8 +377,8 @@ def test_passive_lane_parity_and_passivity(extent, load):
     -1.40000 vs -0.71429 on the PEC-plate gap), i.e. |S11| > 1 at every bin
     on a passive one-port.
     """
-    s_uni = _s11(_build(False, extent=extent, load=load))
-    s_nu = _s11(_build(True, extent=extent, load=load))
+    s_uni = _termination_ratio(_build(False, extent=extent, load=load))
+    s_nu = _termination_ratio(_build(True, extent=extent, load=load))
     resid = float(np.max(np.abs(s_nu - s_uni)))
     print(f"[parity] extent={extent} load={load} "
           f"max|S_NU - S_uni|={resid:.3e} "
@@ -399,8 +421,8 @@ def test_passive_s11_regression_lock_on_the_known_wrong_normalization(extent):
     the reading is unchanged by the load either way — that IS the finding.)
     """
     expected = _analytic_s11(extent)
-    s_uni = _s11(_build(False, extent=extent))
-    s_nu = _s11(_build(True, extent=extent))
+    s_uni = _termination_ratio(_build(False, extent=extent))
+    s_nu = _termination_ratio(_build(True, extent=extent))
     print(f"[closed-form] n_live={_n_live(extent)} expected={expected:.6f} "
           f"uni={s_uni[0]:.6f} nu={s_nu[0]:.6f}")
     for label, s in (("uniform", s_uni), ("nonuniform", s_nu)):
@@ -416,9 +438,9 @@ def test_nu_wave_split_is_direction_free():
     for the outboard sign) but it must not reach the (a, b) split. Before
     the fix "-x"/"-y" gave the reciprocal of "+x"/"+y".
     """
-    ref = _s11(_build(True, direction="+x"))
+    ref = _termination_ratio(_build(True, direction="+x"))
     for d in ("-x", "+y", "-y", None):
-        s = _s11(_build(True, direction=d))
+        s = _termination_ratio(_build(True, direction=d))
         np.testing.assert_array_equal(
             s, ref, err_msg=f"direction={d!r} changed the wave split")
 
@@ -430,8 +452,8 @@ def test_passive_lane_parity_across_the_domain(port_x):
     ``_auto_direction`` returns "-x" for the first and "+x" for the second,
     which is exactly what used to split the two into reciprocals.
     """
-    s_uni = _s11(_build(False, port_x=port_x))
-    s_nu = _s11(_build(True, port_x=port_x))
+    s_uni = _termination_ratio(_build(False, port_x=port_x))
+    s_nu = _termination_ratio(_build(True, port_x=port_x))
     resid = float(np.max(np.abs(s_nu - s_uni)))
     print(f"[parity-x] port_x={port_x} max|S_NU - S_uni|={resid:.3e} "
           f"S_uni(0.2GHz)={s_uni[0]:.6f}")
@@ -503,10 +525,8 @@ def test_both_lanes_hand_back_the_raw_accumulators_as_meta_acc_pairs():
     first four channels ``(v, i, v_inc, v_port)`` are the same on both, and
     the pair shape is what this pins.
     """
-    uni = _build(False).forward(n_steps=N_STEPS, port_s11_freqs=FREQS,
-                                skip_preflight=True)
-    nu = _build(True).forward(n_steps=N_STEPS, skip_preflight=True,
-                              port_s11_freqs=np.linspace(1e9, 10e9, 50))
+    uni = _passive_result(_build(False))
+    nu = _passive_result(_build(True), freqs=np.linspace(1e9, 10e9, 50))
 
     for name, fr in (("uniform", uni), ("non-uniform", nu)):
         wps = fr.wire_port_sparams
