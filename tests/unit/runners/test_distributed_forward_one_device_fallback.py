@@ -173,3 +173,22 @@ def test_fallback_record_on_both_entries(kind, automatic_devices, skip_preflight
         requested = len(jax.devices()) if automatic_devices and entry == "forward" else len(devices)
         assert record.values == {"requested_devices": requested, "devices_used": 1, "memory": MEMORY}
         assert record.path == ("fwd_distributed_nu" if entry == "forward" else "run_distributed")
+
+
+@pytest.mark.parametrize("kind", ["waveguide", "tfsf"])
+def test_grading_above_sharded_limit_falls_back_on_both_entries(kind):
+    # The 5:1 grading limit guards only the sharded shared time step, so a
+    # one-device feature falls back on run() and forward() alike above it.
+    devices = host_devices(2)
+    sim, _ = scene(kind)
+    profile = np.array(sim._dz_profile, dtype=float)
+    profile[-1] = 6.5 * profile.min()
+    sim._dz_profile = profile
+    for entry in ("forward", "run"):
+        options = (dict(distributed=True, devices=devices) if entry == "forward"
+                   else dict(devices=devices, compute_s_params=False))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **options)
+        assert [d.code for d in result.diagnostics
+                if d.code == "distributed.one_device_fallback"] == ["distributed.one_device_fallback"], entry

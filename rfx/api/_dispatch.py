@@ -246,8 +246,10 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     # Distributed graded meshes share forward's NU runner and staging.
-    # Keep the run() grading admission before either runner starts.
-    if distributed_run and is_nonuniform:
+    # Features solved on one device (one_device_reason) skip the sharded
+    # grading admission, as forward() does; the rest is checked here.
+    from rfx.runners.distributed_v2 import one_device_reason
+    if distributed_run and is_nonuniform and not one_device_reason(self):
         import warnings as _wmod
         # Grading ratio check (shared single dt) across provided profiles.
         _max_ratio = 1.0
