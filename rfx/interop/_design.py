@@ -888,13 +888,12 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
 )
 
 #: Attributes deliberately absent from the document.  These are derived,
-#: transient, or run-time state — see the module docstring, rule 4.  A
+#: transient, or run-time state — see the module docstring, rule 4.
 #: Entries may be initialized by the constructor, but their supported uses
 #: cannot be serialized into a concrete design.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
     # Nominal profiles require traced widths, which design export refuses.
-    "_nominal_profiles",
-    "_mesh_resolution",
+    "_nominal_profiles", "_mesh_resolution",
     "_boundary_default_warned",
     # crop rectangles for the internal MSL DFT planes; exists only while
     # compute_msl_s_matrix runs and is removed on exit (never a design input)

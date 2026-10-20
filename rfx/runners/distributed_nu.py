@@ -71,7 +71,7 @@ from rfx.core.yee import (
     _shift_bwd,
     map_lumped,
 )
-from rfx.core.jax_utils import is_tracer  # noqa: F401  (Phase 2C reuse target)
+from rfx.model.graded_admission import concrete_distributed_x_cells
 from rfx.model.occupancy import publish_slab_occupancy
 from rfx.runners._distributed_common import (
     _update_e_local_nu,
@@ -144,7 +144,7 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
         this is geometry bookkeeping only; it does NOT feed the E/H
         inverse-spacing arrays above.
     """
-    dx_arr = np.asarray(grid.dx_arr, dtype=np.float64)
+    dx_arr = concrete_distributed_x_cells(grid)
     inv_dx_e = np.asarray(grid.inv_dx, dtype=np.float64)
     inv_dx_h = np.asarray(grid.inv_dx_h, dtype=np.float64)
     if pad_x > 0:

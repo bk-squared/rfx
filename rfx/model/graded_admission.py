@@ -20,6 +20,18 @@ _AXES = ("x", "y", "z")
 NOMINAL_SUM_RTOL = 1e-9
 
 
+def concrete_distributed_x_cells(grid):
+    """Admit host-owned slab metrics before any NumPy conversion or stepping."""
+    names = ("dx_arr", "dy_arr", "dz", "inv_dx", "inv_dx_h", "inv_dy",
+             "inv_dy_h", "inv_dz", "inv_dz_h", "dt")
+    if any(is_tracer(getattr(grid, name, None)) for name in names):
+        raise NotImplementedError(
+            "A graded multi-device solve with traced mesh metrics cannot build "
+            "its host-owned slabs. Use a concrete mesh and time step built "
+            "outside jit/vmap/grad.")
+    return np.asarray(grid.dx_arr, dtype=np.float64)
+
+
 def check_traced_z_extent(profile, domain):
     """Judge eager primals now and abstract widths through the shared callback."""
     if domain is None or not is_tracer(profile):
