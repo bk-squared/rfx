@@ -96,7 +96,7 @@ process to avoid this spread.
 
 ### Lossy Box film area on a traced mesh is checked only on a concrete grid
 
-Tracker: #1999 — concrete-grid checks: tests/contracts/test_film_drawn_size.py
+Tracker: #1950 — concrete-grid checks: tests/contracts/test_film_drawn_size.py
 
 Box DC films retain their fold on traced coordinates; the area comparison runs on the concrete realized grid in
 preflight. Its drawn rectangle is clipped to the sampled tangential extent, including absorber padding (one period
