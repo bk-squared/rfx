@@ -200,19 +200,12 @@ def test_waveguide_conformal_builder_uses_component_means(monkeypatch):
         sim.compute_waveguide_s_matrix(n_steps=2, normalize=True)
 
 
-def test_kottke_stage2_does_not_take_stage1_correction(monkeypatch):
-    from rfx.geometry import conformal
-
-    def forbidden(*args, **kwargs):
-        pytest.fail("Stage 2 must use its own inverse tensor")
-
-    monkeypatch.setattr(conformal, "conformal_eps_correction", forbidden)
-    plain = _run(False, smooth="kottke_pec")
-    enabled = _run(True, smooth="kottke_pec")
-    assert enabled["weights"] is None
-    assert enabled["inverse"] is not None
-    _compare_arrays(enabled["inverse"], plain["inverse"])
-    _compare_trace(enabled["trace"], plain["trace"])
+def test_kottke_stage2_does_not_take_stage1_correction():
+    """Stage 2 refuses the requested Stage 1 correction instead of dropping it."""
+    with pytest.raises(
+            NotImplementedError,
+            match=r"(?s)(?=.*subpixel_smoothing='kottke_pec')(?=.*conformal_pec=True)"):
+        _run(True, smooth="kottke_pec")
 
 
 def test_periodic_dielectric_seam_uses_the_plain_wrap():

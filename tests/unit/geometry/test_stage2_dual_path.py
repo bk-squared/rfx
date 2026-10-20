@@ -79,10 +79,11 @@ def test_runners_uniform_kottke_pec_smoke():
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
+        # conformal faces with kottke_pec are refused (refusal PR); the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
-            y=Boundary(lo="pec", hi="pec", conformal=True),
-            z=Boundary(lo="pec", hi="pec", conformal=True),
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=4,
     )
@@ -106,8 +107,8 @@ def test_runners_uniform_kottke_pec_differs_from_default():
     apply the same vacuum update. The distinction only appears at PEC
     *geometry* boundary cells, where Stage 2 uses Kottke inv-eps
     averaging (fractional inv) while Stage 1 uses sigma=1e10 (binary
-    masking). A thin PEC strip across the waveguide cross-section
-    creates this sub-pixel geometry difference.
+    masking). The thin PEC strip's off-node x faces make Kottke's
+    fractional inverse tensor differ from the staircase.
     """
     from rfx.geometry.csg import Box
 
@@ -116,23 +117,20 @@ def test_runners_uniform_kottke_pec_differs_from_default():
             freq_max=10e9,
             domain=(0.06, 0.025, 0.012),
             dx=0.001,
+            # conformal faces with kottke_pec are refused (refusal PR); the subject here is kottke_pec
             boundary=BoundarySpec(
                 x="cpml",
-                y=Boundary(lo="pec", hi="pec", conformal=True),
-                z=Boundary(lo="pec", hi="pec", conformal=True),
+                y=Boundary(lo="pec", hi="pec"),
+                z=Boundary(lo="pec", hi="pec"),
             ),
             cpml_layers=4,
         )
-        # PEC iris one cell thick (1 mm in x at dx = 1 mm) at x = 25 mm,
-        # node-aligned on both faces. #931: this is a VOLUME — walls on
-        # both drawn planes, normal E shorted between them — not a sheet;
-        # it is metal of a stated thickness across the guide, and the
-        # declaration is unchanged by the contract. Stage 2 assigns a
-        # fractional inv tensor at the PEC boundary cells via Kottke
-        # averaging (§1.8 fences that path out of the contract); Stage 1
-        # uses the realized edge masks. The two must differ, which is what
-        # the assertion below measures.
-        sim.add(Box((0.025, 0.005, 0.002), (0.026, 0.020, 0.010)),
+        # PEC iris one cell thick (1 mm in x at dx = 1 mm), with both
+        # x faces shifted off the nodes by 0.3 dx to 25.3 and 26.3 mm.
+        # These off-node faces make Kottke's fractional inverse tensor
+        # differ from Stage 1's staircase masks. Node-aligned faces
+        # reduce to the staircase and do not exercise this difference.
+        sim.add(Box((0.0253, 0.005, 0.002), (0.0263, 0.020, 0.010)),
                 material="pec")
         sim.add_waveguide_port(
             0.010, direction="+x", mode=(1, 0), mode_type="TE",
@@ -263,15 +261,10 @@ def test_pec_short_s11_with_kottke_pec_path():
     round-trip while the reference is one-way; the cancellation fails
     and introduces ±15 % swings from source-plane impedance mismatch.
 
-    Frequency range 5–6.5 GHz (not 7 GHz): at 7 GHz the TE20 mode is
-    near cutoff (fc20 = 7.5 GHz). The evanescent decay constant is only
-    56.5 rad/m, so the TE20 field decays by just exp(−56.5×0.074) ≈ 1.5 %
-    over the 74 mm from PEC short to port 1. The TE10 port extractor
-    cannot capture this energy → it registers as |S11| < 1 regardless of
-    PEC accuracy. The same deficit appears in Stage 1 (0.969 at 7 GHz)
-    and is actually larger there, confirming it is a GEOMETRIC limitation
-    of the test setup, not a Stage 2 defect. Restricting to 6.5 GHz
-    (TE20 decay ≈ exp(−78.5×0.074) ≈ 0.3 %) eliminates this artefact.
+    The domain is 120 × 39 × 21 mm, all whole-cell lengths at dx=3 mm.
+    For the 39 mm guide width, TE10 cutoff is 3.85 GHz and TE20 cutoff
+    is 7.69 GHz. The 5–6.5 GHz window stays between these cutoffs,
+    limiting evanescent TE20 contamination at the TE10 port.
 
     PEC box at x=[84 mm, 87 mm]: both faces are integer multiples of
     dx=3 mm so Kottke reduces to a binary mask (inv=0 or inv=1 only).
@@ -281,19 +274,19 @@ def test_pec_short_s11_with_kottke_pec_path():
 
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.12, 0.04, 0.02),
+        domain=(0.12, 0.039, 0.021),
         dx=0.003,
+        # conformal faces with kottke_pec are refused (refusal PR); the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
-            y=Boundary(lo="pec", hi="pec", conformal=True),
-            z=Boundary(lo="pec", hi="pec", conformal=True),
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=10,
     )
-    sim.add(Box((0.084, 0, 0), (0.087, 0.04, 0.02)), material="pec")
-    # 5–6.5 GHz: TE20 evanescent contamination < 0.3 % at this port–short
-    # spacing (74 mm). Extending to 7 GHz adds 1.5 % TE20 contamination
-    # that is not extractable by a single-mode TE10 port.
+    sim.add(Box((0.084, 0, 0), (0.087, 0.039, 0.021)), material="pec")
+    # 5–6.5 GHz lies above TE10 cutoff (3.85 GHz) and below TE20
+    # cutoff (7.69 GHz) for the 39 mm guide width.
     freqs = jnp.linspace(5e9, 6.5e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
