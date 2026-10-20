@@ -57,6 +57,9 @@ within 1e-2 of its peak.  On main (Mac CPU, 2026-10-12): mean |S11|^2 0.2516;
 directional agreement 4.6e-6; per-cell vector agreement 4.9e-6; the 80-period
 gradient differs by at most 4.4e-7 against a 6.0e-3 peak.  All gates pass.
 
+On a GPU it needs more than 10 GB of memory at these settings (on 2026-10-11 a
+10 GB card ran out of memory); a 24 GB card runs it.
+
 Run (CPU, about 20 minutes, most of it the float64 finite differences):
     JAX_PLATFORMS=cpu python validation/tmtt_paper/lumped_port_gradient_check.py
 """

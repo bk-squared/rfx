@@ -165,7 +165,9 @@ uniform mesh with `run()`, `run(conformal_pec=True)` weights the update at the
 cut cells instead (`conformal_pec_min_weight` sets the floor); other solver
 paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
 faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
-dielectric the same way. The known-limitations list says what the conformal
+dielectric the same way. With both set, the smoothed tensor takes the place
+of the conformal weights: rfx forms no conformal weights and gives no
+conformal warning. The known-limitations list says what the conformal
 correction does not yet cover.
 
 A rotated box (`OrientedBox`) has no conformal or smoothed form. A run with
