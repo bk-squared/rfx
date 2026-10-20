@@ -623,15 +623,11 @@ def test_port_s_equal_requests(declaration, path):
         assert pair is not None
 
 
-def test_graded_tfsf_run_refusal_and_forward_fallback():
-    # The run-only Phase B dispatch refusal predates A5; forward now uses
-    # the supported single-device graded solve. Do not call this both-refused.
+def test_graded_tfsf_run_and_forward_fall_back():
+    # Both graded multi-device entries solve TFSF on one device.
     pair = {entry: run_l2(BUILDERS['PW-A'], entry, 'multi-device-graded', n_steps=1)
             for entry in ('run', 'forward')}
-    assert pair['run']['outcome'] == 'raised'
-    assert pair['run']['type'] == 'ValueError'
-    assert pair['run']['message'] == (
-        'Distributed + non-uniform does not support TFSF plane-wave sources (Phase B scope).')
-    assert pair['forward']['outcome'] == 'admitted'
-    assert any(d.code == 'distributed.one_device_fallback'
-               for d in pair['forward']['result'].diagnostics)
+    for entry in ('run', 'forward'):
+        assert pair[entry]['outcome'] == 'admitted', (entry, pair[entry])
+        assert any(d.code == 'distributed.one_device_fallback'
+                   for d in pair[entry]['result'].diagnostics)

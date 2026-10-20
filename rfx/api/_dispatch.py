@@ -246,7 +246,8 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     # Distributed graded meshes share forward's NU runner and staging.
-    # Keep the run() grading/TFSF admission before either runner starts.
+    # Keep the run() grading admission before either runner starts; TFSF
+    # falls back to one device in execute_distributed, as forward() does.
     if distributed_run and is_nonuniform:
         import warnings as _wmod
         # Grading ratio check (shared single dt) across provided profiles.
@@ -266,11 +267,6 @@ def _dispatch_plan(
                 "Distributed + non-uniform requires grading ratio "
                 "<= 5:1 for shared-dt stability; got "
                 f"{_max_ratio:.2f}:1."
-            )
-        if self._tfsf is not None:
-            raise ValueError(
-                "Distributed + non-uniform does not support TFSF "
-                "plane-wave sources (Phase B scope)."
             )
         if self._solver == "adi":
             raise ValueError(

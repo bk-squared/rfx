@@ -1694,9 +1694,8 @@ TABLE["_cpml_kappa_max"]["kappa"]["run_distributed_nu"] = admission(
     "cpml_kappa_max != 1", "graded multi-device run(devices=...)", "the NU runner has no kappa carrier")
 TABLE["_ntff"]["ntff_box"]["run_distributed_nu"] = refuses(
     "the NU runner has no NTFF accumulation", raises="add_ntff_box() (NTFF box) is not supported")
-TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = refuses(
-    "distributed nonuniform TFSF is refused at dispatch",
-    raises="Distributed + non-uniform does not support TFSF")
+TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = falls_back(
+    "run_nonuniform", "single-device graded run with the same arguments")
 TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = falls_back(
     "run_nonuniform", "single-device graded run with the same arguments")
 
