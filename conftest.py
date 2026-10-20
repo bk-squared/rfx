@@ -42,7 +42,9 @@ import pytest  # noqa: E402
 
 # A test that reads a note, a guide or a README must be marked docs_consistency,
 # which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
-pytest_plugins = ("tests._prose_reads",)
+# With RFX_DURATIONS_LOG set, every test phase's duration is appended as it ends
+# (the weekly lane; tests/_durations_log.py).
+pytest_plugins = ("tests._prose_reads", "tests._durations_log")
 
 
 def pytest_configure(config):

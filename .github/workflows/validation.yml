@@ -162,6 +162,9 @@ jobs:
         env:
           RFX_WEEKLY_RSS: "1"
           RFX_S0_FULL: "1"
+          # Every test phase as it ends, so a session that aborts still leaves its
+          # durations (pytest-split stores them only at session end).
+          RFX_DURATIONS_LOG: durations/weekly_${{ matrix.group }}.log
         run: >
           mkdir -p durations &&
           cp .test_durations_weekly durations/weekly_${{ matrix.group }}.json &&
@@ -247,7 +250,7 @@ jobs:
           python scripts/ci/weekly_shard_budget.py --start "$SHARD_T0"
           --limit-minutes 180 --fraction 0.85
           --measured durations/weekly_${{ matrix.group }}.json --recorded .test_durations_weekly
-          --prune
+          --log durations/weekly_${{ matrix.group }}.log --prune
 
       - name: Upload weekly shard durations
         if: always()

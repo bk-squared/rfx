@@ -245,7 +245,52 @@ runner measurement, and it is: 54.40078801575026 s, the 39.56420946600019 s of `
 38828042377 (an EPYC 9V74) times 1.375. It is the one highmem-marked entry the regeneration
 refreshed; the other 14 are carried. When regenerating, do not overwrite this one from the a6000 map.
 
-## .test_durations_weekly — weekly prices (2026-10-19)
+## .test_durations_weekly — weekly prices (2026-10-19, refreshed 2026-10-20)
+
+**Refresh of 2026-10-20.** Weekly run `39378910883` at main `a1e03dce6`: shard 5 ran 155.2 min of
+its 180 (86.2 %). Its 3,844 priced tests ran 98 min against 102 min of prices; 65 tests with no
+weekly price (distributed dispersive-CPML files added on 10-14 and 10-19, after the measurement
+above) ran 56 min. pytest-split priced each at the selection mean (about 2 s), and
+`duration_based_chunks` keeps collection order, so the whole block landed in shard 5. Its pytest
+then aborted (exit 134) in a distributed test, so `--store-durations` stored nothing and the budget
+step read 0 measured tests. Since then every test phase is also appended to
+`durations/weekly_<k>.log` (`tests/_durations_log.py`, `RFX_DURATIONS_LOG`), and
+`weekly_shard_budget.py --log` rebuilds the shard's map from it when pytest stored nothing.
+
+Merge order: the 2026-10-19 file below; `s5_unpriced_from_log.json` (shard 5's unpriced tests
+only, from GitHub log timestamps, test i's start to test i+1's start — an **approximation**; the
+aborted test is left out); then measured `weekly-durations-1`, `-2`, `-3`, `-4`, `-6`, `-7`, `-8`
+from run `39378910883`; then `s5_never_run_estimates.json`. Later input wins; retain only the
+weekly collection (27,741 tests with `RFX_S0_FULL=1` on this change); round to 0.01 s.
+The inputs and a script that rebuilds this file are in rfx-archive `rfx/records/20261020-weekly-prices-refresh/` (commit 625522eb0).
+`s5_never_run_estimates.json` holds **estimates, not measurements**, for four shard-5 tests the
+abort left unrun: the aborted lossy-Lorentz test and `..._mixed.py` at the median of the measured
+Debye and Lorentz siblings (227.06 s), `..._mixed_800_weekly.py` and `..._mixed_1600_weekly.py` at
+the median of the four measured 800/1600 siblings (241.66 s). 22 collected tests stay unpriced: 12
+added since `a1e03dce6` (this change's own contract tests among them) and 10 never-run shard-5
+tests in files with no measured sibling (`test_distributed_dispersive_cpml_paths.py`, `_ports.py`,
+`_snapshots.py`). The 36 log ids a space cut are outside the collection.
+
+| Source (merge order) | Input entries | In weekly collection | Final owned entries |
+|---|---:|---:|---:|
+| `.test_durations_weekly` of 2026-10-19 | 27,370 | 27,309 | 3,954 |
+| `s5_unpriced_from_log.json` | 65 | 29 | 29 |
+| `weekly_1.json` | 7,418 | 7,415 | 7,415 |
+| `weekly_2.json` | 5,491 | 5,484 | 5,484 |
+| `weekly_3.json` | 1,888 | 1,888 | 1,888 |
+| `weekly_4.json` | 3,447 | 3,447 | 3,447 |
+| `weekly_6.json` | 745 | 745 | 745 |
+| `weekly_7.json` | 3,319 | 3,319 | 3,319 |
+| `weekly_8.json` | 1,436 | 1,434 | 1,434 |
+| `s5_never_run_estimates.json` (estimates) | 4 | 4 | 4 |
+
+Predicted test time per group (`duration_based_chunks`, `--splits 8`, the collection above):
+113.8, 113.9, 114.9, 113.8, 117.1, 113.8, 113.8, 109.0 min (max 117.1, group 5, which carries
+the four estimates). Group 6 holds the 10 unpriced never-run tests at the selection mean (about 2 s
+each); their siblings ran minutes each, so group 6 may run long until the per-test log prices them. The 2026-10-19 file on
+the same collection predicts max 123.4 min and shard 5 at 109.4, the 56 unpriced minutes not counted.
+
+### 2026-10-19 measurement
 
 The uncached weekly lane uses its own file; the fast lane and gate keep
 `.test_durations`. Weekly run `39220415396`, at main `f0e3805d9` on 2026-10-19,
@@ -253,7 +298,9 @@ measured the uncached prices. The old fast-lane prices underpredicted measured
 weekly work by x1.05–1.48 (leader's per-shard comparison); shard 4 used 9270 s,
 above the 85 % budget, and shard 5 was cancelled at the 180-minute limit.
 
-**27,370 entries in the weekly file**, with **87 fast-lane fallback prices**.
+2026-10-19: 27,370 entries, with 87 fast-lane fallback prices. After the 2026-10-20 refresh:
+**27,719 entries in the weekly file**, with at most **87 fast-lane fallback prices** (carried from
+2026-10-19; this refresh added none).
 Values are rounded to 0.01 s and the file keeps only test ids the weekly selection collects
 (rfx-lead D:b089a0): 3,290,060 bytes at regeneration, before the pruning noted above.
 Weekly collection contains 27,440 tests, of which 58 have no entry in any

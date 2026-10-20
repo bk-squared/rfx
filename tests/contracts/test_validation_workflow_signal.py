@@ -41,7 +41,9 @@ in agent-rules.
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -287,8 +289,11 @@ def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None
         "python", "scripts/ci/weekly_shard_budget.py", "--start", "$SHARD_T0",
         "--limit-minutes", "180", "--fraction", "0.85",
         "--measured", "durations/weekly_1.json", "--recorded", ".test_durations_weekly",
-        "--prune",
+        "--log", "durations/weekly_1.log", "--prune",
     ]
+    test_step = _weekly_test_step(job)
+    # The log the budget reads is the one conftest writes during the test step.
+    assert test_step["env"]["RFX_DURATIONS_LOG"] == "durations/weekly_${{ matrix.group }}.log"
     assert int(args[args.index("--limit-minutes") + 1]) == job["timeout-minutes"]
 
 
@@ -370,6 +375,86 @@ def test_weekly_budget_survives_a_truncated_measured_file(tmp_path: Path) -> Non
     over = subprocess.run([*args, "--start", str(time.time() - 9300)], capture_output=True, text=True, timeout=10, check=False)
     assert (under.returncode, over.returncode) == (0, 1), under.stdout + under.stderr + over.stdout + over.stderr
     assert "measured durations file unreadable" in under.stdout.splitlines()
+
+
+def _crashed_shard(tmp_path: Path, log_lines: list[str] | None) -> subprocess.CompletedProcess[str]:
+    # pytest aborted: the measured file is still the untouched copy of the recorded one.
+    recorded = {"known": 10.0, "not-run": 20.0}
+    (tmp_path / "recorded.json").write_text(json.dumps(recorded), encoding="utf-8")
+    (tmp_path / "measured.json").write_text(json.dumps(recorded), encoding="utf-8")
+    log = tmp_path / "weekly.log"
+    if log_lines is not None:
+        log.write_text("".join(line + "\n" for line in log_lines), encoding="utf-8")
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts/ci/weekly_shard_budget.py"),
+         "--start", str(time.time() - 7000), "--limit-minutes", "180", "--fraction", "0.85",
+         "--measured", str(tmp_path / "measured.json"), "--recorded", str(tmp_path / "recorded.json"),
+         "--log", str(log), "--prune"],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+
+
+def test_weekly_budget_reads_the_per_test_log_when_pytest_stored_nothing(tmp_path: Path) -> None:
+    # Phases summed per test as pytest-split does; a setup over 600 s is dropped as it
+    # drops it; the line cut by the abort is skipped.
+    lines = [json.dumps(["known", "setup", 1.0]), json.dumps(["known", "call", 11.5]),
+             json.dumps(["known", "teardown", 0.5]), json.dumps(["new", "setup", 700.0]),
+             json.dumps(["new", "call", 52.0]), '["cut", "ca']
+    result = _crashed_shard(tmp_path, lines)
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout.splitlines()
+    assert "pytest stored no durations: the session did not reach its end" in out
+    assert "tests this shard measured: 2" in out
+    assert "tests this shard ran with no recorded duration: 1" in out
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 13.0, "new": 52.0}
+
+
+def test_weekly_budget_says_unknown_when_pytest_stored_nothing_and_no_log(tmp_path: Path) -> None:
+    result = _crashed_shard(tmp_path, None)
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = result.stdout.splitlines()
+    assert "tests this shard measured: unknown (no per-test log either)" in out
+    assert "tests this shard ran with no recorded duration: unknown" in out
+    assert "tests this shard measured: 0" not in out
+
+
+def test_durations_log_survives_a_test_that_changes_directory(tmp_path: Path) -> None:
+    # A real pytest session with the plugin, the log path relative as validation.yml
+    # sets it, and a test that changes directory before its call report: the log must
+    # stay at the configure-time path and the session must run every test.
+    session = tmp_path / "session"
+    session.mkdir()
+    (session / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    (session / "test_chdir.py").write_text(
+        "def test_moves(monkeypatch, tmp_path):\n    monkeypatch.chdir(tmp_path)\n\n"
+        "def test_after():\n    pass\n", encoding="utf-8")
+    env = {**os.environ, "RFX_DURATIONS_LOG": "durations/weekly.log",
+           "PYTHONPATH": os.pathsep.join([str(REPO_ROOT), os.environ.get("PYTHONPATH", "")])}
+    (session / "durations").mkdir()
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "tests._durations_log",
+         "test_chdir.py"],
+        cwd=session, env=env, capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "2 passed" in run.stdout, run.stdout
+    rows = [json.loads(line) for line in (session / "durations/weekly.log").read_text(encoding="utf-8").splitlines()]
+    assert [(nodeid, when) for nodeid, when, _ in rows] == [
+        (f"test_chdir.py::{name}", when) for name in ("test_moves", "test_after")
+        for when in ("setup", "call", "teardown")]
+    lines = (session / "durations/weekly.log").read_text(encoding="utf-8").splitlines()
+    result = _crashed_shard(tmp_path, lines)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert set(json.loads((tmp_path / "measured.json").read_text(encoding="utf-8"))) == {
+        "test_chdir.py::test_moves", "test_chdir.py::test_after"}
+
+
+def test_budget_log_rule_matches_pytest_split() -> None:
+    from pytest_split.plugin import STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD
+    spec = importlib.util.spec_from_file_location("weekly_shard_budget", REPO_ROOT / "scripts/ci/weekly_shard_budget.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.SETUP_TEARDOWN_LIMIT_S == STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD
 
 
 def test_no_workflow_uses_vessl() -> None:
