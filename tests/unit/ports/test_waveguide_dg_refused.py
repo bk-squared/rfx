@@ -8,7 +8,16 @@ import pytest
 from rfx import Simulation
 from rfx.api._spec import _WaveguidePortEntry
 from rfx.interop import design_to_dict, simulation_from_design
-from rfx.model.waveguide_waveform import DG_REFUSAL
+
+# Expected text is quoted from DESIGN_refuse.md, not read from implementation.
+DG_REFUSAL = (
+    "waveform='differentiated_gaussian' is refused on waveguide ports: its "
+    "band-limited incident table is built with a zero-phase filter whose "
+    "precursor wraps circularly to the end of the record, so the port "
+    "re-injects at the record end (an empty matched WR-90 guide read S21 off "
+    "by up to 11 dB). Use waveform='modulated_gaussian' (the default). "
+    "Tracked in #1942."
+)
 
 
 def _guide(graded=False, internal=False):
