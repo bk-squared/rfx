@@ -111,7 +111,7 @@ FAST_MEASURED = {
     # absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 1.61e-04, 4.7x the bound)
     # and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the largest of the three
     # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
-    60.0: {"f0_bound": 3.42e-05},
+    60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06)},
 }
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
@@ -296,13 +296,15 @@ DOMAIN_MEASURED = {
     70.0: {"max": 4.9831e-05, "quantum": 1e6, "inside": True},
     # 80 deg is an upper bound, not a lock (#1845). At f0 this rig reads its own floor, which sits above
     # the auxiliary absorber's reflection: the f0-bin |B/A| reads 1.03e-06 / 1.11e-06 / 1.26e-06 at
-    # 40000 / 60000 / 80000 steps, and cutting the absorber from 200 to 30 cells moves nothing (1.11e-06).
-    # The band maximum (1.35e-04 here) sits at band-edge bins, where the forward wave is weak, and moves with
-    # record length, so it is not pinned; it still carries the domain check against LEAK_BAR. The row
-    # catches the absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 7.7e-02,
-    # 3e4x the bound) and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the
-    # largest of the three lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
-    80.0: {"f0_bound": 2.51e-06, "inside": True},
+    # 40000 / 60000 / 80000 steps, cutting the absorber from 200 to 30 cells moves nothing (1.11e-06), and
+    # a target reflection of 1e-40 instead of 1e-28 moves it 4 %. The row catches the target rising to
+    # 1e-20 (reads 1.08e-04, 43x the bound; review of this change) and anything worse (1e-6 reads
+    # 7.7e-02), not finer; a finer test of the absorber needs another rig. The band maximum (1.35e-04 here)
+    # sits at band-edge bins, where the forward wave is weak. Those bins see the absorber more obliquely and
+    # do respond to it (1e-40 halves the maximum), but the maximum also moves with record length, so it is
+    # not pinned; it still carries the domain check against LEAK_BAR. Bound: 2x the largest of the three
+    # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
+    80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
     # #1234: the auxiliary H profile at the Yee half cell.
     82.0: {"max": 4.3980e-04, "quantum": 1e5, "inside": True},
