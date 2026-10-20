@@ -170,5 +170,6 @@ def test_fallback_record_on_both_entries(kind, automatic_devices, skip_preflight
             assert sorted(str(w.message) for w in caught) == sorted(
                 [message] + [str(w.message) for w in native_warnings])
         assert record.subject == reason and record.severity == "warning"
-        assert record.values == {"requested_devices": 2, "devices_used": 1, "memory": MEMORY}
+        requested = len(jax.devices()) if automatic_devices and entry == "forward" else len(devices)
+        assert record.values == {"requested_devices": requested, "devices_used": 1, "memory": MEMORY}
         assert record.path == ("fwd_distributed_nu" if entry == "forward" else "run_distributed")
