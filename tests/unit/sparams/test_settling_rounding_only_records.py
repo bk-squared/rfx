@@ -277,3 +277,14 @@ def test_lone_null_probe_is_scored_and_the_warning_says_why():
     assert ('worst probe record probe0(hz) (no other component is recorded at its '
             'cell: a probe on a field null holds only rounding and cannot be judged '
             'alone; record the co-located components') in message
+
+
+def test_metadata_without_cells_groups_nothing_and_calls_no_probe_lone():
+    """Pre-#1909 3-tuples carry no cell: scored as on main, no lone-probe note."""
+    from rfx.probes.settling import probe_record_settling_witness
+    y = _records(np.float32)[0][1]
+    series = np.stack([y, y*np.float32(1e-5)], axis=1)
+    _, detail = probe_record_settling_witness(
+        series, ((0, 5, 0), (1, 5, 0)), dt=1., freqs=[.07], freq_max=.15, source_end_index=0)
+    assert detail['skipped_records'] == []
+    assert detail['lone_records'] == []

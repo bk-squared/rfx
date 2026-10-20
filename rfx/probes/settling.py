@@ -279,7 +279,7 @@ def probe_record_info(time_series, entries, internal_indices=(),
     Each item is ``(column, component_code, source_dominated_flag, i, j, k)``;
     the flag is 1 when that probe shares a Yee cell with a registered drive
     (see :func:`source_dominated_columns`), and ``(i, j, k)`` is the cell of
-    the declared position (-1s when unresolved), which tells co-located
+    the declared position (absent when unresolved), which tells co-located
     records apart (#1909). All stay integers so the selection metadata can
     ride inside a JAX result tree.
     """
@@ -296,7 +296,7 @@ def probe_record_info(time_series, entries, internal_indices=(),
             continue
         component = getattr(entries[col], "component", "?") if col < len(entries) else "?"
         code = _COMPONENTS.index(component) if component in _COMPONENTS else -1
-        cell = _cell_of(grid, getattr(entries[col], "position", None)) or (-1, -1, -1)
+        cell = _cell_of(grid, getattr(entries[col], "position", None)) or ()
         result.append((col, code, 1 if col in dominated else 0, *cell))
     return tuple(result)
 
@@ -387,6 +387,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         "worst_record": max(finite, key=finite.get) if finite else None,
         "source_dominated": bool(qualifier),
         "source_dominated_records": sorted(dominated_names),
-        "lone_records": sorted(name for name, _ in selected
-                               if list(groups.values()).count(groups.get(name)) < 2),
+        # Lone: its cell is known and no other scored record shares it.
+        "lone_records": sorted(name for name, _ in selected if name in groups
+                               and [groups.get(other) for other, _ in selected]
+                               .count(groups[name]) < 2),
         "qualifier": qualifier}

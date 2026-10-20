@@ -181,7 +181,11 @@ def test_the_flag_rides_in_the_numeric_selection_metadata():
     sim = _sim([SOURCE, AWAY])
     result, _ = _run(sim)
     info = sim._settling_probe_selection(result)
-    assert tuple(tuple(map(int, item)) for item in info) == ((0, 2, 1), (1, 2, 0))
+    assert tuple(tuple(map(int, item[:3])) for item in info) == ((0, 2, 1), (1, 2, 0))
+    # #1909: each item then carries its probe's cell.
+    cells = tuple(tuple(int(v) for v in result.grid.position_to_index(entry.position))
+                  for entry in sim._probes)
+    assert tuple(tuple(map(int, item[3:])) for item in info) == cells
 
 
 def test_metadata_written_before_this_flag_existed_still_scores():
