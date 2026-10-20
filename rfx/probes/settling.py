@@ -273,13 +273,15 @@ def source_dominated_columns(grid, entries, cells):
 
 
 def probe_record_info(time_series, entries, internal_indices=(),
-                      source_dominated=()):
+                      source_dominated=(), grid=None):
     """Numeric provenance survives JAX result trees without string leaves.
 
-    Each item is ``(column, component_code, source_dominated_flag)``; the
-    flag is 1 when that probe shares a Yee cell with a registered drive
-    (see :func:`source_dominated_columns`). All three stay integers so the
-    selection metadata can ride inside a JAX result tree.
+    Each item is ``(column, component_code, source_dominated_flag, i, j, k)``;
+    the flag is 1 when that probe shares a Yee cell with a registered drive
+    (see :func:`source_dominated_columns`), and ``(i, j, k)`` is the cell of
+    the declared position (absent when unresolved), which tells co-located
+    records apart (#1909). All stay integers so the selection metadata can
+    ride inside a JAX result tree.
     """
     shape = getattr(time_series, "shape", ())
     count = 1 if len(shape) == 1 else shape[1] if len(shape) == 2 else 0
@@ -294,7 +296,8 @@ def probe_record_info(time_series, entries, internal_indices=(),
             continue
         component = getattr(entries[col], "component", "?") if col < len(entries) else "?"
         code = _COMPONENTS.index(component) if component in _COMPONENTS else -1
-        result.append((col, code, 1 if col in dominated else 0))
+        cell = _cell_of(grid, getattr(entries[col], "position", None)) or ()
+        result.append((col, code, 1 if col in dominated else 0, *cell))
     return tuple(result)
 
 
@@ -324,7 +327,6 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         # empty here rather than describing records nothing rests on.
         # No NaN in an absent witness (#885): no number rests on it.
         return None, {**detail, "db": None, "worst_freq_hz": None,
-                      "floor_amplitude": None,
                       "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
                       "skipped_records": list(skipped), "reason": reason,
@@ -353,6 +355,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         return absent("no user probe records are selected; library-internal "
                       "witness probes are judged by their own driver: " + advice)
     named = []
+    groups = {}
     dominated_names = set()
     for item in info:
         # Pre-#1090 metadata is a 2-tuple; a stored result predating the
@@ -364,13 +367,18 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         label = _COMPONENTS[component] if 0 <= component < len(_COMPONENTS) else "?"
         name = f"probe{col}({label})"
         named.append((name, series[:, col]))
+        # A rounding record's level is eps times the fields that cancel at
+        # its own point, so its reference is the same-kind records there.
+        cell = tuple(int(v) for v in item[3:6]) if len(item) > 5 else None
+        if label != "?" and cell is not None and min(cell) >= 0:
+            groups[name] = f"{label[0].upper()} at cell {cell}"
         if flag:
             dominated_names.add(name)
     independent = [(name, record) for name, record in named if name not in dominated_names]
     selected = independent or named
     worst, detail = settling_db_from_named_records(
         selected, return_detail=True, dt=dt, freqs=freqs, freq_max=freq_max,
-        source_end_index=source_end_index)
+        source_end_index=source_end_index, rounding_groups=groups)
     per_record = detail["per_record_db"]
     finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
     qualifier = "" if independent else SOURCE_DOMINATED_QUALIFIER
@@ -379,4 +387,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         "worst_record": max(finite, key=finite.get) if finite else None,
         "source_dominated": bool(qualifier),
         "source_dominated_records": sorted(dominated_names),
+        # Lone: its cell is known and no other scored record shares it.
+        "lone_records": sorted(name for name, _ in selected if name in groups
+                               and [groups.get(other) for other, _ in selected]
+                               .count(groups[name]) < 2),
         "qualifier": qualifier}

@@ -5,6 +5,45 @@ from typing import NamedTuple
 import numpy as np
 
 
+# #1909: a probe on a field null holds eps times the fields cancelling at its
+# own point, measured up to ~1.2e3 eps of the co-located same-kind peak. A record
+# at 2e4 eps has its own rounding near 0.06 of its peak (-24 dB), above the -40 dB
+# the settling bar reads, so nothing skipped could be judged at that bar anyway.
+_ROUNDING_ONLY_EPS_MULTIPLE = 2e4
+
+
+def _rounding_only_records(records, groups):
+    """Name finite records below the rounding margin of their co-located group."""
+    from rfx.core.jax_utils import is_tracer
+
+    peaks = []
+    largest = {}
+    for name, raw in records:
+        if name not in groups or is_tracer(raw):
+            continue
+        y = np.asarray(raw)
+        if not y.size or not np.isfinite(y).all():
+            continue
+        group = groups[name]
+        peak = float(np.max(np.maximum(np.abs(y.real), np.abs(y.imag))))
+        peaks.append((name, group, peak, y.real.dtype))
+        largest[group] = max(largest.get(group, 0.), peak)
+    skipped = []
+    for name, group, peak, dtype in peaks:
+        if not np.issubdtype(dtype, np.floating):
+            continue
+        threshold = _ROUNDING_ONLY_EPS_MULTIPLE * float(np.finfo(dtype).eps)
+        # float16 (precision='mixed'): the margin reaches the peak itself,
+        # so it separates nothing; those records are scored as before.
+        if threshold < 1. and peak < threshold * largest[group]:
+            ratio = peak / largest[group]
+            skipped.append(dict(
+                name=name, group=group, peak_ratio=ratio, threshold=float(threshold),
+                reason=f"peak {ratio:.3g} of the largest co-located record ({group}), below "
+                       f"{_ROUNDING_ONLY_EPS_MULTIPLE:g} x eps({dtype}): rounding only"))
+    return tuple(skipped)
+
+
 _POLE_RULE = (
     "For each discarded growing, kept non-static growing, or non-decaying "
     "sinusoidal pole: abs(DFT of its fitted term inside the identification "
@@ -62,11 +101,14 @@ class TailShareWitness(NamedTuple):
     error_per_bin: np.ndarray
     pole_contributions: dict | None = None
     pole_rule: str = _POLE_RULE
+    skipped_records: tuple = ()
 
 
-def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_results=None):
+def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None, _record_results=None):
     """Judge per-bin pole tails by agreement between two source-free windows.
 
+    ``rounding_groups`` names co-located same-kind records whose peaks share
+    a rounding margin; ungrouped records are never skipped (#1909).
     sensitivities are judged by a separate witness
     """
     from dataclasses import replace
@@ -75,17 +117,24 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
     from rfx.ringdown import identify, plain_dft, tail_dft, _static_pole
 
     records = tuple(records)
+    skipped = _rounding_only_records(records, rounding_groups or {})
+    skipped_names = {row['name'] for row in skipped}
+    if _record_results is not None:
+        _record_results.update((name, float('nan')) for name in skipped_names)
     if is_tracer(freqs):
         return TailShareWitness(float('nan'), np.array([]), float('nan'),
-                                'undetermined', 'read bins are traced', np.array([]))
+                                'undetermined', 'read bins are traced', np.array([]),
+                                skipped_records=skipped)
     bins = np.asarray([] if freqs is None else freqs, dtype=float).reshape(-1)
     share = np.zeros(bins.size)
     error = np.zeros(bins.size)
     contributions = {}
 
     def unavailable(status, reason):
-        return TailShareWitness(float('nan'), share, float(bins[np.argmax(share)]) if bins.size and np.any(share) else float('nan'), status, reason, error, contributions)
+        return TailShareWitness(float('nan'), share, float(bins[np.argmax(share)]) if bins.size and np.any(share) else float('nan'), status, reason, error, contributions, skipped_records=skipped)
 
+    if records and len(skipped) == len(records):
+        return unavailable('undetermined', 'every record is rounding only: ' + ', '.join(row['name'] for row in skipped))
     if not records or not bins.size:
         return unavailable('absent', 'no records or no read bins')
     if source_end is None or is_tracer(source_end):
@@ -98,6 +147,8 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
     zero_reasons = []
     groups = {}
     for name, raw in sorted(records, key=lambda item: item[0]):
+        if name in skipped_names:
+            continue
         if _record_results is not None:
             _record_results[name] = float("nan")
         if is_tracer(raw):
@@ -201,7 +252,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
     worst = int(np.argmax(share))
     db = float(20 * np.log10(max(share[worst], np.finfo(float).tiny)))
     return TailShareWitness(db, share, float(bins[worst]),
-                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions)
+                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped)
 
 
 def result_read_bins(result):
