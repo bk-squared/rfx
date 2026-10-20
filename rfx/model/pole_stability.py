@@ -346,14 +346,70 @@ def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind, deb
                     dt, budget, grid_kind=grid_kind)
 
 
-def judge_prebuilt_poles(grid, lorentz, debye=None):
+def _prebuilt_cell_error(edges, component, precision):
+    transverse = np.prod([edges.shape[a] for a in range(3) if a != component])
+    return 8 * precision * transverse * np.max(abs(edges))
+
+
+def _check_prebuilt_cells(values, edges, component, periodic, precision, *, positive=False):
+    """Refuse uncertain positivity or a reconstruction that changes an edge."""
+    from rfx.core.yee import _edge_mean_component
+    error = _prebuilt_cell_error(edges, component, precision)
+    if not np.all(np.isfinite(values)) or np.any(values <= error if positive else values < -error):
+        raise ValueError("cannot judge prebuilt Lorentz coefficients: recovered cells are not "
+                         + ("finite and positive" if positive else "finite and nonnegative"))
+    values = np.maximum(values, 0.)
+    axes = [a for a in range(3) if a != component]
+    averaged = _edge_mean_component(values, *axes, periodic, None, array_module=np)
+    if not np.all(np.isfinite(averaged)) or np.any(abs(averaged - edges) > error):
+        raise ValueError(f"cannot judge prebuilt Lorentz coefficients: recovered cells do not reproduce component {component} edges within rounding")
+    return values
+
+
+def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False):
+    """Invert clipped means or the odd periodic cyclic system, then check it.
+
+    Along a periodic axis, y[i]+y[i-1]=2*edge[i], including the seam.
+    Odd lengths fix y[0] from that seam. Even lengths have an alternating
+    null mode: constant rows are retained; other rows are refused after the
+    re-average check (the zero-null-mode candidate also detects inconsistent
+    edges). No unchecked candidate is handed to the pole judge.
+    """
+    if not np.all(np.isfinite(edges)):
+        raise ValueError("cannot judge prebuilt Lorentz coefficients: non-finite edge values")
+    values = np.array(edges, dtype=np.float64, copy=True)
+    ambiguous = None
+    for axis in reversed([a for a in range(3) if a != component]):
+        rows = np.moveaxis(values, axis, 0)
+        first = rows[0].copy()
+        if periodic[axis] and np.all(rows == first):
+            continue
+        if periodic[axis]:
+            rows[0] = 0.
+        for i in range(1, len(rows)):
+            rows[i] = 2. * rows[i] - rows[i - 1]
+        if periodic[axis]:
+            signs = np.where(np.arange(len(rows)) % 2, -1., 1.).reshape((-1, 1, 1))
+            if len(rows) % 2:
+                seed = first - .5 * rows[-1]
+            else:
+                seed = -np.mean(signs * rows, axis=0)
+                ambiguous = axis
+            rows += signs * seed
+    values = _check_prebuilt_cells(values, edges, component, periodic, precision, positive=positive)
+    if ambiguous is not None:
+        raise ValueError(f"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis {ambiguous} does not determine unique cells")
+    return values
+
+
+def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, False)):
     """Judge prebuilt component ADE terms, without assuming their source spec.
 
     Invert the coefficients actually used: gamma=1/cc, eps=(1+ca)gamma/2,
     sigma=(1-ca)gamma/dt; 1+delta dt=2/(1-b), w0^2 dt^2=2-a(1+delta dt),
     kappa=c(1+delta dt)/(eps0 dt^2). Debye tau and delta_eps follow from
-    alpha and beta by the same inversion. Undo the clipped backward edge
-    means used by direct initializers, then group pole parameters, reducing
+    alpha and beta by the same inversion. Undo backward edge means with the
+    run's periodic flags, check their round trip, then group pole parameters, reducing
     eps/sigma over their occupied cells and neighbours, never a global surrogate.
     """
     if lorentz is None:
@@ -372,23 +428,15 @@ def judge_prebuilt_poles(grid, lorentz, debye=None):
         budget = CourantBudget(widths)
         groups = {}
         for component in range(3):
-            ca = np.asarray(per_component(coeffs.ca, "ca")[component], dtype=np.float64)
+            ca = np.asarray(per_component(coeffs.ca, "ca")[component])
             cc = np.asarray(per_component(coeffs.cc, "cc")[component])
+            precision = max(np.finfo(ca.dtype).eps, np.finfo(cc.dtype).eps)
+            ca = ca.astype(np.float64)
             a, b = np.asarray(coeffs.a), np.asarray(coeffs.b)
             c = np.asarray(per_component(coeffs.c, "c")[component])
             shape, n = ca.shape, a.shape[0]
-            def unaverage(values):
-                # Direct init_lorentz without a judged grid uses the equal-cell
-                # backward edge mean. Its clipped low face makes each pass
-                # triangular: cell[0]=edge[0], cell[i]=2*edge[i]-cell[i-1].
-                values = np.array(values, dtype=np.float64, copy=True)
-                for axis in range(3):
-                    if axis == component:
-                        continue
-                    rows = np.moveaxis(values, axis, 0)
-                    for i in range(1, len(rows)):
-                        rows[i] = 2. * rows[i] - rows[i - 1]
-                return values
+            def unaverage(values, *, positive=False):
+                return _unaverage_prebuilt(values, component, periodic, precision, positive=positive)
 
             def pole_cells(values):
                 result = unaverage(values)
@@ -408,10 +456,11 @@ def judge_prebuilt_poles(grid, lorentz, debye=None):
                             scale = np.median(values[quarters == q]) * (4 / q)
                             break
                     result = binary * scale
-                return result
+                return _check_prebuilt_cells(result, values, component, periodic, precision)
 
-            eps = unaverage((1. + ca) / (2. * cc * EPS_0))
-            sigma = unaverage((1. - ca) / (cc * step))
+            with np.errstate(divide="ignore", invalid="ignore"):
+                eps = unaverage((1. + ca) / (2. * cc * EPS_0), positive=True)
+                sigma = unaverage((1. - ca) / (cc * step))
             cell_c = np.stack([pole_cells(v) for v in c])
             columns = [v.reshape(-1) for terms in (a, b, cell_c) for v in terms]
             nd = 0 if debye_coeffs is None else debye_coeffs.alpha.shape[0]
@@ -437,6 +486,8 @@ def judge_prebuilt_poles(grid, lorentz, debye=None):
                     present = beta != 0.
                     dp = tuple(zip(2. * beta[present] / (EPS_0 * (1. - alpha[present])),
                                    step * (1. + alpha[present]) / (2. * (1. - alpha[present]))))
+                if not np.all(np.isfinite([v for p in poles + dp for v in p])):
+                    raise ValueError("cannot judge prebuilt Lorentz coefficients: non-finite recovered pole parameters")
                 key = (poles, dp)
                 low, sig_low, sig_high = np.min(eps[selected]), np.min(sigma[selected]), np.max(sigma[selected])
                 if key in groups:

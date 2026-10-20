@@ -161,7 +161,7 @@ class _CompileMixin:
                                    budget=budget if debye_spec is None else None, grid_kind=grid_kind)
             if debye_spec is not None and budget is not None:
                 from rfx.materials.lorentz import JudgedLorentzCoeffs
-                lorentz = (JudgedLorentzCoeffs(*lorentz[0]), lorentz[1])
+                lorentz = (JudgedLorentzCoeffs.mark(lorentz[0]), lorentz[1])
 
         return materials, debye, lorentz
 

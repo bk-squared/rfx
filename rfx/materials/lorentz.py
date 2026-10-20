@@ -32,7 +32,9 @@ References:
 from __future__ import annotations
 
 from typing import NamedTuple
+from weakref import ref
 
+import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import (
@@ -121,10 +123,35 @@ class LorentzState(NamedTuple):
 
 
 class JudgedLorentzCoeffs(LorentzCoeffs):
-    """The assembled cell spec was judged; preserve that fact through pytrees."""
+    """Only original array objects carry admission; pytree rebuilds clear it.
 
-    __slots__ = ()
-    pole_sets_judged = True
+    Provenance is outside the six NamedTuple fields and JAX's tree metadata,
+    so marking a fresh assembly does not change the time loop's cache key.
+    Weak references retain neither buffers nor tracers after their scope.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        result = super().__new__(cls, *args, **kwargs)
+        result._judged_arrays = None
+        return result
+
+    @classmethod
+    def mark(cls, coeffs):
+        result = cls(*coeffs)
+        result._judged_arrays = tuple(ref(a) for a in jax.tree.leaves(tuple(coeffs)))
+        return result
+
+    @property
+    def pole_sets_judged(self):
+        snapshot = getattr(self, "_judged_arrays", None)
+        arrays = jax.tree.leaves(tuple(self))
+        return snapshot is not None and len(arrays) == len(snapshot) and all(
+            a is original() for a, original in zip(arrays, snapshot))
+
+    def _replace(self, **kwargs):
+        result = super()._replace(**kwargs)
+        result._judged_arrays = getattr(self, "_judged_arrays", None)
+        return result
 
 
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
@@ -272,7 +299,7 @@ def init_lorentz(
                   lorentz_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
     if components.pole_sets_judged:
-        coeffs = JudgedLorentzCoeffs(*coeffs)
+        coeffs = JudgedLorentzCoeffs.mark(coeffs)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(

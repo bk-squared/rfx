@@ -349,7 +349,7 @@ def _build_nu_scan(
     dt = grid.dt
     from rfx.model.pole_stability import judge_prebuilt_poles
     if lorentz is not None and not getattr(lorentz[0], "pole_sets_judged", False):
-        judge_prebuilt_poles(grid, lorentz, debye)
+        judge_prebuilt_poles(grid, lorentz, debye, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     use_wire_ports = len(wire_ports) > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None

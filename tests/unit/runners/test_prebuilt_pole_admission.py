@@ -134,12 +134,14 @@ def test_prebuilt_binary_masks_recover_cell_patterns(monkeypatch):
 
 
 @pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])
-def test_assembled_admission_mark_survives_transforms(transform):
+def test_assembled_admission_mark_requires_original_arrays_through_transforms(transform):
     grid = _box(.25)._build_realized_grid()
     materials = init_materials(grid.shape)
     def coefficients(eps):
         cells = materials._replace(eps_r=materials.eps_r * eps)
-        return init_lorentz([drude_pole(.2 / grid.dt, 0.)], cells, grid.dt, grid=grid)[0]
+        coeffs = init_lorentz([drude_pole(.2 / grid.dt, 0.)], cells, grid.dt, grid=grid)[0]
+        assert coeffs.pole_sets_judged
+        return coeffs
     if transform == "jit":
         result = jax.jit(coefficients)(1.)
     elif transform == "vmap":
@@ -154,7 +156,7 @@ def test_assembled_admission_mark_survives_transforms(transform):
         assert np.isfinite(jax.grad(loss)(1.))
         return
     jax.block_until_ready(result)
-    assert result.pole_sets_judged
+    assert not result.pole_sets_judged  # returned arrays replace the assembly-time tracers
     assert result._fields == ("ca", "cb", "a", "b", "c", "cc")
 
 
@@ -169,3 +171,141 @@ def test_prebuilt_missing_metrics_refuses_by_name(missing):
     delattr(incomplete, missing)
     with pytest.raises(ValueError, match="require cell sizes and dt for pole stability admission"):
         judge_prebuilt_poles(incomplete, lorentz)
+
+
+def _periodic_prebuilt(periodic, wp):
+    from rfx.grid import Grid
+    grid = Grid(freq_max=10e9, domain=(.012,) * 3, dx=.001, cpml_layers=0)
+    eps = np.ones(grid.shape)
+    eps[:, :, 6:] = 3.
+    materials = init_materials(grid.shape)._replace(eps_r=jnp.asarray(eps, jnp.float32))
+    mask = np.zeros(grid.shape, bool)
+    mask[:3, 2:9, 2:9] = mask[-2:, 2:9, 2:9] = True
+    lorentz = init_lorentz([drude_pole(wp / grid.dt, 0.)], materials, grid.dt,
+                           mask=[jnp.asarray(mask)], periodic=periodic)
+    return grid, materials, lorentz, mask
+
+
+@pytest.mark.parametrize("periodic", [(False,) * 3, (True, False, False), (True,) * 3],
+                         ids=["none", "x", "all"])
+def test_periodic_prebuilt_recovers_cells_and_refuses_unstable(periodic, monkeypatch):
+    import rfx.model.pole_stability as stability
+    grid, materials, lorentz, mask = _periodic_prebuilt(periodic, .45)
+    recorded = []
+    original = stability.judge_pole_sets
+    def observe(records, *args, **kwargs):
+        recorded.extend(records)
+        return original(records, *args, **kwargs)
+    monkeypatch.setattr(stability, "judge_pole_sets", observe)
+    with pytest.raises(ValueError, match="unstable at this model's time step"):
+        run(grid, materials, 1, lorentz=lorentz, periodic=periodic)
+    assert len(recorded) == 1
+    assert recorded[0].count == np.count_nonzero(mask) == 245
+    assert recorded[0].eps_low == pytest.approx(1., rel=1e-5)
+
+
+@pytest.mark.parametrize("periodic", [(False,) * 3, (True, False, False), (True,) * 3],
+                         ids=["none", "x", "all"])
+def test_periodic_prebuilt_stable_medium_is_admitted(periodic):
+    grid, materials, lorentz, _ = _periodic_prebuilt(periodic, .25)
+    result = run(grid, materials, 1, lorentz=lorentz, periodic=periodic)
+    assert np.all(np.isfinite(result.state.ez))
+
+
+@pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])
+def test_periodic_prebuilt_transforms_refuse_unstable(transform):
+    periodic = (True,) * 3
+    grid, materials, (coeffs, state), _ = _periodic_prebuilt(periodic, .45)
+    def loss(scale):
+        scaled = coeffs._replace(c=tuple(v * scale for v in coeffs.c))
+        return jnp.sum(run(grid, materials, 1, lorentz=(scaled, state), periodic=periodic).state.ez ** 2)
+    with pytest.raises(Exception, match="unstable at this model's time step"):
+        if transform == "jit":
+            result = jax.jit(loss)(1.)
+        elif transform == "vmap":
+            result = jax.vmap(loss)(jnp.ones(1))
+        elif transform == "jvp":
+            result = jax.jvp(loss, (1.,), (1.,))
+        else:
+            result = jax.grad(loss)(1.)
+        jax.block_until_ready(result)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_prebuilt_setup_passes_run_periodic_axes(graded, monkeypatch):
+    from rfx import Simulation
+    from rfx.boundaries.spec import BoundarySpec
+    import rfx.model.pole_stability as stability
+    sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.001,
+                     boundary=BoundarySpec(x="periodic", y="pec", z="pec"),
+                     **(dict(dz_profile=np.full(12, .001)) if graded else {}))
+    grid = sim._build_realized_grid()
+    materials = init_materials(grid.shape)
+    periodic = (True, False, False)
+    lorentz = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, periodic=periodic)
+    seen = []
+    def observe(*args, **kwargs):
+        seen.append(kwargs["periodic"])
+    monkeypatch.setattr(stability, "judge_prebuilt_poles", observe)
+    if graded:
+        from rfx.nonuniform import run_nonuniform
+        run_nonuniform(grid, materials, 1, lorentz=lorentz)
+    else:
+        run(grid, materials, 1, lorentz=lorentz, periodic=periodic)
+    assert seen == [periodic]
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_rescaled_assembled_coefficients_are_judged_again(graded):
+    grid = _box(.25, graded=graded)._build_realized_grid()
+    materials = init_materials(grid.shape)
+    coeffs, state = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, grid=grid)
+    assert coeffs.pole_sets_judged
+    scaled = coeffs._replace(c=tuple(v * (.45 / .2) ** 2 for v in coeffs.c))
+    assert not scaled.pole_sets_judged
+    if graded:
+        from rfx.nonuniform import run_nonuniform as runner
+    else:
+        runner = run
+    with pytest.raises(ValueError, match="unstable at this model's time step"):
+        runner(grid, materials, 1, lorentz=(scaled, state))
+
+
+@pytest.mark.parametrize("field", ["ca", "cb", "a", "b", "c", "cc"])
+def test_assembly_mark_is_tied_to_every_array_identity(field):
+    from rfx.materials.lorentz import JudgedLorentzCoeffs
+    grid = _box(.25)._build_realized_grid()
+    coeffs, _ = init_lorentz([drude_pole(.2 / grid.dt, 0.)], init_materials(grid.shape), grid.dt, grid=grid)
+    assert coeffs._replace().pole_sets_judged
+    rebuilt = jax.tree.map(lambda a: a, coeffs)
+    assert not rebuilt.pole_sets_judged  # new bundles require their own admission
+    assert jax.tree.structure(coeffs) == jax.tree.structure(rebuilt)
+    assert not JudgedLorentzCoeffs(*coeffs).pole_sets_judged
+    copied = jax.tree.map(lambda a: a.copy(), getattr(coeffs, field))
+    assert not coeffs._replace(**{field: copied}).pole_sets_judged
+
+
+@pytest.mark.parametrize("bad", ["zero_eps", "nan_eps", "negative_c"])
+def test_invalid_prebuilt_cells_refuse_by_name(bad):
+    import rfx.model.pole_stability as stability
+    grid, _, (coeffs, state), _ = _periodic_prebuilt((False,) * 3, .25)
+    if bad == "negative_c":
+        coeffs = coeffs._replace(c=tuple(-v for v in coeffs.c))
+    else:
+        value = -1. if bad == "zero_eps" else jnp.nan
+        coeffs = coeffs._replace(ca=tuple(jnp.full_like(v, value) for v in coeffs.ca))
+    with pytest.raises(ValueError, match="cannot judge prebuilt Lorentz coefficients:"):
+        stability.judge_prebuilt_poles(grid, (coeffs, state))
+
+
+def test_inconsistent_periodic_edges_refuse_by_name():
+    from rfx.grid import Grid
+    from rfx.model.pole_stability import judge_prebuilt_poles
+    grid = Grid(freq_max=10e9, domain=(.003,) * 3, dx=.001, cpml_layers=0)
+    materials = init_materials(grid.shape)
+    periodic = (True,) * 3
+    coeffs, state = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, periodic=periodic)
+    factor = jnp.where(jnp.indices(grid.shape)[1] % 2, 2., 1.)
+    coeffs = coeffs._replace(cc=(coeffs.cc[0] / factor, *coeffs.cc[1:]))
+    with pytest.raises(ValueError, match="cannot judge prebuilt Lorentz coefficients: recovered cells do not reproduce"):
+        judge_prebuilt_poles(grid, (coeffs, state), periodic=periodic)
