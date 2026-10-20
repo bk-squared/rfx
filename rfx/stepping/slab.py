@@ -153,8 +153,16 @@ def place(array, sharding):
     # Let jit transform the logical sharding with the value. In vmap(jvp),
     # only the tangent may be batched; inspecting the primal misses that axis
     # and device_put applies the slab spec to the tangent's batch dimension.
-    if isinstance(array, jax.core.Tracer):
-        return _placement_map(sharding)(array)
+    pending, seen = [array], set()
+    while pending:
+        value = pending.pop()
+        if not isinstance(value, jax.core.Tracer) or id(value) in seen:
+            continue
+        seen.add(id(value))
+        if getattr(value, 'batch_dim', None) is not None:
+            return _placement_map(sharding)(array)
+        pending.extend(getattr(value, attr, None) for attr in ('primal', 'tangent'))
+    # Unbatched device_put returns gradients on the design's original placement.
     return jax.device_put(array, sharding)
 
 
