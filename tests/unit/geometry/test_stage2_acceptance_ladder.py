@@ -113,10 +113,11 @@ def test_kottke_pec_short_time_stability_30_periods():
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
+        # conformal faces with kottke_pec are refused (#1935); the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
-            y=Boundary(lo="pec", hi="pec", conformal=True),
-            z=Boundary(lo="pec", hi="pec", conformal=True),
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=4,
     )
@@ -167,10 +168,11 @@ def test_kottke_pec_late_time_stability_50_periods():
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
+        # conformal faces with kottke_pec are refused (#1935); the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
-            y=Boundary(lo="pec", hi="pec", conformal=True),
-            z=Boundary(lo="pec", hi="pec", conformal=True),
+            y=Boundary(lo="pec", hi="pec"),
+            z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=4,
     )
