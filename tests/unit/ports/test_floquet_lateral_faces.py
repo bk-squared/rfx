@@ -136,15 +136,39 @@ def test_all_normals_and_nonperiodic_tokens(axis, transverse, kind):
             assert f"{a}_{side}={kind!r}" in str(error.value)
 
 
-@pytest.mark.parametrize("kind", ["pec", "pmc"])
 @pytest.mark.parametrize("order", ["boundary_first", "port_first"])
-def test_scalar_wall_is_refused(kind, order):
-    sim = scene(kind if order == "boundary_first" else None)
-    with pytest.raises(ValueError, match=f"x_lo='{kind}'"):
+def test_scalar_wall_is_refused(order):
+    sim = scene("pec" if order == "boundary_first" else None)
+    with pytest.raises(ValueError, match="x_lo='pec'"):
         port(sim)
         if order == "port_first":
-            sim._boundary_spec = BoundarySpec.uniform(kind)
+            sim._boundary_spec = BoundarySpec.uniform("pec")
         sim.preflight()
+
+
+def test_scalar_pmc_is_refused_by_constructor():
+    with pytest.raises(ValueError, match="boundary must be 'pec', 'cpml', or 'upml', got 'pmc'"):
+        scene("pmc")
+
+
+@pytest.mark.parametrize("boundary", [None, "cpml", "upml"], ids=["default", "cpml", "upml"])
+def test_scalar_absorber_design_round_trip_preserves_probe_bits(boundary):
+    import json
+    from rfx.interop import design_to_dict, simulation_from_design
+
+    with jax.enable_x64(False):
+        sim = scene(boundary)
+        port(sim)
+        sim.add_probe((.0075, .0075, .036), component="ex")
+        before = np.asarray(sim.run(n_steps=64).time_series)
+        restored = simulation_from_design(json.loads(json.dumps(design_to_dict(sim))))
+        assert restored._periodic_axes == "xy"
+        after = np.asarray(restored.run(n_steps=64).time_series)
+        assert before.dtype == after.dtype == np.float32
+        assert before.shape == after.shape == (64, 1)
+        np.testing.assert_array_equal(before.view(np.uint32).ravel(),
+                                      MAIN_UPML if boundary == "upml" else MAIN_CPML)
+        np.testing.assert_array_equal(after.view(np.uint32), before.view(np.uint32))
 
 
 @pytest.mark.parametrize("initial", [None, "cpml", "upml"])

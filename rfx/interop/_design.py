@@ -949,7 +949,7 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 from rfx.boundaries.serialization import (
-    predict_legacy_spec as _predict_legacy_spec, export_spec, restore_legacy_boundary,
+    predict_legacy_spec as _predict_legacy_spec, export_spec, restore_legacy_boundary, design_constructor_boundary,
 )
 
 
@@ -1054,7 +1054,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
         and periodic_ok
     ):
         return _BoundaryPlan(
-            kwargs={"boundary": spec, "cpml_layers": cpml_layers, **common},
+            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces), "cpml_layers": cpml_layers, **common},
             legacy_views=None,
         )
 

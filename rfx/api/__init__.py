@@ -376,9 +376,9 @@ class Simulation(
         else:
             # Legacy scalar path — validated below, lifted to BoundarySpec
             # after scalar boundary fields have been resolved.
-            if boundary not in ("pec", "pmc", "cpml", "upml"):
+            if boundary not in ("pec", "cpml", "upml"):
                 raise ValueError(
-                    f"boundary must be 'pec', 'pmc', 'cpml', or 'upml', got {boundary!r}"
+                    f"boundary must be 'pec', 'cpml', or 'upml', got {boundary!r}"
                 )
             spec = None  # deferred; folded in after legacy fields settle
         if freq_max <= 0:

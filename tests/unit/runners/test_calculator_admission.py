@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from rfx.boundaries.spec import BoundarySpec
 from rfx.runners import _admission as A
 from tests.unit.runners.test_silent_routes import _sim, _mixed
 from tests.unit.sparams.test_waveguide_solver_precision import _guide
@@ -47,7 +48,10 @@ def declare_physics(sim, feature):
         sim.add_msl_port(centre, width=.002, height=.001, direction="+x", eps_r_sub=2.2)
         return ("_msl_ports", "msl_port")
     assert feature in ("floquet", "scan_angle")
-    sim._boundary_spec = replace(sim._boundary_spec, x="periodic", y="periodic")
+    if feature == "floquet":
+        # Waveguide registration refuses periodic axes at construction;
+        # this mixed-feature witness must reach the calculator's guard.
+        sim._boundary_spec = replace(sim._boundary_spec, x="periodic", y="periodic")
     if feature == "scan_angle":
         # Keep the new witness's explicit cell size commensurate with
         # the transverse periods that add_floquet_port registers.
@@ -57,7 +61,7 @@ def declare_physics(sim, feature):
     return ("_floquet_ports", feature if feature == "scan_angle" else "floquet_port")
 
 
-def calculator_case(calculator):
+def calculator_case(calculator, *, feature=None):
     """A registered model and one public call, with a four-step request."""
     if calculator == "waveguide_s_matrix":
         sim = _guide()
@@ -93,7 +97,9 @@ def calculator_case(calculator):
         call = lambda: sim.compute_mixed_s_matrix(
             n_steps=4, skip_preflight=True, magnitude_channel="wave")
     else:
-        sim = _sim(ports="lumped" if calculator == "s_matrix_scan" else None)
+        sim = _sim(ports="lumped" if calculator == "s_matrix_scan" else None,
+                   absorber=BoundarySpec(x="periodic", y="periodic", z="pec")
+                   if feature == "scan_angle" else None)
         if calculator == "s_matrix_scan":
             from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
             call = lambda: compute_lumped_wire_s_matrix_via_scan(
@@ -219,7 +225,7 @@ def test_topology_cfl_gate(solver):
 
 @pytest.mark.parametrize("calculator,feature", PHYSICS_CASES)
 def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator, feature):
-    sim, call = calculator_case(calculator)
+    sim, call = calculator_case(calculator, feature=feature)
     row = declare_physics(sim, feature)
     if sim._domain == (.0123, .0131, .0127):
         sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
