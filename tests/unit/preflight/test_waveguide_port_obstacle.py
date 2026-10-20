@@ -179,3 +179,40 @@ def test_graded_plane_matches_realized_mode_config(axis, record_property):
         assert len(findings) == 1
         assert "at 85.5 mm" in str(findings[0])
         assert "face at 87 mm" in str(findings[0])
+
+
+def test_uniform_guide_drawn_in_pieces_admitted():
+    """#1913 review: abutting same-material boxes and a vacuum box change no medium."""
+    from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
+    for boxes in ((("fill", 0.050, 0.085), ("fill", 0.085, 0.110)),
+                  (("vacuum", 0.084, 0.087),)):
+        sim = Simulation(freq_max=10e9, domain=(0.12, A, B), dx=DX,
+                         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
+                                               z=Boundary(lo="pec", hi="pec")), cpml_layers=10)
+        sim.add_material("fill", eps_r=2.2)
+        for material, lo, hi in boxes:
+            sim.add(Box((lo, 0, 0), (hi, A, B)), material=material)
+        sim.add_waveguide_port(0.090, direction="-x", name="right",
+                               mode=(1, 0), mode_type="TE", freqs=FREQS, f0=6e9)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _validate_cfg_waveguide_port_span(sim, warnings)
+        assert not [w for w in caught
+                    if "waveguide_port_obstacle_before_reference" in str(getattr(w.message, "code", ""))
+                    or "cannot see that object" in str(w.message)], boxes
+
+
+def test_dielectric_step_inside_the_interval_refused():
+    """A real medium change between source and reflection plane is an obstacle."""
+    from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
+    sim = Simulation(freq_max=10e9, domain=(0.12, A, B), dx=DX,
+                     boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
+                                           z=Boundary(lo="pec", hi="pec")), cpml_layers=10)
+    sim.add_material("fill", eps_r=2.2)
+    sim.add(Box((0.050, 0, 0), (0.085, A, B)), material="fill")
+    sim.add_waveguide_port(0.090, direction="-x", name="right",
+                           mode=(1, 0), mode_type="TE", freqs=FREQS, f0=6e9)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _validate_cfg_waveguide_port_span(sim, warnings)
+    assert any("has a face at 85 mm" in str(w.message) for w in caught)

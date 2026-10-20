@@ -20,15 +20,40 @@ def _bounds(shape):
         return None
 
 
+_VACUUM = (1.0, 0.0, 1.0, None, None)
+
+
+def _medium_at(sim, point):
+    """The declared medium at a point: later geometry wins, as when assembled.
+
+    A Box is its bounding box; any other shape reads as its own medium, so a
+    face it straddles always counts (the conservative side).
+    """
+    from rfx.geometry.csg import Box
+    medium = _VACUUM
+    for i, g in enumerate(sim._geometry):
+        bounds = _bounds(g.shape)
+        if bounds is None or not all(bounds[0][a] <= point[a] <= bounds[1][a] for a in range(3)):
+            continue
+        if isinstance(g.shape, Box):
+            spec = sim._resolve_material(g.material_name)
+            medium = (float(spec.eps_r), float(spec.sigma), float(spec.mu_r),
+                      repr(spec.debye_poles), repr(spec.lorentz_poles))
+            medium = _VACUUM if medium[:3] == _VACUUM[:3] and medium[3:] == ("None", "None") else medium
+        else:
+            medium = ("shape", i)
+    return medium
+
+
 def _objects(sim, grid, axis):
     for i, g in enumerate(sim._geometry):
         bounds = _bounds(g.shape)
         if bounds is not None:
-            yield f"{g.material_name} (geometry[{i}])", bounds
+            yield f"{g.material_name} (geometry[{i}])", bounds, True
     for i, sheet in enumerate(sim._thin_conductors):
         bounds = _bounds(sheet.shape)
         if bounds is not None and abs(bounds[1][axis] - bounds[0][axis]) <= 1e-9:
-            yield f"thin conductor[{i}]", bounds
+            yield f"thin conductor[{i}]", bounds, False
     for i, sheet in enumerate(sim._pinned_sheets):
         if sheet.normal_axis != axis:
             continue
@@ -39,7 +64,7 @@ def _objects(sim, grid, axis):
         for a, indices in zip(transverse, (sheet.i_range, sheet.j_range)):
             pad = getattr(grid, f"pad_{'xyz'[a]}_lo")
             lo[a], hi[a] = (grid.node_of(a, pad + n) for n in indices)
-        yield sheet.name or f"pinned PEC sheet[{i}]", (lo, hi)
+        yield sheet.name or f"pinned PEC sheet[{i}]", (lo, hi), False
 
 
 def _validate_cfg_waveguide_port_span(self, _w):
@@ -61,12 +86,29 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 limits = getattr(entry, f"{'xyz'[a]}_range")
                 aperture[a] = limits if limits is not None else (0.0, self._domain[a])
         obstacles = []
-        for name, (lo, hi) in _objects(self, grid, axis):
+        for name, (lo, hi), volume in _objects(self, grid, axis):
             if not all(hi[a] > limits[0] + tol and lo[a] < limits[1] - tol
                        for a, limits in aperture.items()):
                 continue
             faces = [face for face in (lo[axis], hi[axis])
                      if start + tol < face < end - tol]
+            if volume:
+                # A face counts only where the medium changes across it: two
+                # abutting boxes of one material, or a vacuum box, are a
+                # uniform guide (#1913 review). Sampled at the centre of the
+                # object's overlap with the aperture, 10 um either side.
+                point = np.zeros(3)
+                for a, limits in aperture.items():
+                    point[a] = 0.5 * (max(lo[a], limits[0]) + min(hi[a], limits[1]))
+
+                def changes(face):
+                    if hi[axis] - lo[axis] <= tol:  # a sheet: always a reflector
+                        return True
+                    before, after = point.copy(), point.copy()
+                    before[axis], after[axis] = face - 1e-5, face + 1e-5
+                    return _medium_at(self, before) != _medium_at(self, after)
+
+                faces = [face for face in faces if changes(face)]
             if faces:
                 face = min(faces, key=lambda f: abs(f - source))
                 obstacles.append((abs(face - source), name, face))
