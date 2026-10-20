@@ -262,11 +262,10 @@ def execute_from_materials(
     sharded_debye = stage_forward_dispersion_x_slab(
         sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",
     )
-    del debye_spec
     sharded_lorentz = stage_forward_dispersion_x_slab(
-        sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz",
+        sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz", debye_spec=debye_spec,
     )
-    del lorentz_spec
+    del lorentz_spec, debye_spec
 
     # ---- CPML init + sharding (Phase 2C). ----
     cpml_params = None

@@ -470,7 +470,7 @@ def assemble_cells(
     warn_unextendable_shapes(conductor_findings)
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
     refuse_unstable_cells(materials, lorentz_spec, grid.dt, courant_budget(grid),
-                          grid_kind=type(grid).__name__)
+                          grid_kind=type(grid).__name__, debye_spec=debye_spec)
     return materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
 
 
@@ -760,7 +760,8 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
     if view is None and lorentz_spec is not None and (grid is not None or budget is not None):
         refuse_unstable_cells(materials, lorentz_spec, grid.dt if grid is not None else dt,
                               courant_budget(grid) if grid is not None else budget,
-                              grid_kind=type(grid).__name__ if grid is not None else grid_kind)
+                              grid_kind=type(grid).__name__ if grid is not None else grid_kind,
+                              debye_spec=debye_spec)
     for part in lumped_components(materials.sigma_film):
         if part is not None and part.shape != materials.eps_r.shape:
             raise ValueError("sigma_film arrays must have the cells' shape")

@@ -289,6 +289,8 @@ def _build_step_setup(
     """
     dt = grid.dt
     dx = grid.dx
+    from rfx.model.pole_stability import judge_prebuilt_poles
+    judge_prebuilt_poles(grid, lorentz, debye)
 
     # ---- boundary configuration ----
     periodic = resolve_periodic(grid, periodic)

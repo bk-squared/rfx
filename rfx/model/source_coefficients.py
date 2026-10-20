@@ -294,7 +294,7 @@ def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *, st
     if judged is not None and lorentz_spec is not None:
         from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
         refuse_unstable_cells(materials, lorentz_spec, judged.dt, courant_budget(judged),
-                              grid_kind=type(judged).__name__)
+                              grid_kind=type(judged).__name__, debye_spec=debye_spec)
     if debye_spec is None and lorentz_spec is None and grid is None:
         return materials
     from rfx.model.materials import EdgePoles

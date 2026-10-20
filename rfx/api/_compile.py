@@ -151,10 +151,14 @@ class _CompileMixin:
 
         lorentz = None
         if lorentz_spec is not None:
+            if debye_spec is not None and budget is not None:
+                from rfx.model.pole_stability import refuse_unstable_cells
+                refuse_unstable_cells(materials, lorentz_spec, dt, budget,
+                                      grid_kind=grid_kind, debye_spec=debye_spec)
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
                                    field_dtype=field_dtype, periodic=periodic,
-                                   budget=budget, grid_kind=grid_kind)
+                                   budget=budget if debye_spec is None else None, grid_kind=grid_kind)
 
         return materials, debye, lorentz
 

@@ -2,7 +2,7 @@
 
 The state is (e, h, p_1, q_1, ...), with polarization in eps0 units and
 q the previous polarization. Cell patterns use their lowest epsilon and
-both conductivity extrema. Traced masks cannot be grouped and are skipped.
+both conductivity extrema, including Debye polarizations in the same cells.
 """
 from __future__ import annotations
 
@@ -16,15 +16,35 @@ ROOT_TOLERANCE = 1e-6
 X_SAMPLES = 129
 
 
-def largest_growth(eps_inf, sigma, poles, dt, x_max):
-    """Maximum amplification-matrix spectral radius over 129 wave modes."""
+def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
+    """Maximum spectral radius of the actual combined ADE update.
+
+    State: (e, h, p_1, q_1, ..., r_1, ...), with Lorentz p=P/eps0,
+    q=p at the previous step, Debye r=P_D/eps0, and h=dt curl(H)/eps0.
+    Faraday gives h'=h-x e, x=4(c0 dt)^2 sum sin(k_a d_a/2)^2/d_a^2.
+    ``lorentz_p_component`` gives p'=A p+B q+C e, q'=p, where
+    A=(2-w0^2 dt^2)/(1+delta dt), B=-(1-delta dt)/(1+delta dt),
+    C=kappa dt^2/(1+delta dt). ``debye_e_component`` and the mixed update
+    in ``uniform_setup`` use a=(2 tau-dt)/(2 tau+dt), b=de dt/(2 tau+dt):
+    gamma=eps_inf+sigma dt/(2 eps0)+sum b,
+    gamma e'=(eps_inf-sigma dt/(2 eps0)-sum b)e+h'
+             -sum(p'-p)+sum((1-a)r), and r'=a r+b(e'+e).
+    These are also the Debye-only rows when there are no Lorentz poles.
+    The default samples the unchanged 129 modes; x_min=x_max isolates one
+    Fourier mode for the independent time-domain kernel witness.
+    """
     dt = float(dt)
     poles = [(float(w), float(d), float(k)) for w, d, k in poles if float(k) != 0.0]
     beta = float(sigma) * dt / (2.0 * EPS_0)
     a_eps, b_eps = float(eps_inf) + beta, float(eps_inf) - beta
-    size = 2 + 2 * len(poles)
+    debye = [(float(de), float(tau)) for de, tau in debye if float(de) != 0.0]
+    terms = [((2 * tau - dt) / (2 * tau + dt), de * dt / (2 * tau + dt))
+             for de, tau in debye]
+    a_eps += sum(b for a, b in terms)
+    b_eps -= sum(b for a, b in terms)
+    size = 2 + 2 * len(poles) + len(terms)
     matrix = np.zeros((X_SAMPLES, size, size), dtype=np.float64)
-    matrix[:, 1, 0] = -np.linspace(0.0, x_max, X_SAMPLES)
+    matrix[:, 1, 0] = -np.linspace(x_min, x_max, X_SAMPLES)
     matrix[:, 1, 1] = 1.0
     matrix[:, 0, :] = matrix[:, 1, :]
     matrix[:, 0, 0] += b_eps
@@ -37,7 +57,14 @@ def largest_growth(eps_inf, sigma, poles, dt, x_max):
         matrix[:, q, p] = 1.0
         matrix[:, 0, :] -= matrix[:, p, :]
         matrix[:, 0, p] += 1.0
+    start = 2 + 2 * len(poles)
+    for i, (a, b) in enumerate(terms, start):
+        matrix[:, 0, i] = 1 - a
     matrix[:, 0, :] /= a_eps
+    for i, (a, b) in enumerate(terms, start):
+        matrix[:, i, :] = b * matrix[:, 0, :]
+        matrix[:, i, 0] += b
+        matrix[:, i, i] += a
     return float(np.max(np.abs(np.linalg.eigvals(matrix))))
 
 
@@ -62,6 +89,8 @@ class CourantBudget(float):
 
     def local_axes(self, occupied_per_axis):
         """Budget of global axis projections, including one neighbour."""
+        if any(_is_abstract(v) for v in occupied_per_axis):
+            return _ArrayBudget(self.cells).local_axes(occupied_per_axis)
         total = 0.0
         for occupied, sizes in zip(occupied_per_axis, self.cells):
             if sizes.size == occupied.size - 1:      # cell metrics omit the terminal node
@@ -75,25 +104,52 @@ class CourantBudget(float):
         return C0 * C0 * total
 
 
+class _ArrayBudget:
+    """Local metric reductions when the cell spine or occupancy is abstract."""
+
+    def __init__(self, cells):
+        self.cells = cells
+
+    def local_axes(self, occupied_per_axis):
+        import jax.numpy as jnp
+        total = 0.
+        for occupied, sizes in zip(occupied_per_axis, self.cells):
+            occupied, sizes = jnp.asarray(occupied), jnp.atleast_1d(sizes)
+            if sizes.size == occupied.size - 1:
+                sizes = jnp.concatenate((sizes, sizes[-1:]))
+            if sizes.size != occupied.size:
+                raise ValueError("pole stability: occupied axes and cell sizes do not align")
+            near = occupied | jnp.concatenate((occupied[1:], jnp.array([False])))
+            near |= jnp.concatenate((jnp.array([False]), occupied[:-1]))
+            total += 1. / jnp.min(jnp.where(near, sizes, jnp.inf)) ** 2
+        return C0 * C0 * total
+
+
+def _is_abstract(value):
+    from rfx.core.jax_utils import is_tracer
+    return is_tracer(_concrete(value))
+
+
 def courant_budget(grid):
     """The grid's :class:`CourantBudget` (two axes on a 2-D grid)."""
-    from rfx.core.jax_utils import is_tracer
     axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
     if not callable(getattr(grid, "cells", None)):
         return None   # a stand-in without per-axis cells (unit rigs of the layer functions) is not judged
-    if any(is_tracer(grid.cells(a)) for a in axes):
-        return None   # a traced mesh has no concrete cells to judge; refuse_unstable_cells skips it
+    cells = tuple(_concrete(grid.cells(a)) for a in axes)
+    if any(_is_abstract(c) for c in cells):
+        return _ArrayBudget(cells)
     return CourantBudget([_cells(grid, a) for a in axes])
 
 
 def _cells(grid, axis):
-    return np.atleast_1d(np.asarray(grid.cells(axis), dtype=np.float64))
+    return np.atleast_1d(np.asarray(_concrete(grid.cells(axis)), dtype=np.float64))
 
 
-def largest_stable_step(eps_inf, sigma, poles, dt, budget):
+def largest_stable_step(eps_inf, sigma, poles, dt, budget, *, debye=()):
     """Bisect the stable step, or return None if the lower bracket is unstable."""
     def stable(step):
-        return largest_growth(eps_inf, sigma, poles, step, 4.0 * step * step * budget) <= 1.0 + ROOT_TOLERANCE
+        return largest_growth(eps_inf, sigma, poles, step, 4.0 * step * step * budget,
+                              debye=debye) <= 1.0 + ROOT_TOLERANCE
     if stable(dt):
         return dt
     lo, hi = 1e-3 * dt, dt
@@ -113,42 +169,55 @@ class PoleSetExtremes(NamedTuple):
     eps_low: object
     sigma_low: object
     sigma_high: object
-    count: int
+    count: object
     occupied: tuple
+    debye: tuple = ()
 
 
-def pole_set_extremes(materials, lorentz_spec, *, view=None):
+def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     """Reduce static pole patterns over owned cells only; never count halos."""
     import jax.numpy as jnp
     from rfx.core.jax_utils import is_tracer
 
-    if lorentz_spec is None:
+    if lorentz_spec is None and debye_spec is None:
         return ()
-    poles, masks = lorentz_spec
+    lp, lm = lorentz_spec if lorentz_spec is not None else ((), ())
+    dp, dm = debye_spec if debye_spec is not None else ((), ())
+    def expand(poles, masks):
+        masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
+        if len(masks) != len(poles):
+            raise ValueError(f"Expected {len(poles)} pole masks, got {len(masks)}")
+        return [_concrete(m) for m in masks]
+    poles, masks = tuple(lp) + tuple(dp), expand(lp, lm) + expand(dp, dm)
     if not poles:
         return ()
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
     if len(masks) != len(poles):
         raise ValueError(f"Expected {len(poles)} Lorentz masks, got {len(masks)}")
-    if any(is_tracer(m) for m in masks):
-        return ()  # D4: traced pole masks cannot be grouped.
+    abstract_masks = any(is_tracer(m) for m in masks)
     if view is not None:
         from types import SimpleNamespace
         input_shape = materials.eps_r.shape
         materials = SimpleNamespace(**{name: view.own(getattr(materials, name))
                                        for name in ("eps_r", "sigma")})
-        masks = [None if m is None else view.own(np.broadcast_to(m, input_shape)) for m in masks]
+        masks = [None if m is None else view.own((jnp if abstract_masks else np).broadcast_to(m, input_shape)) for m in masks]
     shape = materials.eps_r.shape
     # One integer code per cell, accumulated pole by pole (no cells x poles array).
     wide = len(poles) > 62
     codes = np.zeros(int(np.prod(shape)), dtype=object if wide else np.int64)
-    for bit, m in enumerate(masks):
+    for bit, m in enumerate(masks if not abstract_masks else ()):
         present = np.ones(shape, dtype=bool) if m is None else np.broadcast_to(np.asarray(m, dtype=bool), shape)
         codes = codes + (present.reshape(-1).astype(object if wide else np.int64) * (1 << bit))
-    unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
+    if abstract_masks:
+        # The static spec fixes pole identities; only membership is dynamic.
+        # Enumerate possible sets, reducing empty ones to count=0 at runtime.
+        unique_codes = range(1, 1 << len(poles))
+        inverse, counts = None, [None] * len(unique_codes)
+    else:
+        unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
     patterns = [[bool((int(code) >> bit) & 1) for bit in range(len(poles))] for code in unique_codes]
     values = [materials.eps_r, materials.sigma] + [v for p in poles for v in p]
-    traced = any(is_tracer(v) for v in values)
+    traced = abstract_masks or any(is_tracer(v) for v in values)
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
     xp = jnp if traced or spread else np
@@ -156,20 +225,29 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None):
     for index, (pattern, count) in enumerate(zip(patterns, counts)):
         if not np.any(pattern):
             continue
-        selected = (inverse == index).reshape(shape)
-        chosen = tuple(p for p, present in zip(poles, pattern) if present)
+        if abstract_masks:
+            selected = jnp.ones(shape, dtype=bool)
+            for m, present in zip(masks, pattern):
+                active = jnp.ones(shape, dtype=bool) if m is None else jnp.broadcast_to(m, shape).astype(bool)
+                selected &= active if present else ~active
+            count = jnp.sum(selected)
+        else:
+            selected = (inverse == index).reshape(shape)
+        chosen = tuple(p for p, present in zip(lp, pattern) if present)
+        debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
         eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
         sigma_low = xp.min(xp.where(selected, materials.sigma, xp.inf))
         sigma_high = xp.max(xp.where(selected, materials.sigma, -xp.inf))
 
-        occupied = tuple(np.any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
+        occupied = tuple((jnp if abstract_masks else np).any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
                          for axis in range(selected.ndim))
         if view is not None:
-            global_x = np.zeros(view.nx, dtype=bool)
-            global_x[view.x0:view.x1] = occupied[0]
+            global_x = jnp.zeros(view.nx, dtype=bool).at[view.x0:view.x1].set(occupied[0]) if abstract_masks else np.zeros(view.nx, dtype=bool)
+            if not abstract_masks:
+                global_x[view.x0:view.x1] = occupied[0]
             occupied = (global_x,) + occupied[1:]
         records.append(PoleSetExtremes(int(unique_codes[index]), chosen, eps_low,
-                                      sigma_low, sigma_high, int(count), occupied))
+                                      sigma_low, sigma_high, count, occupied, debye))
     return tuple(records)
 
 
@@ -214,21 +292,24 @@ def judge_pole_sets(records, dt, budget, *, grid_kind):
     if budget is None:
         return
     for record in records:
-        count = record.count
         local = budget.local_axes(record.occupied) if hasattr(budget, "local_axes") else float(budget)
 
-        def check(eps, low, high, step, *parameters, count=int(count), budget=local):
-            pole_values = np.asarray(parameters, dtype=np.float64).reshape(-1, 3)
+        def check(eps, low, high, step, budget, count, *parameters, n_lorentz=len(record.poles)):
+            pole_values = np.asarray(parameters[:3 * n_lorentz], dtype=np.float64).reshape(-1, 3)
+            debye = np.asarray(parameters[3 * n_lorentz:], dtype=np.float64).reshape(-1, 2)
             eps, low, high, step = map(float, (eps, low, high, step))
+            count, budget = int(count), float(budget)
+            if not count:
+                return
             if not (np.all(np.isfinite([eps, low, high, step])) and np.all(np.isfinite(pole_values)) and eps > 0):
                 return   # invalid cells are reported by the checks that own them
             if step * step * budget > eps * (1.0 + ROOT_TOLERANCE):
                 return   # the step is above the Courant limit of these cells without any pole: not the poles' doing
-            growth = max(largest_growth(eps, s, pole_values, step, 4.0 * step * step * budget)
+            growth = max(largest_growth(eps, s, pole_values, step, 4.0 * step * step * budget, debye=debye)
                          for s in (low, high))
             if growth <= 1.0 + ROOT_TOLERANCE:
                 return
-            limits = [largest_stable_step(eps, s, pole_values, step, budget) for s in (low, high)]
+            limits = [largest_stable_step(eps, s, pole_values, step, budget, debye=debye) for s in (low, high)]
             stable = None if any(v is None for v in limits) else min(limits)
             if stable is None:
                 limit = "no stable step found"
@@ -246,16 +327,81 @@ def judge_pole_sets(records, dt, budget, *, grid_kind):
                 f"sigma_low={low:.6g}, sigma_high={high:.6g}: unstable at this model's time step "
                 f"dt = {step:.6g} s; growth per step = {growth:.9g}; {limit}. To run: {remedy}.")
 
-        args = (record.eps_low, record.sigma_low, record.sigma_high, dt,
-                *(v for p in record.poles for v in p))
+        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.count,
+                *(v for p in record.poles + record.debye for v in p))
         # Eager autodiff carries concrete primals: judge them on the host. A
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
 
-def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
+def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind, debye_spec=None):
     """Judge whole-cell pole patterns, retaining the legacy entry point."""
-    if lorentz_spec is None or budget is None:
+    if (lorentz_spec is None and debye_spec is None) or budget is None:
         return
-    judge_pole_sets(pole_set_extremes(materials, lorentz_spec), dt, budget, grid_kind=grid_kind)
+    judge_pole_sets(pole_set_extremes(materials, lorentz_spec, debye_spec=debye_spec),
+                    dt, budget, grid_kind=grid_kind)
+
+
+def judge_prebuilt_poles(grid, lorentz, debye=None):
+    """Judge prebuilt component ADE terms, without assuming their source spec.
+
+    Invert the coefficients actually used: gamma=1/cc, eps=(1+ca)gamma/2,
+    sigma=(1-ca)gamma/dt; 1+delta dt=2/(1-b), w0^2 dt^2=2-a(1+delta dt),
+    kappa=c(1+delta dt)/(eps0 dt^2). Debye tau and delta_eps follow from
+    alpha and beta by the same inversion. Group equal component rows and
+    use their own occupied cells and neighbours, never a global surrogate.
+    """
+    if lorentz is None:
+        return
+    from rfx._traced_check import traced_check
+    from rfx.materials.debye import per_component
+    cells = getattr(grid, "cells", None)
+    if not callable(cells) or getattr(grid, "dt", None) is None:
+        raise ValueError("prebuilt Lorentz coefficients require cell sizes and dt for pole stability admission")
+    axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
+    lc = lorentz[0]
+    dc = None if debye is None else debye[0]
+
+    def check(step, widths, coeffs, debye_coeffs):
+        from types import SimpleNamespace
+        step = float(step)
+        budget = CourantBudget(widths)
+        for component in range(3):
+            ca = np.asarray(per_component(coeffs.ca, "ca")[component], dtype=np.float64)
+            cc = np.asarray(per_component(coeffs.cc, "cc")[component])
+            a, b = np.asarray(coeffs.a), np.asarray(coeffs.b)
+            c = np.asarray(per_component(coeffs.c, "c")[component])
+            shape, n = ca.shape, a.shape[0]
+            columns = [ca.reshape(-1), cc.reshape(-1)]
+            columns.extend(v.reshape(-1) for terms in (a, b, c) for v in terms)
+            nd = 0 if debye_coeffs is None else debye_coeffs.alpha.shape[0]
+            if nd:
+                beta = per_component(debye_coeffs.beta, "beta")[component]
+                columns.extend(np.asarray(v).reshape(-1) for terms in (debye_coeffs.alpha, beta) for v in terms)
+            rows, inverse = np.unique(np.stack(columns, axis=1), axis=0, return_inverse=True)
+            for index, row in enumerate(rows):
+                av, bv, cv = row[2:2 + 3 * n].reshape(3, n)
+                if not np.any(cv):
+                    continue
+                denom = 2. / (1. - bv)
+                poles = tuple(zip(np.sqrt(np.maximum(2. - av * denom, 0.)) / step,
+                                  (denom - 1.) / step, cv * denom / (EPS_0 * step * step)))
+                eps = (1. + row[0]) / (2. * row[1] * EPS_0)
+                sigma = (1. - row[0]) / (row[1] * step)
+                selected = (inverse == index).reshape(shape)
+                debye_spec = None
+                if nd:
+                    alpha, beta = row[2 + 3 * n:].reshape(2, nd)
+                    present = beta != 0.
+                    dp = tuple(zip(2. * beta[present] / (EPS_0 * (1. - alpha[present])),
+                                   step * (1. + alpha[present]) / (2. * (1. - alpha[present]))))
+                    debye_spec = (dp, selected)
+                materials = SimpleNamespace(eps_r=np.full(shape, eps), sigma=np.full(shape, sigma))
+                refuse_unstable_cells(materials, (poles, selected), step, budget,
+                    grid_kind=type(grid).__name__, debye_spec=debye_spec)
+
+    import jax
+    operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
+    operands = jax.tree.map(_concrete, operands)
+    traced_check("prebuilt Lorentz coefficients", "time-step stability", check, *operands, ordered=True)

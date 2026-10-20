@@ -169,20 +169,6 @@ edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut 
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 Tracker: #1651
 
-### Four cases the Drude/Lorentz time-step check does not judge
-
-Tracker: #1590
-
-A Drude or Lorentz medium above its own time-step limit is refused when the model is
-assembled (a row in the support matrix's **Refused inputs** table). The check does not
-see four cases, which run as before and can diverge: a permittivity or conductivity
-override on the two-device graded `forward()` (the declared model is judged), a traced
-mesh or traced pole masks (`rfx/model/pole_stability.py::courant_budget`,
-`refuse_unstable_cells`), Debye poles in the same medium, and the low-level `run()`
-functions handed prebuilt Lorentz coefficients. The same medium declared through
-`add_material` on a concrete mesh is judged, so build it that way once to read the
-stable step before tracing or overriding it.
-
 ## Ports and extraction
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
