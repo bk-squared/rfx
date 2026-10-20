@@ -351,13 +351,15 @@ def _prebuilt_cell_error(edges, component, precision):
     return 8 * precision * transverse * np.max(abs(edges))
 
 
-def _check_prebuilt_cells(values, edges, component, periodic, precision, *, positive=False):
+def _check_prebuilt_cells(values, edges, component, periodic, precision, *, positive=False,
+                          invalid_message=None):
     """Refuse uncertain positivity or a reconstruction that changes an edge."""
     from rfx.core.yee import _edge_mean_component
     error = _prebuilt_cell_error(edges, component, precision)
     if not np.all(np.isfinite(values)) or np.any(values <= error if positive else values < -error):
-        raise ValueError("cannot judge prebuilt Lorentz coefficients: recovered cells are not "
-                         + ("finite and positive" if positive else "finite and nonnegative"))
+        raise ValueError(invalid_message or (
+            "cannot judge prebuilt Lorentz coefficients: recovered cells are not "
+            + ("finite and positive" if positive else "finite and nonnegative")))
     values = np.maximum(values, 0.)
     axes = [a for a in range(3) if a != component]
     averaged = _edge_mean_component(values, *axes, periodic, None, array_module=np)
@@ -396,9 +398,12 @@ def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False
                 seed = -np.mean(signs * rows, axis=0)
                 ambiguous = axis
             rows += signs * seed
-    values = _check_prebuilt_cells(values, edges, component, periodic, precision, positive=positive)
-    if ambiguous is not None:
-        raise ValueError(f"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis {ambiguous} does not determine unique cells")
+    ambiguity = (f"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis {ambiguous} does not determine unique cells"
+                 if ambiguous is not None else None)
+    values = _check_prebuilt_cells(values, edges, component, periodic, precision,
+                                  positive=positive, invalid_message=ambiguity)
+    if ambiguity is not None:
+        raise ValueError(ambiguity)
     return values
 
 

@@ -212,6 +212,24 @@ def test_periodic_prebuilt_stable_medium_is_admitted(periodic):
     assert np.all(np.isfinite(result.state.ez))
 
 
+@pytest.mark.parametrize("periodic", [(True, False, False), (True,) * 3], ids=["x", "all"])
+def test_even_periodic_prebuilt_stable_medium_refuses_by_name(periodic):
+    from rfx.grid import Grid
+    grid = Grid(freq_max=10e9, domain=(.011,) * 3, dx=.001, cpml_layers=0)
+    assert grid.shape == (12,) * 3
+    eps = np.ones(grid.shape)
+    eps[:, :, 6:] = 3.
+    materials = init_materials(grid.shape)._replace(eps_r=jnp.asarray(eps, jnp.float32))
+    mask = np.zeros(grid.shape, bool)
+    mask[:3, 2:9, 2:9] = mask[-2:, 2:9, 2:9] = True
+    lorentz = init_lorentz([drude_pole(.25 / grid.dt, 0.)], materials, grid.dt,
+                           mask=[jnp.asarray(mask)], periodic=periodic)
+    message = (r"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis [012] "
+               r"does not determine unique cells")
+    with pytest.raises(ValueError, match=message):
+        run(grid, materials, 1, lorentz=lorentz, periodic=periodic)
+
+
 @pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])
 def test_periodic_prebuilt_transforms_refuse_unstable(transform):
     periodic = (True,) * 3

@@ -33,6 +33,14 @@ is solved 24.0 mm wide, and its TE10 cutoff comes out 4.75 % low; with an automa
 18 mm wide. Until the fix lands, choose dx so that every wall-to-wall length is a whole number of cells (WR-90:
 dx = 1.27 mm fits both a and b), and check the solved length the built grid reports.
 
+### Low-level prebuilt Lorentz coefficients can be refused on an even periodic axis
+
+Tracker: #1934
+
+Low-level `run()` with prebuilt Lorentz coefficients on a periodic axis with an even number of cells is refused by name
+when the medium varies along that axis: the edge mean there does not determine the cell values.
+Build the medium through `add_material` (judged at assembly), or use an odd cell count.
+
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373
