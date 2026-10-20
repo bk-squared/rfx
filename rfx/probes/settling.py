@@ -324,7 +324,6 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         # empty here rather than describing records nothing rests on.
         # No NaN in an absent witness (#885): no number rests on it.
         return None, {**detail, "db": None, "worst_freq_hz": None,
-                      "floor_amplitude": None,
                       "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
                       "skipped_records": list(skipped), "reason": reason,
@@ -353,6 +352,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         return absent("no user probe records are selected; library-internal "
                       "witness probes are judged by their own driver: " + advice)
     named = []
+    kinds = {}
     dominated_names = set()
     for item in info:
         # Pre-#1090 metadata is a 2-tuple; a stored result predating the
@@ -364,13 +364,15 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         label = _COMPONENTS[component] if 0 <= component < len(_COMPONENTS) else "?"
         name = f"probe{col}({label})"
         named.append((name, series[:, col]))
+        if label != "?":
+            kinds[name] = label[0].upper()
         if flag:
             dominated_names.add(name)
     independent = [(name, record) for name, record in named if name not in dominated_names]
     selected = independent or named
     worst, detail = settling_db_from_named_records(
         selected, return_detail=True, dt=dt, freqs=freqs, freq_max=freq_max,
-        source_end_index=source_end_index)
+        source_end_index=source_end_index, kinds=kinds)
     per_record = detail["per_record_db"]
     finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
     qualifier = "" if independent else SOURCE_DOMINATED_QUALIFIER
