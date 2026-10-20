@@ -42,6 +42,8 @@ def _fixture(case, eps_inf, debye_poles, lorentz_poles):
     kwargs = {"boundary": "pec"}
     if case in ("tfsf", "waveguide"):
         kwargs.update(boundary="cpml", cpml_layers=2)
+    elif case == "floquet":
+        kwargs["boundary"] = BoundarySpec(x="periodic", y="periodic", z="pec")
     elif case == "periodic_spec":
         kwargs["boundary"] = BoundarySpec(x="periodic", y="pec", z="pec")
     elif case == "conformal":

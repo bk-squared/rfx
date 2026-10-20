@@ -134,8 +134,8 @@ def _assert_thin_faces(sim, expected):
 
 @pytest.mark.parametrize("thin", [False, True], ids=["default", "thin"])
 def test_floquet_periodic_faces_are_not_absorbers(thin):
-    boundary = (BoundarySpec(x="cpml", y="cpml", z=Boundary("cpml", "cpml", 4, 16))
-                if thin else "cpml")
+    boundary = BoundarySpec(x="periodic", y="periodic",
+                            z=Boundary("cpml", "cpml", 4, 16) if thin else "cpml")
     # The Floquet axes x/y are periodic: whole numbers of cells (11 and 13,
     # unequal on purpose), as #1221 B2 requires for an explicit dx.
     sim = Simulation(freq_max=10e9, domain=(0.011, 0.013, 0.0301),

@@ -47,6 +47,7 @@ def declare_physics(sim, feature):
         sim.add_msl_port(centre, width=.002, height=.001, direction="+x", eps_r_sub=2.2)
         return ("_msl_ports", "msl_port")
     assert feature in ("floquet", "scan_angle")
+    sim._boundary_spec = replace(sim._boundary_spec, x="periodic", y="periodic")
     if feature == "scan_angle":
         # Keep the new witness's explicit cell size commensurate with
         # the transverse periods that add_floquet_port registers.
