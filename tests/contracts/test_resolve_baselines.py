@@ -23,9 +23,9 @@ X, Y = "rfx/x.py", "rfx/y.py"
 LEFT, RIGHT = "rfx/api/_execute.py", "rfx/simulation.py"
 
 
-def git(repo, *args, expected=0):
+def git(repo, *args, expected=0, timeout=30):
     result = subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, timeout=30,
+        ["git", *args], cwd=repo, capture_output=True, timeout=timeout,
         env={**os.environ, "GIT_AUTHOR_NAME": "Baseline tests",
              "GIT_AUTHOR_EMAIL": "tests@example.invalid", "GIT_COMMITTER_NAME": "Baseline tests",
              "GIT_COMMITTER_EMAIL": "tests@example.invalid",
@@ -441,11 +441,15 @@ def test_checker_exception_restores_bytes(tree, monkeypatch, checker_name):
 
 @pytest.mark.parametrize("kind", ["size", "layer"])
 def test_main_tree_regeneration_is_byte_exact(kind):
-    # Clone committed HEAD locally, without alternates or shared object links.
-    # Counters only read its sources; all generation remains in memory.
+    # Clone only committed HEAD (depth 1), without alternates or shared object
+    # links. Counters only read its sources; all generation remains in memory.
+    # A full local clone copies the whole object store: on the gate image that is
+    # 430 MB, 8.5-21 s for clone and checkout on a 2-CPU cpu-16 job, and it passed
+    # 30 s on two gates; depth 1 copies 41 MB in about 7 s (2026-10-21).
     with tempfile.TemporaryDirectory(prefix="baseline-main-") as directory:
         clone = Path(directory) / "repo"
-        git(REPO, "clone", "-q", "--no-hardlinks", "--no-checkout", str(REPO), str(clone))
+        git(REPO, "clone", "-q", "--depth", "1", "--no-checkout", REPO.as_uri(), str(clone),
+            timeout=120)
         head = git(REPO, "rev-parse", "HEAD").decode().strip()
         git(clone, "checkout", "-q", "--detach", head)
         before = snapshot(clone)
