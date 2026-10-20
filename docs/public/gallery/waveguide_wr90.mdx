@@ -1,6 +1,6 @@
 ---
 title: "Hollow rectangular waveguide (WR-90, TE10)"
-description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11|/|S21| match the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
+description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0013 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
 sidebar:
   order: 13
 ---
@@ -52,7 +52,7 @@ C0 = 299_792_458.0
 a_wg = 22.86e-3        # WR-90 broad wall (sets the TE10 cutoff)
 b_wg = 10.16e-3        # WR-90 narrow wall
 f_c  = C0 / (2 * a_wg) # TE10 cutoff: c / (2a) -> 6.557 GHz
-dx   = 1.0e-3          # 1 mm cells -> ~30 cells/wavelength at 10 GHz
+dx   = 1.27e-3         # 18 x 8 cells: both walls land on the grid
 freqs = np.linspace(8.2e9, 12.4e9, 21)   # X-band sweep
 ```
 
@@ -65,34 +65,26 @@ dielectric fill used in the gradient demonstration below.
   mode; the right port (`direction="-x"`) acts as a matched load. Each port
   injects the discrete Yee-grid mode profile, so the launcher back-reflection is
   minimal.
-- **CPML on the propagation axis only (20 cells).** Twenty layers keep the
-  absorber's residual reflection of the guided mode to essentially zero
-  (`|S11| ≈ 0`); a thinner absorber leaves a larger floor. Only the two x faces
-  absorb.
+- **CPML on the propagation axis only (26 cells, 33 mm).** That is half a guide
+  wavelength at 8.2 GHz, the depth the calculator's absorber advisory asks for.
+  Only the two x faces absorb.
 - **PEC side walls.** The four y/z walls are PEC — that is what defines a
   rectangular guide and its cutoff.
-- **Uniform 1 mm mesh.** Ten cells span the narrow wall, about 23 the broad
-  wall, and roughly 30 cells per wavelength at the top of the band — enough to
-  resolve the TE10 half-sine across `a` and keep numerical dispersion small.
+- **Uniform 1.27 mm mesh.** 18 cells span the broad wall and 8 the narrow
+  wall, so the solved guide is exactly 22.86 × 10.16 mm, with about 24 cells per
+  free-space wavelength at 10 GHz.
 
-<Aside type="note">
-With the thick 20-layer CPML the empty-guide |S11| sits at essentially zero.
-With fewer layers the floor rises. That is absorber back-reflection, not a
-solver error: above cutoff the guide is nearly lossless, so any residual
-reflection is set by the CPML thickness.
-</Aside>
-
-At 1 mm spacing the walls are realized at 23 mm and 10 mm. The example uses
-`snap="declared"` to accept the warning for the narrow wall's 1.57% length
-change. Use `dx=1.27e-3` for exactly 18 broad-wall cells and 8 narrow-wall cells,
-which preserve both nominal WR-90 dimensions.
+A cell size that does not fit a wall-to-wall length to within 1 % is refused: at
+1 mm the narrow wall would be solved as 10 mm, 1.57 % short. `snap="declared"`
+accepts such a length with a warning; 1.27 mm needs neither.
 
 ## Geometry check (before running)
 
 The render above confirms the guide before committing compute: broad wall a,
 narrow wall b, the two port planes set back from the absorbers, and clearance to
-the CPML on both ends. An empty WR-90 run at 1 mm (about 46k cells, a few hundred
-steps) finishes in seconds on a CPU; peak memory is a few tens of megabytes.
+the CPML on both ends. An empty WR-90 run at 1.27 mm (about 36k cells with the
+absorbers, about 6,000 steps for each of the two driven ports) finishes in under
+a minute on a CPU; peak memory is a few tens of megabytes.
 
 ## Run
 
@@ -101,7 +93,7 @@ import numpy as np, jax.numpy as jnp
 from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-a_wg, b_wg, dx = 22.86e-3, 10.16e-3, 1.0e-3
+a_wg, b_wg, dx = 22.86e-3, 10.16e-3, 1.27e-3
 freqs = np.linspace(8.2e9, 12.4e9, 21)
 f0 = float(freqs.mean()); bandwidth = 0.5
 domain_x = 0.200
@@ -109,11 +101,10 @@ domain_x = 0.200
 sim = Simulation(
     freq_max=float(freqs[-1]) * 1.1,
     domain=(domain_x, a_wg, b_wg), dx=dx,
-    snap="declared",  # Accept the warned 23 x 10 mm realized cross-section.
     boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                           y=Boundary(lo="pec", hi="pec"),
                           z=Boundary(lo="pec", hi="pec")),
-    cpml_layers=20,
+    cpml_layers=26,
 )
 port_freqs = jnp.asarray(freqs)
 sim.add_waveguide_port(0.040, direction="+x", mode=(1, 0), mode_type="TE",
@@ -123,7 +114,7 @@ sim.add_waveguide_port(domain_x - 0.040, direction="-x", mode=(1, 0), mode_type=
     freqs=port_freqs, f0=f0, bandwidth=bandwidth,
     waveform="modulated_gaussian", reference_plane=domain_x - 0.050, name="right")
 
-result = sim.compute_waveguide_s_matrix(num_periods=200, normalize=True)
+result = sim.compute_waveguide_s_matrix(num_periods=200, normalize=False)
 ```
 
 Run it from the command line:
@@ -150,9 +141,9 @@ broad wall as it travels.
 
 ## Result
 
-Across the X-band |S21| sits at about 0 dB and `max|S11| = 0.0000` with the
-20-layer CPML. An empty matched guide above cutoff should pass the TE10 mode with
-no reflection, and it does.
+Across the X-band |S21| sits at about 0 dB and |S11| stays below 0.0062
+(−44.2 dB). An empty matched guide above cutoff should pass the TE10 mode with no
+reflection; the small residual is the port's, measured below.
 
 ![Reflection and transmission vs frequency for the empty WR-90 guide](/rfx/gallery/assets/waveguide_wr90/sparams.png)
 
@@ -165,23 +156,32 @@ no reflection, and it does.
 ## Validation & limits
 
 The empty matched guide has an exact answer: `|S11| = 0` and `|S21| = 1` at every
-frequency above cutoff. The figure overlays the rfx values on that reference.
+frequency above cutoff. The figure plots how far rfx is from it, `|S11|` and
+`|S21| − 1`, in units of 10⁻³.
 
-| Observable | rfx | Reference | Tolerance | Pass |
+| Observable, 8.2–12.4 GHz | rfx | Reference | Tolerance | Pass |
 |---|---|---|---|---|
-| max\|S11\| | 0.0000 | 0 (analytic matched-load) | `< 0.02` | yes |
-| min\|S21\| | 1.0000 | 1 (analytic matched-load) | `> 0.97` | yes |
+| max\|S11\| | 0.0062 | 0 (exact matched guide) | `< 0.02` | yes |
+| \|S21\| | 0.9987 to 1.0006 | 1 (exact matched guide) | `> 0.97` | yes |
+
+`|S11|` rises smoothly from 0.0039 at 8.2 GHz to 0.0062 near the top of the band.
+`|S21|` passes 1 above 12 GHz; a passive guide cannot pass more than it is given,
+so that 6×10⁻⁴ is extraction error as well. The calculation is
+`normalize=False`, the modal voltage and current at each port with no reference
+run. `normalize=True` and `normalize="flux"` divide by a reference run of the
+empty guide, which for this structure is the same run, so they return
+`|S11| = 0` and `|S21| = 1` by construction: on an empty guide they are not a
+check of the port.
 
 ![|S11| and |S21| vs the exact matched empty-guide answer](/rfx/gallery/assets/waveguide_wr90/validation.png)
 
-Reference: analytic matched-load (`|S11| = 0`, `|S21| = 1` above cutoff),
-cross-checked against MEEP/OpenEMS/Palace.
+Reference: the exact matched empty guide (`|S11| = 0`, `|S21| = 1` above
+cutoff).
 
-**Limit — absorber floor.** The residual `|S11|` is CPML back-reflection, not a
-solver error. The 20-layer absorber holds it at the `≈0` published here; a
-thinner absorber raises the floor. That floor tracks the absorber thickness,
-not the guide's reflection. These assets predate the 2.0 absorber correction,
-which lowered the CPML's reflection at every layer count.
+**Limit — where the residual comes from.** Not the absorber: 12, 20, 26 and 32
+layers give the same `|S11|` to four decimals. It comes from the grid: with the
+cell halved to 0.635 mm the peak `|S11|` falls from 0.0062 to 0.0019. Measured;
+record kept with the project.
 
 ## Autodiff
 
@@ -198,14 +198,14 @@ within 5% and a matching sign.
 
 | Check | AD value | Compared against | rel. error | Sign agrees |
 |---|---|---|---|---|
-| `∂\|S21\|²/∂εr` | `−0.2201` | central FD `−0.2197` (h = 0.05) | 0.0017 (0.17%) | yes |
+| `∂\|S21\|²/∂εr` | `−0.2149` | central FD `−0.2145` (h = 0.05) | 0.0022 (0.22%) | yes |
 
-The gradient agrees to 0.17% with matching sign, inside the 5% this check asks
+The gradient agrees to 0.22% with matching sign, inside the 5% this check asks
 for. It checks the differentiation of this one computation, not the whole
 waveguide family. The waveguide S-matrix is **limited** in the
 [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md):
 its gradient checks were closed with 64-bit JAX on the flux lane, and this
-0.17% is a float32 gradient, which sits outside that closure.
+0.22% is a float32 gradient, which sits outside that closure.
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 
@@ -223,8 +223,7 @@ The differentiable lanes are `normalize=False` and `normalize="flux"`.
 `normalize=True` is the host-assembled two-run lane and is outside the
 differentiable chain: under `jax.grad`/`jax.jit`, a traced
 `eps_override`/`sigma_override` makes `compute_waveguide_s_matrix` raise
-`NotImplementedError` before any FDTD run. The Run block above passes a concrete
-`normalize=True` and runs forward; the same call under `jax.grad` raises.
+`NotImplementedError` before any FDTD run.
 
 ## Next
 
