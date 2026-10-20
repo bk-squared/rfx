@@ -126,7 +126,7 @@ def test_gradient_through_fdtd():
     Uses a tiny 8x8x8 grid with a Debye material to verify that
     the gradient of sum(|Ez_probe|^2) w.r.t. (delta_eps, tau) is non-zero.
     """
-    grid = Grid(freq_max=5e9, domain=(0.012, 0.012, 0.012), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -257,7 +257,7 @@ def test_recover_known_debye():
     then use jax.value_and_grad to fit starting from a perturbed initial guess.
     Verify the optimizer moves toward the true parameters.
     """
-    grid = Grid(freq_max=5e9, domain=(0.012, 0.012, 0.012), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     n_steps = 50
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)

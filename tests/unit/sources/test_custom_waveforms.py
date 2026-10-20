@@ -93,7 +93,7 @@ def test_cw_source_dft_peak_at_f0():
 
 def test_custom_waveform_matches_gaussian():
     """CustomWaveform wrapping GaussianPulse should produce identical results."""
-    grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     n_steps = 200
 
@@ -125,7 +125,7 @@ def test_custom_waveform_matches_gaussian():
 
 def test_cw_source_differentiable():
     """CW source through checkpointed run() should produce non-zero gradient."""
-    grid = Grid(freq_max=10e9, domain=(0.015, 0.015, 0.015), cpml_layers=0)
+    grid = Grid(freq_max=10e9, domain=(11 * (299792458.0 / 10e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     n_steps = 30
 
     f0 = 5e9

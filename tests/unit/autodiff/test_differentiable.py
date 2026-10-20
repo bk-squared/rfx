@@ -22,7 +22,7 @@ pytestmark = pytest.mark.gpu
 
 def test_gradient_matches_finite_diff():
     """AD gradient w.r.t. eps_r matches central finite difference."""
-    grid = Grid(freq_max=5e9, domain=(0.015, 0.015, 0.015), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -70,7 +70,7 @@ def test_gradient_matches_finite_diff():
 
 def test_checkpoint_same_forward():
     """Checkpointed run produces the same forward result."""
-    grid = Grid(freq_max=5e9, domain=(0.015, 0.015, 0.015), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     materials = init_materials(grid.shape)
     n_steps = 30
 
@@ -89,7 +89,7 @@ def test_checkpoint_same_forward():
 
 def test_checkpoint_gradient_matches():
     """Checkpointed gradient matches non-checkpointed gradient."""
-    grid = Grid(freq_max=5e9, domain=(0.015, 0.015, 0.015), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -120,7 +120,7 @@ def test_gradient_descent_step():
     Start with uniform eps_r=2, maximise time-integrated |Ez|² at a
     downstream probe.  One gradient step should improve the objective.
     """
-    grid = Grid(freq_max=5e9, domain=(0.015, 0.015, 0.015), cpml_layers=0)
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
     n_steps = 50
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)

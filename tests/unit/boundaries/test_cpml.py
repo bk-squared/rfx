@@ -37,7 +37,7 @@ the separate, loosely-gated axis owned by ``test_cpml_energy_decay``.
 import numpy as np
 import pytest
 
-from rfx.grid import Grid, C0
+from rfx.grid import Grid, C0, cells_spanning
 from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.boundaries.pec import apply_pec
@@ -61,9 +61,10 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     pulse = GaussianPulse(f0=f0, bandwidth=0.5)
 
     # dt is set by freq_max; probe it from a throwaway grid to size the ref.
-    dt_probe = Grid(freq_max=freq_max, domain=(0.02, 0.02, 0.02),
+    dx_auto = C0 / freq_max / 20.0  # main's solved lengths below; #1887
+    dt_probe = Grid(freq_max=freq_max, domain=(cells_spanning(0.02, dx_auto) * dx_auto,) * 3,
                     cpml_layers=0).dt
-    ref_extent = 1.15 * n_steps * dt_probe * C0  # echo step ~1.15*n_steps
+    ref_extent = cells_spanning(1.15 * n_steps * dt_probe * C0, dx_auto) * dx_auto  # echo step ~1.15*n_steps
 
     # --- clean free-space reference (PEC walls too far to echo in-window) ---
     grid_ref = Grid(freq_max=freq_max, domain=(ref_extent,) * 3, cpml_layers=0)
