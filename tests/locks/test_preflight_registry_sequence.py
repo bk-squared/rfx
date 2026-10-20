@@ -240,6 +240,8 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_thin_absorber", ("warn", "dx")),
     # ADI sponge refusal; appended without reordering existing diagnostics.
     ("_validate_cfg_adi_boundary", ("warn",)),
+    # #1913: append shipped obstacle admission, preserving prior order.
+    ("_validate_cfg_waveguide_port_span", ("warn",)),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

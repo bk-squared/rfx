@@ -1869,6 +1869,7 @@ class _PreflightMixin:
     # for the reason the blocks above give.
     # ------------------------------------------------------------------
     from rfx.preflight.waveguide import _validate_cfg_waveguide_reference_plane
+    from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 3: the three post-v1.8 waveguide S-parameter setup

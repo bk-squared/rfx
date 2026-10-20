@@ -51,8 +51,11 @@ def _wr90_pec_short_sim():
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
     )
+    # #1913: the right port stands 4 cells behind the short's far face (87 mm),
+    # so its 3-cell reflection plane (90 mm) is in front of the short; at 90 mm
+    # it read the far side of the short. |S11| is bit-identical either way.
     sim.add_waveguide_port(
-        0.090, direction="-x", mode=(1, 0), mode_type="TE",
+        0.099, direction="-x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="right",
     )
     return sim
