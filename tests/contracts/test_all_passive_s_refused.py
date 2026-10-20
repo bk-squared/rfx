@@ -56,14 +56,14 @@ def test_plain_source_refused_before_stepping(monkeypatch):
     ("uniform", "forward", False), ("uniform", "forward", True),
     ("uniform", "run", True),
     ("graded", "forward", False), ("graded", "forward", True),
-    ("graded", "run", False), ("graded", "run", True),
+    ("graded", "run", True),
 ])
 @pytest.mark.parametrize("illumination", ["plain", "waveguide", "none"])
 def test_explicit_main_record_refuses(mesh, entry, wire, illumination, monkeypatch):
     monkeypatch.setattr(jax.lax, "scan", _before_step)
     monkeypatch.setattr(jax.lax, "while_loop", _before_step)
     sim = _scene(mesh, wire=wire, illumination=illumination,
-                 single=mesh == "uniform" and entry == "run")
+                 single=entry == "run")
     requests = ([{"port_s11_freqs": BINS}] if entry == "forward" else
                 [{"compute_s_params": True}, {"s_param_freqs": BINS}])
     for request in requests:
@@ -85,16 +85,30 @@ def _default(sim, *, devices=None):
     return result
 
 
-def test_graded_default_warns_once_and_keeps_lumped_spectra():
-    result = _default(_scene("graded"))
-    assert len(result.lumped_port_sparams) == 2
-    for spec, channels in result.lumped_port_sparams:
-        assert not spec.excite and len(channels) == 3
-        assert all(np.asarray(channel).shape == (50,) for channel in channels)
-        assert all(np.isfinite(np.asarray(channel)).all() for channel in channels)
-        # Main's passive reference is the same local edge: no port injection.
-        np.testing.assert_array_equal(channels[0], channels[2])
-    assert np.any(np.asarray(result.time_series))
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+@pytest.mark.parametrize("wire", [False, True])
+def test_all_passive_drive_scan_forms_every_column(mesh, wire):
+    # Main #1915 drives each declared port, even when all are passive.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = _scene(mesh, wire=wire, illumination="none").run(
+            n_steps=64, skip_preflight=True, compute_s_params=True, s_param_freqs=BINS)
+    assert result.s_params.shape == (2, 2, len(BINS))
+    assert np.isfinite(np.asarray(result.s_params)).all()
+    assert np.all(np.max(np.abs(np.asarray(result.s_params)), axis=(0, 2)) > 0)
+    assert not any("needs a driven port" in str(w.message) for w in caught)
+    pairs = result.wire_port_sparams if wire else result.lumped_port_sparams
+    assert len(pairs) == 2
+
+
+def test_graded_all_passive_wire_default_scans_without_refusal():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = _scene("graded", wire=True, illumination="none").run(
+            n_steps=64, skip_preflight=True)
+    assert result.s_params.shape == (2, 2, 50)
+    assert np.isfinite(np.asarray(result.s_params)).all()
+    assert not any("needs a driven port" in str(w.message) for w in caught)
 
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
@@ -168,14 +182,22 @@ def test_tfsf_cannot_admit_a_passive_record():
 def test_graded_multi_device_default_and_explicit(wire, monkeypatch):
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
-    result = _default(_scene("graded", wire=wire), devices=devices)
-    assert result.wire_port_sparams if wire else result.lumped_port_sparams
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = _scene("graded", wire=wire).run(
+            n_steps=64, skip_preflight=True, devices=devices)
+    assert result.s_params is None and result.sparam_time_records
+    assert sum("A passive port's S column needs a drive of its own" in str(w.message)
+               for w in caught) == int(wire)
+    assert not any("Lumped/wire S needs a driven port" in str(w.message) for w in caught)
     monkeypatch.setattr(jax.lax, "scan", _before_step)
     monkeypatch.setattr(jax.lax, "while_loop", _before_step)
     for entry in ("run", "forward"):
         request = (dict(compute_s_params=True, devices=devices) if entry == "run"
                    else dict(port_s11_freqs=BINS, distributed=True, devices=devices))
-        with pytest.raises(ValueError, match=REFUSAL):
+        error, message = ((NotImplementedError, "A passive port's S column needs a drive")
+                          if entry == "run" else (ValueError, REFUSAL))
+        with pytest.raises(error, match=message):
             getattr(_scene("graded", wire=wire), entry)(
                 n_steps=64, skip_preflight=True, **request)
 

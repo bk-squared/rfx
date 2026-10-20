@@ -46,8 +46,13 @@ and no periodic axis; with a plain source or 0-ohm port it warns and returns
 fields and S=None, as a uniform `run()` does. One row still differs from a
 uniform `run()` with no S argument: with two driven lumped ports the graded run
 returns fields and S=None with the isolated-drive warning (uniform drives each
-port in its own scan). An explicit graded S request with two driven ports is
-refused. Records containing
+port in its own scan). The uniform and graded `run()` drive scans drive each
+port in turn, so a passive port still gets its S column.
+`forward(port_s11_freqs=...)` and the single-wire path read one record and,
+with every port passive, refuse an explicit S request or warn and return no S
+for a default request; the per-port V, I and V_ref spectra stay in
+`lumped_port_sparams` / `wire_port_sparams` through `run(compute_s_params=False)`.
+Records containing
 any wire port, including mixed wire/lumped records, retain the wire
 decomposition and the wire default: the remaining exception to one wave
 definition per port kind. The periodic `run()` S refusal remains; graded

@@ -1136,8 +1136,8 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     multi-device S, subgridding) drive EVERY impedance port, passive ones too,
     so any plain source fires in every drive: refused whenever an impedance port
     exists. Routes that read S from the main run's own record (``main_record``:
-    forward(port_s11_freqs=), the graded wire path, the uniform single-wire fast
-    path) require a driven impedance port, regardless of other excitations.
+    forward(port_s11_freqs=), the single-wire fast path on either mesh)
+    require a driven impedance port, regardless of other excitations.
     Passive records remain available as termination diagnostics, without S.
     """
     ports = [p for p in sim._ports if p.impedance != 0.0]
@@ -1167,8 +1167,8 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     plain source or 0-ohm port is refused; the default request warns and
     resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
     # Subgridded runs opt into S explicitly; uniform/graded runs resolve
-    # None from the presence of lumped/wire ports. Passive main records warn
-    # here and retain their raw spectra with S disabled.
+    # None from lumped/wire ports, graded lumped ports only when one is driven.
+    # Passive single-wire main records warn and keep raw spectra with S disabled.
     default_requested = (
         compute_s_params is None
         and sim._refinement is None
