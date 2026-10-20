@@ -446,6 +446,11 @@
       "kind": "neighbour"
     },
     {
+      "file": "rfx/geometry/node_tensor.py",
+      "function": "node_metrics",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/geometry/port_termination.py",
       "function": "lattice_intersects_aperture",
       "kind": "roll/diff"

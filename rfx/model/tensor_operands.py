@@ -1,4 +1,4 @@
-"""Form uniform-run and waveguide permittivity operands in array order."""
+"""Form geometry permittivity operands in array order."""
 
 from dataclasses import dataclass, field, replace
 
@@ -41,6 +41,14 @@ def attach_tensor(materials, operands):
     if components.tensor is not None and components.tensor is not operands:
         raise ValueError("two tensor operand sets for one model")
     return materials._replace(components=replace(components, tensor=operands))
+
+
+def full_tensor_eps(sim, grid, materials, shape_eps_pairs):
+    """Build node tensors at the realized permittivity precision on either mesh."""
+    from rfx.geometry.node_tensor import compute_node_tensor_eps
+    return compute_node_tensor_eps(
+        grid, shape_eps_pairs, background_eps=1.0,
+        field_dtype=(jnp.float64 if sim._precision == 'float64' else materials.eps_r.dtype))
 
 
 def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
@@ -111,11 +119,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         if shape_eps_pairs:
             if subpixel_smoothing == "full_tensor":
-                from rfx.geometry.node_tensor import compute_node_tensor_eps
-                aniso_eps = compute_node_tensor_eps(
-                    grid, shape_eps_pairs, background_eps=1.0,
-                    field_dtype=(jnp.float64 if sim._precision == 'float64'
-                                 else materials.eps_r.dtype))
+                aniso_eps = full_tensor_eps(sim, grid, materials, shape_eps_pairs)
             else:
                 from rfx.geometry.smoothing import compute_smoothed_eps
                 aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)

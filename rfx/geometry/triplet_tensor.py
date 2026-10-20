@@ -31,7 +31,8 @@ def _linalg(xp, operation, matrix):
     return jnp.concatenate(pieces).reshape(matrix.shape[:-2] + tail)
 
 
-def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
+def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
+              cell_lengths=None):
     """Planar length/area fractions indexed [axis][sign] (decision record 6).
 
     The optional plane reuses the union SDF and nearest normal from the node
@@ -40,10 +41,14 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
     if signed_distance is None:
         from rfx.geometry.node_tensor import _union
 
-        _, normal, signed_distance = _union(xp, grid, shapes, nodes, distance=True)
+        fill_length = None if cell_lengths is None else (
+            (sum(cell_lengths[0]) * sum(cell_lengths[1]) * sum(cell_lengths[2]) / 8)
+            ** (1.0 / 3.0))
+        _, normal, signed_distance = _union(
+            xp, grid, shapes, nodes, distance=True, fill_length=fill_length)
     dtype = np.float64 if xp is np else getattr(signed_distance, 'dtype', jnp.float32)
     from rfx.geometry.node_tensor import uniform_cell
-    h = uniform_cell(grid)
+    h = uniform_cell(grid) if cell_lengths is None else None
     s, *ns = xp.broadcast_arrays(xp.asarray(signed_distance, dtype=dtype),
                                  *(xp.asarray(n, dtype=dtype) for n in normal))
     corners = xp.asarray([[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]], dtype=dtype)
@@ -53,6 +58,8 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
         other = [a for a in range(3) if a != axis]
         ls, ars = [], []
         for sign in (1, -1):
+            if cell_lengths is not None:
+                h = cell_lengths[axis][1 if sign == 1 else 0]
             d1 = s + sign * h * ns[axis]
             crossing = (s < 0) != (d1 < 0)
             # Double-where keeps parallel and unused intersections finite in AD.
@@ -60,9 +67,19 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
             ls.append(xp.where(crossing, xp.where(s < 0, t, 1 - t),
                                (s < 0).astype(dtype)))
             mid = s + sign * h * ns[axis] / 2
-            d = mid[..., None] + h * (
-                ns[other[0]][..., None] * corners[:, 0]
-                + ns[other[1]][..., None] * corners[:, 1])
+            if cell_lengths is None:
+                d = mid[..., None] + h * (
+                    ns[other[0]][..., None] * corners[:, 0]
+                    + ns[other[1]][..., None] * corners[:, 1])
+            else:
+                b, c = other
+                bm, bp = cell_lengths[b]
+                cm, cp = cell_lengths[c]
+                wb, wc = (bm + bp) / 2, (cm + cp) / 2
+                mid = mid + ns[b] * (bp - bm) / 4 + ns[c] * (cp - cm) / 4
+                d = mid[..., None] + wb[..., None] * (
+                    ns[b][..., None] * corners[:, 0]
+                    + ns[c][..., None] * (wc / wb)[..., None] * corners[:, 1])
             dn = xp.roll(d, -1, axis=-1)
             inside = d < 0
             cross = inside != (dn < 0)
@@ -176,9 +193,10 @@ def matrices(xp, entries):
 
 
 def build_triplets(xp, grid, shapes, nodes, normal, eps, outside, fallback,
-                   *, signed_distance=None):
+                   *, signed_distance=None, cell_lengths=None):
     lengths, areas = fractions(xp, grid, shapes, nodes,
-                               signed_distance=signed_distance, normal=normal)
+                               signed_distance=signed_distance, normal=normal,
+                               cell_lengths=cell_lengths)
     ns = xp.stack(xp.broadcast_arrays(*normal), axis=-1)
     tensors, guards, touched = [], [], []
     for signs in SIGNS:
@@ -191,8 +209,29 @@ def build_triplets(xp, grid, shapes, nodes, normal, eps, outside, fallback,
     return xp.stack(tensors), xp.stack(guards), xp.stack(touched)
 
 
-def coefficients(xp, triplets):
+def triplet_weights(xp, cell_lengths):
+    """Octant volume divided by the incident edge's dual volume."""
+    weights = []
+    for a in range(3):
+        b, c = [axis for axis in range(3) if axis != a]
+        weights.append(tuple(
+            cell_lengths[b][1 - signs[b]] * cell_lengths[c][1 - signs[c]]
+            / (2 * sum(cell_lengths[b]) * sum(cell_lengths[c])) for signs in SIGNS))
+    return tuple(weights)
+
+
+def coefficients(xp, triplets, weights=None):
     """Eq. 10: node-end diagonals (four triplets) and pair couplings (two)."""
+    if weights is not None:
+        diagonal = tuple(tuple(sum(weights[a][t] * triplets[t, ..., a, a]
+                                   for t, signs in enumerate(SIGNS) if signs[a] == s)
+                               for s in (0, 1)) for a in range(3))
+        def cross_for(reverse):
+            return tuple(xp.stack([xp.stack([
+                sum(weights[b if reverse else a][t] * triplets[t, ..., a, b]
+                    for t, signs in enumerate(SIGNS) if signs[a] == sa and signs[b] == sb)
+                for sb in (0, 1)]) for sa in (0, 1)]) for a, b in PAIRS)
+        return diagonal, cross_for(False), cross_for(True)
     diagonal = tuple(tuple(sum(triplets[t, ..., a, a]
                               for t, signs in enumerate(SIGNS) if signs[a] == s) / 8
                            for s in (0, 1)) for a in range(3))

@@ -30,7 +30,7 @@ def refuse_forward_smoothing(sim, *, subpixel_smoothing,
 
 
 def refuse_nonuniform_smoothing(sim, **options):
-    """Refuse full tensors before the graded diagonal builder is reached."""
+    """Apply the shared tensor admission and material-override fences."""
     from rfx.runners._admission import refuse_smoothing_overrides
-    admit_full_tensor(sim, options['subpixel_smoothing'], unsupported=True)
+    admit_full_tensor(sim, options['subpixel_smoothing'])
     refuse_smoothing_overrides(**options)

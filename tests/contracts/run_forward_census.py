@@ -16,7 +16,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Simulation, Box, PolylineWire, DebyePole, LorentzPole, drude_pole
+from rfx import Simulation, Box, Sphere, PolylineWire, DebyePole, LorentzPole, drude_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 # Every patched module/attribute is named here once. The contract passes this
@@ -225,6 +225,13 @@ def build_c_smooth(path):
     return dielectric(path)
 
 
+def build_c_full_tensor(path):
+    sim = base_scene(path, source=False)
+    sim.add_material('sphere', eps_r=4.)
+    sim.add(Sphere((.0153, .0102, .0061), .0023), material='sphere')
+    return sim.add_port(SOURCE, 'ez', impedance=50.)
+
+
 def build_r_rlc(path):
     return base_scene(path).add_lumped_rlc((.017, .010, .006), 'ez', R=50., L=1e-9, C=1e-12, topology='series')
 
@@ -267,6 +274,7 @@ BUILDERS = {
     'M-drude': build_m_drude, 'C-pecbox': build_c_pecbox,
     'C-sheet': build_c_sheet, 'C-film': build_c_film, 'C-wire': build_c_wire,
     'C-pinned': build_c_pinned, 'C-smooth': build_c_smooth,
+    'C-full-tensor': build_c_full_tensor,
     'R-rlc': build_r_rlc, 'O-dft': build_o_dft, 'O-flux': build_o_flux,
     'O-ntff': build_o_ntff, 'O-vector': build_o_vector, 'O-cm': build_o_cm,
 }

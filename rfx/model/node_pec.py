@@ -1,4 +1,4 @@
-"""Restrict node couplings to the uniform step's realized free edges."""
+"""Restrict node couplings to the step's realized free edges."""
 from dataclasses import replace
 
 import jax.numpy as jnp
