@@ -193,6 +193,10 @@ def test_j1_actual_path_setup(row, mesh, forward):
     lane = ('fwd_' if forward else 'run_')+('uniform' if mesh == 'uniform' else 'nonuniform')
     sim = build(row, lane, graded=mesh == 'graded')
     if row[0] == '_current_moments' and mesh == 'graded':
+        # The builder grades z only for this row; grade x as well to pin the in-plane refusal.
+        from tests.contracts.path_equivalence.builders import DX
+        sim._dx_profile = sim._dx_profile.copy()
+        sim._dx_profile[3:5] = (DX*0.9, DX*1.1)
         with pytest.raises(NotImplementedError) as refusal:
             setup(sim, forward)
         plan = measurement_plan(sim, n_steps=12, path=lane)
