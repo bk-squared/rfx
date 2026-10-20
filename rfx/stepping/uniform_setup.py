@@ -101,79 +101,10 @@ def _update_e_with_optional_dispersion(
             state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, None, new_lorentz
 
-    # Mixed Debye + Lorentz update.
-    from rfx.materials.debye import DebyeState
-    from rfx.materials.lorentz import LorentzState
-
-    debye_coeffs, debye_state = debye
-    lorentz_coeffs, lorentz_state = lorentz
-
-    # Narrow every output back to the dtype of the carry it came from
-    # (issue #656) — same policy as the single-model bodies in
-    # rfx/materials/{debye,lorentz}.py, which carry the full rationale.
-    _fdtype = state.ex.dtype
-    _dpdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
-    _lpdtype = jnp.promote_types(lorentz_state.px.dtype, _fdtype)
-
-    hx, hy, hz = state.hx, state.hy, state.hz
-
-    curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
-
-    ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
-
-    # Explicit Lorentz polarization update first (per component, #1260).
-    from rfx.materials.debye import per_component
-    from rfx.materials.lorentz import (
-        lorentz_p_component, mixed_e_component_coeffs,
-    )
-    e_old = (ex_old, ey_old, ez_old)
-    curls = (curl_x, curl_y, curl_z)
-    p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
-    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
-                lorentz_state.pz_prev)
-    p_d = (debye_state.px, debye_state.py, debye_state.pz)
-    p_l_new = tuple(
-        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], p_l_prev[c],
-                            _lpdtype)
-        for c in range(3))
-    px_l_new, py_l_new, pz_l_new = p_l_new
-
-    e_new, p_d_new = [], []
-    for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
-        ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
-            debye_coeffs, lorentz_coeffs, c, dt)
-        e_c = (
-            ca * e_old[c]
-            + cb * curls[c]
-            + jnp.sum(cc_debye * p_d[c], axis=0)
-            - cc_lorentz * dp_l
-        ).astype(_fdtype)
-        e_new.append(e_c)
-        beta_c = per_component(debye_coeffs.beta, "beta")[c]
-        p_d_new.append((debye_coeffs.alpha * p_d[c]
-                        + beta_c * (e_c[None] + e_old[c][None])
-                        ).astype(_dpdtype))
-    ex_new, ey_new, ez_new = e_new
-
-    new_fdtd = state._replace(
-        ex=ex_new,
-        ey=ey_new,
-        ez=ez_new,
-        step=state.step + 1,
-    )
-    new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
-    new_lorentz = LorentzState(
-        px=px_l_new,
-        py=py_l_new,
-        pz=pz_l_new,
-        px_prev=lorentz_state.px,
-        py_prev=lorentz_state.py,
-        pz_prev=lorentz_state.pz,
-    )
-
-    return new_fdtd, new_debye, new_lorentz
+    from rfx.stepping.pole_support import update_e_box_fields
+    curls = curl_h(state.hx, state.hy, state.hz, dx, periodic,
+                   boundary=boundary, scale_after=True)
+    return update_e_box_fields(state, curls, dt, debye, lorentz)
 
 
 class _SimSetup(NamedTuple):
@@ -326,6 +257,8 @@ def _build_step_setup(
         a for a in "xyz"
         if f"{a}_lo" in _pec_faces_frozen and f"{a}_hi" in _pec_faces_frozen)
 
+    from rfx.materials.pole_support import align_pole_states
+    debye, lorentz = align_pole_states(debye, lorentz, grid.shape)
     # ---- subsystem flags (resolved at Python trace time) ----
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
     use_upml = boundary == "upml" and grid.cpml_layers > 0

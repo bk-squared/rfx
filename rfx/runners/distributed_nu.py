@@ -852,6 +852,8 @@ def run_nonuniform_distributed_pec(
     # Phase 2D: Debye / Lorentz dispatch (was NotImplementedError before).
     use_debye = debye is not None
     use_lorentz = lorentz is not None
+    from rfx.materials.pole_support import align_pole_states
+    debye, lorentz = align_pole_states(debye, lorentz, (sharded_grid.nx_local, sharded_grid.ny, sharded_grid.nz))
     if use_debye:
         debye_coeffs, debye_state_init = debye
     else:
@@ -1175,7 +1177,7 @@ def run_nonuniform_distributed_pec(
                             DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc,
                                         alpha=d_alpha, beta=d_beta),
                             means, dt, nx_per, nx_real, rank=rank),
-                        DebyeState(px=d_px, py=d_py, pz=d_pz),
+                        DebyeState(px=d_px, py=d_py, pz=d_pz, box=debye_state_init.box),
                     )
                 else:
                     db_local = None
@@ -1215,7 +1217,7 @@ def run_nonuniform_distributed_pec(
                             means, dt, nx_per, nx_real, rank=rank),
                         LorentzState(px=l_px, py=l_py, pz=l_pz,
                                      px_prev=l_pxp, py_prev=l_pyp,
-                                     pz_prev=l_pzp),
+                                     pz_prev=l_pzp, box=lorentz_state_init.box),
                     )
                 else:
                     lr_local = None
@@ -1285,13 +1287,13 @@ def run_nonuniform_distributed_pec(
             new_lr_st = None
             if _has_db:
                 from rfx.materials.debye import DebyeState
-                new_db_st = DebyeState(
+                new_db_st = db_st_in._replace(
                     px=results[ridx], py=results[ridx + 1], pz=results[ridx + 2],
                 )
                 ridx += 3
             if _has_lr:
                 from rfx.materials.lorentz import LorentzState
-                new_lr_st = LorentzState(
+                new_lr_st = lr_st_in._replace(
                     px=results[ridx], py=results[ridx + 1], pz=results[ridx + 2],
                     px_prev=results[ridx + 3], py_prev=results[ridx + 4],
                     pz_prev=results[ridx + 5],

@@ -230,8 +230,10 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
         lambda a: product_rows(a, layout, mesh, family + '_' + name,
             dt=dt, pole_rows=name not in spatial), value)
         for name, value in zip(coeffs._fields, coeffs)))
+    from rfx.materials.pole_support import mask_support
+    box = mask_support(grid.shape, masks, len(poles), full_x=True).full_x(layout.nx_local)
     state = zero_pole_state(DebyeState if family == 'debye' else LorentzState,
-        len(poles), layout, tuple(grid.shape[1:]), mesh=mesh, dtype=ade_state_dtype(), kind=family + '_state')
+        len(poles), layout, tuple(grid.shape[1:]), mesh=mesh, dtype=ade_state_dtype(), kind=family + '_state', box=box)
     return coeffs, state
 
 
@@ -263,6 +265,9 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
         cpml=cpml and (debye is not None or lorentz is not None),
         debye=debye is not None, lorentz=lorentz is not None)
+    from rfx.materials.pole_support import align_pole_states
+    debye, lorentz = align_pole_states(debye, lorentz,
+        (layout.nx_local,) + tuple(grid.shape[1:]))
     bundles = [debye, lorentz]
     for i, bundle in enumerate(bundles):
         if bundle is not None and bundle[0].ca is None:

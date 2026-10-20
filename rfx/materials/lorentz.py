@@ -39,6 +39,9 @@ from rfx.core.yee import (
     si_value_eps_r_grad, EPS_0, FDTDState, curl_h, ade_state_dtype,
 )
 from rfx.materials.debye import per_component, pole_reach
+from rfx.materials.pole_support import (
+    PoleBox, mask_support, support_box, slices, pole_slice, write_box,
+)
 
 
 class LorentzPole(NamedTuple):
@@ -109,8 +112,9 @@ class LorentzCoeffs(NamedTuple):
 class LorentzState(NamedTuple):
     """Auxiliary polarization state (current and previous step).
 
-    p_{x,y,z} : (n_poles, nx, ny, nz) — P^n
-    p_{x,y,z}_prev : (n_poles, nx, ny, nz) — P^{n-1}
+    p_{x,y,z} : (n_poles,) + box.shape — P^n
+    p_{x,y,z}_prev : (n_poles,) + box.shape — P^{n-1}
+    box : static pytree metadata (None for legacy manually constructed states)
     """
     px: jnp.ndarray
     py: jnp.ndarray
@@ -118,6 +122,7 @@ class LorentzState(NamedTuple):
     px_prev: jnp.ndarray
     py_prev: jnp.ndarray
     pz_prev: jnp.ndarray
+    box: PoleBox | None = None
 
 
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
@@ -265,31 +270,42 @@ def init_lorentz(
                   lorentz_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
 
-    zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
+    box = (support_box(shape, realized.weights) if realized.weights is not None else
+           mask_support(shape, mask, n_poles, periodic))
+    zeros = jnp.zeros((n_poles,) + box.shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(
         px=zeros, py=zeros.copy(), pz=zeros.copy(),
         px_prev=zeros.copy(), py_prev=zeros.copy(), pz_prev=zeros.copy(),
+        box=box,
     )
 
     return coeffs, state
 
 
 def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, p_prev,
-                        pdtype=None):
+                        pdtype=None, box=None):
     """P^{n+1} = a P^n + b P^{n-1} + c_comp E^n for E component ``comp``."""
-    c = per_component(coeffs.c, "c")[comp]
-    p_new = coeffs.a * p + coeffs.b * p_prev + c * e_old[None]
+    c = pole_slice(per_component(coeffs.c, "c")[comp], box)
+    p_new = (pole_slice(coeffs.a, box) * p + pole_slice(coeffs.b, box) * p_prev
+             + c * e_old[slices(box)][None])
     return p_new if pdtype is None else p_new.astype(pdtype)
 
 
 def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,
-                        fdtype=None):
+                        fdtype=None, box=None):
     """E^{n+1} = Ca E^n + Cb curl - Cc ΔP for E component ``comp``."""
     ca = per_component(coeffs.ca, "ca")[comp]
     cb = per_component(coeffs.cb, "cb")[comp]
-    cc = per_component(coeffs.cc, "cc")[comp]
-    e_new = ca * e_old + cb * curl - cc * dp
-    return e_new if fdtype is None else e_new.astype(fdtype)
+    cc = per_component(coeffs.cc, "cc")[comp][slices(box)]
+    base = ca * e_old + cb * curl
+    e_box = base[slices(box)] - cc * dp
+    if fdtype is not None:
+        base, e_box = base.astype(fdtype), e_box.astype(fdtype)
+    return write_box(base, e_box, box)
+
+
+
+
 
 
 def mixed_e_component_coeffs(debye_coeffs, lorentz_coeffs, comp: int, dt):
@@ -371,6 +387,7 @@ def update_e_lorentz(
     the imaginary part away and close the scan on wrong physics — the
     dispersive branches ignore the Bloch phase entirely.
     """
+    from rfx.stepping.pole_support import lorentz_box_component
     _fdtype = state.ex.dtype
     _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
@@ -380,29 +397,19 @@ def update_e_lorentz(
     curl_x, curl_y, curl_z = curl_h(
         hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
-    # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
-    px_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev, _pdtype)
-    py_new = lorentz_p_component(coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev, _pdtype)
-    pz_new = lorentz_p_component(coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev, _pdtype)
-
-    # ΔP = P^{n+1} - P^n, summed over poles
-    dpx = jnp.sum(px_new - lor_state.px, axis=0)
-    dpy = jnp.sum(py_new - lor_state.py, axis=0)
-    dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
-
-    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component (#1260)
-    ex_new = lorentz_e_component(coeffs, 0, state.ex, curl_x, dpx, _fdtype)
-    ey_new = lorentz_e_component(coeffs, 1, state.ey, curl_y, dpy, _fdtype)
-    ez_new = lorentz_e_component(coeffs, 2, state.ez, curl_z, dpz, _fdtype)
+    out = [lorentz_box_component(coeffs, c, e, curl, p, prev,
+                                 _fdtype, _pdtype, lor_state.box)
+           for c, (e, curl, p, prev) in enumerate(zip(
+               (state.ex, state.ey, state.ez), (curl_x, curl_y, curl_z),
+               (lor_state.px, lor_state.py, lor_state.pz),
+               (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)))]
+    (ex_new, px_new), (ey_new, py_new), (ez_new, pz_new) = out
 
     new_fdtd = state._replace(
         ex=ex_new, ey=ey_new, ez=ez_new,
         step=state.step + 1,
     )
-    new_lor = LorentzState(
+    new_lor = lor_state._replace(
         px=px_new, py=py_new, pz=pz_new,
         px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
     )

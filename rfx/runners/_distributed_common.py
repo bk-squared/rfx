@@ -135,7 +135,8 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
         out.append(stage_slab_pole_coeffs(
             poles, masks, dt, kind, sharding.mesh, nx_per, nx,
             (n_devices * (nx_per + 2 * ghost),) + materials.eps_r.shape[1:]))
-    return tuple(out)
+    from rfx.materials.pole_support import align_pole_states
+    return align_pole_states(*out, (nx_per + 2 * ghost,) + materials.eps_r.shape[1:])
 
 
 from rfx.model.electric_metrics import slab_cell_sizes, slab_metric_kwargs
@@ -1230,7 +1231,7 @@ def _split_debye_coeffs(coeffs: DebyeCoeffs, n_devices, ghost=1, *, dt):
 
 
 def _split_debye_state(state: DebyeState, n_devices, ghost=1):
-    return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "debye_state")
+    return cut_poles(state, Slab(state.px.shape[1] if state.box is None else state.box.domain_shape[0], n_devices, ghost), "debye_state")
 
 
 def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1, *, dt):
@@ -1239,7 +1240,7 @@ def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1, *, dt):
 
 
 def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
-    return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "lorentz_state")
+    return cut_poles(state, Slab(state.px.shape[1] if state.box is None else state.box.domain_shape[0], n_devices, ghost), "lorentz_state")
 
 
 # ---------------------------------------------------------------------------
@@ -1332,16 +1333,10 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=
     curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
     curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
-    ex_new, px_new = debye_e_component(debye_coeffs, 0, state.ex, curl_x,
-                                       debye_state.px)
-    ey_new, py_new = debye_e_component(debye_coeffs, 1, state.ey, curl_y,
-                                       debye_state.py)
-    ez_new, pz_new = debye_e_component(debye_coeffs, 2, state.ez, curl_z,
-                                       debye_state.pz)
-
-    new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
-    new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
-    return new_fdtd, new_debye
+    from rfx.stepping.pole_support import update_e_box_fields
+    new_st, new_p, _ = update_e_box_fields(state, (curl_x, curl_y, curl_z), dt,
+        debye=(debye_coeffs, debye_state), narrow=False)
+    return new_st, new_p
 
 
 def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
@@ -1358,27 +1353,10 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundar
     curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
     curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
-    px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev)
-    py_new = lorentz_p_component(lorentz_coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev)
-    pz_new = lorentz_p_component(lorentz_coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev)
-
-    dpx = jnp.sum(px_new - lor_state.px, axis=0)
-    dpy = jnp.sum(py_new - lor_state.py, axis=0)
-    dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
-
-    ex_new = lorentz_e_component(lorentz_coeffs, 0, state.ex, curl_x, dpx)
-    ey_new = lorentz_e_component(lorentz_coeffs, 1, state.ey, curl_y, dpy)
-    ez_new = lorentz_e_component(lorentz_coeffs, 2, state.ez, curl_z, dpz)
-
-    new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
-    new_lor = LorentzState(
-        px=px_new, py=py_new, pz=pz_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
-    )
-    return new_fdtd, new_lor
+    from rfx.stepping.pole_support import update_e_box_fields
+    new_st, _, new_p = update_e_box_fields(state, (curl_x, curl_y, curl_z), dt,
+        lorentz=(lorentz_coeffs, lor_state), narrow=False)
+    return new_st, new_p
 
 
 def _update_e_local_with_dispersion(state, materials, dt, dx,
@@ -1423,8 +1401,6 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     # + sum beta) there, which differs on every edge that carries both a Debye
     # and a Lorentz pole -- with the edge mean, every edge on a Debye|Lorentz
     # interface.
-    debye_coeffs, debye_state = debye
-    lorentz_coeffs, lorentz_state = lorentz
     hx, hy, hz = state.hx, state.hy, state.hz
     def backward(h, axis):
         return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
@@ -1432,35 +1408,9 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
     curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
     curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
-    e_old = (state.ex, state.ey, state.ez)
     curls = (curl_x, curl_y, curl_z)
-    p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
-    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
-                lorentz_state.pz_prev)
-    p_d = (debye_state.px, debye_state.py, debye_state.pz)
-
-    p_l_new = tuple(lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c],
-                                        p_l_prev[c]) for c in range(3))
-    e_new, p_d_new = [], []
-    for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
-        ca, cb, cc_d, cc_l = mixed_e_component_coeffs(
-            debye_coeffs, lorentz_coeffs, c, dt)
-        e_c = (ca * e_old[c] + cb * curls[c]
-               + jnp.sum(cc_d * p_d[c], axis=0) - cc_l * dp_l)
-        e_new.append(e_c)
-        beta_c = per_component(debye_coeffs.beta, "beta")[c]
-        p_d_new.append(debye_coeffs.alpha * p_d[c]
-                       + beta_c * (e_c[None] + e_old[c][None]))
-
-    new_fdtd = state._replace(ex=e_new[0], ey=e_new[1], ez=e_new[2],
-                              step=state.step + 1)
-    new_debye_st = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
-    new_lor_st = LorentzState(
-        px=p_l_new[0], py=p_l_new[1], pz=p_l_new[2],
-        px_prev=lorentz_state.px, py_prev=lorentz_state.py, pz_prev=lorentz_state.pz,
-    )
-    return new_fdtd, new_debye_st, new_lor_st
+    from rfx.stepping.pole_support import update_e_box_fields
+    return update_e_box_fields(state, curls, dt, debye, lorentz, narrow=False)
 
 
 

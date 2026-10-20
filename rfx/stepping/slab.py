@@ -397,6 +397,13 @@ def cut_poles(array, layout, kind, *, mesh=None, dt=None):
     """
     if array is None:
         return None
+    if hasattr(array, 'box'):
+        from rfx.materials.pole_support import state_box, rebox_state
+        shape = (layout.nx,) + array.px.shape[-2:]
+        box = state_box(array, shape).full_x(layout.nx)
+        array = rebox_state(array, box, shape)
+        packed = jax.tree.map(lambda a: cut_poles(a, layout, kind, mesh=mesh, dt=dt), array)
+        return packed._replace(box=box.full_x(layout.nx_local))
     if isinstance(array, (tuple, list, dict)):
         return jax.tree.map(lambda a: cut_poles(a, layout, kind, mesh=mesh, dt=dt), array)
     fill = pole_fill(kind, dt, array.shape[0])
@@ -434,13 +441,14 @@ def fill_pole_rows(coeffs, dt, nx_per, nx, *, rank):
         for name, field in zip(coeffs._fields, coeffs)))
 
 
-def zero_pole_state(state_type, n_poles, layout, shape, *, mesh, dtype, kind):
+def zero_pole_state(state_type, n_poles, layout, shape, *, mesh, dtype, kind, box=None):
     """Allocate the packed polarization carry directly on its owning devices."""
     fill = FILL[kind]
     assert fill == Fill(0., 0.)
-    zeros = jnp.zeros((layout.n_devices * n_poles, layout.nx_local) + tuple(shape),
+    transverse = tuple(shape) if box is None else box.shape[1:]
+    zeros = jnp.zeros((layout.n_devices * n_poles, layout.nx_local) + transverse,
                       dtype=dtype, device=NamedSharding(mesh, P('x')))
-    return state_type(*(zeros for _ in state_type._fields))
+    return state_type(**{name: zeros for name in state_type._fields if name != 'box'}, box=box)
 
 
 def stage_poles(build_coeffs, masks, layout, shape, *, mesh, n_poles, state_type, dtype, kind):
@@ -449,9 +457,12 @@ def stage_poles(build_coeffs, masks, layout, shape, *, mesh, n_poles, state_type
     The callback owns pole arithmetic on local masks; this module owns its
     partition spec, rank data and the matching packed state layout.
     """
+    from rfx.materials.pole_support import mask_support
+    box = mask_support((layout.n_devices * layout.nx_local,) + tuple(shape),
+                       masks, n_poles, full_x=True).full_x(layout.nx_local)
     local = rank_shard_map(build_coeffs, mesh=mesh, in_specs=P('x'),
                            out_specs=P('x'), check_rep=False)
     coeffs = jax.jit(local)(mesh_ranks(mesh), masks)
     state = zero_pole_state(state_type, n_poles, layout, shape, mesh=mesh,
-                            dtype=dtype, kind=kind + '_state')
+                            dtype=dtype, kind=kind + '_state', box=box)
     return coeffs, state

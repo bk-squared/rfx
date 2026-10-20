@@ -46,6 +46,9 @@ import jax.numpy as jnp
 from rfx.core.yee import (
     si_value_eps_r_grad, EPS_0, FDTDState, MaterialArrays, curl_h, ade_state_dtype,
 )
+from rfx.materials.pole_support import (
+    PoleBox, mask_support, support_box, slices, pole_slice, write_box,
+)
 
 
 class DebyePole(NamedTuple):
@@ -116,11 +119,13 @@ class DebyeState(NamedTuple):
     """Auxiliary polarization fields for Debye ADE.
 
     Each pole has 3 polarization components (px, py, pz).
-    Stored as (n_poles, nx, ny, nz) for each component.
+    Stored as (n_poles,) + box.shape for each component. ``box`` is static
+    pytree metadata; legacy manually constructed states may leave it None.
     """
     px: jnp.ndarray  # (n_poles, nx, ny, nz)
     py: jnp.ndarray
     pz: jnp.ndarray
+    box: PoleBox | None = None
 
 
 def debye_pole_coeffs(poles, dt, shape, fractions_by_pole):
@@ -283,14 +288,16 @@ def init_debye(
     coeffs = debye_e_coeffs((eps_c, sig_c), dt, alpha, beta)
 
     # Zero-initialized polarization state
-    p_zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
-    state = DebyeState(px=p_zeros, py=p_zeros.copy(), pz=p_zeros.copy())
+    box = (support_box(shape, realized.weights) if realized.weights is not None else
+           mask_support(shape, mask, n_poles, periodic))
+    p_zeros = jnp.zeros((n_poles,) + box.shape, dtype=ade_state_dtype(field_dtype))
+    state = DebyeState(px=p_zeros, py=p_zeros.copy(), pz=p_zeros.copy(), box=box)
 
     return coeffs, state
 
 
 def debye_e_component(coeffs: DebyeCoeffs, c: int, e_old, curl, p,
-                      fdtype=None, pdtype=None):
+                      fdtype=None, pdtype=None, box=None):
     """One E component's Debye step: ``(E^{n+1}, P^{n+1})`` for component
     ``c`` (0, 1, 2) with its own coefficients (#1260).
 
@@ -302,12 +309,15 @@ def debye_e_component(coeffs: DebyeCoeffs, c: int, e_old, curl, p,
     """
     ca = per_component(coeffs.ca, "ca")[c]
     cb = per_component(coeffs.cb, "cb")[c]
-    cc = per_component(coeffs.cc, "cc")[c]
-    beta = per_component(coeffs.beta, "beta")[c]
-    e_new = ca * e_old + cb * curl + jnp.sum(cc * p, axis=0)
+    cc = pole_slice(per_component(coeffs.cc, "cc")[c], box)
+    beta = pole_slice(per_component(coeffs.beta, "beta")[c], box)
+    base = ca * e_old + cb * curl
+    e_box = base[slices(box)] + jnp.sum(cc * p, axis=0)
     if fdtype is not None:
-        e_new = e_new.astype(fdtype)
-    p_new = coeffs.alpha * p + beta * (e_new[None] + e_old[None])
+        e_box = e_box.astype(fdtype)
+        base = base.astype(fdtype)
+    e_new = write_box(base, e_box, box)
+    p_new = pole_slice(coeffs.alpha, box) * p + beta * (e_box[None] + e_old[slices(box)][None])
     if pdtype is not None:
         p_new = p_new.astype(pdtype)
     return e_new, p_new
@@ -352,16 +362,16 @@ def update_e_debye(
     # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
     # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component (#1260)
     ex_new, px_new = debye_e_component(coeffs, 0, state.ex, curl_x,
-                                       debye_state.px, _fdtype, _pdtype)
+                                       debye_state.px, _fdtype, _pdtype, debye_state.box)
     ey_new, py_new = debye_e_component(coeffs, 1, state.ey, curl_y,
-                                       debye_state.py, _fdtype, _pdtype)
+                                       debye_state.py, _fdtype, _pdtype, debye_state.box)
     ez_new, pz_new = debye_e_component(coeffs, 2, state.ez, curl_z,
-                                       debye_state.pz, _fdtype, _pdtype)
+                                       debye_state.pz, _fdtype, _pdtype, debye_state.box)
 
     new_fdtd = state._replace(
         ex=ex_new, ey=ey_new, ez=ez_new,
         step=state.step + 1,
     )
-    new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
+    new_debye = debye_state._replace(px=px_new, py=py_new, pz=pz_new)
 
     return new_fdtd, new_debye

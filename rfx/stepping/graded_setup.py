@@ -131,112 +131,10 @@ def _update_e_nu_dispersive(
         polarisation update uses pre-exchange E values.  See the ADE
         Ordering Contract documented in ``run_nonuniform_distributed``.
     """
-    from rfx.materials.debye import DebyeState
-    from rfx.materials.lorentz import LorentzState
-
-    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary, frame=frame, owned=owned)
-    if e_old is not None:
-        ex_old, ey_old, ez_old = e_old
-    else:
-        ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
-
-    # Narrow every output back to the dtype of the carry it came from
-    # (issue #656) — the NU lane runs the same ADE recurrences off the same
-    # ``init_debye``/``init_lorentz`` coefficients, which are built from
-    # ``grid.dt`` (an np.float64 scalar, strongly typed in JAX). The full
-    # rationale lives on ``rfx.materials.lorentz.update_e_lorentz``.
-    _fdtype = state.ex.dtype
-
-    # Every coefficient is per E component (#1260): component c takes index c.
-    from rfx.materials.debye import debye_e_component, per_component
-    from rfx.materials.lorentz import (
-        lorentz_e_component, lorentz_p_component, mixed_e_component_coeffs,
-    )
-    e_old3 = (ex_old, ey_old, ez_old)
-    curls = (curl_x, curl_y, curl_z)
-
-    # --- Debye only ---
-    if debye is not None and lorentz is None:
-        debye_coeffs, debye_state = debye
-        _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
-        p_d = (debye_state.px, debye_state.py, debye_state.pz)
-        out = [debye_e_component(debye_coeffs, c, e_old3[c], curls[c], p_d[c],
-                                 _fdtype, _pdtype) for c in range(3)]
-        (ex_new, px_new), (ey_new, py_new), (ez_new, pz_new) = out
-
-        new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new,
-                                  step=state.step + 1)
-        new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
-        return new_fdtd, new_debye, None
-
-    # --- Lorentz only ---
-    if lorentz is not None and debye is None:
-        lorentz_coeffs, lor_state = lorentz
-        _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
-        p_l = (lor_state.px, lor_state.py, lor_state.pz)
-        p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
-
-        px_new, py_new, pz_new = (
-            lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c],
-                                p_l_prev[c], _pdtype) for c in range(3))
-
-        dpx = jnp.sum(px_new - lor_state.px, axis=0)
-        dpy = jnp.sum(py_new - lor_state.py, axis=0)
-        dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
-
-        ex_new = lorentz_e_component(lorentz_coeffs, 0, ex_old, curl_x, dpx,
-                                     _fdtype)
-        ey_new = lorentz_e_component(lorentz_coeffs, 1, ey_old, curl_y, dpy,
-                                     _fdtype)
-        ez_new = lorentz_e_component(lorentz_coeffs, 2, ez_old, curl_z, dpz,
-                                     _fdtype)
-
-        new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new,
-                                  step=state.step + 1)
-        new_lor = LorentzState(
-            px=px_new, py=py_new, pz=pz_new,
-            px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
-        )
-        return new_fdtd, None, new_lor
-
-    # --- Mixed Debye + Lorentz ---
-    debye_coeffs, debye_state = debye
-    lorentz_coeffs, lor_state = lorentz
-    _dpdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
-    _lpdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
-
-    # Explicit Lorentz polarization update first
-    p_l = (lor_state.px, lor_state.py, lor_state.pz)
-    p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
-    p_d = (debye_state.px, debye_state.py, debye_state.pz)
-    p_l_new = tuple(
-        lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c], p_l_prev[c],
-                            _lpdtype) for c in range(3))
-    px_l_new, py_l_new, pz_l_new = p_l_new
-
-    e_new, p_d_new = [], []
-    for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
-        ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
-            debye_coeffs, lorentz_coeffs, c, dt)
-        e_c = (ca * e_old3[c] + cb * curls[c]
-               + jnp.sum(cc_debye * p_d[c], axis=0)
-               - cc_lorentz * dp_l).astype(_fdtype)
-        e_new.append(e_c)
-        beta_c = per_component(debye_coeffs.beta, "beta")[c]
-        p_d_new.append((debye_coeffs.alpha * p_d[c]
-                        + beta_c * (e_c[None] + e_old3[c][None])
-                        ).astype(_dpdtype))
-    ex_new, ey_new, ez_new = e_new
-
-    new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new,
-                              step=state.step + 1)
-    new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
-    new_lor = LorentzState(
-        px=px_l_new, py=py_l_new, pz=pz_l_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
-    )
-    return new_fdtd, new_debye, new_lor
+    from rfx.stepping.pole_support import update_e_box_fields
+    curls = _curl_h_nu(state, inv_dx, inv_dy, inv_dz,
+                       boundary=boundary, frame=frame, owned=owned)
+    return update_e_box_fields(state, curls, dt, debye, lorentz, e_old=e_old)
 
 
 class _NUScanSetup(NamedTuple):
@@ -340,6 +238,8 @@ def _build_nu_scan(
     dft_planes = dft_planes or []
     waveguide_ports = waveguide_ports or []
     flux_monitors = flux_monitors or []
+    from rfx.materials.pole_support import align_pole_states
+    debye, lorentz = align_pole_states(debye, lorentz, grid.shape)
     dt = grid.dt
     use_wire_ports = len(wire_ports) > 0
     use_debye = debye is not None
