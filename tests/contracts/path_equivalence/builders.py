@@ -137,7 +137,8 @@ def build(row, lane, *, graded=False, dt=None):
     if nu or row[0] in ('_dx_profile', '_dy_profile', '_dz_profile'):
         for axis, length in zip('xyz', kwargs['domain']):
             profile = np.full(int(np.ceil(length / DX)), DX)
-            if graded:
+            # The block rule needs equal in-plane cells (rfx/current_moments.py), so this row grades z only.
+            if graded and (row[0] != '_current_moments' or axis == 'z'):
                 profile[3:5] = (DX*0.9, DX*1.1)
             kwargs[f'd{axis}_profile'] = profile
         if dt is not None:

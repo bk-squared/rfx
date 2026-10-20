@@ -151,17 +151,33 @@ def _kernel_materials(capture):
     assert magnetic, 'kernel magnetic material record missing'
     owned = sorted((r for r in capture.records if 'owned_start' in r),
                    key=lambda r: int(r['owned_start']))
+    prefix = ''
     if not owned:
         electric = [r for r in capture.records if 'eps_e' in r]
-        return (electric[0] if electric else magnetic[0])['materials']._asdict()
+        if electric or not any('h_owned_start' in r for r in magnetic):
+            return (electric[0] if electric else magnetic[0])['materials']._asdict()
+        prefix, by_start = 'h_', {}
+        for record in magnetic:
+            if 'h_owned_start' not in record:
+                continue
+            start = int(record['h_owned_start'])
+            if start in by_start:
+                previous = by_start[start]
+                assert int(record['h_owned_count']) == int(previous['h_owned_count']), 'kernel slab count differs'
+                assert jax.tree.structure(record['materials']) == jax.tree.structure(previous['materials']), 'kernel material structure differs'
+                for actual, expected in zip(jax.tree.leaves(record['materials']),
+                                            jax.tree.leaves(previous['materials'])):
+                    np.testing.assert_array_equal(actual, expected)
+            else:
+                by_start[start] = record
+        owned = [by_start[start] for start in sorted(by_start)]
     end, chunks = 0, []
     for record in owned:
-        start, count = int(record['owned_start']), int(record['owned_count'])
+        start, count = int(record[prefix + 'owned_start']), int(record[prefix + 'owned_count'])
         assert start == end and count > 0, 'kernel slab coverage differs'
         end += count
-        # Compare E's actual material view on owned rows. H intentionally
-        # omits sigma_lumped, which it does not consume; that omission is
-        # not a missing E material term.
+        # E includes sigma_lumped; H omits it because H does not consume
+        # that term. Use H's common cell view only when E is absent.
         chunks.append((count, record['materials']))
 
     def merge(values):
