@@ -11,6 +11,11 @@ import jax.numpy as jnp
 from rfx.boundaries.pec import _shift, realized_pec_edge_masks
 
 
+def clip_occupancy(x):
+    """Clip to [0, 1] with slope 1 on the closed interval (JAX's clip has slope 1/2 at a bound, #1926)."""
+    return jnp.where((x >= 0) & (x <= 1), x, jnp.clip(x, 0.0, 1.0))
+
+
 def _edge_factors(occupancy, sheet_edge_masks, *, dtype, periodic):
     """keep = prod(1 - o) over the four cells of each E edge, products only.
 
@@ -29,7 +34,7 @@ def _edge_factors(occupancy, sheet_edge_masks, *, dtype, periodic):
     Where the four-cell product is below half an ULP of 1 the old form gave
     exactly 0; this one keeps the product (at most about 3e-8).
     """
-    occ = jnp.clip(occupancy.astype(dtype), 0.0, 1.0)
+    occ = clip_occupancy(occupancy.astype(dtype))
     keep = []
     for c in range(3):
         t1, t2 = (t for t in range(3) if t != c)

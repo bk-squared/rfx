@@ -1691,7 +1691,9 @@ def kottke_inv_eps_from_occupancy(
     # open-stub run (run #962) in 60939e0's commit message; that run's
     # fixture is not recorded anywhere, and the cavity oracle supersedes it.
     from rfx.boundaries.pec import _volume_occupancy_masks
-    f = jnp.clip(pec_occupancy.astype(jnp.float32), 0.0, 1.0)
+    from rfx.model.occupancy import clip_occupancy
+
+    f = clip_occupancy(pec_occupancy.astype(jnp.float32))
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
     # pinned zero (2026-05-17 decision, kept).
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)

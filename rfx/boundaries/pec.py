@@ -1036,7 +1036,9 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
     :func:`realized_pec_edge_masks`) OR'd in; a sheet's plane is not a
     traced quantity.
     """
-    occ = jnp.clip(pec_occupancy.astype(state.ex.dtype), 0.0, 1.0)
+    from rfx.model.occupancy import clip_occupancy
+
+    occ = clip_occupancy(pec_occupancy.astype(state.ex.dtype))
     m_ex, m_ey, m_ez = _volume_occupancy_masks(occ, periodic)
     if sheet_edge_masks is not None:
         sx, sy, sz = sheet_edge_masks
@@ -1109,13 +1111,15 @@ def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
     inner = tuple(slice(a - c, b - c)
                   for a, b, c in zip(lo, c_hi, c_lo))
 
+    from rfx.model.occupancy import clip_occupancy
+
     if pec_occupancy is None:
         occ = jnp.zeros(tuple(b - a for a, b in zip(c_lo, c_hi)), dtype)
     else:
-        occ = jnp.clip(jnp.asarray(pec_occupancy)[win].astype(dtype), 0.0, 1.0)
+        occ = clip_occupancy(jnp.asarray(pec_occupancy)[win].astype(dtype))
     box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
     occ = occ.at[box_local].set(
-        jnp.clip(jnp.asarray(design_occupancy).astype(dtype), 0.0, 1.0))
+        clip_occupancy(jnp.asarray(design_occupancy).astype(dtype)))
 
     masks = _volume_occupancy_masks(occ, (False, False, False))
     return write, tuple(1.0 - m[inner] for m in masks)
