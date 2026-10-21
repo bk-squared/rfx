@@ -70,7 +70,10 @@ Rules of thumb:
   full-size cells between the last ramp and each absorbing face. Here the
   20 mm below and 30 mm above the substrate are enough for 8 layers.
   Preflight warns (`nu_grading_reaches_absorber`) when a ramp reaches into
-  that runway.
+  that runway. The x/y profiles from `edge_aware_profiles` (below) adjust the
+  cells all the way to the domain faces, by a few percent, so they raise this
+  warning on every absorbing x/y face however wide the margin; how much that
+  changes the absorber's reflection has not been measured.
 
 Two alternatives:
 
@@ -158,17 +161,18 @@ cell or more to a block still leaves a free edge. These rules and the tolerance
 are implemented in `rfx/mesh_edges.py::solved_sheet_span` and
 `rfx/preflight/pec_geometry.py::_warn_sheet_effective_size`.
 
-For a patch and board:
+For a patch and board, with the board's top face and the patch on a z node
+(`axes="xyz"`):
 
 ```python
 from rfx.mesh_edges import edge_aware_profiles
 
-LX, LY, LZ = 0.04, 0.03, 0.01
-board = Box((0.0, 0.0, 0.0), (LX, LY, 1.6e-3))
-patch = Box((0.0105, 0.0083, 1.6e-3), (0.0295, 0.0217, 1.6e-3))
+LX, LY, LZ = 0.06, 0.05, 0.02
+board = Box((0.01, 0.01, 0.005), (0.05, 0.04, 0.0066))
+patch = Box((0.0205, 0.0183, 0.0066), (0.0395, 0.0317, 0.0066))
 
 profiles = edge_aware_profiles((LX, LY, LZ), 1e-3, sheets=[patch],
-                               solids=[board])
+                               solids=[board], axes="xyz")
 patch_sim = Simulation(freq_max=6e9, domain=(LX, LY, LZ), dx=1e-3,
                        boundary="cpml", cpml_layers=8, **profiles)
 patch_sim.add(board, material="fr4")
@@ -242,7 +246,7 @@ These are planning numbers. They say nothing about accuracy.
 | NTFF far field | limited: one dipole case checked against theory |
 | DFT planes, flux monitors | run; no general accuracy statement |
 | wire-port S-parameters (`add_port(..., extent=...)`) | experimental; compare with a uniform run |
-| one-cell lumped-port S-parameters | refused |
+| one-cell lumped-port S-parameters | formed by `run()` when every port is lumped and exactly one is driven, and by `forward(port_s11_freqs=...)`; limited (a one-cell feed model) |
 | `compute_msl_s_matrix` | experimental; `mode="eigenmode"` refused |
 | `compute_waveguide_s_matrix` | single-mode, `normalize=True` or `"flux"` |
 | coaxial calculators | refused |
@@ -269,8 +273,10 @@ use a fixed `n_steps` there.
   Keep the feed region uniform if you want predictable probe positions.
 - **Graded-mesh waveguide results** beyond the published WR-90 comparisons
   are experimental. A dz-only profile has not been checked for accuracy yet.
-- **Subgridding (`add_refinement`)** is a different tool: it works only
-  through `run()` on a uniform mesh, and `forward()`, `optimize()` and
-  `topology_optimize()` refuse a refined model.
+- **Subgridding (`add_refinement`)** is a different tool, and refused by
+  default because it is not yet stable and verified. With
+  `validation="research"` it runs through `run()` on a uniform mesh, with a
+  warning; `forward()`, `optimize()` and `topology_optimize()` refuse a refined
+  model in every mode.
 - The full per-combination status is in the
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md).

@@ -147,7 +147,7 @@ checks that it implements the source (below).
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
 | `amplitude_kind="current"` | ADI | refused | pass `amplitude_kind="field"` |
-| a plane wave together with a lumped port | all | refused | drive the port alone, or use a probe for the response |
+| a plane wave added after a port or a point source (the message names lumped ports); a port added after a plane wave | all | refused | drive the port alone, or use a probe for the response |
 | a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
 | `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
 | an explicit `waveform="differentiated_gaussian"` at an angle with `method="bloch"`, in Python or in a saved interop document | all | refused | `"modulated_gaussian"` or no `waveform`; for one scatterer in an open domain, `method="methodB"` takes the differentiated Gaussian |
@@ -157,8 +157,8 @@ checks that it implements the source (below).
 | a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
 | a dielectric or a design region on or next to an injection plane | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
 | a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
-| a plane wave | graded mesh on several devices | refused | run on one device |
-| a plane wave | uniform mesh on several devices | runs on one device, with a warning; `Result.diagnostics` records it | — |
+| a plane wave | several devices, either mesh | runs on one device, with a warning; `Result.diagnostics` records it | — |
+| a plane wave at an angle with an NTFF box, DFT planes, flux monitors, `snapshot=` or `until_decay=` | uniform mesh | refused | probes and the final `state`, a fixed `n_steps`, or `compute_rcs` for scattering |
 | a soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire), or tangential in a declared PEC wall face | all | refused | move the source off the metal and at least one cell inside the domain, or use a port |
 | a drive whose pulse samples to zero at every time step (usually `bandwidth` given in Hz) | all, and `preflight()` | refused | give `bandwidth` as a fraction of `f0` |
 | `GaussianPulse(cutoff=...)` below 2.5 | when the pulse is created | refused | keep the default `cutoff=3` |

@@ -60,7 +60,7 @@ The rules the spec enforces when you build it:
 
 - A periodic axis is periodic on both faces.
 - `lo_thickness` and `hi_thickness` apply only to absorbing faces. They set
-  that face's layer count and may not exceed `cpml_layers`, which is the
+  that face's layer count and may not exceed `cpml_layers` (preflight refuses it), which is the
   largest depth rfx allocates; a face without its own thickness gets
   `cpml_layers`.
 - CPML and UPML cannot be mixed in one model.
@@ -155,8 +155,9 @@ array) is not set on the boundary itself but by the source that needs it:
 ## How rfx checks it
 
 When the spec is built: the face words, a periodic axis on both faces,
-thickness only on absorbing faces and never above `cpml_layers`, and no
-CPML–UPML mix. Before the run, preflight checks the absorber depth, the room
+thickness only on absorbing faces, and no CPML–UPML mix. A thickness above
+`cpml_layers` is refused by preflight and when the grid is built. Before the
+run, preflight checks the absorber depth, the room
 around the structure and the mesh next to each absorbing face (warnings), and
 the solver path checks that it implements every face (refusals, below).
 
