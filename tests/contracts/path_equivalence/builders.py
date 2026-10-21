@@ -80,7 +80,9 @@ BUILDERS = {
     ('_geometry', 'pec_volume'): _add('add', Box(point(5.2, 2.1, 2.2), point(6.3, 4.2, 3.3)), material='pec'),
     ('_geometry', 'pec_sheet'): _add('add', Box(point(5, 2, 1), point(5, 4, 4)), material='pec'),
     ('_geometry', 'pec_wire'): _add('add', PolylineWire((point(5, 3, 1), point(5, 3, 4)), radius=0), material='pec'),
-    ('_thin_conductors', 'lossy_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4)), sigma_bulk=1e3, thickness=DX/10),
+    # The graded profile has nodes at 3 and 3.9 DX (not 4): DC film edges sit on
+    # nodes every lane shares, so the realized footprint equals the drawn one.
+    ('_thin_conductors', 'lossy_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 5, 5)), sigma_bulk=1e3, thickness=DX/10),
     ('_thin_conductors', 'pec_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4))),
     ('_thin_conductors', 'surface_impedance'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4)), sigma_bulk=1e3, thickness=DX/10, surface_impedance_f0=5e9),
     ('_pinned_sheets', 'pec_sheet'): _add('add_pinned_sheet', plane_index=6, i_range=(3, 5), j_range=(3, 6), normal_axis=0),
