@@ -1,4 +1,4 @@
-"""Record length estimates for resonance sensitivities (arXiv:2610.28496)."""
+"""Simulation-time estimates for resonance sensitivities (arXiv:2610.28496)."""
 
 import math
 
@@ -9,7 +9,7 @@ from scipy.optimize import brentq
 
 
 def sensitivity_truncation_error(t_over_tau, detuning_halfwidths=0.0):
-    """Estimate relative sensitivity error from a finite record, arXiv:2610.28496.
+    """Estimate relative sensitivity error from a finite simulation time, arXiv:2610.28496.
 
     For a parameter that moves a resonance, the sensitivity's late-time part
     decays as ``t exp(-t/tau)``. At resonance its truncation error is
