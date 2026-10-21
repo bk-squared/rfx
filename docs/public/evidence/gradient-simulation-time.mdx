@@ -88,7 +88,7 @@ off [[Kim 2026]](#reference).
 
 The formula is in `rfx.ringdown`:
 
-{/* TODO(docs batch, before the gate): replace this text fence with a python block run against the merged helper, and name its oracle test under Accuracy. */}
+{/* TODO(docs batch, before the gate): replace this text fence with a python block run against the merged helper; confirm the oracle test path and the refusals against it. */}
 
 ```text
 import numpy as np
@@ -101,9 +101,11 @@ t_needed = required_t_over_tau(0.01, detuning_halfwidths=np.abs(d).max()) * tau
 ```
 
 `sensitivity_truncation_error(t_over_tau, detuning_halfwidths=0.0)` returns
-e^(−T/τ)·|1 + (1 + jd)·T/τ| for each value, and
-`required_t_over_tau(error=0.01, detuning_halfwidths=0.0)` returns the T/τ at
-which it equals `error`. The result is the same for d and −d.
+e^(−T/τ)·|1 + (1 + jd)·T/τ| element by element. It takes numbers or NumPy and
+JAX arrays, keeps their dtype (float32 included), and works inside `jax.jit`
+and `jax.vmap`. `required_t_over_tau(error=0.01, detuning_halfwidths=0.0)`
+takes numbers and returns, as a float, the T/τ at which that error equals
+`error`. Both give the same result for d and −d.
 
 ### When the run would be too long
 
@@ -160,10 +162,15 @@ mode. For the optimum of coupled resonators, S itself must have converged:
 
 | Input | What happens | Instead |
 |---|---|---|
-| `t_over_tau` zero, negative or not finite | `ValueError` | pass T/τ of the run, greater than 0 |
+| `sensitivity_truncation_error` with `t_over_tau` zero, negative or not finite | `ValueError`; inside `jax.jit` or `jax.vmap` a value cannot raise, so that element is NaN | pass T/τ of the run, greater than 0 |
+| either function with `detuning_halfwidths` not finite | `ValueError` | pass the detuning in half-widths, any sign |
+| `required_t_over_tau` with `error` outside the open interval (0, 1) | `ValueError`: a single T/τ with that error exists only inside it | pass a relative error between 0 and 1, such as 0.01 |
 
 ## Accuracy
 
+- Both functions are checked against values of the closed form computed by
+  hand, at and away from resonance
+  (`tests/oracle/test_sensitivity_truncation_error.py`).
 - The estimate against simulation, the stop rules, tail extrapolation inside
   the gradient and the two filter designs are in [[Kim 2026]](#reference).
 - The cavity on [Checking a gradient](/rfx/evidence/gradients/#accuracy) (Q
