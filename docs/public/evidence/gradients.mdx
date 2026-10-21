@@ -13,6 +13,8 @@ keeps a leftover term whose phase grows with the simulation time T. A
 parameter that moves the resonance turns that phase, and the turn enters the
 derivative multiplied by T while the term stays small in the value. The value
 can be converged while its gradient is still more than 10 % off.
+[Simulation time for gradients](/rfx/evidence/gradient-simulation-time/) gives
+how long the run must be, in decay times of the slowest mode.
 
 The [settling check](/rfx/evidence/simulation-time/) is a statement about the
 value and does not cover this. Neither does agreement between automatic
@@ -219,6 +221,8 @@ needs a driven wire port, which the slab model above does not have.
 
 - [Autodiff and adjoint background](/rfx/design/gradients/): what `forward()`
   can differentiate.
+- [Simulation time for gradients](/rfx/evidence/gradient-simulation-time/): how
+  long a gradient must run, and when it changes a design.
 - [Is the run long enough?](/rfx/evidence/simulation-time/): the settling check
   for the value.
 - [The accuracy bar](/rfx/evidence/accuracy-bar/).
