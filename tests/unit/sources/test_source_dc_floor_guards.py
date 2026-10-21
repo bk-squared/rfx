@@ -596,6 +596,14 @@ def test_undriven_pulse_is_refused_for_every_drive_kind(kind):
     """A drive whose bandwidth is given in Hz is refused whatever carries it
     (issue 1668). A TF/SF source or waveguide port is judged by the waveform
     class of its waveform name, at its own f0 and bandwidth."""
+    if kind == "waveguide:differentiated_gaussian":
+        from rfx.model.waveguide_waveform import DG_REFUSAL
+
+        with pytest.raises(ValueError) as caught:
+            _hz_drive_sim(kind)
+        assert str(caught.value) == DG_REFUSAL
+        assert "#1942" in str(caught.value)
+        return
     codes = [getattr(i, "code", None) for i in _hz_drive_sim(kind).preflight()
              if getattr(i, "severity", None) == "error"]
     assert "undriven_pulse" in codes, codes
