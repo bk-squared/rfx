@@ -837,8 +837,8 @@ def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
     With x64 disabled the accumulators are complex64, and per-cell E×H*
     products below the float32 minimum normal (~1.18e-38) are flushed to
     zero by XLA — a physically tiny-but-nonzero flux then returns EXACTLY
-    0.0 at every frequency with healthy field accumulators (issue #304;
-    single-cell fixed-amplitude sources radiate P ~ dx^6, so fine grids hit
+    0.0 at every frequency with healthy field accumulators (single-cell fixed-amplitude sources
+    radiate P ~ dx^6, so fine grids hit
     this readily). Eager calls detect that state with a float64 NumPy
     recompute of the identical sum and emit a UserWarning; under
     jit/grad the check is skipped entirely (tracer-safe, off the AD tape).
@@ -846,8 +846,8 @@ def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
     ``exact_f64=True`` performs that float64 NumPy recompute AS the result
     (eager-only; raises under tracing): the per-cell products and the sum
     run in complex128 from the (healthy) float32 accumulators, which is
-    the #304 warning's own sanctioned remedy. Absolute-scale energy
-    consumers (the #589 flux-adjudication witness channel) use this path —
+    the warning's own sanctioned remedy. Absolute-scale energy
+    consumers (the flux-adjudication witness channel) use this path —
     partial subnormal flushing corrupts small-magnitude sums well before
     they reach exact zero, so the warning alone is not sufficient there.
     The default path is unchanged.
@@ -1079,7 +1079,7 @@ def wire_port_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
 
     Uses a single-cell measurement at the live-run midpoint (same location
     as wire_port_current) for balanced V/I wave decomposition. The midpoint
-    is that of the LIVE run (issue #764; ``pec_edge_masks=None`` or no dead cells
+    is that of the LIVE run (``pec_edge_masks=None`` or no dead cells
     is bit-identical to the historical all-extent midpoint).
 
     Parameters
@@ -1087,7 +1087,7 @@ def wire_port_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
     state : FDTDState
     grid : Grid
     port : WirePort
-    pec_edge_masks : realized PEC edge masks (Mx, My, Mz) for the #318 live split
+    pec_edge_masks : realized PEC edge masks (Mx, My, Mz) for the live split
 
     Returns
     -------
@@ -1120,9 +1120,9 @@ def wire_port_current(state, grid, port,
     """Current through a WirePort via Ampere's law at the LIVE-run midpoint.
 
     Uses the H-field loop integral at the center cell of the LIVE wire run
-    (issue #764; with no dead cells this is the historical all-extent
+    (with no dead cells this is the historical all-extent
     midpoint), the same :func:`_ampere_loop` :func:`port_current` uses.
-    Out-of-domain H is ZERO (#692) — see :func:`_bwd_h` for the rule and
+    Out-of-domain H is ZERO — see :func:`_bwd_h` for the rule and
     for the two axis kinds that keep the wrap.
 
     Parameters
@@ -1132,7 +1132,7 @@ def wire_port_current(state, grid, port,
     port : WirePort
     periodic : (bool, bool, bool)
         Per-axis periodic flags for the run; default non-periodic.
-    pec_edge_masks : realized PEC edge masks (Mx, My, Mz) for the #318 live split
+    pec_edge_masks : realized PEC edge masks (Mx, My, Mz) for the live split
 
     Returns
     -------

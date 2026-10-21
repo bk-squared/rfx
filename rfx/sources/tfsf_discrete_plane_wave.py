@@ -552,7 +552,7 @@ def add_tfsf_source(
         ``continuous_wave``: a single-frequency sinusoid at ``f0`` with a
         raised-cosine turn-on (~8 periods), then constant amplitude. Use for
         steady-state / narrowband measurements that need a well-defined
-        time-average ``⟨E²⟩ = A²/2`` (e.g. the quantitative Kerr SPM oracle, #446).
+        time-average ``⟨E²⟩ = A²/2`` (e.g. the quantitative Kerr SPM oracle).
         Not for broadband S-parameters — it excites only ``f0``.
 
         ``modulated_gaussian``: carrier-modulated Gaussian matching

@@ -329,18 +329,14 @@ def extract_waveguide_s_matrix(
     Modal records preserve their precision and widen for field storage.
     Spectra and S promote the record and frequency dtypes.
 
-    PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
+    PEC realization: interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
     (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
-    the shared ``apply_pec_edges``.  Until #931 the caller folded the PEC
-    CELL mask into ``sigma = 1e10`` instead — a fourth realization of the
-    same geometry, and one that damped only the components indexed by the
-    occupied cell, so a one-cell-thick wall or iris got its lower face and
-    never its far one.  An empty-guide REFERENCE run gets no interior edge
+    the shared ``apply_pec_edges``.  An empty-guide REFERENCE run gets no interior edge
     masks; per-port reference geometry supplies its own.
 
 
-    ``return_settling=True`` (issue #538) additionally returns the
+    ``return_settling=True`` additionally returns the
     per-driven-run pole-tail amplitude witness: ``(S, settling_db)`` with
     ``settling_db`` shape ``(n_ports,)`` from
     :func:`settling_db_from_port_records` (NaN per run under tracing).

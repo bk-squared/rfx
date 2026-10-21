@@ -145,8 +145,7 @@ def compute_coaxial_line_reflection(
     ``probe_count`` equally spaced planes and a matrix-pencil estimate of the
     complex propagation constant (β self-measured, Z0-free).
 
-    Unlike the single-plane coaxial lane removed in #1212 (V/I in a hardcoded
-    closed PEC box — non-physical |S11|>1), this uses an absorbing CPML feed
+    The single-plane coaxial lane was removed; use this method, which uses an absorbing CPML feed
     so a real line exists. **Resolution recipe**: keep ≥~4 cells across the
     (outer-inner) annulus (raise ``freq_max`` to shrink ``dx``); the result
     ``status`` reports ``"under_resolved"`` below ~3.5 cells.
@@ -160,8 +159,7 @@ def compute_coaxial_line_reflection(
     shell ending one cell past the matched feed — is absorbed as it would
     radiate from a cable. ``cpml_axes="z"`` is refused: it left the lateral
     pads as vacuum backed by the PEC grid faces, a closed metal can that held
-    that field, and the open's |S11| rose above 1 and grew with the record
-    (issue 1218).
+    that field, and the open's |S11| rose above 1 and grew with the record.
 
     The enclosing :class:`Simulation` must use float32 precision and the
     three-dimensional, second-order uniform Yee solver with
@@ -554,11 +552,10 @@ def compute_coaxial_two_port(
     eps_scale: "jnp.ndarray | float | None" = None,
     extra_flux_monitors: "list | None" = None,
 ) -> "CoaxialTwoPortResult":
-    """Two-drive coaxial 2-port S-parameters (#489 stage 2) — VALIDATED WITH SCOPE.
+    """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
     .. note::
-        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (issue #489, PI
-        decision 2026-08-06 —
+        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (PI decision 2026-08-06 —
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
         family companion where this row lives). Covered: the two-port
         through-line class on this single coax geometry family, bracketed
@@ -621,10 +618,9 @@ def compute_coaxial_two_port(
     ``cpml_axes='xyz'``, no periodic axes, no non-uniform mesh, no
     refinement). The run absorbs on all three axes: the line's two ends,
     one cell past each feed, are unshielded, and with absorbers on z only
-    the lateral pads were a closed PEC can that held the field leaving them
-    (issue 1218). ``cpml_axes='z'`` is refused.
+    the lateral pads were a closed PEC can that held the field leaving them. ``cpml_axes='z'`` is refused.
 
-    Differentiable (``eps_scale``, #489 leg 3)
+    Differentiable (``eps_scale``)
     -------------------------------------------
     Pass ``eps_scale`` (a scalar or ``(nx, ny, nz)`` ``jnp`` array) to make
     the S-matrix differentiable w.r.t. the dielectric under ``jax.grad`` —
@@ -660,7 +656,7 @@ def compute_coaxial_two_port(
     caller can inspect it after concretizing the result if degeneracy
     matters to them. The AD gate is ``tests/unit/autodiff/test_coax_two_port_ad.py``.
 
-    ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
+    ``extra_flux_monitors`` (flux-adjudication instrument):
     an ENERGY-WITNESS channel, not an extractor change. Pass the entry
     objects ``Simulation.add_flux_monitor`` registers (build them on a
     scratch ``Simulation`` with the same domain and hand over its

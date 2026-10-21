@@ -181,7 +181,7 @@ class _CompileMixin:
     ):
         """Return the FULL conductor cell footprint of this simulation.
 
-        Since #677 a surface-impedance (``surface_impedance_f0``) thin
+        A surface-impedance (``surface_impedance_f0``) thin
         conductor is a node-thin per-step operator: it touches neither
         ``pec_mask`` nor ``materials.sigma``, so the obvious hand-written
         conductor test ``pec_mask | (sigma > 1e3)`` finds NOTHING for a

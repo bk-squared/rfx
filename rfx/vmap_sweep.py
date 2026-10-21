@@ -84,7 +84,7 @@ class VmapSweepResult:
         DFT plane accumulators, keyed by the ``add_dft_plane_probe`` name,
         each shaped ``(n_batch, n_freqs, n1, n2)`` complex — a leading
         batch axis over the same accumulator ``Result.dft_planes[name]``
-        exposes for a single run (#578). Populated on BOTH the vmap fast
+        exposes for a single run. Populated on BOTH the vmap fast
         path and the sequential fallback (the fallback stacks each
         swept-value ``Result.dft_planes[name].accumulator``), so the field
         is uniform regardless of which path a given ``Simulation`` takes.
@@ -873,12 +873,8 @@ def vmap_material_sweep(
     num_periods : float
         Periods at freq_max for auto timestep count (default 20).
     return_fields : bool
-        Must be False (the default). ``return_fields=True`` was documented
-        here since this function's introduction but never implemented —
-        neither the fast path nor the sequential fallback ever populated
-        ``VmapSweepResult.final_fields``, so it silently returned ``None``
-        instead of the promised snapshot. Passing ``True`` now raises
-        ``ValueError`` (fail loud beats silent ``None``, #578). Use
+        Must be False (the default). Passing ``True`` raises
+        ``ValueError``; ``VmapSweepResult.final_fields`` is never populated. Use
         ``sim.run()``/``sim.forward()`` for a final-field snapshot of one
         configuration, or ``parametric_sweep()`` for full per-value
         ``Result`` objects across a swept parameter.
@@ -902,12 +898,12 @@ def vmap_material_sweep(
     frequency count to avoid OOM.
 
     Features supported in vmap path: PEC boundaries, CPML absorbing
-    boundaries, soft sources (incl. ``amplitude_kind='current'``, #571),
-    point probes, and DFT plane probes (``add_dft_plane_probe``, #578).
+    boundaries, soft sources (incl. ``amplitude_kind='current'``),
+    point probes, and DFT plane probes (``add_dft_plane_probe``).
     Lumped ports, MSL/coaxial/floquet ports, TFSF, dispersion, waveguide
     ports, flux monitors, and NTFF are **not** supported in the vmap fast
-    path and trigger a sequential fallback. As of #578 that fallback also
-    populates ``.dft_planes`` (by stacking each swept value's
+    path and trigger a sequential fallback. That fallback also populates ``.dft_planes`` (by
+    stacking each swept value's
     ``Result.dft_planes`` accumulators), so registering a DFT plane never
     silently loses data on either path — it is only the FAST path that is
     conditional on eligibility, not the DFT-plane *output*.
@@ -934,7 +930,7 @@ def vmap_material_sweep(
     ``parametric_sweep`` are obtainable only at normal incidence
     (``angle_deg=0``) or with ``method='methodB'`` (open-domain, real
     fields). A MATERIAL sweep on a sim carrying a FIXED (non-swept) TFSF
-    source still benefits from #578: it takes this function's sequential
+    source takes this function's sequential
     fallback (TFSF is not fast-path-eligible) but that fallback now
     carries ``dft_planes`` through, so per-material DFT tensors at fixed
     incidence ARE obtainable via ``vmap_material_sweep`` today.

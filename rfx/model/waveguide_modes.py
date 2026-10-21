@@ -61,8 +61,8 @@ class WaveguidePort(NamedTuple):
         ``rfx/api/_compile.py::_range_to_slice`` and
         ``rfx/runners/nonuniform.py::_range_to_slice_nu`` produce, both
         reporting the physical aperture as ``(hi - lo - 1) * d`` — has ONE
-        ENTRY TOO MANY and must be converted at the call site (issue #868:
-        unconverted, it put ``f_cutoff`` on a guide one cell wider than the
+        ENTRY TOO MANY and must be converted at the call site (unconverted, it puts ``f_cutoff`` on
+        a guide one cell wider than the
         walls make, 10 % low at ``dx = a/9`` and 2.7 % low at ``dx = a/36``).
     """
     x_index: int

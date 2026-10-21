@@ -7,7 +7,7 @@ geometry is included in the simulation.
 
 ACCURACY CAVEAT — despite the name, neither loss mode fits true 2-port
 S-parameters; both build a diagonal per-probe proxy. The difference between
-the two ``normalization=`` modes is what the proxy preserves (issue #580):
+the two ``normalization=`` modes is what the proxy preserves:
 
 * ``"per_probe_max"`` (default, legacy): each probe spectrum is divided by
   its own maximum magnitude. This matches only the *shape* of each probe's
@@ -399,7 +399,7 @@ def differentiable_material_fit(
         inside this callable. It is called once outside the gradient
         tape for static setup and again with traced poles for each loss
         evaluation. Declarations not carried by the fit's assembly are
-        refused before FDTD (#1290), including wire/passive/MSL/modal
+        refused before FDTD, including wire/passive/MSL/modal
         ports, plain/TFSF sources, lumped RLC, periodic overrides, Kerr,
         conformal walls, point ports on PEC edges, and non-default solver,
         precision, stencil or interface settings. Refinements, non-uniform
@@ -426,7 +426,7 @@ def differentiable_material_fit(
     verbose : bool
         Print progress.
     normalization : {"per_probe_max", "reference_probe"}
-        Loss-proxy normalization mode (issue #580; see the module
+        Loss-proxy normalization mode (see the module
         docstring's ACCURACY CAVEAT for when each is appropriate).
         ``"per_probe_max"`` (default, legacy) is shape-only and BLIND to
         magnitude-acting parameters such as conductivity;

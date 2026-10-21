@@ -156,7 +156,7 @@ def run(
         If False, do not expose the final FDTD state in the result.
         This shrinks the differentiable output surface for optimisation.
     report_every : int or None
-        Issue #667. When set, emit one ``  [PROGRESS] ...`` line to stdout
+        When set, emit one ``  [PROGRESS] ...`` line to stdout
         every *N* steps: steps done / total, wall elapsed, implied rate and
         ETA. ``None`` (default) is OFF and runs the unchanged single-scan
         code path, so existing callers are byte-identical by construction.
@@ -190,7 +190,7 @@ def run(
         so the per-drive solves of one ``compute_*_s_matrix`` call are
         distinguishable in a log. Ignored when ``report_every`` is None.
     design_box : DesignBoxSpec or None
-        Issue #1179. One static box whose E update is redone from its own
+        One static box whose E update is redone from its own
         (usually traced) permittivity, leaving ``materials`` constant so the
         reverse-mode tape holds box-shaped arrays instead of grid-shaped
         ones. ``None`` (default) is the unchanged path.
@@ -208,7 +208,7 @@ def run(
         ``Simulation.forward``'s, in ``_resolve_design_box_override``; a
         caller reaching this function directly owns them.
     design_occupancy : DesignOccupancySpec or None
-        Issue #1183. One static box whose PEC OCCUPANCY is the traced
+        One static box whose PEC OCCUPANCY is the traced
         quantity, for the same reason and with the same effect on the tape:
         the ``1 - M`` scaling is redone on the box's window from the field
         before the grid-wide ``apply_pec_occupancy``, so what the backward
@@ -220,7 +220,7 @@ def run(
         and a box off the grid. ``Simulation.forward`` owns the lane and the
         collision with ``design_eps_override``.
     stop_fn : callable or None
-        Issue #1254 (``Simulation.run(..., until_identified=True)``). When
+        ``Simulation.run(..., until_identified=True)``. When
         given, the scan runs in chunks of ``stop_interval`` steps through
         :func:`rfx.progress.scan_with_progress`, the carry threaded through,
         and ``stop_fn(steps_done, peek)`` is called after each chunk;
@@ -862,7 +862,7 @@ def run_until_decay(
         energy stop. Values below 2 are refused (a single check stops on a
         transient dip). No effect on closed/PEC boundaries.
     radiated_flux_box : tuple or None
-        Opt-in (#388) RADIATED-FLUX stop for absorbing boundaries: a Huygens box
+        Opt-in RADIATED-FLUX stop for absorbing boundaries: a Huygens box
         ``((x_lo, y_lo, z_lo), (x_hi, y_hi, z_hi))`` in physical coordinates
         enclosing the structure (clear of the CPML). When set, the stop uses the
         outgoing Poynting flux through the box instead of the interior energy —
@@ -892,7 +892,7 @@ def run_until_decay(
     * ``checkpoint_segments`` is not supported (raises ``NotImplementedError``
       when not ``None``).
     * ``snapshot`` records a frame every ``snapshot.interval`` steps, as
-      :func:`run` does (#1258); axes in ``SimResult.snapshot_axes``.
+      :func:`run` does; axes in ``SimResult.snapshot_axes``.
     * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted and has
       no effect on the host-driven decay path.
     * Flux-monitor DFT accumulation uses a rectangular (no-window) weight
@@ -902,8 +902,7 @@ def run_until_decay(
 
     .. note::
 
-       **The stop criterion depends on the boundary (issue #169, RESOLVED for
-       absorbing boundaries).**
+       **The stop criterion depends on the boundary.**
 
        * **Absorbing boundaries (``cpml`` / ``upml``)** — the stop reads the
          leapfrog-conserved interior energy
@@ -931,7 +930,7 @@ def run_until_decay(
          closed geometries — for those use a fixed ``n_steps`` via
          :func:`run`.
     report_every : int or None
-        Issue #667. When set, emit one ``  [PROGRESS] ...`` line every *N*
+        When set, emit one ``  [PROGRESS] ...`` line every *N*
         steps, at the first decay-chunk boundary at or past the interval,
         plus a final line at the actual stop step. ``None`` (default) is OFF.
         Reporting never changes the chunks or the decay-check cadence.

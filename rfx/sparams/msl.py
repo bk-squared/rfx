@@ -120,7 +120,7 @@ def compute_msl_s_matrix(
     visible there (measured sigma_max 1.18 on a coarse thru).
 
     Surface-impedance sheets (``add_thin_conductor(...,
-    surface_impedance_f0=...)``) are supported on this lane (#677/#679):
+    surface_impedance_f0=...)``) are supported on this lane:
     the sheet is realized node-thin by the per-step operator inside the
     ``run()``/``forward()`` device dispatches — no lane-level ctx is
     built here. Combination refusals fire downstream at whichever lane
@@ -129,11 +129,7 @@ def compute_msl_s_matrix(
     ``boundary='upml'`` refusals come from ``run_uniform`` with run-lane
     wording, while the ``forward()`` / ``eps_override`` channel never
     enters ``run_uniform`` and raises instead from the forward-lane
-    entry in ``rfx/api/_execute.py``, naming that lane. #679 added the
-    ``upml`` half there: before it, an ``eps_override`` call on a
-    ``boundary='upml'`` sim silently ran the very combination ``run()``
-    refuses (the sheet operator overwriting UPML's split-field E update
-    at its edges). ADI refuses on both channels through the shared
+    entry in ``rfx/api/_execute.py``, naming that lane. ADI refuses on both channels through the shared
     ``refuse_f0_sheets`` helper; the subgridded and distributed lanes
     carry their own call sites at whichever entry reaches them —
     ``FENCE_REGISTRY`` in ``tests/unit/materials/test_sheet_impedance.py`` is the
@@ -143,7 +139,7 @@ def compute_msl_s_matrix(
     channel rather than refused there.
     The TRACE must remain PEC: an f0 sheet realizes no PEC edge, and
     the closed Ampere-loop current and the V span anchor on the
-    realized PEC wall planes (#931 §1.9 — a PEC trace may be a volume
+    realized PEC wall planes (a PEC trace may be a volume
     Box or a sheet; both are found). The Hammerstad-Jensen beta/Z0 anchors
     and the real-beta N-probe fit assume a lossless line, so a sheet
     lying INSIDE a probed span adds per-length loss the fit cannot
@@ -157,11 +153,10 @@ def compute_msl_s_matrix(
     port driven and the others passive.  The passive ports are NOT
     assumed matched — ``|a_passive/a_driven| = 0.243-0.248`` at the
     shipped R = 50 Ω (0.19-0.93 across terminations), re-measured on
-    current main 2026-08-30 (#524, VESSL 369367257265, PR #799; the
-    July figure quoted here before was 0.07-0.51) — so the S-matrix is
+    current main 2026-08-30 (VESSL 369367257265) — so the S-matrix is
     recovered by solving the
     full wave system ``S = B·A⁻¹`` over all drives rather than by the
-    per-column ratio ``b_j/a_d`` (issue #507; the ratio reported the far
+    per-column ratio ``b_j/a_d`` (the ratio reports the far
     port's echo as the structure's own reflection).  At each port
     ``n_probes`` downstream DFT plane probes record Ez and the first
     probe also records the transverse H components for a closed
@@ -217,13 +212,13 @@ def compute_msl_s_matrix(
         v1 schema). Use ``rfx.validation.load_port_vi_dump_npz`` and
         ``replay_smatrix_from_port_vi_dump`` for independent S replay.
     strict_extractor : bool
-        Honesty guard for the de-embedding (issue #80 Fix A). After
+        Honesty guard for the de-embedding. After
         extraction, the per-frequency ``|q|`` and extracted ``Z0``
         are validated against physical bounds (``|q| <= 1`` for a passive
         line; extracted ``Z0`` within 10 % of the analytic
         Hammerstad-Jensen value). When ``False`` (default) a violation
         raises a loud :func:`warnings.warn`; when ``True`` it raises
-        :class:`ValueError` instead. With the N-probe extractor (Fix C)
+        :class:`ValueError` instead. With the N-probe extractor
         ``|q|`` and ``Z0`` should be healthy so this rarely fires — it
         is the safety net for pathological geometries.
     enforce_passivity : bool
@@ -243,11 +238,11 @@ def compute_msl_s_matrix(
         Default ``None`` leaves forward-only runs and small-period AD unchanged.
     checkpoint_every : int or None
         Non-uniform-mesh counterpart of ``checkpoint_segments`` (chunk size,
-        not segment count; issue #73). Forwarded to :meth:`forward`; raises
+        not segment count). Forwarded to :meth:`forward`; raises
         ``NotImplementedError`` on the uniform path — use
         ``checkpoint_segments`` there.
     report_every : int or None
-        Issue #667 — progress reporting for long solves. Forwarded to
+        Progress reporting for long solves. Forwarded to
         each per-drive :meth:`run` call, tagged ``MSL drive pI/N`` so
         the drives are distinguishable in a log. ``None`` (default) is
         OFF and leaves the solve byte-identical. The measured case this

@@ -1089,7 +1089,8 @@ class _ExecuteMixin:
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC inverse tensor.
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
-            Design sigma overrides are refused (#1424): on lossless design cells the conductivity gradient has no settled value in a finite record
+            Design sigma overrides are refused: on lossless design cells the conductivity gradient
+            has no settled value in a finite record
             (a static sensitivity remains although the field decays); this adjoint returns settled-spectrum gradients only. Fixed lossy materials are allowed.
             Stores design-edge DFTs and runs a second ordinary forward.
             ``ForwardResult.adjoint_settling`` reads the primal design-edge max|E| over the last period of the lowest bin, capped at the record length, divided by the record maximum.
@@ -1113,7 +1114,7 @@ class _ExecuteMixin:
             non-uniform mesh or ``distributed=True`` raises (it would otherwise be
             silently dropped — a zero-gradient no-op).
         design_box : (corner_lo, corner_hi) or a DesignRegion, or None
-            Issue #1179. Bounding box, in metres, of a design region whose
+            Bounding box, in metres, of a design region whose
             permittivity is handed in separately as *design_eps_override*
             instead of being written into a whole-grid ``eps_override``.
             Accepts a ``(corner_lo, corner_hi)`` pair or any object carrying
@@ -1147,7 +1148,7 @@ class _ExecuteMixin:
             coefficient term; only turning the per-step remat off removes
             the carry term with it.
 
-            The GRADED MESH carries it too (#1183): the corners resolve
+            The GRADED MESH carries it too: the corners resolve
             against the non-uniform grid's own cell edges and the box redo
             uses the graded curl, so a thin substrate meshed with a
             ``dz_profile`` gets the same box-shaped tape. On that lane a
@@ -1187,7 +1188,7 @@ class _ExecuteMixin:
             along its two in-plane edges only. See
             :class:`~rfx.simulation.DesignBoxSpec`.
         design_occupancy_override : jnp.ndarray or None
-            Issue #1183. Relaxed-conductor occupancy in ``[0, 1]`` at the
+            Relaxed-conductor occupancy in ``[0, 1]`` at the
             *design_box* cells — metal-shape design (a notch stub, topology
             optimisation) rather than a dielectric one. It REPLACES
             ``pec_occupancy_override`` at those cells and carries it
@@ -1254,7 +1255,7 @@ class _ExecuteMixin:
             None enables checkpointing except on uniform distributed forward.
         checkpoint_segments : int or None
             If set, route the uniform single-device forward through the
-            segmented-checkpoint path (issue #73), which trades ≈2x compute
+            segmented-checkpoint path, which trades ≈2x compute
             for ≈sqrt(n_steps) reverse-mode memory.  Must divide *n_steps*
             exactly (padding is rejected so DFT accumulator windows do not
             shift).  ``None`` (default) keeps the legacy per-step
@@ -1271,7 +1272,7 @@ class _ExecuteMixin:
             and S-params still emit the series there).
         checkpoint_every : int or None
             Non-uniform-mesh counterpart of *checkpoint_segments* (a chunk
-            size, not a segment count; issue #73).  When set to a positive
+            size, not a segment count).  When set to a positive
             integer ``K``, the non-uniform scan is run as a scan-of-scan that
             remats every ``K`` steps for ≈sqrt(n_steps) memory.  Currently
             only supported on the non-uniform forward path; on the uniform
@@ -1280,7 +1281,7 @@ class _ExecuteMixin:
         n_warmup : int
             Number of leading timesteps to run with the carry
             ``stop_gradient``'d so reverse-mode AD builds no tape for the
-            initial transient (issue #40).  Only the trailing
+            initial transient.  Only the trailing
             ``n_steps - n_warmup`` steps participate in autodiff.  Must
             satisfy ``n_warmup < n_steps``.  Default ``0`` (all steps
             differentiated).
@@ -1311,7 +1312,7 @@ class _ExecuteMixin:
             <0.1%, well below ``K_safe``); well beyond ``K_safe``, error
             grows further and can reach the full gradient magnitude by
             the time ``n_warmup`` reaches the loss window. Two measured
-            regimes (issue #626 part 2 / addendum, both vs an independent
+            regimes (both vs an independent
             central-FD oracle): a NEAR-SOURCE placement (design cell ~3
             cells from the source, so ``K_safe ~ 0``) shows error growing
             smoothly from a ~1.5% noise floor up to 58% at the
@@ -1340,8 +1341,7 @@ class _ExecuteMixin:
             placement measured; only the gradient is affected. Currently
             only supported on the non-uniform / distributed-non-uniform
             forward paths; on the uniform single-device lane it raises
-            ``NotImplementedError`` (issue #626 — previously silently
-            accepted and ignored, worse than an error).  Use
+            ``NotImplementedError``.  Use
             *checkpoint_segments* for uniform-lane reverse-mode memory
             relief instead — it is exact regardless of placement, at the
             cost of recompute rather than gradient accuracy.
@@ -1400,7 +1400,7 @@ class _ExecuteMixin:
             Uniform-path only; the non-uniform / distributed lanes do not
             iterate ``self._lumped_rlc`` in ``forward()``.
         ringdown : rfx.ringdown.RingdownSpec or None
-            Issue #1254. Complete the wire-port S-parameters of a record cut
+            Complete the wire-port S-parameters of a record cut
             while the structure still rings, inside the differentiable
             program: ``ForwardResult.ringdown.s_params`` is the completion
             ``run(ringdown=...)`` gives of the same record (the poles of the
@@ -1446,16 +1446,16 @@ class _ExecuteMixin:
         step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
         compiles on its first call and reuses the program afterwards, while
         an un-jitted ``jax.value_and_grad(loss)`` compiles the whole solve
-        again on every call (#1225). Under an outer ``jax.jit`` (single
+        again on every call. Under an outer ``jax.jit`` (single
         device), the set-up built from the model alone is evaluated while
-        tracing and the time stepping is compiled into the caller's program
-        (#1367, #1354), so a function with no traced input compiles too. The
-        set-up's arrays become constants of that program: the first call
+        tracing and the time stepping is compiled into the caller's program, so a function with no
+        traced input compiles too. The set-up's arrays become constants of
+        that program: the first call
         costs a plain call's set-up on top of the compile, and the compiled
         program holds those arrays for as long as JAX caches it. The loop
         compiles over operands XLA cannot read, as in a plain call; what is
         computed from a traced input before the loop (a port's drive from a
-        traced permittivity, #1320) is compiled with the caller's program,
+        traced permittivity) is compiled with the caller's program,
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
@@ -1921,7 +1921,7 @@ class _ExecuteMixin:
             about 170 steps with the check phase while the spectra stay within
             1e-2 of the band peak. Closed uniform boxes keep the instantaneous
             point-field stop (see :func:`rfx.simulation.run_until_decay`).
-            **Non-uniform meshes (issue #383):** the same rule on absorbing
+            **Non-uniform meshes:** the same rule on absorbing
             boundaries (per-cell dV); closed boundaries refuse ``until_decay``.
             On the decay path every step-sized buffer is allocated at
             ``decay_max_steps``; NU flux monitors keep the rectangular window.
@@ -1937,7 +1937,7 @@ class _ExecuteMixin:
             5 % per 50 steps is stopped as rounding. Every run adds one
             ``until_decay.stop`` Diagnostic to ``Result.diagnostics``
             (criterion ``threshold``, ``float32_floor`` or ``cap``).
-            **DC (issue #388):** a soft source whose waveform has relative
+            **DC:** a soft source whose waveform has relative
             DC above 1e-6 leaves a static charge that holds W up; ``run()``
             warns and names it (``rfx.measurement.decay``).
         decay_check_interval : int
@@ -1983,7 +1983,7 @@ class _ExecuteMixin:
         exchange_interval : int, optional
             Ghost exchange interval in timesteps; only integer 1 is supported.
         report_every : int or None
-            Issue #667 — progress reporting for long solves. When set,
+            Progress reporting for long solves. When set,
             print one ``  [PROGRESS] ...`` line every *N* timesteps giving
             steps done / total, wall elapsed, implied rate and ETA, on the
             same stdout channel as preflight so a redirected job log
@@ -2020,7 +2020,7 @@ class _ExecuteMixin:
             Short tag prefixed to each progress line (e.g. ``"drive p1"``).
             Ignored when ``report_every`` is None.
         ringdown : rfx.ringdown.RingdownSpec or None
-            Issue #1254 — complete the wire-port S-parameters of a record
+            Complete the wire-port S-parameters of a record
             cut while the structure still rings. The slow poles are
             identified on ``[window_start * T, T]`` of the port voltage and
             current (the source must be off there) and the unrecorded tail
@@ -2034,7 +2034,7 @@ class _ExecuteMixin:
             graded-mesh lanes, fixed record length; other ports, TFSF, Kerr,
             ``devices=`` and ``until_decay`` are refused with the reason.
         until_identified : bool
-            Issue #1254 — with ``ringdown=``, end the run once the completion
+            With ``ringdown=``, end the run once the completion
             is witnessed instead of at ``n_steps``, which becomes the longest
             record allowed. The record is checked on a geometric schedule
             (every check at least 1.25x the record of the last); the run

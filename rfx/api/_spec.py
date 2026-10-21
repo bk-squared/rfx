@@ -946,7 +946,7 @@ class ForwardResult(NamedTuple):
     report absence while records are traced; read them on the returned
     concrete result, not as gradient objectives. Numeric
     ``settling_probe_info`` preserves the selected columns, component
-    labels and the #1090 source-dominated flag as integers, without
+    labels and the source-dominated flag as integers, without
     inserting strings into a JAX result tree. ``settling_source_end_index``
     carries the first post-source sample, including free-space transit;
     missing timing or insufficient post-source samples yields no witness.
@@ -980,7 +980,7 @@ class ForwardResult(NamedTuple):
     ``grid.dt``: ``stencil_order=4`` steps at ``0.857 * grid.dt``.
 
     ``ringdown`` is a :class:`rfx.ringdown.RingdownForwardResult` when
-    ``forward(ringdown=RingdownSpec())`` was called (issue #1254): the
+    ``forward(ringdown=RingdownSpec())`` was called: the
     completed wire-port S-parameters, traced and differentiable, and a lazy
     host report on the concrete result. ``None`` otherwise.
 
@@ -1221,8 +1221,7 @@ class WaveguideSMatrixResult(NamedTuple):
     device and reference runs. ``settling_witness`` carries identification
     status, reasons, and per-bin shares and errors.
 
-    ``s21_phase_residual_deg_rms`` is the post-solve discretization witness
-    (#894, post-v1.8 plan item 5): the RMS over the measured bins of
+    ``s21_phase_residual_deg_rms`` is the post-solve discretization witness: the RMS over the measured bins of
     ``wrap(angle(S21) + beta(f)*L)``, in degrees, with ``beta`` the
     EXTRACTOR'S OWN (``_compute_beta`` at the port config's discrete
     ``f_cutoff``, ``dt`` and ``dx``) and ``L`` the separation of the two
@@ -1497,11 +1496,10 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
         Characteristic impedance extracted via the N-probe SVD
-        least-squares wave-decomposition fit (issue #80 Fix C),
+        least-squares wave-decomposition fit,
         per driven-port run (``Z0[i, :]`` is from run with port i driven).
     beta : (n_freqs,) complex
-        Propagation constant β from the N-probe least-squares fit
-        (issue #80 Fix C) at the first port's run.
+        Propagation constant β from the N-probe least-squares fit at the first port's run.
     reliable : (n_ports, n_freqs) bool, optional
         Relative low-signal mask. ``reliable[p, k]`` is False when both
         |V| and |I| at port p fall below 10% of that record's own band
@@ -1521,10 +1519,10 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         accompany it. This is independent of ``reliable`` and does not
         certify mode purity or S accuracy.
 
-        **The two fields answer different questions** (issue #726).
+        **The two fields answer different questions**.
         ``reliable`` is a per-bin FIT-QUALITY mask; ``probe_clearance`` is
         the GEOMETRIC condition, and neither is the other's proxy — on the
-        board runs that opened #726 ``reliable`` was True on 100 % of in-band
+        measured board runs ``reliable`` was True on 100 % of in-band
         bins while the fitted Z0 was 2.4x the analytic value. What the
         geometric condition costs was measured (VESSL 369367260508, the MSL notch filter,
         fixed-source, same source/load/DUT with only the p1 observation
@@ -1536,7 +1534,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         that quarter-wave open-stub notch has. Both sit ABOVE unity on a
         passive structure, by 0.31 % and 0.21 %, which is never reported here
         as physics: they are raw, unprojected values carrying the coherent
-        power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one
+        power excess. Their 0.009 dB difference is one
         fixture (the MSL notch filter), one bin (3.77125 GHz), an arm-to-arm difference —
         NOT a bound on ``S`` — and the comparison's producer verdict was
         ``not_read``. What it does show is that ``S`` moves far less than the
@@ -1586,7 +1584,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
     port_names : tuple[str, ...]
     assembly : str, optional
         Which rule produced ``S`` — ``"multi_drive_solve"`` (normal:
-        ``S = B·A⁻¹`` over all drives, issue #507) or
+        ``S = B·A⁻¹`` over all drives) or
         ``"single_ratio_fallback"``. The fallback is taken when the solve
         returns non-finite entries on a degenerate drive system; it is the
         SUPERSEDED per-column rule ``S[j, d] = b_j / a_d``, which reports a
@@ -1616,7 +1614,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`).
         ``None`` while tracing.
     beta_railed : (n_ports, n_freqs) bool, optional
-        Per-port β-scan rail mask for the FITTED numbers (issue #681).
+        Per-port β-scan rail mask for the FITTED numbers.
         ``beta_railed[p, k]`` is True when port *p*'s own-drive N-probe β
         scan failed to bracket its residual optimum at bin *k* — the raw
         argmin sat at an edge node of the ±35% window around the analytic
@@ -1653,13 +1651,13 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
 
 @dataclass
 class MixedSMatrixResult(MSLFeedPlaneFields):
-    """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
+    """Mixed-family S-matrix result (lumped/wire + MSL v1).
 
     ``S`` here is in the **Kurokawa
     power-wave convention** (every wave amplitude divided by
     ``sqrt(Re(Z0_port))``): with unequal reference impedances across
-    families a pseudo-wave ``b/a`` ratio is off by ``sqrt(Z_j/Z_i)``
-    (issue #460), so the mixed lane normalizes to power waves by
+    families a pseudo-wave ``b/a`` ratio is off by ``sqrt(Z_j/Z_i)``, so the mixed lane normalizes
+    to power waves by
     construction. Off-diagonal PHASE across families is provisional —
     the lumped/wire cell and the MSL de-embedded plane are different
     reference-plane conventions (magnitude is the validated observable).
@@ -1689,7 +1687,7 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
         power-wave magnitude over ``|a_drive|`` reconstructed from the
         delivered power ``P_del = 0.5*Re(Z_in)*|I|^2`` and
         ``(1 - |S_jj|^2)`` (does not trust the port-cell a-wave
-        magnitude; issue #313 triangulation).
+        magnitude).
     reliable : np.ndarray | None
         (n_msl, n_freqs) bool — relative low-signal mask from each MSL
         port's own driven run. A False entry is not by itself proof of
@@ -1698,13 +1696,13 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
         MSL-only downstream layout diagnoses, in MSL registration order.
         Lumped/wire ports have no entries here, as with ``reliable``.
         Same contract as :attr:`MSLSMatrixResult.probe_clearance`, including
-        what the ``insufficient`` status costs and what to gate on (#726):
+        what the ``insufficient`` status costs and what to gate on:
         the FITTED Z0/beta go unreadable, ``S`` carries a measured 0.009 dB
         caveat, and ``reliable`` gates neither.
     beta_railed : np.ndarray | None
         (n_msl, n_freqs) bool — β-scan rail mask from each MSL port's
         own driven run, same criterion as
-        :attr:`MSLSMatrixResult.beta_railed` (issue #681).  In this lane
+        :attr:`MSLSMatrixResult.beta_railed`.  In this lane
         the N-probe fit is DIAGNOSTIC ONLY (the |Zc| deviation warning);
         a True bin means that diagnostic's β/|Zc| are the scan-window
         limit, not a measurement. Fitted beta/Z0 do not enter S, but
