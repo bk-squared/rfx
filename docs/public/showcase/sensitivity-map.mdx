@@ -95,6 +95,5 @@ v, g = jax.jit(jax.value_and_grad(J))(eps_bg)
     <li>f_t = 1.01 × the |S11| minimum (2.333099 GHz → 2.356430 GHz, |S11(f_t)| = −12.57 dB on the rising flank)</li>
     <li>FD step Δεr = 0.1 on blocks of 3 × 3 cells through the 4-cell substrate (36 cells, 2.4 × 2.4 mm); judged blocks are those with |FD| ≥ 10 % of the largest</li>
     <li>418 of 20,592 cells have a negative derivative, the largest 0.30 % of the maximum</li>
-    <li>issue <a href="https://github.com/bk-squared/rfx/issues/1332">#1332</a>, PR <a href="https://github.com/bk-squared/rfx/pull/1337">#1337</a></li>
   </ul>
 </details>

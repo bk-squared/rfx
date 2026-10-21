@@ -116,6 +116,21 @@ Release changes are in [CHANGELOG.md](https://github.com/bk-squared/rfx/blob/mai
 }
 ```
 
+The simulation time S-parameter gradients need, and tail extrapolation carried
+through the gradient:
+
+```bibtex
+@misc{kim_sensitivity_convergence_2026,
+  author = {Byungkwan Kim},
+  title = {Delayed Convergence of S-Parameter Sensitivities to Design Parameters in FDTD Simulations},
+  year = {2026},
+  eprint = {2610.28496},
+  archivePrefix = {arXiv},
+  primaryClass = {eess.SP},
+  url = {https://arxiv.org/abs/2610.28496}
+}
+```
+
 The software itself:
 
 ```bibtex

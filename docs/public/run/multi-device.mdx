@@ -1,20 +1,145 @@
 ---
 title: Multi-device runs
-description: Splitting one model across several devices.
+description: Splitting one model over several devices with run(devices=) and forward(distributed=True), what falls back to one device, and the outer-jit rule.
 sidebar:
   order: 3
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+A model too large for one GPU, or too slow on one, can be split over several
+devices. rfx cuts the domain into slabs along x, gives each device one slab,
+and exchanges the fields on the faces between slabs after every time step. The
+result is the one-device model to within float32 rounding. The
+[support page](/rfx/support/) lists multi-device runs as not documented: rfx
+makes no accuracy statement for them beyond the comparisons with one device
+under [What is checked](#what-is-checked).
 
 ## How to use it
 
+`run(devices=[...])` takes a list of JAX devices. With two or more it splits
+the model; with `None` or one device it runs normally. On a machine without
+several GPUs you can try it on CPU by asking XLA for several host devices
+before JAX is imported (if your environment already sets `XLA_FLAGS`, add
+the flag there instead):
+
+```python
+import os
+os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
+
+import jax
+import numpy as np
+from rfx import Box, GaussianPulse, Simulation
+
+
+def build():
+    sim = Simulation(freq_max=4e9, domain=(0.06, 0.05, 0.04), dx=2e-3,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_material("slab", eps_r=4.0, sigma=0.01)
+    sim.add(Box((0.024, 0.019, 0.014), (0.036, 0.031, 0.026)), material="slab")
+    sim.add_port((0.018, 0.025, 0.020), "ez", impedance=50.0,
+                 waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
+    sim.add_probe((0.044, 0.025, 0.020), "ez")
+    return sim
+
+
+one = build().run(n_steps=300, skip_preflight=True)
+two = build().run(n_steps=300, skip_preflight=True, devices=jax.devices()[:2])
+a, b = np.asarray(one.time_series), np.asarray(two.time_series)
+print(len(jax.devices()), float(np.max(np.abs(a - b)) / np.max(np.abs(a))))
+s1, s2 = np.asarray(one.s_params), np.asarray(two.s_params)
+print(s1.shape, float(np.max(np.abs(s1 - s2))))
+```
+
+```text
+2 0.0
+(1, 1, 50) 1.2731557319511921e-07
+```
+
+Split over two CPU devices, the probe signal is identical to the one-device
+run and S11 differs by 1.3×10⁻⁷: float32 rounding, not a different model.
+
+What to know:
+
+- Both meshes take `run(devices=[...])` and
+  `forward(distributed=True, devices=[...])`. With `distributed=True` and no
+  `devices`, all visible devices are used.
+- On a graded mesh, `forward(distributed=True)` returns the probe signals, S at
+  `port_s11_freqs`, DFT planes, flux, the far field and current moments, and
+  differentiates them with respect to the permittivity, conductivity and PEC
+  overrides.
+- On a uniform mesh, `forward(distributed=True)` runs the declared model as it
+  is: it takes no override or design arguments, gives no gradient through its
+  port S, and cannot run inside `jax.jit`.
+- `exchange_interval` must be 1 (the default): the slabs exchange fields every
+  step.
+- Splitting is along x only. A domain whose x size does not divide evenly is
+  padded.
+- A plane wave or a waveguide port makes both calls run on one device, on
+  either mesh, with the warning "Falling back to single-device execution with
+  the same arguments". The result is the one you asked for; its peak memory is
+  that of a one-device run.
+
+### The outer-jit rule
+
+On GPUs, do not wrap a multi-device call in your own `jax.jit` (or `lax.scan`,
+`jax.checkpoint`). The runner compiles its own time loop; an enclosing compile
+makes XLA encode each device's position in a way CUDA graphs reject. rfx
+refuses that call with a message that gives both ways out: call
+`run(devices=...)` / `forward(distributed=True)`, and `jax.grad` of it, without
+`jax.jit`; or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`
+set before JAX is imported. On CPU this rule does not apply, but
+`forward(distributed=True)` on a uniform mesh refuses an enclosing `jax.jit` on
+every platform.
+
 ## What is checked
+
+Tests compare multi-device runs with one-device runs of the same model, on two
+host devices, in every pull request:
+
+- the drive of field and current sources at slab seams and inside slabs, with
+  `forward(distributed=True)` on a graded mesh: within 9 float32 rounding steps
+  of the peak (`tests/unit/runners/test_distributed_drive_table.py`);
+- lumped-port S of `run(devices=...)` on a uniform mesh within 9×10⁻⁶ over every
+  entry and frequency, and the port's time signal within 9×10⁻⁶ of its peak
+  (`tests/unit/runners/test_distributed_lumped_port_s.py`);
+- the far field of `run(devices=...)` on a uniform mesh, with seams, padding, a
+  dielectric and absorbers, within 5×10⁻⁵
+  (`tests/unit/runners/test_distributed_ntff.py`).
 
 ## What is refused, and the way through
 
+Every input a multi-device path does not implement is refused before the first
+step, or runs on one device with the warning above. These are refused:
+
+| Input | Path | Instead |
+|---|---|---|
+| a periodic axis, a Floquet port | all multi-device | one device |
+| a microstrip or coaxial port, a lumped RLC element | all multi-device | one device |
+| a passive port (`excite=False`) | uniform mesh | a graded mesh, or one device |
+| a wire port with `reference_plane_cells` or an explicit radius | all multi-device | one device |
+| a PMC face with a wire port or lumped-port S, or, on a graded mesh, with any port or frequency-domain record | all multi-device | one device |
+| a plane wave with `closed_box` or a `CustomWaveform` | all multi-device | one device |
+| a Kerr material, a surface-impedance sheet, `add_refinement` | all multi-device | one device |
+| `precision` other than float32, `stencil_order=4`, UPML | all multi-device | float32, second order, CPML |
+| `until_decay`, `checkpoint`, `subpixel_smoothing`, `conformal_pec`, `ringdown` | `run(devices=...)` | a fixed `n_steps`; one device for the rest |
+| override, design or checkpoint arguments, `n_warmup`, `emit_time_series=False`, `ringdown`, a gradient through port S | `forward(distributed=True)` on a uniform mesh | a graded mesh for the material overrides, or one device |
+| `exchange_interval` other than 1 | all multi-device | 1 |
+| a graded mesh whose largest cell on an axis is more than 5 times its smallest (`run()` warns above 3 times; `forward()` checks only when preflight runs) | graded mesh | a gentler grading |
+| `solver="adi"`, `interface_eps="dual_average"` | all multi-device | the default solver and interface rule |
+| devices from several JAX processes | graded mesh, `run(devices=...)` | one process, or `forward(distributed=True)` for the probe signals |
+| an outer `jax.jit` on GPUs with command buffers on | all multi-device | see the outer-jit rule |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read; the
+[support page](/rfx/support/) lists them per solver path.
+
 ## Accuracy
 
+A multi-device run is the one-device model to within the rounding stated under
+[What is checked](#what-is-checked). Its accuracy is that of the one-device run.
+
 ## See also
+
+- [run() and forward()](/rfx/run/run-and-forward/): the two calls.
+- [Memory and speed](/rfx/run/memory-and-speed/): when one device is enough.
+- [Support](/rfx/support/): what each solver path carries.

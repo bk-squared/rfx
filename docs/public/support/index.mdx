@@ -41,7 +41,7 @@ Two paths are outside the 2.0 supported scope:
 
 - **Subgridding** (`add_refinement` on a uniform mesh) is refused by default.
   `validation="research"` runs it with an `ExperimentalSubgridWarning`. Use a
-  graded mesh for local resolution. Tracker 1465.
+  graded mesh for local resolution.
 - **ADI** (`solver="adi"`) is experimental and warns on every run. It runs a
   closed (`boundary="pec"`), homogeneously filled cavity. Absorbing boundaries,
   material interfaces, graded meshes, interior metal and ports are refused. Use
@@ -64,7 +64,7 @@ Two paths are outside the 2.0 supported scope:
 | Far field / RCS (NTFF) | **limited** | The cases in [Far field and RCS](/rfx/measure/far-field-and-rcs/). |
 | Plane wave (`add_tfsf_source`) | **limited** | Propagation along x, in 3-D or 2-D (TMz/TEz), with CPML. Oblique incidence only in the plane set by the polarization. |
 | Graded meshes | **limited by feature** | See [graded meshes](#graded-meshes). |
-| Multi-device runs (`devices=`) | **not documented** | Being restructured for 2.0, tracker 1402. Splitting a model over devices is for memory and speed, not a separate accuracy claim. Several inputs are refused; see the refused-input tables. |
+| Multi-device runs (`devices=`) | **not documented** | Splitting a model over devices is for memory and speed, not a separate accuracy claim. Several inputs are refused; see the refused-input tables. |
 | Subgridding (`add_refinement`) | **not documented** | Refused by default; see [solver paths](#solver-paths). |
 | ADI (`solver="adi"`) | **experimental** | See [solver paths](#solver-paths). |
 | Floquet / Bloch ports | **experimental** | Normal incidence on a single-device uniform mesh. No high-level S-parameter API. |

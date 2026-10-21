@@ -1,20 +1,189 @@
 ---
-title: Run and forward
-description: Running a model, the number of time steps, precision and the differentiable run.
+title: run() and forward()
+description: The two ways to step a model in time, how long they run, precision, snapshots, and JAX transforms.
 sidebar:
   order: 1
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+A declared `Simulation` is stepped in time by one of two calls. `run()` is for
+analysis: it gives you a result object with S-parameters, field records,
+snapshots and the settling check. `forward()` is for design: it returns the
+same time signals as JAX arrays, so you can differentiate them with respect to
+the materials and optimize. Both assemble the same model and step it with the
+same time step; this page says what each adds, how long they run, and the
+settings that apply to both.
 
 ## How to use it
 
+The same model through both calls gives the same probe signal, and
+`forward()` gives its gradient:
+
+```python
+import jax
+import jax.numpy as jnp
+import numpy as np
+from rfx import Box, GaussianPulse, Simulation
+
+sim = Simulation(freq_max=4e9, domain=(0.06, 0.05, 0.04), dx=2e-3,
+                 boundary="cpml", cpml_layers=8)
+sim.add_material("slab", eps_r=4.0, sigma=0.01)
+sim.add(Box((0.024, 0.019, 0.014), (0.036, 0.031, 0.026)), material="slab")
+sim.add_port((0.018, 0.025, 0.020), "ez", impedance=50.0,
+             waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
+sim.add_probe((0.044, 0.025, 0.020), "ez")
+
+ran = sim.run(n_steps=300, skip_preflight=True)
+fwd = sim.forward(n_steps=300, skip_preflight=True)
+a, b = np.asarray(ran.time_series), np.asarray(fwd.time_series)
+print(a.shape, b.shape, float(np.max(np.abs(a - b)) / np.max(np.abs(a))))
+
+grid = sim.freeze_mesh()
+lo = grid.position_to_index((0.024, 0.019, 0.014))
+hi = grid.position_to_index((0.036, 0.031, 0.026))
+
+
+def energy(eps_slab):
+    eps = jnp.ones(grid.shape).at[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]].set(eps_slab)
+    out = sim.forward(eps_override=eps, n_steps=300, skip_preflight=True)
+    return jnp.sum(out.time_series[:, 0] ** 2)
+
+
+value, grad = jax.value_and_grad(energy)(4.0)
+print(f"{float(value):.4g} {float(grad):.4g}")
+```
+
+```text
+(300, 1) (300, 1) 0.0
+0.2706 -0.01127
+```
+
+On this model the two probe records are identical. The gradient comes from
+automatic differentiation through all 300 steps; before you use one, check it
+against a longer run ([Checking a gradient](/rfx/evidence/gradients/)).
+
+### What each call gives
+
+| | `run()` | `forward()` |
+|---|---|---|
+| returns | `Result`: `time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `waveguide_ports` and `waveguide_sparams`, `snapshots`, `settling_witness`, `state`, `ringdown` | `ForwardResult`: the same records (`time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `waveguide_ports` and `waveguide_sparams`, `ringdown`), with `settling_db` / `settling_witness` computed once the arrays are concrete; no `state` and no snapshots |
+| differentiable | on one device, under `jax.grad`, `jax.jit` and `jax.vmap` when values in the declaration are traced; it takes no override or design arguments, and `report_every` raises under a transform | yes, with respect to `eps_override`, `sigma_override`, `pec_occupancy_override` and the design box (`design_box`, `design_eps`, `design_sigma`) on either mesh on one device; `design_occupancy_override`, `rlc_values_override` and `mu_r_override` on a uniform mesh on one device; a graded mesh over several devices takes the permittivity, conductivity and PEC overrides |
+| S-parameters | the S-matrix of the lumped and wire ports (`add_port`) at `s_param_freqs`, default 50 points from `freq_max/10` to `freq_max`; a waveguide port gives `waveguide_sparams`. On a graded mesh, without an S argument, lumped S is formed only for lumped ports with exactly one driven; otherwise S is `None` | with `port_s11_freqs`: `s_params` of shape (ports, ports, frequencies) with the driven port's column filled and the others NaN, one driven port per run; that column equals `run()`'s S |
+| stops on decay | `until_decay=` | no: a fixed number of steps |
+| progress, snapshots | `report_every=`, `snapshot=` | no |
+| memory | `checkpoint=False` by default | `checkpoint=True` by default, for the backward pass; `forward(distributed=True)` on a uniform mesh does not checkpoint and refuses a `checkpoint` argument |
+
+Both run preflight unless you pass `skip_preflight=True`, and both refuse an
+input their solver path does not implement whether or not preflight runs
+([Refused inputs](/rfx/check/refusals/)).
+
+Where the two calls still differ:
+
+- `forward()` has no `until_decay`, `snapshot=`, `report_every` or
+  `until_identified`, and its result has no `state` and no snapshots.
+- `forward()` refuses `Boundary(conformal=True)` and `add_refinement`.
+- `run()` forms S by default; `forward()` forms the driven port's column, and
+  only when `port_s11_freqs` is given.
+- `forward(distributed=True)` on a uniform mesh runs the declared model as it
+  is: it refuses override and design arguments, checkpoint arguments,
+  `n_warmup`, `emit_time_series=False`, an enclosing `jax.jit` and a gradient
+  through its port S.
+
+### How long it runs
+
+Give one of `n_steps` (exact steps), `num_periods` (periods at `freq_max`,
+default 20, used when nothing else is given) or, for `run()` only,
+`until_decay`. [Is the run long enough?](/rfx/evidence/simulation-time/) explains
+the three, the decay stop and its limits, and the check to read afterwards.
+Use a fixed `n_steps` in closed structures and in convergence studies.
+
+### Precision
+
+`Simulation(precision=...)` takes `"float32"` (the default), `"mixed"` (fields
+stored in float16) or `"float64"`. For float64, build and run the simulation
+inside `with jax.enable_x64():`; without it rfx raises instead of computing in
+float32. Do not switch 64-bit mode on for the whole process: it changes every
+JAX array in it. Float64 runs on a uniform mesh on one device only; the other
+solver paths refuse it, and so do some calculators on a uniform mesh
+(material sweeps, the coaxial calculators, material fitting).
+
+### Snapshots
+
+`run(snapshot=SnapshotSpec(interval=10, components=("ez",)))` (`from rfx import
+SnapshotSpec`) keeps the field
+every `interval` steps, optionally on one slice (`slice_axis`, `slice_index`),
+in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
+snapshot of every step is large; take a slice. Snapshots are taken on a uniform
+mesh, on one device or several, and by `run(devices=...)` on a graded mesh. A
+graded mesh on one device, ADI, subgridding and an oblique plane wave refuse
+`snapshot=`.
+
+### JAX transforms
+
+On one device, `forward()` can be called inside `jax.jit`, `jax.grad` and
+`jax.value_and_grad`. In an optimization loop, jit the gradient once,
+`step = jax.jit(jax.value_and_grad(loss))`: an unjitted `value_and_grad`
+compiles the whole solve again on every call. A jitted result need not be
+bit-identical to the plain one: the compiler may round in a different order.
+On a graded mesh over several devices, `forward()` takes gradients and `vmap`
+without an outer `jax.jit`; `forward(distributed=True)` on a uniform mesh takes
+no gradient through its port S and refuses an enclosing `jax.jit`. An outer
+`jax.jit` over several GPUs is refused while XLA command buffers are on, and
+the message says how to turn them off.
+
+### ADI and subgridding
+
+Two solver paths are outside what 2.0 validates:
+
+- **ADI** (`Simulation(solver="adi")`) allows a time step above the usual
+  stability limit. It is experimental: it needs closed (PEC) boundaries, a
+  homogeneous fill, a soft source with `amplitude_kind="field"` and float32,
+  and refuses ports, interior metal, dispersive materials, μr ≠ 1, lumped
+  elements, refinement, DFT planes, flux monitors and the far-field box.
+- **Subgridding** (`add_refinement` on a uniform mesh) is refused by default
+  because it is not yet stable and verified. `validation="research"` (or
+  `"off"`) lets `run()` run it with a warning, and its result is yours to check.
+  `forward()`, a graded mesh, several devices and ADI refuse a refinement in
+  every mode. Use a graded mesh for local resolution instead.
+
+The [support page](/rfx/support/) gives both one row each.
+
 ## What is checked
+
+Before the first step, both calls run preflight (unless skipped) and check
+that their solver path implements every input, refusing what it does not. After a `run()`, `result.settling_witness` says whether the run was
+long enough for the frequencies it read. A test compares the fields of
+`run()` and `forward()` over a matrix of declarations and solver paths and
+finds them equal on every row it admits
+(`tests/contracts/test_run_forward_one_pipeline.py`).
 
 ## What is refused, and the way through
 
+| Input | Solver path | Instead |
+|---|---|---|
+| `precision="float64"` outside `jax.enable_x64()` | all | build and run inside the block |
+| `precision="float64"` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
+| `until_decay` | multi-device, ADI, subgridded, a graded mesh with closed boundaries | `n_steps` |
+| `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
+| `forward()` with `Boundary(conformal=True)` | all | `run()` |
+| `run(snapshot=...)` | graded mesh on one device, ADI, subgridded, an oblique plane wave | a uniform mesh, or `run(devices=...)` on a graded mesh |
+| `add_refinement` without `validation="research"` or `"off"` | uniform mesh, `run()` | a graded mesh |
+| `add_refinement` in any mode | `forward()`, graded mesh, multi-device, ADI | a graded mesh |
+| an outer `jax.jit` over several GPUs with command buffers on | multi-device | call unjitted, or turn command buffers off |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read; the
+[support page](/rfx/support/) lists every refusal per solver path.
+
 ## Accuracy
 
+This page makes no accuracy statement. Whether a run was long enough is on
+[Is the run long enough?](/rfx/evidence/simulation-time/); whether a gradient
+is converged is on [Checking a gradient](/rfx/evidence/gradients/).
+
 ## See also
+
+- [Memory and speed](/rfx/run/memory-and-speed/): checkpointing and cost.
+- [Multi-device](/rfx/run/multi-device/): `run(devices=)` and `forward(distributed=True)`.
+- [Simulation API](/rfx/api/simulation/): every argument.
+- [Autodiff and adjoint background](/rfx/design/gradients/).
