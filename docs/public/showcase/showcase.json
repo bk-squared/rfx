@@ -232,8 +232,8 @@
         }
       ],
       "headlines": [
-        {"quantity": "reported boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "19.0", "value": 19.00765037536621, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/", "/rfx/showcase/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1]"},
-        {"quantity": "feed boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "7.5", "value": 7.4537224769592285, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json no_lens.boresight_dbi[-1][1]"},
+        {"quantity": "reported boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "19.0", "value": 19.00765037536621, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/", "/rfx/showcase/", "/rfx/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1]"},
+        {"quantity": "feed boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "7.5", "value": 7.4537224769592285, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/", "/rfx/"], "from": "grin-lens/mesh_trend.json no_lens.boresight_dbi[-1][1]"},
         {"quantity": "minimum designed minus feed directivity, floored", "printed": "+11", "value": 11, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"}
       ]
     },
