@@ -26,7 +26,9 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
     if not specs:
         return None
     if lane == 'run_distributed_nu':
-        if compute_s_params is False:
+        from rfx.measurement.port_s_contract import passive_record_diagnostic
+        # An all-passive set keeps its V/I spectra without S, as on one device (#1929).
+        if compute_s_params is False and not passive_record_diagnostic(sim):
             freqs = None
         elif freqs is None:
             from rfx.measurement.monitors import default_frequency_grid
