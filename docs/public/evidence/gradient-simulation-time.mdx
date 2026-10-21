@@ -92,15 +92,26 @@ off [[Kim 2026]](#reference).
 
 The formula is in `rfx.ringdown`:
 
-```text
+```python
 import numpy as np
 from rfx.ringdown import required_t_over_tau, sensitivity_truncation_error
 
-tau = q / (np.pi * f_r)                    # amplitude decay time of the slowest mode
-d = 2 * q * (freqs - f_r) / f_r            # detuning of each frequency read, in half-widths
-err = sensitivity_truncation_error(n_steps * dt / tau, detuning_halfwidths=d)
+f_r, q = 6.0e9, 2000.0                     # slowest mode: Resonances, or out.ringdown.report.poles
+tau = q / (np.pi * f_r)                    # amplitude decay time of that mode, 106 ns
+freqs = np.array([5.9985e9, 6.0e9, 6.0015e9])  # frequencies the objective reads
+d = 2 * q * (freqs - f_r) / f_r            # detuning of each, in half-widths: -1, 0, 1
+t_run = 4.6 * tau                          # n_steps * dt of the run
+err = sensitivity_truncation_error(t_run / tau, detuning_halfwidths=d)
 t_needed = required_t_over_tau(0.01, detuning_halfwidths=np.abs(d).max()) * tau
+print(np.round(err, 3), f"{t_needed / tau:.2f} tau = {t_needed * 1e9:.0f} ns")
 ```
+
+```text
+[0.073 0.056 0.073] 6.96 tau = 739 ns
+```
+
+This is the case above: a run of 4.6 τ leaves the gradient 5.6 % off on
+resonance and 7.3 % one half-width away, and 1 % needs 7.0 τ.
 
 `sensitivity_truncation_error(t_over_tau, detuning_halfwidths=0.0)` returns
 e^(−T/τ)·|1 + (1 + jd)·T/τ| element by element. It takes numbers or NumPy and
@@ -178,7 +189,7 @@ mode. For the optimum of coupled resonators, S itself must have converged:
 | Input | What happens | Instead |
 |---|---|---|
 | `sensitivity_truncation_error` with `t_over_tau` zero, negative or not finite | `ValueError`; inside `jax.jit` or `jax.vmap` a value cannot raise, so that element is NaN | pass T/τ of the run, greater than 0 |
-| either function with `detuning_halfwidths` not finite | `ValueError` | pass the detuning in half-widths, any sign |
+| either function with `detuning_halfwidths` not finite | `ValueError`; inside `jax.jit` or `jax.vmap`, NaN for that element | pass the detuning in half-widths, any sign |
 | `required_t_over_tau` with `error` outside the open interval (0, 1), NaN or infinite | `ValueError`: a single T/τ with that error exists only inside it | pass a relative error between 0 and 1, such as 0.01 |
 
 ## Accuracy
