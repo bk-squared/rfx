@@ -43,7 +43,7 @@ def assemble_cells(
     sim, grid, *, include_thin_conductors=True, include_cpml_pad_extension=True,
     sheet_specs=None, pec_sheets=None, pec_wires=None, pad_fill_findings=None,
     check_declared_span=True,
-    geometry_masks=None, assembly_entries=None,
+    geometry_masks=None, assembly_entries=None, n_devices=1,
 ):
     """Build material arrays plus per-pole dispersion masks.
 
@@ -57,6 +57,9 @@ def assemble_cells(
 
     Parameters
     ----------
+    n_devices : int, default 1
+        Device count of the caller's run mesh. Multiple devices judge concrete
+        values before staging; outer-traced material values are not judged.
     sheet_specs : list or None
         Out-parameter for surface-impedance sheets. These carry a separate
         node-thin operator rather than folding into the volume sigma (#677).
@@ -470,7 +473,8 @@ def assemble_cells(
     warn_unextendable_shapes(conductor_findings)
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
     refuse_unstable_cells(materials, lorentz_spec, grid.dt, courant_budget(grid),
-                          grid_kind=type(grid).__name__)
+                          grid_kind=type(grid).__name__, debye_spec=debye_spec,
+                          in_program=n_devices < 2)
     return materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
 
 
@@ -562,6 +566,7 @@ class ComponentMaterials:
     grid_key: tuple = field(metadata={"static": True})
     source_upml: bool = field(default=False, metadata={"static": True})
     tensor: TensorOperands | None = None
+    pole_sets_judged: bool = field(default=False, metadata={"static": True})
 
 
 from types import SimpleNamespace  # noqa: E402
@@ -745,6 +750,7 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
     callers. E materials and pole fractions use the same primal dual-volume
     weights; constant transverse axes retain the original arithmetic.
     """
+    pole_sets_judged = view is not None and isinstance(cells, ComponentCells) and cells.lorentz_spec is not None
     if isinstance(cells, ComponentCells):
         materials, debye_spec, lorentz_spec = cells
     else:
@@ -758,9 +764,12 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
             raise ValueError("slab Lorentz materials require pole_set_extremes / "
                              "combine_pole_extremes / judge_pole_sets before realization")
     if view is None and lorentz_spec is not None and (grid is not None or budget is not None):
+        admission_budget = courant_budget(grid) if grid is not None else budget
         refuse_unstable_cells(materials, lorentz_spec, grid.dt if grid is not None else dt,
-                              courant_budget(grid) if grid is not None else budget,
-                              grid_kind=type(grid).__name__ if grid is not None else grid_kind)
+                              admission_budget,
+                              grid_kind=type(grid).__name__ if grid is not None else grid_kind,
+                              debye_spec=debye_spec)
+        pole_sets_judged = admission_budget is not None
     for part in lumped_components(materials.sigma_film):
         if part is not None and part.shape != materials.eps_r.shape:
             raise ValueError("sigma_film arrays must have the cells' shape")
@@ -801,7 +810,8 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
                        cell_sizes=electric_widths),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
                        cell_sizes=electric_widths),
-        materials, tuple(periodic), _component_grid_key(grid, view))
+        materials, tuple(periodic), _component_grid_key(grid, view),
+        pole_sets_judged=pole_sets_judged)
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,

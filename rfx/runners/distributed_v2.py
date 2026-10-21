@@ -715,13 +715,13 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     _geometry_masks, _assembly_entries = [], []
     if assembly is None:
         grid = sim._build_grid()
-        conductors = solve_conductors(sim, grid)
+        conductors = solve_conductors(sim, grid, n_devices=n_devices)
         if preflight is not None:
             diagnostics = merge_diagnostics(
                 diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight))
             )
     else:
-        conductors = assembly.take()
+        conductors = assembly.take(n_devices=n_devices)
         grid = conductors.grid
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
         assembled_materials(conductors, pec_sheets=_d_pec_sheets,
@@ -826,7 +826,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # A dispersive edge's drive needs the ADE update's coefficient, as on one
     # device (#1524); the pole terms are read edge by edge from the specs.
     from rfx.model.source_coefficients import dispersive_drive_model
-    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, stability_grid=grid)
+    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, stability_grid=grid,
+                                            in_program=mesh.devices.size < 2)
     sources = sources.resolve(drive_materials)
     del wire_edges, drive_materials
 

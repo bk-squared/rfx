@@ -32,7 +32,9 @@ References:
 from __future__ import annotations
 
 from typing import NamedTuple
+from weakref import ref
 
+import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import (
@@ -104,6 +106,31 @@ class LorentzCoeffs(NamedTuple):
     b: jnp.ndarray
     c: tuple
     cc: tuple
+
+
+_judged_pole_arrays = {}
+
+
+def mark_judged(coeffs):
+    """Record weak array identities without changing the coefficient pytree."""
+    arrays = jax.tree.leaves(coeffs)
+    key = tuple(id(a) for a in arrays)
+
+    def remove(dead):
+        recorded = _judged_pole_arrays.get(key)
+        if recorded is not None and any(original is dead for original in recorded):
+            _judged_pole_arrays.pop(key, None)
+
+    _judged_pole_arrays[key] = tuple(ref(a, remove) for a in arrays)
+    return coeffs
+
+
+def pole_sets_judged(coeffs):
+    """Only a complete set of original, already-judged array leaves qualifies."""
+    arrays = jax.tree.leaves(coeffs)
+    recorded = _judged_pole_arrays.get(tuple(id(a) for a in arrays))
+    return recorded is not None and len(arrays) == len(recorded) and all(
+        a is original() for a, original in zip(arrays, recorded))
 
 
 class LorentzState(NamedTuple):
@@ -264,6 +291,8 @@ def init_lorentz(
     a, b, c = (realized.coefficients if realized.coefficients is not None else
                   lorentz_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
+    if components.pole_sets_judged:
+        coeffs = mark_judged(coeffs)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(

@@ -13,7 +13,7 @@ from rfx.sources.port_drive import PortSourceQueue
 
 def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
              eps_override, sigma_override, pec_mask_override, pec_occupancy_override, debye_spec,
-             lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs):
+             lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs, mesh):
     """Apply overrides, stamp loads, release edges, then resolve ordered drives."""
     from rfx.api._source_semantics import needs_scale
     from rfx.nonuniform import make_current_source, current_source_samples, current_source_volume
@@ -34,10 +34,12 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     admit(sim, lane, diagnostics=diagnostics)
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.
-    drive_model = sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid)
+    in_program = mesh.devices.size < 2
+    drive_model = sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid,
+                                          in_program=in_program)
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
-            sigma_override=sigma_override, judge=(lorentz_spec, grid))
+            sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=in_program)
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,

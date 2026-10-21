@@ -41,8 +41,10 @@ def _setup(monkeypatch, widths, branch='ordinary', probes=((2, 2, 2, 'ez'), (3, 
         options['debye'] = init_debye([DebyePole(delta_eps=2., tau=5e-12)], materials, grid.dt)
     elif branch == 'lorentz':
         from rfx.materials.lorentz import init_lorentz, lorentz_pole
+        # 20 GHz: the 30 GHz pole was above the check's bound (growth 1.34 per step
+        # on the smallest cells); this test reads invariants only.
         options['lorentz'] = init_lorentz(
-            [lorentz_pole(delta_eps=1.5, omega_0=2 * np.pi * 30e9, delta=1e10)], materials, grid.dt)
+            [lorentz_pole(delta_eps=1.5, omega_0=2 * np.pi * 20e9, delta=1e10)], materials, grid.dt)
     elif branch == 'anisotropic':
         options['aniso_eps'] = tuple(jnp.full(grid.shape, value) for value in (1.5, 2., 2.5))
 

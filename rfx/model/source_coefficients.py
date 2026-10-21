@@ -286,7 +286,8 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
     return sources
 
 
-def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *, stability_grid=None):
+def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *,
+                           stability_grid=None, in_program=True):
     """Materials a drive reads its coefficient from on a lane that keeps no
     realization of its own (the distributed lanes). Nothing whole-domain is
     built: a dispersive model carries its pole specs, read edge by edge."""
@@ -294,7 +295,8 @@ def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *, st
     if judged is not None and lorentz_spec is not None:
         from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
         refuse_unstable_cells(materials, lorentz_spec, judged.dt, courant_budget(judged),
-                              grid_kind=type(judged).__name__)
+                              grid_kind=type(judged).__name__, debye_spec=debye_spec,
+                              in_program=in_program)
     if debye_spec is None and lorentz_spec is None and grid is None:
         return materials
     from rfx.model.materials import EdgePoles
