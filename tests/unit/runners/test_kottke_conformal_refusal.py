@@ -1,11 +1,14 @@
 """Every public entry either carries the PEC choice or refuses before stepping."""
 
+from types import SimpleNamespace
+
 import jax
 import numpy as np
 import pytest
 
 from rfx import Cylinder, Simulation, Sphere
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.runners import _admission as A
 
 
 def _scene(entry, source, *, pec=True):
@@ -108,7 +111,7 @@ UNREACHABLE = [
     ("waveguide", "K", "conformal_pec"),
     ("waveguide_normalized", "K", "conformal_pec"),
     *[(entry, source, "subpixel_smoothing")
-      for entry in ("msl", "mixed", "lumped_scan") for source in ("K", "B")],
+      for entry in ("msl", "mixed") for source in ("K", "B")],
 ]
 
 
@@ -117,6 +120,37 @@ UNREACHABLE = [
 def test_keyword_not_accepted(entry, source, keyword):
     with pytest.raises(TypeError, match=rf"unexpected keyword.*{keyword}"):
         _invoke(entry, source)
+
+
+@pytest.mark.parametrize("source", ["K", "B"])
+def test_lumped_scan_refuses_conformal_once(source):
+    with pytest.raises(NotImplementedError,
+                       match="lumped/wire S-matrix scan does not carry") as caught:
+        _invoke("lumped_scan", source)
+    assert str(caught.value).count("Boundary(conformal=True) or conformal_pec=True") == 1
+
+
+CONFORMAL_ROWS = (("_boundary_spec", "conformal"),
+                  ("_boundary_spec", "conformal_s_matrix"))
+
+
+@pytest.mark.parametrize("lane", [
+    lane for lane in A.CALCULATORS
+    if all(row not in A.ADMITS[lane] for row in CONFORMAL_ROWS)
+])
+def test_calculator_message_lists_conformal_once(lane):
+    text = A.message(lane, CONFORMAL_ROWS, SimpleNamespace(_precision="float32"))
+    assert text.count("Boundary(conformal=True) or conformal_pec=True") == 1
+    assert "with a lumped/wire S-matrix" in text
+
+
+@pytest.mark.parametrize("rows", [CONFORMAL_ROWS, CONFORMAL_ROWS[:1], CONFORMAL_ROWS[1:]],
+                         ids=["both", "conformal-only", "s-matrix-only"])
+def test_run_message_lists_conformal_once(monkeypatch, rows):
+    monkeypatch.setattr(A, "refused", lambda *args: rows)
+    text = A.message("fwd_uniform", rows, SimpleNamespace(_refinement=None))
+    assert text.count("Boundary(conformal=True) or conformal_pec=True") == 1
+    assert ("with a lumped/wire S-matrix" in text) == (CONFORMAL_ROWS[1] in rows)
 
 
 @pytest.mark.parametrize("entry", ["run_3d", "run_2d"])
