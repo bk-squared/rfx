@@ -12,6 +12,7 @@ import pytest
 from rfx import Box, Cylinder, PolylineWire, Simulation, Sphere
 from rfx.boundaries.pec import realized_pec_edge_masks
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.geometry.rasterize_grid import TracedShapeDimensionError
 
 L = .0137
 DX = L / 17
@@ -151,6 +152,7 @@ def test_traced_zero_thickness_box_keeps_plane_admission():
         sim.add_material('dielectric', eps_r=3.7)
         sim.add(box(x, x), material='dielectric')
         return sim._build_materials(sim._build_grid())[0].eps_r
-    # Staircase bounds, including a plane, must remain concrete.
-    with pytest.raises(jax.errors.ConcretizationTypeError):
+    # Staircase bounds, including a plane, must remain concrete: a traced
+    # zero-thickness Box is refused by name before the sheet is classified.
+    with pytest.raises(TracedShapeDimensionError, match="Box with a traced extent"):
         jax.jit(material)(jnp.float32(1.5 * L)).block_until_ready()

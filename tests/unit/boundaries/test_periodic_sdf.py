@@ -14,6 +14,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.conformal import compute_conformal_weights_sdf
 from rfx.geometry.smoothing import compute_inv_eps_tensor_diag, compute_smoothed_eps
 from tests.unit.boundaries.test_periodic_fills import DX, L, model
+from rfx.geometry.rasterize_grid import TracedShapeDimensionError
 
 SHIFT = 8
 
@@ -124,7 +125,7 @@ def test_staircase_box_corner_gradient_is_refused(periodic):
         sim.add(Box((lo, .9 * DX, .6 * DX), (8.1 * DX, 5.3 * DX, 4.1 * DX)),
                 material='dielectric')
         return jnp.sum(sim._build_materials(sim._build_grid())[0].eps_r)
-    with pytest.raises(jax.errors.ConcretizationTypeError):
+    with pytest.raises(TracedShapeDimensionError, match="Box with a traced extent"):
         jax.grad(total)(jnp.float32(3.3 * DX))
 
 
