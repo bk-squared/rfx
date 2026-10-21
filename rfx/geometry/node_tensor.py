@@ -1,4 +1,4 @@
-"""Uniform Stage-1 node tensors and the Werner--Bauer--Cary triplet mean."""
+"""Stage-1 node tensors and the Werner--Bauer--Cary triplet mean."""
 from dataclasses import dataclass
 
 import jax
@@ -25,6 +25,7 @@ class NodeTensor:
     cross: tuple
     guard_count: object
     pec_keep: tuple | None = None
+    cross_reverse: tuple | None = None
 
 
 @jax.tree_util.register_dataclass
@@ -46,14 +47,31 @@ class SmoothedEps:
 
 
 def uniform_cell(grid):
-    """The one cell width of a grid whose three axes are constant (full_tensor is uniform-only)."""
+    """The one cell width of a grid whose three axes are equal and constant."""
     widths = {float(grid.cells(a)[0]) for a in range(3)}
     if not all(grid.is_constant(a) for a in range(3)) or len(widths) != 1:
         raise NotImplementedError("the node/triplet tensor needs equal constant cells on every axis")
     return widths.pop()
 
 
-def _union(xp, grid, shapes, coords, *, distance=False):
+def node_metrics(grid):
+    """Node-local (minus, plus) cell lengths and dual-volume fill length."""
+    from rfx.geometry.rasterize_grid import cell_sizes_from_nonuniform_grid
+
+    sizes = cell_sizes_from_nonuniform_grid(grid)
+    xp = np if smooth._host_path(*sizes) else jnp
+    lengths = []
+    for axis, size in enumerate(sizes):
+        plus = xp.asarray(size)
+        minus = (xp.roll(plus, 1) if 'xyz'[axis] in grid.periodic_axes else
+                 xp.concatenate((plus[:1], plus[:-1])))
+        shape = tuple(len(plus) if a == axis else 1 for a in range(3))
+        lengths.append((minus.reshape(shape), plus.reshape(shape)))
+    dual = [(minus + plus) / 2 for minus, plus in lengths]
+    return tuple(lengths), (dual[0] * dual[1] * dual[2]) ** (1.0 / 3.0)
+
+
+def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
     from rfx._periodic import periodic_sdf
 
     union = nearest = normal = None
@@ -68,7 +86,8 @@ def _union(xp, grid, shapes, coords, *, distance=False):
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
             union = xp.minimum(union, sdf)
-    result = (xp.clip(0.5 - union / uniform_cell(grid), 0.0, 1.0), normal)
+    h = uniform_cell(grid) if fill_length is None else fill_length
+    result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
     return result + (union,) if distance else result
 
 
@@ -86,20 +105,43 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     the reciprocal mean diagonal of a prior interface tensor (decision 3).
     """
     from collections import OrderedDict
-    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
-    from rfx.geometry.triplet_tensor import SIGNS, build_triplets, coefficients, matrices
+    from rfx.geometry.rasterize_grid import (
+        coords_from_uniform_grid, coords_from_nonuniform_grid, centres_from_nonuniform_grid,
+    )
+    from rfx.geometry.triplet_tensor import (
+        SIGNS, build_triplets, coefficients, matrices, triplet_weights,
+    )
+    from rfx.model.graded_grid import NonUniformGrid
 
-    coords = coords_from_uniform_grid(grid)
+    graded = isinstance(grid, NonUniformGrid)
+    coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
+    lengths, fill_length = node_metrics(grid) if graded else (None, None)
+    cell_len = fill_length if graded else uniform_cell(grid)
     masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
-    host = smooth._host_path(*coords[:3], uniform_cell(grid), background_eps,
+    host = smooth._host_path(*coords[:3], cell_len, background_eps,
                             *(e for _, e in shapes),
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),
                             *masks.values())
     xp = np if host else jnp
     field_dtype = jnp.float32 if field_dtype is None else field_dtype
     acc_dtype = np.float64 if host else field_dtype
-    midpoint = smooth._smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks)
-    samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
+    if graded:
+        centres = centres_from_nonuniform_grid(grid, coords)
+        nodes_1d = [xp.asarray(a).reshape(tuple(len(a) if b == axis else 1 for b in range(3)))
+                    for axis, a in enumerate(coords[:3])]
+        centres_1d = [xp.asarray(a).reshape(tuple(len(a) if b == axis else 1 for b in range(3)))
+                      for axis, a in enumerate(centres[:3])]
+        samples = {name: tuple(centres_1d[b] if b == a else nodes_1d[b] for b in range(3))
+                   for a, name in enumerate(('ex', 'ey', 'ez'))}
+        mid_length = (lengths[0][1] * lengths[1][1] * lengths[2][1]) ** (1.0 / 3.0)
+        midpoint = smooth._kottke_smooth(
+            xp, shapes, samples, mid_length,
+            tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3)),
+            masks, grid=grid)
+    else:
+        midpoint = smooth._smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks)
+        samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
+        mid_length = None
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])
     nodes = (x[:, None, None], y[None, :, None], z[None, None, :])
     xi = [xp.full(grid.shape, 1.0 / background_eps, dtype=acc_dtype) for _ in range(3)]
@@ -124,7 +166,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         supported = [s for s in group if smooth._has_sdf(s)]
         if not supported:
             continue
-        f, ns, signed_distance = _union(xp, grid, supported, nodes, distance=True)
+        f, ns, signed_distance = _union(
+            xp, grid, supported, nodes, distance=True, fill_length=fill_length)
         interface = (f > 0) & (f < 1)
         outside = 1.0 / xp.where(bulk, xi[0], (xi[0] + xi[1] + xi[2]) / 3.0)
         inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
@@ -136,14 +179,15 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
               for i, (value, old) in enumerate(zip(entries, xi))]
         current, guards, touched = build_triplets(
             xp, grid, supported, nodes, ns, eps, outside, matrices(xp, xi),
-            signed_distance=signed_distance)
+            signed_distance=signed_distance, cell_lengths=lengths)
         triplets = xp.where(touched[..., None, None], current, triplets)
         guard_count = guard_count + xp.sum(guards & touched, dtype=xp.int32)
         bulk = xp.where(f > 0, ~interface, bulk)
         for axis, sample in enumerate(samples.values()):
-            fm, _ = _union(xp, grid, supported, sample)
+            fm, _ = _union(xp, grid, supported, sample, fill_length=mid_length)
             mid_bulk[axis] = xp.where(fm > 0, fm >= 1, mid_bulk[axis])
-    periodic = tuple(a in grid.periodic_axes or (a == 'z' and grid.is_2d) for a in 'xyz')
+    periodic = tuple(a in grid.periodic_axes or (a == 'z' and getattr(grid, 'is_2d', False))
+                     for a in 'xyz')
     pad = np.zeros(grid.shape, dtype=bool)
     for axis, a in enumerate('xyz'):
         for side in ('lo', 'hi'):
@@ -161,7 +205,11 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         for s in (0, 1)) for a in range(3))
     edge_bulk = tuple(bulk_ends[a][0] & _next(xp, bulk_ends[a][1], a, periodic)
                       & mid_bulk[a] for a in range(3))
-    ends, cross = coefficients(xp, triplets)
+    cross_reverse = None
+    if graded:
+        ends, cross, cross_reverse = coefficients(xp, triplets, triplet_weights(xp, lengths))
+    else:
+        ends, cross = coefficients(xp, triplets)
     diagonal = tuple(xp.where(edge_bulk[a] | pad, midpoint[a],
                              1.0 / (ends[a][0] + _next(xp, ends[a][1], a, periodic)))
                      for a in range(3))
@@ -171,4 +219,5 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         cast_arrays(xi), tuple(jnp.asarray(b) for b in edge_bulk),
         tuple(jnp.asarray(~(b | pad)) for b in edge_bulk),
         cast_arrays((triplets,))[0], cast_arrays(cross),
-        jnp.asarray(guard_count)))
+        jnp.asarray(guard_count),
+        cross_reverse=None if cross_reverse is None else cast_arrays(cross_reverse)))

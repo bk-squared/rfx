@@ -806,12 +806,17 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
             shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-            warn_curved_high_contrast(shape_eps_pairs, sim=sim)
+            if subpixel_smoothing != "full_tensor":
+                warn_curved_high_contrast(shape_eps_pairs, sim=sim)
             warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
             if shape_eps_pairs:
-                aniso_eps = compute_smoothed_eps_nonuniform(
-                    grid, shape_eps_pairs, background_eps=1.0,
-                )
+                if subpixel_smoothing == "full_tensor":
+                    from rfx.model.tensor_operands import full_tensor_eps
+                    aniso_eps = full_tensor_eps(sim, grid, materials, shape_eps_pairs)
+                else:
+                    aniso_eps = compute_smoothed_eps_nonuniform(
+                        grid, shape_eps_pairs, background_eps=1.0,
+                    )
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":
         aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
@@ -828,7 +833,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     # Smoothing / dual averaging above builds only the volume tensor.
     # Fold first, then put each capacitor on its own edge exactly once.
-    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    from rfx.model.tensor_operands import finish_tensor_operands
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, None)
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()

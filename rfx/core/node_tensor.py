@@ -20,11 +20,12 @@ def off_diagonal(curls, nodes, *, periodic, boundary=None):
     incident = tuple((c, h_neighbor(c, a, periodic=periodic, boundary=boundary))
                      for a, c in enumerate(curls))
     ends = [[jnp.zeros_like(c), jnp.zeros_like(c)] for c in curls]
-    for (a, b), coupling in zip(((0, 1), (0, 2), (1, 2)), nodes.cross):
+    reverse = nodes.cross if nodes.cross_reverse is None else nodes.cross_reverse
+    for (a, b), coupling, backward in zip(((0, 1), (0, 2), (1, 2)), nodes.cross, reverse):
         for sa in (0, 1):
             for sb in (0, 1):
                 ends[a][sa] = ends[a][sa] + coupling[sa, sb] * incident[b][sb]
-                ends[b][sb] = ends[b][sb] + coupling[sa, sb] * incident[a][sa]
+                ends[b][sb] = ends[b][sb] + backward[sa, sb] * incident[a][sa]
     return tuple(jnp.where(nodes.active[a], plus + (
         jnp.roll(minus, -1, a) if periodic[a] else _shift_fwd(minus, a)), 0.0)
         for a, (plus, minus) in enumerate(ends))

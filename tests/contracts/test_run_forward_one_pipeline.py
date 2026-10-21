@@ -22,7 +22,7 @@ KNOWN_ROWS = (
 # Declarations with ports compare equal S requests in both directions (#1373):
 # (a) run's default against forward(port_s11_freqs=run's bins);
 # (b) run(compute_s_params=False) against forward's default.
-PORTED = tuple(d for d in BUILDERS if d.startswith('P-'))
+PORTED = tuple(d for d in BUILDERS if d.startswith('P-') or d == 'C-full-tensor')
 KNOWN_DIRECTIONS = {}
 # Under (a) both entries refuse the S request with the same error: a plain
 # source fires in every port drive.
@@ -30,6 +30,7 @@ EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
 ASSEMBLY_ROWS = (
+    ('C-full-tensor', 'graded'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
     ('O-flux', 'multi-device-graded'),
@@ -129,6 +130,7 @@ ASSEMBLY_ROWS = (
 )
 
 FIELD_ROWS = (
+    ('C-full-tensor', 'graded'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
     ('O-flux', 'multi-device-graded'),
@@ -352,6 +354,8 @@ def parameters(rows, level, *, slow=False):
 
 
 def entry_options(declaration):
+    if declaration == 'C-full-tensor':
+        return {'subpixel_smoothing': 'full_tensor'}
     return {'subpixel_smoothing': True} if declaration == 'C-smooth' else {}
 
 
@@ -448,7 +452,7 @@ def test_assembly(declaration, path, direction):
             {'arguments', 'result'} if capture_path == 'graded' and level == 'b' else {'arguments'})
         for cap in pair.values():
             assert set(cap['value']) == required, cap['seam_sites']
-        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2'):
+        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2', 'C-full-tensor'):
             # run's default bins arrive as the float64 host grid, forward's
             # request as float32; the runner solves on float32 bins either way
             # (result/sp_freqs is compared exactly below).
@@ -510,6 +514,7 @@ def check_fields(declaration, path, direction=None):
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
+    ('C-full-tensor', 'graded'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))

@@ -22,7 +22,7 @@ def test_full_tensor_run_forward_and_diagonal_differ():
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('lane', ['graded', 'distributed', 'adi', 'subgridded', 'upml'])
+@pytest.mark.parametrize('lane', ['distributed', 'adi', 'subgridded', 'upml'])
 def test_full_tensor_refused(entry, lane):
     sim = sphere_sim(graded=lane == 'graded', solver='adi' if lane == 'adi' else 'yee')
     options = {}

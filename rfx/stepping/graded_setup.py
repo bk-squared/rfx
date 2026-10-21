@@ -326,7 +326,13 @@ def _build_nu_scan(
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
-    materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+    from rfx.geometry.node_tensor import SmoothedEps
+    from rfx.model.tensor_operands import TensorOperands
+    tensor = TensorOperands.of(aniso_eps) if isinstance(aniso_eps, SmoothedEps) else None
+    materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
+                                tensor=tensor)
+    if tensor is not None:
+        aniso_eps = tensor.eps
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
@@ -366,6 +372,8 @@ def _build_nu_scan(
     pec_edge_masks, pec_static_edge_masks = graded_conductor_masks(
         pec_mask, pec_occupancy, pec_sheets, pec_wires, pec_edge_masks,
         periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+    from rfx.model.node_pec import restrict_node_pec
+    materials = restrict_node_pec(materials, pec_edge_masks, _pec_faces_frozen)
     use_pec_edges = pec_edge_masks is not None
     use_pec_occupancy = pec_occupancy is not None or bool(pinned_sheet_layout)
 
