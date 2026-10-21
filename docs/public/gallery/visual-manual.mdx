@@ -45,7 +45,7 @@ features without requiring animation.
 ## 3. Measure the quantity you need
 
 A bright field is not by itself a power, efficiency or gain measurement.
-Use [flux monitors](/rfx/measure/s-parameters/) for reflected/transmitted power,
+Use [flux monitors](/rfx/measure/s-parameters/#power-flux-and-rt) for reflected/transmitted power,
 the [matching port calculator](/rfx/api/sources-ports/) for S-parameters,
 and [near-to-far-field analysis](/rfx/measure/far-field-and-rcs/) for radiation or scattering.
 Keep the reference run, normalization and measurement planes with the result.
@@ -59,7 +59,7 @@ their public source. They teach field behavior on one mesh, not numerical accura
 
 Then read the [dielectric slab](/rfx/gallery/multilayer_fresnel/): see how the two
 interfaces create reflection and transmission, then run the
-[flux-monitor tutorial](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/slab_rt_flux_monitor.py).
+[flux-monitor tutorial](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/slab_rt_flux_monitor.py).
 The linked legacy gallery records an older calculation; use its stated version
 when reading the comparison.
 
@@ -82,8 +82,8 @@ definition and normalization fixed so the curves answer the same question.
 
 The [beam-steering film](/rfx/gallery/beam-steering/) connects a dielectric cover
 to a far-field pattern. Then use the runnable
-[antenna pattern example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/antenna_farfield_pattern.py)
-or [scattering example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/rcs_scattering.py)
+[antenna pattern example](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/antenna_farfield_pattern.py)
+or [scattering example](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/rcs_scattering.py)
 from the source checkout.
 
 **Try changing:** the source orientation before adding structural complexity.
