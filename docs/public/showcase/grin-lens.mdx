@@ -119,4 +119,16 @@ main 9ed83eb8 (2026-10-05). The film is rendered with Blender
 python scripts/showcase/design_lens.py --stage describe --out out/lens   # builds the three meshes, no solve
 ```
 
-The full stages (trial, main, resolve) run on a GPU: `scripts/vessl_showcase_lens.yaml`.
+The design itself needs a GPU and runs in three stages, each reading the previous
+stage's output folder and writing a new one:
+
+```bash
+python scripts/showcase/design_lens.py --stage trial --out out/lens-trial
+python scripts/showcase/design_lens.py --stage main --record out/lens-trial --out out/lens-main
+python scripts/showcase/design_lens.py --stage resolve --record out/lens-main --out out/lens-resolve
+```
+
+`main` refuses to start unless the trial met its continuation rule; `resolve`
+solves the final design again on the three meshes. Add `--objective fan` for the
+fan beam. `scripts/vessl_showcase_lens.yaml` is the lab's cluster job file, with
+the pinned JAX, CUDA and package versions the numbers above were computed with.

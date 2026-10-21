@@ -83,6 +83,8 @@ The checks below and their thresholds were fixed before any run, in §2.5 of the
 python scripts/showcase/design_filter.py --stage describe --out out/filter   # builds the three meshes, no solve
 ```
 
-The full stages run on a GPU with `scripts/vessl_showcase_filter.yaml`: the descent is
-`--stage main --start S1 --iterations 400 --y-uniform` on the record of a trial stage,
-and `--stage resolve` solves its final design again on the three meshes.
+The full stages need a GPU. A `--stage trial` run comes first; the descent is
+`--stage main --record <trial output> --out <new folder> --start S1 --iterations 400 --y-uniform`,
+and `--stage resolve --record <main output> --out <new folder>` solves its final
+design again on the three meshes. `scripts/vessl_showcase_filter.yaml` is the lab's
+cluster job file, with the pinned package versions.
