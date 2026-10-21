@@ -317,6 +317,28 @@ def injection_material_rule(name):
     raise ValueError(f"Unclassified TFSF material operand: {name}")
 
 
+# Only these families index a field component, never a pole, tensor entry,
+# triplet or spatial axis. Builders: model/materials.py::realize_components,
+# model/tensor_operands.py, geometry/node_tensor.py, model/node_pec.py,
+# boundaries/pec.py, model/occupancy.py, sources/{sources,wire_radius}.py,
+# model/thin_conductors.py, materials/thin_conductor.py and lumped.py.
+_INJECTION_COMPONENTS = {
+    **{f"{family}.{c}": axis for c, axis in enumerate("xyz") for family in (
+        "pec_edge_masks", "aniso_eps", "aniso_inv_eps", "conformal_weights",
+        *(f"materials.{name}" for name in (
+            "sigma_lumped", "eps_r_lumped", "mu_r_wire", "edge_keep", "sigma_film")),
+        *(f"materials.components.{name}" for name in (
+            "eps", "sigma", "mu", "eps_update", "sigma_update", "mu_update",
+            "eps_lumped", "sigma_lumped", "mu_wire", "upml_eps", "upml_sigma")),
+        *(f"materials.components.tensor.{name}" for name in (
+            "eps", "inv_eps", "conformal_weights")),
+        *(f"materials.components.tensor.node_smoothing.{name}" for name in (
+            "bulk", "active", "pec_keep")))},
+    **{f"sheet_impedance.mask_e{axis}": axis for axis in "xyz"},
+    **{f"{family}.e{axis}": axis for family in ("lumped_rlc", "rlc_metas") for axis in "xyz"},
+}
+
+
 def _injection_arrays(grid, materials, updates, localized):
     """Yield actual spatial operands with their vacuum values and labels."""
     for name, array in _leaves(materials, "materials"):
@@ -342,14 +364,18 @@ def _injection_arrays(grid, materials, updates, localized):
         elif vacuum == "sheet":
             value = {f"mask_e{a}": getattr(value, f"mask_e{a}") for a in "xyz"}
             vacuum = 0
-        elif vacuum in ("window", "cells", "layout"):
+        elif vacuum == "cells":
+            import jax.numpy as jnp
+            masks = {}
+            for meta in value:
+                mask = masks.get(meta.component, jnp.zeros(grid.shape, dtype=bool))
+                masks[meta.component] = mask.at[meta.i, meta.j, meta.k].set(True)
+            value, vacuum = masks, 0
+        elif vacuum in ("window", "layout"):
             import jax.numpy as jnp
             mask = jnp.zeros(grid.shape, dtype=bool)
             if vacuum == "window":
                 mask = mask.at[tuple(slice(*value.bounds[2*a:2*a+2]) for a in range(3))].set(True)
-            elif vacuum == "cells":
-                for meta in value:
-                    mask = mask.at[meta.i, meta.j, meta.k].set(True)
             else:
                 from rfx.model.occupancy import layout_edge_indices
                 for _, sheet, pair in value:
@@ -390,6 +416,9 @@ def refuse_injection_plane_operands(cfg, grid, materials, updates, localized):
             spatial_slice = [slice(a - 1, b + 2) for a, b in bounds.values()] if closed else [slice(None)] * 3
             spatial_slice["xyz".index(axis)] = slice(index, index + 1)
             for name, array, vacuum, label in operands:
+                component = _INJECTION_COMPONENTS.get(name.replace(".components.cells_view", ""))
+                if component == axis and suffix in ("lo", "hi"):
+                    continue  # The normal component here belongs wholly to one region.
                 # Most leaves end in xyz; node triplets end in xyz,3,3.
                 trailing = 2 if vacuum == "identity" else 0
                 start = array.ndim - 3 - trailing

@@ -3,6 +3,7 @@
 Coordinates reproduce DESIGN F3/placement.py; expected planes come only from
 production source configuration, never from the boundary rule's helpers.
 """
+import ast
 import inspect
 import json
 import sys
@@ -138,6 +139,40 @@ def test_off_plane_controls(obj):
         execute(sim, 'run_uniform')
 
 
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+@pytest.mark.parametrize('kind,x,smoothing', [
+    ('dielectric', 6.5, True),
+    ('dielectric', 7.2, 'full_tensor'),
+    ('dielectric', 7.5, 'full_tensor'),
+    ('series_RL', 6.5, False),
+    ('series_RL', 18.5, False),
+])
+def test_normal_component_half_cell_admitted(entry, kind, x, smoothing):
+    # Review scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
+    # positions give faces +0.5/+1.2/+1.5 cells from x_lo and Ex edges
+    # at x_lo+1/2 and x_hi+1/2; no slicing/placement helper sets these values.
+    sim = scene(interior=True)
+    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
+    assert (cfg.x_lo, cfg.x_hi) == (14, 26)
+    if kind == 'dielectric':
+        sim.add_material('dielectric', eps_r=4.)
+        sim.add(Box(mm(x, 0, 0), mm(15, 12, 12)), material='dielectric')
+    else:
+        sim.add_lumped_rlc(mm(x, 6, 6), 'ex', R=10., L=1e-9)
+    kwargs = {'compute_s_params': False} if entry == 'run' else {'checkpoint': False}
+    result = getattr(sim, entry)(n_steps=2, skip_preflight=True,
+                                subpixel_smoothing=smoothing, **kwargs)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_tangential_series_rl_on_plane_refused(entry):
+    sim = scene(interior=True)
+    sim.add_lumped_rlc(mm(6, 6.5, 6), 'ey', R=10., L=1e-9)
+    with pytest.raises(ValueError, match=r'x_lo: lumped RLC element \(lumped_rlc.ey\)'):
+        getattr(sim, entry)(n_steps=2, skip_preflight=True)
+
+
 @pytest.mark.parametrize('kind', ['box', 'methodB'])
 @pytest.mark.parametrize('obj', ['pec_sheet', 'drude'])
 def test_other_injection_kinds(kind, obj):
@@ -155,7 +190,25 @@ def test_setup_parameter_classification_is_complete():
     from rfx.stepping.uniform_setup import _build_step_setup
     from rfx.stepping.graded_setup import _build_nu_scan
     for setup in (_build_step_setup, _build_nu_scan):
-        assert set(inspect.signature(setup).parameters) <= INJECTION_OPERANDS.keys()
+        parameters = set(inspect.signature(setup).parameters)
+        assert parameters <= INJECTION_OPERANDS.keys()
+        # Read the call itself, independently of the rule's traversal. Materials
+        # has its own argument; updates/localized also carry non-operands.
+        calls = [node for node in ast.walk(ast.parse(inspect.getsource(setup)))
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                 and node.func.id == 'admit_setup']
+        assert len(calls) == 1
+        keywords = {kw.arg: kw.value for kw in calls[0].keywords}
+        assert isinstance(keywords['materials'], ast.Name)
+        assert keywords['materials'].id == 'materials'
+        updates = keywords['updates']
+        assert isinstance(updates, ast.Call) and updates.func.id == 'dict'
+        passed = {kw.arg for kw in updates.keywords}
+        passed.update(ast.literal_eval(pair.elts[0]) for pair in keywords['localized'].elts)
+        assert passed <= INJECTION_OPERANDS.keys()
+        expected = {name for name in parameters - {'materials'}
+                    if INJECTION_OPERANDS[name][0] is not None}
+        assert expected == {name for name in passed if INJECTION_OPERANDS[name][0] is not None}
 
 
 def test_material_leaf_classification_is_complete():

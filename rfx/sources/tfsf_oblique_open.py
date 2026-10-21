@@ -441,7 +441,10 @@ def apply_methodB_e(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
 def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
     """Use the same injection-plane rule as both step setups."""
     from rfx.boundaries.tfsf import refuse_injection_plane_operands
-    refuse_injection_plane_operands(cfg, None, materials, {}, ())
+    try:
+        refuse_injection_plane_operands(cfg, None, materials, {}, ())
+    except ValueError as exc:
+        raise ValueError(f"{exc}. Shrink the target or enlarge tfsf_margin.") from exc
 
 
 # ---------------------------------------------------------------------------
