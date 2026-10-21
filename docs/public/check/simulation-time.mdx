@@ -75,7 +75,7 @@ The four states:
 | `pass` | At every frequency the result reads, the estimated part of the value beyond the end of the run is at most 1 % of the value (−40 dB). | Nothing for the simulation time. Check the mesh next. |
 | `fail` | At some frequency that share is above 1 %. `worst_freq_hz` names it. | Run longer, or use [tail extrapolation](#tail-extrapolation-by-matrix-pencil). |
 | `undetermined` | The check could not be formed: the source was still on at the end of the run, the part of the run after the source is too short to fit, no decaying term was found, the two fits disagree on whether a frequency passes, a growing term was found, or the fit would exceed its memory bound. `reason` says which. | Not a pass. Run longer; if the reason is a growing term, look for an instability first. |
-| `absent` | Nothing was recorded to judge, or a far-field box or DFT plane is read with no probe recording the fields it comes from. | Not a pass. Add a probe away from every source and port, somewhere the field is live. |
+| `absent` | The run reads nothing at a frequency (no S-parameters, DFT planes, flux or far field; only probe time series), or a far-field box or DFT plane is read with no probe recording the fields it comes from. | Not a pass. With probe time series alone, judge their decay yourself, as in [Quick Start](/rfx/start/first-simulation/). For a far-field box or DFT plane, add a probe away from every source and port, somewhere the field is live. |
 
 `result.settling_db` is the worst share in dB; it is NaN or `None` when the
 check was not formed. One run's status is a statement about that run. When the simulation

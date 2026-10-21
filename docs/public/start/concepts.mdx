@@ -26,7 +26,8 @@ you will see:
 **Cell size.** The cell must resolve the shortest wavelength *inside the
 material*, λ_eff = c / (f_max √ε_r). Aim for at least 15–20 cells per λ_eff for
 propagation, and more for anything phase-sensitive. Preflight warns when a
-dielectric has fewer than 15. The thinnest feature that matters also needs a
+dielectric has fewer than 15, or fewer than 20 when the model has waveguide
+ports or flux monitors. The thinnest feature that matters also needs a
 few cells, such as a substrate or a gap. On a uniform grid, those two
 requirements together set `dx`. When they conflict, use a graded mesh; see
 [Non-Uniform Mesh](/rfx/model/domain-mesh/).
@@ -52,7 +53,8 @@ The boundary decides what happens at the edge of the domain.
 | `"upml"` | legacy absorber | reflects noticeably more than CPML; prefer CPML |
 
 A single string (`"cpml"`, `"pec"` or `"upml"`) applies to all six faces. Use
-`BoundarySpec` to set each face separately, and for `"pmc"` and `"periodic"`:
+`BoundarySpec` to set each face separately, and for `"pmc"` and `"periodic"`
+(a dict per axis, such as `{"x": "cpml", "y": "pec", "z": "pec"}`, also works):
 
 ```python
 from rfx import Simulation
@@ -92,7 +94,7 @@ declaration decides which**, not the shape's size on the mesh:
 |---|---|---|---|
 | **sheet** | etched copper: ground plane, patch, trace | `sim.add_thin_conductor(Box(...))` with zero thickness on one axis | one grid plane with in-plane E zeroed; occupies no cell |
 | **volume** | plate, iris, post, machined wall | `sim.add(shape, material="pec")` | walls at both drawn faces, interior shorted |
-| **wire** | thin filament | `PolylineWire` thinner than half a cell | a path of zeroed E edges |
+| **wire** | thin filament | `PolylineWire(..., radius=0)`; a positive radius below half the smallest local cell is refused, and from half a cell up the wire is a volume | a path of zeroed E edges |
 
 ```python
 from rfx import Box
@@ -130,7 +132,9 @@ Preflight reports a sheet solved more than 1 % off its drawing as an error, so
 `rfx.mesh_edges.edge_aware_profiles`, as above, so the solved edges fall on the
 drawn ones; or pass `Simulation(..., snap="declared")` to accept the difference
 as a warning, recorded in `sim.realized_geometry()`. With the graded in-plane
-mesh, preflight also notes that the grading reaches the absorber runway.
+mesh, preflight also notes that the grading reaches the cells next to an
+absorbing face, which should stay uniform over as many cells as the face has
+absorber layers.
 
 A PEC shape that is thinner than one cell but not zero is neither a sheet nor a
 resolved volume. Preflight reports it as an error and `run()` refuses it, so
@@ -165,7 +169,7 @@ reference impedance or a reference plane, so they cannot produce S-parameters.
 | a field value over time at a point | `add_probe`, `add_vector_probe` |
 | a field on a plane at chosen frequencies | `add_dft_plane_probe` |
 | power through a plane (R, T, absorption) | `add_flux_monitor` |
-| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field` / `compute_rcs` |
+| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field`; for RCS, `compute_rcs`, which runs its own plane-wave simulation on a `Grid` ([Far Field and RCS](/rfx/measure/far-field-and-rcs/)) |
 | resonant frequencies and Q | a probe plus `result.find_resonances()` (matrix pencil fit) |
 | S-parameters | a port family and its calculator (table above) |
 
@@ -215,7 +219,7 @@ comparison with a reference; see
 ## Precision
 
 The default is `precision="float32"`, which suits most work and is what the
-GPU runs fastest. `"float64"` needs JAX 64-bit mode enabled before you build
-the simulation. `"mixed"` stores fields in float16. Both are limited to the
+GPU runs fastest. `"float64"` needs JAX 64-bit mode: build and run the simulation
+inside `with jax.enable_x64():`. `"mixed"` stores fields in float16. Both are limited to the
 uniform, single-device solver. Mixed precision raises the CPML's reflection
 floor, so avoid it for low-reflection or S-parameter work.

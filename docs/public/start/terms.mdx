@@ -21,7 +21,7 @@ name appears in the API, the API name is given too.
 |---|---|---|
 | **solver path** | Which time-stepping implementation runs the model: uniform mesh or graded mesh, on one device or on several (`run(devices=...)`, `forward(distributed=True)`). ADI (`solver="adi"`) and subgridding (`add_refinement`) are separate, experimental paths. A feature can be solved on one path and refused on another; the [support table](/rfx/support/) says which. | the solver or algorithm (Taflove and Hagness name FDTD variants by their algorithm) |
 | **realized**, **on the grid** (`realized_geometry()`) | What the grid actually built from what you drew: shapes snapped to cells or node planes, ports and apertures as meshed. rfx compares the two and reports the difference. Not the antenna "realized gain". | staircased or meshed geometry; the discretised model shown in a solver's mesh view |
-| **preflight** (`sim.preflight()`) | Checks of the setup that run before the first time step, without solving. An **error** stops the run; an **advisory** is reported and the run continues. `run()` runs it for you. | a model or mesh check before solving |
+| **preflight** (`sim.preflight()`) | Checks of the setup that run before the first time step, without solving. Each finding is an **error**, which stops the run, or a **warning** or **info**, which is reported while the run continues. The same findings on a run's error (`error.diagnostics`) are called refusal, advisory, warning and info. `run()` runs it for you. | a model or mesh check before solving |
 | **fidelity report** (`sim.fidelity_report()`) | A printed table of each shape's drawn extent next to where it landed on the grid. | a mesh view of the discretised model |
 | **sheet**, **volume**, **wire** | The three kinds of conductor: a zero-thickness sheet on one grid plane (`add_thin_conductor`, `add_pinned_sheet`), a solid metal volume, and a thin wire (a `PolylineWire` with `radius=0`), built as a path of zeroed E edges. A radius above zero but below half a cell is refused. See [Conductors](/rfx/model/conductors/). | zero-thickness PEC, thick PEC, thin-wire model |
 | **wire port** (`add_port(..., extent=...)`) | A lumped port spread along several cells instead of one cell edge. | a distributed lumped (discrete) port |
@@ -32,7 +32,7 @@ name appears in the API, the API name is given too.
 
 | rfx name | What it means in rfx | Nearest field term |
 |---|---|---|
-| **simulation time** (`n_steps`, `num_periods`, `until_decay`) | How long the run is: the number of time steps times the time step. Older pages and some API names call it the record length (`gradient_record_length_witness`). | simulation time, number of time steps (Meep `run(until=...)`, openEMS `NrTS`) |
+| **simulation time** (`n_steps`, `num_periods`, `until_decay`) | How long the run is: the number of time steps times the time step. Some API names and printed checks call it the record length (`gradient_record_length_witness`). | simulation time, number of time steps (Meep `run(until=...)`, openEMS `NrTS`) |
 | **refused** | rfx raises before the first time step instead of running a different model than the one you declared. The message names the input, the solver path and what to do instead. See [Refusals](/rfx/check/refusals/). | none; plain English |
 | **status words** (supported, limited, experimental, not documented, unsupported, refused) | How far a feature is supported. Defined on the [support page](/rfx/support/). | none; plain English |
 
@@ -48,6 +48,6 @@ name appears in the API, the API name is given too.
 
 | rfx name | What it means in rfx | Nearest field term |
 |---|---|---|
-| **S-parameter calculator** (`compute_s_matrix(method=...)`) | The one function that extracts S for a port family; `method=` chooses it (it was `lane=` before 2.0). | S-parameter extraction |
+| **S-parameter calculator** (`compute_s_matrix(method=...)`) | The one function that extracts S for a port family. The registered ports choose it; `method=` picks between the two calculators a single coaxial port has, and otherwise must agree with the ports or raises (it was `lane=` before 2.0). | S-parameter extraction |
 | **`reliable` mask** (microstrip S-parameter results) | Per port and frequency, False where both the port voltage and current fall below 10 % of their own band median in a driven run. A low-signal flag, not an accuracy statement. | none |
 | **gradient check from a longer run** (`gradient_record_length_witness`) | The same gradient computed again from a longer run (twice as long by default, `factor=`), and the relative change of the gradient over all parameters reported per frequency. Agreement between automatic differentiation and finite differences does not replace it, because both differentiate the same run. See [Gradients](/rfx/check/gradients/). | a convergence check of the gradient in simulation time |

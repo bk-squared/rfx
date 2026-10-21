@@ -79,9 +79,14 @@ print("ok:", sim.preflight().ok)
 sim.fidelity_report()
 ```
 
-Preflight now reports no error. It still gives warnings: the substrate runs into
-the absorber, and the graded in-plane mesh reaches the absorber faces. Both are
-in the table below; here the substrate is meant to run to the edge. The
+Preflight now reports no error. The warnings left are not about the patch
+size: the model has no source yet (`no_sources`), the copper's thickness is not
+modelled (`thin_conductor_thickness_unmodelled`), a lossless resonator in an
+open domain has an infinite Q (`lossless_q`), and the graded in-plane mesh
+reaches the absorber faces (`nu_grading_reaches_absorber`, in the table below).
+On this graded mesh the substrate, drawn to the domain edge, is also reported
+in the absorber (`geometry_in_absorber`) by 3.5×10⁻¹⁸ m: rounding in the summed
+cell sizes, not a modelling problem; the uniform mesh does not report it. The
 patch's lines in the report now read (abridged):
 
 ```text
@@ -103,8 +108,8 @@ Two options change what the check does:
   faces, solved off its drawn size as a warning instead of an error, and records that choice in
   `realized_geometry().snap`. It changes neither the mesh nor the result; you
   are telling rfx you know the solved size differs.
-- `preflight(strict=True)` raises on the first finding instead of collecting
-  them.
+- `preflight(strict=True)` collects every finding, warnings and notes
+  included, and raises one `ValueError` that lists them all.
 
 `run(skip_preflight=True)` skips the automatic check. Use it only after you
 have read the report once for the same model.
@@ -121,7 +126,7 @@ Preflight's findings that compare the drawing with the grid:
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
 | a sheet off a dielectric face | The face is not on a node plane, so the sheet snaps up to half a cell away. | Put the face on a node plane. |
-| geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. A substrate that runs to the domain edge on purpose is reported too. |
+| geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. |
 
 Other findings are about the setup rather than the grid: cell size against
 wavelength, a lossless resonator in an open domain (its Q is infinite), a model
@@ -140,7 +145,9 @@ of [simulation time](/rfx/check/simulation-time/),
 An error-severity finding stops `run()` and `forward()` with a `ValueError`
 before the first time step. The error carries the findings as `rfx.Diagnostic`
 records (`error.diagnostics`), each with a `code`, a `severity`, a `message` and
-the numbers behind it in `values`.
+the numbers behind it in `values`. These records name the severities
+differently from `preflight()`: an error is `"refusal"`, a warning is
+`"advisory"`, and `"warning"` and `"info"` keep their names.
 
 Inputs a solver path does not implement are refused by a separate check that
 does not depend on the grid; [Refusals](/rfx/check/refusals/) explains how they

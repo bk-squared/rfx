@@ -36,8 +36,12 @@ sim = Simulation(
 
 - All lengths are in **metres**, frequencies in **hertz**, and conductivity in
   **S/m**.
-- `freq_max` does two things. It sets the default time step, and it is the
-  frequency preflight uses to judge whether the mesh is fine enough.
+- `freq_max` sets the defaults that depend on frequency: the cell size when
+  you give no `dx` (a twentieth of the free-space wavelength at `freq_max`),
+  the run length when you give no `n_steps` (`num_periods` periods of
+  `freq_max`) and the centre frequency of the default pulse (`freq_max/2`).
+  Preflight uses it to judge whether the mesh is fine enough. The time step
+  follows from the cell size.
 - The CPML absorber is added **outside** the `domain` you give, so `domain`
   is the region you model. Structures that reach the domain edge continue into
   the absorber, which is how an infinite slab or a line leaving the box is
@@ -67,7 +71,8 @@ sim.add_source(
 ```
 
 This is a soft point source that drives `Ez` in one cell. `amplitude_kind="current"`
-means the waveform amplitude is a current in amperes. Always pass it
+means the waveform amplitude is a current moment I(t) in A·m: a current times
+the length it flows along. Always pass it
 explicitly. A point source has no impedance, so it gives fields, resonances and
 far fields but **not** S-parameters. Use a port for those; see
 [Sources and Ports](/rfx/model/ports/).
@@ -98,8 +103,9 @@ Preflight looks for mistakes that give a wrong answer without crashing:
 Errors stop the run. Warnings are advisory, but read every one of them.
 `run()` repeats the check and prints any warnings.
 
-Try `eps_r=4.0` on the slab. At 2 mm cells that leaves exactly 15 cells per
-wavelength inside the dielectric, and preflight will warn about phase accuracy.
+Try `eps_r=4.0` on the slab. At 2 mm cells that leaves 14.99 cells per
+wavelength inside the dielectric, just under the 15 preflight asks for (its
+message rounds it to 15.0), so preflight warns about phase accuracy.
 
 ## 6. Run and read the result
 

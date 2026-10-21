@@ -154,7 +154,7 @@ deprecated aliases (see [Upgrading](/rfx/start/upgrading/)).
 
 ## Inputs rfx refuses
 
-| Input | What happens | Way through |
+| Input | What happens | Instead |
 |---|---|---|
 | A `Result` with no `dt` (built by hand) | `ValueError` | `run()` fills it; otherwise pass `dt` when you build the `Result`. |
 | No `freq_range` and none stored on the result | `ValueError` | Pass `freq_range=(f_min, f_max)`. |
