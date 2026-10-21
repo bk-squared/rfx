@@ -45,9 +45,22 @@ Two things moved at once and neither is separated here, because neither
 gate binds on the value: the fins are now drawn on the node line (so the
 realized block is the drawn one, not a 1.5 mm block between two planes the
 drawing never named), and the waveguide S-matrix lane applies the realized
-PEC edges instead of folding ``pec_mask`` cells into ``sigma = 1e10``. The
-numbers above are the reflector class, quoted so the next reader does not
-carry the pre-#931 figures forward.
+PEC edges instead of folding ``pec_mask`` cells into ``sigma = 1e10``.
+
+RE-DRAWN 2026-10-22 (#1972): the numbers above are NOT physical. At
+dx = 1.5 mm the 22.86 mm guide width is not whole cells, so the solved
+guide was 24 mm wide and the fins sat 0.5-0.6 mm off their drawing; a
+passive iris read |S11| 2.17. The waveguide S-matrix's PEC-spacing preflight
+(#1895) refused that fixture. With dx = a/18 = b/8 and fins on nodes, per
+bin at 8.2/9.25/10.3/11.35/12.4 GHz (Mac CPU, #1972 review):
+
+    uniform   |S11| = 0.744 / 0.942 / 0.877 / 0.857 / 0.638
+    graded-dy |S11| = 0.740 / 0.939 / 0.872 / 0.851 / 0.625
+
+the strong-reflector class of a thin symmetric inductive iris (Marcuvitz,
+d/a = 0.444: about 0.88-0.66 over the band), so each test also bounds
+|S11| <= 1 per bin. Power at the band-edge bins (|S11|^2+|S21|^2 0.57 at
+8.2 GHz) is low on both lanes; nothing here reads it.
 """
 from __future__ import annotations
 
@@ -108,9 +121,9 @@ def _iris_sim(*, nonuniform: bool):
     fin = _FIN
     # #931: the fins are a VOLUME (a metal block through the guide), and
     # they are drawn ON node planes so drawn thickness == realized
-    # thickness: one cell, walls at xc -/+ dx/2. The old corners
-    # (xc -/+ 1 mm at dx = 1.5 mm) sat mid-cell, so the realized fin was
-    # 1.5 mm wide between two node planes the drawing never named and the
+    # thickness: one cell, walls at xc -/+ dx/2. The pre-#931 corners
+    # (xc -/+ 1 mm at the then dx = 1.5 mm) sat mid-cell, so the realized fin was
+    # one cell wide between two node planes the drawing never named and the
     # realized position depended on where the box fell between two cell
     # centres. Nothing in this file is about the fin's thickness — it is a
     # strong-reflector witness — but an ambiguous drawing is what the
@@ -135,7 +148,15 @@ def _iris_s11_max(*, nonuniform: bool) -> float:
         res = _iris_sim(nonuniform=nonuniform).compute_waveguide_s_matrix(
             num_periods=_NP, normalize="flux",
         )
-    return float(np.abs(np.asarray(res.s_params)[0, 0, :]).max())
+    s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
+    # A passive iris cannot reflect more than it receives. The pre-#1972
+    # fixture (a 24 mm guide solved for a 22.86 mm drawing) read 2.17 here
+    # and passed the lower bounds below; 0.05 covers extraction noise
+    # (0.94 measured at most, both lanes).
+    assert np.all(s11 <= 1.0 + 0.05), (
+        f"PEC iris |S11| per bin {np.round(s11, 3)} exceeds 1 on a passive "
+        "structure: suspect the extraction or a mis-sized realized guide")
+    return float(s11.max())
 
 
 @pytest.mark.parametrize("nonuniform", [False, True])
@@ -181,8 +202,9 @@ def test_nonuniform_pec_iris_reflects():
     reflector. The calculator now constructs an independent empty guide
     (no interior PEC, same boundary guide walls). The
     iris now recovers on the graded-dy path into the same strong-reflector
-    class as the uniform witness (|S11|max 1.807 vs 2.170 re-measured under
-    #931; ~1.4-1.6 vs ~0.78-2.1 when the fix landed)."""
+    class as the uniform witness (|S11|max 0.939 vs 0.942 on the #1972
+    fixture; see the module docstring for why the earlier figures, above 1,
+    were not physical)."""
     s11_nu = _iris_s11_max(nonuniform=True)
     assert s11_nu > 0.2, (
         f"NU PEC iris |S11|max={s11_nu:.3f} <= 0.2 — iris not reflecting; the "

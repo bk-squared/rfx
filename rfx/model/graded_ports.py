@@ -7,7 +7,6 @@ from typing import NamedTuple
 from rfx._grid_metric import field_index
 from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
 from rfx.core.yee import MaterialArrays
-from rfx.measurement.port_s_contract import passive_record_diagnostic
 from rfx.model.conductors import lumped_port_stage, publish_port_release
 from rfx.nonuniform import (
     e_node_dual_spacing_at, port_metric, port_metric_axes, position_to_index,
@@ -275,8 +274,10 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                     idx, pe.component, pe.waveform, sigma_port, 1 / d_parallel)))
 
             # Requested bins opt lumped ports into V/I/reference accumulators
-            # on both entries. An explicit run S request also admits default
-            # bins; no request keeps the historical wire-only default.
+            # on both entries. An explicit run S request, or an all-passive
+            # set on run (its V/I stay available with S off, as on uniform),
+            # also admits default bins; otherwise the wire-only default holds.
+            from rfx.measurement.port_s_contract import passive_record_diagnostic
             lumped_port_specs.append({
                 'mid_i': i, 'mid_j': j, 'mid_k': k,
                 'component': pe.component,
