@@ -220,10 +220,18 @@ class ThinConductor:
     surface_impedance_f0: float | jnp.ndarray | None = None
 
     def __post_init__(self):
+        from rfx.core.jax_utils import is_tracer
         from rfx.geometry.csg import OrientedBox
         if isinstance(self.shape, OrientedBox):
             raise NotImplementedError(
                 "OrientedBox is a volume; axis-aligned thin-conductor sheets are not implemented")
+        if (self.surface_impedance_f0 is not None or
+                (not is_tracer(self.sigma_bulk) and self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)):
+            if is_tracer(self.eps_r) or self.eps_r != 1:
+                raise ValueError(
+                    f"add_thin_conductor sheet in PEC / surface-impedance mode: eps_r={self.eps_r!r} "
+                    "is not modelled; the sheet's update uses the permittivity of the cells it lies in. "
+                    "Declare the dielectric around it with add(..., material=...); leave eps_r at 1.")
 
     @property
     def is_pec(self) -> bool:
@@ -323,6 +331,12 @@ class PinnedSheet:
                 "sheet folds sigma_bulk*thickness into the cell it sits in, "
                 "which the node-pinned declaration does not carry; declare it "
                 "with add_thin_conductor(shape, sigma_bulk=...).")
+        from rfx.core.jax_utils import is_tracer
+        if is_tracer(self.eps_r) or self.eps_r != 1:
+            raise ValueError(
+                f"add_pinned_sheet: eps_r={self.eps_r!r} is not modelled; "
+                "the sheet's update uses the permittivity of the cells it lies in. "
+                "Declare the dielectric around it with add(..., material=...); leave eps_r at 1.")
 
     @property
     def is_pec(self) -> bool:

@@ -1040,8 +1040,8 @@ class Simulation(
             Bulk conductivity (S/m). Default: copper (5.8e7).
 
             **This single value decides the model.** At or above 1e6 S/m the
-            shape becomes a PEC sheet and ``thickness`` and ``eps_r`` are
-            never read (:func:`rfx.materials.thin_conductor.apply_thin_conductor`
+            shape becomes a PEC sheet; ``eps_r`` must stay at 1 and
+            ``thickness`` is not read (:func:`rfx.materials.thin_conductor.apply_thin_conductor`
             returns the material arrays untouched and only ORs the mask). Below
             1e6 S/m the shape becomes a lossy sheet whose conductivity is
             ``sigma_bulk * thickness / d_norm``, where ``thickness`` IS
@@ -1058,8 +1058,8 @@ class Simulation(
             **Only used on the lossy path** (``sigma_bulk < 1e6``); ignored
             entirely for metals — see ``sigma_bulk`` above.
         eps_r : float
-            Relative permittivity (default 1.0). Lossy path only, same as
-            ``thickness``.
+            Must stay at 1 (default 1.0); the sheet uses its cells' permittivity.
+            Declare surrounding dielectric with ``add(..., material=...)``.
         surface_impedance_f0 : float or None
             Opt-in band-centre Leontovich surface-impedance loss
             (issue #669). Default ``None`` = exact legacy behaviour on every
@@ -1238,10 +1238,10 @@ class Simulation(
         node line carries no E edge, so the metal would carry no current.
 
         Only the lossless PEC sheet is supported (``sigma_bulk >= 1e6``,
-        ``surface_impedance_f0`` unset); ``thickness`` and ``eps_r`` are
-        accepted for signature compatibility with
-        :meth:`add_thin_conductor` and are not read, exactly as they are
-        not read there for a metal.
+        ``surface_impedance_f0`` unset); ``thickness`` is accepted for
+        signature compatibility with :meth:`add_thin_conductor` and is not read.
+        ``eps_r`` must stay at 1; the sheet uses its cells' permittivity.
+        Declare surrounding dielectric with ``add(..., material=...)``.
         """
         from rfx.materials.thin_conductor import PinnedSheet
         self._pinned_sheets.append(PinnedSheet(
