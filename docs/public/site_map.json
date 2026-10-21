@@ -16,8 +16,10 @@
     {
       "label": "Start",
       "items": [
+        "rfx/guide",
         "rfx/start/install",
         "rfx/start/first-simulation",
+        "rfx/guide/first-run",
         "rfx/start/concepts",
         "rfx/start/terms",
         "rfx/start/upgrading",
@@ -32,7 +34,8 @@
         "rfx/model/materials",
         "rfx/model/conductors",
         "rfx/model/sources",
-        "rfx/model/ports"
+        "rfx/model/ports",
+        "rfx/guide/waveguide-ports"
       ]
     },
     {
@@ -47,7 +50,8 @@
       "items": [
         "rfx/run/run-and-forward",
         "rfx/run/memory-and-speed",
-        "rfx/run/multi-device"
+        "rfx/run/multi-device",
+        "rfx/guide/adi-solver"
       ]
     },
     {
@@ -75,7 +79,8 @@
         "rfx/design/gradients",
         "rfx/design/design-regions",
         "rfx/design/optimization",
-        "rfx/design/sweeps"
+        "rfx/design/sweeps",
+        "rfx/guide/gradient-behavior"
       ]
     },
     {
@@ -89,7 +94,10 @@
       "label": "Validation",
       "items": [
         "rfx/validation",
-        "rfx/validation/cross-solver"
+        "rfx/validation/cross-solver",
+        "rfx/guide/validation",
+        "rfx/guide/benchmarks",
+        "rfx/validation/recommended-configuration"
       ]
     },
     {
@@ -118,6 +126,9 @@
         "rfx/api/simulation",
         "rfx/api/results",
         "rfx/api/functions",
+        "rfx/api/geometry-materials",
+        "rfx/api/sources-ports",
+        "rfx/guide/api-reference",
         "rfx/api/generated",
         "rfx/api/machine-readable"
       ]
@@ -128,22 +139,6 @@
         "rfx/project/changelog",
         "rfx/project/contributing",
         "rfx/project/citation"
-      ]
-    },
-    {
-      "label": "Being merged for 2.0",
-      "items": [
-        "rfx/guide",
-        "rfx/guide/first-run",
-        "rfx/guide/waveguide-ports",
-        "rfx/guide/adi-solver",
-        "rfx/guide/gradient-behavior",
-        "rfx/api/geometry-materials",
-        "rfx/api/sources-ports",
-        "rfx/guide/api-reference",
-        "rfx/validation/recommended-configuration",
-        "rfx/guide/validation",
-        "rfx/guide/benchmarks"
       ]
     }
   ]

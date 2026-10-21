@@ -1,20 +1,72 @@
 ---
 title: Citing rfx
-description: How to cite rfx.
+description: The papers and the software entry to cite when you use rfx.
 sidebar:
   order: 3
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
+## The rfx paper
 
-## What it is for
+If rfx contributes to work you publish, cite the paper that describes it:
 
-## How to use it
+B. Kim, "rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and
+Microwave Engineering," *IEEE Transactions on Microwave Theory and Techniques*,
+2026, [doi:10.1109/TMTT.2026.3729863](https://doi.org/10.1109/TMTT.2026.3729863).
 
-## What is checked
+```bibtex
+@article{kim_rfx_tmtt_2026,
+  author = {Byungkwan Kim},
+  title = {rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering},
+  journal = {IEEE Transactions on Microwave Theory and Techniques},
+  year = {2026},
+  pages = {1--15},
+  doi = {10.1109/TMTT.2026.3729863}
+}
+```
 
-## What is refused, and the way through
+## Simulation time for gradients
 
-## Accuracy
+The simulation time an S-parameter gradient needs when a design parameter moves
+a resonance, why automatic differentiation, the adjoint and finite differences
+on the same run share that error, and tail extrapolation carried through the
+gradient are described in:
 
-## See also
+B. Kim, "Delayed Convergence of S-Parameter Sensitivities to Design Parameters
+in FDTD Simulations," [arXiv:2610.28496](https://arxiv.org/abs/2610.28496),
+2026.
+
+```bibtex
+@misc{kim_sensitivity_convergence_2026,
+  author = {Byungkwan Kim},
+  title = {Delayed Convergence of S-Parameter Sensitivities to Design Parameters in FDTD Simulations},
+  year = {2026},
+  eprint = {2610.28496},
+  archivePrefix = {arXiv},
+  primaryClass = {eess.SP},
+  url = {https://arxiv.org/abs/2610.28496}
+}
+```
+
+## The software
+
+To cite the code itself, add the version you ran as `version`
+(`python -c "import rfx; print(rfx.__version__)"`):
+
+```bibtex
+@software{kim_rfx_2026,
+  author = {Byungkwan Kim},
+  title = {rfx: JAX-based differentiable 3D FDTD simulator for RF engineering},
+  institution = {REMI Lab, Chungnam National University},
+  year = {2026},
+  url = {https://github.com/bk-squared/rfx}
+}
+```
+
+The repository's
+[`CITATION.cff`](https://github.com/bk-squared/rfx/blob/main/CITATION.cff)
+holds the software entry, the rfx paper as the preferred citation and the arXiv
+paper as a reference; GitHub's "Cite this repository" button reads it.
+
+rfx is MIT-licensed and developed at the
+[Radar & ElectroMagnetic Intelligence Laboratory](https://remilab.cnu.ac.kr),
+Chungnam National University.

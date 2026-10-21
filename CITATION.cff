@@ -31,3 +31,17 @@ preferred-citation:
   start: 1
   end: 15
   doi: "10.1109/TMTT.2026.3729863"
+references:
+  - type: article
+    title: "Delayed Convergence of S-Parameter Sensitivities to Design Parameters in FDTD Simulations"
+    authors:
+      - family-names: "Kim"
+        given-names: "Byungkwan"
+        affiliation: "REMI Lab, Chungnam National University"
+    year: 2026
+    journal: "arXiv"
+    url: "https://arxiv.org/abs/2610.28496"
+    identifiers:
+      - type: url
+        value: "https://arxiv.org/abs/2610.28496"
+        description: "arXiv:2610.28496"
