@@ -155,6 +155,9 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     # fixture (``tfsf_lumped_rlc``, which emitted only this code) went with it.
     ("_validate_cfg_unresolved_pulse", ("warn", "dx")),
     ("_validate_cfg_thin_conductor_surface_impedance", ("warn",)),
+    # 2026-10-21 (#1523): declared thickness advisory follows the f0 check;
+    # only sheets with an edge over the nearest dielectric report a shift.
+    ("_validate_cfg_thin_conductor_thickness", ("warn",)),
     ("_validate_cfg_thin_conductor_graded_node", ("warn",)),
     ("_validate_cfg_source_on_graded_node", ("warn",)),
     ("_validate_cfg_wire_port_on_graded_node", ("warn",)),

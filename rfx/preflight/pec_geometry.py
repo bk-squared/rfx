@@ -146,6 +146,93 @@ _CAMPAIGN_MAX_OFFENDERS = 5
 # ---------------------------------------------------------------------------
 
 
+def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
+    """Report unmodelled metal thickness relative to the nearest dielectric,
+    excluding sheets that cover that dielectric's in-plane footprint."""
+    from rfx.materials.thin_conductor import sheet_bounds, sheet_normal_axis
+
+    sheets = []
+    for i, tc in enumerate(getattr(self, "_thin_conductors", ())):
+        if is_tracer(tc.thickness) or not float(tc.thickness) > 0.0:
+            continue
+        if is_tracer(tc.sigma_bulk) and tc.surface_impedance_f0 is None:
+            continue
+        if not (tc.is_pec or tc.surface_impedance_f0 is not None):
+            continue
+        sheets.append((i, tc))
+    if not sheets:
+        return
+
+    dielectrics = []
+    nonbox_dielectrics = 0
+    for entry in self._geometry:
+        material = self._resolve_material(entry.material_name)
+        if is_tracer(material.eps_r) or not float(material.eps_r) > 1.0:
+            continue
+        if not isinstance(entry.shape, Box):
+            nonbox_dielectrics += 1
+            continue
+        lo, hi = sheet_bounds(entry.shape)
+        if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            continue
+        dielectrics.append(_sorted_box_corners(entry.shape))
+
+    for i, tc in sheets:
+        lo, hi = sheet_bounds(tc.shape)
+        if lo is None or hi is None:
+            continue
+        if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            continue
+        axis = sheet_normal_axis(lo, hi)
+        lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
+        plane = 0.5 * (float(lo[axis]) + float(hi[axis]))
+        inplane = [a for a in range(3) if a != axis]
+        candidates = []
+        for blo, bhi in dielectrics:
+            if not all(min(hi[a], bhi[a]) > max(lo[a], blo[a]) for a in inplane):
+                continue
+            height = float(bhi[axis] - blo[axis])
+            distance = max(float(blo[axis]) - plane, plane - float(bhi[axis]), 0.0)
+            candidates.append((distance, height, blo, bhi))
+        if not candidates:
+            continue
+        _, height, blo, bhi = min(candidates, key=lambda candidate: candidate[:2])
+        if all(lo[a] <= blo[a] + 1e-12 and hi[a] >= bhi[a] - 1e-12 for a in inplane):
+            continue
+        thickness = float(tc.thickness)
+        ratio = thickness / height if height else math.inf
+        if ratio <= 0.02:
+            continue
+        if ratio > 0.175:
+            shift = "more than about +0.99 %"
+        else:
+            shift_percent = np.interp(
+                ratio, (0.005, 0.045, 0.085, 0.175), (0.115, 0.45, 0.57, 0.99),
+            )
+            shift_value = f"{shift_percent:#.2g}".rstrip(".")
+            shift = f"about +{shift_value} %"
+        coverage = (
+            f" {nonbox_dielectrics} non-Box dielectric entr(y/ies) ignored."
+            if nonbox_dielectrics else ""
+        )
+        _w.warn(PreflightWarning(
+            f"Thin conductor #{i}: declared thickness t = {_fmt_len(thickness)}, "
+            f"nearest dielectric height h = {_fmt_len(height)}, t/h = {100 * ratio:.3g} %. "
+            "The conductor is solved with zero thickness, so its declared thickness "
+            "is not in the model. A microstrip on it reads electrically long by "
+            f"{shift}, so a stub, resonator or filter edge built from it sits low "
+            "in frequency by about the same fraction. This shift was measured on "
+            "a 50 Ω-class microstrip on εr ≈ 3.4 at 20–40 GHz (#1523). "
+            "Widening the strip does not correct it. See "
+            'docs/guides/known_limitations.md, "Conductor thickness is not solved".'
+            + coverage,
+            code="thin_conductor_thickness_unmodelled",
+            severity="warning",
+            source="_validate_cfg_thin_conductor_thickness",
+            loc=f"thin_conductors[{i}]",
+        ), stacklevel=3)
+
+
 def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
     """Advisories for Leontovich (surface_impedance_f0) sheets (#669).
 
@@ -1528,6 +1615,9 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
 # ``staticmethod(...)``, so the loop keeps skipping it and the pre-move string
 # survives. Measured both ways before and after the move.
 # ---------------------------------------------------------------------------
+_validate_cfg_thin_conductor_thickness.__qualname__ = (
+    "_PreflightMixin._validate_cfg_thin_conductor_thickness"
+)
 _validate_cfg_thin_conductor_surface_impedance.__qualname__ = (
     "_PreflightMixin._validate_cfg_thin_conductor_surface_impedance"
 )

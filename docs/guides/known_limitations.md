@@ -116,6 +116,7 @@ sheet on one node plane; its `thickness` argument is not read
 thickness is therefore not part of the model, and a microstrip line built from such a
 sheet reads slightly electrically long against the same line with its real thickness.
 Widening the sheet does not correct it.
+Preflight now reports declared metal-sheet thickness above 2 % of the nearest overlapping Box dielectric's height, with the expected electrical-length shift.
 
 ---
 

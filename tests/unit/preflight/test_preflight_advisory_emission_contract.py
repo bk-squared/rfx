@@ -479,7 +479,10 @@ def _enumerate_emission_sites():
 # 1 % off their drawn spacing: an error under snap='strict', a warning under
 # snap='declared'.
 # #1913: one blocking waveguide span emission site.
-_FROZEN_TOTAL_SITES = 138
+# 138 -> 139 (#1953): ``_validate_cfg_thin_conductor_thickness`` (rfx/preflight/pec_geometry.py),
+# new code ``thin_conductor_thickness_unmodelled`` -- a metal sheet's declared
+# thickness is not in the model.
+_FROZEN_TOTAL_SITES = 139
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -516,7 +519,8 @@ _FROZEN_TOTAL_SITES = 138
 # 89 -> 90 (#1691): wire_port_no_radius.
 # 90 -> 91 (#1800): sheet_cavity_spacing.
 # #1913: waveguide_port_obstacle_before_reference.
-_FROZEN_LITERAL_CODE_COUNT = 92
+# 92 -> 93 (#1953): thin_conductor_thickness_unmodelled.
+_FROZEN_LITERAL_CODE_COUNT = 93
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

@@ -1835,6 +1835,7 @@ class _PreflightMixin:
     # ------------------------------------------------------------------
     from rfx.preflight.pec_geometry import (
         _validate_cfg_thin_conductor_surface_impedance,
+        _validate_cfg_thin_conductor_thickness,
     )
 
 

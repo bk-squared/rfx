@@ -731,6 +731,9 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_pec_realization", "_validate_cfg_sheet_cavity_thickness",
         "_validate_cfg_sheet_slot_vacuum",
         "_validate_cfg_thin_conductor_surface_impedance",
+        # 2026-10-21 (#1523): bind the declared thickness advisory beside
+        # the f0 check, at its new config-registry position.
+        "_validate_cfg_thin_conductor_thickness",
     ),
     # Leg 3. None of these twelve was a @staticmethod, so the frozenset
     # below stays a one-element set and every qualname here is restored to

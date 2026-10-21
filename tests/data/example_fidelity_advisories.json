@@ -625,6 +625,30 @@
    "ref": "validation/tmtt_paper/lumped_port_gradient_check.py:1-60 | scripts/diagnostics/lumped_wire_chain_battery_measure.py:559-592",
    "rows": 1,
    "variant": "validation/tmtt_paper/lumped_port_gradient_check.py::build::default"
+  },
+  {
+   "code": "thin_conductor_thickness_unmodelled",
+   "disposition": "intended",
+   "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.5 mm substrate (t/h 2.33 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:130,287-289",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
+   "code": "thin_conductor_thickness_unmodelled",
+   "disposition": "intended",
+   "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.524 mm substrate (t/h 2.3 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,371-373",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "thin_conductor_thickness_unmodelled",
+   "disposition": "intended",
+   "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1 mm substrate (t/h 3.5 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.37 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the trace (thin_conductors[1]) is.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:157-184",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   }
  ]
 }
