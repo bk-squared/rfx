@@ -506,8 +506,10 @@ For plotting S-parameters, fields and time series, see
 ## Limits
 
 - **Probe or flux spectrum looks noisy or has ripples** → the record ended
-  before the fields decayed. Check `settling_db`, then run longer or use
-  `until_decay=`.
+  before the fields decayed. Run longer. `settling_db` judges a run that reads
+  frequencies through a port, NTFF box or DFT plane; with probes or flux
+  monitors alone it reads `absent`, so check the time signal's decay yourself.
+  For paired runs (a reference and an object), keep one fixed `n_steps`.
 - **Reflection from two flux runs looks wrong** → subtract the fields with
   `subtract_flux_monitors`, not the flux values, and keep the two runs
   identical apart from the object.

@@ -50,12 +50,14 @@ sim = Simulation(**kwargs)
 print(sorted(kwargs))
 ```
 
-When the plan grades z, compare `sum(kwargs["dz_profile"])` with
-`kwargs["domain"][2]` before you build. For this board the plan returns a
-101.5 mm z domain but a profile that covers 51.6 mm, with neighbouring cells
-up to 2:1, above the 1.4 limit below. `Simulation` keeps a positive domain as
-given, so the two disagree. Until the planner is fixed, build the z profile
-with `make_band_profile` and pass `0.0` as the z size.
+When the plan grades z, its z profile starts at the board's bottom face and
+covers only the board and the upper margin: for this board the plan reports a
+101.5 mm z domain, but the model is solved over about half of it, with the
+board on the lower absorber, and with neighbouring cells up to 2:1 (above the
+1.4 limit below). Until the planner is fixed, raise the geometry by the margin
+before planning, or build the model with a uniform z mesh and an explicit
+domain; see the
+[known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).
 
 `MeshPlan` holds the derived `domain`, `cell_sizes`, `cfl`, `absorber`,
 `memory`, `grid_shape`, `support_checks` and `warnings`. Export it with
