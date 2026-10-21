@@ -91,6 +91,8 @@ report in ``Result.ringdown.stop``.
 from __future__ import annotations
 
 from rfx._grid_metric import field_index
+from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
+from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
 from rfx._ringdown_pencil import (
     IdentificationMemoryRefused,
     _check_run_identification_memory,
@@ -154,6 +156,8 @@ __all__ = [
     "static_pole_bound",
     "gradient_witness",
     "GRADIENT_WITNESS_BAR",
+    "sensitivity_truncation_error",
+    "required_t_over_tau",
     "RingdownStopCheck",
     "RingdownStopReport",
 ]
@@ -2368,24 +2372,6 @@ def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float
     _factors, kept = decimation_plan(int(n_window), float(dt), float(freq_max))
     L = int(_harminv._pencil_columns(int(kept), PENCIL_PARAMETER))
     return max(1, int(min(int(kept) - L, int(n_channels) * L)))
-
-
-#: The bar of the gradient witness (PI, 2026-09-25): the largest difference
-#: of the two gradients, relative to the largest magnitude of the gradient.
-GRADIENT_WITNESS_BAR = 1.0e-2
-
-_GRADIENT_WITNESSES = {
-    "early_start": (
-        "WE_gradient",
-        "max over the parameters of |g - g_E| / max |g|: g through "
-        "ringdown.s_params (window [window_start T, T]), g_E through "
-        "ringdown.s_params_long (window [window_start/2 T, T]), same record"),
-    "longer_record": (
-        "record_length_gradient",
-        "max over the parameters of |g - g_L| / max |g|: g through "
-        "ringdown.s_params, g_L through ringdown.s_params of a record 1.5-2x "
-        "longer"),
-}
 
 
 def gradient_witness(grad, grad_other, *, against: str = "early_start",
