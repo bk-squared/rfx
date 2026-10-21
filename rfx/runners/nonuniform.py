@@ -571,7 +571,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # the shared driver (compute_lumped_wire_s_matrix_via_scan), not this record.
     from rfx.runners._admission import _s_matrix_ports, graded_lumped_default_s
     from rfx.measurement.port_s_contract import passive_record_diagnostic
-    passive_diagnostic = (not _s_matrix_ports(sim) and passive_record_diagnostic(sim))
+    passive_diagnostic = passive_record_diagnostic(sim)  # V/I kept as on uniform (#1929)
     # One excited lumped port alone reads S from the main record, as uniform run() does.
     single_lumped = (len(sim._ports) == 1 and sim._ports[0].extent is None
                      and sim._ports[0].impedance != 0.0 and sim._ports[0].excite)

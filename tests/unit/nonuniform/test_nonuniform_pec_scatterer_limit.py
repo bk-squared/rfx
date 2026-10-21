@@ -68,18 +68,30 @@ from tests.unit._wall_planes_m import wall_planes_m
 _A, _B, _FMAX = 0.02286, 0.01016, 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
 _NP = 20
+# The guide walls and the fin faces are PEC planes the S-matrix preflight
+# holds to their drawn spacing (#1895): dx = a/18 = b/8 puts both guide
+# walls on nodes, and each fin spans 5 cells of the 18 (55.6 % blocked).
+_DX = _A / 18
+_FIN = 5 * _DX
 
 
 def _graded_dy(ratio: float = 2.0, base: float = 0.75e-3):
     n = int(round(_A / base))
     x = np.linspace(-1, 1, n)
     w = 1.0 + (ratio - 1.0) * np.abs(x)
-    return smooth_grading(w / w.sum() * _A, max_ratio=1.3)
+    nodes = np.concatenate([[0.0], np.cumsum(w / w.sum() * _A)])
+    # Grade each span between PEC planes on its own so the fin faces at
+    # _FIN and _A - _FIN stay mesh nodes.
+    cells = []
+    for lo, hi in ((0.0, _FIN), (_FIN, _A - _FIN), (_A - _FIN, _A)):
+        inside = np.diff(nodes[(nodes >= lo) & (nodes <= hi)])
+        cells.append(inside / inside.sum() * (hi - lo))
+    return np.concatenate(cells)
 
 
 def _iris_sim(*, nonuniform: bool):
-    """WR-90 with a symmetric inductive PEC iris (~60% width blocked)."""
-    dx = 1.5e-3
+    """WR-90 with a symmetric inductive PEC iris (55.6 % of the width blocked)."""
+    dx = _DX
     nx = int(round(0.100 / dx))
     kw = {"dy_profile": _graded_dy()} if nonuniform else {}
     sim = Simulation(
@@ -93,7 +105,7 @@ def _iris_sim(*, nonuniform: bool):
     )
     sim.add_material("metal", eps_r=1.0, sigma=1e7)  # sigma > 1e6 -> PEC
     xc = 0.5 * nx * dx
-    fin = 0.30 * _A
+    fin = _FIN
     # #931: the fins are a VOLUME (a metal block through the guide), and
     # they are drawn ON node planes so drawn thickness == realized
     # thickness: one cell, walls at xc -/+ dx/2. The old corners
@@ -135,7 +147,7 @@ def test_the_iris_realizes_the_fins_where_they_are_drawn(nonuniform):
     plane off; this is what says the two lanes rasterize the same obstacle
     before either of them is asked to reflect off it.
     """
-    dx = 1.5e-3
+    dx = _DX
     nx = int(round(0.100 / dx))
     xc = 0.5 * nx * dx
     with warnings.catch_warnings():

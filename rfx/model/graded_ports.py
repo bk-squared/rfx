@@ -7,6 +7,7 @@ from typing import NamedTuple
 from rfx._grid_metric import field_index
 from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
 from rfx.core.yee import MaterialArrays
+from rfx.measurement.port_s_contract import passive_record_diagnostic
 from rfx.model.conductors import lumped_port_stage, publish_port_release
 from rfx.nonuniform import (
     e_node_dual_spacing_at, port_metric, port_metric_axes, position_to_index,
@@ -285,7 +286,8 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 'live_cells': ((i, j, k),),
                 'n_live': 1,
                 'kind': 'lumped', 'port_id': _port_index,
-                'record_only': not (s_param_freqs is not None or (lane == 'run_nonuniform' and compute_s_params is True)),
+                'record_only': not (s_param_freqs is not None or (lane == 'run_nonuniform' and (
+                    compute_s_params is True or passive_record_diagnostic(sim)))),
             })
 
     # Preserve wire indices when explicit bins also include lumped ports.

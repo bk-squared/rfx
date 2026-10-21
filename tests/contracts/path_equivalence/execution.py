@@ -27,7 +27,8 @@ def solve(row, lane, graded, steps, dt):
     if forward:
         run = sim.forward
         kwargs['checkpoint'] = False
-        if row[0] == '_ports' and row[1] in ('lumped_port', 'passive_port', 'wire_port'):
+        # An all-passive record has no S column to form (#1929): forward refuses it.
+        if row[0] == '_ports' and row[1] in ('lumped_port', 'wire_port'):
             from .builders import FREQS
             kwargs['port_s11_freqs'] = FREQS
     else:
