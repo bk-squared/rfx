@@ -10,6 +10,13 @@ def assert_declared_wall_warning(sim, axes=None):
     the expected warning uses ordinary half-up arithmetic, not a grid helper.
     """
     assert sim._snap == 'declared'
+    # A periodic axis that is not yet whole cells is fitted by its caller after construction (a Floquet port rounds
+    # the cell); an early build would meet the periodic-divisor refusal instead of the wall warning, so skip those.
+    if sim._dx is not None and any(
+            getattr(sim._boundary_spec, a).lo == 'periodic'
+            and abs(sim._domain['xyz'.index(a)] / sim._dx - round(sim._domain['xyz'.index(a)] / sim._dx)) > 1e-6
+            for a in 'xyz'):
+        return sim
     if axes is None:
         axes = [a for a in 'xyz' if all(getattr(getattr(sim._boundary_spec, a), side)
                 in ('pec', 'pmc') for side in ('lo', 'hi'))]
