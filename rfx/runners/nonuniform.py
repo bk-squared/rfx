@@ -350,6 +350,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
             dft_total_steps=n_steps,
             dt=float(grid.dt),
             waveform=entry.waveform,
+            mode_profile=entry.mode_profile,
         )
     return init_waveguide_port(
         port, grid, freqs,
@@ -361,6 +362,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         dft_total_steps=n_steps,
         dt=float(grid.dt),
         waveform=entry.waveform,
+        mode_profile=entry.mode_profile,
     )
 
 

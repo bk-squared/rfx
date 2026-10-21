@@ -175,6 +175,7 @@ class WaveguidePortConfig(NamedTuple):
     aperture_dA: jnp.ndarray = jnp.zeros((0, 0), dtype=jnp.float32)
     h_offset: tuple[float, float] = (0.0, 0.0)
     mode_indices: tuple[int, int] = (0, 0)
+    mode_profile: str = "discrete"
 
 
 def _te_mode_profiles(a: float, b: float, m: int, n: int,
@@ -930,6 +931,7 @@ def init_waveguide_port(
         if waveform == "modulated_gaussian":
             e_spec_filt = e_spec_raw
         else:
+            # Unreachable for waveguide ports since the #1942 refusal; kept for the causal table (#1942).
             f_c_arr = np.full_like(freqs_spec, f_c)
             f_taper_hi = 1.2 * f_c
             taper_ratio = np.clip(
@@ -1005,6 +1007,7 @@ def init_waveguide_port(
         aperture_dA=jnp.asarray(aperture_dA_np, dtype=field_dtype),
         h_offset=(float(h_offset[0]), float(h_offset[1])),
         mode_indices=(int(m), int(n)),
+        mode_profile=str(mode_profile),
     )
 
 

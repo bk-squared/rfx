@@ -173,6 +173,27 @@ def test_interop_default_realizes_modulated():
         assert cfg.waveform == "modulated_gaussian"
 
 
+@pytest.mark.parametrize("mode_profile", ["analytic", "discrete"])
+@pytest.mark.parametrize("n_modes", [1, 2])
+def test_graded_config_preserves_declared_mode_profile(mode_profile, n_modes, monkeypatch):
+    from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+
+    sim = Simulation(
+        12e9, (.04, .02286, .01016), dx=.002032, cpml_layers=4,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
+        dz_profile=np.array([.0015, .002, .003, .002, .00166]))
+    freqs = np.array([10e9])
+    sim.add_waveguide_port(.008, f0=10e9, freqs=freqs,
+                           probe_offset=2, ref_offset=1,
+                           mode_profile=mode_profile, n_modes=n_modes)
+    monkeypatch.setattr(jax.lax, "scan", _no_steps)
+    cfg = _build_waveguide_port_config_nu(
+        sim, sim._waveguide_ports[0], sim._build_nonuniform_grid(), freqs, 2)
+    configs = cfg if isinstance(cfg, list) else [cfg]
+    assert len(configs) == n_modes
+    assert all(c.mode_profile == mode_profile for c in configs)
+
+
 @pytest.mark.parametrize("waveform", ["modulated_gaussian", "differentiated_gaussian"])
 def test_mixed_calculator_already_refuses_waveguides(waveform, monkeypatch):
     sim = _guide()
