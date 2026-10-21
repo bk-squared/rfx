@@ -10,7 +10,8 @@ factors below (this run's CPUs: 7763 jobs 2, 3, 6, 7, 8, 10; 9V45 1, 11, 12; 9V7
 9, whose assumed factor now moves up to about 140 s of price). Fast (10) hit the workflow's 120-min
 limit at 89 % and stored nothing; the 1,996 tests it finished are priced from the job log's
 result-line timestamps, and the tests it never reached (`test_distributed_record_*`, `*_parity`) stay
-unpriced. Merged over the previous file (later wins): 24,640 → 27,107 entries; the fast collection of
+unpriced. Merged over the previous file (later wins): 24,640 → **27107 entries in the file**, of which
+**625 of them carried unchanged** (same node id, same price); the fast collection of
 26,716 tests has 159 unpriced. pytest-split predicts 39.9–43.4 min per shard on the 7763 basis; under
 the new prices the old shard 8 costs 84.6 min. Inputs, the build and prediction scripts: rfx-archive
 `rfx/records/20261021-fast-prices-refresh/`.
@@ -26,7 +27,7 @@ measured 2026-10-16 00:11-01:15 UTC on `ubuntu-latest` with Python 3.11.17 / JAX
 pytest 9.1.1, pytest-split 0.11.0 and trimesh 5.1.1 (the `cad` extra). Only the fast lane was
 re-measured: each fast job ran with JAX's on-disk compilation cache in one empty directory per job,
 as pr-tests' fast suite does since #1779, so the fast prices are what that lane now pays.
-**24640 entries in the file**, of which **347 of them carried unchanged** from the
+24640 entries in the file, of which 347 of them carried unchanged from the
 20407-entry file this replaces. All 12 fast jobs succeeded; slow was skipped. The fast (6) pytest
 summary reports one failed test,
 `tests/locks/test_lock_provenance_gate.py::test_lock_is_not_expired[test_cpml_axis_params_refactor_bit_identical]`
