@@ -1,5 +1,6 @@
 ---
 title: "Waveguide Ports"
+description: "Get a rectangular waveguide S-matrix with compute_waveguide_s_matrix, choose its normalization, and handle junctions."
 sidebar:
   order: 3
 ---
