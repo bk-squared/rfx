@@ -186,6 +186,39 @@ def test_other_injection_kinds(kind, obj):
     assert ': ' in message and message.endswith(')')
 
 
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+@pytest.mark.parametrize('kind', ['staircase_eps', 'series_RL_ez', 'thin_pec_sheet'])
+def test_uncorrected_high_e_component_admitted(entry, kind):
+    sim = scene(interior=True)
+    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
+    assert (cfg.x_lo, cfg.x_hi) == (14, 26)
+    # 8 pad cells and 1 mm cells: node x_hi=26 is x=18 mm. The literal
+    # slab [9,18) mm ends with cell 25 (center 17.5 mm), i.e. x_hi-1.
+    # Its tangential E mean, the Ez RL and the sheet reach node x_hi only.
+    if kind == 'staircase_eps':
+        sim.add_material('dielectric', eps_r=4.)
+        sim.add(Box(mm(9, 0, 0), mm(18, 12, 12)), material='dielectric')
+    elif kind == 'series_RL_ez':
+        sim.add_lumped_rlc(mm(18, 6, 6), 'ez', R=10., L=1e-9)
+    else:
+        sim.add_thin_conductor(Box(mm(18, 0, 0), mm(18, 12, 12)))
+    kwargs = {'compute_s_params': False} if entry == 'run' else {'checkpoint': False}
+    result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_staircase_slab_filling_high_cell_refused(entry):
+    sim = scene(interior=True)
+    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
+    assert cfg.x_hi == 26
+    # One extra cell: [9,19) mm fills cell x_hi=26 (center 18.5 mm).
+    sim.add_material('dielectric', eps_r=4.)
+    sim.add(Box(mm(9, 0, 0), mm(19, 12, 12)), material='dielectric')
+    with pytest.raises(ValueError, match=r'x_hi: permittivity \(materials.eps_r\)'):
+        getattr(sim, entry)(n_steps=2, skip_preflight=True)
+
+
 def test_setup_parameter_classification_is_complete():
     from rfx.stepping.uniform_setup import _build_step_setup
     from rfx.stepping.graded_setup import _build_nu_scan
