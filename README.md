@@ -27,9 +27,9 @@ The website identifies its source version; select the release matching your inst
   solve a declared input (a conformal wall, subpixel smoothing, a lumped element, a port,
   a dispersive material, a solver or precision request), it raises before the first time
   step and names the input. It does not run a different model silently.
-- **Validation cases are judged against a stated accuracy bar** on a converged mesh:
+- **Validation cases are judged on criteria stated in advance**, on a converged mesh:
   magnitudes within 2 dB, resonances and cutoffs within 1 %, group delay within 1 %
-  of the reference. This is the bar the project tests against, not a guarantee for every
+  of the reference. These are the criteria the project tests against, not a guarantee for every
   model. What is supported, and within which limits, is in the
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md); what is currently wrong is in
   [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).

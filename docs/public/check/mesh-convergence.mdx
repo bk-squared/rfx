@@ -1,6 +1,6 @@
 ---
-title: "Tutorial: Convergence Study"
-description: "Step-by-step mesh convergence analysis for rfx FDTD simulations."
+title: "Is the mesh fine enough?"
+description: "A three-mesh study of the one number a claim rests on, the run length checked on its own, and how to read the trend."
 sidebar:
   order: 2
 ---
@@ -10,7 +10,7 @@ you solve the same problem on several meshes and check that the number you
 care about stops moving. Do one before you quote a number from a new
 geometry.
 
-This tutorial runs a three-mesh study of a resonance in a loaded cavity. It
+This page runs a three-mesh study of a resonance in a loaded cavity. It
 takes about ten seconds on a laptop CPU.
 
 ## 1. Choose one number
@@ -136,7 +136,7 @@ When you report the result, give the cell sizes, the metric at each, the
 extrapolated value and order, and the script that produced them.
 
 A study covers the metric it tracked, on the geometry and settings it used.
-It is not evidence for other outputs of the same model. Accuracy against the
+It says nothing about other outputs of the same model. Accuracy against the
 real device also needs a comparison with a reference: another solver, an
 analytic result or a measurement. See
 [Cross-Validation and Accuracy](/rfx/guide/validation/) and the
@@ -159,7 +159,7 @@ analytic result or a measurement. See
 - **Domain and absorber.** A fine mesh does not fix an absorber that is too
   close. Vary the air margin and `cpml_layers` as a separate check.
 
-## Limits
+## When the study does not settle
 
 - **Metrics jump around between meshes** → the geometry probably snaps
   differently at each size. Align faces to all cell sizes, or check

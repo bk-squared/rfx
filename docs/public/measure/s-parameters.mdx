@@ -11,7 +11,7 @@ be trusted, and how to de-embed and export S-parameters.
 
 Every example uses a coarse mesh so the page runs in about a minute on a
 laptop CPU. A real study would refine the mesh and run longer; see
-[Convergence Study](/rfx/evidence/mesh-convergence/).
+[Is the mesh fine enough?](/rfx/check/mesh-convergence/).
 
 ## Field probes
 
@@ -430,7 +430,7 @@ no single check catches every case.
   `fail`, `undetermined` or `absent` (nothing recorded to judge); only `pass`
   is a pass.
 - `compute_msl_s_matrix`, `compute_waveguide_s_matrix` and the coax two-port
-  calculators check each drive run against the same −40 dB bar and warn when
+  calculators check each drive run against the same −40 dB limit and warn when
   a record ends too early. Their results carry `settling_db` per drive.
 - When a run has an NTFF box or a DFT plane, `run()` warns if a probe is
   still ringing at the end, and warns that the check is missing if there is

@@ -5,26 +5,24 @@ sidebar:
   order: 3
 ---
 
-## What it is for
-
 A gradient from `forward()` is the exact derivative of the run you set up. If
 the run ends while a resonance is still ringing, every frequency of the result
 keeps a leftover term whose phase grows with the simulation time T. A
 parameter that moves the resonance turns that phase, and the turn enters the
 derivative multiplied by T while the term stays small in the value. The value
 can be converged while its gradient is still more than 10 % off.
-[Simulation time for gradients](/rfx/evidence/gradient-simulation-time/) gives
+[Simulation time for gradients](/rfx/check/gradient-simulation-time/) gives
 how long the run must be, in decay times of the slowest mode.
 
-The [settling check](/rfx/evidence/simulation-time/) is a statement about the
+The [settling check](/rfx/check/simulation-time/) is a statement about the
 value and does not cover this. Neither does agreement between automatic
 differentiation and finite differences: both differentiate the same run. The
 check that sees it takes the same gradient from a longer run. Run it once for
 each new setup before you optimize, and again for any gradient you report.
 
-## How to use it
+## Check a gradient from a longer run
 
-The model is the one on the [Simulation time](/rfx/evidence/simulation-time/)
+The model is the one on the [Simulation time](/rfx/check/simulation-time/)
 page: a lossy slab between a 50 Ω lumped port and a probe. The parameter is the
 slab's permittivity, and the objective is the power the probe sees at three
 frequencies. The objective takes the number of time steps as its second
@@ -69,29 +67,29 @@ gradient record-length witness PASS: 400 -> 800 steps moved the gradient by 0.37
 ```
 
 At 200 steps the source has not ended inside the run (the settling check on
-the [Simulation time](/rfx/evidence/simulation-time/) page says
+the [Simulation time](/rfx/check/simulation-time/) page says
 `undetermined`), and doubling the run moves both the value, by 4.2 %, and the
 gradient, by 5.8 %. From 300 steps on the gradient moves by less than 0.5 %,
-inside the 5 % bar chosen here, and its direction does not turn (cosine
+inside the 5 % tolerance chosen here, and its direction does not turn (cosine
 1.0000). This gradient is usable from 300 steps on.
 
 The slab is lossy and rings out within the pulse, so its gradient settles as
 soon as its value does. A resonator does not: in the cavity under
-[Accuracy](#accuracy), a run that passes the settling check has its power
+[Where it is tested](#where-it-is-tested), a run that passes the settling check has its power
 converged to 0.4 % while its gradient is still more than 10 % away. Run the
 check on every new setup, and expect it to matter most where the structure
 rings.
 
 What to pass and read:
 
-- `tol` is required and has no default. The right bar depends on the
+- `tol` is required and has no default. The right tolerance depends on the
   structure's Q, on how far the parameter moves a resonance and on what the
-  gradient is for. State the bar you chose.
+  gradient is for. State the tolerance you chose.
 - `factor` (default 2) is the ratio of the two simulation times. The check only
   sees ringing that the longer run resolves: a run too short by more than
   `factor` can pass, because both runs carry a similar leftover. That is why
   the page reads it over three simulation times.
-- `check.passed` and `check.worst` are the verdict. `check.rel_by_bin` gives it
+- `check.passed` and `check.worst` give the result. `check.rel_by_bin` gives it
   per frequency, `check.cosine_by_bin` says whether the direction of the
   gradient turned (below 1) or only its length changed (1),
   `check.worst_value_rel_change` shows the value's change beside it.
@@ -100,7 +98,7 @@ What to pass and read:
 - The cost is two differentiated runs, one `factor` times longer, and a second
   compilation.
 
-### Finite differences
+## Compare with finite differences
 
 Compare the automatic-differentiation gradient with a central difference at the
 same simulation time:
@@ -128,11 +126,11 @@ when the probe never sees the reflection during the run, or sits in the
 absorber, both sides agree on a gradient of numerical noise. Compare the size
 of the objective with what the physics leads you to expect.
 
-### Gradients through tail extrapolation
+## Gradients through tail extrapolation
 
 With `forward(..., ringdown=RingdownSpec())` the completed S-parameters
 (`out.ringdown.s_params`, see
-[tail extrapolation](/rfx/evidence/simulation-time/#tail-extrapolation-by-matrix-pencil))
+[tail extrapolation](/rfx/check/simulation-time/#tail-extrapolation-by-matrix-pencil))
 are differentiable, and their gradient has its own check: the same gradient
 through the completion fitted on a window that starts twice as early
 (`out.ringdown.s_params_long`). One forward pass gives both gradients:
@@ -157,7 +155,7 @@ The check passes when, for every parameter leaf, the largest difference
 between the two gradients is at most 1 % of that leaf's largest gradient
 (`bar=1e-2`). When the gradient has a frequency axis, pass `bin_axis=` and only
 the frequencies the objective reads, so a near-zero frequency at the band edge
-does not decide the verdict. When the source is still on in the earlier window
+does not decide the result. When the source is still on in the earlier window
 or a completion failed, the check is not formed: `check.ok` is False,
 `check.value` is NaN and `check.note` says why. Then compare with the same
 gradient from a run 1.5 to 2 times longer:
@@ -168,27 +166,27 @@ On a weakly coupled high-Q resonator, add
 fit from the port alone can get the value right and the gradient of that
 resonance wrong.
 
-## What is checked
+## How the checks work
 
 **The gradient check from a longer run** (`gradient_record_length_witness`). Per frequency, the
 relative change of the whole gradient vector, over every element of every
 parameter: ‖g_long − g‖ / ‖g_long‖. There is no floor in it, so an element with
 almost no sensitivity cannot decide it. `grad_rel_change` holds the
 per-element changes, floored at `floor_frac` of the largest gradient; use it to
-find where a failed check sits, not as the verdict. The number depends on how
+find where a failed check sits, not as the result. The number depends on how
 you parameterize, so check the parameters you optimize.
 
 **The tail-extrapolation check** (`rfx.ringdown.gradient_witness`). Per
 parameter leaf, the largest difference between the two gradients over that
 leaf's largest gradient, against 1 %. A NaN in either gradient fails it.
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | What happens | Instead |
 |---|---|---|
 | a complex parameter leaf in `gradient_record_length_witness` | `ValueError` with the reason | pass the real and imaginary parts as separate real leaves |
 | an integer or boolean parameter leaf | `ValueError`: it carries no gradient | cast it to a float |
-| `gradient_record_length_witness` without `tol` | `TypeError` | state the bar |
+| `gradient_record_length_witness` without `tol` | `TypeError` | state the tolerance |
 | `forward(ringdown=...)` with `distributed=True` | refused | run on one device |
 | `forward(ringdown=...)` with `emit_time_series=False` | refused: the port signals are recorded as probe series | keep the time series |
 | `forward(ringdown=...)` without `port_s11_freqs=`, on either mesh | refused | pass the frequencies |
@@ -198,11 +196,11 @@ leaf's largest gradient, against 1 %. A NaN in either gradient fails it.
 
 The refusals of `run(ringdown=...)` that concern the model (port kinds, solver
 paths, the source in the fit window) on the
-[Simulation time](/rfx/evidence/simulation-time/#what-is-refused-and-the-way-through)
+[Simulation time](/rfx/check/simulation-time/#inputs-rfx-refuses)
 page apply to `forward(ringdown=...)` too. Like `run()`, `forward(ringdown=...)`
 needs a driven wire port, which the slab model above does not have.
 
-## Accuracy
+## Where it is tested
 
 - On a lossy-filled PEC cavity in the test suite (Q about 20 near 7 GHz), a
   1600-step run passes the −40 dB settling check and its power is converged to
@@ -221,8 +219,8 @@ needs a driven wire port, which the slab model above does not have.
 
 - [Autodiff and adjoint background](/rfx/design/gradients/): what `forward()`
   can differentiate.
-- [Simulation time for gradients](/rfx/evidence/gradient-simulation-time/): how
+- [Simulation time for gradients](/rfx/check/gradient-simulation-time/): how
   long a gradient must run, and when it changes a design.
-- [Is the run long enough?](/rfx/evidence/simulation-time/): the settling check
+- [Is the run long enough?](/rfx/check/simulation-time/): the settling check
   for the value.
-- [The accuracy bar](/rfx/evidence/accuracy-bar/).
+- [When does a result agree with a reference?](/rfx/check/agreement/).

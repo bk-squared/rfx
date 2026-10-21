@@ -18,7 +18,7 @@ iteration. Each step links to the page that covers it in detail.
 | 2. Resonance | run until the ring-down settles, extract modes, identify the radiating one | [Probes and S-Parameters](/rfx/measure/s-parameters/) |
 | 3. Return loss | replace the soft source with a port and compute S11 | [Sources and Ports](/rfx/model/ports/) |
 | 4. Radiation | add an NTFF box and compute pattern and directivity | [Far-Field and RCS](/rfx/measure/far-field-and-rcs/) |
-| 5. Convergence | refine the mesh and report how much each number moves | [Convergence Study](/rfx/evidence/mesh-convergence/) |
+| 5. Convergence | refine the mesh and report how much each number moves | [Is the mesh fine enough?](/rfx/check/mesh-convergence/) |
 | 6. Design iteration | sweep or optimize the dimensions and substrate | [Parametric Sweeps](/rfx/design/sweeps/), [Inverse Design](/rfx/design/optimization/) |
 
 `examples/tutorials/patch_antenna_demo.py` runs steps 1, 2 and 4 end to end on
@@ -48,7 +48,7 @@ cases compare with openEMS.
 ## Resonance
 
 A patch rings down slowly, so run for many periods and check
-`result.settling_db` against a -40 dB bar before you quote a frequency. The
+`result.settling_db` against −40 dB before you quote a frequency. The
 example runs a fixed `num_periods` and reads the settling level afterwards.
 
 `result.find_resonances(freq_range=...)` returns several modes. A rectangular

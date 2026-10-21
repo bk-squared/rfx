@@ -67,7 +67,7 @@ order you declared them.
 - Each row is taken after the step completes: E at (n + 1)·dt and H at
   (n + ½)·dt for row n.
 - A probe at a point source or a lumped or wire port measures the source, not
-  the structure. The [settling check](/rfx/evidence/simulation-time/) ignores it
+  the structure. The [settling check](/rfx/check/simulation-time/) ignores it
   when other probes exist.
 
 ### DFT planes
@@ -155,7 +155,7 @@ that does not implement an output, the run is refused before the first step.
   (`tests/oracle/test_lossy_material_validation.py`).
 
 Every spectral output is a transform of a record of finite length; read the
-[settling check](/rfx/evidence/simulation-time/) before reporting one.
+[settling check](/rfx/check/simulation-time/) before reporting one.
 
 ## See also
 

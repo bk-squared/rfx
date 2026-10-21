@@ -18,7 +18,7 @@ loses e^(−T/τ) of itself, and its sensitivity to the parameter loses
 than the value.
 
 This page gives that time in units of τ, what to do when it is too long to
-simulate, and when it changes a design. [Checking a gradient](/rfx/evidence/gradients/)
+simulate, and when it changes a design. [Checking a gradient](/rfx/check/gradients/)
 is the check that a given run was long enough; run it in either case.
 
 ## How long
@@ -55,7 +55,7 @@ discrete adjoint of the time stepping) and finite differences of two runs of
 the same length all differentiate the truncated result, and all carry this
 error. Their agreement therefore does not test it. The test is the same
 gradient from a longer run: `gradient_record_length_witness`, on
-[Checking a gradient](/rfx/evidence/gradients/). For a gradient taken through
+[Checking a gradient](/rfx/check/gradients/). For a gradient taken through
 tail extrapolation, `rfx.ringdown.gradient_witness` compares the completion
 fitted on the run from T/2 with one fitted from T/4.
 
@@ -65,7 +65,7 @@ and carries a different error; this page does not cover it.
 
 ### Stop rules watch the value
 
-The [settling check](/rfx/evidence/simulation-time/) passes when at most 1 % of
+The [settling check](/rfx/check/simulation-time/) passes when at most 1 % of
 each frequency's value lies beyond the end of the run, and the decay stop
 `run(until_decay=...)` watches the field energy. Both judge the value. At a
 resonance that dominates the value, a 1 % tail comes at about 4.6 τ, where the
@@ -88,7 +88,7 @@ off [[Kim 2026]](#reference).
 2. Take T for the frequency the objective reads farthest from that resonance,
    from the formula above or from the two functions below, and set
    `n_steps` to T divided by the time step (`sim.freeze_mesh().dt`).
-3. Run the [gradient check](/rfx/evidence/gradients/) at that length.
+3. Run the [gradient check](/rfx/check/gradients/) at that length.
 
 The formula is in `rfx.ringdown`:
 
@@ -126,7 +126,7 @@ Instead of simulating the late time, it can be supplied:
 `forward(..., ringdown=RingdownSpec())` fits the ringing poles on the late part
 of the run, adds their tail to the port spectra, and carries the gradient
 through the fitted poles (wire ports only; see
-[Gradients through tail extrapolation](/rfx/evidence/gradients/#gradients-through-tail-extrapolation)).
+[Gradients through tail extrapolation](/rfx/check/gradients/#gradients-through-tail-extrapolation)).
 The signals it fits must contain the mode, and for a weakly coupled mode the
 port alone is not enough. On a cavity whose slowest mode (Q about 5000) was
 weakly coupled to the port, the fit from the port alone found that mode's pole
@@ -199,7 +199,7 @@ mode. For the optimum of coupled resonators, S itself must have converged:
   (`tests/oracle/test_sensitivity_truncation_error.py`).
 - The estimate against simulation, the stop rules, tail extrapolation inside
   the gradient and the two filter designs are in [[Kim 2026]](#reference).
-- The cavity on [Checking a gradient](/rfx/evidence/gradients/#accuracy) (Q
+- The cavity on [Checking a gradient](/rfx/check/gradients/#where-it-is-tested) (Q
   about 20) is a low-Q case: its gradient is still more than 10 % off after the
   settling check has passed.
 
@@ -211,8 +211,8 @@ mode. For the optimum of coupled resonators, S itself must have converged:
 
 ## See also
 
-- [Checking a gradient](/rfx/evidence/gradients/): the check from a longer run,
+- [Checking a gradient](/rfx/check/gradients/): the check from a longer run,
   finite differences, and gradients through tail extrapolation.
-- [Is the run long enough?](/rfx/evidence/simulation-time/): the settling check
+- [Is the run long enough?](/rfx/check/simulation-time/): the settling check
   for the value.
 - [Resonances](/rfx/measure/resonances/): f and Q of a mode from a probe.

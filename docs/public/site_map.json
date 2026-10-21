@@ -65,13 +65,13 @@
       ]
     },
     {
-      "label": "Check the evidence",
+      "label": "Check the result",
       "items": [
-        "rfx/evidence/simulation-time",
-        "rfx/evidence/mesh-convergence",
-        "rfx/evidence/gradients",
-        "rfx/evidence/gradient-simulation-time",
-        "rfx/evidence/accuracy-bar"
+        "rfx/check/simulation-time",
+        "rfx/check/mesh-convergence",
+        "rfx/check/gradients",
+        "rfx/check/gradient-simulation-time",
+        "rfx/check/agreement"
       ]
     },
     {

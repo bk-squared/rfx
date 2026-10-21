@@ -5,8 +5,6 @@ sidebar:
   order: 1
 ---
 
-## What it is for
-
 Every frequency-domain result rfx gives you is a Fourier transform of a time
 signal of finite length: S-parameters, DFT planes, flux, far fields and
 resonances. If the run ends while the structure is still ringing, each of them
@@ -14,12 +12,12 @@ misses the part of the signal beyond the end, and nothing in the curve says so.
 A resonator with quality factor Q at frequency f decays over roughly
 Q / (π f) seconds, so a high-Q structure needs a long run.
 
-This page is the check that the simulation time was long enough for the
+This page shows how to check that the simulation time was long enough for the
 frequencies you read. Run it on every result you intend to report, after the
 [check of the model on the grid](/rfx/check/model-on-grid/) and before the
-[mesh convergence study](/rfx/evidence/mesh-convergence/).
+[mesh convergence study](/rfx/check/mesh-convergence/).
 
-## How to use it
+## Set the simulation time
 
 Set the simulation time with one of three `run()` arguments:
 
@@ -28,6 +26,8 @@ Set the simulation time with one of three `run()` arguments:
 | `n_steps=N` | exactly N time steps |
 | `num_periods=P` | P periods at `freq_max` (default 20, used when nothing else is given) |
 | `until_decay=1e-3` | step until the field energy left in the domain outside the absorbers after the source has ended falls to that fraction of its largest value since then, up to `decay_max_steps` (see [The decay stop](#the-decay-stop)) |
+
+## Read the settling check
 
 After the run, read `result.settling_witness["status"]`. The model below is a
 lossy dielectric slab between a 50 Ω lumped port and a probe, on a coarse 2 mm
@@ -64,9 +64,9 @@ for n in (200, 300, 400):
 
 At 200 steps the source pulse has not ended inside the run, so the check
 cannot be formed and says `undetermined` (its `reason` says the source end is
-unavailable, once for each signal judged). From 300 steps on it passes. Both values are far below the bar,
-and the second is not lower than the first: the dB figure is not a convergence
-measure. The status is the verdict.
+unavailable, once for each signal judged). From 300 steps on it passes. Both
+values are far below −40 dB, and the second is not lower than the first: the
+dB figure does not measure convergence. Read the status, not the number.
 
 The four states:
 
@@ -81,9 +81,9 @@ The four states:
 check was not formed. One run's status is a statement about that run. When the simulation
 time matters to a result you report, read the result itself over at least three
 simulation times and say how it moves, as the
-[accuracy bar](/rfx/evidence/accuracy-bar/) asks.
+[terms for agreement with a reference](/rfx/check/agreement/) ask.
 
-### The decay stop
+## The decay stop
 
 `run(until_decay=1e-3)` steps in chunks. Once the source has ended, it reads
 the field energy stored in every cell outside the absorbers every
@@ -114,7 +114,7 @@ structure instead of the energy inside. Field that does not radiate does not
 hold it back. The default pulse leaves no static charge at a current source,
 so its field does not hold back either stop.
 
-### Tail extrapolation by matrix pencil
+## Tail extrapolation by matrix pencil
 
 When a run was cut while a resonance still rings, rfx can add the missing tail
 instead of running longer. After the source is off, every port voltage and
@@ -153,7 +153,7 @@ two checks in a row, the run is long enough for the slowest pole that can
 still move S, and the completed S is passive with no growing pole. `result.ringdown.stop` says where
 it stopped, or which condition failed when it reached `n_steps`.
 
-## What is checked
+## How the checks work
 
 **The settling check** (`settling_witness`). For each frequency the result reads,
 rfx fits the poles still present in the time signal after the source ends, on
@@ -185,7 +185,7 @@ report also checks that no completed |S| exceeds 1 by more than
 `passivity_tol` and that no growing pole was kept. None of these checks is an
 error bound.
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
@@ -204,9 +204,9 @@ error bound.
 | `ringdown=` with `compute_s_params=False` | all | refused: there is nothing to complete | drop one of the two |
 | `ringdown=` when a source is on in the fit window | all | refused before the run | delay `window_start`, or run longer |
 
-## Accuracy
+## Where it is tested
 
-- The −40 dB bar is `_SETTLING_WITNESS_DB` in `rfx/sparams/_common.py`, pinned
+- The −40 dB limit is `_SETTLING_WITNESS_DB` in `rfx/sparams/_common.py`, pinned
   by `tests/unit/sparams/test_settling_witness.py`; the per-frequency check is
   `rfx/sparams/_tail_witness.py`.
 - On signals built from known damped oscillations, the completion reproduces
@@ -216,11 +216,11 @@ error bound.
 
 ## See also
 
-- [The accuracy bar](/rfx/evidence/accuracy-bar/): judging a result over three
-  simulation times.
-- [Gradients](/rfx/evidence/gradients/): a gradient needs its own check of the
+- [When does a result agree with a reference?](/rfx/check/agreement/): judging
+  a result over three simulation times.
+- [Gradients](/rfx/check/gradients/): a gradient needs its own check of the
   simulation time.
-- [Simulation time for gradients](/rfx/evidence/gradient-simulation-time/): at
+- [Simulation time for gradients](/rfx/check/gradient-simulation-time/): at
   a resonance that dominates the value, a 1 % gradient needs 1.44 times the
   simulation time of a 1 % value.
 - [Simulation API](/rfx/api/simulation/): `run()` arguments.
