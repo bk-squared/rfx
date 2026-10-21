@@ -1,6 +1,6 @@
 ---
 title: "Hollow rectangular waveguide (WR-90, TE10)"
-description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0013 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
+description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0014 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
 sidebar:
   order: 13
 ---
@@ -95,8 +95,11 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 a_wg, b_wg, dx = 22.86e-3, 10.16e-3, 1.27e-3
 freqs = np.linspace(8.2e9, 12.4e9, 21)
-f0 = float(freqs.mean()); bandwidth = 0.5
-domain_x = 0.200
+f0 = float(freqs.mean())
+bandwidth = float(freqs[-1] - freqs[0]) / f0    # 0.41
+# Lengths along x in whole cells, so the two ports are mirror images on the grid.
+domain_x = 158 * dx                             # 200.66 mm
+port_x, ref_x = 31 * dx, 39 * dx                # 39.37 mm and 49.53 mm from each end
 
 sim = Simulation(
     freq_max=float(freqs[-1]) * 1.1,
@@ -107,12 +110,12 @@ sim = Simulation(
     cpml_layers=26,
 )
 port_freqs = jnp.asarray(freqs)
-sim.add_waveguide_port(0.040, direction="+x", mode=(1, 0), mode_type="TE",
+sim.add_waveguide_port(port_x, direction="+x", mode=(1, 0), mode_type="TE",
     freqs=port_freqs, f0=f0, bandwidth=bandwidth,
-    waveform="modulated_gaussian", reference_plane=0.050, name="left")
-sim.add_waveguide_port(domain_x - 0.040, direction="-x", mode=(1, 0), mode_type="TE",
+    waveform="modulated_gaussian", reference_plane=ref_x, name="left")
+sim.add_waveguide_port(domain_x - port_x, direction="-x", mode=(1, 0), mode_type="TE",
     freqs=port_freqs, f0=f0, bandwidth=bandwidth,
-    waveform="modulated_gaussian", reference_plane=domain_x - 0.050, name="right")
+    waveform="modulated_gaussian", reference_plane=domain_x - ref_x, name="right")
 
 result = sim.compute_waveguide_s_matrix(num_periods=200, normalize=False)
 ```
@@ -123,11 +126,16 @@ Run it from the command line:
 python scripts/precompute_gallery_artifacts.py --case waveguide_wr90
 ```
 
-The run prints two notes. Preflight says the top of the band, 12.4 GHz, is above
+The run prints three notes. Preflight says the top of the band, 12.4 GHz, is above
 0.9 of the TE20 cutoff (13.1 GHz): TE20 is odd across the broad wall, so the
 symmetric TE10 launch does not excite it in an empty guide, and `|S11|` stays
 smooth to 12.4 GHz. The calculator says that with `normalize=False` the S21
-phase includes Yee dispersion; this page reads magnitudes.
+phase includes Yee dispersion; this page reads magnitudes. The port check finds
+the two ports at mirror positions on the grid and reports, as information, the
+one-cell shift of the `-x` port's source plane that rfx applies by design. With
+the ports at 40 mm and 160 mm instead (31.5 cells from each end), it warns that
+the ports are not mirror images; `|S11|` and `|S21|` come out the same to five
+decimals.
 
 ## Fields
 

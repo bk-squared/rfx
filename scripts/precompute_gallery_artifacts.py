@@ -451,11 +451,13 @@ def _build_waveguide_wr90(quick: bool) -> CaseResult:
     # 26 layers = 33 mm, half a guide wavelength at 8.2 GHz.
     cpml_layers = 12 if quick else 26
     num_periods = 30 if quick else 200
-    domain_x = 0.120 if quick else 0.200
-    port_left_x = 0.030 if quick else 0.040
-    port_right_x = domain_x - 0.040
-    ref_left = port_left_x + 0.010
-    ref_right = port_right_x - 0.010
+    # Lengths along x in whole cells, so the two ports are mirror images on the grid.
+    n_x, n_port, n_ref = (94, 24, 32) if quick else (158, 31, 39)
+    domain_x = n_x * dx
+    port_left_x = n_port * dx
+    port_right_x = domain_x - n_port * dx
+    ref_left = n_ref * dx
+    ref_right = domain_x - n_ref * dx
 
     f0 = float(freqs.mean())
     bandwidth = min(0.6, max(0.2, float(freqs[-1] - freqs[0]) / max(f0, 1.0)))
