@@ -22,7 +22,7 @@ cells, boundaries, conductors, sources and ports, and when a run is finished.
 | Inspect fields and export plots | [Visualization & analysis](/rfx/measure/plots-and-export/) |
 | Measure reflection and transmission | [Probes & S-parameters](/rfx/measure/s-parameters/) |
 | Build a real device | [Your First Patch Antenna](/rfx/examples/first-patch/) |
-| Refine the mesh and check the answer | [Convergence study](/rfx/evidence/mesh-convergence/) |
+| Refine the mesh and check the answer | [Convergence study](/rfx/check/mesh-convergence/) |
 | Change a design using derivatives | [Inverse design](/rfx/design/optimization/) and [gradient behavior](/rfx/guide/gradient-behavior/) |
 
 Use the [Examples hub](/rfx/examples/) to choose by structure or follow the

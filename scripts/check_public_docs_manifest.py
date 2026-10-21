@@ -10,7 +10,7 @@ from pathlib import Path
 
 PRIMARY_ROUTE_PREFIXES = ("rfx/showcase", "rfx/guide", "rfx/gallery", "rfx/examples", "rfx/api",
                           "rfx/validation", "rfx/start", "rfx/model", "rfx/check", "rfx/run",
-                          "rfx/measure", "rfx/evidence", "rfx/design", "rfx/support", "rfx/project")
+                          "rfx/measure", "rfx/design", "rfx/support", "rfx/project")
 LEGACY_GUIDE_QUARANTINE = {
     "documentation_architecture.md": "legacy docs/guide architecture note kept outside the public route manifest",
     "inverse_design_cookbook.md": "legacy cookbook retained until examples hub lands",
