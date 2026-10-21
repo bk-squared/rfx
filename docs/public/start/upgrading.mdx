@@ -62,7 +62,7 @@ the component first: `coeffs.ca[0]` is the Ex coefficient, where 1.x read
 | ADI (`solver="adi"`) | CFL factor 5 | CFL factor 2, and the default run honours `num_periods` | With an explicit `n_steps`, multiply it by 2.5 for the same simulation time. ADI is experimental in 2.0. |
 | `GaussianPulse`, the default waveform of `add_source` and of lumped, wire, microstrip and coaxial ports | started with a small jump and had a nonzero time integral, so a soft source left a static field behind | starts from zero and integrates to zero, with the same peak time | No switch. Before the pulse peak the drive differs by a small fraction of its amplitude; after it, a soft source's field no longer carries the static offset. Spectra change slightly at low frequency. `GaussianPulse(cutoff=...)` below 2.5 raises. Waveguide ports, plane waves and Floquet ports have their own pulses and did not change. |
 | `run(until_decay=...)` with absorbing boundaries and no `radiated_flux_box` | the source's own near field could set the energy reference, so a run could stop while a resonance still held energy | stops on the field energy left in the box after the source has ended, against its largest value after that, on uniform and graded meshes; `Result.diagnostics` gets one `until_decay.stop` entry saying what ended the run | No switch. Open resonant structures that stopped early now run until the threshold is met, and spectra and S-parameters read from them change. A closed PEC box on the uniform mesh still stops on a field sample, as before. |
-| an oblique plane wave on a periodic cell (`add_tfsf_source(angle_deg=...)`, `method="bloch"`, the default) | a modulated Gaussian peaking at t0 = 3τ, τ = 1/(π·f0·bandwidth), whatever `waveform` was declared | a modulated Gaussian peaking at 5τ, as on every other path | No switch. A record length or time gate counted from t = 0 moves by 2τ: lengthen `n_steps` or shift the gate by 2τ. |
+| an oblique plane wave on a periodic cell (`add_tfsf_source(angle_deg=...)`, `method="bloch"`, the default) | a modulated Gaussian peaking at t0 = 3τ, τ = 1/(π·f0·bandwidth), whatever `waveform` was declared | a modulated Gaussian peaking at 5τ, as on every other path | No switch. A run length or time gate counted from t = 0 moves by 2τ: lengthen `n_steps` or shift the gate by 2τ. |
 
 ## Inputs now refused
 
@@ -74,12 +74,12 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 
 **Geometry and conductors**
 
-| Input | Way through |
+| Input | Instead |
 |---|---|
 | A metal sheet solved more than 1 % off its drawn size | Build the in-plane mesh with `rfx.mesh_edges.edge_aware_profiles`, or pass `Simulation(snap="declared")` to accept the difference. See [Check the model on the grid](/rfx/check/model-on-grid/). |
 | The cavity between two parallel PEC faces solved more than 1 % off its drawn spacing (`sheet_cavity_spacing`): two sheets (a patch over its ground), a sheet and a face of a PEC `Box`, or two PEC `Box` faces (a thin PEC block drawn off the mesh nodes). With sheets, the usual cause is copper drawn with a thickness centred on a substrate face: a sheet is solved on one node plane, so the drawn thickness counts into the spacing. | Draw sheet copper with zero thickness on the interface it bounds, and put both faces on mesh nodes: a cell size that divides the heights, or `profiles = rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes="xyz")` with the PEC Boxes in `solids`, passed as `Simulation(..., dx=dx, **profiles)`. Use a smaller `dx` when the gap cannot hold the profile's ramps. `Simulation(snap="declared")` accepts the solved spacing with a warning. The domain's PEC floor and lid count as faces; a uniform grid builds a whole number of cells, so a domain extent that is not a multiple of `dx` moves the lid, and a `dx` that divides the extent keeps it in place. A cavity bounded by a PEC volume that is not a `Box`, or by an absorbing, magnetic or conformal domain face, is not checked; faces drawn touching but a float round-off apart count as touching. |
 | A PEC shape thinner than one cell but not zero, or one that covers no cell | Declare a sheet, resolve the thickness, or make it larger than a cell. |
-| A sub-cell wire radius (`PolylineWire(radius=...)` below the cell) | `radius=0` gives the 1.x result exactly; or refine the mesh so the wire is a volume. A probe pin may declare a radius up to 0.2 of a cell. |
+| A wire radius above zero but below half the smallest local cell (`PolylineWire(radius=...)`) | `radius=0` gives the 1.x result exactly; or refine the mesh so the wire is a volume. A probe pin may declare a radius up to 0.2 of a cell. |
 | A lossy film (`add_thin_conductor` below the metal threshold) that is not a box and spans more than one cell layer, or whose area the grid misses by more than 1 % | `snap="declared"` runs an off-area film and reports drawn and solved area. |
 | A lossy film with `eps_r` other than 1, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | The message says which; a film is a resistive sheet on one node plane and carries no permittivity. |
 | A soft source on a metal edge, or a source or port inside a PEC wall | Move it off the conductor, at least one cell inside the domain, or use a port. |
@@ -87,7 +87,7 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 
 **Boundaries and sources**
 
-| Input | Way through |
+| Input | Instead |
 |---|---|
 | A waveguide port filling a guide whose side faces are declared absorbing, or left undeclared on a graded mesh | Declare PEC side walls, e.g. `boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an x-directed port. Left undeclared on a uniform mesh, the side faces are walls, with a warning. |
 | A plane wave (`add_tfsf_source`) with a structure that is not uniform across its side faces (a finite scatterer, a lumped element). Those faces are solved as periodic. | Declare `periodic` side faces for an array, or use `add_tfsf_source(..., closed_box=True)` for one object. |
@@ -102,7 +102,7 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 
 **Solver paths and precision**
 
-| Input | Way through |
+| Input | Instead |
 |---|---|
 | An input a solver path does not implement (a lumped element, refinement, port, material or control on a path that cannot solve it) | The message names the path that can. Most often: run on one device, or on a uniform mesh. |
 | `precision="float64"` without JAX 64-bit mode | Build and run the model inside `with jax.enable_x64():`. |

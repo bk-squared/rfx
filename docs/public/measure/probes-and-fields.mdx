@@ -118,9 +118,9 @@ fields at the end of the run.
 | Output | `run()` | `forward()` | Not available on |
 |---|---|---|---|
 | point probes | yes | yes | — |
-| DFT planes | yes | yes | multi-device, ADI, subgridded |
-| flux monitors | yes | yes | multi-device, ADI, subgridded |
-| snapshots | yes | no | graded mesh, multi-device, ADI, subgridded |
+| DFT planes | yes | yes | ADI, subgridded |
+| flux monitors | yes | yes | ADI, subgridded |
+| snapshots | yes | no | graded mesh on one device, ADI, subgridded |
 | final fields (`state`) | yes | no | — |
 
 ## How rfx checks it
@@ -132,9 +132,9 @@ that does not implement an output, the run is refused before the first step.
 
 | Input | Solver path | Instead |
 |---|---|---|
-| a DFT plane | multi-device, ADI, subgridded | one device on a uniform or graded mesh |
-| a flux monitor | multi-device, ADI, subgridded | one device on a uniform or graded mesh |
-| `snapshot=` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
+| a DFT plane | ADI, subgridded | the standard solver, on one device or several |
+| a flux monitor | ADI, subgridded | the standard solver, on one device or several |
+| `snapshot=` | graded mesh on one device, ADI, subgridded | a uniform mesh, or several devices on either mesh |
 | a flux monitor with `dft_window="hann"` or `"tukey"` in a run stopped by `until_decay` | uniform and graded mesh | the default `dft_window="rect"`, or a fixed `n_steps`: a window needs the run's length in advance |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the

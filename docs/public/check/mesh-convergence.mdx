@@ -104,7 +104,7 @@ The metric function picks the lowest mode in a fixed band, so the study
 follows the same mode at every mesh. It raises when no mode is found instead
 of indexing an empty list.
 
-## 4. Check the record length separately
+## 4. Check the simulation time separately
 
 A study that changes `dx` says nothing about whether the runs were long
 enough. Rerun the finest mesh with a longer record and compare:
@@ -140,7 +140,7 @@ It says nothing about other outputs of the same model. Accuracy against the
 real device also needs a comparison with a reference: another solver, an
 analytic result or a measurement. See
 [Cross-Validation and Accuracy](/rfx/guide/validation/) and the
-[Benchmark Table](/rfx/guide/benchmarks/).
+[Benchmarks](/rfx/guide/benchmarks/).
 
 ## Other kinds of refinement
 
@@ -153,7 +153,7 @@ analytic result or a measurement. See
   the top frequency. Microstrip is usually set by the substrate thickness.
   Coax needs at least 4 cells across the annulus. See
   [Probes and S-Parameters](/rfx/measure/s-parameters/).
-- **Probe ladders are placed in cells.** A coaxial port's probes are spaced
+- **Coaxial probes are placed in cells.** A coaxial port's probes are spaced
   in cells, so refining the mesh shortens the physical span they cover. Give
   the probe array enough span at the finest mesh.
 - **Domain and absorber.** A fine mesh does not fix an absorber that is too
@@ -168,5 +168,5 @@ analytic result or a measurement. See
   rule (as `first_resonance` does), or by field pattern.
 - **Finest mesh is too expensive** → use a graded mesh to refine only where
   fields vary quickly, and refine it as a whole.
-- **The answer moves with record length** → lengthen every run in the study,
+- **The answer moves with simulation time** → lengthen every run in the study,
   not only the finest.

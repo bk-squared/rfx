@@ -53,15 +53,25 @@ FDTD simulation. It exits with code 0 when every critical check passes.
 Two warnings are normal:
 
 - **CPU-only backend.** Everything works, but large 3-D runs are slow.
-- **x64 disabled.** This is harmless for the default `precision="float32"`.
+- **x64 disabled.** Expected with the default `precision="float32"`: fields
+  are float32 and the frequency-domain sums are complex64, which the line
+  calls reduced precision.
 
-If you want `precision="float64"`, enable JAX 64-bit mode **before** you build
-the simulation:
+If you want `precision="float64"`, build and run the simulation inside a
+scoped JAX 64-bit block:
 
 ```python
 import jax
-jax.config.update("jax_enable_x64", True)
+from rfx import Simulation
+
+with jax.enable_x64():
+    sim = Simulation(..., precision="float64")
+    result = sim.run(...)
 ```
+
+Do not switch 64-bit mode on for the whole process, as the tool's hint
+suggests; rfx refuses `precision="float64"` outside 64-bit mode and asks for
+the scoped block.
 
 ## Development install
 
@@ -83,7 +93,7 @@ To contribute, see [Contributing](/rfx/project/contributing/).
 - Memory: 4 GB is enough for the examples. Use 16 GB or more for large 3-D
   models. On a GPU, device memory is usually the limit, and gradients need
   much more of it than a plain forward run; see
-  [Memory Reduction](/rfx/run/memory-and-speed/).
+  [Reduce Memory Use](/rfx/run/memory-and-speed/).
 - GPU: an NVIDIA card with CUDA 12 or newer. Absorbing boundaries cost more per
   cell than PEC, so budget for them in open-boundary work.
 

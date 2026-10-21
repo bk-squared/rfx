@@ -12,7 +12,7 @@ the differences that most often catch newcomers.
 Before you port a production model, check that its mesh, boundaries, ports
 and observables are inside the
 [Recommended Configuration](/rfx/validation/recommended-configuration/) and
-[Support Boundaries](/rfx/support/).
+[Support](/rfx/support/).
 
 ## Concept mapping
 
@@ -112,10 +112,13 @@ s11 = result.s_params[0, 0, :]   # shape (n_ports, n_ports, n_freqs)
 ```
 
 The mesh here is coarse so the example runs quickly. The calculator's
-warnings name the absorber depth and record length it needs; 16 layers and 45
+warnings name the absorber depth and simulation time it needs; 16 layers and 45
 periods satisfy them here. `normalize=False` (the default) is the modal V/I
-decomposition; `normalize="flux"` gives a power-normalized transmission
-magnitude. There is no single `CalcPort`
+decomposition from one run per port; `normalize=True` divides by a reference
+run of the empty guide, which cancels the grid's dispersion in transmission
+but not in reflection; `normalize="flux"` takes every |S|, S11 included, from
+the Poynting flux and the phase from the modal V/I. The last two cost
+2 × N_ports runs. There is no single `CalcPort`
 equivalent: `run(compute_s_params=True)` is only for lumped and wire
 `add_port(...)` ports. See [Probes and S-Parameters](/rfx/measure/s-parameters/).
 
@@ -179,8 +182,9 @@ the final result. See
 - **Snapshots.** `run(snapshot=SnapshotSpec(...))` records field frames on
   the uniform grid, with a fixed `n_steps` or with `until_decay`. The frames
   are `interval` steps apart (default 10); read their times from
-  `result.snapshot_axes`. A graded mesh, multi-device runs and the ADI solver
-  do not record snapshots and raise if you ask for them.
+  `result.snapshot_axes`. Multi-device runs record them on both meshes. On one
+  device, a graded mesh, the ADI solver and a subgridded run do not, and raise
+  if you ask for them.
 - **A built-in material library.** `fr4`, `rogers4003c`, `rogers4350b`,
   `rt_duroid_5880`, `alumina`, `ptfe`, `silicon`, `copper`, `aluminum`, `pec`,
   `air`, `vacuum` and `water_20c` work by name. Their values are nominal: use
