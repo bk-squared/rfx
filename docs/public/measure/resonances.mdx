@@ -173,7 +173,8 @@ such as a DFT-plane or S-parameter quantity at the frequencies you care about
 - **The frequency carries the mesh's error.** The fit reads the frequency the
   simulated structure has; staircased edges and numerical dispersion move it
   from the drawn structure's. Judge it over at least three meshes, as the
-  [accuracy bar](/rfx/evidence/accuracy-bar/) asks. For resonances the bar is
+  [terms for agreement with a reference](/rfx/check/agreement/) ask. For
+  resonances the limit is
   1 %, and for a resonance narrower than 5 % of its frequency (Q above 20) the
   error must also stay within 10 % of its bandwidth f/Q: 0.05 % for Q = 200.
 - **Q needs a loss.** In a lossless closed cavity a mode never decays: its
@@ -190,6 +191,6 @@ such as a DFT-plane or S-parameter quantity at the frequencies you care about
 ## See also
 
 - [Probes and fields](/rfx/measure/probes-and-fields/): the probe record the fit reads.
-- [Simulation time](/rfx/evidence/simulation-time/): record length and the settling check.
+- [Simulation time](/rfx/check/simulation-time/): record length and the settling check.
 - [rfx terms](/rfx/start/terms/): matrix pencil fit and ring-down.
 - [Results](/rfx/api/results/): `Result` and `ForwardResult`.

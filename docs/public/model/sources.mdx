@@ -121,7 +121,7 @@ drives nothing, and the run refuses it. `add_source` and `add_port` use
 
 A pulse gives the response over its whole band from one run. A `CWSource` gives
 one frequency and never switches off, so the
-[settling check](/rfx/evidence/simulation-time/), which needs the source to be
+[settling check](/rfx/check/simulation-time/), which needs the source to be
 off before the end of the run, cannot judge it.
 
 Because the default pulse has a zero time integral, a soft current source
@@ -182,4 +182,4 @@ checks that it implements the source (below).
 
 - [Ports](/rfx/model/ports/): sources with an impedance, for S-parameters.
 - [Boundaries](/rfx/model/boundaries/): the faces a plane wave needs.
-- [Is the run long enough?](/rfx/evidence/simulation-time/): the source must end inside the run.
+- [Is the run long enough?](/rfx/check/simulation-time/): the source must end inside the run.

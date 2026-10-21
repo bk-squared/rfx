@@ -101,7 +101,7 @@ Here 100 steps fails, because the pulse has not finished passing the probe, and
 200 steps passes.
 
 The objective must take `(params, n_steps)`. You choose `tol`; there is no
-default because the right bar depends on the structure's Q and on what the
+default because the right tolerance depends on the structure's Q and on what the
 gradient is for. A few percent is a reasonable start. `w.cosine_by_bin` tells
 you whether the direction changed or only the step length. A failed witness
 means the record is too short for this gradient: lengthen the run and check
@@ -109,7 +109,7 @@ again. The witness costs about `1 + factor` differentiated runs, so use it
 once per new setup, not every iteration. Pair it with the settling check in
 [Probes and S-Parameters](/rfx/measure/s-parameters/); it does not replace it.
 How long the run must be, in decay times of the slowest mode, is on
-[Simulation time for gradients](/rfx/evidence/gradient-simulation-time/).
+[Simulation time for gradients](/rfx/check/gradient-simulation-time/).
 
 ## What behaves well
 

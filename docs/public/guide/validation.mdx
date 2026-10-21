@@ -50,12 +50,12 @@ through this list.
    when, at every frequency the run's spectral results read, the part of the
    value still ringing past the record's end is at or below −40 dB
    (`settling_db` is the worst of these). `fail`, `undetermined` and `absent`
-   are not passes; above the bar, spectra, S-parameters and far fields still
+   are not passes; above −40 dB, spectra, S-parameters and far fields still
    carry a cut-off transient. For gradients, the record
    must be longer still: `rfx.gradient_record_length_witness` checks that a
    gradient does not change when the record is doubled.
 3. **Mesh convergence.** Refine the mesh and report how far your number moves,
-   not only the finest answer. [Convergence Study](/rfx/evidence/mesh-convergence/)
+   not only the finest answer. [Is the mesh fine enough?](/rfx/check/mesh-convergence/)
    walks through one.
 4. **Physical sanity.** A passive structure has `|S| ≤ 1`. A reciprocal one
    has `S21 = S12`. A lossless one conserves power, `|S11|² + |S21|² = 1` or

@@ -61,7 +61,7 @@ print(f"{float(value):.4g} {float(grad):.4g}")
 
 On this model the two probe records are identical. The gradient comes from
 automatic differentiation through all 300 steps; before you use one, check it
-against a longer run ([Checking a gradient](/rfx/evidence/gradients/)).
+against a longer run ([Checking a gradient](/rfx/check/gradients/)).
 
 ### What each call gives
 
@@ -94,7 +94,7 @@ Where the two calls still differ:
 
 Give one of `n_steps` (exact steps), `num_periods` (periods at `freq_max`,
 default 20, used when nothing else is given) or, for `run()` only,
-`until_decay`. [Is the run long enough?](/rfx/evidence/simulation-time/) explains
+`until_decay`. [Is the run long enough?](/rfx/check/simulation-time/) explains
 the three, the decay stop and its limits, and the check to read afterwards.
 Use a fixed `n_steps` in closed structures and in convergence studies.
 
@@ -178,8 +178,8 @@ finds them equal on every row it admits
 ## Accuracy
 
 This page makes no accuracy statement. Whether a run was long enough is on
-[Is the run long enough?](/rfx/evidence/simulation-time/); whether a gradient
-is converged is on [Checking a gradient](/rfx/evidence/gradients/).
+[Is the run long enough?](/rfx/check/simulation-time/); whether a gradient
+is converged is on [Checking a gradient](/rfx/check/gradients/).
 
 ## See also
 

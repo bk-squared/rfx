@@ -20,7 +20,7 @@ new code belongs.
 | a material model (a dispersion, a nonlinearity, a loss law) | `rfx/materials/` for the model, `rfx/model/` for how it becomes per-edge coefficients | a row in the [path table](./architecture#declarations-refusals-and-the-path-table) for every solver path; a closed-form check in `tests/oracle/` |
 | a conductor kind or a change to how metal lands on the grid | `rfx/model/conductors.py`, `rfx/model/thin_conductors.py`, `rfx/boundaries/pec.py` | a realized-geometry check (compare what the grid built with what was drawn); the path table |
 | a boundary (an absorber, a wall, a periodic seam) | `rfx/boundaries/` | a direct measurement of the boundary itself (for an absorber, its reflection coefficient), not only a system result |
-| a source or a waveform | `rfx/sources/` | the path table; the [settling check](/rfx/evidence/simulation-time/) must still find when the source ends |
+| a source or a waveform | `rfx/sources/` | the path table; the [settling check](/rfx/check/simulation-time/) must still find when the source ends |
 | a port family or a change to how a port drives and reads | `rfx/sources/` for the drive (`port_drive.py`), `rfx/measurement/` for its voltages and currents (`ports.py`, `projector.py`) | the path table; an S-parameter check against a closed form where one exists |
 | S-parameter extraction (wave definitions, a calculator for a port family) | `rfx/sparams/` | an S-parameter check against a closed form where one exists |
 | a measurement (a probe kind, a DFT output, a flux quantity) | `rfx/measurement/`; older probe code is still in `rfx/probes/`; new measurement code belongs in `rfx/measurement/` | the physical time each sample is taken at; the path table's observer rows |
