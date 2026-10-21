@@ -205,7 +205,7 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
 def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
                         pec_sheets=(), pec_wires=(), sheet_specs=(),
                         geometry_masks=(), assembly_entries=(),
-                        pad_fill_findings=(), periodic=None, mode="solve"):
+                        pad_fill_findings=(), periodic=None, mode="solve", n_devices=1):
     """Build from production collectors, assembling only when none were supplied."""
     from rfx.boundaries.pec import realized_pec_edge_masks
     if mode not in ("solve", "audit"):
@@ -215,7 +215,7 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
         geometry_masks, assembly_entries, pad_fill_findings = [], [], []
         kwargs = dict(pec_sheets=pec_sheets, pec_wires=pec_wires,
                       sheet_specs=sheet_specs, geometry_masks=geometry_masks,
-                      assembly_entries=assembly_entries)
+                      assembly_entries=assembly_entries, n_devices=n_devices)
         if nonuniform:
             assembly = sim._assemble_materials_nu(grid, **kwargs)
         else:
@@ -418,12 +418,12 @@ def admit_adi_sources(sim, grid, pec_edges):
     sim._validate_adi_interior_pec(pec_edges)
 
 
-def solve_conductors(sim, grid, *, nonuniform=False, preflight=None):
+def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
     with jax.ensure_compile_time_eval():
-        root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve")
+        root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve", n_devices=n_devices)
         refuse_dead_soft_sources(sim, root)
     if preflight is not None:
         sim._auto_preflight(conductors=root, **preflight)
@@ -443,18 +443,18 @@ class PreparedSolve:
         self._taken = False
         self.diagnostics = ()
 
-    def realized(self):
+    def realized(self, *, n_devices=1):
         if self._taken:
             raise RuntimeError("Solve assembly was already consumed")
         if self._product is None:
             nonuniform = self.sim._uses_nonuniform_mesh
             grid = (self.sim._build_nonuniform_grid() if nonuniform
                     else self.sim._build_grid())
-            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform)
+            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices)
         return self._product
 
-    def take(self):
-        product = self.realized()
+    def take(self, *, n_devices=1):
+        product = self.realized(n_devices=n_devices)
         self._product = None
         self._taken = True
         return product
@@ -816,12 +816,12 @@ def forward_kernel_inputs(sim, root, lane, edges, sheet_operator):
     return root, root.pec_edges, root.sheet_operator
 
 
-def distributed_solve_inputs(sim, grid, assembly, skip, gather):
+def distributed_solve_inputs(sim, grid, assembly, skip, gather, *, n_devices=1):
     """Consume the dispatch handoff without retaining it during slab staging."""
     sim._pf_campaign_ctx = None
     sim._realized_geometry_record = None
     if assembly is None:
-        root = solve_conductors(sim, grid, nonuniform=True)
+        root = solve_conductors(sim, grid, nonuniform=True, n_devices=n_devices)
         report = sim._auto_preflight(
             conductors=root,
             skip=skip,
@@ -831,7 +831,7 @@ def distributed_solve_inputs(sim, grid, assembly, skip, gather):
         diagnostics = tuple(getattr(report, "diagnostics", ()))
     else:
         diagnostics = assembly.diagnostics
-        root = assembly.take()
+        root = assembly.take(n_devices=n_devices)
     sheets, wires = [], []
     materials = assembled_materials(root, pec_sheets=sheets, pec_wires=wires)
     return root, materials, sheets, wires, diagnostics

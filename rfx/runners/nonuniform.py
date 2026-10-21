@@ -185,13 +185,14 @@ def assemble_materials_nu(
     pec_wires: list | None = None,
     geometry_masks: list | None = None,
     assembly_entries: list | None = None,
+    *, n_devices: int = 1,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
     """Assemble cells; preserve the four-item profiled-grid return contract."""
     from rfx.model.materials import assemble_cells
     return assemble_cells(
         sim, grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
         pec_wires=pec_wires, geometry_masks=geometry_masks,
-        assembly_entries=assembly_entries,
+        assembly_entries=assembly_entries, n_devices=n_devices,
     )[:4]
 
 

@@ -104,6 +104,7 @@ class _CompileMixin:
         pad_fill_findings: list | None = None,
         geometry_masks: list | None = None,
         assembly_entries: list | None = None,
+        n_devices: int = 1,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Assemble cells; preserve the seven-item uniform return contract.
 
@@ -117,7 +118,7 @@ class _CompileMixin:
             sheet_specs=sheet_specs, pec_sheets=pec_sheets, pec_wires=pec_wires,
             pad_fill_findings=pad_fill_findings, geometry_masks=geometry_masks,
             assembly_entries=assembly_entries,
-            check_declared_span=_check_declared_span,
+            check_declared_span=_check_declared_span, n_devices=n_devices,
         )
 
     @staticmethod
@@ -481,12 +482,14 @@ class _CompileMixin:
         pec_sheets: list | None = None, pec_wires: list | None = None,
         geometry_masks: list | None = None,
         assembly_entries: list | None = None,
+        n_devices: int = 1,
     ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
         """Build material arrays and dispersion specs for non-uniform grid."""
         from rfx.runners.nonuniform import assemble_materials_nu
         return assemble_materials_nu(self, grid, sheet_specs=sheet_specs,
                                      pec_sheets=pec_sheets, pec_wires=pec_wires,
-                                     geometry_masks=geometry_masks, assembly_entries=assembly_entries)
+                                     geometry_masks=geometry_masks, assembly_entries=assembly_entries,
+                                     n_devices=n_devices)
 
     def _pos_to_nu_index(self, grid: NonUniformGrid, pos):
         """Convert physical (x, y, z) to non-uniform grid indices."""

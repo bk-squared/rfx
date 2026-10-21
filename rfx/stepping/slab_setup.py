@@ -217,7 +217,7 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
             records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
-                        grid_kind=type(grid).__name__, in_program=False)
+                        grid_kind=type(grid).__name__, in_program=mesh.devices.size < 2)
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
     widths = stage_x_widths(grid, rows, mesh)
     def local(cells, index, masks, widths):

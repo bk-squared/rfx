@@ -43,7 +43,7 @@ def assemble_cells(
     sim, grid, *, include_thin_conductors=True, include_cpml_pad_extension=True,
     sheet_specs=None, pec_sheets=None, pec_wires=None, pad_fill_findings=None,
     check_declared_span=True,
-    geometry_masks=None, assembly_entries=None,
+    geometry_masks=None, assembly_entries=None, n_devices=1,
 ):
     """Build material arrays plus per-pole dispersion masks.
 
@@ -57,6 +57,9 @@ def assemble_cells(
 
     Parameters
     ----------
+    n_devices : int, default 1
+        Device count of the caller's run mesh. Multiple devices judge concrete
+        values before staging; outer-traced material values are not judged.
     sheet_specs : list or None
         Out-parameter for surface-impedance sheets. These carry a separate
         node-thin operator rather than folding into the volume sigma (#677).
@@ -470,7 +473,8 @@ def assemble_cells(
     warn_unextendable_shapes(conductor_findings)
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
     refuse_unstable_cells(materials, lorentz_spec, grid.dt, courant_budget(grid),
-                          grid_kind=type(grid).__name__, debye_spec=debye_spec)
+                          grid_kind=type(grid).__name__, debye_spec=debye_spec,
+                          in_program=n_devices < 2)
     return materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
 
 
