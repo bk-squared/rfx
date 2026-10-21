@@ -1,5 +1,6 @@
 """Concrete conductor, Kerr, port and RLC meanings remain unchanged (Step B)."""
 from itertools import combinations
+from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
@@ -71,3 +72,22 @@ def test_concrete_negative_element(element):
     values[element] = -1.0
     with pytest.raises(ValueError, match="R, L, C must be non-negative"):
         scene().add_lumped_rlc((.006,) * 3, **values)
+
+
+@pytest.mark.parametrize("kind", ["rlc", "thin", "source", "passive", "tfsf"])
+def test_declaration_warning_points_to_user(kind):
+    sim = scene() if kind != "tfsf" else Simulation(
+        domain=(.032,) * 3, dx=.002, freq_max=11e9, boundary="cpml", cpml_layers=6)
+    with pytest.warns((UserWarning, DeprecationWarning)) as caught:
+        if kind == "rlc":
+            sim.add_lumped_rlc((.006,) * 3, R=10., topology="series")
+        elif kind == "thin":
+            sim.add_thin_conductor(Box((.006, .003, .003), (.006, .009, .009)))
+        elif kind == "source":
+            sim.add_source((.006,) * 3, "ez")
+        elif kind == "passive":
+            from rfx import GaussianPulse
+            sim.add_port((.006,) * 3, excite=False, waveform=GaussianPulse(5e9))
+        else:
+            sim.add_tfsf_source(f0=5e9, angle_deg=30., bandwidth=.8)
+    assert all(Path(w.filename).resolve() == Path(__file__).resolve() for w in caught)

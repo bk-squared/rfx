@@ -947,6 +947,8 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    from rfx.model.declaration_roles import refuse_traced_structure
+    refuse_traced_structure(sim)
     resolve_field_dtype(sim._precision)
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "vmap material sweep")

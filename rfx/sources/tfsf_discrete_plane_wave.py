@@ -660,7 +660,7 @@ def add_tfsf_source(
                 "depends on the record length. Narrow the bandwidth, or taper "
                 "the tail of the time series before the DFT.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
 
     self._tfsf = _TFSFEntry(

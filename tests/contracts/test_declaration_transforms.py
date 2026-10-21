@@ -32,6 +32,7 @@ VALUE_CASES = [
     ("_MSLPortEntry", "impedance", "msl_port", 50., 2.),
     ("CoaxialPort", "impedance", "coax_port", 50., 2.),
     ("ThinConductor", "sigma_bulk", "thin", 1e3, 50.),
+    ("ThinConductor", "surface_impedance_f0", "thin_f0", 5e9, 1e8),
 ] + [("LumpedRLCSpec", name, "rlc", theta, delta)
      for name, theta, delta in (("R", 10., 1.), ("L", 1e-9, 1e-10), ("C", 1e-12, 1e-13))
 ] + [(record, name, feature, theta, delta)
@@ -77,10 +78,15 @@ def value_objective(record, field, feature, lane):
             kwargs = dict(R=10., L=1e-9, C=1e-12)
             kwargs[field] = theta
             sim.add_lumped_rlc((.006,) * 3, topology="parallel", **kwargs)
-        elif feature == "thin":
+        elif feature in ("thin", "thin_f0"):
             sim = B._base(lane)
+            kwargs = dict(sigma_bulk=1e3, thickness=1e-4)
+            if feature == "thin_f0":
+                kwargs["surface_impedance_f0"] = theta
+            else:
+                kwargs["sigma_bulk"] = theta
             sim.add_thin_conductor(Box((.006, .003, .003), (.006, .009, .009)),
-                                   sigma_bulk=theta, thickness=1e-4)
+                                   **kwargs)
         else:
             attr = {"waveguide_port": "_waveguide_ports", "floquet_port": "_floquet_ports",
                     "plane_wave": "_tfsf", "custom_tfsf": "_tfsf",
@@ -185,7 +191,7 @@ def test_traceable_shape_dimensions(cls, field, lane):
         jax.grad(objective)(theta)
 
 
-@pytest.mark.parametrize("entry", ["run", "forward", "run_devices", "forward_devices"])
+@pytest.mark.parametrize("entry", ["run", "forward", "run_devices", "forward_devices", "vmap_sweep"])
 @pytest.mark.parametrize("transform", ["jit", "grad", "vmap"])
 @pytest.mark.parametrize("kind,record,field", [
     ("box", "Box", "corner_lo"), ("port", "_PortEntry", "position"),
@@ -206,7 +212,10 @@ def test_structure_at_real_entries(entry, transform, kind, record, field):
         else:
             sim.add_ntff_box((.002,) * 3, (.010,) * 3, freqs=theta)
         kwargs = dict(n_steps=2, skip_preflight=True)
-        if entry.startswith("forward"):
+        if entry == "vmap_sweep":
+            from rfx.vmap_sweep import vmap_material_sweep
+            result = vmap_material_sweep(sim, "eps_r", jnp.array([2., 3.]), n_steps=2)
+        elif entry.startswith("forward"):
             kwargs["checkpoint"] = False
             if entry.endswith("devices"):
                 kwargs.update(distributed=True, devices=jax.devices("cpu")[:2])

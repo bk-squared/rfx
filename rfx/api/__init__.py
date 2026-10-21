@@ -856,7 +856,7 @@ class Simulation(
                 "add_source(..., amplitude_kind=None) now means "
                 f"{legacy_kind_description(False, self._boundary)}. "
                 "Pass amplitude_kind explicitly to silence this warning.",
-                DeprecationWarning, stacklevel=2)
+                DeprecationWarning, stacklevel=3)
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
@@ -1404,7 +1404,7 @@ class Simulation(
             _w.warn(
                 "waveform is ignored when excite=False (passive matched load). "
                 "Remove the waveform argument to suppress this warning.",
-                stacklevel=2,
+                stacklevel=3,
             )
 
         from rfx.geometry.port_termination import resolve_terminates

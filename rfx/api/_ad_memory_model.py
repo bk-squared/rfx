@@ -50,7 +50,8 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     # Only the float32 fixed term and tape have been calibrated.
     tape = carry if window is None else (6 if design == "permittivity" else 3) * window * 4
     if window is None and not resident and not (checkpoint and not segmented):
-        # Plain AD saves no per-step residual of the stop_gradient line.
+        # Concrete incident sources contribute no per-step line residual.
+        # Traced source values do; this estimate omits their rank-one tape.
         # Saved boundaries and per-step remat still retain all six leaves.
         tape -= carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     bounded = window is not None and checkpoint and not segmented

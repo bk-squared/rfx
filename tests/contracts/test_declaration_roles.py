@@ -54,6 +54,9 @@ def test_reachable_fields_have_exactly_one_role():
                if cls not in reachable or field not in reachable[cls]]
     assert not outside, f"roles outside reachable declarations: {outside}"
     assert set(D.ROLES.values()) <= {D.VALUE, D.STRUCTURE, D.STRUCTURE_TRACEABLE}
+    for field in ("_dx_profile", "_dy_profile", "_dz_profile"):
+        assert D.SIMULATION_ROLES[field] == D.STRUCTURE_TRACEABLE
+    assert D.SIMULATION_ROLES["_nominal_profiles"] == D.STRUCTURE
 
 
 def test_every_value_field_has_transform_witness():

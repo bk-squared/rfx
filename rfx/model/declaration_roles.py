@@ -89,7 +89,7 @@ for _cls, _values, _traceable in (
     (LumpedRLCSpec, ("R", "L", "C"), ()),
     (PinnedSheet, (), ()),  # Finding: PinnedSheet.eps_r accepted and ignored.
     # Finding: ThinConductor.eps_r accepted and ignored in f0 mode; DC refuses it.
-    (ThinConductor, ("sigma_bulk",), ()),
+    (ThinConductor, ("sigma_bulk", "surface_impedance_f0"), ()),
     (_TFSFEntry, ("f0", "bandwidth", "amplitude", "waveform"), ()),
     (_ProbeEntry, (), ()), (_DFTPlaneEntry, (), ()), (_FluxMonitorEntry, (), ()),
     (NTFFBox, (), ()),
@@ -108,13 +108,18 @@ COLLECTIONS = (
     "_ntff", "_current_moments",
 )
 SIMULATION_STRUCTURE = (
-    "_domain", "_dx", "_freq_max", "_dx_profile", "_dy_profile", "_dz_profile",
+    "_domain", "_dx", "_freq_max",
     "_dt_pin", "_dt_min_cell", "_nominal_profiles", "_cpml_layers", "_cpml_kappa_max",
     "_precision", "_mode", "_solver", "_adi_cfl_factor", "_stencil_order", "_snap", "_interface_eps",
     "_boundary", "_boundary_spec", "_boundary_model", "_boundary_explicit",
     "_periodic_axes", "_pec_faces", "_refinement", "_internal_probe_indices",
     "_msl_auto_offset_min", "_msl_auto_probe_spacing", "_msl_auto_probe_lengths",
 )
+# These widths retain main's nominal-profile grad/jit path. Traceability does
+# not imply a tangent fence: guard_shape_tangents owns the shape-only fence.
+SIMULATION_TRACEABLE = ("_dx_profile", "_dy_profile", "_dz_profile")
+SIMULATION_ROLES = {**dict.fromkeys(SIMULATION_STRUCTURE, STRUCTURE),
+                    **dict.fromkeys(SIMULATION_TRACEABLE, STRUCTURE_TRACEABLE)}
 
 
 def _traced(value):
@@ -197,7 +202,11 @@ def guard_declaration_calls(simulation):
             bound = signature.bind(*args, **kwargs)
             for name, value in bound.arguments.items():
                 field = (aliases or {}).get(name, name)
-                role = (STRUCTURE if owner is simulation and field in SIMULATION_STRUCTURE
+                if owner is simulation and field == "_nominal_profiles":
+                    # Main's constructor already refuses traced nominal widths
+                    # with its axis-specific ValueError; retain that validation.
+                    continue
+                role = (SIMULATION_ROLES.get(field) if owner is simulation
                         else ROLES.get((owner, field)))
                 if role == STRUCTURE:
                     # Registered nested records own the roles of their leaves.
@@ -215,7 +224,7 @@ def guard_declaration_calls(simulation):
         if cls in (PinnedSheet, BoundarySpec, Boundary, BoundaryModel, Face, Axis, Features, GaussianPulse, OrientedBox):
             cls.__init__ = guarded(cls.__init__, cls)
     simulation.__init__ = guarded(simulation.__init__, simulation,
-                                  {**{name.lstrip("_"): name for name in SIMULATION_STRUCTURE}, "dt": "_dt_pin"})
+                                  {**{name.lstrip("_"): name for name in SIMULATION_ROLES}, "dt": "_dt_pin"})
     for method, cls, aliases in (
         ("add", _GeometryEntry, {"material": "material_name"}),
         ("add_source", _PortEntry, {}), ("add_port", _PortEntry, {}),

@@ -29,7 +29,8 @@ def admit_thin_conductor(
     selects (PEC sheet or Leontovich sheet); the warnings name the user's call.
     """
     if surface_impedance_f0 is not None:
-        # f0 is STRUCTURE; conductivity is validated through traced_check.
+        # Concrete-value checks only: traced f0 / sigma_bulk are legal
+        # differentiable DoFs and skip these (documented on Simulation.add_thin_conductor).
         if (not is_tracer(surface_impedance_f0)
                 and float(surface_impedance_f0) <= 0.0):
             raise ValueError(
@@ -87,7 +88,7 @@ def admit_thin_conductor(
             f"copper (issue #504). For conductor loss pass "
             f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
             f"issue #669).",
-            stacklevel=3,
+            stacklevel=4,
         )
     if surface_impedance_f0 is not None:
         import warnings
@@ -105,7 +106,7 @@ def admit_thin_conductor(
             f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
             f"inductance) is NOT modeled, so resonances read slightly "
             f"high.",
-            stacklevel=3,
+            stacklevel=4,
         )
     return tc
 

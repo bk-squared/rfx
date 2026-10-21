@@ -115,7 +115,7 @@ def validate_rlc(R, L, C, topology):
         warnings.warn(
             f"Series topology with single component ({present[0]}) uses material "
             "folding, not the series ADE. Add a second component or use "
-            "topology='parallel' to suppress this warning.", stacklevel=3)
+            "topology='parallel' to suppress this warning.", stacklevel=4)
 
 
 def check_traced_values(sim, checker, *args, attributes=None):
