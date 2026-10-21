@@ -232,9 +232,9 @@ def headlines(share: Share) -> dict[str, list[dict]]:
     src = "grin-lens/mesh_trend.json "
     out["grin-lens"] = [
         h("reported boresight directivity at 10 GHz, 0.75 mm mesh", designed[1], "dBi",
-          fixed(1), (route, INDEX), src + "reported.boresight_dbi[-1][1]"),
+          fixed(1), (route, INDEX, HOME), src + "reported.boresight_dbi[-1][1]"),
         h("feed boresight directivity at 10 GHz, 0.75 mm mesh", feed[1], "dBi",
-          fixed(1), (route,), src + "no_lens.boresight_dbi[-1][1]"),
+          fixed(1), (route, HOME), src + "no_lens.boresight_dbi[-1][1]"),
         h("minimum designed minus feed directivity, floored", math.floor(min(
             d - f for d, f in zip(designed, feed))), "dB", lambda v: f"+{v:d}", (route,),
           src + "floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"),
