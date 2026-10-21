@@ -416,6 +416,7 @@ def _build_step_setup(
                 ntff=ntff if use_ntff else None, periodic=periodic, feature_owned=_feature_tfsf,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps,
                              aniso_inv_eps=aniso_inv_eps, pec_mask=pec_mask, pec_edge_masks=pec_edge_masks,
+                             pec_sheets=pec_sheets, pec_wires=pec_wires,
                              pec_occupancy=pec_occupancy, conformal_weights=conformal_weights,
                              sheet_impedance=sheet_impedance, kerr_chi3=kerr_chi3,
                              design_box=design_box, design_occupancy=design_occupancy),

@@ -386,7 +386,8 @@ def _build_nu_scan(
                 pec_faces=pec_faces, pmc_faces=pmc_faces, feature_owned=_feature_tfsf, nonuniform=True,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps, pec_mask=pec_mask,
                              pec_edge_masks=pec_edge_masks, pec_occupancy=pec_occupancy,
-                             sheet_impedance=sheet_impedance, design_box=design_box),
+                             sheet_impedance=sheet_impedance, design_box=design_box,
+                             pinned_sheet_layout=pinned_sheet_layout, pec_sheets=pec_sheets, pec_wires=pec_wires),
                 localized=(("sources", sources), ("waveguide_ports", waveguide_ports),
                            ("wire_ports", wire_ports), ("rlc_metas", rlc_metas)))
 

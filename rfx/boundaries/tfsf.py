@@ -4,6 +4,7 @@ Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
 from dataclasses import fields, is_dataclass
+from fnmatch import fnmatchcase
 import warnings
 
 import numpy as np
@@ -249,6 +250,168 @@ def boundary_flags(cfg, grid=None):
     return (False, not is_tfsf_methodB(cfg), True), "xy" if is_tfsf_methodB(cfg) else "x"
 
 
+# (vacuum value / adapter, user-facing label). None marks configuration or
+# observation, never an exemption inferred from an unrecognized parameter.
+INJECTION_OPERANDS = {
+    **{name: (None, "configuration/source/observation") for name in (
+        "grid", "n_steps", "boundary", "cpml_axes", "pec_axes", "periodic",
+        "tfsf", "_feature_tfsf", "sources", "mag_sources", "probes", "dft_planes",
+        "flux_monitors", "waveguide_ports", "ntff", "ntff_box", "ntff_data",
+        "current_moments", "field_dtype", "stencil_order", "aniso_inv_eps_smooth",
+        "wire_port_sparams", "lumped_port_sparams", "wire_refplane_sparams",
+        "wire_ports", "s_param_freqs", "pec_faces", "pmc_faces", "emit_time_series",
+        "rlc_states")},
+    "materials": ("leaves", "material"),
+    "debye": ("poles", "Debye pole medium"),
+    "lorentz": ("poles", "Drude/Lorentz pole medium"),
+    "kerr_chi3": (0, "Kerr (chi3) medium"),
+    "pec_mask": (0, "PEC volume"),
+    "pec_edge_masks": (0, "PEC edge (volume, sheet, wire or pinned sheet)"),
+    "pec_sheets": ("realized", "PEC edges are checked through pec_edge_masks"),
+    "pec_wires": ("realized", "PEC edges are checked through pec_edge_masks"),
+    "pec_occupancy": (0, "PEC occupancy"),
+    "aniso_eps": (1, "anisotropic permittivity"),
+    "aniso_inv_eps": (1, "inverse permittivity"),
+    "conformal_weights": (1, "conformal PEC"),
+    "sheet_impedance": ("sheet", "surface-impedance sheet"),
+    "design_box": ("window", "design window"),
+    "design_occupancy": ("window", "design occupancy window"),
+    "lumped_rlc": ("cells", "lumped RLC element"),
+    "rlc_metas": ("cells", "lumped RLC element"),
+    "pinned_sheet_layout": ("layout", "pinned sheet layout"),
+    "nonvacuum_masks": (0, "caller-supplied non-vacuum mask"),
+    **{f"materials.{name}": (value, label) for name, value, label in (
+        ("eps_r", 1, "permittivity"), ("sigma", 0, "conductivity"),
+        ("mu_r", 1, "permeability"), ("sigma_lumped.*", 0, "lumped conductivity"),
+        ("eps_r_lumped.*", 0, "lumped permittivity"),
+        ("mu_r_wire.*", 0, "wire permeability"),
+        ("edge_keep.*", 1, "PEC edge keep"), ("sigma_film.*", 0, "film conductivity"))},
+    **{f"materials.components.{name}.*": (value, label) for name, value, label in (
+        ("eps", 1, "component permittivity"), ("sigma", 0, "component conductivity"),
+        ("mu", 1, "component permeability"), ("eps_lumped", 0, "lumped permittivity"),
+        ("sigma_lumped", 0, "lumped conductivity"), ("mu_wire", 0, "wire permeability"),
+        ("eps_update", 1, "component permittivity"),
+        ("sigma_update", 0, "component conductivity"),
+        ("mu_update", 1, "component permeability"),
+        ("upml_eps", 1, "component permittivity"),
+        ("upml_sigma", 0, "component conductivity"))},
+    **{f"materials.components.{kind}.{field}.*": (0, label)
+       for kind, label in (("debye", "Debye pole medium"),
+                           ("lorentz", "Drude/Lorentz pole medium"))
+       for field in ("coefficients", "weights")},
+    **{f"materials.components.tensor.{name}.*": (1, "tensor permittivity")
+       for name in ("eps", "inv_eps", "conformal_weights")},
+    **{f"materials.components.tensor.node_smoothing.{name}*": (value, "node tensor")
+       for name, value in (("xi", "symmetric_identity"), ("triplets", "identity"),
+                           ("bulk", 1), ("active", 0), ("cross", 0), ("pec_keep", 1),
+                           ("guard_count", None))},
+}
+
+
+def injection_material_rule(name):
+    """Classify every spatial material leaf, including declaration-time views."""
+    name = name.replace(".components.cells_view", "")
+    for pattern, row in INJECTION_OPERANDS.items():
+        if fnmatchcase(name, pattern):
+            return row
+    raise ValueError(f"Unclassified TFSF material operand: {name}")
+
+
+def _injection_arrays(grid, materials, updates, localized):
+    """Yield actual spatial operands with their vacuum values and labels."""
+    for name, array in _leaves(materials, "materials"):
+        if array.ndim < 3 and name not in ("materials.eps_r", "materials.sigma", "materials.mu_r"):
+            continue
+        vacuum, label = injection_material_rule(name)
+        if vacuum == "symmetric_identity":
+            # Symmetric tensor order: xx, yy, zz, xy, xz, yz.
+            vacuum = int(int(name.rsplit(".", 1)[1]) < 3)
+        if vacuum is not None:
+            yield name, array, vacuum, label
+    for name, value in (*updates.items(), *localized):
+        vacuum, label = INJECTION_OPERANDS[name]
+        if value is None or vacuum is None or vacuum == "realized":
+            continue
+        if vacuum == "poles":
+            coeffs = value[0]
+            # Setups receive ADE coefficients, whose masked recurrence terms
+            # carry the realized pole reach (not the initial, zero P state).
+            names = ("alpha", "beta") if name == "debye" else ("a", "b", "c")
+            value = {key: getattr(coeffs, key) for key in names}
+            vacuum = 0
+        elif vacuum == "sheet":
+            value = {f"mask_e{a}": getattr(value, f"mask_e{a}") for a in "xyz"}
+            vacuum = 0
+        elif vacuum in ("window", "cells", "layout"):
+            import jax.numpy as jnp
+            mask = jnp.zeros(grid.shape, dtype=bool)
+            if vacuum == "window":
+                mask = mask.at[tuple(slice(*value.bounds[2*a:2*a+2]) for a in range(3))].set(True)
+            elif vacuum == "cells":
+                for meta in value:
+                    mask = mask.at[meta.i, meta.j, meta.k].set(True)
+            else:
+                from rfx.model.occupancy import layout_edge_indices
+                for _, sheet, pair in value:
+                    for tangent, values in enumerate(pair):
+                        _, indices = layout_edge_indices(grid, sheet, tangent)
+                        mask = mask.at[indices].max(values != 0)
+            value, vacuum = mask, 0
+        for operand, array in _leaves(value, name):
+            yield operand, array, vacuum, label
+
+
+def refuse_injection_plane_operands(cfg, grid, materials, updates, localized):
+    """Refuse any non-vacuum update on a corrected TF/SF plane, also in AD."""
+    from rfx._traced_check import traced_check
+    from rfx.sources.tfsf import is_tfsf_methodB, tfsf_injection_planes
+    from types import SimpleNamespace
+    if grid is None:
+        grid = SimpleNamespace(shape=materials.eps_r.shape)
+    bounds = tfsf_injection_planes(cfg)
+    closed = getattr(cfg, "closed_box", False)
+    method_b = is_tfsf_methodB(cfg)
+    if closed:
+        feature, check_name = "closed_box TFSF", "vacuum faces"
+        prefix = "closed_box TFSF requires vacuum on and adjacent to all six faces; non-vacuum material found at "
+    elif method_b:
+        feature, check_name = "Method-B oblique TFSF", "vacuum boundaries"
+        prefix = ("Method-B oblique TFSF requires vacuum on and adjacent to all four transverse "
+                  "TFSF boundary planes; non-vacuum material found at ")
+    else:
+        feature, check_name = "TFSF slab", "vacuum boundaries"
+        prefix = ("TFSF plane-wave source requires vacuum on and adjacent to the TFSF x boundaries; "
+                  "non-vacuum material found at ")
+    operands = tuple(_injection_arrays(grid, materials, updates, localized))
+    arrays, metadata = [], []
+    for axis, (lo, hi) in bounds.items():
+        for index, suffix in zip((lo - 1, lo, hi, hi + 1), ("lo-1", "lo", "hi", "hi+1")):
+            plane = f"{axis}={index}" if closed else f"{axis}_{suffix}"
+            spatial_slice = [slice(a - 1, b + 2) for a, b in bounds.values()] if closed else [slice(None)] * 3
+            spatial_slice["xyz".index(axis)] = slice(index, index + 1)
+            for name, array, vacuum, label in operands:
+                # Most leaves end in xyz; node triplets end in xyz,3,3.
+                trailing = 2 if vacuum == "identity" else 0
+                start = array.ndim - 3 - trailing
+                if start < 0:
+                    cut = array  # homogeneous scalar material
+                else:
+                    slices = [slice(None)] * array.ndim
+                    for a, sl in enumerate(spatial_slice):
+                        slices[start + a] = slice(None) if array.shape[start + a] == 1 else sl
+                    cut = array[tuple(slices)]
+                arrays.append(cut)
+                metadata.append((plane, name, vacuum, label))
+
+    def check(*values):
+        for value, (plane, name, vacuum, label) in zip(values, metadata):
+            expected = np.eye(3) if vacuum == "identity" else vacuum
+            if not np.all(np.asarray(value) == expected):
+                raise ValueError(f"{prefix}{plane}: {label} ({name})")
+
+    traced_check(feature, check_name, check, *arrays, ordered=True)
+
+
 def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
                 localized, periodic, pec_faces=None, pmc_faces=None,
                 feature_owned=False, nonuniform=False):
@@ -258,6 +421,7 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
     if tfsf is None:
         return
     cfg = tfsf[0]
+    refuse_injection_plane_operands(cfg, grid, materials, updates, localized)
     if ntff is not None:
         from rfx.farfield import require_box_encloses_injected_region
         from rfx.sources.tfsf import tfsf_injection_planes

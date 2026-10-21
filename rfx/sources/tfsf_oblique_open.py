@@ -42,7 +42,6 @@ Signs, staggering and leapfrog order retain the prototype physics:
 
 from __future__ import annotations
 
-from rfx.model.thin_conductors import conductivity_envelope
 
 from typing import NamedTuple
 
@@ -440,42 +439,9 @@ def apply_methodB_e(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
 # ---------------------------------------------------------------------------
 
 def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
-    """Fail loud if any Method-B TFSF boundary plane is not vacuum.
-
-    The 4-edge box assumes vacuum on and immediately adjacent to ALL FOUR
-    transverse boundary planes — x AND y. The pre-#471 preflight check
-    validated only the x planes (it predates the 4-edge box), so a PEC strip
-    lying on the ``y_lo`` plane passed silently and corrupted the scattered
-    field (issue #471 F5). Called from both the uniform-runner preflight
-    validator and ``compute_rcs`` (which never ran the validator at all).
-    """
-    planes = (
-        ("x_lo-1", (slice(cfg.x_lo - 1, cfg.x_lo), slice(None))),
-        ("x_lo",   (slice(cfg.x_lo, cfg.x_lo + 1), slice(None))),
-        ("x_hi",   (slice(cfg.x_hi, cfg.x_hi + 1), slice(None))),
-        ("x_hi+1", (slice(cfg.x_hi + 1, cfg.x_hi + 2), slice(None))),
-        ("y_lo-1", (slice(None), slice(cfg.y_lo - 1, cfg.y_lo))),
-        ("y_lo",   (slice(None), slice(cfg.y_lo, cfg.y_lo + 1))),
-        ("y_hi",   (slice(None), slice(cfg.y_hi, cfg.y_hi + 1))),
-        ("y_hi+1", (slice(None), slice(cfg.y_hi + 1, cfg.y_hi + 2))),
-    )
-    for plane_name, (xs, ys) in planes:
-        eps = np.asarray(materials.eps_r[xs, ys, :])
-        sigma = np.asarray(conductivity_envelope(materials)[xs, ys, :])
-        mu = np.asarray(materials.mu_r[xs, ys, :])
-        if not (
-            np.allclose(eps, 1.0)
-            and np.allclose(sigma, 0.0)
-            and np.allclose(mu, 1.0)
-        ):
-            raise ValueError(
-                "Method-B oblique TFSF requires vacuum on and adjacent to all "
-                "four transverse TFSF boundary planes; non-vacuum material "
-                f"found at {plane_name} (max eps_r {float(np.max(eps)):.3g}, "
-                f"max sigma {float(np.max(sigma)):.3g}, "
-                f"max mu_r {float(np.max(mu)):.3g}). Shrink the target or "
-                "enlarge tfsf_margin."
-            )
+    """Use the same injection-plane rule as both step setups."""
+    from rfx.boundaries.tfsf import refuse_injection_plane_operands
+    refuse_injection_plane_operands(cfg, None, materials, {}, ())
 
 
 # ---------------------------------------------------------------------------

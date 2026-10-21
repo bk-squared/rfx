@@ -50,8 +50,6 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
-from rfx.model.thin_conductors import conductivity_envelope
-
 import math
 
 import numpy as np
@@ -65,87 +63,10 @@ from rfx.preflight._common import PreflightConfigError, PreflightWarning, _fmt_l
 
 def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
                                   *, nonvacuum_masks=()) -> None:
-    """Ensure the TFSF boundary planes remain vacuum.
-
-    The TFSF correction assumes vacuum on and immediately adjacent to
-    the TFSF boundaries. Fail loudly instead of allowing silently wrong
-    scattered fields. For the 4-edge Method-B box this means the y planes
-    as well as the x planes (issue #471 F5: the x-only check let a PEC
-    strip on the y_lo plane pass silently); the check for that path lives
-    with the source in ``tfsf_oblique_open.validate_vacuum_boundary`` so
-    ``compute_rcs`` can run the identical check.
-    """
-    from rfx.sources.tfsf import is_tfsf_methodB
-
-    if is_tfsf_methodB(tfsf_cfg):
-        from rfx.sources.tfsf_oblique_open import validate_vacuum_boundary
-
-        validate_vacuum_boundary(materials, tfsf_cfg)
-        return
-
-    if getattr(tfsf_cfg, "closed_box", False):
-        # Include the cell neighbours read by edge-averaged epsilon as
-        # well as the corrected Yee nodes. A face-only test misses the
-        # material immediately across a transverse edge or corner.
-        from rfx._traced_check import traced_check
-        bounds = [(getattr(tfsf_cfg, a + "_lo"), getattr(tfsf_cfg, a + "_hi"))
-                  for a in "xyz"]
-        slices = []
-        names = []
-        for axis, (lo, hi) in enumerate(bounds):
-            for index in (lo - 1, lo, hi, hi + 1):
-                sl = [slice(a - 1, b + 2) for a, b in bounds]
-                sl[axis] = slice(index, index + 1)
-                slices.append(tuple(sl))
-                names.append(f"{'xyz'[axis]}={index}")
-        arrays = tuple(value[sl] for sl in slices
-                       for value in (materials.eps_r, conductivity_envelope(materials), materials.mu_r,
-                                     *nonvacuum_masks))
-        width = 3 + len(nonvacuum_masks)
-
-        def check(*values):
-            for idx, name in enumerate(names):
-                group = values[width * idx:width * (idx + 1)]
-                eps, sigma, mu = (np.asarray(v) for v in group[:3])
-                if not (np.all(eps == 1.0) and np.all(sigma == 0.0)
-                        and np.all(mu == 1.0)
-                        and all(not np.any(np.asarray(v)) for v in group[3:])):
-                    raise ValueError(
-                        "closed_box TFSF requires vacuum on and adjacent to all six "
-                        f"faces; non-vacuum material found at {name}")
-
-        traced_check("closed_box TFSF", "vacuum faces", check, *arrays, ordered=True)
-        return
-
-    boundary_slices = (
-        ("x_lo-1", slice(tfsf_cfg.x_lo - 1, tfsf_cfg.x_lo)),
-        ("x_lo", slice(tfsf_cfg.x_lo, tfsf_cfg.x_lo + 1)),
-        ("x_hi", slice(tfsf_cfg.x_hi, tfsf_cfg.x_hi + 1)),
-        ("x_hi+1", slice(tfsf_cfg.x_hi + 1, tfsf_cfg.x_hi + 2)),
-    )
-
-    from rfx._traced_check import traced_check
-    arrays = tuple(value[xs, :, :] for _, xs in boundary_slices
-                   for value in (materials.eps_r, conductivity_envelope(materials),
-                                 materials.mu_r, *nonvacuum_masks))
-    width = 3 + len(nonvacuum_masks)
-
-    def check(*values):
-        for index, (plane_name, _) in enumerate(boundary_slices):
-            group = values[width * index:width * (index + 1)]
-            eps, sigma, mu = (np.asarray(v) for v in group[:3])
-            if not (
-                np.allclose(eps, 1.0)
-                and np.allclose(sigma, 0.0)
-                and np.allclose(mu, 1.0)
-                and all(not np.any(np.asarray(v)) for v in group[3:])
-            ):
-                raise ValueError(
-                    "TFSF plane-wave source requires vacuum on and adjacent to "
-                    f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
-                )
-
-    traced_check("TFSF slab", "vacuum boundaries", check, *arrays, ordered=True)
+    """Delegate every source kind to the step's injection-plane rule."""
+    from rfx.boundaries.tfsf import refuse_injection_plane_operands
+    refuse_injection_plane_operands(tfsf_cfg, None, materials,
+                                   {"nonvacuum_masks": nonvacuum_masks}, ())
 
 
 def _validate_cfg_source_on_reflector_plane(
