@@ -61,5 +61,7 @@ def test_traced_dimension_refusal_is_a_jax_concretization_error(kind, material):
     # optimize(jit=True), observables' eval_shape guard and the distributed
     # entry catch JAX's error to fall back; the named refusal must stay one.
     fn = lambda value: _shape_run(value, kind, False, False, material=material)
-    with pytest.raises(jax.errors.ConcretizationTypeError, match=f"{kind}.*traced"):
+    from rfx._traced_refusal import TracedStructureRefusal
+    with pytest.raises(jax.errors.ConcretizationTypeError, match=f"{kind}.*traced") as exc:
         jax.jit(fn)(jnp.float32(0.))
+    assert isinstance(exc.value, TracedStructureRefusal)

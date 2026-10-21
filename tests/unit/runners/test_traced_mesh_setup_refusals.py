@@ -7,6 +7,7 @@ import pytest
 from rfx import Box, Simulation, Sphere
 from rfx.runners.distributed_nu import build_sharded_nu_grid
 from tests.unit.autodiff.test_graded_wire_live_cell_admission import _board
+from rfx._traced_refusal import TracedStructureRefusal
 
 
 def _distributed(value, kind):
@@ -33,13 +34,15 @@ def _distributed(value, kind):
 def test_traced_distributed_setup_refuses_before_loop(kind, route):
     assert len(jax.devices("cpu")) >= 2
     fn = lambda value: _distributed(value, kind)
+    refusal = TracedStructureRefusal
     if kind in ("wire", "flux"):
         message = "graded multi-device solve.*traced mesh metrics.*concrete mesh"
     elif route in ("jvp", "grad"):
-        message = "gradient.*declared shape dimension"
+        # The shape-gradient refusal on main precedes structure admission.
+        refusal, message = NotImplementedError, "gradient.*declared shape dimension"
     else:
         message = f"{kind}.*traced.*concrete"
-    with pytest.raises(NotImplementedError, match=message):
+    with pytest.raises(refusal, match=message):
         if route == "jit":
             jax.jit(fn)(jnp.float32(0.))
         elif route == "vmap":

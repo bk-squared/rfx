@@ -6,6 +6,7 @@ import pytest
 
 from rfx.measurement.flux_weights import grid_flux_monitor
 from rfx.nonuniform import make_nonuniform_grid
+from rfx._traced_refusal import TracedStructureRefusal
 
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
@@ -17,7 +18,7 @@ def test_flux_monitor_traced_cells_refuse(axis, route):
         mon = grid_flux_monitor(grid, axis=axis, index=2, freqs=np.array([1e9]))
         return jnp.sum(mon.e1_dft).real
 
-    with pytest.raises(NotImplementedError, match="flux monitor.*traced cell widths.*concrete mesh"):
+    with pytest.raises(TracedStructureRefusal, match="flux monitor.*traced cell widths.*concrete mesh"):
         if route == "jvp":
             jax.jvp(build, (jnp.float32(0.),), (jnp.float32(1.),))
         elif route == "grad":

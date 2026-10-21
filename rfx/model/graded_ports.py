@@ -7,6 +7,7 @@ from typing import NamedTuple
 import jax
 
 from rfx._grid_metric import field_index
+from rfx._traced_refusal import TracedStructureRefusal
 from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
 from rfx.core.yee import MaterialArrays
 from rfx.model.conductors import lumped_port_stage, publish_port_release
@@ -31,11 +32,11 @@ class GradedPorts(NamedTuple):
     port_specs: list
 
 
-class TracedWireLiveCellsError(NotImplementedError, jax.errors.TracerArrayConversionError):
+class TracedWireLiveCellsError(TracedStructureRefusal, jax.errors.TracerArrayConversionError):
     """Named host-read refusal compatible with the optimizer's eager fallback."""
 
     def __init__(self, message):
-        NotImplementedError.__init__(self, message)
+        TracedStructureRefusal.__init__(self, message)
 
 
 def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,

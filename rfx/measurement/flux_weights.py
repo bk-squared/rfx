@@ -59,7 +59,8 @@ def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, 
     from rfx.probes.probes import init_flux_monitor
 
     if isinstance(grid, NonUniformGrid) and any(grid.is_traced(a) for a in range(3)):
-        raise NotImplementedError(
+        from rfx._traced_refusal import TracedStructureRefusal
+        raise TracedStructureRefusal(
             "A flux monitor on a mesh with traced cell widths cannot assemble "
             "its area and normal weights. Use a concrete mesh.")
     coords = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)

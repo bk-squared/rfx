@@ -15,6 +15,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
+from rfx._traced_refusal import TracedStructureRefusal
 from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Box, Cylinder, OrientedBox, Sphere, declared_bounds
@@ -773,11 +774,11 @@ def _node_tie_band(c, xp):
     return lambda face: node_tie_tol(face, cell, c.dtype)
 
 
-class TracedShapeDimensionError(NotImplementedError, jax.errors.ConcretizationTypeError):
+class TracedShapeDimensionError(TracedStructureRefusal, jax.errors.ConcretizationTypeError):
     """Named traced-dimension refusal that callers catching JAX's error still see."""
 
     def __init__(self, message):
-        NotImplementedError.__init__(self, message)
+        TracedStructureRefusal.__init__(self, message)
 
 
 def _box_zero_axes(lo, hi):

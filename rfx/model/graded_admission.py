@@ -13,6 +13,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from rfx._traced_refusal import TracedStructureRefusal
 from rfx.core.jax_utils import is_tracer
 
 _AXES = ("x", "y", "z")
@@ -25,7 +26,7 @@ def concrete_distributed_x_cells(grid):
     names = ("dx_arr", "dy_arr", "dz", "inv_dx", "inv_dx_h", "inv_dy",
              "inv_dy_h", "inv_dz", "inv_dz_h", "dt")
     if any(is_tracer(getattr(grid, name, None)) for name in names):
-        raise NotImplementedError(
+        raise TracedStructureRefusal(
             "A graded multi-device solve with traced mesh metrics cannot build "
             "its host-owned slabs. Use a concrete mesh and time step built "
             "outside jit/vmap/grad.")

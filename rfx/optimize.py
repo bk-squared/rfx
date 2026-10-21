@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
+from rfx._traced_refusal import TracedStructureRefusal
 
 import math
 import warnings
@@ -88,7 +89,8 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
         first_call = False
         try:
             return compiled(*args, **kwargs)
-        except (jax.errors.ConcretizationTypeError,
+        except (TracedStructureRefusal,
+                jax.errors.ConcretizationTypeError,
                 jax.errors.TracerArrayConversionError,
                 jax.errors.TracerBoolConversionError,
                 jax.errors.TracerIntegerConversionError) as exc:
