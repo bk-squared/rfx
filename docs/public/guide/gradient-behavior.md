@@ -108,6 +108,8 @@ means the record is too short for this gradient: lengthen the run and check
 again. The witness costs about `1 + factor` differentiated runs, so use it
 once per new setup, not every iteration. Pair it with the settling check in
 [Probes and S-Parameters](/rfx/measure/s-parameters/); it does not replace it.
+How long the run must be, in decay times of the slowest mode, is on
+[Simulation time for gradients](/rfx/evidence/gradient-simulation-time/).
 
 ## What behaves well
 
