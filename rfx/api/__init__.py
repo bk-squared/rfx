@@ -243,13 +243,8 @@ class Simulation(
         ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
         reduction while material coefficients and DFT accumulators stay
         float32.  When ``"float64"``, field arrays use float64 storage
-        AND the Yee update arithmetic runs at float64 (issue #630 — prior
-        releases hard-pinned the Yee curl/update arithmetic to float32
-        regardless of storage dtype, so float64 fields were silently
-        re-quantized to float32 every timestep; the arithmetic dtype is
-        now ``jnp.promote_types(field_dtype, jnp.float32)``, so
-        ``"float32"``/``"mixed"`` are numerically unaffected and
-        byte-identical to before).  ``"float64"`` requires JAX's x64 mode
+        AND the Yee update arithmetic runs at float64. The arithmetic dtype is
+        ``jnp.promote_types(field_dtype, jnp.float32)``.  ``"float64"`` requires JAX's x64 mode
         to already be enabled by the caller (``jax.config.update(
         "jax_enable_x64", True)`` or ``jax.experimental.enable_x64()``) —
         without it JAX silently downcasts float64 arrays back to
@@ -257,8 +252,7 @@ class Simulation(
         Material coefficients (``eps_r``/``sigma``/``mu_r``) and
         precomputed CPML profile arrays stay float32 either way (fixed
         setup-time constants measurably bias the primal but do not
-        create the per-timestep rounding-lattice noise floor that the
-        compute-dtype pin did — see issue #630's f64-lift measurement).
+        create a per-timestep rounding-lattice noise floor).
         ``"mixed"``/``"float64"`` are UNIFORM-SINGLE-DEVICE-LANE ONLY
         today: ``field_dtype`` is threaded only by
         ``rfx/runners/uniform.py`` — the non-uniform-mesh, distributed
@@ -271,7 +265,7 @@ class Simulation(
         ``run()``/``forward()`` kwarg, invisible to preflight, so its
         `NotImplementedError` at dispatch is the only enforcement point).
 
-        ACCURACY CAVEAT for ``"mixed"`` with a CPML boundary (issue #644):
+        ACCURACY CAVEAT for ``"mixed"`` with a CPML boundary:
         float16 field storage is fine for transient and field-shape work
         (measured 0.20% relative L2 error on Ez vs ``"float32"`` at 50
         steps), but it raises the absorber's residual floor. On the
@@ -296,8 +290,7 @@ class Simulation(
         does not inherit that guarantee. Cavity accuracy without interior
         PEC is tested in 2D TMz (``mode="2d_tmz"``, 2% resonance gate at
         5x CFL, ``test_adi_cavity_resonance``) and 3D
-        (full Zheng–Chen–Zhang two-sub-step scheme since
-        2026-07-13, issue #338: 2% PEC-cavity eigenfrequency gate at 2x
+        (full Zheng–Chen–Zhang two-sub-step scheme: 2% PEC-cavity eigenfrequency gate at 2x
         CFL, ~15 cells/wavelength). 3D dispersion error grows ~dt^2, so
         preflight emits an ``adi_3d_accuracy`` envelope advisory when
         ``adi_cfl_factor > 2`` on a 3D grid — large factors trade
@@ -613,7 +606,7 @@ class Simulation(
             stronger coupling but more dissipation.
         validation : {"production", "research", "off"}
             Production refuses the unstable, unverified subgridded lane before
-            stepping (#1465). An empty PEC cavity's first resonance is 8 % high
+            stepping. An empty PEC cavity's first resonance is 8 % high
             and its field grows. Use dx/dy/dz profiles for local resolution.
             Explicit ``"research"`` or ``"off"`` runs with a warning; neither
             mode establishes physics support.
@@ -751,8 +744,8 @@ class Simulation(
 
         Notes
         -----
-        A PEC shape is a VOLUME under the lattice ownership contract
-        (#931): its primal cells are sampled at cell centres and every E
+        A PEC shape is a VOLUME under the lattice ownership contract: its primal cells are sampled
+        at cell centres and every E
         edge incident to an occupied cell is shorted, so a Box drawn
         ``z_a -> z_b`` on node planes realizes walls at BOTH planes with
         realized thickness = drawn thickness. A PEC Box with exactly one
@@ -811,7 +804,7 @@ class Simulation(
         waveform : excitation pulse
             (default: ``GaussianPulse(f0=freq_max/2, bandwidth=0.8)``)
         amplitude_kind : 'field' | 'current' | None
-            What the waveform amplitude MEANS — issue #571. Boundary- and
+            What the waveform amplitude MEANS. Boundary- and
             mesh-independent once explicit:
 
             - ``'current'``: the amplitude is a current moment I(t) in A·m,
@@ -830,7 +823,7 @@ class Simulation(
             (``rfx/api/_source_semantics.py``). On a non-uniform mesh
             ``dV`` is the E node's control volume — the primal per-cell
             width on the component's own axis and the DUAL spacing
-            ``(d[k-1]+d[k])/2`` on the two transverse axes (issue #672);
+            ``(d[k-1]+d[k])/2`` on the two transverse axes;
             the two coincide on a uniform profile.
 
             ``None`` means ``'current'`` (E += Cb*I/dV, I is a current moment in A·m)
@@ -839,7 +832,7 @@ class Simulation(
             explicitly to silence it.
 
             The open-boundary + ``subpixel_smoothing`` cross-path residual
-            (0.18 % amplitude, issue #582) is a solver defect independent
+            (0.18 % amplitude) is a solver defect independent
             of this parameter.
         """
         if component not in ("ex", "ey", "ez"):
@@ -1061,32 +1054,31 @@ class Simulation(
             Must stay at 1 (default 1.0); the sheet uses its cells' permittivity.
             Declare surrounding dielectric with ``add(..., material=...)``.
         surface_impedance_f0 : float or None
-            Opt-in band-centre Leontovich surface-impedance loss
-            (issue #669). Default ``None`` = exact legacy behaviour on every
+            Opt-in band-centre Leontovich surface-impedance loss. Default ``None`` = exact legacy
+            behaviour on every
             path. When set to a positive frequency (Hz), the sheet — for ANY
             ``sigma_bulk > 0``, metals included — is modelled as a resistive
             sheet of sheet resistance ``Rs0 = sqrt(pi*f0*mu0/sigma_bulk)``
             (the thick-conductor surface resistance at ``f0``), realized
-            NODE-THIN (#677): a per-step operator applies an exact
+            NODE-THIN: a per-step operator applies an exact
             exponential-stepping resistive update ``E = A*E + B*curlH``
             with sheet conductivity ``sigma_sheet = (1/Rs0)/d_norm`` on
             exactly the tangential E edges a PEC sheet on the same cells
             would zero — so toggling ``surface_impedance_f0`` on a metal
-            changes LOSS, never the conductor's surface position (before #677 the sheet folded into ``materials.sigma`` as a full-cell
-            slab, moving resonances by geometry). ``d_norm`` is the local
+            changes LOSS, never the conductor's surface position. ``d_norm`` is the local
             spacing normal to the sheet: the cell size on a uniform grid,
-            and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``
-            (#671). Both the uniform and the non-uniform (``dz_profile``)
+            and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``. Both the uniform and
+            the non-uniform (``dz_profile``)
             ``run()``/S-parameter lanes apply the operator; lanes that do
             not (distributed, subgridded, ADI, UPML, dispersive-overlap,
             multimode-waveguide, MSL-junction/mixed, optimize/topology
             drivers) refuse f0 sheets loudly rather than silently dropping
             them; ``compute_msl_s_matrix`` applies the sheet through its
-            ``run()``/``forward()`` device dispatches (#679). The sheet
+            ``run()``/``forward()`` device dispatches. The sheet
             contributes NO PEC cells and no ``materials.sigma``/``eps_r``
             entries.
 
-            **Consequence for material inspection (#695): an f0 sheet is
+            **Consequence for material inspection: an f0 sheet is
             INVISIBLE to the assembled arrays.** It is absent from
             ``pec_mask`` and it adds nothing to ``materials.sigma``, so a
             conductor test written the obvious way --
@@ -1121,8 +1113,7 @@ class Simulation(
               to within a few percent, frequency-flat —
               tests/oracle/test_leontovich_alpha_oracle.py.)
             - The operator touches TANGENTIAL sheet edges only; the
-              sheet-normal E component is never loaded (#677 removed the
-              pre-existing isotropic-fold caveat).
+              sheet-normal E component is never loaded.
             - ``f0`` and ``sigma_bulk`` are differentiable DoFs in f0 mode
               (closed forms ``d(sigma_sheet)/df0 = -sigma_sheet/(2*f0)``,
               ``d(sigma_sheet)/d(sigma_bulk) =
@@ -1130,7 +1121,7 @@ class Simulation(
               mask) stays non-differentiable. Traced values skip the
               concrete-value validation below.
 
-            Sheet shapes (issue #674): ANY shape implementing
+            Sheet shapes: ANY shape implementing
             ``mask_on_coords`` and ``bounding_box`` may carry a
             surface-impedance sheet — a patterned ground plane with
             clearance holes, a meandered arm, an imported CAD outline
@@ -1144,8 +1135,7 @@ class Simulation(
             built — folding such a body per cell would multiply the sheet
             conductance by the layer count while still reporting ``Rs0``.
             A sheet that rasterizes to ZERO cells raises too: a sub-cell
-            mesh slab registers only where a grid node falls inside it, and
-            silently vaporized metal is the #369 class. (A ``Box`` drawn
+            mesh slab registers only where a grid node falls inside it. (A ``Box`` drawn
             with equal lo/hi on its normal axis snaps to the nearest node by
             construction, so it always satisfies both.)
 
@@ -1168,13 +1158,7 @@ class Simulation(
         Reproduce with
         ``scripts/diagnostics/thin_conductor_cell_thickness_probe.py``.
 
-        Note this pair no longer *proves* the model change on its own. Until
-        issue #511 was fixed the one-cell reading was 38.8 Ω, so the thicker
-        stamp appeared to read the HIGHER impedance — backwards for a
-        fringing-capacitance effect, which is how the model change was first
-        argued. That inversion was an extractor artifact: the modal voltage
-        summed one Ez edge too many, and a two-cell stamp happens to mask that
-        edge, so only the one-cell number was biased. With both corrected the
+        Note this pair does not *prove* the model change on its own. The
         ordering is the ordinary one (thicker → lower Z0) and the 2.25 Ω step
         is consistent with either a model change or a genuine thickness
         effect. The model change is still real — it follows from
@@ -1306,7 +1290,7 @@ class Simulation(
             port's position (closest boundary face).
         reference_plane_cells : int or None
             Opt-in reference-plane port waves for the wire-port S-matrix
-            OFF-diagonal extraction (issue #313). When set to an integer
+            OFF-diagonal extraction. When set to an integer
             N >= 1, ``run(compute_s_params=True)`` registers TWO line
             V/I reference planes for this port at N and 2N cells
             outboard (into the DUT along the line axis, i.e. opposite
@@ -1323,7 +1307,7 @@ class Simulation(
             pair does not conserve power (the port plane is near-field
             dominated) while the plane waves close the power budget at
             all bins; the plane path removes the drive-side |S21|
-            deflation kappa(f) = 1.49-1.86 of issue #313.
+            deflation kappa(f) = 1.49-1.86.
             ``None`` (default) keeps the shipped port-cell behaviour,
             byte-identical. The DIAGONAL ``S_jj`` always stays on the
             byte-frozen legacy path either way, so ``forward()`` /
@@ -1466,7 +1450,7 @@ class Simulation(
             One of ``"+x"``, ``"-x"``, ``"+y"``, ``"-y"`` — the direction
             the launched wave propagates. The board lies in the xy-plane
             and the substrate normal is always z, so the feed may run
-            along either in-board axis (issue #661: a CAD-imported board
+            along either in-board axis (a CAD-imported board
             does not get to choose its orientation).
 
             ``"+z"`` / ``"-z"`` are REJECTED with a clear error rather
@@ -1495,7 +1479,7 @@ class Simulation(
             ``dy_profile`` different from ``dx``, and auto meshes. A ladder
             crossing a grading ramp retains counts based on scalar ``dx``.
             When ``None``, bound to the LARGER of two near-field clearances:
-            (a) the wavelength reactive far-field (issue #80 Fix B),
+            (a) the wavelength reactive far-field,
             ``round(0.5 * lam_min_eff / (2*pi) / dx)`` with
             ``lam_min_eff = c / freq_max / sqrt(eps_r_sub_estimate)``; and
             (b) the source FRINGING transient ``round(5 * h_sub / dx)``,
@@ -1503,10 +1487,10 @@ class Simulation(
             port ``height``), NOT over λ. For a thin high-εr substrate (b)
             dominates: clearing only (a) leaves probe 0 inside the fringing
             transient and corrupts the V·I-split S11 of a high-Q resonant
-            load (issue #80 patch: |S11|=8.94/1.11 → passive ~0.99 once
+            load (measured: |S11|=8.94/1.11 → passive ~0.99 once
             cleared). These two terms are only the UPSTREAM (lower) edge:
             at ``compute_msl_s_matrix`` time the auto default additionally
-            solves the DOWNSTREAM constraint (issue #469) — the deepest
+            solves the DOWNSTREAM constraint — the deepest
             probe must stay ≥ λ_g/4 (at ``freq_max``) clear of the nearest
             reflector — picking the midpoint of the compliant interval
             when a reflector bounds it, keeping the upstream edge when
@@ -1522,12 +1506,11 @@ class Simulation(
             bound so the total N-probe array span stays ~``lam_min_eff/8``
             independent of ``n_probes``:
             ``round(lam_min_eff / 8 / (n_probes - 1) / dx)``. For
-            ``n_probes=3`` this is exactly ``lam_min_eff/16`` (issue #80
-            Fix B). Shrinking the adjacent spacing as ``n_probes`` grows
+            ``n_probes=3`` this is exactly ``lam_min_eff/16``. Shrinking the adjacent spacing as
+            ``n_probes`` grows
             keeps the probe array from running off short lines.
 
-            An AUTO spacing is additionally WIDENED at driver time
-            (issue #681): ``compute_msl_s_matrix`` /
+            An AUTO spacing is additionally WIDENED at driver time: ``compute_msl_s_matrix`` /
             ``compute_mixed_s_matrix`` re-solve it toward a total span of
             ``(n_probes−1)·λ_g(f_max)/4`` (λ_g from the HJ ε_eff), capped
             by the downstream-reflector interval and the absorbing
@@ -1537,7 +1520,8 @@ class Simulation(
             touched.
         n_probes : int
             Number of equally-spaced voltage probe planes registered for
-            the N-probe least-squares wave-decomposition extractor (issue #80 Fix C). Probe ``n`` sits at ``offset + n*spacing`` cells
+            the N-probe least-squares wave-decomposition extractor. Probe ``n`` sits at ``offset +
+            n*spacing`` cells
             from the feed plane. ``N >= 3`` is required; the default 5
             over-determines the 2-unknown ``(alpha, gamma)`` fit, which
             removes the 3-probe quadratic's q→1 singularity. The current
@@ -1547,7 +1531,7 @@ class Simulation(
         eps_r_sub : float, optional
             Substrate relative permittivity. Used both for the eigenmode
             source and as ``eps_r_sub_estimate`` for the wavelength-bound
-            probe-placement defaults (issue #80 Fix B). When ``None`` the
+            probe-placement defaults. When ``None`` the
             estimate is resolved from the full dielectric declaration when
             S, run, forward, preflight or export resolves the port (a shape
             under the port whose bounding box contains
@@ -1780,7 +1764,7 @@ class Simulation(
         identity, reducing directional leakage in the H+E injection pair.
         ``"differentiated_gaussian"`` is refused on waveguide ports: its
         zero-phase incident filter wraps the precursor to the record end
-        and re-injects there (#1942). Use ``"modulated_gaussian"``
+        and re-injects there. Use ``"modulated_gaussian"``
         (the default).
         """
         scalar_checks = [

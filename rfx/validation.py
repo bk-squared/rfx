@@ -578,7 +578,7 @@ def replay_smatrix_from_vi_dump(
 
     This is an independent post-processor for E3 evidence.  It uses the
     power-wave split, role-selected per port to mirror the production
-    lumped decomposer (issue #308):
+    lumped decomposer:
 
     ``a = (V + Z0 I) / (2 sqrt(Z0))`` (incident, at the DRIVEN port),
     ``b = (V - Z0 I) / (2 sqrt(Z0))`` (reflected, at the DRIVEN port), and

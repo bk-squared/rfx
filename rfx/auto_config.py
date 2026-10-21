@@ -142,8 +142,8 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
     pec_threshold : sigma above which material is PEC
     thin_conductors : iterable of ThinConductor
         Declared sheets (``sim.add_thin_conductor``). Their planes join the
-        zero-thickness PEC boxes found in ``geometry`` as z FEATURES
-        (#931 §1.9): a sheet has no thickness to resolve, but the mesh must
+        zero-thickness PEC boxes found in ``geometry`` as z FEATURES: a sheet has no thickness to
+        resolve, but the mesh must
         carry a node at its plane.
     """
     thicknesses = []
@@ -252,13 +252,8 @@ class SimConfig:
     def grid_shape(self) -> tuple[int, int, int]:
         """Estimated grid shape (nx, ny, nz) including CPML padding.
 
-        Issue #696: when ``dz_profile`` is set the z axis is counted from
-        the PROFILE, not from ``ceil(domain_z / dx)``. This property
-        described the UNIFORM grid even for a configuration whose whole
-        point is a graded z stackup, and a graded stackup normally
-        refines below ``dx`` — so the cell count, and every memory number
-        derived from it, came out LOW for exactly the meshes people size
-        GPUs for. The z term now matches ``NonUniformGrid``'s
+        When ``dz_profile`` is set the z axis is counted from
+        the PROFILE, not from ``ceil(domain_z / dx)``. The z term matches ``NonUniformGrid``'s
         ``len(profile) + pads + 1``.
         """
         return _auto_grid_shape(self.domain, self.dx, self.cpml_layers,
@@ -277,7 +272,7 @@ class SimConfig:
         ``Simulation.estimate_ad_memory(...)`` or
         ``Simulation.mesh_intelligence_report(...)``. Those APIs know the
         final grid/profiles, NTFF state, and segmented scan-of-scan
-        checkpointing semantics from issue #31.
+        checkpointing semantics.
 
         Accounts for:
         - 6 field arrays (Ex, Ey, Ez, Hx, Hy, Hz)
@@ -401,8 +396,7 @@ def auto_configure(
     thin_conductors : iterable of ThinConductor
         Declared sheets. Their planes (and any zero-thickness PEC box in
         ``geometry``) become z FEATURES: the non-uniform z profile puts a
-        mesh line on each, so a sheet is realized where it was declared
-        (#931 §1.9).
+        mesh line on each, so a sheet is realized where it was declared.
 
     Returns
     -------

@@ -220,7 +220,7 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
     WARNING: raw field source causes DC accumulation on PEC surfaces.
     Prefer ``make_j_source`` for resonance detection.
 
-    Native amplitude convention (issue #571): ``'field'`` — ``E += w``.
+    Native amplitude convention: ``'field'`` — ``E += w``.
     ``amplitude_kind='current'`` uses the shared source-table builder's
     ``Cb/dV`` coefficient and REQUIRES
     ``materials`` (for Cb at the source cell). ``amplitude_kind`` of

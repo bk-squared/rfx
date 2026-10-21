@@ -685,7 +685,7 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
     wires : iterable of :class:`WireSpec`
         PEC filaments.
     periodic : (bool, bool, bool)
-        The run's per-axis periodic flags (#689).  Callers on a periodic
+        The run's per-axis periodic flags.  Callers on a periodic
         lane MUST pass their own; the default is the non-periodic
         convention.
     view : SlabView or None
@@ -754,8 +754,8 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
       edge INCIDENT to the node ``(ij, k)`` is PEC, i.e. ``E_t`` at the
       node's own index or at the backward index along ``t`` — so a node on
       the hi rim of a footprint, whose incident edges are stored at
-      ``i-1``, is found.  The backward neighbour follows the run's #689
-      convention: on a periodic (or length-1) in-plane axis the backward
+      ``i-1``, is found.  The backward neighbour follows the run's convention: on a periodic (or
+      length-1) in-plane axis the backward
       neighbour of index 0 is ``n-1``, so a wall on the seam node is
       found; on a non-periodic axis index 0 has no backward edge.
 
@@ -821,7 +821,7 @@ def edge_is_pec(edge_masks, component, i, j, k) -> bool:
     """True iff the E edge ``component`` at index ``(i, j, k)`` is PEC.
 
     ``component`` is ``"ex"``/``"ey"``/``"ez"``, ``"x"``/``"y"``/``"z"`` or
-    0/1/2.  Wire-port live-cell logic (#556 end gap, #929 ``port_in_pec``),
+    0/1/2.  Wire-port live-cell logic (end gap, ``port_in_pec``),
     probes and sources read this instead of scanning a cell mask.
     """
     c = _COMPONENT_INDEX[component.lower() if isinstance(component, str) else int(component)]

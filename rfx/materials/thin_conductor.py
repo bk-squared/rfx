@@ -206,7 +206,7 @@ class ThinConductor:
         Relative permittivity (default 1.0).
     surface_impedance_f0 : float | Array | None
         Band-centre frequency (Hz) for the opt-in Leontovich surface-
-        impedance loss model (issue #669). ``None`` (default) keeps the
+        impedance loss model. ``None`` (default) keeps the
         exact legacy semantics: metal -> lossless PEC sheet, sub-threshold
         -> DC lossy fold ``sigma_bulk*t/d``. When set, the sheet is a
         resistive sheet of sheet resistance ``Rs0 = leontovich_rs(f0,
