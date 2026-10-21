@@ -105,8 +105,8 @@ occupancy box combines with `eps_override` and `pec_occupancy_override`.
 Values in between are a smooth path for the optimizer, not a physical
 material: an edge of partial occupancy behaves as an artificial loss. Drive
 the design to 0 and 1 before you read its performance; `rfx.topology` has a
-density filter and a smooth threshold projection for that. See the known
-limitation "Intermediate conductor occupancy is an artificial loss".
+density filter and a smooth threshold projection for that. See the
+[known limitations](/rfx/support/known-limitations/) on partly metal cell edges.
 
 Design metal never covers what was declared at a cell edge. Under a
 whole-grid occupancy, the edges of lumped RLC elements and of

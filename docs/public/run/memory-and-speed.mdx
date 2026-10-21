@@ -74,7 +74,7 @@ else:
     raise RuntimeError(plan.recommendation)
 print(checkpoint_kwargs)
 
-eps = jnp.full(sim.run(n_steps=1).grid.shape, 4.0, dtype=jnp.float32)
+eps = jnp.full(sim.freeze_mesh().shape, 4.0, dtype=jnp.float32)
 
 
 def loss(eps_r):

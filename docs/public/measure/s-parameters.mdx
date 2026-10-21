@@ -39,7 +39,7 @@ sim.add_vector_probe((0.025, 0.035, 0.025))     # columns 1-6
 sim.add_dft_plane_probe(axis="z", coordinate=0.025, component="ez",
                         freqs=np.array([2e9, 3e9]), name="ez_mid")
 
-result = sim.run(n_steps=400)   # short: rfx warns the record is cut
+result = sim.run(n_steps=400)
 
 ts = np.asarray(result.time_series)       # shape (n_steps, 7)
 t = np.arange(ts.shape[0]) * result.dt    # seconds
@@ -53,8 +53,9 @@ print(plane.accumulator.shape)            # (n_freqs, nx, ny), complex
 Columns follow registration order across all probe calls, so a vector probe
 added after two point probes occupies columns 2–7.
 
-A position snaps to the nearest grid cell, so a probe can read a field up to
-half a cell from the coordinate you gave. If you omit `freqs` on a DFT plane,
+A position snaps to the nearest grid node, and the field component sits half a
+cell from that node on the Yee grid, so a probe can read a field up to about a
+cell from the coordinate you gave (see [Probes and fields](/rfx/measure/probes-and-fields/)). If you omit `freqs` on a DFT plane,
 rfx uses `n_freqs` points from `freq_max / 10` to `freq_max`.
 
 A DFT plane accumulates its spectrum during the run, which is much cheaper
@@ -95,11 +96,13 @@ def slab_run(with_slab):
     if with_slab:
         s.add_material("slab", eps_r=4.0)
         # A plane wave makes the transverse axes periodic: span them fully.
+        # Preflight notes the slab reaches the y absorber region; y is
+        # periodic here, so there is no absorber there.
         s.add(Box((slab_lo, -1, -1), (slab_hi, 1, 1)), material="slab")
     s.add_tfsf_source(f0=9e9, bandwidth=0.9, polarization="ez", direction="+x")
     s.add_flux_monitor(axis="x", coordinate=0.06, freqs=freqs_rt, name="refl")
     s.add_flux_monitor(axis="x", coordinate=0.14, freqs=freqs_rt, name="trans")
-    return s.run(n_steps=4000, until_decay=1e-3)
+    return s.run(n_steps=1500)
 
 ref = slab_run(with_slab=False)
 dut = slab_run(with_slab=True)
@@ -121,11 +124,13 @@ Two rules for this measurement:
 
 - Keep both runs identical except for the object: same mesh, source, monitors
   and simulation time.
-- Use `until_decay=` so each run stops when the fields have died out, not at an
-  arbitrary step.
+- Give both the same fixed `n_steps`, long enough for the fields to have died
+  out in the run with the object. `until_decay=` stops each run at its own
+  step: here the empty run would run to its step cap and the slab run would
+  stop at 550 steps.
 
 `add_flux_monitor(size=, center=)` limits the monitor to a finite rectangle;
-the [flux regions contract](https://github.com/bk-squared/rfx/blob/main/docs/guides/flux_regions.md)
+the [flux regions guide](https://github.com/bk-squared/rfx/blob/main/docs/guides/flux_regions.md)
 explains how that rectangle lands on the grid.
 
 ## Resonances
@@ -226,7 +231,10 @@ for a default request; the per-port V, I and V_ref spectra stay in
 
 For one-port S11, aim for about **60 cells per wavelength** at the highest
 frequency you care about. At 30 cells per wavelength, magnitudes can be off
-by about 1 dB and resonant frequencies move by 1–3 %. A one-cell port reads its
+by about 1 dB and resonant frequencies move by 1–3 %. A wire port also needs
+its radius (`add_port(..., radius=a)`, at most 0.2 of the transverse cell);
+without it, preflight warns that S changes with every mesh refinement and
+does not converge. A one-cell port reads its
 voltage at its node and its current half a cell toward the line.
 
 ### Completing a record that was cut short
@@ -256,9 +264,12 @@ What to know before you rely on it:
   record). The source must be off in that window, or `run()` raises and tells
   you to lengthen the record.
 - `report.ok` is True when the completion was produced and every judged check
-  passed. The deciding check is `WE`: it completes the same record again using
-  poles fitted on a window that starts twice as early, and compares the two
-  answers. `W2` (a shorter second window) is reported but not judged.
+  passed. The deciding check (`WE` in the report) completes the same record
+  again using poles fitted on a window that starts twice as early, and
+  compares the two answers. When a source is still on in that earlier window,
+  `WE` cannot be formed; the check then compares the fit window with a shorter
+  one, `[window_start * T, split * T]` (`W2`), which can read the error low by
+  several times.
 - None of these checks is an error bound. They tell you whether the
   completion is self-consistent, not how close it is to the true answer.
 - If completion cannot be produced, `cav_rd.ringdown.s_params` is `None` and
@@ -272,7 +283,7 @@ the completed S11 is passive.
 ### Microstrip lines
 
 Microstrip ports use `compute_msl_s_matrix()`. It runs one simulation per
-driven port and extracts S from a ladder of voltage and current probes
+driven port and extracts S from a row of voltage and current probes
 downstream of each feed:
 
 ```python

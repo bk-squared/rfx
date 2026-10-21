@@ -117,7 +117,7 @@ sim.add_source((0.008, 0.015, 0.010), "ez",
 sim.add_probe((0.032, 0.015, 0.010), "ez")
 
 # Design variable: the full permittivity grid.
-params = jnp.full(sim.run(n_steps=1).grid.shape, 4.0, dtype=jnp.float32)
+params = jnp.full(sim.freeze_mesh().shape, 4.0, dtype=jnp.float32)
 
 
 def loss_fn(eps_r):
@@ -128,7 +128,7 @@ def loss_fn(eps_r):
 ad_grad = jax.grad(loss_fn)(params)
 
 idx = (10, 7, 5)          # a cell inside the slab
-h = 1e-2                  # FD step in eps_r units
+h = 1e-1                  # FD step in eps_r units
 fd_grad = (loss_fn(params.at[idx].add(h))
            - loss_fn(params.at[idx].add(-h))) / (2 * h)
 
@@ -136,12 +136,13 @@ rel_err = abs(ad_grad[idx] - fd_grad) / max(abs(fd_grad), 1e-30)
 print(f"loss = {float(loss_fn(params)):.3e}, AD/FD relative error = {float(rel_err):.2e}")
 ```
 
-On this model the two agree to a few parts in a thousand. The loss is in
+On this model the two agree to about 5 parts in a thousand. The loss is in
 arbitrary units here (a raw probe signal), so only the relative error matters.
 
 rfx runs in float32, so a very small finite-difference step is dominated by
 round-off. Start with `h = 1e-2` for permittivity-like variables and raise it
-toward `1e-1` when the loss is large (see
+toward `1e-1` when the loss is large. This loss is about 2×10¹², and with
+`h = 1e-2` the same check reads 13 % (see
 [Gradient Behavior](/rfx/guide/gradient-behavior/)).
 
 `rfx.gradient_check(sim, design_params, objective_fn, eps=...)` runs the same

@@ -213,8 +213,8 @@ Left out of these tables, each for one reason:
 
 | Input | Row key | Uniform | Graded | Multi-device | Calculators | What to do instead |
 |---|---|---|---|---|---|---|
-| A frequency-domain plane (`add_dft_plane_probe`) | `_dft_planes/dft_plane` | supported | supported | refused | — | Run it on one device. |
-| A flux monitor (`add_flux_monitor`) | `_flux_monitors/flux` | supported | supported | refused | — | Run it on one device. |
+| A frequency-domain plane (`add_dft_plane_probe`) | `_dft_planes/dft_plane` | supported | supported | supported | — | — |
+| A flux monitor (`add_flux_monitor`) | `_flux_monitors/flux` | supported | supported | supported | — | — |
 | A far-field box (`add_ntff_box`) | `_ntff/ntff_box` | supported | supported | supported (uniform); refused (graded) | — | On a graded mesh, run it on one device. |
 | A current-moment monitor (`add_current_moment_monitor`) | `_current_moments/block_moments` | supported | supported | refused | refused (vmap_sweep_batched) | Run it on one device. The batched `vmap_material_sweep` refuses it. |
 
@@ -271,7 +271,7 @@ error message tells you to do; the last names the test that pins the refusal.
 
 ## S-parameters
 
-`run()` computes the port S-matrix by default where its path supports it (pass `compute_s_params=False` to skip it; on the graded mesh lumped ports return none yet); `forward()` computes it only when `port_s11_freqs` is given.
+`run()` computes the port S-matrix by default where its path supports it (pass `compute_s_params=False` to skip it; on the graded mesh, lumped-port S comes from a drive scan with `compute_s_params=True`, and by default only when every port is lumped and one is driven); `forward()` computes it only when `port_s11_freqs` is given.
 
 This part answers three questions for each public primitive: does it define a
 port impedance and a reference plane, which calculator computes its

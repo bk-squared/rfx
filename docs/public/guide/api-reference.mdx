@@ -29,7 +29,7 @@ result = sim.run(n_steps=...)                                 # solve -> Result
 | `add_material(name, *, eps_r, sigma, mu_r, debye_poles, lorentz_poles)` | a named material | [Geometry & Materials](/rfx/api/geometry-materials/#materials) |
 | `add(shape, *, material)` | fill a `Box`, `Sphere`, `Cylinder`, `PolylineWire`, `Via`, `MeshShape`... | [Geometry & Materials](/rfx/api/geometry-materials/#placing-shapes) |
 | `add_thin_conductor(shape, *, surface_impedance_f0=None)` | a copper sheet | [Geometry & Materials](/rfx/api/geometry-materials/#metal-sheets) |
-| `add_source(position, component, *, waveform, amplitude_kind="current")` | point source, no impedance | [Sources & Ports](/rfx/api/sources-ports/#sources) |
+| `add_source(position, component, *, waveform, amplitude_kind=None)` | point source, no impedance; pass `amplitude_kind="current"` or `"field"` (left as `None` it means `"current"` and warns) | [Sources & Ports](/rfx/api/sources-ports/#sources) |
 | `add_tfsf_source(...)` | plane wave | [Sources & Ports](/rfx/api/sources-ports/#sources) |
 | `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources & Ports](/rfx/api/sources-ports/#ports) |
 | `add_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results/#observables) |

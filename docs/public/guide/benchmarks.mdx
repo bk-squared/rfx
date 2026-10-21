@@ -32,7 +32,7 @@ solver, version and mesh produced them.
 |---|---|
 | Structure | A 39.7 × 49.25 mm patch on 3.175 mm RT/Duroid 5880 (εr 2.2, tan δ 0.001) over a 55.6 × 65.1 mm ground, fed by a 50 Ω probe 8.73 mm off centre. |
 | Reference | openEMS, the same board on three meshes, judged against its finest one. |
-| rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three meshes realize the same patch, and the test refuses a mesh that does not. |
+| rfx meshes | three uniform meshes at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three meshes realize the same patch, and the test refuses a mesh that does not. |
 | Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest mesh; the last two meshes must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
 | Reported, not judged | the `\|S11\|` dip frequency and depth, the reactance at resonance and the −10 dB band edges. Neither solver declares a probe radius, so each feed cell sets the probe's series reactance, and that moves the dip. |
 | Result | not repeated under the current settling check, which judges each frequency a result reads; no agreement figure is given. |
@@ -58,7 +58,7 @@ or `slow`.
 | Microstrip open-stub notch filter, `\|S21\|` | openEMS tutorial result and Palace FEM | `tests/crossval/msl_notch_filter/` |
 
 The notch filter comparison has not been repeated under the current settling
-check, and its uniform-mesh ladder has not been shown to converge on the drawn
+check, and its uniform-mesh refinement has not been shown to converge on the drawn
 600 µm line, so no agreement figure is given.
 
 <figure data-rfx="media">
@@ -71,7 +71,7 @@ against another solver. Those tests are in `tests/oracle/`.
 
 ## Reproduce
 
-The comparisons are pytest tests. The long ladders are marked `gpu` and
+The comparisons are pytest tests. The long mesh series are marked `gpu` and
 `slow`, so the pull-request suite never runs them. From a source checkout:
 
 ```bash
@@ -83,7 +83,7 @@ pytest tests/crossval/rt5880_patch -m gpu
 ```
 
 `RFX_RT5880_PATCH_RUNGS=793.75e-6` runs only the coarsest mesh. That is a
-diagnostic, not the case's result, because the mesh statement needs all three
+diagnostic, not the case's result, because the convergence check needs all three
 meshes.
 
 ## Limits
@@ -91,7 +91,7 @@ meshes.
 - **One board is not every patch.** The patch case covers one board and one
   probe feed. For your own patch, run a convergence study and compare with a
   reference, as in [Your First Patch Antenna](/rfx/examples/first-patch/).
-- **Magnitude comparisons do not cover phase.** The two filter cases compare
+- **Magnitude comparisons do not cover phase.** The filter case compares
   `|S21|` only. On the notch filter, rfx also runs shorter feed lines than the
   reference, which moves the phase but not the magnitude.
 - **Scripts under `validation/research/` are not reference cases.** They are

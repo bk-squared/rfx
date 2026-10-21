@@ -82,8 +82,9 @@ the first unless you pass `probe_idx=`, and returns a list of
 - **The band.** `freq_range` defaults to the range the run stored (a tenth of
   `freq_max` to `freq_max`). Modes up to 10 % outside it can be reported, and
   modes with Q below 1 are dropped.
-- **Close modes.** Two fitted modes within 1 % of each other in frequency come
-  back as one, the stronger.
+- **Close modes.** Distinct fitted poles are kept however close they are in
+  frequency; two tones 0.5 % apart come back as two modes. Separating them
+  still needs a record long enough to resolve them.
 - **Noise returns modes too.** A record of noise alone still gives poles in
   the band. Confirm a mode on a second probe or a second window before you
   trust it.

@@ -246,7 +246,7 @@ These are planning numbers. They say nothing about accuracy.
 | NTFF far field | limited: one dipole case checked against theory |
 | DFT planes, flux monitors | run; no general accuracy statement |
 | wire-port S-parameters (`add_port(..., extent=...)`) | experimental; compare with a uniform run |
-| one-cell lumped-port S-parameters | formed by `run()` when every port is lumped and exactly one is driven, and by `forward(port_s11_freqs=...)`; limited (a one-cell feed model) |
+| one-cell lumped-port S-parameters | formed by `run(compute_s_params=True)`, by default when every port is lumped and exactly one is driven, and by `forward(port_s11_freqs=...)`; limited (a one-cell feed model) |
 | `compute_msl_s_matrix` | experimental; `mode="eigenmode"` refused |
 | `compute_waveguide_s_matrix` | single-mode, `normalize=True` or `"flux"` |
 | coaxial calculators | refused |

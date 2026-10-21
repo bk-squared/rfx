@@ -32,7 +32,8 @@ to grade a mesh at all, see [Non-Uniform Mesh](/rfx/model/domain-mesh/).
 - A thin z feature makes the plan grade z and return a `dz_profile`.
 
 `plan_mesh` wraps `auto_configure` and adds a serializable record of what it
-chose. Prefer it.
+chose. Prefer it, except for `thin_conductors` and `waveform`, which only
+`auto_configure` takes.
 
 ```python
 import numpy as np
@@ -48,6 +49,13 @@ kwargs = plan.to_sim_kwargs()   # freq_max, domain, boundary, cpml_layers, dx (+
 sim = Simulation(**kwargs)
 print(sorted(kwargs))
 ```
+
+When the plan grades z, compare `sum(kwargs["dz_profile"])` with
+`kwargs["domain"][2]` before you build. For this board the plan returns a
+101.5 mm z domain but a profile that covers 51.6 mm, with neighbouring cells
+up to 2:1, above the 1.4 limit below. `Simulation` keeps a positive domain as
+given, so the two disagree. Until the planner is fixed, build the z profile
+with `make_band_profile` and pass `0.0` as the z size.
 
 `MeshPlan` holds the derived `domain`, `cell_sizes`, `cfl`, `absorber`,
 `memory`, `grid_shape`, `support_checks` and `warnings`. Export it with
@@ -101,7 +109,7 @@ checked up to those ratios, and preflight flags larger ones.
   `Simulation.preflight()` for geometry you add later, nor a convergence study.
 - The cell count per wavelength in `accuracy` is a free-space figure. Check
   that dielectrics still get enough cells: preflight warns below 15 per
-  wavelength in the material.
+  wavelength in the material (20 with waveguide ports or flux monitors).
 - On a graded mesh, a `Box` whose faces fall between grid planes snaps to the
   nearest one. Preflight reports this as `graded_box_rasterization`. Align
   layers to the profile's cell edges.
