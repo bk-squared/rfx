@@ -849,8 +849,8 @@ class _PreflightMixin:
         Parameters
         ----------
         strict : bool
-            If True, raise ValueError on the first issue instead of
-            collecting warnings.
+            If True, collect every finding and raise one ValueError
+            that lists them all.
         check_ntff : bool or "advisory"
             ``True`` (default): run the full NTFF check family (PEC-overlap
             hard error + λ/4 / λ/2 near-field gap advisories + the
