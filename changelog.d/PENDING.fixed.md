@@ -1,0 +1,6 @@
+### Fixed — Plane-wave sources now refuse non-vacuum updates on their injection planes (#PENDING)
+
+TF/SF plane-wave runs and forward solves now reject dispersive or Kerr media,
+PEC volumes, sheets and wires, surface-impedance sheets, lumped elements,
+and design windows that alter an injection plane's vacuum update.
+The error identifies the affected plane and operand, including on graded meshes.

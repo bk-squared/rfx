@@ -87,8 +87,8 @@ MESSAGES = {
     "graded node index": "position 1 m on the traced y axis resolves to interior node 0 on the nominal uniform mesh this lane must use for a structural index, but to node 1 on the mesh the run built. The two runs would place this source / probe / port at different points of the board. Declare the y deformation so the node lines outside it do not move (stretch and shrink inside a window), or give the position by node index. Or declare the concrete y profile with nominal_profiles=.",
     "pole stability": "Lorentz/Drude poles (omega_0=0, delta=0, kappa=9) on 1 cells, eps_low=1, sigma_low=0, sigma_high=0: unstable at this model's time step dt = 1 s; growth per step = 6.85410197; largest stable step for this set is 0.6666666666667496 s; dt/stable = 1.5. To run: use finer cells, or declare a dz_profile/dx_profile/dy_profile so that dt=0.6666666666667496 can be passed; or raise eps_inf.",
     "sheet film overlap": "an f0 sheet and a lossy film share edges on x at [[0]]",
-    "TFSF box": "closed_box TFSF requires vacuum on and adjacent to all six faces; non-vacuum material found at x=1",
-    "TFSF slab": "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x boundaries; non-vacuum material found at x_lo-1",
+    "TFSF box": "closed_box TFSF requires vacuum on and adjacent to all six faces; non-vacuum material found at x=1: permittivity (materials.eps_r)",
+    "TFSF slab": "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x boundaries; non-vacuum material found at x_lo-1: permittivity (materials.eps_r)",
     "source increment": "float16 soft-source one-step increment 70000 exceeds the float16 maximum (65504); scale the waveform.",
 }
 

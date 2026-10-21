@@ -113,7 +113,7 @@ def test_refusal_matrix(obj, lane, monkeypatch):
         assert not started
         message = str(caught.value)
         new = 'non-vacuum material found at' in message and ': ' in message and message.endswith(')')
-        if obj in INVENTORY and not lane.endswith('graded'):
+        if (obj in INVENTORY and not lane.endswith('graded')) or obj == 'pec_volume':
             assert new, message
         elif not new:
             assert lane.endswith('graded') and any(s in message for s in (
