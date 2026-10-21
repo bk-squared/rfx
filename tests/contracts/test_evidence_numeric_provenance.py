@@ -744,6 +744,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/measure/resonances.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/evidence/simulation-time.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/evidence/gradients.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/evidence/gradient-simulation-time.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/evidence/accuracy-bar.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/design/design-regions.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/support/known-limitations.mdx": NO_ARTIFACT_REFERENCE,
