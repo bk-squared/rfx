@@ -108,6 +108,65 @@ def test_the_lowered_check_reads_the_precision():
 # The entry points
 # ---------------------------------------------------------------------------
 
+def _geometry_grid():
+    from rfx.grid import Grid
+    return Grid(domain=(.01, .01, .01), dx=.001, freq_max=10e9, cpml_axes='')
+
+
+def _node_tensor_leaves(grid, radius):
+    from rfx.geometry import Sphere
+    from rfx.geometry.node_tensor import compute_node_tensor_eps
+    sphere = Sphere((4.3e-3, 5.2e-3, 4.7e-3), radius)
+    return jax.tree_util.tree_leaves(compute_node_tensor_eps(grid, [(sphere, 3.0)], 1.0))
+
+
+def test_full_tensor_node_build():
+    grid = _geometry_grid()
+    text = jax.jit(lambda radius: _node_tensor_leaves(grid, radius)).lower(
+        jnp.float32(2.6e-3)).as_text()
+    assert _assert_all_highest(text, "full-tensor node build") >= 8
+
+
+def test_full_tensor_node_build_gradient():
+    """Radius AD reaches the spectral clip JVP and library derivative products."""
+    grid = _geometry_grid()
+
+    def loss(radius):
+        return sum(jnp.sum(leaf) for leaf in _node_tensor_leaves(grid, radius)
+                   if jnp.issubdtype(leaf.dtype, jnp.floating))
+
+    text = jax.jit(jax.grad(loss)).lower(jnp.float32(2.6e-3)).as_text()
+    assert _assert_all_highest(text, "grad of full-tensor node build") >= 57
+
+
+def test_full_tensor_node_build_graded():
+    from rfx.nonuniform import make_nonuniform_grid
+    grid = make_nonuniform_grid(
+        domain_xy=(.01, .01), dx=.001, dz_profile=np.array([.0008, .0012] * 5),
+        cpml_layers=0, cpml_axes='')
+    text = jax.jit(lambda radius: _node_tensor_leaves(grid, radius)).lower(
+        jnp.float32(2.6e-3)).as_text()
+    assert _assert_all_highest(text, "graded full-tensor node build") >= 8
+
+
+def test_occupancy_smoothing():
+    from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
+    grid = _geometry_grid()
+    text = jax.jit(lambda occupancy: kottke_inv_eps_from_occupancy(grid, occupancy)).lower(
+        jnp.full(grid.shape, .5, jnp.float32)).as_text()
+    assert _assert_all_highest(text, "occupancy smoothing") >= 0
+
+
+def test_conformal_weights_sdf():
+    from rfx.geometry import Sphere
+    from rfx.geometry.conformal import compute_conformal_weights_sdf
+    grid = _geometry_grid()
+    text = jax.jit(lambda radius: compute_conformal_weights_sdf(
+        grid, [Sphere((4.3e-3, 5.2e-3, 4.7e-3), radius)])).lower(
+            jnp.float32(2.6e-3)).as_text()
+    assert _assert_all_highest(text, "conformal weights SDF") >= 0
+
+
 def test_ring_down_completion_inside_forward():
     """``forward(ringdown=)``: the plain DFT, the tail and the residue solve."""
     from rfx.ringdown import RingdownSpec
