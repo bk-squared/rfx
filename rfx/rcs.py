@@ -102,8 +102,8 @@ def _incident_spectrum_amplitude(
 ) -> np.ndarray:
     """Compute the frequency-domain amplitude of the TFSF incident pulse.
 
-    The TFSF 1-D source uses a differentiated Gaussian:
-        s(t) = -2*arg * exp(-arg^2),  arg = (t - t0) / tau
+    The TFSF 1-D source uses GaussianPulse's charge-free differentiated
+    Gaussian: s(t) = charge_free_dg(t, tau, cutoff=3),
     where tau = 1/(f0 * bandwidth * pi), t0 = 3*tau.
 
     We compute the DFT of this waveform at the requested frequencies.
@@ -113,10 +113,9 @@ def _incident_spectrum_amplitude(
     ``rfx.sources.tfsf.measure_normal_incident_spectrum``.
     """
     tau = 1.0 / (f0 * bandwidth * np.pi)
-    t0 = 3.0 * tau
+    from rfx.sources.sources import charge_free_dg
     times = np.arange(n_steps) * dt
-    arg = (times - t0) / tau
-    waveform = -2.0 * arg * np.exp(-(arg ** 2))
+    waveform = np.asarray(charge_free_dg(times, tau, 3.0))
 
     # DFT at requested frequencies
     # S(f) = sum_n s(n*dt) * exp(-j*2*pi*f*n*dt) * dt

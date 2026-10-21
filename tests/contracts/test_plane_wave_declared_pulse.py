@@ -18,6 +18,16 @@ DG_T0 = 2.3873241463784304e-10
 MG_T0 = 3.978873577297384e-10
 
 
+def _charge_free_dg(t, tau, t0):
+    t = np.asarray(t, dtype=np.float64)
+    c, u = t0 / tau, t / tau
+    arg = (t - t0) / tau
+    bare = -2.0 * arg * np.exp(-arg**2)
+    onset = np.exp(-c**2 - u**2) * (
+        2 * c + (4 * c**2 - 2) * u - 4 * c * u**2 - 4 * c**2 * u**3)
+    return np.where(t >= 0, bare - onset, 0.0)
+
+
 def _build(path, **kwargs):
     options = dict(f0=8e9, bandwidth=0.5, cpml_layers=4, tfsf_margin=4)
     options.update(kwargs)
@@ -153,8 +163,8 @@ def test_p4_measured_incident_spectrum_ratio():
     n_steps, dt = 2000, 1e-12
     freqs = np.array([6e9, 7e9, 8e9, 9e9, 10e9])
     t = np.arange(n_steps) * dt
-    dg_arg = (t - DG_T0) / TAU
-    dg = -2 * dg_arg * np.exp(-dg_arg**2)
+    # The TF/SF line launches GaussianPulse's charge-free DG (#1839).
+    dg = _charge_free_dg(t, TAU, DG_T0)
     mg = np.cos(2 * np.pi * 8e9 * (t - MG_T0)) * np.exp(-((t - MG_T0) / TAU)**2)
     assert abs(dg[-1]) < 1e-6 * np.max(abs(dg))
     assert abs(mg[-1]) < 1e-6 * np.max(abs(mg))
