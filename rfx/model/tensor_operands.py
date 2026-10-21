@@ -125,8 +125,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
     # Conformal PEC (Stage 1): compute weights and produce anisotropic
-    # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)
-    # — the inv-eps tensor already encodes the conformal behaviour.
+    # eps. Entry admission refuses this with Stage 2; keep the exclusion
+    # defensive so the two PEC treatments cannot be applied together.
     conformal_weights = None
     if conformal and pec_shapes and not use_kottke_pec:
         from rfx.geometry.conformal import (
@@ -215,7 +215,15 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
 
 
 def refuse_full_tensor_conformal(smoothing, conformal, pec_shapes):
-    """Partial PEC edges have no free-edge node coupling model."""
+    """Refuse tensor modes that cannot carry the requested conformal weights."""
+    if smoothing == 'kottke_pec' and conformal and pec_shapes:
+        raise NotImplementedError(
+            "subpixel_smoothing='kottke_pec' cannot combine with "
+            "conformal_pec=True (including Boundary(conformal=True)): "
+            "the smoothed inverse-permittivity tensor already treats the "
+            "metal edges, so the conformal weights would not be formed. "
+            "Choose subpixel_smoothing='kottke_pec' alone, or "
+            "conformal_pec=True with subpixel_smoothing=False or True.")
     if smoothing == 'full_tensor' and conformal and pec_shapes:
         from rfx.model.smoothing_admission import FULL_TENSOR_MESSAGE
         raise NotImplementedError(FULL_TENSOR_MESSAGE + '; conformal PEC is not supported')

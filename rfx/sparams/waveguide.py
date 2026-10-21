@@ -535,6 +535,9 @@ def compute_waveguide_s_matrix(
         pec_wires=_wg_pec_wires)
     _wg_pec_sheets = tuple(_wg_pec_sheets)
     _wg_pec_wires = tuple(_wg_pec_wires)
+    from rfx.model.tensor_operands import refuse_full_tensor_conformal
+    refuse_full_tensor_conformal(
+        subpixel_smoothing, self._boundary_spec.conformal_faces(), pec_shapes)
     # The smoothed tensor (Stage 1 and "kottke_pec") is built from the DECLARED
     # shapes and replaces the cell permittivity in the E update, so an
     # eps_override would never reach the solve: S came back identical with a

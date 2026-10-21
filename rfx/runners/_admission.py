@@ -949,9 +949,12 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if lane == "run_subgridded" and ("_refinement", "slab") in rows:
         from rfx.subgridding._notice import SUBGRID_NOTICE
         return SUBGRID_NOTICE
+    # Both conformal rows describe one input; display its more specific refusal.
+    message_rows = [row for row in rows if row != ("_boundary_spec", "conformal")
+                    or ("_boundary_spec", "conformal_s_matrix") not in rows]
     if lane in CALCULATORS:
         lines = ([] if lane == "material_fit" else
-                 [f"  - {ROW_WORDS[row]}" for row in rows])
+                 [f"  - {ROW_WORDS[row]}" for row in message_rows])
         if ("_refinement", "slab") in rows and lane != "material_fit":
             lines.append("  - add_refinement(): this calculator has no subgridded lane (#1240).")
             if sim._uses_nonuniform_mesh:
@@ -984,7 +987,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                          + (f" — {names[row]}" if row in names else "")
                          + " (#1290). "
                          + remedies.get(row, "Remove this input from sim_factory.")
-                         for row in rows)
+                         for row in message_rows)
         if lane == "waveguide_s_matrix" and ("_solver", "") in rows:
             lines.append("  - solver='adi' (#1300). Use solver='yee'.")
         if lane == "waveguide_s_matrix" and any(row[0] == "_lumped_rlc" for row in rows):
@@ -996,7 +999,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     # On ADI a dielectric or conductor is carried as a homogeneous fill; what
     # is refused is the interface, so the interface text stands for both rows.
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
-             for row in rows if not (lane in _ADI and row in _ADI_MATERIAL_ROWS)]
+             for row in message_rows if not (lane in _ADI and row in _ADI_MATERIAL_ROWS)]
     if lane in _ADI and any(row in rows for row in _ADI_MATERIAL_ROWS):
         from rfx.adi import ADI_INTERFACE_MESSAGE
         lines.append(f"  - {ADI_INTERFACE_MESSAGE}")
