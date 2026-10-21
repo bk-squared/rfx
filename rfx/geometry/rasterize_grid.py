@@ -11,6 +11,7 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
@@ -772,9 +773,16 @@ def _node_tie_band(c, xp):
     return lambda face: node_tie_tol(face, cell, c.dtype)
 
 
+class TracedShapeDimensionError(NotImplementedError, jax.errors.ConcretizationTypeError):
+    """Named traced-dimension refusal that callers catching JAX's error still see."""
+
+    def __init__(self, message):
+        NotImplementedError.__init__(self, message)
+
+
 def _box_zero_axes(lo, hi):
     if any(is_tracer(v) for corner in (lo, hi) for v in corner):
-        raise NotImplementedError(
+        raise TracedShapeDimensionError(
             "A Box with a traced extent cannot resolve its bounds on grid "
             "cells, for any material. Use concrete Box corners outside jit/vmap.")
     return [i for i in range(3) if float(hi[i]) - float(lo[i]) == 0.0]
@@ -944,7 +952,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     pts = getattr(shape, "points", None)
     radius = getattr(shape, "radius", None)
     if isinstance(shape, Sphere) and is_tracer(radius):
-        raise NotImplementedError(
+        raise TracedShapeDimensionError(
             "A PEC Sphere with a traced radius cannot check its resolved "
             "volume. Use a concrete radius outside jit/vmap.")
     # Periodic filament validation also needs a concrete radius.
