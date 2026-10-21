@@ -145,11 +145,12 @@ patch dimensions without rounding them to a uniform lattice. Read
 registration does not replace a mesh-convergence study.
 
 This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
-advisories because the interior cells adjacent to the x/y absorber faces are
-not uniform. The grading changes the discrete medium normal to the boundary
-where the absorber starts, leaving no interior runway to separate the
-transition’s reflection from the absorber’s, so this example is outside the
-validated multi-band accuracy envelope.
+warnings because the interior cells next to the x/y absorber faces are not
+uniform. The absorber then starts on a graded mesh, so its reflection is not
+the one it was characterised with, and this model's accuracy has not been
+checked. Preflight also notes that the copper's thickness (35 µm, the
+`add_thin_conductor` default) is solved as zero
+(`thin_conductor_thickness_unmodelled`), which is what a sheet means.
 
 Treat preflight warnings as part of your result. Use `preflight(strict=True)`
 only for models you expect to have no findings at all, because strict mode turns
@@ -166,15 +167,18 @@ print(f"{ts.shape[0]} steps, settling {short_run.settling_db:.1f} dB")
 
 This shows that the model runs and produces finite data. Two periods is far too
 short for the patch to ring down, so rfx warns that the ring-down is
-truncated. Nothing from this run is a result.
+truncated. The settling figure prints `nan`: a run with only probes reads no
+frequency for the check to judge, so its status is `absent` (see
+[Quick Start](/rfx/start/first-simulation/)). Nothing from this run is a result.
 
 ## 5. From a model to a result
 
 To report a resonance, Q or return loss for this patch:
 
-1. **Run long enough.** Use `until_decay=` or a long fixed record, and check
-   `result.settling_db`. A patch has a moderately high Q, so it needs many
-   periods.
+1. **Run long enough.** Use `until_decay=` or a long fixed `n_steps`. A patch
+   has a moderately high Q, so it needs many periods. Once the run reads
+   frequencies (a port, an NTFF box), check `result.settling_db`; with probes
+   alone, judge the probe signal's decay.
 2. **Extract the resonance** with `result.find_resonances(freq_range=(2e9, 3e9))`.
    Pick the mode by its field pattern or far field, not by which peak is
    biggest. Handle the case where no mode is found.
