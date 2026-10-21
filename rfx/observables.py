@@ -266,9 +266,9 @@ def field_softmax(
         Soft-max sharpness (default 1.0), now DIMENSIONLESS -- see
         "Auto-scaling" below. Must be positive.
 
-    Auto-scaling (fixes a measured footgun -- read before raising *beta*
-    "to be safe")
-    -------------------------------------------------------------------
+    Auto-scaling
+    ------------
+    Read this before raising *beta* to make the soft-max "safer".
     Earlier versions of this function computed ``logsumexp(beta*vals)/beta``
     directly against the RAW ``|field|**2`` values, so *beta* had to be
     hand-matched to whatever physical units/magnitude the accumulator
@@ -276,11 +276,10 @@ def field_softmax(
     around ``|field|**2`` ~1e-10 to 1e-22 depending on
     geometry/normalization). At the then-default ``beta=1.0`` the
     objective sat at ~100.000002% of the design-independent constant
-    ``log(count)/beta`` (measured, `#619`): both the value and its
+    ``log(count)/beta`` (measured): both the value and its
     gradient were differentiating ROUNDING NOISE in that constant, not
     physics, and it could coincidentally still pass a single
-    finite-difference check while failing at a different step size (a
-    `feedback_gate_can_bind_artifact`-class trap).
+    finite-difference check while failing at a different step size.
 
     This function now computes ``beta_eff = beta / stop_gradient(max(vals))``
     and uses ``beta_eff`` in place of a raw *beta* everywhere above.

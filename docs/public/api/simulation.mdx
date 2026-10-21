@@ -167,9 +167,9 @@ extent=...)`) whose record ended too early, rfx fits the slowly decaying poles
 in the last part of the record and adds the missing tail of each spectrum in
 closed form. The completed matrix is `result.ringdown.s_params`, on the same
 frequencies as `result.s_params`, and `result.ringdown.report` holds the fitted
-poles and the checks. `report.ok` is decided by the error witness (completing
-from `[T/4, T]` versus `[T/2, T]`). The two-window difference `W2` is reported,
-not judged. None of the witnesses is an error bound. The source must be off in
+poles and the checks. `report.ok` is decided by comparing the completions from
+`[T/4, T]` and `[T/2, T]`. The two-window difference `W2` is reported, not
+judged. Neither comparison is an error bound. The source must be off in
 the fit window. It covers wire ports (one port on a uniform mesh, or a graded
 mesh) with a fixed `n_steps`. Other ports, TFSF, `until_decay` and `devices=`
 are refused with the reason. `s_params` is `None` when the report says no

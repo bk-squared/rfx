@@ -69,8 +69,8 @@ The message of that error reads, in part:
 
 A metal sheet's free edge is solved about 0.35 of a cell beyond its last mesh
 node, so on this grid the patch is solved 3.5 % wider than drawn. `run()` and
-`forward()` would stop here with the same message. The way through is a mesh
-whose nodes put the solved edges on the drawn ones:
+`forward()` would stop here with the same message. The fix is a mesh whose
+nodes put the solved edges on the drawn ones:
 
 ```python
 profiles = edge_aware_profiles(domain, 0.5e-3, sheets=[patch], solids=[substrate])
@@ -109,7 +109,7 @@ Two options change what the check does:
 `run(skip_preflight=True)` skips the automatic check. Use it only after you
 have read the report once for the same model.
 
-## What is checked
+## How rfx checks it
 
 Preflight's findings that compare the drawing with the grid:
 
@@ -135,7 +135,7 @@ of [simulation time](/rfx/check/simulation-time/),
 [mesh convergence](/rfx/check/mesh-convergence/) and
 [agreement with a reference](/rfx/check/agreement/).
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 An error-severity finding stops `run()` and `forward()` with a `ValueError`
 before the first time step. The error carries the findings as `rfx.Diagnostic`

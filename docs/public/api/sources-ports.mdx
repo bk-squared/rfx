@@ -56,7 +56,7 @@ a current moment in A·m, injected as `E += Cb * I / dV` on Yee paths.
 `"field"` adds the waveform directly to E each step. The signature sentinel
 `None` also resolves to `"current"` and warns once per simulation; pass the
 kind explicitly to silence that warning. ADI requires explicit `"field"`.
-Witness: `tests/unit/sources/test_source_amplitude_kind.py`.
+Tested in `tests/unit/sources/test_source_amplitude_kind.py`.
 
 `add_polarized_source` also accepts `"rhcp"`, `"lhcp"` and complex tuples, but
 circular polarization from this source has not been verified. Don't use it to

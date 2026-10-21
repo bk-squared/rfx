@@ -32,8 +32,8 @@ solver, version and mesh produced them.
 |---|---|
 | Structure | A 39.7 × 49.25 mm patch on 3.175 mm RT/Duroid 5880 (εr 2.2, tan δ 0.001) over a 55.6 × 65.1 mm ground, fed by a 50 Ω probe 8.73 mm off centre. |
 | Reference | openEMS, the same board on three meshes, judged against its finest one. |
-| rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three rungs realize the same patch, and the test refuses a rung that does not. |
-| Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest rung; the last two rungs must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
+| rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three meshes realize the same patch, and the test refuses a mesh that does not. |
+| Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest mesh; the last two meshes must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
 | Reported, not judged | the `\|S11\|` dip frequency and depth, the reactance at resonance and the −10 dB band edges. Neither solver declares a probe radius, so each feed cell sets the probe's series reactance, and that moves the dip. |
 | Result | not repeated under the current settling check, which judges each frequency a result reads; no agreement figure is given. |
 | Test | `tests/crossval/rt5880_patch/test_rt5880_patch.py` |
@@ -78,13 +78,13 @@ The comparisons are pytest tests. The long ladders are marked `gpu` and
 # The fast checks: build each board, check what it realizes, read the records.
 pytest tests/crossval/rt5880_patch
 
-# The full ladder (a GPU; the h/12 rung is about 53 M cells).
+# All three meshes (a GPU; the h/12 mesh is about 53 M cells).
 pytest tests/crossval/rt5880_patch -m gpu
 ```
 
-`RFX_RT5880_PATCH_RUNGS=793.75e-6` runs only the coarsest rung. That is a
-diagnostic, not the case's verdict, because the mesh statement needs the
-ladder.
+`RFX_RT5880_PATCH_RUNGS=793.75e-6` runs only the coarsest mesh. That is a
+diagnostic, not the case's result, because the mesh statement needs all three
+meshes.
 
 ## Limits
 

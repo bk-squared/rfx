@@ -131,7 +131,7 @@ amplitude at `cutoff=3`
 (`tests/unit/sources/test_source_dc_floor_guards.py`). A `ModulatedGaussian`
 has no such correction; its time integral is small but not zero.
 
-## What is checked
+## How rfx checks it
 
 When you declare a source: the component, `amplitude_kind`, and for a plane
 wave every argument in the table above against its allowed values and the
@@ -142,7 +142,7 @@ edge the grid realizes as metal. Every excited drive's pulse, sampled at the
 time step, must exceed 10⁻⁶ of its amplitude somewhere. The solver path then
 checks that it implements the source (below).
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|

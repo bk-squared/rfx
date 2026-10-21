@@ -19,7 +19,7 @@ For ordinary RF work, start from the **uniform Cartesian Yee** grid:
 - probes, flux monitors, matrix pencil resonances, the port calculators below and
   the documented far-field workflows.
 
-This is the configuration with the broadest evidence. A graded mesh, the ADI
+This is the configuration checked most widely. A graded mesh, the ADI
 solver and multi-device runs each carry narrower limits, listed below and in
 [Support Boundaries](/rfx/support/).
 
@@ -32,7 +32,7 @@ for another.
 |---|---|---|---|
 | Lumped or wire `add_port(...)` | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for a differentiable `S11` | about 60 cells per wavelength at the highest frequency | A discrete feed across one gap, not a modal line port. V is read at the port node and I half a cell toward the line, so a two-port `S21` phase is referenced to the port separation less half a cell. Lumped and wire ports return the same `S11`. |
 | Microstrip `add_msl_port(...)` | `compute_msl_s_matrix(...)` | at least 4 cells through the substrate (preflight warns below that) | Returns the raw extracted `S`; read `sigma_max_excess` for any passivity breach, or pass `enforce_passivity=True` to project it. Check `probe_clearance` for the probe layout and `settling_db` for the record length. |
-| Rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | the documented rectangular-guide modes and bands | Single-mode magnitudes have the broadest evidence; phase, junctions, multimode and graded meshes have less. Only `normalize=False` and `normalize="flux"` carry a gradient. |
+| Rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | the documented rectangular-guide modes and bands | Single-mode magnitudes are checked most widely; phase, junctions, multimode and graded meshes less. Only `normalize=False` and `normalize="flux"` carry a gradient. |
 | Coaxial `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` for one port, `compute_coaxial_two_port(...)` for a through line | at least 4 cells across the annulus | Exactly one coaxial port with `face="top"`, `precision="float32"`, a uniform 3-D grid and CPML on all six faces. The calculator builds its own line, source and probes; it is not a general coaxial-network solver. |
 
 Field sources, plane waves, probes, DFT planes and flux monitors have no port

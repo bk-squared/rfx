@@ -149,7 +149,7 @@ Two solver paths are outside what 2.0 validates:
 
 The [support page](/rfx/support/) gives both one row each.
 
-## What is checked
+## How rfx checks it
 
 Before the first step, both calls run preflight (unless skipped) and check
 that their solver path implements every input, refusing what it does not. After a `run()`, `result.settling_witness` says whether the run was
@@ -158,7 +158,7 @@ long enough for the frequencies it read. A test compares the fields of
 finds them equal on every row it admits
 (`tests/contracts/test_run_forward_one_pipeline.py`).
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | Solver path | Instead |
 |---|---|---|

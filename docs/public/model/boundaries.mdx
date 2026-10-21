@@ -152,7 +152,7 @@ array) is not set on the boundary itself but by the source that needs it:
 - **Plane wave in a closed box** (`closed_box=True`, a total-field box with
   the scattered field around it) needs `boundary="cpml"`, not a PEC cavity.
 
-## What is checked
+## How rfx checks it
 
 When the spec is built: the face words, a periodic axis on both faces,
 thickness only on absorbing faces and never above `cpml_layers`, and no
@@ -160,7 +160,7 @@ CPML–UPML mix. Before the run, preflight checks the absorber depth, the room
 around the structure and the mesh next to each absorbing face (warnings), and
 the solver path checks that it implements every face (refusals, below).
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|

@@ -1,6 +1,6 @@
 ---
 title: Refused inputs
-description: How rfx refuses an input it would not solve, and where to find the way through.
+description: How rfx refuses an input it would not solve, and what to do instead.
 sidebar:
   order: 2
 ---
@@ -52,11 +52,11 @@ except (NotImplementedError, ValueError) as err:
 
 ```text
 NotImplementedError
-The subgridded lane is unstable and unverified: an empty lossless PEC cavity's first resonance is 8 % high at a 1.5 mm coarse mesh and its field grows exponentially (#1465). Use a graded mesh (dx/dy/dz profiles) for local resolution. Or pass validation="research" to run it anyway.
+The subgridded lane is unstable and unverified: an empty lossless PEC cavity's first resonance is 8 % high at a 1.5 mm coarse mesh and its field grows exponentially. Use a graded mesh (dx/dy/dz profiles) for local resolution. Or pass validation="research" to run it anyway.
 ```
 
 Every refusal message has the same three parts: what is refused on which path,
-the reason, and the way through. Some inputs are refused as soon as you
+the reason, and what to do instead. Some inputs are refused as soon as you
 declare them. Asking for ADI with an absorbing boundary raises when the
 `Simulation` is created, with this message (abridged):
 
@@ -86,7 +86,7 @@ Some refusals carry an explicit way to run anyway, such as
 `validation="research"` above. Such a run is outside what rfx validates, and
 its result is yours to check.
 
-## What is checked
+## How rfx checks it
 
 The refusals come from one table that records, for every attribute of a
 `Simulation` and every solver path, whether that path solves it, refuses it,
@@ -102,7 +102,7 @@ A refusal is not a finding about the grid. [Check the model on the
 grid](/rfx/check/model-on-grid/) is a separate step: preflight compares what
 the grid built with what you drew, and also stops the run on an error.
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 The [support page](/rfx/support/) links the support matrix's refused-input
 tables: one per topic with the answer on each solver path, and one of refused

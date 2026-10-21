@@ -123,7 +123,7 @@ filtered and resampled before the fit, which shortens the span it uses;
 `False` keeps every sample). The older `harminv` names still work as
 deprecated aliases (see [Upgrading](/rfx/start/upgrading/)).
 
-## What is checked
+## How rfx checks it
 
 - **Frequency against closed forms.** The TE101 mode of a WR-90-sized PEC
   cavity, and the TM110 mode of a PEC cavity filled with εr = 2.2 and driven
@@ -152,7 +152,7 @@ deprecated aliases (see [Upgrading](/rfx/start/upgrading/)).
   exactly the modes in the band
   (`tests/oracle/test_harminv_retained_cavity_records.py`).
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | What happens | Way through |
 |---|---|---|

@@ -5,8 +5,6 @@ sidebar:
   order: 4
 ---
 
-## What it is for
-
 After the source has ended, a resonance rings down as e^(−t/τ), where
 τ = 2Q/ω = Q/(πf) is the amplitude decay time of that mode. A design parameter
 that moves the resonance changes the phase of that ringing by an amount that
@@ -78,7 +76,7 @@ rule and domain-energy stops at −30 to −60 dB ended the run with |S11| withi
 0.5 dB of its converged value at a 1.3 dB dip, and its sensitivity 10 to 72 %
 off [[Kim 2026]](#reference).
 
-## How to use it
+## Set the simulation time for a gradient
 
 1. Find the slowest mode the objective depends on, its frequency f and its Q:
    from a run with a probe inside the resonator and `result.find_resonances(...)`
@@ -184,7 +182,7 @@ mode. For the optimum of coupled resonators, S itself must have converged:
   matters for resonators, filters and narrowband antennas, and little for
   broadband radiators.
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 | Input | What happens | Instead |
 |---|---|---|
@@ -192,7 +190,7 @@ mode. For the optimum of coupled resonators, S itself must have converged:
 | either function with `detuning_halfwidths` not finite | `ValueError`; inside `jax.jit` or `jax.vmap`, NaN for that element | pass the detuning in half-widths, any sign |
 | `required_t_over_tau` with `error` outside the open interval (0, 1), NaN or infinite | `ValueError`: a single T/τ with that error exists only inside it | pass a relative error between 0 and 1, such as 0.01 |
 
-## Accuracy
+## Where it is tested
 
 - Both functions are checked against values of the closed form computed by
   hand, at and away from resonance

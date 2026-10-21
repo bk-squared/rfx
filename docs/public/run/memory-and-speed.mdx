@@ -150,7 +150,7 @@ preflight = sim.ad_memory_preflight(
 )
 ```
 
-The preflight report states its own evidence boundaries:
+The preflight report states what it does not show:
 
 - `static memory planning only`
 - `trace-time JAX saved-residual explainability only when residual_diagnostic is present`
@@ -295,7 +295,7 @@ memory analysis is estimated, version/backend dependent and may be unavailable.
 `scope_digest`, `config_digest` and `environment_digest` are audit identities
 over canonical JSON; they do not prove that your Python source corresponds to
 the compiled executable. A `bounded_certificate` is a compiler estimate for one
-exact scope, not profiler evidence, not RF validation, and not a runtime
+exact scope, not a profiler measurement, not RF validation, and not a runtime
 peak-memory guarantee.
 
 ## Restrict which cells carry a derivative
@@ -349,6 +349,6 @@ These catch invalid values at run time. They say nothing about the physics.
   a uniform mesh.
 - **Fewer steps save memory but can change the gradient.** Run the record-length
   check in [Gradient Behavior](/rfx/guide/gradient-behavior/).
-- **Keep the evidence with the result**: the plan and mesh report
+- **Keep the record with the result**: the plan and mesh report
   (`.to_json()`), the run command and rfx version, and the validation of the RF
   quantity you report. A memory report is not RF validation.

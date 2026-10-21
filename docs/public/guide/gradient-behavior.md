@@ -71,7 +71,7 @@ run length and the monitor placement before touching optimizer settings.
 
 ### 2. The loss magnitude
 
-A passing finite-difference *witness is also not sufficient*. Finite
+A passing finite-difference *check is also not sufficient*. Finite
 differences and autodiff differentiate the same loss over the same observation
 window. If the window is empty (the reflection never reaches the probe during
 the run, or the monitor sits in the absorber), both agree on a gradient of
@@ -103,9 +103,9 @@ Here 100 steps fails, because the pulse has not finished passing the probe, and
 The objective must take `(params, n_steps)`. You choose `tol`; there is no
 default because the right tolerance depends on the structure's Q and on what the
 gradient is for. A few percent is a reasonable start. `w.cosine_by_bin` tells
-you whether the direction changed or only the step length. A failed witness
+you whether the direction changed or only the step length. A failed check
 means the record is too short for this gradient: lengthen the run and check
-again. The witness costs about `1 + factor` differentiated runs, so use it
+again. The check costs about `1 + factor` differentiated runs, so use it
 once per new setup, not every iteration. Pair it with the settling check in
 [Probes and S-Parameters](/rfx/measure/s-parameters/); it does not replace it.
 How long the run must be, in decay times of the slowest mode, is on
@@ -137,7 +137,7 @@ How long the run must be, in decay times of the slowest mode, is on
 | Case | Symptom | What to do |
 |---|---|---|
 | A PEC edge or topology boundary that moves | stair-stepping: the gradient jumps or flips sign when an edge crosses a cell | keep topology fixed in a gradient run; use relaxed occupancy or dielectric variables with filters and a minimum feature size; verify the final discrete geometry |
-| Long records | weak signal, large dynamic range, round-off | use the shortest run that still captures the observable, and run the record-length witness |
+| Long records | weak signal, large dynamic range, round-off | use the shortest run that still captures the observable, and run the check from a longer run |
 | Near cutoff or a high-Q resonance | one frequency sample is very sensitive to mesh, material and run length | keep the band away from cutoff unless that is the target; use broadband objectives; verify with a convergence study |
 | Float32 finite differences | FD disagrees with AD by a few percent | use a larger `h` (see above) |
 
@@ -161,7 +161,7 @@ distributed and subgridded lanes refuse both non-default modes.
   permittivity. Don't use an interface position as a design variable and
   expect subpixel-accurate sensitivity.
 - **Unsupported combinations.** A finite gradient from a source, port or mesh
-  combination outside the support matrix is not evidence of anything. rfx
+  combination outside the support matrix shows nothing. rfx
   raises on the combinations it knows are unsupported.
 
 ## Limits
@@ -169,7 +169,7 @@ distributed and subgridded lanes refuse both non-default modes.
 - **AD and FD agree but the loss is tiny**: the observation window is empty.
   Fix the run length or monitor placement.
 - **The gradient changes a lot when you double the run**: the record is too
-  short. Lengthen it until the record-length witness passes.
+  short. Lengthen it until the check from a longer run passes.
 - **The gradient flips sign as a metal edge moves**: stair-stepping. Use relaxed
   or dielectric variables and verify the final geometry.
 - **A gradient-optimized proxy is not a validated result**: re-run the final

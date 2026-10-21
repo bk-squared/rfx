@@ -1,6 +1,6 @@
 ---
 title: "Cross-Validation and Accuracy"
-description: "How to know an rfx result is right: what rfx checks for you, what you must check yourself, and where the evidence lives."
+description: "How to know an rfx result is right: what rfx checks for you, what you must check yourself, and where to look it up."
 sidebar:
   order: 10
 ---
@@ -8,8 +8,8 @@ sidebar:
 A finished run, a clean preflight and a smooth plot do not show that a number
 is right. This page answers the question you should ask before you report an
 rfx result: **how do I know it is correct?** It covers what rfx has already
-checked, what only you can check for your structure, and where the evidence
-lives.
+checked, what only you can check for your structure, and where to look each
+of these up.
 
 ## What rfx checks
 
@@ -26,11 +26,11 @@ the repository, so no external solver is needed to re-check rfx against them.
 [Benchmarks](/rfx/guide/benchmarks/) lists the cases, what each one shows and
 how to reproduce it.
 
-Two limits apply to all of this evidence:
+Two limits apply to all of these checks:
 
 - **A passing case covers its own setup.** The geometry, mesh, band, port
   family and observable of that case. It does not cover your structure.
-- **Some features have little or no evidence.** The support tables in
+- **Some features are checked little or not at all.** The support tables in
   [Support Boundaries](/rfx/support/) say which are
   *recommended*, which are *limited* to stated conditions, and which are
   outside the documented scope. The maintainer
@@ -126,7 +126,7 @@ The microstrip row's cross-check, an open-stub notch filter against the
 openEMS tutorial (`tests/crossval/msl_notch_filter/`), has not been repeated
 under the current settling check, and no agreement figure is given.
 
-## Where the evidence lives
+## Where to look it up
 
 | Question | Page |
 |---|---|
@@ -138,7 +138,7 @@ under the current settling check, and no agreement figure is given.
 
 ## Limits
 
-- **An exported file is not evidence.** Touchstone files, plots, HDF5
+- **An exported file is not a check.** Touchstone files, plots, HDF5
   snapshots and reports record what a run produced. Pair them with the checks
   above before citing them.
 - **An optimizer's objective is a proxy.** A design that minimizes a

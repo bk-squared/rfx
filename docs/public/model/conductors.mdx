@@ -256,7 +256,7 @@ shorted, so a closed-form model can use the drawn 2 mm directly.
 interior plane is shorted too. `max − min` of those planes is the plate's outer
 span. To measure an aperture, take the gap between wall groups.
 
-## What is checked
+## How rfx checks it
 
 Preflight checks every conductor against the grid before the first step:
 
@@ -272,7 +272,7 @@ Preflight checks every conductor against the grid before the first step:
 `sim.fidelity_report()` prints every conductor's drawn and realized extent;
 `sim.conductor_mask()` returns all metal, including surface-impedance sheets.
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 These declarations are accepted by `sim.add()` or `add_thin_conductor()`, but
 `sim.preflight()` reports them as errors ("cannot be realized on this
