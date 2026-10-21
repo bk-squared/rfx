@@ -92,8 +92,6 @@ off [[Kim 2026]](#reference).
 
 The formula is in `rfx.ringdown`:
 
-{/* TODO(docs batch, before the gate): replace this text fence with a python block run against the merged helper; confirm the oracle test path and the refusals against it. */}
-
 ```text
 import numpy as np
 from rfx.ringdown import required_t_over_tau, sensitivity_truncation_error
@@ -181,7 +179,7 @@ mode. For the optimum of coupled resonators, S itself must have converged:
 |---|---|---|
 | `sensitivity_truncation_error` with `t_over_tau` zero, negative or not finite | `ValueError`; inside `jax.jit` or `jax.vmap` a value cannot raise, so that element is NaN | pass T/τ of the run, greater than 0 |
 | either function with `detuning_halfwidths` not finite | `ValueError` | pass the detuning in half-widths, any sign |
-| `required_t_over_tau` with `error` outside the open interval (0, 1) | `ValueError`: a single T/τ with that error exists only inside it | pass a relative error between 0 and 1, such as 0.01 |
+| `required_t_over_tau` with `error` outside the open interval (0, 1), NaN or infinite | `ValueError`: a single T/τ with that error exists only inside it | pass a relative error between 0 and 1, such as 0.01 |
 
 ## Accuracy
 
