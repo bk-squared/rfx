@@ -288,8 +288,8 @@ def _concrete(value):
     return value if concrete is None else concrete
 
 
-def judge_pole_sets(records, dt, budget, *, grid_kind):
-    """Apply the existing admission rule and ordered callback to reductions."""
+def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
+    """Judge concrete values; stage checks only in single-device programs."""
     from rfx._traced_check import traced_check
 
     if budget is None:
@@ -335,15 +335,18 @@ def judge_pole_sets(records, dt, budget, *, grid_kind):
         # Eager autodiff carries concrete primals: judge them on the host. A
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
+        if not in_program and any(_is_abstract(v) for v in args):
+            continue
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
 
-def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind, debye_spec=None):
+def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind, debye_spec=None,
+                          in_program=True):
     """Judge whole-cell pole patterns, retaining the legacy entry point."""
     if (lorentz_spec is None and debye_spec is None) or budget is None:
         return
     judge_pole_sets(pole_set_extremes(materials, lorentz_spec, debye_spec=debye_spec),
-                    dt, budget, grid_kind=grid_kind)
+                    dt, budget, grid_kind=grid_kind, in_program=in_program)
 
 
 def _prebuilt_cell_error(edges, component, precision):
@@ -407,7 +410,8 @@ def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False
     return values
 
 
-def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, False)):
+def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, False),
+                         in_program=True):
     """Judge prebuilt component ADE terms, without assuming their source spec.
 
     Invert the coefficients actually used: gamma=1/cc, eps=(1+ca)gamma/2,
@@ -506,9 +510,11 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                              for axis in range(3))
             records.append(PoleSetExtremes(code, poles, eps, low, high,
                                           np.count_nonzero(selected), occupied, dp))
-        judge_pole_sets(records, step, budget, grid_kind=type(grid).__name__)
+        judge_pole_sets(records, step, budget, grid_kind=type(grid).__name__, in_program=in_program)
 
     import jax
     operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
     operands = jax.tree.map(_concrete, operands)
+    if not in_program and any(_is_abstract(v) for v in jax.tree.leaves(operands)):
+        return
     traced_check("prebuilt Lorentz coefficients", "time-step stability", check, *operands, ordered=True)

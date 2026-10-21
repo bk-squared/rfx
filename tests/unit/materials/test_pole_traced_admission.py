@@ -63,6 +63,36 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
         jax.block_until_ready(checked(left, left))
 
 
+@pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap"])
+def test_out_of_program_admission_keeps_concrete_primals(transform):
+    def checked(eps):
+        materials = MaterialArrays(jnp.full((2, 2, 2), eps), jnp.zeros((2, 2, 2)), None)
+        # At dt=1, budget=0, the undamped Drude condition is kappa<=4*eps:
+        # literal kappa=9 is stable at eps=3 and unstable at eps=1.
+        refuse_unstable_cells(materials, ([(0., 0., 9.)], None), 1., 0.,
+                              grid_kind="Grid", in_program=False)
+        return eps ** 2
+
+    def call(eps):
+        if transform == "jvp":
+            return jax.jvp(checked, (eps,), (1.,))[0]
+        if transform == "grad":
+            return jax.grad(checked)(eps)
+        if transform == "jit":
+            return jax.jit(checked)(eps)
+        if transform == "vmap":
+            return jax.vmap(checked)(jnp.full((2,), eps))
+        return checked(eps)
+
+    np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else
+                                  np.full((2,), 9.) if transform == "vmap" else 9.)
+    if transform in ("eager", "jvp", "grad"):
+        with pytest.raises(ValueError, match="unstable at this model's time step"):
+            call(1.)
+    else:
+        np.testing.assert_array_equal(call(1.), np.full((2,), 1.) if transform == "vmap" else 1.)
+
+
 @pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])
 @pytest.mark.parametrize("n_poles", [8, 9])
 def test_traced_mask_pattern_cap(n_poles, transform):

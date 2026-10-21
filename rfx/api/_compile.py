@@ -160,8 +160,8 @@ class _CompileMixin:
                                    field_dtype=field_dtype, periodic=periodic,
                                    budget=budget if debye_spec is None else None, grid_kind=grid_kind)
             if debye_spec is not None and budget is not None:
-                from rfx.materials.lorentz import JudgedLorentzCoeffs
-                lorentz = (JudgedLorentzCoeffs.mark(lorentz[0]), lorentz[1])
+                from rfx.materials.lorentz import mark_judged
+                lorentz = (mark_judged(lorentz[0]), lorentz[1])
 
         return materials, debye, lorentz
 

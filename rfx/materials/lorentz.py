@@ -108,6 +108,31 @@ class LorentzCoeffs(NamedTuple):
     cc: tuple
 
 
+_judged_pole_arrays = {}
+
+
+def mark_judged(coeffs):
+    """Record weak array identities without changing the coefficient pytree."""
+    arrays = jax.tree.leaves(coeffs)
+    key = tuple(id(a) for a in arrays)
+
+    def remove(dead):
+        recorded = _judged_pole_arrays.get(key)
+        if recorded is not None and any(original is dead for original in recorded):
+            _judged_pole_arrays.pop(key, None)
+
+    _judged_pole_arrays[key] = tuple(ref(a, remove) for a in arrays)
+    return coeffs
+
+
+def pole_sets_judged(coeffs):
+    """Only a complete set of original, already-judged array leaves qualifies."""
+    arrays = jax.tree.leaves(coeffs)
+    recorded = _judged_pole_arrays.get(tuple(id(a) for a in arrays))
+    return recorded is not None and len(arrays) == len(recorded) and all(
+        a is original() for a, original in zip(arrays, recorded))
+
+
 class LorentzState(NamedTuple):
     """Auxiliary polarization state (current and previous step).
 
@@ -120,38 +145,6 @@ class LorentzState(NamedTuple):
     px_prev: jnp.ndarray
     py_prev: jnp.ndarray
     pz_prev: jnp.ndarray
-
-
-class JudgedLorentzCoeffs(LorentzCoeffs):
-    """Only original array objects carry admission; pytree rebuilds clear it.
-
-    Provenance is outside the six NamedTuple fields and JAX's tree metadata,
-    so marking a fresh assembly does not change the time loop's cache key.
-    Weak references retain neither buffers nor tracers after their scope.
-    """
-
-    def __new__(cls, *args, **kwargs):
-        result = super().__new__(cls, *args, **kwargs)
-        result._judged_arrays = None
-        return result
-
-    @classmethod
-    def mark(cls, coeffs):
-        result = cls(*coeffs)
-        result._judged_arrays = tuple(ref(a) for a in jax.tree.leaves(tuple(coeffs)))
-        return result
-
-    @property
-    def pole_sets_judged(self):
-        snapshot = getattr(self, "_judged_arrays", None)
-        arrays = jax.tree.leaves(tuple(self))
-        return snapshot is not None and len(arrays) == len(snapshot) and all(
-            a is original() for a, original in zip(arrays, snapshot))
-
-    def _replace(self, **kwargs):
-        result = super()._replace(**kwargs)
-        result._judged_arrays = getattr(self, "_judged_arrays", None)
-        return result
 
 
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
@@ -299,7 +292,7 @@ def init_lorentz(
                   lorentz_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
     if components.pole_sets_judged:
-        coeffs = JudgedLorentzCoeffs.mark(coeffs)
+        coeffs = mark_judged(coeffs)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(

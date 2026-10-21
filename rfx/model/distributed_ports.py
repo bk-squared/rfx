@@ -37,7 +37,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     drive_model = sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid)
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
-            sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec))
+            sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=False)
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,

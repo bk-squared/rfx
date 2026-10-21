@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import init_materials
-from rfx.materials.lorentz import drude_pole, init_lorentz
+from rfx.materials.lorentz import LorentzCoeffs, drude_pole, init_lorentz, mark_judged, pole_sets_judged
 from rfx.simulation import run
 from tests.unit.materials.test_pole_stability_admission import _box
 
@@ -87,7 +87,7 @@ def test_prebuilt_occupied_cells_do_not_include_edge_extension():
     mask = np.zeros(grid.shape, bool)
     mask[:, :, :7] = True
     poles = init_lorentz([drude_pole(1.5 / grid.dt, 0.)], materials, grid.dt, mask=mask)
-    assert not getattr(poles[0], "pole_sets_judged", False)
+    assert not pole_sets_judged(poles[0])
     judge_prebuilt_poles(grid, poles)
 
 
@@ -140,7 +140,7 @@ def test_assembled_admission_mark_requires_original_arrays_through_transforms(tr
     def coefficients(eps):
         cells = materials._replace(eps_r=materials.eps_r * eps)
         coeffs = init_lorentz([drude_pole(.2 / grid.dt, 0.)], cells, grid.dt, grid=grid)[0]
-        assert coeffs.pole_sets_judged
+        assert pole_sets_judged(coeffs)
         return coeffs
     if transform == "jit":
         result = jax.jit(coefficients)(1.)
@@ -151,12 +151,12 @@ def test_assembled_admission_mark_requires_original_arrays_through_transforms(tr
     else:
         def loss(eps):
             coeffs = coefficients(eps)
-            assert coeffs.pole_sets_judged
+            assert pole_sets_judged(coeffs)
             return jnp.sum(coeffs.ca[0])
         assert np.isfinite(jax.grad(loss)(1.))
         return
     jax.block_until_ready(result)
-    assert not result.pole_sets_judged  # returned arrays replace the assembly-time tracers
+    assert not pole_sets_judged(result)  # returned arrays replace the assembly-time tracers
     assert result._fields == ("ca", "cb", "a", "b", "c", "cc")
 
 
@@ -278,9 +278,9 @@ def test_rescaled_assembled_coefficients_are_judged_again(graded):
     grid = _box(.25, graded=graded)._build_realized_grid()
     materials = init_materials(grid.shape)
     coeffs, state = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, grid=grid)
-    assert coeffs.pole_sets_judged
+    assert pole_sets_judged(coeffs)
     scaled = coeffs._replace(c=tuple(v * (.45 / .2) ** 2 for v in coeffs.c))
-    assert not scaled.pole_sets_judged
+    assert not pole_sets_judged(scaled)
     if graded:
         from rfx.nonuniform import run_nonuniform as runner
     else:
@@ -291,16 +291,29 @@ def test_rescaled_assembled_coefficients_are_judged_again(graded):
 
 @pytest.mark.parametrize("field", ["ca", "cb", "a", "b", "c", "cc"])
 def test_assembly_mark_is_tied_to_every_array_identity(field):
-    from rfx.materials.lorentz import JudgedLorentzCoeffs
     grid = _box(.25)._build_realized_grid()
     coeffs, _ = init_lorentz([drude_pole(.2 / grid.dt, 0.)], init_materials(grid.shape), grid.dt, grid=grid)
-    assert coeffs._replace().pole_sets_judged
+    assert pole_sets_judged(coeffs._replace())
     rebuilt = jax.tree.map(lambda a: a, coeffs)
-    assert not rebuilt.pole_sets_judged  # new bundles require their own admission
+    assert pole_sets_judged(rebuilt)  # same array leaves are the judged values
     assert jax.tree.structure(coeffs) == jax.tree.structure(rebuilt)
-    assert not JudgedLorentzCoeffs(*coeffs).pole_sets_judged
+    assert pole_sets_judged(LorentzCoeffs(*coeffs))
     copied = jax.tree.map(lambda a: a.copy(), getattr(coeffs, field))
-    assert not coeffs._replace(**{field: copied}).pole_sets_judged
+    assert not pole_sets_judged(coeffs._replace(**{field: copied}))
+
+
+def test_marked_lorentz_coefficients_keep_plain_tree_structure():
+    # The expected node is a plain LorentzCoeffs constructed independently of
+    # marking/assembly helpers, with the original six field positions.
+    fields = [jnp.zeros(2) for _ in range(6)]
+    expected = jax.tree.structure(LorentzCoeffs(*fields))
+    coeffs = LorentzCoeffs(*[jnp.ones(2) for _ in range(6)])
+    assert not pole_sets_judged(coeffs)
+    marked = mark_judged(coeffs)
+    assert jax.tree.structure(marked) == expected
+    assert marked is coeffs
+    assert type(marked) is LorentzCoeffs
+    assert pole_sets_judged(marked)
 
 
 @pytest.mark.parametrize("bad", ["zero_eps", "nan_eps", "negative_c"])

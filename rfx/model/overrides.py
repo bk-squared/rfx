@@ -14,7 +14,7 @@ from rfx.core.yee import MaterialArrays, lumped_total, map_lumped
 def apply_material_overrides(materials, *, eps_override=None,
                              sigma_override=None, mu_r_override=None,
                              design_box=None, window=None, box_local=None,
-                             keep_lumped=False, judge=None):
+                             keep_lumped=False, judge=None, in_program=True):
     """Apply cell inputs without realizing or gathering any component arrays.
 
     ``window`` selects a design box's computation window, and ``box_local``
@@ -33,6 +33,8 @@ def apply_material_overrides(materials, *, eps_override=None,
     lower eps_inf below what the poles need at this time step. A path that
     realizes components once judges there (``realize_components``); a path
     that stages cells without realizing them passes ``judge``.
+    Multi-device callers pass ``in_program=False``: concrete values are judged,
+    but outer-transformed values cannot stage a raising host callback there.
     """
     if window is not None:
         def cell_value(value, record):
@@ -88,5 +90,6 @@ def apply_material_overrides(materials, *, eps_override=None,
         nx = grid.shape[0]
         judged = out._replace(eps_r=out.eps_r[:nx], sigma=out.sigma[:nx])
         refuse_unstable_cells(judged, lorentz_spec, grid.dt, courant_budget(grid),
-                              grid_kind=type(grid).__name__, debye_spec=debye[0] if debye else None)
+                              grid_kind=type(grid).__name__, debye_spec=debye[0] if debye else None,
+                              in_program=in_program)
     return out

@@ -83,6 +83,34 @@ def _devices():
     return devices[:2]
 
 
+def test_two_device_pole_override_is_judged_eagerly_but_not_under_outer_jit():
+    import jax.numpy as jnp
+
+    sim = _mixed_lorentz_admission_scene(2.0)
+    grid = sim._build_nonuniform_grid()
+    devices = _devices()
+
+    def forward(eps):
+        return sim.forward(eps_override=eps, n_steps=2, checkpoint=False,
+                           emit_time_series=True, skip_preflight=True,
+                           distributed=True, devices=devices).time_series
+
+    # Literal overrides and expected shape; no admission helper supplies them.
+    stable = jnp.full(grid.shape, 2., jnp.float32)
+    unstable = jnp.ones(grid.shape, jnp.float32)
+    with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        forward(unstable)
+    eager = np.asarray(forward(stable))
+    assert eager.shape == (2, 1)
+    assert np.all(np.isfinite(eager))
+
+    # Documented limitation: outer-traced material values are not judged on
+    # multiple devices. Pin completion/shape, not stability, for both inputs.
+    compiled = jax.jit(forward)
+    for eps in (stable, unstable):
+        assert np.asarray(compiled(eps)).shape == (2, 1)
+
+
 def _build(*, entry="api", periodic="", boundary="pec", port=None,
            flux=False, ntff=False, kerr=False, debye=False, rlc=None,
            refine=False, dft=False, msl=False):
