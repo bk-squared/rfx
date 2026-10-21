@@ -59,6 +59,10 @@ gradient from a longer run: `gradient_record_length_witness`, on
 tail extrapolation, `rfx.ringdown.gradient_witness` compares the completion
 fitted on the run from T/2 with one fitted from T/4.
 
+A frequency-domain adjoint formula, which integrates truncated forward and
+adjoint fields over the design region, is not the derivative of the computed S
+and carries a different error; this page does not cover it.
+
 ### Stop rules watch the value
 
 The [settling check](/rfx/evidence/simulation-time/) passes when at most 1 % of
@@ -114,12 +118,16 @@ Instead of simulating the late time, it can be supplied:
 of the run, adds their tail to the port spectra, and carries the gradient
 through the fitted poles (wire ports only; see
 [Gradients through tail extrapolation](/rfx/evidence/gradients/#gradients-through-tail-extrapolation)).
-The signals it fits must contain the mode. On a cavity whose slowest mode
-(Q about 5000) was weakly coupled to the port, the fit from the port alone found
-that mode's pole but left the gradient 10 to 42 % off. With three field probes
-inside the cavity (`RingdownSpec(identification_probes=...)`), the gradient was
-within 1 % from a run 66 times shorter than 6.6 τ; on a second cavity it stayed
-near 2 % [[Kim 2026]](#reference). Check it with `gradient_witness` each time.
+The signals it fits must contain the mode, and for a weakly coupled mode the
+port alone is not enough. On a cavity whose slowest mode (Q about 5000) was
+weakly coupled to the port, the fit from the port alone found that mode's pole
+accurately, but the gradient rfx carries through the fitted poles stayed 10 to
+42 % off. That gradient holds the fit's Jacobian fixed (a linearized fit), and
+the loss lies in that linearization, not in the port signals. With three field
+probes inside the cavity (`RingdownSpec(identification_probes=...)`), the
+gradient was within 1 % of the band's largest sensitivity from 0.1 τ, a run 66
+times shorter than 6.6 τ; on a second cavity it stayed near 2 %
+[[Kim 2026]](#reference). Check it with `gradient_witness` each time.
 
 ## What it does to a design
 
@@ -129,14 +137,20 @@ wrong gradient changes the design only when truncation moves that point
 
 - One resonance and an objective symmetric about the target, such as |S21|²
   read at the target frequency and at one half-width on either side, the two
-  sides weighted equally: the optimum does not move. An optimizer on runs of 2 τ reached the resonance
-  of a long run with a gradient up to 71 % wrong on the way.
+  sides weighted equally: the optimum does not move, as long as the mode's
+  residue (its coupling) is nearly constant over the frequencies read, the direct path
+  between the ports is small, and the resonance moves nearly independently of
+  its decay rate. An optimizer on runs of 2 τ reached the resonance of a long
+  run with a gradient up to 71 % wrong on the way. An objective read at one
+  frequency on the skirt of the resonance is not symmetric: truncation adds
+  local maxima there, and optimizers on runs of 1 and 2 τ stopped at them.
 - Two coupled resonances, as in a two-pole bandpass filter, with an objective
   that asks for transmission across the passband: the truncated objective is
   met with the poles further apart. On runs of 1 τ the optimum is over-coupled
   by Δk ≈ 1.24/Q (k the coupling coefficient, Q the loaded Q of each pole). An
-  equal-ripple objective still moves it at 3 τ. By 4.6 τ, where the resonant
-  part of S is within 1 %, the shift is below what the scan resolved.
+  equal-ripple objective still moves it at 3 τ, by about 0.2 of a half-width.
+  By 4.6 τ, where the resonant part of S is within 1 %, the shift is below
+  what the scan resolved.
 
 Where the value of the gradient is used, in a comparison with a reference, a
 tolerance or yield estimate, or the length of a step, run 6.6 τ of the slowest
@@ -145,13 +159,16 @@ mode. For the optimum of coupled resonators, S itself must have converged:
 
 ## Where the estimate holds
 
-- The parameter must move a resonance. A parameter that changes only how
-  strongly a mode is coupled leaves the sensitivity converging like S.
+- The parameter must move a resonance. A parameter that changes only the
+  residue (how strongly the mode is coupled), not its frequency or decay, leaves
+  the sensitivity converging like S.
 - It is quantitative where one mode dominates. At cavity resonances with Q of
   about 1000 to 7000, the simulated error was within 4 % of the estimate in
-  three FDTD solvers. At lower Q the error lies above it, and at a transmission
-  zero, such as a notch, it reached 3.4 times the estimate. There the estimate
-  is close to a lower bound, not a strict one.
+  three FDTD solvers. At lower Q the error lies above it. At a transmission
+  zero, such as a notch, where the excitation still lasted 2 τ of the nearest
+  pole, it was 1.6 to 3.4 times the estimate. Below high Q the estimate is close
+  to a lower bound; it is not a strict one, because the residue term it leaves
+  out can also lower the error.
 - On nearly coincident poles the sensitivity can decay more slowly than
   t·e^(−t/τ), and the estimate does not apply.
 - In units of τ the delay is the same at every Q; in time it grows with Q. It
