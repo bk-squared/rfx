@@ -145,8 +145,9 @@ def compute_coaxial_line_reflection(
     ``probe_count`` equally spaced planes and a matrix-pencil estimate of the
     complex propagation constant (β self-measured, Z0-free).
 
-    The single-plane coaxial lane was removed; use this method, which uses an absorbing CPML feed
-    so a real line exists. **Resolution recipe**: keep ≥~4 cells across the
+    The single-plane coaxial lane (V/I in a closed PEC box, which gave a
+    non-physical |S11| > 1) was removed; this method uses an absorbing CPML
+    feed so a real line exists. **Resolution recipe**: keep ≥~4 cells across the
     (outer-inner) annulus (raise ``freq_max`` to shrink ``dx``); the result
     ``status`` reports ``"under_resolved"`` below ~3.5 cells.
 
