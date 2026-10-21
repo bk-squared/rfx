@@ -48,7 +48,8 @@ raises |S11| there.
   2.4×10⁻⁶–1.9×10⁻⁵ relative, in float64.
 - Simulation time: repeating the gradient with a 1.5× longer simulation time
   changes those block sums by at most 5.4×10⁻⁴.
-- The same board's forward model agrees with openEMS (see
+- The same board is solved by rfx and by openEMS in the repository's
+  cross-solver test `tests/crossval/rt5880_patch/` (see
   [forward checks](/rfx/showcase/forward-checks/)).
 
 <p data-rfx="note">This map is for this board on a mesh of 4 cells through the substrate, whose resonance is 0.91 % below the finest mesh's; it is not a manufacturing tolerance or a statement about other boards.</p>
