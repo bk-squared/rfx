@@ -438,13 +438,11 @@ def render_ar(d: Path, out: Path) -> list[Path]:
 
 # ------------------------------------------------------------------ forward curves
 _CASE_TITLES = {"rt5880_patch": "RT/Duroid 5880 probe-fed patch",
-                "msl_notch_filter": "microstrip open-stub notch filter",
-                "sheen_lpf": "Sheen stepped-impedance low-pass filter"}
-# The frequency window each test compares in (GHz): the patch's RESONANCE_BAND_HZ,
-# the notch filter's and the Sheen filter's REFERENCE_BAND_HZ.
+                "msl_notch_filter": "microstrip open-stub notch filter"}
+# The frequency window each test compares in (GHz): the patch's RESONANCE_BAND_HZ
+# and the notch filter's REFERENCE_BAND_HZ.
 _CASE_XLIM = {"rt5880_patch": (1.94669887, 2.92004831),
-              "msl_notch_filter": (2.0, 7.0),
-              "sheen_lpf": (2.0, 12.0)}
+              "msl_notch_filter": (2.0, 7.0)}
 
 
 def _ylim_to_window(ax, pad=0.06):

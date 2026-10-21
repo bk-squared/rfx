@@ -6,16 +6,17 @@ import numpy as np
 from rfx.api._spec import Result, _warn_if_nonfinite_result
 
 
-def refuse_distributed_options(self, *, subpixel_smoothing=False, **options):
+def refuse_distributed_options(self, *, entry="run", subpixel_smoothing=False, **options):
     """Use the same option refusal on imperative and differentiable entries."""
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=True)
     # Preserve the native-lane remedies for unsupported options. Snapshots
     # are handled by the distributed record adapter before this helper.
-    _one_device = "omit devices= to run on one device"
+    omit = "distributed=True" if entry == "forward" else "devices="
+    _one_device = f"omit {omit} to run on one device"
     _dist_instead = _one_device
     if self._uses_nonuniform_mesh:
-        _one_uniform = ("omit devices= and run on a uniform mesh "
+        _one_uniform = (f"omit {omit} and run on a uniform mesh "
                         "(no dx/dy/dz profile)")
         _dist_instead = {"*": _one_device,
                          "snapshot": _one_uniform,
@@ -24,7 +25,7 @@ def refuse_distributed_options(self, *, subpixel_smoothing=False, **options):
             _dist_instead["until_decay"] = _one_uniform
     self._refuse_unsupported_run_kwargs("distributed multi-device", {
         "subpixel_smoothing": subpixel_smoothing, **options,
-    }, instead=_dist_instead)
+    }, instead=_dist_instead, entry=f"Simulation.{entry}()")
 
 
 def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args,
@@ -35,6 +36,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
                         checkpoint=False, snapshot=None, until_decay=None,
                         report_every=None, _forward_port_s11=False):
     """Use the run entry's admission, fallback, execution and S-matrix path."""
+    entry = "forward" if _forward_port_s11 else "run"
+    lane = f"distributed multi-device {entry}()"
     # ---- Distributed multi-device lane ----
     if self._interface_eps == "dual_average":
         raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
@@ -51,7 +54,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     )
     refuse_unsupported_distributed_features(
         self,
-        lane="distributed multi-device run()",
+        lane=lane,
         diagnostics=_diagnostics,
     )
     _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
@@ -85,26 +88,32 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     if compute_s_params:
         _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
         if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
+            _graded = plan.lane == "run_distributed_nu"
             self._refuse_unsupported_run_kwargs(
-                "uniform single-wire-port S-parameter", {
+                f"{'graded' if _graded else 'uniform'} single-wire-port S-parameter", {
                     "s_param_n_steps": self._s_param_n_steps_off_record(
                         s_param_n_steps, n_steps, until_decay),
                 }, instead=None,
                 reason_overrides={"s_param_n_steps":
-                    "this lane computes S11 with a second full distributed "
-                    "run with all sources on, using the main run's "
-                    "n_steps and source convention"})
+                    "this lane reads S11 from the main run's wire-port record"
+                    if _graded else
+                    "this lane computes S11 from a second distributed "
+                    "wire-port recording run using the main run's n_steps "
+                    "and the port's declared excitation"})
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
-        refuse_distributed_lumped_s_pmc(self)
+        refuse_distributed_lumped_s_pmc(self, entry=entry)
 
-    refuse_distributed_options(self, subpixel_smoothing=subpixel_smoothing,
+    refuse_distributed_options(self, entry=entry, subpixel_smoothing=subpixel_smoothing,
         checkpoint=checkpoint,
         snapshot=None,
         until_decay=until_decay,
         conformal_pec=_dist_conformal,
         **({} if report_every is None else {"report_every": report_every}))
     from rfx.materials.thin_conductor import refuse_f0_sheets
-    refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
+    if _forward_port_s11:
+        refuse_f0_sheets(self._thin_conductors, "distributed multi-device forward()")
+    else:
+        refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(self, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec, distributed=True)
@@ -182,10 +191,10 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
         )
         _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
     _res = self._attach_run_settling_witness(
-        _res, n_steps=n_steps, num_periods=num_periods)
-    _warn_if_nonfinite_result(_res, context="run")
+        _res, n_steps=n_steps, num_periods=num_periods, context=entry)
+    _warn_if_nonfinite_result(_res, context=entry)
     from rfx.current_moments import require_accumulated_current_moments
-    require_accumulated_current_moments(self, _res, "run")
+    require_accumulated_current_moments(self, _res, entry)
     return _res
 
 

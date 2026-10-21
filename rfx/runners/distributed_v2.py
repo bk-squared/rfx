@@ -434,6 +434,8 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         single_device_hint = (
             "omit devices=... (use a single-device run() instead)"
             if lane == "distributed multi-device run()"
+            else "omit distributed=True (use a single-device forward() instead)"
+            if lane == "distributed multi-device forward()"
             else "call sim.run(...) without devices= instead of calling this runner"
         )
         remedy = f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
@@ -499,15 +501,19 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     single_device_hint = (
         "omit devices=... (use a single-device run() instead)"
         if lane == "distributed multi-device run()"
+        else "omit distributed=True (use a single-device forward() instead)"
+        if lane == "distributed multi-device forward()"
         else "call sim.run(...) without devices= instead of calling this runner"
     )
+    forward = lane == "distributed multi-device forward()"
     refuse_distributed_periodic(sim, lane=lane, bloch=bloch)
 
     ports = getattr(sim, "_ports", ()) or ()
     if any(pe.extent is not None and pe.reference_plane_cells is not None
            for pe in ports):
         raise NotImplementedError(
-            "Wire ports with reference_plane_cells are not supported with devices=...; "
+            "Wire ports with reference_plane_cells are not supported with "
+            f"{'distributed=True' if forward else 'devices=...'}; "
             "the V_ref path needs pre-injection recordings. Use one device.")
     if any(pe.extent is not None and pe.radius is not None for pe in ports):
         from rfx.sources.wire_radius import require_radius_support
@@ -515,7 +521,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
     if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
-        refuse_distributed_lumped_s_pmc(sim)
+        refuse_distributed_lumped_s_pmc(sim, entry="forward" if forward else "run")
 
     if any(not pe.excite for pe in ports):
         raise NotImplementedError(
@@ -569,7 +575,9 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
             "the lane ignores the refinement and would solve the unrefined grid, "
             "with no warning (rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed have no subgrid coupling). "
-            f"Remove the refinement, or {single_device_hint}."
+            "Remove the refinement, or "
+            + ("use run() on one device (forward() does not take add_refinement())"
+               if forward else single_device_hint) + "."
         )
 
 

@@ -35,21 +35,26 @@ from rfx.probes.probes import (
 )
 
 
-def refuse_distributed_lumped_s_pmc(sim):
-    """Refuse lumped S and wire loads/drives under the distributed PMC rule."""
+def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
+    """Refuse lumped S and wire loads/drives under the distributed PMC rule.
+
+    ``entry`` is the call the user made: ``"run"`` (``devices=...``) or
+    ``"forward"`` (``distributed=True``).
+    """
+    option = "distributed=True" if entry == "forward" else "devices=..."
     faces = sorted(sim._boundary_spec.pmc_faces())
     if faces and any(pe.impedance != 0 and pe.extent is not None for pe in sim._ports):
         raise NotImplementedError(
             f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
-            "are not supported with devices=...; the multi-device main run "
+            f"are not supported with {option}; the multi-device main run "
             "zeroes tangential E on a declared PMC face, so nearby wire loads "
             "and drives would be wrong even with compute_s_params=False "
-            "(rfx #1221, B3b). Use one device (omit devices=...)."
+            f"(rfx #1221, B3b). Use one device (omit {option})."
         )
     if faces and any(pe.impedance != 0 for pe in sim._ports):
         raise NotImplementedError(
             f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
-            "are not supported with devices=...; use one device (omit devices=...)."
+            f"are not supported with {option}; use one device (omit {option})."
         )
 
 

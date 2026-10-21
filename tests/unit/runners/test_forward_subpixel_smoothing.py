@@ -143,7 +143,13 @@ def test_distributed_smoothing_refused(graded):
             getattr(sphere_sim(graded), entry)(n_steps=1, skip_preflight=True,
                                               subpixel_smoothing=True, **options)
         messages.append(str(info.value))
-    assert messages[0] == messages[1]
+    assert "Simulation.run()" in messages[0]
+    assert "omit devices= to run on one device" in messages[0]
+    assert "Simulation.forward()" in messages[1]
+    assert "omit distributed=True to run on one device" in messages[1]
+    assert messages[0] == messages[1].replace(
+        "Simulation.forward()", "Simulation.run()"
+    ).replace("omit distributed=True", "omit devices=")
 
 
 def test_adi_smoothing_refused():
