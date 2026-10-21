@@ -96,6 +96,11 @@ def test_record_ids_follow_simulation_port_numbers(graded, entry, reads_s):
     sim.add_port((.006, .003, 0.), 'ez', impedance=50., extent=.002, excite=False)
     kwargs = {'compute_s_params': False} if entry == 'run' else (
         {'port_s11_freqs': np.array([2e9])} if reads_s else {})
+    if entry == 'forward' and reads_s:
+        with pytest.raises(ValueError, match='needs a driven port.*lumped_port_sparams'):
+            sim.forward(n_steps=16, skip_preflight=True, **kwargs)
+        # Record identities do not require S from the all-passive scene.
+        kwargs = {}
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         result = getattr(sim, entry)(n_steps=16, skip_preflight=True, **kwargs)

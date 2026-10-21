@@ -1132,29 +1132,6 @@ def graded_lumped_default_s(sim):
     return require_isolated_s_drive(sim, implicit=True)
 
 
-def refuse_undriven_record_s(sim, *, implicit=False):
-    """S read from the main run's own record needs something that excites it.
-
-    With every impedance port passive and no plain source, TFSF or waveguide,
-    microstrip, coaxial or Floquet port, the record holds no incident wave and every
-    ratio is 0/0: it returned S = 0 everywhere. A passive port lit by a plain
-    source stays the termination diagnostic (#1420).
-    """
-    if (any(p.impedance == 0.0 or getattr(p, "excite", True) for p in sim._ports)
-            or sim._tfsf is not None or sim._waveguide_ports or sim._msl_ports
-            or sim._coaxial_ports or sim._floquet_ports):
-        return True
-    reason = (
-        "Lumped/wire S read from the run's own record needs a driven port: "
-        "every port has excite=False and nothing else excites the structure, "
-        "so there is no incident wave to form S from. ")
-    if implicit:
-        _warn_implicit_s(reason + "Set excite=True on the port whose S column "
-                         "you want; returning no S-parameters.")
-        return False
-    raise ValueError(reason + "Set excite=True on the port whose S column you want.")
-
-
 def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     """A port drive must be the only excitation of a lumped/wire S solve.
 
@@ -1162,16 +1139,17 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     multi-device S, subgridding) drive EVERY impedance port, passive ones too,
     so any plain source fires in every drive: refused whenever an impedance port
     exists. Routes that read S from the main run's own record (``main_record``:
-    forward(port_s11_freqs=), the graded wire path, the uniform single-wire fast
-    path) drive only excite=True ports; a passive port lit by a plain source there
-    is the termination diagnostic and stays admitted (#1420).
+    forward(port_s11_freqs=), the single-wire fast path on either mesh)
+    require a driven impedance port, regardless of other excitations.
+    Passive records remain available as termination diagnostics, without S.
     """
     ports = [p for p in sim._ports if p.impedance != 0.0]
-    if main_record and ports and not refuse_undriven_record_s(sim, implicit=implicit):
-        return False
+    if main_record and ports:
+        from rfx.measurement.port_s_contract import record_ports, require_driven_record_s
+        if not require_driven_record_s(
+                (p.excite for p in record_ports(sim, default=implicit)), implicit=implicit):
+            return False
     if not ports or not any(p.impedance == 0.0 for p in sim._ports):
-        return True
-    if main_record and not any(getattr(p, "excite", True) for p in ports):
         return True
     reason = (
         "Lumped/wire S-matrix requests do not support plain sources / "
@@ -1192,18 +1170,15 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     plain source or 0-ohm port is refused; the default request warns and
     resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
     # Subgridded runs opt into S explicitly; uniform/graded runs resolve
-    # None from the presence of lumped/wire ports, graded lumped ports only
-    # when one is driven (graded_lumped_default_s).
+    # None from lumped/wire ports, graded lumped ports only when one is driven.
+    # Passive single-wire main records warn and keep raw spectra with S disabled.
     default_requested = (
         compute_s_params is None
         and sim._refinement is None
         and sim._solver != "adi"
-        and any(
-            pe.impedance != 0.0
-            and (not sim._uses_nonuniform_mesh or pe.extent is not None
-                 or getattr(pe, "excite", True))
-            for pe in sim._ports
-        )
+        and any(pe.impedance != 0.0
+                and (not sim._uses_nonuniform_mesh or pe.extent is not None
+                     or getattr(pe, "excite", True)) for pe in sim._ports)
     )
     if compute_s_params is False or not (requested or default_requested):
         return compute_s_params

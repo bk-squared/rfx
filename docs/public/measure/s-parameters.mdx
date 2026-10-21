@@ -211,17 +211,18 @@ s21_db = 20 * np.log10(np.abs(S[1, 0]) + 1e-30)
 rfx runs one simulation per driven port to fill the matrix. Use
 `s_param_freqs=` to choose the frequencies.
 
-`forward(port_s11_freqs=...)`, and `run()` on a graded mesh, form S from one
+`forward(port_s11_freqs=...)` and the single-wire `run()` path form S from one
 record, so they fill only the column of the port driven in it; the other
 columns are NaN, and a record with two or more driven ports is refused (each
 entry would be a sum over the drives). Drive one port per call, with the
 others passive (`excite=False`). S11 is `s_params[0, 0]`, S21 `s_params[1, 0]`.
 
-If no port is driven and a plain source (`add_source`) lights the structure,
-these two routes still return `s_params`. Each entry is then a ratio of two
-port responses to that source, a check on how the passive ports terminate,
-not a scattering parameter; do not read it as S. With no port driven and
-nothing else exciting the structure, the request is refused.
+The uniform and graded `run()` drive scans drive each port in turn, so a
+passive port still gets its S column.
+`forward(port_s11_freqs=...)` and the single-wire path read one record and,
+with every port passive, refuse an explicit S request or warn and return no S
+for a default request; the per-port V, I and V_ref spectra stay in
+`lumped_port_sparams` / `wire_port_sparams` through `run(compute_s_params=False)`.
 
 For one-port S11, aim for about **60 cells per wavelength** at the highest
 frequency you care about. At 30 cells per wavelength, magnitudes can be off

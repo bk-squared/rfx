@@ -334,9 +334,17 @@ def run_uniform(
     from rfx.measurement.port_registration import uniform_run_specs
     record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
+    from rfx.measurement.port_s_contract import passive_record_diagnostic
+    passive_diagnostic = passive_record_diagnostic(sim)
+    if (passive_diagnostic and compute_s_params is None and s_param_freqs is None
+            and len(wire_ports) == 1 and not lumped_ports):
+        # Direct runner calls do not pass through run()'s request resolver.
+        from rfx.runners._admission import refuse_plain_sources_s_matrix
+        compute_s_params = refuse_plain_sources_s_matrix(
+            sim, main_record=True, implicit=True)
     # Main-record lumped spectra use the same bins as run's S driver.
     lumped_sparam_specs = []
-    if lumped_ports and (compute_s_params is None or compute_s_params):
+    if lumped_ports and (compute_s_params is None or compute_s_params or passive_diagnostic):
         from rfx.measurement import register_lumped, default_frequency_grid
         sp_freqs = jnp.asarray(s_param_freqs if s_param_freqs is not None else
                               default_frequency_grid(sim._freq_max, 50), dtype=jnp.float32)
@@ -348,7 +356,7 @@ def run_uniform(
 
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []
-    if wire_ports and (compute_s_params is None or compute_s_params):
+    if wire_ports and (compute_s_params is None or compute_s_params or passive_diagnostic):
         from rfx.simulation import WirePortSParamSpec
         sp_freqs = s_param_freqs if s_param_freqs is not None else jnp.linspace(
             sim._freq_max / 10, sim._freq_max, 50)
@@ -836,49 +844,13 @@ def run_uniform(
         # kept ONLY for the single-port case; MULTI-port wire routes through the
         # driver below because this diagonal-only fill silently drops the
         # off-diagonal S[i,j] (a 2-port wire S21 came out identically 0).
-        n_wp = len(wire_ports)
-        if s_param_freqs is None:
-            for wp_meta, _accs in sim_result.wire_port_sparams:
-                s_param_freqs = np.array(wp_meta.freqs)
-                break
-        freqs_out = np.array(s_param_freqs)
-        n_freqs = len(freqs_out)
-        S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.result_type(
-            sim_result.wire_port_sparams[0][1][0].dtype
-            if sim._precision == "float64" else np.complex64, np.complex64))
-        for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
-            v_dft, i_dft = accs[0], accs[1]
-            v_port_dft = accs[3]
-            z0 = wp_meta.impedance
-            if wp_meta.excite:
-                # Issue #764: whole-port driven reflection.  V_port (the
-                # whole-gap line integral, the only KVL-constrained V on
-                # the staggered grid) against the whole-port Z0 that #318
-                # physically realizes as the series termination.  The
-                # driven sense is +V_port/I (the #683 circuit law
-                # |I| = |V_src|/(Z0+Z_L)); the historical
-                # (-v - Z0*i)/(-v + Z0*i) here was the PASSIVE port-branch
-                # convention applied to a driven port (the reciprocal
-                # class — max|S11| 4.648 on the 2-port MSL stub) with the
-                # per-cell V against the whole-port Z0 on top (matched
-                # load +0.35426, PEC short +0.26780).  This lane now
-                # samples the physical V/I/V_port POST-injection (issue
-                # #683, decided by measurement 2026-08-29), so this
-                # diagonal is the validated terminal pair — Gamma_L-exact
-                # class, physical passivity restored (the six formerly
-                # keyed uniform gates are physical locks again).
-                from rfx.probes.probes import driven_port_reflection
-                S[j, j, :] = np.array(
-                    driven_port_reflection(v_port_dft, i_dft, z0))
-            else:
-                # Passive port: legacy per-cell diagnostic diagonal,
-                # byte-frozen (issue #764 scope: no physical falsifier can
-                # gate a load-independent reading).
-                a_j = (-v_dft + z0 * i_dft) / (2.0 * np.sqrt(z0))
-                safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-                b_j = (-v_dft - z0 * i_dft) / (2.0 * np.sqrt(z0))
-                S[j, j, :] = np.array(b_j / safe_a)
-        s_params = S
+        from rfx.measurement.port_s import port_s_from_record
+        pairs = sim_result.wire_port_sparams
+        s_params = np.asarray(port_s_from_record(
+            [channels for _, channels in pairs], [meta for meta, _ in pairs],
+            wire_mode=True))
+        freqs_out = np.asarray(s_param_freqs if s_param_freqs is not None
+                               else pairs[0][0].freqs)
     elif compute_s_params and (lumped_ports or wire_ports):
         if s_param_freqs is None:
             s_param_freqs = jnp.linspace(

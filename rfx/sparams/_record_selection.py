@@ -27,7 +27,9 @@ def read_ids(records, kind=None):
 
 def finish_forward(result):
     """Publish the ids selected by uniform forward's accumulator branch."""
-    kind = 'lumped' if result.lumped_port_sparams else 'wire'
+    from rfx.measurement.port_s_contract import uniform_record_pairs
+    pairs = uniform_record_pairs(result)
+    kind = 'wire' if pairs is result.wire_port_sparams else 'lumped'
     selected = read_ids(result.sparam_time_records, kind) if result.s_params is not None else SReadPorts()
     return result._replace(sparam_read_ids=selected)
 

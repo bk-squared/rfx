@@ -565,6 +565,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # run()'s S for the port sets uniform run() scans: one drive per port through
     # the shared driver (compute_lumped_wire_s_matrix_via_scan), not this record.
     from rfx.runners._admission import _s_matrix_ports, graded_lumped_default_s
+    from rfx.measurement.port_s_contract import passive_record_diagnostic
+    passive_diagnostic = (not _s_matrix_ports(sim) and passive_record_diagnostic(sim))
     # One excited lumped port alone reads S from the main record, as uniform run() does.
     single_lumped = (len(sim._ports) == 1 and sim._ports[0].extent is None
                      and sim._ports[0].impedance != 0.0 and sim._ports[0].excite)
@@ -583,7 +585,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if not scan and (lane == "run_nonuniform" and compute_s_params is not False
             and any(p.impedance != 0.0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import refuse_plain_sources_s_matrix
-        refuse_plain_sources_s_matrix(sim, main_record=True)
+        if not refuse_plain_sources_s_matrix(sim, main_record=True,
+                implicit=passive_diagnostic and compute_s_params is None and s_param_freqs is None):
+            compute_s_params = False
 
     if not scan and (compute_s_params is not False
             and any(p.impedance > 0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
@@ -919,7 +923,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     sp_freqs = None
     if any(not p.get("record_only", False) for p in wire_port_specs) and (
         s_param_freqs is not None if lane == "fwd_nonuniform"
-        else compute_s_params is None or compute_s_params
+        else compute_s_params is None or compute_s_params or passive_diagnostic
     ):
         sp_freqs = s_param_freqs
         if sp_freqs is None:

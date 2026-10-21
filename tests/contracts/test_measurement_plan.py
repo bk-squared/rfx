@@ -36,8 +36,13 @@ def setup(sim, forward=False, frequencies=FREQS):
     with patch('rfx.simulation.run', stop), patch('rfx.runners.nonuniform.run_nonuniform', stop):
         with pytest.raises(SetupCaptured):
             if forward:
+                ports = [p for p in sim._ports if p.impedance]
+                if ports and not any(p.excite for p in ports):
+                    with pytest.raises(ValueError, match='needs a driven port.*lumped_port_sparams'):
+                        sim.forward(n_steps=12, checkpoint=False, skip_preflight=True,
+                                    port_s11_freqs=frequencies)
                 sim.forward(n_steps=12, checkpoint=False, skip_preflight=True,
-                            **({'port_s11_freqs': frequencies} if any(p.impedance for p in sim._ports) else {}))
+                            **({'port_s11_freqs': frequencies} if any(p.excite for p in ports) else {}))
             else:
                 sim.run(n_steps=12, skip_preflight=True,
                         compute_s_params=any(p.extent is not None for p in sim._ports),
@@ -109,6 +114,15 @@ def judge(plan, actual, row, nu):
             specs = actual.get('wire_ports') or ()
         else:
             specs = actual.get('wire_port_sparams') or actual.get('lumped_port_sparams') or ()
+            if not specs and row == ('_ports', 'passive_port'):
+                # Passive forward has time records without requesting S.
+                # Keep the same sampler oracle using its actual record metadata.
+                records = actual['port_record_specs']
+                assert len(records) == 1
+                component, live, kind, mid, _ = records[0]
+                assert kind == 'lumped'
+                specs = (SimpleNamespace(component=component, live_cells=live,
+                                         i=mid[0], j=mid[1], k=mid[2]),)
         if specs:
             spec = specs[0]
             get = spec.get if isinstance(spec, dict) else lambda k, d=None: getattr(spec, k, d)

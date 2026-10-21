@@ -82,11 +82,12 @@ def test_explicit_refusal_unchanged(graded, wire, s_request):
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
-def test_passive_main_record_remains_admitted(graded):
+def test_passive_single_wire_warns_and_keeps_spectra(graded):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = model(graded, wire=True, passive=True).run(n_steps=12, skip_preflight=True)
-    assert result.s_params is not None
+    assert result.s_params is None and result.wire_port_sparams
+    assert sum("needs a driven port" in str(w.message) for w in caught) == 1
     assert not any("plain sources" in str(w.message) for w in caught)
 
 

@@ -13,7 +13,7 @@ from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
 from rfx.validation import normalize_port_smatrix
 from tests.contracts.run_forward_census import BUILDERS
 from tests.unit.nonuniform.test_nu_wire_port_lane_parity import (
-    _build, FREQS, PORT_Y, PORT_Z, LANE_PARITY_ATOL,
+    _build, FREQS, PORT_Y, PORT_Z,
 )
 
 
@@ -54,18 +54,15 @@ def test_validation_refuses_forward_rows():
         normalize_port_smatrix(result)
 
 
-def test_all_passive_two_port_lane_parity():
-    results = []
+def test_all_passive_two_port_lane_refusal():
+    messages = []
     for graded in (False, True):
         sim = _build(graded).add_port((12e-3, PORT_Y, PORT_Z), 'ez',
                                      impedance=50, extent=3e-3, excite=False)
-        results.append(sim.forward(n_steps=800, skip_preflight=True,
-                                   port_s11_freqs=FREQS))
-    for result in results:
-        assert result.s_params.shape == (2, 2, len(FREQS))
-        assert np.isfinite(result.s_params).all()
-    np.testing.assert_allclose(results[0].s_params, results[1].s_params,
-                               rtol=0, atol=LANE_PARITY_ATOL)
+        with pytest.raises(ValueError, match='needs a driven port.*lumped_port_sparams') as error:
+            sim.forward(n_steps=800, skip_preflight=True, port_s11_freqs=FREQS)
+        messages.append(str(error.value))
+    assert messages[0] == messages[1]
 
 
 def test_graded_wire_thru_run_checks_only_the_driven_column():

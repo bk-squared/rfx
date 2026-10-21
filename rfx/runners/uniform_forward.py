@@ -834,12 +834,13 @@ def _forward_from_materials(
 
     s_params_out = getattr(result, "s_params", None)
     freqs_out = getattr(result, "freqs", None)
-    pairs = result.lumped_port_sparams or result.wire_port_sparams
+    from rfx.measurement.port_s_contract import uniform_record_pairs
+    pairs = uniform_record_pairs(result)
     if pairs:
         from rfx.measurement import port_s_from_record
         metas, channels = zip(*pairs)
         s_params_out = port_s_from_record(
-            channels, metas, wire_mode=not bool(result.lumped_port_sparams))
+            channels, metas, wire_mode=pairs is result.wire_port_sparams)
         freqs_out = metas[0].freqs
 
     # Passivity self-check (tracer-safe; skipped under jax.grad/jit) — the

@@ -557,9 +557,9 @@ class Result(NamedTuple):
         Probe recordings over time.
     s_params : (n_ports, n_ports, n_freqs) complex or None
         S-parameter matrix (computed only when ports are present and
-        ``compute_s_params=True``). With no driven port, passive-port ratios
-        from the main record are termination diagnostics, not an S-matrix
-        of the structure under independent port drives.
+        ``compute_s_params=True``). On main-record routes, None when no port
+        is driven; see ``lumped_port_sparams`` for the per-port spectra
+        (``wire_port_sparams`` for wire ports).
     freqs : (n_freqs,) float or None
         Frequency array for S-parameters.
     ntff_data : NTFFData or None
@@ -963,8 +963,8 @@ class ForwardResult(NamedTuple):
     ``V_ref`` is the PRE-injection drive sample. ``s_params`` has shape
     ``(n_ports, n_ports, n_freqs)`` on both meshes: receive port, drive port,
     frequency. A record with a driven port fills its driven column and
-    returns complex NaN in non-driven columns. With all ports passive,
-    it returns the frozen per-cell diagnostic matrix.
+    returns complex NaN in non-driven columns. None when no port is driven;
+    see ``lumped_port_sparams`` for the per-port spectra.
 
     ``dft_planes`` exposes the JIT-scan-accumulated complex DFT plane
     probes registered via :meth:`Simulation.add_dft_plane_probe`.  Each

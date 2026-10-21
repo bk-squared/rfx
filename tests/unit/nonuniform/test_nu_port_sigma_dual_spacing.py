@@ -361,14 +361,18 @@ def test_uniform_transverse_mesh_is_bit_identical_to_the_primal_spelling():
         float(sig[i, j, k]), primal)
 
 
-def _s11(component, extent):
+def _termination_ratio(component, extent):
     sim = _sim(component, extent)
     n_live = _stamped(component, extent)["n_live"]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = sim.run(n_steps=1200, compute_s_params=True,
+        res = sim.run(n_steps=1200, compute_s_params=False,
                       s_param_freqs=FREQS, skip_preflight=True)
-    return np.real(np.asarray(res.s_params)[0, 0, :]), n_live
+    assert res.s_params is None
+    meta, channels = res.wire_port_sparams[0]
+    v, i = np.asarray(channels[0]), np.asarray(channels[1])
+    ratio = (v + meta[4] * i) / (v - meta[4] * i)
+    return np.real(ratio), n_live
 
 
 # #931 R8 made a wire port's extent HALF-OPEN in edges, so every declaration
@@ -385,8 +389,8 @@ def _s11(component, extent):
                                               ("ex", 3 * D), ("ey", 4 * D)])
 def test_passive_port_quasi_static_s11_matches_the_closed_form(component,
                                                                extent):
-    """ORACLE 2 — S11 -> (1 - n_live)/(1 + n_live), independent of Z0."""
-    s11, n_live = _s11(component, extent)
+    """ORACLE 2 — raw V/I termination ratio, independent of Z0; not S."""
+    s11, n_live = _termination_ratio(component, extent)
     expect = (1.0 - n_live) / (1.0 + n_live)
     assert n_live >= 2, n_live
     np.testing.assert_allclose(s11, expect, rtol=2e-3,
