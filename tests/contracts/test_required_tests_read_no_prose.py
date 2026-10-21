@@ -338,6 +338,9 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: Every required test allowed to read prose, and why. Adding one is a gate
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
+    "tests/contracts/test_public_docs_have_no_placeholders.py::test_public_docs_have_no_placeholders":
+        "Public navigation must not publish skeleton pages, unfinished markers, tracker references, "
+        "empty examples or broken internal links (leader's placeholder gate, 2026-10-21).",
     "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
         "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"
