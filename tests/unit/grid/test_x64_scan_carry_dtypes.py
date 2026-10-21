@@ -530,7 +530,9 @@ def test_oblique_bloch_plus_dispersion_still_raises():
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
     mask = jnp.zeros(grid.shape, dtype=bool).at[8:12, :, :].set(True)
-    lor = init_lorentz([lorentz_pole(2.0, 2 * np.pi * 5e9, 1e9)], mats,
+    # Delta eps 1.0: 2.0 sat 0.46 % above the pole time-step bound on these 4 mm cells (#1934), which
+    # now refuses first; this test pins the Bloch/dispersion carry refusal, not the pole bound.
+    lor = init_lorentz([lorentz_pole(1.0, 2 * np.pi * 5e9, 1e9)], mats,
                        grid.dt, mask=[mask], field_dtype=jnp.float32)
     with pytest.raises(TypeError, match="carry"):
         run(grid, mats, 8, boundary="cpml", cpml_axes="x",

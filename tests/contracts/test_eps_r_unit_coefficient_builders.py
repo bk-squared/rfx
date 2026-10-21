@@ -114,6 +114,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/model/pole_stability.py", "largest_growth"):
         "host-only admission predicate on concrete floats (tracker 1590): sigma*dt/(2 EPS_0) enters a "
         "stability matrix; traced values reach this host predicate through an ordered callback",
+    ("rfx/model/pole_stability.py", "judge_prebuilt_poles.check"):
+        "host-only inversion of concrete ADE coefficients for admission (#1934); traced inputs reach "
+        "this NumPy check through traced_check, and no coefficient derivative is taken here",
     ("rfx/measurement/monitors.py", "current_moment_owner"):
         "measurement-plan description of the current-moment reduction: the vacuum constant EPS_0/dt scales "
         "a recorded field difference; no permittivity, traced or not, is divided through it",

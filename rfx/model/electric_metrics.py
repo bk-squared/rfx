@@ -130,7 +130,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     return _scales(ranks, eps_r, sigma, sigma_film)
 
 
-def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
+def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind, *, debye_spec=None):
     """Stage canonical ADE operands from local material and pole-mask rows."""
     from rfx.stepping.slab import Slab
     from rfx.stepping.slab_wrap import select_step
@@ -150,7 +150,7 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
             sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
     from rfx.stepping.slab_setup import stage_dispersion
     return stage_dispersion(materials, dt, spec, sharded_grid.global_grid,
-                            Slab.from_grid(sharded_grid), mesh, kind)
+                            Slab.from_grid(sharded_grid), mesh, kind, debye_spec=debye_spec)
 
 
 def stage_forward_materials(materials, layout, mesh, *, uniform=False):

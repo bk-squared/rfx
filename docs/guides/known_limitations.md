@@ -33,6 +33,18 @@ is solved 24.0 mm wide, and its TE10 cutoff comes out 4.75 % low; with an automa
 18 mm wide. Until the fix lands, choose dx so that every wall-to-wall length is a whole number of cells (WR-90:
 dx = 1.27 mm fits both a and b), and check the solved length the built grid reports.
 
+### Drude/Lorentz time-step admission limits on periodic and multi-device runs
+
+Tracker: #1934
+
+Low-level `run()` with prebuilt Lorentz coefficients on a periodic axis with an even number of cells is refused by name
+when the medium varies along that axis: the edge mean there does not determine the cell values.
+Build the medium through `add_material` (judged at assembly), or use an odd cell count.
+
+Multi-device runs whose material values are traced by an outer `jax.jit` or `jax.vmap` are not judged by the
+Drude/Lorentz time-step check: a refusal cannot be raised from inside a multi-device compiled program.
+The same model is judged when called without the outer transform (or on one device).
+
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373
@@ -173,20 +185,6 @@ backscatter errors were larger than the staircase's at each of three meshes, and
 edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut H-face areas)
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 Tracker: #1651
-
-### Four cases the Drude/Lorentz time-step check does not judge
-
-Tracker: #1590
-
-A Drude or Lorentz medium above its own time-step limit is refused when the model is
-assembled (a row in the support matrix's **Refused inputs** table). The check does not
-see four cases, which run as before and can diverge: a permittivity or conductivity
-override on the two-device graded `forward()` (the declared model is judged), a traced
-mesh or traced pole masks (`rfx/model/pole_stability.py::courant_budget`,
-`refuse_unstable_cells`), Debye poles in the same medium, and the low-level `run()`
-functions handed prebuilt Lorentz coefficients. The same medium declared through
-`add_material` on a concrete mesh is judged, so build it that way once to read the
-stable step before tracing or overriding it.
 
 ## Ports and extraction
 

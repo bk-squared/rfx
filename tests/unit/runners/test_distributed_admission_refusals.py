@@ -83,6 +83,79 @@ def _devices():
     return devices[:2]
 
 
+def test_two_device_pole_override_is_judged_eagerly_but_not_under_outer_jit():
+    import jax.numpy as jnp
+
+    sim = _mixed_lorentz_admission_scene(2.0)
+    grid = sim._build_nonuniform_grid()
+    devices = _devices()
+
+    def forward(eps):
+        return sim.forward(eps_override=eps, n_steps=2, checkpoint=False,
+                           emit_time_series=True, skip_preflight=True,
+                           distributed=True, devices=devices).time_series
+
+    # Literal overrides and expected shape; no admission helper supplies them.
+    stable = jnp.full(grid.shape, 2., jnp.float32)
+    unstable = jnp.ones(grid.shape, jnp.float32)
+    with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        forward(unstable)
+    eager = np.asarray(forward(stable))
+    assert eager.shape == (2, 1)
+    assert np.all(np.isfinite(eager))
+
+    # Documented limitation: outer-traced material values are not judged on
+    # multiple devices. Pin completion/shape, not stability, for both inputs.
+    compiled = jax.jit(forward)
+    for eps in (stable, unstable):
+        assert np.asarray(compiled(eps)).shape == (2, 1)
+
+
+def test_two_device_traced_declared_pole_material_runs():
+    import jax.numpy as jnp
+
+    devices = _devices()
+
+    def forward(eps):
+        sim = _mixed_lorentz_admission_scene(eps)
+        return sim.forward(n_steps=2, checkpoint=False, emit_time_series=True,
+                           skip_preflight=True, distributed=True, devices=devices).time_series
+
+    # Independent literal material values and observation dimensions.
+    with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        forward(jnp.float32(1.0))
+    result = np.asarray(jax.jit(forward)(jnp.float32(2.0)))
+    assert result.shape == (2, 1)
+    assert np.all(np.isfinite(result))
+
+
+def test_one_device_distributed_outer_jit_refuses_unstable_pole_override(monkeypatch):
+    import jax.numpy as jnp
+    from rfx.model import distributed_ports
+
+    apply_override = distributed_ports.apply_material_overrides
+
+    def one_device_override(*args, **kwargs):
+        # This run uses one device even though the process has two available.
+        # Pin admission here as well as the independent downstream slab check.
+        assert kwargs["in_program"] is True, "one-device override must be judged in program"
+        return apply_override(*args, **kwargs)
+
+    monkeypatch.setattr(distributed_ports, "apply_material_overrides", one_device_override)
+
+    sim = _mixed_lorentz_admission_scene()
+    grid = sim._build_nonuniform_grid()
+    devices = _devices()[:1]
+
+    def forward(eps):
+        return sim.forward(eps_override=eps, n_steps=2, checkpoint=False,
+                           emit_time_series=True, skip_preflight=True,
+                           distributed=True, devices=devices).time_series
+
+    with pytest.raises(Exception, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        np.asarray(jax.jit(forward)(jnp.ones(grid.shape, jnp.float32)))
+
+
 def _build(*, entry="api", periodic="", boundary="pec", port=None,
            flux=False, ntff=False, kerr=False, debye=False, rlc=None,
            refine=False, dft=False, msl=False):

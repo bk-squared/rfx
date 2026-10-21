@@ -1350,7 +1350,9 @@ def _phase2d_debye_pole():
 
 def _phase2d_lorentz_pole():
     """Single-pole Lorentz, microwave-band parameters."""
-    return lorentz_pole(delta_eps=1.5, omega_0=2.0 * np.pi * 30e9, delta=1e10)
+    # Prebuilt admission refuses the former 30 GHz pole (dt/stable=1.01494).
+    # At 10 GHz dt/stable=0.992724; keep both parity comparisons unchanged.
+    return lorentz_pole(delta_eps=1.5, omega_0=2.0 * np.pi * 10e9, delta=1e10)
 
 
 @_PHASE2B_REQUIRES_2DEV

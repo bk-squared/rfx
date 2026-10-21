@@ -173,7 +173,7 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     return staged, inverse, loss
 
 
-def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
+def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_spec=None):
     """Judge owned cell reductions, then form ADE operands on uniform slabs."""
     from rfx.model.pole_stability import (pole_set_extremes, combine_pole_extremes,
                                          judge_pole_sets, courant_budget)
@@ -196,21 +196,28 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
         for view in slab_views(grid, layout.n_devices):
             owned_view = view._replace(halo_lo=2,
                 halo_hi=layout.nx_local + 1 - 2 - (view.x1 - view.x0))
-            local_masks = [None if m is None else
-                np.asarray(m)[np.clip(rows.indices[view.rank], 0, layout.nx - 1)]
-                if not isinstance(m, jax.core.Tracer) else m for m in masks]
+            def local_masks(spec_masks):
+                return [None if m is None else
+                    (jnp if isinstance(m, jax.core.Tracer) else np).asarray(m)[
+                        np.clip(rows.indices[view.rank], 0, layout.nx - 1)] for m in spec_masks]
+            local_debye = None
+            if debye_spec is not None:
+                dp, dm = debye_spec
+                dm = dm if isinstance(dm, (tuple, list)) else [dm] * len(dp)
+                local_debye = (dp, local_masks(dm))
+            lm = local_masks(masks)
             metadata = []
             def extrema(cells):
-                found = pole_set_extremes(cells, (poles, local_masks), view=owned_view)
+                found = pole_set_extremes(cells, (poles, lm), view=owned_view, debye_spec=local_debye)
                 if not metadata:
                     metadata.extend(found)
-                return tuple((r.eps_low, r.sigma_low, r.sigma_high) for r in found)
+                return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied) for r in found)
             values = jax.checkpoint(jax.vmap(extrema))(inputs)
             values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
-            records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2])
+            records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
-                        grid_kind=type(grid).__name__)
+                        grid_kind=type(grid).__name__, in_program=mesh.devices.size < 2)
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
     widths = stage_x_widths(grid, rows, mesh)
     def local(cells, index, masks, widths):

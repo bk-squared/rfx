@@ -129,7 +129,7 @@ def _check_operands(site, *, invalid):
     if site == "graded node index":
         return (np.int32(invalid), not invalid)
     if site == "pole stability":
-        return (1.0, 0.0, 0.0, 1.0 if invalid else 0.1, 0.0, 0.0, 9.0)
+        return (1.0, 0.0, 0.0, 1.0 if invalid else 0.1, 0.0, 1, 0.0, 0.0, 9.0)
     if site == "sheet film overlap":
         return (np.array([invalid]),)
     if site in ("TFSF box", "TFSF slab"):

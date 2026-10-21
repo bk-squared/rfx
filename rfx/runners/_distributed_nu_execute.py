@@ -228,14 +228,15 @@ def execute_from_materials(
         _dnu_pec_sheets,
         _dnu_pec_wires,
         solve_diagnostics,
-    ) = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state)
+    ) = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state,
+                                            n_devices=mesh.devices.size)
     diagnostics = merge_diagnostics(diagnostics, solve_diagnostics)
     from rfx.model.distributed_ports import assemble
     materials, pec_mask, pec_edges, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
         self, grid, materials, conductors, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
         eps_override=eps_override, sigma_override=sigma_override, pec_mask_override=pec_mask_override,
         pec_occupancy_override=pec_occupancy_override, debye_spec=debye_spec, lorentz_spec=lorentz_spec, n_steps=n_steps, lane=lane,
-        gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs)
+        gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh)
     del conductors
     from rfx.stepping.slab_ports import global_plan
     port_plan = global_plan(self, grid, port_specs, lane, s_param_freqs, compute_s_params)
@@ -262,11 +263,10 @@ def execute_from_materials(
     sharded_debye = stage_forward_dispersion_x_slab(
         sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",
     )
-    del debye_spec
     sharded_lorentz = stage_forward_dispersion_x_slab(
-        sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz",
+        sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz", debye_spec=debye_spec,
     )
-    del lorentz_spec
+    del lorentz_spec, debye_spec
 
     # ---- CPML init + sharding (Phase 2C). ----
     cpml_params = None
