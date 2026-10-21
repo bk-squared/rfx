@@ -64,7 +64,7 @@ their TE101 error grows with the factor. The factor-5 run triggers the
 
 ## Choosing `adi_cfl_factor`
 
-The committed check holds the 3-D lane at the default factor 2 within 2 % of
+The committed check holds the 3-D solver at the default factor 2 within 2 % of
 the analytic eigenfrequency of an empty PEC cavity
 (`tests/unit/misc/test_review_tier1_validation_battery.py::test_optc1_adi_3d_cavity_eigenfrequency`).
 Larger factors are not judged; the error grows with the factor and shrinks with
@@ -102,8 +102,8 @@ solves.
 
 ## Limits
 
-- **Experimental.** The 3-D lane is checked against an analytic PEC cavity
-  (within 2 % at factor 2), and the 2-D TMz lane against a cavity resonance at
+- **Experimental.** The 3-D solver is checked against an analytic PEC cavity
+  (within 2 % at factor 2), and the 2-D TMz solver against a cavity resonance at
   factor 5. Neither contains a conductor or material interface, and ADI refuses
   both.
 - **No demonstrated speed-up.** The larger step is allowed, but no measured

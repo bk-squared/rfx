@@ -138,8 +138,8 @@ the [Geometry and Materials API](/rfx/api/geometry-materials/).
 
 ### CAD import
 
-`MeshShape` imports STL, OBJ and PLY files, and STEP/STP through the CAD extra
-(`pip install "rfx-fdtd[cad]"`). `scale` converts the file's length unit to
+`MeshShape` imports STL, OBJ, PLY and STEP/STP files. All of them need the
+CAD extra (`pip install "rfx-fdtd[cad]"`), which installs `trimesh`. `scale` converts the file's length unit to
 metres:
 
 ```python

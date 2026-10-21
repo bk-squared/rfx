@@ -133,7 +133,8 @@ transverse wavenumber carries an MG around `f0`. Declare
 `waveform="modulated_gaussian"`, leave it unset, or use `method="methodB"`
 for an open domain. Every modulated Gaussian peaks at t0 = 5τ, oblique Bloch included.
 
-TFSF cannot share a simulation with any port. It is not a port and gives no
+TFSF cannot share a simulation with any port, and `add_tfsf_source` also
+refuses when a point source is already declared. It is not a port and gives no
 S-parameters. For RCS, see [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
 
 ## Lumped and wire ports
@@ -177,7 +178,7 @@ Touchstone export.
   lands within 0.54 dB of the closed form on resistive loads, and exactly on a
   short or open. At 30 cells per wavelength, magnitudes are within 1.1 dB,
   and the line's phase-crossing frequencies sit 1.7–2.9 % from the closed
-  form. These figures come from the lumped/wire chain battery, which measures
+  form. These figures come from the lumped and wire port tests, which measure
   `forward(port_s11_freqs=...)` on a one-cell parallel-plate line.
 - **Know the reference plane.** A one-cell port reads its voltage at the port
   node and its current half a cell toward the line.
@@ -230,14 +231,21 @@ as if the line continued forever. If the line is meant to end at your port,
 name its conductor with `terminates=`:
 
 ```python
-line = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.01), dx=1e-3,
-                  boundary="cpml", cpml_layers=6)
-line.add_thin_conductor(Box((0.0, 0.0, 0.001), (0.04, 0.02, 0.001)))  # ground
-strip = Box((0.0, 0.009, 0.004), (0.04, 0.011, 0.004))
+from rfx.mesh_edges import edge_aware_profiles
+
+domain = (0.04, 0.02, 0.012)
+strip = Box((0.0, 0.009, 0.006), (0.04, 0.011, 0.006))
+line = Simulation(freq_max=6e9, domain=domain, dx=1e-3, boundary="cpml",
+                  **edge_aware_profiles(domain, 1e-3, sheets=[strip],
+                                        faces={"x": [0.035], "y": [0.010]}))
+line.add_thin_conductor(Box((0.0, 0.0, 0.003), (0.04, 0.02, 0.003)))  # ground
 line.add_thin_conductor(strip)
-line.add_port((0.035, 0.010, 0.001), "ez", extent=3e-3,
+line.add_port((0.035, 0.010, 0.003), "ez", extent=3e-3,
               waveform=GaussianPulse(f0=3e9), terminates=strip)
 ```
+
+The edge-aware mesh keeps the 2 mm strip at its drawn width; on a uniform
+1 mm mesh it solves 2.7 mm wide and `run()` refuses it.
 
 Preflight warns (`port_conductor_continues`) when a port's conductor runs into
 the absorber and no port terminates it. A ground plane should continue; name
@@ -389,11 +397,12 @@ Getting an accurate result:
   with its own calculator instead.
 - **Circular polarization** from `add_polarized_source` is unverified.
 - **Lumped/wire ports** need about 60 cells per wavelength for S11 within
-  about 0.5 dB. `forward(port_s11_freqs=...)` is uniform and single-device
-  only. Wire ports on a graded mesh are experimental.
+  about 0.5 dB. `forward(port_s11_freqs=...)` works on either mesh; over
+  several devices see [Run on several devices](/rfx/run/multi-device/).
+  Wire ports on a graded mesh are experimental.
 - **Microstrip** `mode="eigenmode"` is unsupported. Graded-mesh microstrip has
   no external comparison yet. ADI, subgridding and TFSF are refused.
-- **Coax** lanes cover one
+- **Coax** calculators are checked on one
   geometry family, and only azimuthally symmetric discontinuities.
 - **TFSF on a graded axis:** preflight warns, because the scattered-field
   region picks up a spurious field (about 0.7 of the total-field peak with no

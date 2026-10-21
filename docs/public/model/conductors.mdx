@@ -90,12 +90,19 @@ thinner than a cell:
 
 ```python
 from rfx import Box, Simulation
+from rfx.mesh_edges import edge_aware_profiles
 
-sim = Simulation(freq_max=10e9, domain=(0.05, 0.03, 0.01), dx=0.5e-3,
-                 boundary="cpml")
+domain = (0.05, 0.03, 0.01)
 trace = Box((0.010, 0.014, 0.0016), (0.040, 0.016, 0.0016))
+sim = Simulation(freq_max=10e9, domain=domain, dx=0.5e-3, boundary="cpml",
+                 **edge_aware_profiles(domain, 0.5e-3, sheets=[trace], axes="xyz"))
 sim.add_thin_conductor(trace, sigma_bulk=5.8e7, thickness=35e-6)
 ```
+
+The mesh from `edge_aware_profiles` puts the trace's edges where they solve at
+the drawn 2 mm. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
+and `run()` refuses it (`sheet_effective_size`; see
+[Solving sheets at their drawn size](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size)).
 
 `sigma_bulk` and `surface_impedance_f0` choose the model:
 
@@ -162,7 +169,7 @@ sheets, so read `fidelity_report()` for those.
 
 Metal on a curved or slanted surface lands as a staircase of cell faces. On a
 uniform mesh with `run()`, `run(conformal_pec=True)` weights the update at the
-cut cells instead (`conformal_pec_min_weight` sets the floor); other solver
+cut cells instead (`run(conformal_min_weight=...)`, default 0.1, sets the floor); other solver
 paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
 faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
 dielectric the same way. With both set, the smoothed tensor takes the place
