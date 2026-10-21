@@ -11,6 +11,9 @@ VACUUM_MESSAGE = (
     "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x "
     "boundaries; non-vacuum material found at x_lo-1"
 )
+# The refusal names the operand the step would apply on the plane (#1676).
+PERMITTIVITY_MESSAGE = VACUUM_MESSAGE + ": permittivity (materials.eps_r)"
+DESIGN_BOX_MESSAGE = VACUUM_MESSAGE + ": caller-supplied non-vacuum mask (nonvacuum_masks.0)"
 TRACED_MESSAGE = (
     "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x "
     "boundaries; non-vacuum material found at x_lo"
@@ -36,7 +39,7 @@ def test_box_on_vacuum_planes_refused(graded, entry):
     sim.add(Box((0., 0., 0.), (.030, .020, .012)), material="fill")
     with pytest.raises(ValueError) as caught:
         getattr(sim, entry)(n_steps=8)
-    assert str(caught.value) == VACUUM_MESSAGE
+    assert str(caught.value) == PERMITTIVITY_MESSAGE
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
@@ -45,7 +48,7 @@ def test_forward_override_on_vacuum_planes_refused(graded):
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     with pytest.raises(ValueError) as caught:
         sim.forward(n_steps=8, eps_override=jnp.full(grid.shape, 4.))
-    assert str(caught.value) == VACUUM_MESSAGE
+    assert str(caught.value) == PERMITTIVITY_MESSAGE
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
@@ -89,7 +92,7 @@ def test_graded_design_box_vacuum_planes(crossing):
     if crossing:
         with pytest.raises(ValueError) as caught:
             sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
-        assert str(caught.value) == VACUUM_MESSAGE
+        assert str(caught.value) == DESIGN_BOX_MESSAGE
     else:
         # The vacuum rule admits an interior box; the plane wave's invariance
         # admission then refuses the finite box, as on the uniform mesh (#1794).

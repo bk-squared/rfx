@@ -529,7 +529,9 @@ def test_oblique_bloch_plus_dispersion_still_raises():
                          polarization="ez", angle_deg=30.0, ny=grid.ny)
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
-    mask = jnp.zeros(grid.shape, dtype=bool).at[8:12, :, :].set(True)
+    # Off the injection planes, so the plane-operand rule (#1676) admits it
+    # and the scan carry is what refuses.
+    mask = jnp.zeros(grid.shape, dtype=bool).at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(True)
     # Delta eps 1.0: 2.0 sat 0.46 % above the pole time-step bound on these 4 mm cells (#1934), which
     # now refuses first; this test pins the Bloch/dispersion carry refusal, not the pole bound.
     lor = init_lorentz([lorentz_pole(1.0, 2 * np.pi * 5e9, 1e9)], mats,

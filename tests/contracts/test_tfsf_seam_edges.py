@@ -47,10 +47,20 @@ def _step_edges(monkeypatch, sim, entry):
     return captured[0]
 
 
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_method_b_full_span_sheet_refused(entry):
+    """Method B also injects on y planes; a full-span sheet crosses them (#1676)."""
+    with pytest.raises(ValueError) as caught:
+        getattr(_scene("sheet", "ez", "methodB", 20), entry)(n_steps=2)
+    assert str(caught.value).startswith(
+        "Method-B oblique TFSF requires vacuum on and adjacent to all four "
+        "transverse TFSF boundary planes; non-vacuum material found at y_lo-1: "
+        "PEC edge"), str(caught.value)
+
+
 @pytest.mark.parametrize("kind,polarization,method,angle", [
     ("sheet", "ez", "bloch", 0),
     ("sheet", "ey", "bloch", 0),
-    ("sheet", "ez", "methodB", 20),
     ("box", "ez", "bloch", 0),
 ])
 def test_plane_wave_step_edges_match(monkeypatch, kind, polarization, method, angle):

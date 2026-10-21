@@ -166,10 +166,15 @@ def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast
     sim = plane()
     grid = sim._build_grid()
     materials = sim._assemble_materials(grid)[0]
-    shape = (1, grid.ny, 1) if broadcast else grid.shape
-    materials = materials._replace(mu_r=jnp.ones(shape).at[:, 0, :].set(2.))
     source = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=2,
                        tfsf_margin=1, f0=5e9, bandwidth=.5)
+    # The y variation stays inside the total-field region, one cell clear of
+    # the injection planes x_lo-1, x_lo, x_hi, x_hi+1: the H update there
+    # reads mu averaged with its x neighbour, which must be vacuum too (#1676).
+    inside = slice(source[0].x_lo + 2, source[0].x_hi - 1)
+    assert inside.start < inside.stop
+    shape = (grid.nx, grid.ny, 1) if broadcast else grid.shape
+    materials = materials._replace(mu_r=jnp.ones(shape).at[inside, 0, :].set(2.))
 
     def stop(*args, **kwargs):
         raise Admitted
