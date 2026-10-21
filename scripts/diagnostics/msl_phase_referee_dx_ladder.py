@@ -661,8 +661,8 @@ def derive(core: dict, dump_path: Path, dx: float) -> dict:
             "w_m": W_TRACE, "h_m": H_CLOSED_FORM, "eps_r": EPS_R,
             "eps_eff": eps_eff_cf, "z0_ohm": z0_cf,
             "c0_m_s": C0,
-            "c0_note": ("exact SI c. The crossval case uses _C0 = 2.998e8, "
-                        "which shifts a beta deviation by +0.0025 %."),
+            "c0_note": ("exact SI c; 2.998e8 would shift a beta deviation "
+                        "by +0.0025 %."),
             "source": "rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff",
             "beta_rad_per_m": beta_cf.tolist(),
         },
