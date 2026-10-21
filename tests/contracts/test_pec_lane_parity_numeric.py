@@ -358,8 +358,9 @@ def test_the_forward_lossy_sheet_ctx_knows_about_a_pec_wire():
     def _build_wire():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            # f0 sheet size is not this test's subject (sheet_effective_size)
             sim = Simulation(freq_max=15e9, domain=F0_DOM, dx=F0_DX,
-                             boundary="pec")
+                             boundary="pec", snap="declared")
             sim.add(PolylineWire(((4e-3, 6e-3, 6e-3), (8e-3, 6e-3, 6e-3)),
                                  radius=0.), material="pec")  # legacy PEC filament
             sim.add_thin_conductor(
@@ -397,8 +398,9 @@ def test_the_forward_lossy_sheet_ctx_uses_the_runs_periodic_flags():
     def _build_periodic():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            # f0 sheet size is not this test's subject (sheet_effective_size)
             sim = Simulation(
-                freq_max=15e9, domain=F0_DOM, dx=F0_DX,
+                freq_max=15e9, domain=F0_DOM, dx=F0_DX, snap="declared",
                 boundary=BoundarySpec(
                     x=Boundary(lo="periodic", hi="periodic"),
                     y=Boundary(lo="pec", hi="pec"),

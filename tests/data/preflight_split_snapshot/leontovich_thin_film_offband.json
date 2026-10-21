@@ -49,10 +49,34 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_thin_conductor_surface_impedance"
+      },
+      {
+        "code": "sheet_effective_size",
+        "loc": null,
+        "numbers": [
+          2.0,
+          1.0,
+          2.0,
+          0.0,
+          0.0,
+          4.0,
+          4.0,
+          4.7,
+          17.5,
+          0.0,
+          0.0,
+          4.0,
+          4.0,
+          4.7,
+          17.5,
+          0.35
+        ],
+        "severity": "error",
+        "source": "_validate_cfg_off_lattice_design_edges"
       }
     ],
-    "n_errors": 0,
-    "n_issues": 3,
-    "ok": true
+    "n_errors": 1,
+    "n_issues": 4,
+    "ok": false
   }
 }

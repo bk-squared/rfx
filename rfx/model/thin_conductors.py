@@ -137,6 +137,26 @@ def dc_footprint_areas(shape, grid, mask, normal):
     tangents = [a for a in range(3) if a != normal]
     widths = [np.asarray(grid.cells(a), dtype=float) for a in tangents]
     footprint = np.asarray(mask, dtype=bool).any(axis=normal)
+    if isinstance(shape, Box):
+        coords = _grid_coords(grid)
+        spans = []
+        for i, a in enumerate(tangents):
+            if len(coords[a]) == 1:
+                widths[i] = np.ones_like(widths[i])
+                spans.append(1.0)
+                continue
+            lo, hi = shape.corner_lo[a], shape.corner_hi[a]
+            if 'xyz'[a] in getattr(grid, 'periodic_axes', ''):
+                spans.append(min(max(hi - lo, 0.0), float(np.sum(grid.cells(a)))))
+            else:
+                # The final node's metric is a fence-post provider, not
+                # another cell beyond the sampled coordinate extent.
+                widths[i] = np.minimum(widths[i], np.maximum(
+                    float(coords[a][-1]) - np.asarray(coords[a]), 0.0))
+                spans.append(max(0.0, min(hi, float(coords[a][-1]))
+                                 - max(lo, float(coords[a][0]))))
+        realized = float(np.sum(footprint * widths[0][:, None] * widths[1][None, :]))
+        return realized, float(np.prod(spans))
     realized = float(np.sum(footprint * widths[0][:, None] * widths[1][None, :]))
     area = getattr(shape, 'footprint_area', None)
     try:
@@ -151,19 +171,30 @@ def dc_footprint_areas(shape, grid, mask, normal):
 
 
 def admit_dc_film(shape, grid, *, snap='strict', emit=True):
-    """One non-Box DC admission and plane realization on every grid.
+    """DC area admission using each family's unchanged occupancy sampler.
 
     The Box DC sampler owns layer selection. Only its normal-axis occupancy
     is borrowed; the shape still owns its in-plane cross-section and area.
     Static geometry remains host-evaluable under parameter differentiation.
+    Box drawings are clipped to the sampled tangential extent (one period
+    on periodic axes). A Box on traced coordinates keeps its existing fold
+    without a new refusal; preflight judges the concrete realized grid.
     """
     from rfx._periodic import periodic_mask, plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
     from rfx.preflight._common import PreflightWarning
-    from rfx.preflight.pec_geometry import _SHEET_EFFECTIVE_SIZE_TOL
-
     name = type(shape).__name__
     lo, hi = sheet_bounds(shape)
+    if isinstance(shape, Box):
+        normal = sheet_normal_axis(lo, hi)
+        with jax.ensure_compile_time_eval():
+            mask = dc_cell_mask(shape, grid)
+            if any(is_tracer(v) for v in jax.tree_util.tree_leaves(
+                    (lo, hi, _grid_coords(grid), mask))):
+                return DCFilmGeometry(mask, normal, None, None)
+            realized, declared = dc_footprint_areas(shape, grid, mask, normal)
+        _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
+        return DCFilmGeometry(mask, normal, realized, declared)
     if lo is None or hi is None:
         raise DCFilmAdmissionError(
             f'{name} DC film: cannot locate layers without a bounding_box(); '
@@ -232,18 +263,35 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                 f'{name} DC film: {layers} occupied layers (empty or nonplanar); '
                 'a film requires exactly one nonempty layer.', code='dc_film_layers')
         realized, declared = dc_footprint_areas(shape, grid, mask, normal)
-    error = None if declared is None else np.sqrt(realized / declared) - 1
+    _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
+    return DCFilmGeometry(jnp.asarray(mask), normal, realized, declared)
+
+
+def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
+    from rfx.preflight._common import PreflightWarning
+    from rfx.preflight.pec_geometry import _SHEET_EFFECTIVE_SIZE_TOL
+    name = type(shape).__name__
+    lo, hi = sheet_bounds(shape)
+    coords = _grid_coords(grid)
+    k = sum(len(coords[a]) > 1 for a in range(3) if a != normal) if isinstance(shape, Box) else 2
+    exponent = 'sqrt(A_r/A_d)' if k == 2 else f'(A_r/A_d)^(1/{k})'
+    error = (None if declared is None or declared <= 0 or k == 0 else
+             np.sqrt(realized / declared) - 1 if k == 2 else (realized / declared)**(1 / k) - 1)
     if error is None or abs(error) > _SHEET_EFFECTIVE_SIZE_TOL:
         clipped = any(
             'xyz'[a] not in getattr(grid, 'periodic_axes', '')
             and (lo[a] < float(coords[a][0]) or hi[a] > float(coords[a][-1]))
             for a in range(3) if a != normal)
         reason = ('cannot judge: no positive footprint_area(normal)' if error is None
-                  else f'e=sqrt(A_r/A_d)-1={error:+.12g}, bar={_SHEET_EFFECTIVE_SIZE_TOL:.12g}')
-        remedy = ('Implement footprint_area(normal) to make this custom shape judgeable'
+                  else f'e={exponent}-1={error:+.12g}, bar={_SHEET_EFFECTIVE_SIZE_TOL:.12g}')
+        box = isinstance(shape, Box)
+        remedy = ('The Box has no in-plane extent inside the grid; draw it inside the domain'
+                  if error is None and box else
+                  'Implement footprint_area(normal) to make this custom shape judgeable'
                   if error is None else
                   'The in-plane bounding box is clipped by the grid extent; enlarge the '
                   'domain/grid or move the film inside it' if clipped else
+                  'Put the in-plane edges on mesh nodes or refine the in-plane mesh' if box else
                   'Refine the in-plane mesh or draw a Box')
         message = (f'{name} DC film: A_d={declared!r} m^2, A_r={realized:.12g} m^2; '
                    f'{reason}. {remedy}, or use '
@@ -253,7 +301,6 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
         if emit:
             warnings.warn(PreflightWarning(message, code='dc_film_area', severity='warning',
                                           source='admit_dc_film'), stacklevel=2)
-    return DCFilmGeometry(jnp.asarray(mask), normal, realized, declared)
 
 
 def dc_film_plane(shape, grid):
@@ -353,8 +400,7 @@ def dc_film_refusals(sim, grid):
             continue
         try:
             admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
-            if not isinstance(tc.shape, Box):
-                admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False)
+            admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False)
         except DCFilmAdmissionError as exc:
             refused[i] = str(exc)
     return refused
@@ -376,8 +422,7 @@ def warn_dc_films(sim, warn):
             with warnings.catch_warnings(record=True) as findings:
                 warnings.simplefilter('always')
                 admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
-                if not isinstance(tc.shape, Box):
-                    admit_dc_film(tc.shape, grid, snap=sim._snap)
+                admit_dc_film(tc.shape, grid, snap=sim._snap)
         except DCFilmAdmissionError as exc:
             warn.warn(PreflightWarning(str(exc), code=exc.code, severity='error',
                                        source=exc.source, loc=f'thin_conductors[{i}]'))
@@ -469,12 +514,8 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 f"a lossy thin-conductor film on a traced graded mesh with periodic axes {grid.periodic_axes!r} "
                 "is not implemented (its footprint would get no seam image); use a concrete mesh profile")
         admit_dc_plane(conductor, grid)
-        if not isinstance(conductor.shape, Box):
-            film = admit_dc_film(conductor.shape, grid, snap=snap)
-            mask, normal = film.mask, film.normal
-        else:
-            normal = sheet_normal_axis(conductor.shape.corner_lo, conductor.shape.corner_hi)
-            mask = dc_cell_mask(conductor.shape, grid)
+        film = admit_dc_film(conductor.shape, grid, snap=snap)
+        mask, normal = film.mask, film.normal
         materials, mask = _fold_dc_plane(grid, conductor, materials, mask, normal)
         if geometry_masks is not None:
             geometry_masks.append((geometry_key, mask))

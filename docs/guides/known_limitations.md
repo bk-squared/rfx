@@ -94,17 +94,14 @@ the same solve can then differ in their last float32 digits. Results on the GPU,
 and in a CPU-only process, are not affected. Use the GPU device or a CPU-only
 process to avoid this spread.
 
-### A lossy Box film and a surface-impedance sheet are not checked against their drawn size
+### Lossy Box film area on a traced mesh is checked only on a concrete grid
 
-Tracker: none — accepted limitation (refused at default: tests/contracts/test_dc_film_admission.py::test_b4_small_disc_refusal_and_declared_finding)
+Tracker: none — accepted limitation (refused at default: tests/contracts/test_film_drawn_size.py::test_t1_box_area_strict_refusal_and_declared_warning)
 
-The check that refuses a PEC sheet solved more than 1 % off its drawing, `sheet_effective_size`, reads PEC sheets only
-(`rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`). A lossy film (`add_thin_conductor` below the
-PEC threshold) with a non-Box shape has its own check: it must occupy one cell layer and realize its drawn area within
-1 % in equivalent length, or it is refused unless `snap="declared"` is passed (`rfx/model/thin_conductors.py::admit_dc_film`).
-A lossy film drawn as a Box, and a `surface_impedance_f0` sheet, are checked by neither, so a footprint that the mesh
-rounds away from the drawing runs without a finding. Mesh such a sheet so its edges fall on grid nodes, as for a PEC
-sheet (`rfx.mesh_edges.edge_aware_profiles`).
+Box DC films retain their fold on traced coordinates; the area comparison runs on the concrete realized grid in
+preflight. Its drawn rectangle is clipped to the sampled tangential extent, including absorber padding (one period
+on periodic axes). Non-Box films retain their existing admission rule. Surface-impedance sheets use the same
+`sheet_effective_size` check and solved-edge model as PEC sheets.
 
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 

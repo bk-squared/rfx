@@ -34,7 +34,8 @@ def test_thin_conductor_sigma_eff():
     tc_lossy = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk_lossy, thickness=thickness)
 
     materials = init_materials(grid.shape)
-    materials, pec_mask = apply_thin_conductor(grid, tc_lossy, materials)
+    # lossy film area is not this test's subject (dc_film_area)
+    materials, pec_mask = apply_thin_conductor(grid, tc_lossy, materials, snap="declared")
 
     mask = shape_box.mask(grid)
     inside_idx = np.argwhere(np.array(mask))
@@ -82,7 +83,8 @@ def test_thin_conductor_preserves_outside():
     shape_box = Box((0.005, 0.005, 0.0), (0.01, 0.01, 0.001))
     # A lossy conductor (below PEC threshold) writes the film record, not pec_mask.
     tc = ThinConductor(shape=shape_box, sigma_bulk=1e4, thickness=35e-6, eps_r=1.0)
-    materials, _ = apply_thin_conductor(grid, tc, materials)
+    # lossy film area is not this test's subject (dc_film_area)
+    materials, _ = apply_thin_conductor(grid, tc, materials, snap="declared")
 
     mask = shape_box.mask(grid)
 
@@ -652,9 +654,10 @@ def test_leontovich_dc_limit_equivalence_o1b():
                                  thickness=t, surface_impedance_f0=f0)),
         ):
             specs = []
+            # f0 sheet size is not this test's subject (sheet_effective_size)
             mats, _ = apply_thin_conductor(grid, tc,
                                            init_materials(grid.shape), None,
-                                           sheet_specs=specs)
+                                           sheet_specs=specs, snap="declared")
             if name == "dc":
                 arr_dc = float(jnp.max(mats.sigma_film[0]))
                 # rtol 1e-9 is the ALGEBRA gate; the DC fold's array write
