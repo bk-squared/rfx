@@ -317,7 +317,7 @@ def maximize_directivity(
 
     Prior versions used absolute ``|E|²`` at the target direction, which
     is ~1e-27 in rfx's spectral NTFF convention and produces zero
-    gradients in ``topology_optimize`` (GitHub issue #32).
+    gradients in ``topology_optimize``.
 
     Parameters
     ----------

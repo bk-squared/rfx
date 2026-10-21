@@ -230,7 +230,7 @@ class GaussianPulse:
     The first term is the differentiated Gaussian. Cut at t=0 alone it would
     start with a jump of 2c*exp(-c^2) (7.4e-4 at c=3) and have the time
     integral -tau*exp(-c^2), which a soft current source deposits as a static
-    charge whose field never decays (issue #388). The second term is
+    charge whose field never decays. The second term is
     tau * d/dt[exp(-c^2) * phi(t)] with phi = exp(-u^2)(1 + 2c u + 2c^2 u^2),
     phi(0) = 1, phi(inf) = 0: it makes the integral exactly zero and the
     start continuous in value and slope. The added term's largest magnitude,
@@ -321,8 +321,8 @@ class ModulatedGaussian:
     e^(-1/bandwidth^2) — about 0.5 at bandwidth=1.2 but 0.018 at
     bandwidth=0.5. Wide fractional bandwidths therefore keep substantial DC
     drive; when the net deposited charge of a soft source matters (e.g. the
-    ``until_decay`` interior-energy stop, issue #388), use bandwidth <= 0.4
-    (measured relative DC 4.0e-4 at the issue-#388 demo scale — below the
+    ``until_decay`` interior-energy stop), use bandwidth <= 0.4
+    (measured relative DC 4.0e-4 at the demo scale — below the
     run() warning's 1e-3 threshold, which bandwidth=0.5 at ~2.6e-2 still
     exceeds) or a :class:`GaussianPulse` with a higher ``cutoff``.
 

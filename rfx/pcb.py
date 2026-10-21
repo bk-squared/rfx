@@ -178,7 +178,7 @@ class Stackup:
             Each tuple contains the layer geometry and the resolved
             material name suitable for ``sim.add(shape, material=...)``.
 
-        Conductor layers are SHEETS (#931 §1.5).  A 35 µm copper foil is
+        Conductor layers are SHEETS.  A 35 µm copper foil is
         thinner than any cell a board simulation uses, and a PEC Box with
         ``0 < extent < one local cell`` is refused by the rasterizer — it
         is a volume declaration the lattice cannot honour.  So a conductor
@@ -192,7 +192,7 @@ class Stackup:
         neighbour is a dielectric).  On the mid-plane the sheet sits half
         a foil thickness OFF the laminate, and a mesh that puts a line at
         both the interface and the sheet gets a 17.5 µm vacuum cell in
-        series with the board — the #702 slot geometry, and a ~23x dt
+        series with the board, with a ~23x dt
         collapse on a standard 2-layer stack-up.  Dielectric layers keep
         their finite extent, so the stack-up's z arithmetic
         (``get_layer_z``, ``total_thickness``) is unchanged.

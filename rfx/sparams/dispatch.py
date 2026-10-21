@@ -429,7 +429,7 @@ def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None
         (1 coaxial + 1 MSL) refuses a non-passive extracted S by default and
         is the only method in the table that does — forward
         ``strict_passivity=False`` through ``**kwargs`` to get the diagnostic
-        matrix with a warning instead (issue #838).
+        matrix with a warning instead.
     NotImplementedError
         Lumped/wire-only (use the run lane), a single coaxial port with no
         ``method=``, or a combination of port families no calculator covers.

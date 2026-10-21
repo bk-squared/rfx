@@ -173,8 +173,8 @@ class MeshShape:
         """Load a mesh/CAD file and return a validated ``MeshShape``.
 
         Supported: **STL / OBJ / PLY** (native trimesh) and **STEP / STP** (via the optional
-        ``cascadio`` OpenCASCADE backend, part of the ``cad`` extra — the issue-#358 Stage-2
-        "optional helper"; no native STEP kernel in rfx). STEP assemblies of several solids are
+        ``cascadio`` OpenCASCADE backend, part of the ``cad`` extra; no native STEP kernel in rfx).
+        STEP assemblies of several solids are
         concatenated into one occupancy body.
 
         Parameters

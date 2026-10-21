@@ -338,32 +338,30 @@ def optimize(
         Print progress every 10 iterations.
     n_warmup : int
         Forwarded verbatim to ``sim.forward(n_warmup=...)`` at every
-        iteration (issue #40). On a non-uniform / distributed-non-uniform
+        iteration. On a non-uniform / distributed-non-uniform
         ``sim``, this trades an APPROXIMATE (truncated) gradient for
         reduced reverse-mode memory/compute — see ``Simulation.forward``'s
-        own ``n_warmup`` docstring for the measured error curve (issue #626
-        part 2); a design loop built on this objective inherits that
+        own ``n_warmup`` docstring for the measured error curve; a design loop built on this
+        objective inherits that
         bias, not just a single forward call, so verify the bias is
         acceptable for your loss window before using a nonzero value here.
-        On a uniform-mesh ``sim`` it raises ``NotImplementedError``
-        (issue #626 — previously a silent no-op). Default ``0`` (no
+        On a uniform-mesh ``sim`` it raises ``NotImplementedError``. Default ``0`` (no
         warmup split, full gradient).
     port_s11_freqs : array-like or None
         Frequencies (Hz) at which to accumulate per-port V/I DFTs in the
         JIT scan body so that ``result.s_params`` is populated with
         wave-decomposition |S11| values.  Required when the objective is
-        :func:`minimize_s11_at_freq_wave_decomp` (issue #72).
+        :func:`minimize_s11_at_freq_wave_decomp`.
     checkpoint_segments : int or None
         If set, route ``sim.forward`` through the segmented-checkpoint
-        path (issue #73) which trades ≈2× compute for ≈√n_steps memory.
+        path which trades ≈2× compute for ≈√n_steps memory.
         Must divide ``n_steps``; useful when ``n_steps`` is large enough
         that the linear-memory scan would OOM.  ``None`` (default)
         preserves the legacy per-step ``jax.checkpoint`` behaviour.
 
         Currently wired only on the uniform single-device forward path.
         Non-uniform meshes and ``distributed=True`` will raise
-        ``NotImplementedError``; NU support is tracked as a follow-up
-        on issue #73.
+        ``NotImplementedError``.
     n_starts : int
         Number of random-initialized restarts (opt-in; default 1 = the
         legacy single run).  Start 0 always uses ``init_latent`` (so
@@ -371,13 +369,13 @@ def optimize(
         starts 1..N-1 draw i.i.d. standard-normal latents from ``seed``.
         The best restart by final loss (or best-visited loss when
         ``best_iterate=True``) is returned.  Promoted from the MSL
-        open-stub multimodal example (issue #171); the surface must be
+        open-stub multimodal example; the surface must be
         multimodal for extra starts to help.
     best_iterate : bool
         If True, return the lowest-loss iterate visited during the run
         rather than the final iterate (default False = final iterate =
-        legacy behaviour).  Guards the sharp-null overshoot the #171 GPU
-        run caught.  Selection among ``n_starts`` restarts uses the same
+        legacy behaviour).  Guards the sharp-null overshoot observed in the GPU run.  Selection
+        among ``n_starts`` restarts uses the same
         best-visited loss when this is True.
     step_clamp : float or None
         If set (>0), clamp the L2 norm of each Adam latent update to this
@@ -752,7 +750,7 @@ def progressive_optimize(
     distributed: bool = False,
     jit: bool | None = None,
 ) -> ProgressiveOptimizeResult:
-    """Progressive multi-resolution inverse design (issue #42).
+    """Progressive multi-resolution inverse design.
 
     Runs ``optimize()`` at each stage in ``schedule``, upsampling the
     latent between stages. Coarse stages produce a fast loss-landscape
@@ -778,7 +776,7 @@ def progressive_optimize(
     n_warmup : int
         Forwarded to each stage's ``optimize(..., n_warmup=...)`` call —
         see :func:`optimize`'s own ``n_warmup`` entry for the full
-        behaviour (issue #40/#626): an approximation on non-uniform
+        behaviour: an approximation on non-uniform
         meshes, a fail-loud ``NotImplementedError`` on uniform ones.
 
     jit : bool or None

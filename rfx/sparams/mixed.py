@@ -80,7 +80,7 @@ def compute_mixed_s_matrix(
     magnitude_channel: str = "flux",
     reciprocity_tol: float = 0.06,
 ) -> "MixedSMatrixResult":
-    """Mixed-family S-matrix: lumped/wire ports + MSL ports (issue #488).
+    """Mixed-family S-matrix: lumped/wire ports + MSL ports.
 
     End-to-end S-parameters on ONE structure carrying two port
     families — the first supported pair is a homogeneous lumped OR
@@ -95,13 +95,13 @@ def compute_mixed_s_matrix(
     waves in the **Kurokawa power-wave convention** (each wave divided
     by ``sqrt(Re Z0)`` of its own port) — with unequal reference
     impedances across families a pseudo-wave ratio would be off by
-    ``sqrt(Z_j/Z_i)`` (issue #460); reciprocity of a reciprocal
+    ``sqrt(Z_j/Z_i)``; reciprocity of a reciprocal
     structure is the committed internal falsifier for this choice.
 
     MAGNITUDE CHANNEL (``magnitude_channel``, default ``"flux"``):
-    the #488 falsifier battery + an independent Poynting-flux referee
+    the mixed-family falsifier battery + an independent Poynting-flux referee
     measured the port-cell V*I accounting undercounting delivered
-    power ~3x at a wire probe feed (the OPEN issue-#313 class) and
+    power ~3x at a wire probe feed (near-field deflation) and
     the analytic Hammerstad-Jensen Z0 anchor diverging from the
     measured line ratio on an interface-aligned mesh. Off-diagonal
     MAGNITUDES are therefore taken from Poynting flux by default:
@@ -115,7 +115,7 @@ def compute_mixed_s_matrix(
     correction; no Z0 anchor enters the magnitude. Off-diagonal PHASE
     still comes from the wave channel (see below).
     ``magnitude_channel="wave"`` keeps the raw power-wave magnitudes
-    (diagnostic; carries the #313 deflation at lumped/wire ports).
+    (diagnostic; carries the near-field deflation at lumped/wire ports).
 
     HONESTY NOTES (read before quoting numbers):
 
@@ -123,8 +123,7 @@ def compute_mixed_s_matrix(
       diagonal is not always the measured one.** Two separate
       findings: (a) the wire port-cell V*I accounting was measured
       undercounting delivered power ~3x against an independent
-      Poynting referee (the open issue #313 reaching the diagonal at
-      a near-field-dominated vertical probe), and on an end-fed
+      Poynting referee (at a near-field-dominated vertical probe), and on an end-fed
       fixture the MSL probe plane's local ``V/I`` was ~591 ohm and
       strongly reactive while the reported ``|S22|`` was 0.03 — those
       cannot both be right. (b) With ``enforce_passivity=True`` (the
@@ -158,7 +157,7 @@ def compute_mixed_s_matrix(
       audits the RAW matrix, and is the check that a wrong diagonal
       trips.
     * With ``magnitude_channel="wave"``, off-diagonal magnitudes that
-      RECEIVE at a lumped/wire port cell inherit the issue-#313
+      RECEIVE at a lumped/wire port cell inherit the
       near-field deflation of the default port-cell waves. The
       returned ``s21_power_witness`` cross-checks the MSL-receiving
       direction against a delivered-power normalization; quote it

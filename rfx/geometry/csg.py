@@ -94,7 +94,7 @@ class Box:
     On each axis the volume branch is **half-open** ``[lo, hi)`` over
     **node** coordinates: node ``j`` at ``y_j`` belongs to the box
     iff ``lo - tol <= y_j < hi - tol``, with ``tol = NODE_TIE_REL *
-    node_widths[j]`` (#1138), using each node's forward primal cell width
+    node_widths[j]``, using each node's forward primal cell width
     and repeating the last width at the final node. The convention is
     deliberate and several paths depend on it (see ``_axis_mask`` for the
     issue history), but it has two consequences when a box is drawn to a
@@ -114,19 +114,13 @@ class Box:
 
     2. **Float arithmetic within the on-lattice band keeps the face on
        its node.** Concrete coordinates and comparisons remain host
-       float64, independent of ``jax_enable_x64`` (#802). A corner drawn
+       float64, independent of ``jax_enable_x64``. A corner drawn
        through ``m*dx``, ``lo + N*dx``, repeated addition or a graded
        cumulative sum can differ from its node by a few ULP. The shared
        ``1e-9``-local-cell band includes that node at ``lo`` and excludes
-       it at ``hi`` (#1138), preserving the half-open cell count.
+       it at ``hi``, preserving the half-open cell count.
 
-       Historical (pre-#802, kept because committed values were pinned to
-       it): masks compared float32 coordinates, themselves double-rounded
-       ``f32(f32(i) * f32(dx))``, so a WR-90 f64 node reconstruction
-       disagreed with production on 30 of 31 nodes by up to 1.1e-9 m and
-       the SAME drawing recipe gave ``d + dx`` at one aperture and
-       ``d + 2*dx`` at another, unpredictably. That scatter is gone:
-       drawing fins to the nominal opening now costs exactly one cell
+       Drawing fins to the nominal opening now costs exactly one cell
        (the ``hi``-face retreat), at every aperture.
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
@@ -139,9 +133,8 @@ class Box:
     would call WR-90 22.098 mm instead of 22.86 at a/30). An independent
     refit of 16 committed WR-90 single-iris configurations across two meshes
     pins the realized transverse aperture offset to within 1/20 of a cell of
-    that identity (measured during the stage-S3 / issue #499 review; no
-    committed record carries the refit yet, so like the longitudinal caution
-    below it is a recorded observation, not a number to build on).
+    that identity (no committed record carries the refit yet, so like the longitudinal
+    caution below it is a recorded observation, not a number to build on).
 
     **Do not carry that identity into the propagation direction.** The
     electrical *thickness* of an obstacle (an iris's extent along the guide
@@ -154,11 +147,10 @@ class Box:
     that shrinks with ``dx``. The longitudinal convention is **not settled**;
     treat it as an unknown of order half a cell, and if a comparator needs a
     thickness, make the sensitivity to that half cell part of the reported
-    envelope rather than picking a rule. (Measured during the stage-S3 /
-    issue #499 review; no committed record carries it yet, so it is stated
-    here as a caution, not as a number to build on.) This measured
+    envelope rather than picking a rule. (No committed record carries it yet, so it is stated here as a
+    caution, not as a number to build on.) This measured
     *effective* thickness is a different quantity from a cascade
-    comparator's electrical-length bookkeeping — issue #499's comparator
+    comparator's electrical-length bookkeeping — the cascade comparator
     deliberately draws ``t_c = round(t/dx) + 1`` so that ``(t_c - 1)*dx``
     conserves the cascade's total electrical length; that bookkeeping choice
     answers a different question and is not contradicted by this caution.
@@ -168,30 +160,20 @@ class Box:
     wall inward, the lo fin's interior face is a ``hi`` corner, which
     half-openness **always** drops, so that fin always retreats one cell.
     The hi fin's interior face is a ``lo`` corner, which the banded window
-    **keeps**, including float dust within the on-lattice band. Historically,
-    before that band, the realized opening was:
-
-    * ``d + dx`` when only the lo fin retreated. The opening is then
-      **asymmetric**: its centre sits ``dx/2`` below the guide centre.
-    * ``d + 2*dx`` when rounding made the hi fin retreat as well. The two
-      retreats cancel and the opening is **symmetric**.
-
-    Since #802 the nominal drawing landed on the FIRST case at every
+    **keeps**, including float dust within the on-lattice band.
+    The nominal drawing produces ``d + dx`` at every
     aperture (measured across the WR-90 table at a/30 and a/60: excess is
     uniformly one cell, asymmetric): the hi fin's lo corner, being an
-    exact node value, captured its node. #1138 also keeps a lo face a few
-    ULP above that node from retreating. Historical (pre-#802, float32): which case you got
-    was unpredictable — ``d`` = 12.192 mm gave ``d + 2*dx`` while 7.620
-    and 18.288 mm gave ``d + dx``, and over ~99k (guide, mesh, aperture)
-    combinations the split was 82% / 9% / 8% across ``d + dx`` /
-    ``d + 2*dx`` / ``d`` at even parity.
+    exact node value, captures its node. The on-lattice band also keeps a lo face a few
+    ULP above that node from retreating. The opening is asymmetric:
+    its centre sits ``dx/2`` below the guide centre.
     Shifting each interior face half a cell the *wrong* way (toward the
     metal) retreats both faces by construction rather than by luck, giving
     ``d + 2*dx`` deterministically at every aperture — that is the drawing
     case 18's blocked revision used, and it is why re-comparing that
     revision against ``oracle(d + 2*dx)`` collapsed every row.
 
-    In PR #480's WR-90 single-iris lane this inflated the ``|S11|`` error
+    In the WR-90 single-iris measurement this inflated the ``|S11|`` error
     against an analytic mode-matching oracle by 4-6x, and because it scales
     with ``dx`` it is easy to misread as first-order convergence. For a
     **resonant** structure (multi-iris filter, cavity) it shifts the
@@ -248,7 +230,7 @@ class Box:
     selects exactly one node realizes on THAT node — so a face-registered
     one-cell box lands on its ``lo``-face node deterministically, not on
     whichever side of the exact half-cell tie the last f64 ulp of
-    ``(lo+hi)*0.5`` favours (#802 follow-up). Only a window with zero
+    ``(lo+hi)*0.5`` favours. Only a window with zero
     nodes (a sub-cell box straddling none) or several falls back to the
     nearest-node rule.
     """

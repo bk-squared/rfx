@@ -178,7 +178,7 @@ class NonUniformGrid(NamedTuple):
         is the source of truth (decision 1), NOT the float32 solver store.
         A traced axis returns its tracer unchanged, in jnp.
 
-        On a non-periodic axis the last entry is the duplicate (#562), supplying
+        On a non-periodic axis the last entry is the duplicate, supplying
         ``N+1``-th E node and carries no physical extent, so ``sum(cells)``
         overshoots the realized wall-to-wall extent by one cell. Read extents
         from ``node_of`` or ``interior_cells``. A periodic axis has no duplicate:
@@ -195,7 +195,7 @@ class NonUniformGrid(NamedTuple):
         It then gets the float32 store widened back to float64 AND an
         ``ExactNodeSpineMissingWarning``, the same degraded line and the same
         warning ``coords_from_nonuniform_grid`` emits -- silently falling
-        back is the #802 realization with no trace of why.
+        back would give the degraded realization with no trace of why.
         """
         ax, n, _pad_lo, _pad_hi = self._axis_layout(axis)
         store = self._axis_store(ax)
@@ -255,7 +255,7 @@ class NonUniformGrid(NamedTuple):
         0a because consumers still call it; 0b retires it as each consumer
         moves onto this accessor.
 
-        Which node (#1295, #1342): the nearest one by float64 distance, and
+        Which node: the nearest one by float64 distance, and
         at a tie (two distances agreeing to 1e-9 of the local cell) the
         LOWER one -- ``nearest_node_index``, the function the sheet snap
         itself calls, on the node line the conductors are rasterized on
@@ -264,8 +264,7 @@ class NonUniformGrid(NamedTuple):
         graded one). A port, source or probe and a sheet declared at the
         same coordinate therefore land on the same node, bit for bit.
         ``position_to_index`` and ``pos_to_nu_index`` resolve through the
-        same function. The uniform ``Grid`` still rounds an exact tie to the
-        even node until #1342.
+        same function.
 
         A coordinate outside the interior span is REFUSED, as on the uniform
         grid. ``_axis_position_to_index`` clamps instead: ``argmin`` over the
@@ -340,7 +339,7 @@ class NonUniformGrid(NamedTuple):
         0.0``. Derived from the cells by cumulative sum, except that a
         CONSTANT axis takes the closed form ``(i - pad_lo) * d[0]`` -- which
         is what keeps a uniform-valued NU axis bit-identical to the uniform
-        lane's own node line (#807). Both branches are
+        lane's own node line. Both branches are
         ``_axis_node_positions``, so this equals
         ``coords_from_nonuniform_grid(grid).<axis>[i]`` bit for bit.
 

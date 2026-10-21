@@ -114,13 +114,13 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     E += (dt/ε) × I_source / dV
     where dV is the E node's control volume: the PRIMAL per-cell width on
     the component's own axis and the DUAL spacing ``(d[k-1]+d[k])/2`` on the
-    two transverse axes (issue #672). On a uniform mesh the two coincide and
+    two transverse axes. On a uniform mesh the two coincide and
     this is the familiar ``dx × dy × dz``.
 
     This gives resolution-independent injected POWER regardless of cell size.
     Same approach as Meep's internal source normalization.
 
-    Native amplitude convention (issue #571): ``'current'`` —
+    Native amplitude convention: ``'current'`` —
     ``amplitude_kind`` of None or ``'current'`` is bit-identical to the
     historical output (no extra multiply). ``amplitude_kind='field'``
     returns the waveform directly, without reading a material coefficient.

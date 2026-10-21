@@ -166,7 +166,7 @@ def compute_rcs_jax(
         (``cfg, state, n_steps, freqs, dt``) on the same ``init_tfsf`` config the run
         uses — the incident the grid carries, as ``compute_rcs`` does. The source
         waveform's own DFT (``_incident_spectrum_amplitude``) is about 1.1 dB larger
-        than that incident and makes σ low by the same 1.1 dB (issue #820).
+        than that incident and makes σ low by the same 1.1 dB.
 
     Returns
     -------
@@ -231,13 +231,13 @@ def compute_rcs(
         steps, public path, corner-inclusive kernels): peak error 0 deg at
         theta_inc=20 and 3 deg at theta_inc=40 (4 deg on the pre-fix exclusive
         kernels), gated at +/-6 deg, with a 3-7 deg peak-azimuth
-        sensitivity to domain size at fixed dx/plate/CPML (PR #461 audit,
-        measured on the PRE-fix exclusive kernels; not re-measured in-tree
+        sensitivity to domain size at fixed dx/plate/CPML (measured on the PRE-fix exclusive
+        kernels; not re-measured in-tree
         on the inclusive kernels) —
         i.e. the argmax azimuth of the broad specular lobe is NOT converged to
         ~1 deg. See ``tests/oracle/test_oblique_rcs_specular.py``.
 
-        ABSOLUTE oblique sigma (issue #471 F7, all numbers measured): the
+        ABSOLUTE oblique sigma (all numbers measured): the
         normalization is the MEASURED 1D-aux incident spectrum (see
         ``tfsf_oblique_open.measure_incident_spectrum``), which removed a
         +6.58/+4.51 dB (theta 20/40 deg) inflation the analytic normal-path
@@ -254,7 +254,7 @@ def compute_rcs(
         number at lambda/30-lambda/60, NOT sub-dB (the committed test gates
         |Delta| <= 1.5 dB at the fixed gate grid as a regression lock, not
         an accuracy claim). Requires ``polarization='ez'`` and a uniform
-        grid; other combos raise ``NotImplementedError`` (issue #404 arc).
+        grid; other combos raise ``NotImplementedError``.
     phi_inc : float
         Incident azimuth in degrees (reserved for future oblique support).
     polarization : str
@@ -286,7 +286,7 @@ def compute_rcs(
         E_far[vacuum]) before forming the RCS. This is the standard
         total-field/scattered-field normalization; it removes the full incident
         field read by NTFF side faces inside the total-field slab, which
-        otherwise produces a spurious forward-oblique lobe (issue #280).
+        otherwise produces a spurious forward-oblique lobe.
         Doubles the solve cost. Default False keeps the validated
         monostatic path byte-identical; opt in for the bistatic pattern.
         Without ``phase_reference``, ``monostatic_rcs`` is computed from the raw

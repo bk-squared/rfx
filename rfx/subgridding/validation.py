@@ -1144,7 +1144,7 @@ def validate_subgrid(self, *, mode: str | None = None):
     """Return the production-envelope validation report for subgridding.
 
         Every mode reports the subgridded lane as unsupported because it is
-        unstable and unverified (#1465). Experimental envelope checks remain
+        unstable and unverified. Experimental envelope checks remain
         available for research diagnostics; opting in does not confer support.
         """
     self._require_uniform_mesh("validate_subgrid")

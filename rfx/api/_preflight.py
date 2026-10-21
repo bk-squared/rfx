@@ -854,12 +854,11 @@ class _PreflightMixin:
         check_ntff : bool or "advisory"
             ``True`` (default): run the full NTFF check family (PEC-overlap
             hard error + λ/4 / λ/2 near-field gap advisories + the
-            sub-wavelength ground-plane pattern advisory, issue #334).
+            sub-wavelength ground-plane pattern advisory).
             ``"advisory"``: run only the advisories — the tier ``run()``
             uses, because the λ/4 and small-ground-plane warnings are
             physics-relevant to any far-field computation while the
-            PEC-overlap hard error remains an inverse-design gate
-            (issue #303).
+            PEC-overlap hard error remains an inverse-design gate.
             ``False``: skip the family entirely.
         check_resolution : bool
             Run the tightened resolution check (existing _validate_mesh_quality

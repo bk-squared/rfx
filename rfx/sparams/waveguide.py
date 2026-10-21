@@ -165,7 +165,7 @@ def compute_waveguide_s_matrix(
         differentiation is single-mode only.
     checkpoint_segments : int or None
         Segmented gradient checkpointing for the **uniform** waveguide
-        AD path (issue #73 / PR #125).  Splits the ``n_steps`` scan
+        AD path.  Splits the ``n_steps`` scan
         into ``K`` segments that are rematerialised via
         ``jax.checkpoint`` during the backward pass, reducing peak
         reverse-mode memory from O(n_steps·|carry|) to
@@ -179,7 +179,7 @@ def compute_waveguide_s_matrix(
         ``None`` is byte-identical to the pre-checkpoint scan.
 
         On a NON-uniform mesh (``dx_profile`` / ``dy_profile`` /
-        ``dz_profile``, issue #73) ``checkpoint_segments=K`` is now supported: ``K`` is
+        ``dz_profile``) ``checkpoint_segments=K`` is now supported: ``K`` is
         translated to the NU runner's ``checkpoint_every`` chunk size — the
         divisor of ``n_steps`` nearest to ``n_steps/K`` — and applied to the
         *device* run only (the vacuum reference is constant in the design
@@ -229,7 +229,7 @@ def compute_waveguide_s_matrix(
         discipline is not met.
 
         The absorber half of that discipline is checked on **every**
-        uniform path, not just this one: an in-method advisory (issue #494)
+        uniform path, not just this one: an in-method advisory
         fires whenever the absorber on a port's propagation axis is
         thinner than ``0.5 * lambda_g`` at the **lowest** measured
         frequency, which is where ``lambda_g`` is longest and the
