@@ -34,7 +34,10 @@ MARKER = re.compile(
 )
 TRACKER = re.compile(
     # A wrapped reference may cross one line, but never a blank paragraph.
-    r"\b(?:tracker|issue|PR|pull[ \t]+request)(?:(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)#?|#)\d{3,5}\b|\brfx#\d+\b|\bgh-\d{3,5}\b"
+    # After "#" any number counts (rfx has issues #40-#80); without "#", three to five digits
+    # (so "issue 3" of a journal does not).
+    r"\b(?:tracker|issue|PR|pull[ \t]+request)(?:(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)?#\d+"
+    r"|(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)\d{3,5})\b|\brfx#\d+\b|\bgh-\d{3,5}\b"
     r"|(?<![\w&/])#\d{3,5}\b"
     r"|(?:https?://)?github\.com/bk-squared/rfx/(?:issues|pull)/\d+\b",
     re.IGNORECASE,
@@ -208,6 +211,7 @@ def test_tracker_exemptions_are_in_navigation() -> None:
     ('## Open a pull request\n\n1. Fork the repository.', set()),
     ('A wrapped tracker\n1171 reference.', {"D3"}),
     ('PR#1716, issue#1332 and gh-1171', {"D3"}),
+    ('See issue #44 and PR #72.', {"D3"}),
     ('IEEE Trans. Microw. Theory Techn., vol. 70, issue 3, 2022', set()),
     ('issue1332 and tracker1171 are identifiers.', set()),
     ('## Empty\n{/* ```\ncomment only\n*/}\n', {"D2"}),
