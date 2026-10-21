@@ -1162,8 +1162,8 @@ class Simulation(
         ordering is the ordinary one (thicker → lower Z0) and the 2.25 Ω step
         is consistent with either a model change or a genuine thickness
         effect. The model change is still real — it follows from
-        ``apply_pec_mask`` directly — but this measurement no longer
-        discriminates between the two.
+        ``apply_pec_mask`` directly — but this measurement does not
+        discriminate between the two.
 
         Conductor LOSS is therefore unavailable for metals through this API.
         On the lanes this repo gates that is a small omission — copper loss on
