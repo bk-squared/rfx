@@ -128,7 +128,9 @@ def main():
     raise SystemExit(
         "Retired #726 accuracy fixture: its historical near probe touches "
         "the realized short and its unit-reflection premise is unproven. "
-        "Use scripts/diagnostics/msl_probe_clearance_bias.py --out-dir <new-dir>."
+        "Probe clearance from a short is now reported on the S-matrix result "
+        "(MSLSMatrixResult.probe_clearance); see "
+        "tests/unit/ports/test_msl_clearance_diagnostic.py."
     )
 
 
