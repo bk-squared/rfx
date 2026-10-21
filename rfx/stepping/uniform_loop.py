@@ -220,7 +220,7 @@ def run(
         and a box off the grid. ``Simulation.forward`` owns the lane and the
         collision with ``design_eps_override``.
     stop_fn : callable or None
-        ``Simulation.run(..., until_identified=True)``. When
+        Used by ``Simulation.run(..., until_identified=True)``. When
         given, the scan runs in chunks of ``stop_interval`` steps through
         :func:`rfx.progress.scan_with_progress`, the carry threaded through,
         and ``stop_fn(steps_done, peek)`` is called after each chunk;

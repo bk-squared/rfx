@@ -931,7 +931,7 @@ def vmap_material_sweep(
     (``angle_deg=0``) or with ``method='methodB'`` (open-domain, real
     fields). A MATERIAL sweep on a sim carrying a FIXED (non-swept) TFSF
     source takes this function's sequential
-    fallback (TFSF is not fast-path-eligible) but that fallback now
+    fallback (TFSF is not fast-path-eligible), and that fallback
     carries ``dft_planes`` through, so per-material DFT tensors at fixed
     incidence ARE obtainable via ``vmap_material_sweep`` today.
 

@@ -120,7 +120,7 @@ class Box:
        ``1e-9``-local-cell band includes that node at ``lo`` and excludes
        it at ``hi``, preserving the half-open cell count.
 
-       Drawing fins to the nominal opening now costs exactly one cell
+       Drawing fins to the nominal opening costs exactly one cell
        (the ``hi``-face retreat), at every aperture.
 
     For a **PEC obstacle** the occupied nodes are where the tangential ``E``
@@ -168,8 +168,8 @@ class Box:
     ULP above that node from retreating. The opening is asymmetric:
     its centre sits ``dx/2`` below the guide centre.
     Shifting each interior face half a cell the *wrong* way (toward the
-    metal) retreats both faces by construction rather than by luck, giving
-    ``d + 2*dx`` deterministically at every aperture — that is the drawing
+    metal) retreats both faces by construction, giving
+    ``d + 2*dx``, centred on the guide, at every aperture — that is the drawing
     case 18's blocked revision used, and it is why re-comparing that
     revision against ``oracle(d + 2*dx)`` collapsed every row.
 
@@ -187,8 +187,8 @@ class Box:
       one-cell-wide interval selects the same footprint (``(j*dx, (j+1)*dx]``
       for a ``hi`` corner, ``[j*dx, (j+1)*dx)`` for a ``lo`` corner), and the
       midpoint is that interval's **centre** — not merely a safe nudge away
-      from the node. That is precisely why it is immune to the float32
-      effects in (2), which only ever perturb a corner by a fraction of a
+      from the node. That is precisely why it is immune to the few-ULP
+      float effects in (2), which only ever perturb a corner by a fraction of a
       cell.
     * Keep the metal depth an exact number of cells, i.e. for a symmetric
       obstacle keep ``(cells - d_cells)`` **even**. When it is odd,

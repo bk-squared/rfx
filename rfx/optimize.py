@@ -374,7 +374,7 @@ def optimize(
     best_iterate : bool
         If True, return the lowest-loss iterate visited during the run
         rather than the final iterate (default False = final iterate =
-        legacy behaviour).  Guards the sharp-null overshoot observed in the GPU run.  Selection
+        legacy behaviour).  Guards against overshooting a sharp null.  Selection
         among ``n_starts`` restarts uses the same
         best-visited loss when this is True.
     step_clamp : float or None
