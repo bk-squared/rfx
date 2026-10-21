@@ -1,5 +1,20 @@
 # .test_durations — provenance
 
+2026-10-21: fast lane re-priced. fast-suite shard 8 ran 55 min on average over 36 runs (61 over its
+successful runs; 75-76 when cancelled at the 75-min job limit); shard 9 averaged 45 min. They held
+209 and 370 tests without a price (the distributed graded-records, wrapped-step and ports files),
+which pytest-split prices at the mean and keeps in collection order. Measured by `regen-durations`
+run [39502498411](https://github.com/bk-squared/rfx/actions/runs/39502498411) (`lanes=fast`, main
+`1792afb17`), each job starting from an empty durations folder, normalised to the EPYC 7763 with the
+factors below (this run's CPUs: 7763 jobs 2, 3, 6, 7, 8, 10; 9V45 1, 11, 12; 9V74 4, 5; Xeon 8573C
+9, whose assumed factor now moves up to about 140 s of price). Fast (10) hit the workflow's 120-min
+limit at 89 % and stored nothing; the 1,996 tests it finished are priced from the job log's
+result-line timestamps, and the tests it never reached (`test_distributed_record_*`, `*_parity`) stay
+unpriced. Merged over the previous file (later wins): 24,640 → 27,107 entries; the fast collection of
+26,716 tests has 159 unpriced. pytest-split predicts 39.9–43.4 min per shard on the 7763 basis; under
+the new prices the old shard 8 costs 84.6 min. Inputs, the build and prediction scripts: rfx-archive
+`rfx/records/20261021-fast-prices-refresh/`.
+
 2026-10-20: Removed 12 obsolete workflow/job test node IDs from each duration file
 after moving the A6000 and monthly ladder jobs to agent-rules. Remaining prices
 are unchanged; the entry counts below reflect this pruning.
