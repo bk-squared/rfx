@@ -22,9 +22,8 @@ layer on top of it, in the same "factory returns ``callable(result) ->
 - :func:`jacobian_fwd` -- batch ``jax.jvp`` over a tangent basis to get a
   many-output Jacobian in one pass, for any ``sim_fn(params) -> observable``
   built on top of the three accessors above (or anything else that is
-  ``jax``-differentiable). See its own docstring for the full contract,
-  including why it is PACKAGING rather than new solver capability, and the
-  scope limits that come with that.
+  ``jax``-differentiable). See its own docstring for what it computes and
+  the paths it supports.
 
 Both lanes, both entry points: ``result.dft_planes`` is a name-keyed dict on
 the uniform AND non-uniform meshes, for both ``run()`` and ``forward()``
@@ -572,11 +571,11 @@ def jacobian_fwd(
     ------
     Supported on the uniform mesh on one device. ``checkpoint`` and
     ``checkpoint_segments`` are reverse-mode options and
-    provide no forward-mode memory benefit; pass ``checkpoint=False`` to
-    avoid their machinery and the divisibility constraint. A nonzero ``n_warmup`` is
-    refused. A shape drawn with ``Box`` is rasterized to whole cells, so
-    its size (a patch width, say) has zero gradient almost everywhere;
-    differentiate a design region instead (a material density or
+    provide no forward-mode memory benefit; pass ``checkpoint=False`` and
+    leave ``checkpoint_segments`` unset. A nonzero ``n_warmup`` is refused.
+    The size or position of a shape drawn with ``Box`` cannot be
+    differentiated (a traced corner raises, see above); differentiate a
+    design region instead (a material density or
     ``pec_occupancy_override``). Tangents through a Kerr material have not
     been checked.
     """
@@ -829,8 +828,8 @@ def jacobian_fwd(
                         "contract, OR sim_fn has a cross-call side effect "
                         "(e.g. mutable state) that a single vmap trace "
                         "cannot see. batch_tangents=True MAY also raise "
-                        "this (as a jax.vmap out_axes=(None, 0) error, "
-                        "see jacobian_fwd's docstring 'API TRAP') if the "
+                        "this (as a jax.vmap out_axes=(None, 0) error) "
+                        "if the "
                         "cause is a genuine tangent dependency -- but NOT "
                         "if the cause is a cross-call side effect, which "
                         "vmap's single trace cannot observe (measured: "

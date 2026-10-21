@@ -1352,13 +1352,13 @@ class _ExecuteMixin:
             (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
             known-spurious warning on a deliberate configuration.
         distributed : bool, optional
-            Run on several devices. A uniform mesh uses the runner of
+            Run on several devices: a uniform mesh uses the runner of
             ``run(devices=...)``, including its one-device fallback; a graded mesh
-            uses the graded multi-device runner. On a uniform mesh, override and
-            design arguments and an explicit ``checkpoint`` are refused, and the
-            time loop is not checkpointed. Multi-device runs are compared with
-            one-device runs in the test suite and carry no accuracy statement
-            of their own.
+            the graded multi-device runner. On a uniform mesh, override and design
+            arguments, ``checkpoint=True`` and the other checkpoint arguments,
+            ``n_warmup``, ``emit_time_series=False``, ``ringdown`` and a call
+            inside ``jax.jit`` are refused. Multi-device runs are compared with
+            one-device runs in the test suite; no accuracy statement of their own.
         devices : list of jax.Device or None, optional
             Devices for the distributed run.  When ``distributed=True``
             and ``devices=None``, defaults to ``jax.devices()``.  When
@@ -1495,8 +1495,8 @@ class _ExecuteMixin:
             _w.warn(
                 "Simulation.forward(distributed=True): multi-device runs are "
                 "compared with one-device runs in the test suite but carry no "
-                "accuracy statement of their own; see the multi-device row of "
-                "docs/guides/support_matrix.md before relying on one.",
+                "accuracy statement of their own; see the 'Distributed execution' "
+                "row of docs/guides/support_matrix.md before relying on one.",
                 UserWarning,
                 stacklevel=2,
             )

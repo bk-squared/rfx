@@ -24,7 +24,7 @@ def test_docstrings_render_no_stray_heading():
             raw = ast.get_docstring(node, clean=False).expandtabs().splitlines()
             leading = len(raw) - len(list(dropwhile(lambda line: not line.strip(), raw)))
             for offset, line in enumerate(doc.splitlines()):
-                if re.match(r"^#\d", line.lstrip()):
+                if re.match(r"^#[^\s#]", line.lstrip()):
                     lineno = node.body[0].lineno + leading + offset
                     failures.append(f"{path.relative_to(root)}:{lineno}: {line}")
     assert not failures, "Docstring lines render as headings:\n" + "\n".join(failures)

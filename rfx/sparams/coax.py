@@ -1258,8 +1258,8 @@ def compute_coax_msl_transition(
     DFT planes, flux monitors, or NTFF boxes. The registered geometry must
     be nonempty, and the microstrip source interval must meet its realized
     conductors. The coax ``position[2]`` locates the physical ground plane;
-    the microstrip substrate bottom must refer to that same ground layer,
-    at or above the coax junction, within one grid cell. The coax junction
+    the registered microstrip port must refer to that same ground layer,
+    not below the coax junction and at most 8 cells above it. The coax junction
     snaps to the nearest z-node, with half-cell ties to the lower node;
     the stub stops below it and preserves the caller's materials at and
     above it. These checks do
@@ -1712,7 +1712,30 @@ def compute_coax_msl_transition(
         n_offset_cells=_msl_probe_start_cells,
         n_spacing_cells=_msl_probe_spacing_cells,
     )
-    # Probe standoff rationale (moved from the API docstring).
+    xs_ladder = [float(x) for x in probe_xs]
+    lx_dom = float(self._domain[0])
+    mono = all(
+        (xs_ladder[q + 1] - xs_ladder[q]) * (1 if msl_pe.direction == "+x" else -1)
+        > 0.5 * dz
+        for q in range(len(xs_ladder) - 1)
+    )
+    if (not mono) or min(xs_ladder) <= 0.0 or max(xs_ladder) >= lx_dom:
+        raise ValueError(
+            "compute_coax_msl_transition(): the MSL probe ladder "
+            f"({', '.join(f'{x * 1e3:.2f}' for x in xs_ladder)} mm) "
+            f"leaves the declared x-domain (0, {lx_dom * 1e3:.2f}) mm "
+            "or was clamped at its edge. Face the port toward the "
+            "junction (direction), reduce n_probe_offset/spacing, or "
+            "enlarge the domain."
+        )
+    # coaxial_line_reflection_from_plane_voltages requires STRICTLY
+    # INCREASING plane positions; a "-x"-facing port's own ladder comes
+    # back decreasing in x (probe n steps AWAY from feed_x, toward the
+    # junction). Sort once here and use this order everywhere below so
+    # DFT-plane construction and the voltage array stay index-consistent.
+    xs_sorted = sorted(xs_ladder)
+
+    # ---- Issue #823: source near-field standoff on the REALIZED ladder.
     # NEAR-FIELD STANDOFF (issue #823) — the one constraint these
     # three are NOT free of. Every probe must clear BOTH ends the
     # ladder is referred to (the MSL port's own feed plane AND the
@@ -1738,30 +1761,7 @@ def compute_coax_msl_transition(
     # ``result.ladder_split_reflection_decades`` (computed when
     # ``return_ladder_voltages=True``, ``None`` otherwise), which say
     # whether the ladder actually disagrees with itself.
-    xs_ladder = [float(x) for x in probe_xs]
-    lx_dom = float(self._domain[0])
-    mono = all(
-        (xs_ladder[q + 1] - xs_ladder[q]) * (1 if msl_pe.direction == "+x" else -1)
-        > 0.5 * dz
-        for q in range(len(xs_ladder) - 1)
-    )
-    if (not mono) or min(xs_ladder) <= 0.0 or max(xs_ladder) >= lx_dom:
-        raise ValueError(
-            "compute_coax_msl_transition(): the MSL probe ladder "
-            f"({', '.join(f'{x * 1e3:.2f}' for x in xs_ladder)} mm) "
-            f"leaves the declared x-domain (0, {lx_dom * 1e3:.2f}) mm "
-            "or was clamped at its edge. Face the port toward the "
-            "junction (direction), reduce n_probe_offset/spacing, or "
-            "enlarge the domain."
-        )
-    # coaxial_line_reflection_from_plane_voltages requires STRICTLY
-    # INCREASING plane positions; a "-x"-facing port's own ladder comes
-    # back decreasing in x (probe n steps AWAY from feed_x, toward the
-    # junction). Sort once here and use this order everywhere below so
-    # DFT-plane construction and the voltage array stay index-consistent.
-    xs_sorted = sorted(xs_ladder)
-
-    # ---- Issue #823: source near-field standoff on the REALIZED ladder.
+    #
     # ``msl_probe_count/start/spacing`` are METHOD arguments — they never
     # reach the registered ``_MSLPortEntry``, so preflight's own check 5
     # (``_check_msl_port_geometry``) is structurally blind to this ladder.

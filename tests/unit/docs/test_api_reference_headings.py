@@ -34,7 +34,7 @@ def test_every_nested_page_is_checked(tmp_path, heading):
     nested.mkdir()
     page = nested / "module.html"
     page.write_text(heading + heading)
-    errors = check_html(tmp_path, {"simulation_methods": {}})
+    errors = check_html(tmp_path, {"simulation_methods": {}}, headings=True)
     assert len(errors) == 1
     assert str(page) in errors[0]
 
@@ -44,4 +44,10 @@ def test_index_pages_need_no_title(tmp_path, name):
     (tmp_path / "rfx.html").write_text(
         "<h1>rfx</h1>add_msl_port port_s11_freqs distributed")
     (tmp_path / name).write_text("<nav>rfx</nav>")
+    assert check_html(tmp_path, {"simulation_methods": {}}, headings=True) == []
+
+
+def test_release_builds_of_old_tags_are_not_held_to_the_title_rule(tmp_path):
+    (tmp_path / "rfx.html").write_text(
+        "<h1>rfx</h1><h1>488 uses)</h1>add_msl_port port_s11_freqs distributed")
     assert check_html(tmp_path, {"simulation_methods": {}}) == []

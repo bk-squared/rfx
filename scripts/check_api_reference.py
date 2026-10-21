@@ -152,7 +152,7 @@ def check_page_headings(html: str, page: str) -> list[str]:
     return []
 
 
-def check_html(html_dir: Path, inv: dict) -> list[str]:
+def check_html(html_dir: Path, inv: dict, *, headings: bool = False) -> list[str]:
     errors = []
     if not html_dir.is_dir():
         return [f"html dir not found: {html_dir}"]
@@ -161,7 +161,7 @@ def check_html(html_dir: Path, inv: dict) -> list[str]:
         html = path.read_text(errors="ignore")
         # pdoc's module list (index.html, kept as index-pdoc.html in the bundle) and the
         # bundle's landing page carry no page title; every module page carries one.
-        if path.name not in INDEX_PAGES:
+        if headings and path.name not in INDEX_PAGES:
             errors.extend(check_page_headings(html, str(path)))
         pages.append(html)
     blob = "".join(pages)
@@ -229,7 +229,9 @@ def main() -> int:
             )
 
     if args.html_dir is not None:
-        errors.extend(check_html(args.html_dir, live))
+        # The one-title rule runs here, on the reference built from HEAD; the bundle builder
+        # also renders old release tags, whose docstrings it cannot change.
+        errors.extend(check_html(args.html_dir, live, headings=True))
 
     if errors:
         print("\n".join(f"FAIL: {e}" for e in errors))
