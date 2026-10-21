@@ -139,7 +139,6 @@ def test_full_tensor_node_build_gradient():
     assert _assert_all_highest(text, "grad of full-tensor node build") >= 57
 
 
-@pytest.mark.skip(reason="needs graded full_tensor (#1940)")
 def test_full_tensor_node_build_graded():
     from rfx.nonuniform import make_nonuniform_grid
     grid = make_nonuniform_grid(
