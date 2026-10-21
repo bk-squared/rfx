@@ -109,6 +109,18 @@ def declaration_setup():
         _REGION.reset(token)
 
 
+def distributed_declaration_setup():
+    """Evaluate graded multi-device assembly now, leaving its launch outside.
+
+    Pure grad/vmap calls already evaluate declaration constants eagerly.
+    A user jit stages them, so the runner enters the shared setup region
+    before building the grid, materials, ports, drives and slab records.
+    """
+    from rfx.api._dispatch import _staged_by_an_outer_trace
+
+    return declaration_setup() if _staged_by_an_outer_trace() else contextlib.nullcontext()
+
+
 def _is_cell_array(x, grid_shape) -> bool:
     """A concrete array with as many axes longer than one as the grid has.
 

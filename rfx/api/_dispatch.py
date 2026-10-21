@@ -353,7 +353,9 @@ def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
 
     Operations that read a traced input stay recorded, so a gradient is
     unchanged. The distributed lane is excluded: its ``shard_map`` step
-    cannot run its constant-operand collectives outside the mesh.
+    cannot run its constant-operand collectives outside the mesh. Graded
+    multi-device assembly enters declaration_setup at the runner boundary
+    instead, and leaves it before launching the sharded runner.
     """
     return not distributed and _staged_by_an_outer_trace()
 
