@@ -3,7 +3,7 @@
 SUBGRID_WARNING = (
     "The subgridded lane is unstable and unverified: an empty lossless PEC "
     "cavity's first resonance is 8 % high at a 1.5 mm coarse mesh and its "
-    "field grows exponentially (#1465). Use a graded mesh (dx/dy/dz profiles) "
+    "field grows exponentially. Use a graded mesh (dx/dy/dz profiles) "
     "for local resolution."
 )
 

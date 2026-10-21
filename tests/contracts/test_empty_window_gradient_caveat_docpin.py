@@ -66,7 +66,7 @@ def test_autodiff_guide_pins_fd_necessary_not_sufficient():
 
 def test_gradient_behavior_guide_pins_passing_witness_caveat():
     text = _norm((_DOCS / "guide/gradient-behavior.md").read_text())
-    assert "witness is also not sufficient" in text
+    assert "check is also not sufficient" in text
     assert "window is empty" in text
     assert "magnitude" in text
 

@@ -13,7 +13,7 @@ and exchanges the fields on the faces between slabs after every time step. The
 result is the one-device model to within float32 rounding. The
 [support page](/rfx/support/) lists multi-device runs as not documented: rfx
 makes no accuracy statement for them beyond the comparisons with one device
-under [What is checked](#what-is-checked).
+under [How rfx checks it](#how-rfx-checks-it).
 
 ## How to use it
 
@@ -92,7 +92,7 @@ set before JAX is imported. On CPU this rule does not apply, but
 `forward(distributed=True)` on a uniform mesh refuses an enclosing `jax.jit` on
 every platform.
 
-## What is checked
+## How rfx checks it
 
 Tests compare multi-device runs with one-device runs of the same model, on two
 host devices, in every pull request:
@@ -107,7 +107,7 @@ host devices, in every pull request:
   dielectric and absorbers, within 5×10⁻⁵
   (`tests/unit/runners/test_distributed_ntff.py`).
 
-## What is refused, and the way through
+## Inputs rfx refuses
 
 Every input a multi-device path does not implement is refused before the first
 step, or runs on one device with the warning above. These are refused:
@@ -136,7 +136,7 @@ step, or runs on one device with the warning above. These are refused:
 ## Accuracy
 
 A multi-device run is the one-device model to within the rounding stated under
-[What is checked](#what-is-checked). Its accuracy is that of the one-device run.
+[How rfx checks it](#how-rfx-checks-it). Its accuracy is that of the one-device run.
 
 ## See also
 
