@@ -27,7 +27,8 @@ def sensitivity_truncation_error(t_over_tau, detuning_halfwidths=0.0):
     Floating dtypes follow the inputs, including float32; Python float scalars
     return a Python float. Concrete inputs raise ValueError for nonpositive or
     non-finite ``t_over_tau``, or non-finite detuning. Traced JAX inputs cannot
-    raise: invalid elements return NaN instead. Inputs must be real.
+    raise: invalid elements return NaN instead (their gradient is 0, not NaN).
+    Inputs must be real.
     """
     inputs = (t_over_tau, detuning_halfwidths)
     traced = any(isinstance(v, jax.core.Tracer) for v in inputs)
@@ -61,6 +62,8 @@ def required_t_over_tau(error=0.01, detuning_halfwidths=0.0):
     Brent's bracket starts at lo = 1e-12, hi = 1; hi doubles until the
     estimate is below error. The root has relative accuracy <= 1e-12.
     Non-finite detuning and error outside (0, 1) raise ValueError.
+    Float64 limits: error below about 1e-300 or |detuning| above about 1e300
+    under- or overflows and the root is not meaningful.
     """
     error, d = float(error), float(detuning_halfwidths)
     if not 0 < error < 1 or not math.isfinite(d):
