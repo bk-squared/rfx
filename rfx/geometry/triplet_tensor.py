@@ -10,6 +10,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx._precision import HIGHEST
+
 SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
 PAIRS = ((0, 1), (0, 2), (1, 2))
 MATRIX_BATCH_SIZE = 2**20
@@ -21,14 +23,21 @@ def _linalg(xp, operation, matrix):
     if xp is np:
         return solve(matrix)
     flat = matrix.reshape((-1, 3, 3))
-    pieces = [solve(flat[start:start + MATRIX_BATCH_SIZE])
-              for start in range(0, flat.shape[0], MATRIX_BATCH_SIZE)]
+    # Library derivative rules issue products without a precision argument.
+    with jax.default_matmul_precision("highest"):
+        pieces = [solve(flat[start:start + MATRIX_BATCH_SIZE])
+                  for start in range(0, flat.shape[0], MATRIX_BATCH_SIZE)]
     if operation == "eigh":
         w, v = zip(*pieces)
         return (jnp.concatenate(w).reshape(matrix.shape[:-1]),
                 jnp.concatenate(v).reshape(matrix.shape))
     tail = (3,) if operation == "eigvalsh" else (3, 3)
     return jnp.concatenate(pieces).reshape(matrix.shape[:-2] + tail)
+
+
+def _matmul(xp, a, b):
+    """Full float32 products on the traced path; preserve host NumPy products."""
+    return jnp.matmul(a, b, precision=HIGHEST) if xp is jnp else a @ b
 
 
 def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
@@ -115,9 +124,10 @@ def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
     g1, g2 = eye + (1 / e1 - 1) * nn, eye + (1 / e2 - 1) * nn
     gamma = lengths[..., :, None] * g1 + (1 - lengths[..., :, None]) * g2
     pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
-    singular = xp.linalg.det(pi) == 0
+    with jax.default_matmul_precision("highest"):
+        singular = xp.linalg.det(pi) == 0
     safe_pi = xp.where(singular[..., None, None], eye, pi)
-    return gamma @ _linalg(xp, "inv", safe_pi), singular
+    return _matmul(xp, gamma, _linalg(xp, "inv", safe_pi)), singular
 
 
 def _clip_primal(xp, tensor, lo, hi):
@@ -147,7 +157,7 @@ def _spectral_clip_jvp(primals, tangents):
     divided = jnp.where(separated, f[..., :, None] - f[..., None, :], 0) / jnp.where(separated, gap, 1)
     L = jnp.where(separated, divided, inside[..., :, None].astype(w.dtype))
     vt = jnp.swapaxes(v, -1, -2)
-    tangent = v @ (L * (vt @ dt @ v)) @ vt
+    tangent = _matmul(jnp, _matmul(jnp, v, L * _matmul(jnp, _matmul(jnp, vt, dt), v)), vt)
     bound_tangent = jnp.where(w < lo[..., None], dlo[..., None],
                              jnp.where(w > hi[..., None], dhi[..., None], 0))
     tangent = tangent + jnp.sum(v[..., :, None, :] * v[..., None, :, :]
