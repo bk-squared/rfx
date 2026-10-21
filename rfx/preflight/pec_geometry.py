@@ -61,6 +61,8 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import math
 
 import numpy as np
@@ -167,7 +169,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
     nonbox_dielectrics = 0
     for entry in self._geometry:
         material = self._resolve_material(entry.material_name)
-        if is_tracer(material.eps_r) or not float(material.eps_r) > 1.0:
+        if is_tracer(material.eps_r) or not _values.host_value(material.eps_r) > 1.0:
             continue
         if not isinstance(entry.shape, Box):
             nonbox_dielectrics += 1
@@ -352,8 +354,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     """
     try:
         has_conductor = any(
-            self._resolve_material(e.material_name).sigma
-            >= self._PEC_SIGMA_THRESHOLD
+            _values.is_pec_sigma(self._resolve_material(e.material_name).sigma, self._PEC_SIGMA_THRESHOLD, e.material_name)
             for e in self._geometry
         ) or bool(self._thin_conductors)
     except KeyError:
@@ -1211,8 +1212,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     nonbox_diel = sum(
         1 for g in self._geometry
         if not isinstance(g.shape, Box)
-        and self._resolve_material(g.material_name).sigma
-        < self._PEC_SIGMA_THRESHOLD)
+        and (not _values.is_pec_sigma(self._resolve_material(g.material_name).sigma, self._PEC_SIGMA_THRESHOLD, g.material_name)))
 
     results = []
     n_pairs = 0
@@ -1288,7 +1288,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                 diel_boxes = []
                 for g in self._geometry:
                     mat = self._resolve_material(g.material_name)
-                    if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
+                    if _values.is_pec_sigma(mat.sigma, self._PEC_SIGMA_THRESHOLD, g.material_name):
                         continue
                     blo, bhi = _sorted_box_corners(g.shape)
                     if blo is None:
@@ -1296,7 +1296,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                     if not all(blo[ia] <= p[ia] < bhi[ia]
                                for ia in inplane):
                         continue
-                    diel_boxes.append((blo, bhi, float(mat.eps_r)))
+                    diel_boxes.append((blo, bhi, _values.host_value(mat.eps_r)))
                     for c in (float(blo[a]), float(bhi[a])):
                         if g_lo < c < g_hi:
                             cuts.add(c)

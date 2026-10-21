@@ -1,4 +1,6 @@
 """MSL probe clearance and automatic ladder counting rules."""
+
+from rfx.model import value_roles as _values
 import math
 import numpy as np
 
@@ -199,7 +201,7 @@ def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
                 and lo2 <= probe_pt[2] <= hi2
             ):
                 continue
-            mat_eps = float(sim._resolve_material(ge.material_name).eps_r)
+            mat_eps = _values.host_value(sim._resolve_material(ge.material_name).eps_r)
             if mat_eps > 1.0:
                 eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
     lam_min_eff = C0 / sim._freq_max / math.sqrt(eps_r_sub_estimate)

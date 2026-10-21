@@ -1,4 +1,6 @@
 """Conductor footprint for the API reference-plane trace scan."""
+
+from rfx.model import value_roles as _values
 import jax.numpy as jnp
 
 
@@ -91,7 +93,7 @@ def _refplane_reject_msl_ladder_in_plane_zone(
             z_lo=z_lo,
             z_hi=z_lo + float(msl_entry.height),
             direction=msl_entry.direction,
-            impedance=float(msl_entry.impedance),
+            impedance=_values.host_value(msl_entry.impedance),
             excitation=msl_entry.waveform,
         )
         prop_axis_name = msl_axis_roles(msl_entry.direction)[0]

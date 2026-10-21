@@ -1,4 +1,6 @@
 """Declared port terminations and exact contact diagnostics."""
+
+from rfx.model import value_roles as _values
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from numbers import Integral
@@ -16,7 +18,7 @@ class ConductorReference:
 
 def conductor_entries(sim):
     for entry in sim._geometry:
-        if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
+        if _values.is_pec_sigma(sim._resolve_material(entry.material_name).sigma, sim._PEC_SIGMA_THRESHOLD, entry.material_name):
             yield ConductorReference("_geometry", entry), entry
     for entry in sim._thin_conductors:
         yield ConductorReference("_thin_conductors", entry), entry
@@ -58,7 +60,7 @@ def resolve_terminates(sim, value, *, port):
 def registered_ports(sim):
     for collection in ("_ports", "_msl_ports", "_coaxial_ports"):
         for index, port in enumerate(getattr(sim, collection, ())):
-            if collection == "_ports" and port.impedance <= 0:
+            if collection == "_ports" and (not _values.is_port_impedance(port.impedance)):
                 continue
             yield collection, index, port
 

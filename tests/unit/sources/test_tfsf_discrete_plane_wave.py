@@ -327,7 +327,7 @@ def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None
                                  float(np.max(np.abs(np.asarray(h, np.float64)))) * Z0)
             jax.debug.callback(save, step, electric, magnetic, ordered=True)
         source = inspect.getsource(plane.update_line_e)
-        needle = '    return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))'
+        needle = '    return state._replace(**changes, step=state.step + 1)'
         assert source.count(needle) == 1
         source = source.replace(needle,
             '    _tap(state.step + 1, jnp.stack([changes[c] for c in COMPONENTS[:3]]), '
@@ -636,17 +636,16 @@ def test_record10_scale_mutations(record_property):
 
 
 @pytest.mark.parametrize('parameter,value', (('amplitude', 1.), ('f0', 10e9), ('bandwidth', .8)))
-def test_appendix_i_forward_refuses_traced_source(parameter, value):
-    """Source scalars must raise, rather than silently return a zero gradient."""
+def test_appendix_i_forward_source_values_have_gradients(parameter, value):
+    """VALUE source scalars contribute to the measured forward record."""
     sim = scene()
     sim.add_probe((.012,) * 3, component='ez')
     entry = sim._tfsf
     def objective(traced):
         sim._tfsf = replace(entry, **{parameter: traced})
-        return jnp.sum(sim.forward(n_steps=2, skip_preflight=True).time_series)
-    with pytest.raises(ValueError, match=(
-            parameter + ': differentiating with respect to the incident source is not supported')):
-        jax.grad(objective)(jnp.float32(value))
+        return jnp.sum(sim.forward(n_steps=128, skip_preflight=True).time_series ** 2)
+    gradient = jax.grad(objective)(jnp.float32(value))
+    assert np.isfinite(gradient) and gradient != 0
 
 
 @pytest.mark.parametrize('pol', ('ey', 'ez'))

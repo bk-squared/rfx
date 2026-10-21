@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
@@ -835,7 +837,9 @@ def init_waveguide_port(
     # Z_mode(ω), filtered to propagating frequencies |ω| ≥ ω_c.
     n_steps_aux = int(dft_total_steps) if dft_total_steps > 0 else 0
     if n_steps_aux > 1 and dt > 0.0:
-        t_arr = np.arange(n_steps_aux, dtype=np.float64) * float(dt)
+        from rfx.core.jax_utils import is_tracer
+        xp = jnp if any(is_tracer(v) for v in (f0, tau, t0)) else np
+        t_arr = xp.arange(n_steps_aux, dtype=xp.float64) * float(dt)
         arg_arr = (t_arr - t0) / tau
         # Compute tables with unit amplitude; ``apply_waveguide_port_h/e``
         # scale by ``cfg.src_amp`` at runtime so ``_reset_cfg(drive=False)``
@@ -849,33 +853,33 @@ def init_waveguide_port(
             # gaussian_src_time::dipole and kills any residual early/late
             # envelope numerics.
             tt = t_arr - t0
-            e_inc_raw = np.cos(2.0 * np.pi * f0 * tt) * np.exp(-(arg_arr ** 2))
-            e_inc_raw = np.where(np.abs(tt) > t0, 0.0, e_inc_raw)
+            e_inc_raw = xp.cos(2.0 * xp.pi * f0 * tt) * xp.exp(-(arg_arr ** 2))
+            e_inc_raw = xp.where(xp.abs(tt) > t0, 0.0, e_inc_raw)
         else:
-            e_inc_raw = (-2.0 * arg_arr) * np.exp(-(arg_arr ** 2))
-        e_spec_raw = np.fft.rfft(e_inc_raw)
-        freqs_spec = np.fft.rfftfreq(n_steps_aux, d=float(dt))
-        omega = 2.0 * np.pi * freqs_spec
-        kc = 2.0 * np.pi * f_c / C0_LOCAL
+            e_inc_raw = (-2.0 * arg_arr) * xp.exp(-(arg_arr ** 2))
+        e_spec_raw = xp.fft.rfft(e_inc_raw)
+        freqs_spec = xp.fft.rfftfreq(n_steps_aux, d=float(dt))
+        omega = 2.0 * xp.pi * freqs_spec
+        kc = 2.0 * xp.pi * f_c / C0_LOCAL
         k_arr = omega / C0_LOCAL
-        propagating = omega > (2.0 * np.pi * f_c)
+        propagating = omega > (2.0 * xp.pi * f_c)
         if mode_profile == "discrete":
             # Invert the 3D Yee dispersion relation along the port-normal axis
             # for the given transverse kc_num:
             #   (sin(ω·dt/2)/(c·dt/2))² = (sin(β·dx/2)/(dx/2))² + kc_num².
             # Using the discrete β in the half-cell phase shift eliminates the
             # O((β·dx)²) continuous-vs-Yee dispersion residue in h_inc_table.
-            s_t = np.sin(omega * 0.5 * float(dt)) / (0.5 * float(dt))
-            s_x_sq = np.maximum(
+            s_t = xp.sin(omega * 0.5 * float(dt)) / (0.5 * float(dt))
+            s_x_sq = xp.maximum(
                 (s_t / C0_LOCAL) ** 2 - kc ** 2, 0.0,
             ) * (0.5 * float(dx)) ** 2
-            s_x = np.sqrt(np.minimum(s_x_sq, 1.0))
-            beta_arr = np.where(propagating,
-                                (2.0 / float(dx)) * np.arcsin(s_x), 0.0)
+            s_x = xp.sqrt(xp.minimum(s_x_sq, 1.0))
+            beta_arr = xp.where(propagating,
+                                (2.0 / float(dx)) * xp.arcsin(s_x), 0.0)
         else:
-            beta_arr = np.where(
+            beta_arr = xp.where(
                 propagating,
-                np.sqrt(np.maximum(k_arr ** 2 - kc ** 2, 0.0)),
+                xp.sqrt(xp.maximum(k_arr ** 2 - kc ** 2, 0.0)),
                 0.0,
             )
         if mode_profile == "discrete":
@@ -888,32 +892,32 @@ def init_waveguide_port(
             # O((β·dx)²) broadband impedance mismatch — the dominant
             # backward-emission driver once the mode profile and β are
             # already discrete-correct.
-            s_w = np.sin(omega * 0.5 * float(dt))
-            s_b = np.sin(beta_arr * 0.5 * float(dx))
+            s_w = xp.sin(omega * 0.5 * float(dt))
+            s_b = xp.sin(beta_arr * 0.5 * float(dx))
             if port.mode_type == "TE":
-                z_mode_arr = np.where(
+                z_mode_arr = xp.where(
                     propagating,
                     MU_0 * float(dx) * s_w
-                    / np.maximum(float(dt) * s_b, 1e-30),
-                    np.inf,
+                    / xp.maximum(float(dt) * s_b, 1e-30),
+                    xp.inf,
                 )
             else:  # TM
-                z_mode_arr = np.where(
+                z_mode_arr = xp.where(
                     propagating,
                     float(dt) * s_b
-                    / np.maximum(EPS_0 * float(dx) * s_w, 1e-30),
+                    / xp.maximum(EPS_0 * float(dx) * s_w, 1e-30),
                     0.0,
                 )
         elif port.mode_type == "TE":
-            z_mode_arr = np.where(
+            z_mode_arr = xp.where(
                 propagating,
-                omega * MU_0 / np.maximum(beta_arr, 1e-30),
-                np.inf,
+                omega * MU_0 / xp.maximum(beta_arr, 1e-30),
+                xp.inf,
             )
         else:  # TM
-            z_mode_arr = np.where(
+            z_mode_arr = xp.where(
                 propagating,
-                beta_arr / np.maximum(omega * EPS_0, 1e-30),
+                beta_arr / xp.maximum(omega * EPS_0, 1e-30),
                 0.0,
             )
         # Bandpass-filter the source to propagating-mode content only.
@@ -930,25 +934,25 @@ def init_waveguide_port(
         if waveform == "modulated_gaussian":
             e_spec_filt = e_spec_raw
         else:
-            f_c_arr = np.full_like(freqs_spec, f_c)
+            f_c_arr = xp.full_like(freqs_spec, f_c)
             f_taper_hi = 1.2 * f_c
-            taper_ratio = np.clip(
+            taper_ratio = xp.clip(
                 (freqs_spec - f_c_arr) / (f_taper_hi - f_c), 0.0, 1.0,
             )
-            filt_weight = 0.5 * (1.0 - np.cos(np.pi * taper_ratio))
+            filt_weight = 0.5 * (1.0 - xp.cos(xp.pi * taper_ratio))
             e_spec_filt = e_spec_raw * filt_weight
-        e_inc_time = np.fft.irfft(e_spec_filt, n_steps_aux)
+        e_inc_time = xp.fft.irfft(e_spec_filt, n_steps_aux)
         # Forward wave in rfx's engineering convention exp(j(ωt − βx)):
         # shifting from (x_src, t) to (x_src − dx/2, t + dt/2) multiplies
         # the spectrum by exp(+jβ·dx/2 + jω·dt/2).
-        phase_shift = np.exp(+1j * beta_arr * 0.5 * float(dx)
+        phase_shift = xp.exp(+1j * beta_arr * 0.5 * float(dx)
                              + 1j * omega * 0.5 * float(dt))
-        h_spec = np.where(
+        h_spec = xp.where(
             propagating,
             e_spec_filt / z_mode_arr * phase_shift,
             0.0,
         )
-        h_inc_time = np.fft.irfft(h_spec, n_steps_aux)
+        h_inc_time = xp.fft.irfft(h_spec, n_steps_aux)
         e_inc_table = jnp.asarray(e_inc_time, dtype=field_dtype)
         h_inc_table = jnp.asarray(h_inc_time, dtype=field_dtype)
     else:
@@ -988,10 +992,10 @@ def init_waveguide_port(
         reference_x_m=float(reference_x_m),
         probe_x_m=float(probe_x_m),
         dft_total_steps=int(dft_total_steps),
-        src_amp=float(amplitude),
-        src_t0=float(t0),
-        src_tau=float(tau),
-        src_fcen=float(f0),
+        src_amp=_values.host_value(amplitude),
+        src_t0=_values.host_value(t0),
+        src_tau=_values.host_value(tau),
+        src_fcen=_values.host_value(f0),
         waveform=str(waveform),
         freqs=freqs,
         v_probe_t=zeros_t,

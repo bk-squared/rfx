@@ -31,6 +31,8 @@ Limitations
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._precision import resolve_field_dtype
 
 from rfx._grid_metric import field_index
@@ -644,7 +646,7 @@ def _build_full_scan_fn(
     boundary = sim._boundary
 
     # Detect if simulation uses features incompatible with simple vmap
-    has_ports = any(pe.impedance != 0.0 for pe in sim._ports)
+    has_ports = any((not _values.is_soft_impedance(pe.impedance)) for pe in sim._ports)
     has_tfsf = sim._tfsf is not None
     has_waveguide = len(sim._waveguide_ports) > 0
     has_dispersion = debye_spec is not None or lorentz_spec is not None
@@ -700,7 +702,7 @@ def _build_full_scan_fn(
     probes = []
 
     for pe in sim._ports:
-        if pe.impedance == 0.0:
+        if _values.is_soft_impedance(pe.impedance):
             # amplitude_kind (issue #571) routing:
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
@@ -1020,7 +1022,7 @@ def vmap_material_sweep(
             grid, tuple(a in sim._periodic_axes for a in "xyz"))
         dynamic_sources = [
             pe for pe in sim._ports
-            if pe.impedance == 0.0 and pe.amplitude_kind == "current"
+            if _values.is_soft_impedance(pe.impedance) and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
         native = "cb" if sim._boundary == "cpml" else "raw"

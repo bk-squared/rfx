@@ -7,6 +7,8 @@ physics support. Research/off are explicit diagnostic opt-ins.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import nearest_uniform_index
 
 import json
@@ -544,7 +546,7 @@ def _local_xy_center_source_candidate_allowed(sim) -> bool:
         return False
     if sim._boundary != "pec" or int(getattr(sim, "_cpml_layers", 0)) != 0:
         return False
-    sources = [pe for pe in getattr(sim, "_ports", ()) if pe.impedance == 0.0]
+    sources = [pe for pe in getattr(sim, "_ports", ()) if _values.is_soft_impedance(pe.impedance)]
     if not sources:
         return False
     center_tol = 1e-12
@@ -893,8 +895,8 @@ def validate_subgrid_setup(
                             )
 
         for idx, pe in enumerate(getattr(sim, "_ports", ())):
-            label = "source" if pe.impedance == 0.0 else "port"
-            if pe.impedance > 0.0:
+            label = "source" if _values.is_soft_impedance(pe.impedance) else "port"
+            if _values.is_port_impedance(pe.impedance):
                 port_allowed = (
                     mode == "production"
                     and physical_z_boundary is not None
@@ -1099,11 +1101,7 @@ def validate_subgrid_setup(
         and xy_margin is None
     )
     for name, spec in getattr(sim, "_materials", {}).items():
-        is_static_nonvacuum = (
-            abs(float(spec.eps_r) - 1.0) > 1e-12
-            or abs(float(spec.sigma)) > 1e-18
-            or abs(float(spec.mu_r) - 1.0) > 1e-12
-        )
+        is_static_nonvacuum = _values.nonvacuum_material(spec)
         if is_static_nonvacuum:
             nonvacuum_static_material_names.append(name)
             if not static_material_allowed:
@@ -1117,7 +1115,7 @@ def validate_subgrid_setup(
                         "mesh reference lane outside that envelope.",
                     )
                 )
-        if spec.debye_poles or spec.lorentz_poles or spec.chi3:
+        if spec.debye_poles or spec.lorentz_poles or _values.has_kerr(spec):
             issues.append(
                 _issue(
                     "error",

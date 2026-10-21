@@ -1,6 +1,7 @@
 """Admission and raw-diagnostic selection for one-record impedance-port S."""
 
 
+
 PASSIVE_RECORD_S_MESSAGE = (
     "Lumped/wire S needs a driven port: every port in this record has excite=False, "
     "so the one run's port waves give each load's own reflection, not the "
@@ -13,7 +14,8 @@ PASSIVE_RECORD_S_MESSAGE = (
 
 def record_ports(sim, *, default=False):
     """The impedance ports selected for S, including the graded wire default."""
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    from rfx.model import value_roles as _values
+    ports = [p for p in sim._ports if (not _values.is_soft_impedance(p.impedance))]
     if default and sim._uses_nonuniform_mesh:
         wires = [p for p in ports if p.extent is not None]
         if wires:

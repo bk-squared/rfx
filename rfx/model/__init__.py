@@ -61,7 +61,14 @@ from rfx.model.waveguide_modes import (
     WaveguidePortConfig,
 )
 
+from rfx.model.value_roles import (
+    has_kerr, is_port_impedance, is_soft_impedance, validate_impedance, validate_rlc,
+    validate_source_scalar,
+)
+
 __all__ = [
+    "has_kerr", "is_port_impedance", "is_soft_impedance", "validate_impedance", "validate_rlc",
+    "validate_source_scalar",
     "admit_adi_sources",
     "admit_graded_profiles",
     "admit_thin_conductor",

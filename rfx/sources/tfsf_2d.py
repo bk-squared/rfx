@@ -43,6 +43,8 @@ S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -309,10 +311,10 @@ def init_tfsf_2d(
         n2x=n2x, n2y=n2y,
         i0_x=i0_x, i0_y=i0_y,
         src_x=src_x,
-        src_amp=float(amplitude),
-        src_t0=float(t0),
-        src_tau=float(tau),
-        src_fcen=float(f0),
+        src_amp=_values.host_value(amplitude),
+        src_t0=_values.host_value(t0),
+        src_tau=_values.host_value(tau),
+        src_fcen=_values.host_value(f0),
         theta=float(theta),
         cos_theta=cos_theta,
         sin_theta=sin_theta,

@@ -5,6 +5,8 @@ This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, field, replace
 
@@ -388,7 +390,7 @@ def clear_conductor_edges(conductors, cells, *, component, entity_id, port_kind,
 
 def lumped_port_stage(conductors, port, entity_id, *, clear_cells=False):
     """Release the single driven PEC edge after loading a lumped port."""
-    if port.impedance <= 0 or port.extent is not None:
+    if (not _values.is_port_impedance(port.impedance)) or port.extent is not None:
         return conductors
     grid = conductors.grid
     cell = field_index(grid, port.position, port.component)
@@ -615,7 +617,7 @@ def preview_port_stages(sim, conductors):
     for i, port in enumerate(sim._ports):
         label = f'port[{i}]'
         if label not in done:
-            if port.impedance > 0 and port.extent is not None:
+            if _values.is_port_impedance(port.impedance) and port.extent is not None:
                 from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
                 try:
                     cells, live, _ = _wire_port_live_cells(grid, wire_port_from_entry(port), conductors.pec_edges)
@@ -666,7 +668,7 @@ def port_fed_nodes(sim, conductors):
     staged = conductors
     for i, port in enumerate(getattr(sim, '_ports', ())):
         label = f'port[{i}]'
-        if port.impedance > 0 and port.extent is not None:
+        if _values.is_port_impedance(port.impedance) and port.extent is not None:
             from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
             try:
                 cells, live, _ = _wire_port_live_cells(
@@ -1002,7 +1004,7 @@ def refuse_layout_drives(edge_sets, sources, waveguide_ports):
                     cell[normal], cell[axes[0]], cell[axes[1]] = plane, u, v
                     for component in (config.e_u_component, config.e_v_component):
                         driven.add(('xyz'.index(component[1]), *cell))
-    for index, sheet, _tangent, axis, indices, _values in edge_sets:
+    for index, sheet, _tangent, axis, indices, _edge_values in edge_sets:
         edges = {(axis, *cell) for cell in zip(*(v.ravel().tolist() for v in indices))}
         overlap = sorted(edges & driven)
         if overlap:
@@ -1072,7 +1074,7 @@ def refuse_layout_metal_consumers(layout, sim, grid):
     from rfx._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
     solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
-              for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}
+              for spec in sim._lumped_rlc if spec.topology == 'series' or _values.has_element(spec.L)}
     spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
              for port in sim._msl_ports]
     for index, sheet, axis, indices in _layout_edges(layout, grid):

@@ -1,4 +1,6 @@
 """Source admission against geometry conductors and declared PEC walls."""
+
+from rfx.model import value_roles as _values
 from rfx._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
@@ -86,7 +88,7 @@ def _dead_sources(sim, conductors):
                    for cell in cells for c, di, dj, dk in offsets):
                 wall_faces.append(face)
         label = ('Wire port' if source.extent is not None else
-                 'Lumped port' if source.impedance > 0 else 'Soft source')
+                 'Lumped port' if _values.is_port_impedance(source.impedance) else 'Soft source')
         reason = ('every driven E edge is PEC' if source.extent is not None else
                   'its own E edge is PEC' if component.startswith('e') else
                   'all four E edges of its curl loop are PEC')

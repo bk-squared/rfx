@@ -28,6 +28,7 @@ import jax.numpy as jnp
 import numpy as np
 
 
+
 @dataclass(frozen=True)
 class Node:
     component: str
@@ -168,6 +169,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     ``frequencies`` is the run's explicit port frequency request, if any.
     """
     from rfx.nonuniform import NonUniformGrid
+    from rfx.model.value_roles import is_soft_impedance
     if isinstance(n_steps, bool) or not isinstance(n_steps, (int, np.integer)) or n_steps < 0:
         raise ValueError('n_steps must be a nonnegative integer')
     nu = isinstance(grid, NonUniformGrid)
@@ -237,11 +239,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
                             known_differences=(),
                             availability='result missing' if path.startswith('fwd') else 'sampled'))
-    edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
+    edges = _pec_edges(sim, grid) if any(not is_soft_impedance(p.impedance) and p.extent is not None for p in sim._ports) else None
     from rfx.sources.sources import WirePort, _wire_port_live_cells
     from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
-        if not entry.impedance:
+        if is_soft_impedance(entry.impedance):
             continue  # a soft source has no measurement owner
         live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:

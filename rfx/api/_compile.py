@@ -10,6 +10,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import nearest_uniform_index
 from rfx.boundaries.depths import resolve_face_depths
 
@@ -85,8 +87,7 @@ class _CompileMixin:
         """
         if self._boundary_spec.conformal_faces():
             return True
-        if any(self._resolve_material(e.material_name).sigma
-               >= self._PEC_SIGMA_THRESHOLD for e in self._geometry):
+        if any(_values.is_pec_sigma(self._resolve_material(e.material_name).sigma, self._PEC_SIGMA_THRESHOLD, e.material_name) for e in self._geometry):
             return True
         return any(getattr(tc, "is_pec", False)
                    for tc in (getattr(self, "_thin_conductors", ()) or ()))

@@ -34,6 +34,8 @@ Corrections derived from Yee update stencil mismatch at TFSF boundary:
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -208,9 +210,8 @@ class TFSFConfig(NamedTuple):
 def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
     """Refuse complex, non-scalar or nonfinite drive samples before stepping.
 
-    The waveform is a fixed input, not a traced material parameter. Evaluate
-    its complete requested record at compile time so this check also holds
-    when the user wraps ``forward`` in ``jax.jit``.
+    Concrete samples are checked immediately; traced samples use the shared
+    runtime check before the requested record is stepped.
     """
     if not isinstance(waveform, CustomWaveform):
         return
@@ -218,14 +219,13 @@ def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
     with jax.ensure_compile_time_eval():
         times = jnp.arange(n_steps, dtype=jnp.result_type(float)) * dt
         values = jax.vmap(waveform)(times)
-        if isinstance(values, jax.core.Tracer):
-            raise ValueError(
-                "TFSF CustomWaveform is a fixed input: it cannot depend on a traced "
-                "parameter (differentiate the materials, not the source waveform)")
         if values.shape != (n_steps,) or not jnp.issubdtype(values.dtype, jnp.floating):
             raise ValueError("TFSF CustomWaveform must return real scalar floating-point samples")
-        if not np.all(np.isfinite(np.asarray(values))):
-            raise ValueError("TFSF CustomWaveform must return finite samples throughout the requested record")
+        def check(samples):
+            if not np.all(np.isfinite(np.asarray(samples))):
+                raise ValueError("TFSF CustomWaveform must return finite samples throughout the requested record")
+        from rfx._traced_check import traced_check
+        traced_check("TFSF CustomWaveform", "finite samples", check, values)
 
 
 def _refuse_extended_tfsf(entry, lane: str) -> None:
@@ -520,10 +520,10 @@ def init_tfsf(
         n_cpml=n_cpml_1d,
         b_cpml=jnp.array(b_prof, dtype=fdtype),
         c_cpml=jnp.array(c_prof, dtype=fdtype),
-        src_amp=float(amplitude),
-        src_t0=float(t0),
-        src_tau=float(tau),
-        src_fcen=float(f0),
+        src_amp=_values.host_value(amplitude),
+        src_t0=_values.host_value(t0),
+        src_tau=_values.host_value(tau),
+        src_fcen=_values.host_value(f0),
         src_waveform="custom" if custom else waveform,
         electric_component=electric_component,
         magnetic_component=magnetic_component,

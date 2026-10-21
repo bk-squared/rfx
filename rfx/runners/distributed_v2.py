@@ -33,6 +33,8 @@ retired pmap version so callers retain the same entry-point arguments.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from functools import partial
 from types import SimpleNamespace
 
@@ -519,7 +521,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         from rfx.sources.wire_radius import require_radius_support
         require_radius_support(sim, "run_distributed")
 
-    if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):
+    if any(_values.is_port_impedance(pe.impedance) and pe.extent is not None for pe in ports):
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
         refuse_distributed_lumped_s_pmc(sim, entry="forward" if forward else "run")
 
@@ -535,7 +537,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         )
 
     kerr = sorted(name for name, material in (getattr(sim, "_materials", None) or {}).items()
-                  if getattr(material, "chi3", 0.0) != 0.0)
+                  if _values.has_kerr(material))
     if kerr:
         raise NotImplementedError(
             f"Kerr chi3 (nonlinear) material(s) {', '.join(repr(k) for k in kerr)}: "
@@ -777,7 +779,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_v2: unsupported source component {pe.component}")
-        if pe.impedance > 0.0 and pe.extent is None:
+        if _values.is_port_impedance(pe.impedance) and pe.extent is None:
             port_idx += 1
             lp = LumpedPort(
                 position=pe.position, component=pe.component,
@@ -787,7 +789,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
-        elif pe.impedance > 0.0 and pe.extent is not None:
+        elif _values.is_port_impedance(pe.impedance) and pe.extent is not None:
             from rfx.sources.sources import wire_port_from_entry, setup_wire_port
             from rfx.simulation import make_wire_port_sources
             port_idx += 1
@@ -801,7 +803,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
-        elif pe.impedance == 0.0:
+        elif _values.is_soft_impedance(pe.impedance):
             # Deferred like the ports: a load declared after this source is
             # on the edge before the drive reads it.
             if sim._boundary == "cpml":

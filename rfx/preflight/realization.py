@@ -66,6 +66,8 @@ edge here reds most of the corpus rather than one line of one report.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -431,6 +433,8 @@ class _CampaignStaticsContext:
         if self._realized is None and self.assembly_error is None:
             with (warnings.catch_warnings(record=True) if defer else nullcontext([])) as emitted:
                 try:
+                    from rfx.model.declaration_roles import refuse_traced_structure
+                    refuse_traced_structure(self.sim)
                     self._realized = self.sim._assemble_realized(
                         self.grid, nonuniform=(self.lane == "nonuniform"))
                 except self._NARROW_EXCS as exc:
@@ -533,7 +537,7 @@ class _CampaignStaticsContext:
                 mat = sim._resolve_material(entry.material_name)
             except KeyError:
                 continue
-            if mat.sigma < sim._PEC_SIGMA_THRESHOLD:
+            if (not _values.is_pec_sigma(mat.sigma, sim._PEC_SIGMA_THRESHOLD, entry.material_name)):
                 continue
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)

@@ -58,6 +58,8 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._precision import resolve_field_dtype
 
 from typing import TYPE_CHECKING
@@ -105,8 +107,8 @@ def _port_census(self) -> dict:
     -- they would fire in every drive run. Counted separately so the error
     messages can say which of the two is present.
     """
-    lumped_wire = [pe for pe in self._ports if pe.impedance != 0.0]
-    bare_sources = [pe for pe in self._ports if pe.impedance == 0.0]
+    lumped_wire = [pe for pe in self._ports if (not _values.is_soft_impedance(pe.impedance))]
+    bare_sources = [pe for pe in self._ports if _values.is_soft_impedance(pe.impedance)]
     return {
         "waveguide": len(self._waveguide_ports),
         "msl": len(self._msl_ports),

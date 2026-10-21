@@ -1,6 +1,8 @@
 """Band-scoped admission for open signal tails behind line ports (#1512)."""
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from dataclasses import dataclass
 import math
 import sys
@@ -63,7 +65,7 @@ def _permittivity(sim, port, point, grid, coords, cache, axis=None):
                      for nodes, x in zip(coords[:3], p)) for p in points]
     for entry in sim._geometry:
         material = sim._resolve_material(entry.material_name)
-        if material.sigma >= sim._PEC_SIGMA_THRESHOLD:
+        if _values.is_pec_sigma(material.sigma, sim._PEC_SIGMA_THRESHOLD, entry.material_name):
             continue
         key = ('dielectric', id(entry))
         if key not in cache:
@@ -73,7 +75,7 @@ def _permittivity(sim, port, point, grid, coords, cache, axis=None):
             cache[key] = np.asarray(_material_cell_mask(
                 entry.shape, coords, centres, grid=None if nonuniform else grid))
         if any(cache[key][sample] for sample in samples):
-            result = float(material.eps_r)
+            result = _values.host_value(material.eps_r)
     return result if result is not None else float(explicit if explicit is not None else 1.)
 
 

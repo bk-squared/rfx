@@ -25,6 +25,8 @@ post-simulation, on small per-frequency arrays.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from dataclasses import dataclass, field
 
 import jax
@@ -251,7 +253,7 @@ def msl_port_from_entry(pe) -> "MSLPort":
         z_lo=base,
         z_hi=base + float(pe.height),
         direction=pe.direction,
-        impedance=float(pe.impedance),
+        impedance=_values.host_value(pe.impedance),
         excitation=pe.waveform,
     )
 
@@ -832,7 +834,7 @@ def compute_msl_mode_profile(
     C_sub = _cap_per_metre(phi_sub, eps_yz, dy_fine, dz_fine)
     C_air = _cap_per_metre(phi_air, np.ones_like(eps_yz), dy_fine, dz_fine)
     eps_eff = C_sub / C_air if C_air > 0 else 1.0
-    z0_static = 1.0 / (_C0 * np.sqrt(C_sub * C_air)) if (C_sub > 0 and C_air > 0) else float(port.impedance)
+    z0_static = 1.0 / (_C0 * np.sqrt(C_sub * C_air)) if (C_sub > 0 and C_air > 0) else _values.host_value(port.impedance)
 
     # Ez = -∂φ/∂z on the fine substrate cells (k_loc 0..n_z_sub_fine-1).
     ez_fine = np.zeros((n_y_box_fine, n_z_sub_fine), dtype=np.float64)

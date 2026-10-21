@@ -1,4 +1,6 @@
 """Global graded port assembly before slab staging."""
+
+from rfx.model import value_roles as _values
 import jax.numpy as jnp
 import numpy as np
 
@@ -21,7 +23,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     from rfx.simulation import SourceSpec
     from rfx.stepping.slab_wrap import select_step
 
-    ports_present = any(p.impedance > 0 for p in sim._ports)
+    ports_present = any(_values.is_port_impedance(p.impedance) for p in sim._ports)
     if sim._lumped_rlc:
         raise NotImplementedError('Lumped RLC ports are not yet supported on the distributed=True forward path; remove the lumped_rlc spec or omit distributed=True.')
     if ports_present:
@@ -66,7 +68,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
     queue, material_drive = PortSourceQueue(), []
     for index, pe in enumerate(sim._ports):
-        if pe.impedance == 0:
+        if _values.is_soft_impedance(pe.impedance):
             cell = _grid_metric.field_index(grid, pe.position, pe.component)
             if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
                 volume, _ = current_source_volume(grid, cell, pe.component)
@@ -114,9 +116,9 @@ def refuse_unsupported_distributed_features(sim, **kwargs):
     from copy import copy
     from dataclasses import replace
     from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features as refuse
-    if sim._uses_nonuniform_mesh and any(p.impedance > 0 and not p.excite for p in sim._ports):
+    if sim._uses_nonuniform_mesh and any(_values.is_port_impedance(p.impedance) and not p.excite for p in sim._ports):
         view = copy(sim)
-        view._ports = [replace(p, excite=True) if p.impedance > 0 and not p.excite else p
+        view._ports = [replace(p, excite=True) if _values.is_port_impedance(p.impedance) and not p.excite else p
                        for p in sim._ports]
         refuse(view, **kwargs)
     else:

@@ -1,4 +1,5 @@
 """Register time observations independently of requests for port spectra."""
+
 from rfx import _grid_metric
 
 
@@ -7,6 +8,7 @@ def ordered_specs(specs):
 
 
 def register_wire(records, spectra, component, cells, live, freqs, impedance, excite, port_id):
+    from rfx.model import value_roles as _values
     from rfx.simulation import WirePortSParamSpec
     if not cells:
         return
@@ -15,25 +17,27 @@ def register_wire(records, spectra, component, cells, live, freqs, impedance, ex
     records.append((component, live_cells, 'wire', mid, port_id))
     if freqs is not None:
         spectra.append(WirePortSParamSpec(*mid, component, freqs,
-                                          float(impedance), live_cells, bool(excite)))
+                                          _values.host_value(impedance), live_cells, bool(excite)))
 
 
 def register_lumped(records, spectra, component, idx, freqs, impedance, excite, port_id):
+    from rfx.model import value_roles as _values
     from rfx.simulation import LumpedPortSParamSpec
     mid = tuple(int(x) for x in idx)
     records.append((component, (mid,), 'lumped', mid, port_id))
     if freqs is not None:
-        spectra.append(LumpedPortSParamSpec(*mid, component, freqs, float(impedance), bool(excite)))
+        spectra.append(LumpedPortSParamSpec(*mid, component, freqs, _values.host_value(impedance), bool(excite)))
 
 
 def uniform_run_specs(grid, wires, live_cells, lumped, ports):
+    from rfx.model import value_roles as _values
     specs = [(p.component, live, 'wire', live[len(live)//2])
              for p, live in zip(wires, live_cells)]
     for p in lumped:
         mid = tuple(_grid_metric.field_index(grid, p.position, p.component))
         specs.append((p.component, (mid,), 'lumped', mid))
     ids = [i for wire in (True, False) for i, p in enumerate(ports)
-           if p.impedance != 0.0 and (p.extent is not None) == wire]
+           if (not _values.is_soft_impedance(p.impedance)) and (p.extent is not None) == wire]
     return tuple((*spec, port_id) for spec, port_id in zip(specs, ids, strict=True))
 
 

@@ -7,6 +7,8 @@ via a coordinate-provider abstraction.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import warnings
 from typing import NamedTuple
 
@@ -1116,7 +1118,7 @@ def rasterize_geometry(
         mask = _material_cell_mask(entry.shape, coords, centres,
                                    grid=grid if getattr(grid, 'periodic_axes', '') else None)
 
-        if mat.sigma >= pec_sigma_threshold:
+        if _values.is_pec_sigma(mat.sigma, pec_sigma_threshold, entry.material_name):
             cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, cell_sizes,
                 name=entry.material_name, grid=grid)
@@ -1155,12 +1157,12 @@ def rasterize_geometry(
             _clear_pole_masks(debye_masks_by_pole, mask)
             _clear_pole_masks(lorentz_masks_by_pole, mask)
 
-        if geometry_masks is not None and mat.sigma < pec_sigma_threshold:
+        if geometry_masks is not None and (not _values.is_pec_sigma(mat.sigma, pec_sigma_threshold, entry.material_name)):
             declared_entry = (entry if pole_geometry_entries is None
                               else pole_geometry_entries[entry_index])
             geometry_masks.append((id(declared_entry), mask))
 
-        if mat.chi3 != 0.0:
+        if _values.has_kerr(mat):
             chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
             has_kerr = True
 
@@ -1169,7 +1171,7 @@ def rasterize_geometry(
             declared = pole_geometry_entries[entry_index].shape
             pole_mask = _material_cell_mask(declared, coords, centres,
                                             grid=grid if getattr(grid, 'periodic_axes', '') else None)
-            if mat.sigma >= pec_sigma_threshold and cells is not None:
+            if _values.is_pec_sigma(mat.sigma, pec_sigma_threshold, entry.material_name) and cells is not None:
                 pole_mask = pec_volume_cell_mask(declared, centres, cell_sizes, grid=grid)
 
         if mat.debye_poles:

@@ -29,6 +29,8 @@ device is judged on the uniform lane it falls back to.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import functools
 import inspect
 from dataclasses import fields, is_dataclass, replace
@@ -111,21 +113,21 @@ def _setting(attr: str, arg: str) -> Callable:
     return active
 
 
-def _is_pec(sigma) -> bool:
-    return not is_tracer(sigma) and float(sigma) >= _PEC_SIGMA
+def _is_pec(sigma, name="MaterialSpec") -> bool:
+    return _values.is_pec_sigma(sigma, _PEC_SIGMA, name)
 
 
 def _placed(sim):
     """The materials the geometry places, PEC excluded."""
     for entry in sim._geometry:
         material = sim._resolve_material(entry.material_name)
-        if not _is_pec(material.sigma):
+        if not _is_pec(material.sigma, entry.material_name):
             yield material
 
 
 def _pec_shapes(sim):
     for entry in sim._geometry:
-        if _is_pec(sim._resolve_material(entry.material_name).sigma):
+        if _is_pec(sim._resolve_material(entry.material_name).sigma, entry.material_name):
             yield entry.shape
 
 
@@ -184,20 +186,17 @@ def _pec(kind: str) -> Callable:
 
 
 def _lorentz_like(pole, *, drude: bool) -> bool:
-    omega_0 = pole.omega_0
-    if is_tracer(omega_0):
-        return not drude
-    return (float(omega_0) == 0.0) == drude
+    return _values.is_drude(pole) == drude
 
 
 def _thin(conductor) -> str:
     if conductor.surface_impedance_f0 is not None:
         return "surface_impedance"
-    return "pec_sheet" if _is_pec(conductor.sigma_bulk) else "lossy_sheet"
+    return "pec_sheet" if _is_pec(conductor.sigma_bulk, "ThinConductor.sigma_bulk") else "lossy_sheet"
 
 
 def _soft(port) -> bool:
-    return not is_tracer(port.impedance) and float(port.impedance) == 0.0
+    return _values.is_soft_impedance(port.impedance)
 
 
 def _ports(sim, *, extent: bool | None = None, excite: bool | None = None):
@@ -292,7 +291,7 @@ DETECTORS: dict[Row, Callable] = {
         _lorentz_like(p, drude=False) for m in _placed(sim) for p in (m.lorentz_poles or ())),
     ("_materials", "drude"): lambda sim: any(
         _lorentz_like(p, drude=True) for m in _placed(sim) for p in (m.lorentz_poles or ())),
-    ("_materials", "kerr"): lambda sim: any(_differs(m.chi3, 0.0) for m in _placed(sim)),
+    ("_materials", "kerr"): lambda sim: any(_values.has_kerr(m) for m in _placed(sim)),
     # PEC geometry
     ("_geometry", "pec_volume"): _pec("pec_volume"),
     ("_geometry", "pec_sheet"): _pec("pec_sheet"),
@@ -1097,7 +1096,7 @@ def _warn_implicit_s(message):
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
     excited = [(index, port) for index, port in enumerate(sim._ports)
-               if port.impedance > 0 and port.excite]
+               if _values.is_port_impedance(port.impedance) and port.excite]
     if len(excited) < 2:
         return True
     ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
@@ -1124,9 +1123,9 @@ def graded_lumped_default_s(sim):
     set with a wire port keeps the wire default. Never a refusal: the user did
     not ask for S (rfx-lead D:6b5bd8, #1373).
     """
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if (not _values.is_soft_impedance(p.impedance))]
     if (not ports or any(p.extent is not None for p in ports)
-            or any(p.impedance == 0.0 for p in sim._ports) or sim._periodic_axes
+            or any(_values.is_soft_impedance(p.impedance) for p in sim._ports) or sim._periodic_axes
             or not any(p.excite for p in ports)):
         return False
     return require_isolated_s_drive(sim, implicit=True)
@@ -1143,13 +1142,13 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     require a driven impedance port, regardless of other excitations.
     Passive records remain available as termination diagnostics, without S.
     """
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if (not _values.is_soft_impedance(p.impedance))]
     if main_record and ports:
         from rfx.measurement.port_s_contract import record_ports, require_driven_record_s
         if not require_driven_record_s(
                 (p.excite for p in record_ports(sim, default=implicit)), implicit=implicit):
             return False
-    if not ports or not any(p.impedance == 0.0 for p in sim._ports):
+    if not ports or not any(_values.is_soft_impedance(p.impedance) for p in sim._ports):
         return True
     reason = (
         "Lumped/wire S-matrix requests do not support plain sources / "
@@ -1176,7 +1175,7 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
         compute_s_params is None
         and sim._refinement is None
         and sim._solver != "adi"
-        and any(pe.impedance != 0.0
+        and any((not _values.is_soft_impedance(pe.impedance))
                 and (not sim._uses_nonuniform_mesh or pe.extent is not None
                      or getattr(pe, "excite", True)) for pe in sim._ports)
     )
@@ -1189,7 +1188,7 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
         _one_device and sim._refinement is None and sim._solver != "adi"
         and not _s_matrix_ports(sim))
     if (not _one_device and sim._uses_nonuniform_mesh
-            and any(p.impedance != 0.0 and not getattr(p, "excite", True) for p in sim._ports)):
+            and any((not _values.is_soft_impedance(p.impedance)) and not getattr(p, "excite", True) for p in sim._ports)):
         reason = ("A passive port's S column needs a drive of its own: graded run() drives each "
                   "port in turn on one device; on several devices it reads S from one record. ")
         if compute_s_params is None and not requested:
@@ -1219,7 +1218,7 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
                        distributed=False):
     """Check the requested scan extraction before run() starts its field solve."""
     uses_scan = (False if distributed and sim._uses_nonuniform_mesh else
-                 any(p.impedance != 0.0 for p in sim._ports) if distributed else _s_matrix_ports(sim))
+                 any((not _values.is_soft_impedance(p.impedance)) for p in sim._ports) if distributed else _s_matrix_ports(sim))
     if compute_s_params is not False:
         # Without the scan, S is read from the main run's own record.
         refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)
@@ -1308,6 +1307,8 @@ def guard_shape_tangents(sim):
 
 def admit_traced_run(sim, until_decay=None, decay_max_steps=None):
     """Preserve the source fence, then guard shapes before run dispatch."""
+    from rfx.model.declaration_roles import refuse_traced_structure
+    refuse_traced_structure(sim)
     _refuse_transformed_extended_tfsf(sim._tfsf, until_decay, decay_max_steps)
     guard_shape_tangents(sim)
 

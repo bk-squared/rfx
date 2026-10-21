@@ -226,6 +226,7 @@ def build_wire_refplane_specs(
         cross-section bounding boxes at the two planes differ — the
         two-plane Zc invariant requires a uniform line between them).
     """
+    from rfx.model import value_roles as _values
     if direction is None or direction not in ("+x", "-x", "+y", "-y"):
         raise ValueError(
             "reference_plane_cells requires an explicit port "
@@ -368,7 +369,7 @@ def build_wire_refplane_specs(
             v_span_lo=int(v_span_lo),
             v_span_hi=int(v_span_hi),
             freqs=freqs,
-            impedance=float(impedance),
+            impedance=_values.host_value(impedance),
         ))
     if bboxes[0] != bboxes[1]:
         raise ValueError(

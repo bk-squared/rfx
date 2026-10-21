@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import field_index
 from rfx._grid_metric import nearest_uniform_index
 
@@ -413,7 +415,7 @@ def _run_subgridded_once(
         return cells[len(cells) // 2]
 
     for pe in sim._ports:
-        if pe.impedance == 0.0:
+        if _values.is_soft_impedance(pe.impedance):
             source_requests.append((pe, _pos_to_fine_idx(pe.position, pe.component), None))
             continue
 
@@ -506,7 +508,7 @@ def _run_subgridded_once(
     if diagnostic_lumped_sparam_freqs is not None:
         diagnostic_port_entries = [
             pe for pe in sim._ports
-            if pe.impedance > 0.0
+            if _values.is_port_impedance(pe.impedance)
         ]
         for idx_port, pe in enumerate(diagnostic_port_entries):
             if pe.extent is None:
@@ -515,7 +517,7 @@ def _run_subgridded_once(
                 cell_count = max(len(_wire_port_cells_f(pe)), 1)
             diagnostic_lumped_sparam_indices_f.append(_sparam_probe_idx_f(pe))
             diagnostic_lumped_sparam_components.append(pe.component)
-            diagnostic_lumped_sparam_impedances.append(float(pe.impedance))
+            diagnostic_lumped_sparam_impedances.append(_values.host_value(pe.impedance))
             diagnostic_lumped_sparam_cell_counts.append(int(cell_count))
             if diagnostic_lumped_sparam_driven_index is None and pe.excite:
                 diagnostic_lumped_sparam_driven_index = idx_port
@@ -766,7 +768,7 @@ def run_subgridded_path(
 
     port_entries = [
         pe for pe in sim._ports
-        if pe.impedance > 0.0
+        if _values.is_port_impedance(pe.impedance)
     ]
     if not port_entries:
         raise ValueError(

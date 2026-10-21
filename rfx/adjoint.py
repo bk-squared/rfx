@@ -51,6 +51,8 @@ edges × components × bins, plus monitor bins and ordinary field carries.
 
 Gates, measurements and the refusal table: issue #1424 and PR #1430.
 """
+
+from rfx.model import value_roles as _values
 from dataclasses import replace
 
 import jax
@@ -77,7 +79,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         reason = "graded meshes"
     elif ringdown is not None:
         reason = "ring-down"
-    elif (any(p.impedance != 0 or p.extent is not None for p in sim._ports)
+    elif (any((not _values.is_soft_impedance(p.impedance)) or p.extent is not None for p in sim._ports)
           or any(getattr(sim, p) for p in
                  ("_waveguide_ports", "_msl_ports", "_coaxial_ports",
                   "_floquet_ports", "_lumped_rlc"))
@@ -87,7 +89,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         reason = "TFSF sources"
     elif any(m.debye_poles or m.lorentz_poles for m in sim._materials.values()):
         reason = "Debye/Lorentz materials"
-    elif any(m.chi3 != 0 for m in sim._materials.values()):
+    elif any(_values.has_kerr(m) for m in sim._materials.values()):
         reason = "Kerr materials"
     elif sim._current_moments is not None:
         reason = "current moments"

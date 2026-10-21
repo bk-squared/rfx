@@ -50,6 +50,8 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx.model.thin_conductors import conductivity_envelope
 
 import math
@@ -327,6 +329,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     above 1e-6 of its amplitude is refused (PreflightConfigError,
     ``undriven_pulse``); one that still has samples gets the warning.
     """
+    if _values.check_traced_values(self, _validate_cfg_unresolved_pulse, _w, dx):
+        return
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
     # Issue 1668: judge against the realized dt of a grid that already
     # exists -- the one the campaign context holds when preflight built it.
@@ -376,7 +380,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
         if wf is None or isinstance(wf, str):
             continue
         try:
-            tau = float(wf.tau)
+            tau = _values.host_value(wf.tau)
         except (AttributeError, TypeError, ValueError, ZeroDivisionError):
             continue
         if not math.isfinite(tau) or tau <= 0.0 or not tau < 3.0 * dt:

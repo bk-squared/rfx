@@ -9,6 +9,8 @@ reads it as a global of that module.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import numpy as np
 
 from rfx.preflight.msl_codes import msl_text
@@ -148,7 +150,7 @@ def msl_nearest_downstream_reflector(
         if sigma is None:
             return str(material_name).lower() == "pec"
         try:
-            return float(sigma) >= float(pec_sigma_threshold)
+            return _values.is_pec_sigma(sigma, float(pec_sigma_threshold), material_name)
         except (TypeError, ValueError):
             # A traced sigma (material-as-design-variable) cannot be
             # compared host-side.

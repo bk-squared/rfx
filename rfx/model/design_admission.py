@@ -1,4 +1,6 @@
 """Admission of edge-bound declarations to occupancy designs."""
+
+from rfx.model import value_roles as _values
 from dataclasses import replace
 
 import numpy as np
@@ -53,7 +55,7 @@ def publish_declarations(conductors, sim, design, sheet_operator=None, *, occupa
 def source_findings(sim, conductors, occupancy, design):
     """Geometry/presence only: identical for concrete and traced occupancies."""
     from rfx.model.conductors import publish_port_release
-    sources = [(i, entry) for i, entry in enumerate(sim._ports) if entry.impedance == 0]
+    sources = [(i, entry) for i, entry in enumerate(sim._ports) if _values.is_soft_impedance(entry.impedance)]
     if not sources:
         return ()
     explanation = ('its drive is weighted by the design metal on its edge and is '

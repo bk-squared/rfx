@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from rfx._grid_metric import field_index
+from rfx.model import value_roles as _values
 
 import jax
 import numpy as np
@@ -102,13 +103,13 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
         if not waveguide_configs:
             return None
         for cfg in waveguide_configs.values():
-            if cfg.src_amp:
+            if _values.has_nonzero(cfg.src_amp):
                 axis = "xyz".index(cfg.normal_axis)
                 distance = max(abs(float(p[axis]) - float(cfg.source_x_m))
                                for p in positions)
                 drives.append((recorded(cfg, "v_inc_t"), distance))
     for pe in (*getattr(sim, "_ports", ()), *getattr(sim, "_msl_ports", ())):
-        if getattr(pe, "impedance", None) != 0 and not getattr(pe, "excite", True):
+        if not _values.is_soft_impedance(getattr(pe, "impedance", None)) and not getattr(pe, "excite", True):
             continue
         waveform = pe.waveform
         if waveform is None:

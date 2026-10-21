@@ -59,7 +59,7 @@ def record_face_values(cfg, state, dx, dt):
 
     from rfx.core.jax_utils import recorded_scan
     _, record = recorded_scan(step, state, None, length=cfg.n_steps)
-    return tuple(lax.stop_gradient(row) for row in record), (h_gathers, e_gathers)
+    return record, (h_gathers, e_gathers)
 
 
 def prepare_tfsf_for_scan(tfsf, dx, dt):

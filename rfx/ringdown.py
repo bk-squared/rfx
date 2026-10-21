@@ -90,6 +90,8 @@ report in ``Result.ringdown.stop``.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
@@ -822,8 +824,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
                ": the total-field boundary keeps injecting while the auxiliary "
                "line still carries the pulse, so the injection waveform alone "
                "does not say when the source is off") + ".")
-    if any(float(getattr(m, "chi3", 0.0) or 0.0) != 0.0
-           for m in getattr(sim, "_materials", {}).values()):
+    if any(_values.has_kerr(m) for m in getattr(sim, "_materials", {}).values()):
         raise NotImplementedError(
             f"{caller}(ringdown=...) is not supported with a Kerr (chi3) material: "
             "after the pulse the update is not linear, so the record is not a "
@@ -838,7 +839,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
                 f"model has a {what} port.")
     wire = []
     for pe in sim._ports:
-        if float(pe.impedance) == 0.0:
+        if _values.is_soft_impedance(pe.impedance):
             continue            # a soft source: checked for being off, below
         if pe.extent is None:
             raise NotImplementedError(
@@ -1251,7 +1252,7 @@ class RingdownRun:
         self.freq_max = float(spec.freq_max if spec.freq_max is not None
                               else sim._freq_max)
         self.wire_port_ids = tuple(i for i, pe in enumerate(sim._ports)
-                                   if float(pe.impedance) > 0.0 and pe.extent is not None)
+                                   if _values.is_port_impedance(pe.impedance) and pe.extent is not None)
         self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes()
@@ -1269,7 +1270,7 @@ class RingdownRun:
         from rfx.probes.settling import source_end_step
 
         entries = [pe for pe in self.sim._ports
-                   if (float(pe.impedance) == 0.0 or bool(pe.excite))
+                   if (_values.is_soft_impedance(pe.impedance) or bool(pe.excite))
                    and pe.waveform is not None]
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, self.dt,
@@ -1278,7 +1279,7 @@ class RingdownRun:
         ratio_long = 0.0
         for pe, (w, peak, _) in zip(entries, samples):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
-            kind = "source" if float(pe.impedance) == 0.0 else "wire port"
+            kind = "source" if _values.is_soft_impedance(pe.impedance) else "wire port"
             label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
             if not ratio <= float(self.spec.source_off_tol):
                 raise ValueError(
@@ -2210,7 +2211,7 @@ class RingdownStop:
 
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in self.sim._ports
-             if (float(pe.impedance) == 0.0 or bool(pe.excite))
+             if (_values.is_soft_impedance(pe.impedance) or bool(pe.excite))
              and pe.waveform is not None],
             self.n_max, self.base.dt, tolerance=self.spec.source_off_tol,
             return_detail=True)

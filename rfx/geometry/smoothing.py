@@ -26,6 +26,8 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from typing import NamedTuple
 
 import jax
@@ -575,14 +577,14 @@ def extend_shapes_into_cpml_pad(
                         unextendable.append(UnextendableShape(
                             current, axis, side,
                             "a cylinder has no continuation across its axis",
-                            float(eps_r)))
+                            _values.host_value(eps_r)))
                     else:
                         current = grown
                 else:
                     unextendable.append(UnextendableShape(
                         current, axis, side,
                         f"{type(current).__name__} has no pad continuation",
-                        float(eps_r)))
+                        _values.host_value(eps_r)))
         out.append((current, eps_r))
     return out, unextendable
 
@@ -868,7 +870,7 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
 
     conductors = set() if sim is None else {
         id(e.shape) for e in sim._geometry
-        if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD}
+        if _values.is_pec_sigma(sim._resolve_material(e.material_name).sigma, sim._PEC_SIGMA_THRESHOLD, e.material_name)}
     pairs = [(s_, e) for s_, e in pairs if id(getattr(s_, "declared", s_)) not in conductors]
     others = [v for v in (value(e) for _, e in pairs) if v is not None] + [float(background_eps)]
     curved = []
@@ -958,7 +960,7 @@ def smoothed_shape_pairs(sim, grid):
             out.append((shape, eps_r))
             continue
         # Both lanes realize conductors through the same geometry helper.
-        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
+        if _values.is_pec_sigma(getattr(mat, "sigma", 0.0), pec_sigma, entry.material_name):
             unext = []
             solved = continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
             out.append((solved, eps_r))

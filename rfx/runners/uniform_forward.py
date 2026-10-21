@@ -1,6 +1,8 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx.api._spec import ForwardResult
 from rfx.sources.sources import GaussianPulse
 from rfx.grid import Grid
@@ -281,7 +283,7 @@ def _forward_from_materials(
         return _sparam_port_idx == _sparam_drive_idx
 
     for _port_index, pe in enumerate(self._ports):
-        if pe.impedance == 0.0:
+        if _values.is_soft_impedance(pe.impedance):
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, n_steps,
                               field_dtype=self._resolve_field_dtype())
@@ -376,7 +378,7 @@ def _forward_from_materials(
                 _i_port = int(grid.position_to_index(pe.position)[_l_ax])
                 _i_far = _i_port + _sign * 2 * int(pe.reference_plane_cells)
                 for _other in self._ports:
-                    if _other is pe or _other.impedance == 0.0:
+                    if _other is pe or _values.is_soft_impedance(_other.impedance):
                         continue
                     _oi = int(grid.position_to_index(
                         _other.position)[_l_ax])
@@ -410,7 +412,7 @@ def _forward_from_materials(
                     grid=grid,
                     port_cells=wp_cells,
                     e_component=pe.component,
-                    impedance=float(pe.impedance),
+                    impedance=_values.host_value(pe.impedance),
                     direction=pe.direction,
                     n_cells=int(pe.reference_plane_cells),
                     freqs=_s11_freqs_arr,

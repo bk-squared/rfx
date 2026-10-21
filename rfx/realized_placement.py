@@ -10,6 +10,8 @@ planes. Index boxes are inclusive ``(lo, hi)`` per axis on the padded grid;
 """
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import numpy as np
 
 from rfx._grid_metric import field_index
@@ -37,7 +39,7 @@ def _sources(sim, ctx):
     from rfx.realized_geometry import SourceGeometry
     rows = []
     for i, pe in enumerate(sim._ports):
-        if pe.impedance != 0.0:
+        if (not _values.is_soft_impedance(pe.impedance)):
             continue
         try:
             cell = tuple(int(k) for k in field_index(ctx.grid, pe.position, pe.component))

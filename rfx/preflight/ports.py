@@ -54,6 +54,8 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import field_index
 import math
 
@@ -242,7 +244,7 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
     """
     wire_ports = [
         pe for pe in self._ports
-        if pe.impedance != 0.0 and pe.extent is not None
+        if (not _values.is_soft_impedance(pe.impedance)) and pe.extent is not None
     ]
     opted = [
         pe for pe in wire_ports
@@ -319,6 +321,8 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
     than guess (issue #544 review item 6; #303 class); the point
     port/probe rule runs on both lanes through the shared context.
     """
+    if _values.check_traced_values(self, _validate_cfg_port_inside_pec, _w, dx, attributes=('_ports',)):
+        return
     ctx = self._campaign_ctx()
     is_nonuniform = ctx.lane == "nonuniform"
     realized = None
@@ -342,8 +346,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
     if not has_conductor:
         try:
             has_conductor = any(
-                self._resolve_material(e.material_name).sigma
-                >= self._PEC_SIGMA_THRESHOLD for e in self._geometry)
+                _values.is_pec_sigma(self._resolve_material(e.material_name).sigma, self._PEC_SIGMA_THRESHOLD, e.material_name) for e in self._geometry)
         except KeyError:
             has_conductor = False
     if ctx.error is None and has_conductor:
@@ -708,13 +711,15 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
     floating Ez source. Recommend extent=<substrate_height> to
     promote to a WirePort spanning ground → patch.
     """
+    if _values.check_traced_values(self, _validate_cfg_floating_single_cell_port, _w, attributes=('_materials',)):
+        return
     _PORT_COMP_AXIS = {"ex": 0, "ey": 1, "ez": 2}
     for pe in self._ports:
         # Filter: only true ports (impedance > 0), single-cell
         # (extent is None), actively excited (excite is True).
         # add_source() creates _PortEntry with impedance=0.0 and is
         # intentionally a soft source — not a port footgun.
-        if not pe.impedance or pe.impedance <= 0.0:
+        if not _values.is_port_impedance(pe.impedance):
             continue
         if pe.extent is not None:
             continue
@@ -737,8 +742,8 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
             if not inside:
                 continue
             mspec = self._materials.get(entry.material_name)
-            if mspec is not None and float(mspec.eps_r) > 1.0 + 1e-3:
-                enclosing_eps_r = float(mspec.eps_r)
+            if mspec is not None and _values.host_value(mspec.eps_r) > 1.0 + 1e-3:
+                enclosing_eps_r = _values.host_value(mspec.eps_r)
                 enclosing_name = entry.material_name
                 break
         if enclosing_eps_r is None:
@@ -845,7 +850,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     point_components = {}
     for pe in getattr(sim, "_ports", ()):
         pos = tuple(float(v) for v in pe.position)
-        kind = ("add_source" if float(pe.impedance) == 0.0
+        kind = ("add_source" if _values.is_soft_impedance(pe.impedance)
                 and pe.extent is None else "add_port")
         points.append((id(pe), f"{kind} at {pos}", pos))
         if pe.extent is None:
@@ -949,7 +954,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                     0.5 * (float(lo[a]) + float(hi[a])), int(sheet.plane)))
                 continue
             sigma = sim._resolve_material(entry.material_name).sigma
-            if is_tracer(sigma) or float(sigma) < threshold:
+            if not _values.is_pec_sigma(sigma, threshold, entry.material_name):
                 continue
             _cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, sizes, name=entry.material_name, grid=grid)
@@ -1028,7 +1033,7 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
     )
     from rfx.materials.thin_conductor import sheet_bounds
     from rfx.nonuniform import NonUniformGrid
-    ports = [pe for pe in sim._ports if float(pe.impedance) > 0]
+    ports = [pe for pe in sim._ports if _values.is_port_impedance(pe.impedance)]
     if not ports:
         return []
     shapes = [(e.shape, e.material_name) for e in sim._geometry
@@ -1169,7 +1174,7 @@ def wire_port_radius_findings(sim, grid=None) -> list[dict]:
     from rfx.core.yee import MU_0
 
     ports = [(i, pe) for i, pe in enumerate(getattr(sim, "_ports", ()))
-             if pe.extent is not None and float(pe.impedance) != 0.0
+             if pe.extent is not None and (not _values.is_soft_impedance(pe.impedance))
              and getattr(pe, "radius", None) is None]
     if not ports:
         return []
@@ -1215,6 +1220,8 @@ def wire_port_radius_findings(sim, grid=None) -> list[dict]:
 
 def preflight_wire_port_radius(sim, warn) -> None:
     """ONE advisory per preflight naming every radius-less wire port."""
+    if _values.check_traced_values(sim, preflight_wire_port_radius, warn, attributes=('_ports',)):
+        return
     try:
         findings = wire_port_radius_findings(sim)
     except (ValueError, NotImplementedError):

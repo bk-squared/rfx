@@ -483,6 +483,7 @@ def dc_census(sim, *, dt, n_table):
     (None when the waveform has no ``tau``). A soft current source deposits
     ``sum s dt`` as a static end-charge (issue #388).
     """
+    from rfx.model import value_roles as _values
     from rfx.core.jax_utils import is_tracer
 
     if is_tracer(dt):
@@ -491,7 +492,7 @@ def dc_census(sim, *, dt, n_table):
     if not dt > 0.0 or n_table <= 0:
         return []
     t = np.arange(int(n_table), dtype=np.float64) * dt
-    soft = [pe for pe in sim._ports if pe.impedance == 0.0 and getattr(pe, "excite", True)]
+    soft = [pe for pe in sim._ports if _values.is_soft_impedance(pe.impedance) and getattr(pe, "excite", True)]
     soft += [pe for pe in sim._msl_ports if getattr(pe, "excite", True)]
     rows = []
     for pe in soft:
@@ -507,7 +508,7 @@ def dc_census(sim, *, dt, n_table):
             continue
         t_done = None
         try:
-            tau = float(wf.tau)
+            tau = _values.host_value(wf.tau)
         except (AttributeError, TypeError, ValueError):
             tau = None
         if tau is not None and math.isfinite(tau) and tau > 0.0:
@@ -580,14 +581,15 @@ def advisory_inputs(sim, *, dt, n_table):
     """What the cap advisory names: ``drives``, the soft drives' DC
     (``dc_census`` rows), and ``lossy``, every material the model places
     with ``sigma > 0`` as ``(name, eps_r, sigma)``."""
+    from rfx.model import value_roles as _values
     lossy, seen = [], set()
     for entry in getattr(sim, "_geometry", ()):
         name = entry.material_name
         if name not in seen:
             seen.add(name)
             spec = sim._resolve_material(name)
-            if spec.sigma > 0:
-                lossy.append((repr(name), float(spec.eps_r), float(spec.sigma)))
+            if _values.has_element(spec.sigma):
+                lossy.append((repr(name), _values.host_value(spec.eps_r), _values.host_value(spec.sigma)))
     return dict(drives=dc_census(sim, dt=dt, n_table=n_table), lossy=lossy)
 
 

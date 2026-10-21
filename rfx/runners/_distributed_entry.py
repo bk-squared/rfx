@@ -1,5 +1,7 @@
 """Shared public entry seam for the distributed runners; no stepping here."""
 
+from rfx.model import value_roles as _values
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -69,7 +71,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     if compute_s_params is None:
         if self._uses_nonuniform_mesh:
             from rfx.runners._admission import graded_lumped_default_s
-            compute_s_params = any(pe.impedance != 0.0 and pe.extent is not None
+            compute_s_params = any((not _values.is_soft_impedance(pe.impedance)) and pe.extent is not None
                                    for pe in self._ports)
             if not compute_s_params and graded_lumped_default_s(self):
                 # The one-device graded default: lumped S on the default bins.
@@ -77,7 +79,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
                 compute_s_params = True
                 s_param_freqs = default_frequency_grid(self._freq_max, 50, host=True)
         else:
-            compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
+            compute_s_params = any((not _values.is_soft_impedance(pe.impedance)) for pe in self._ports)
         # Use the same refusal as an explicit S-parameter request.
         compute_s_params = self._validate_run_sparameter_request(
             compute_s_params=compute_s_params,
@@ -86,7 +88,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             devices=devices,
         )
     if compute_s_params:
-        _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
+        _dist_ports = [pe for pe in self._ports if (not _values.is_soft_impedance(pe.impedance))]
         if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
             _graded = plan.lane == "run_distributed_nu"
             self._refuse_unsupported_run_kwargs(
@@ -120,7 +122,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     if plan.lane == "run_distributed_nu":
         # Same drive-isolation refusal as one-device run_nonuniform, before the solve.
         if (compute_s_params is not False
-                and any(p.impedance > 0 for p in self._ports)):
+                and any(_values.is_port_impedance(p.impedance) for p in self._ports)):
             from rfx.runners._admission import require_isolated_s_drive
             require_isolated_s_drive(self, fields_only=True)
         from rfx.runners.distributed_v2 import _spans_other_processes
@@ -282,7 +284,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         current_moment_monitor=result.current_moment_monitor)
     packed = sim._attach_run_settling_witness(
         packed, n_steps=plan.n_steps, num_periods=num_periods, context="forward")
-    ports = [pe for pe in sim._ports if pe.impedance != 0]
+    ports = [pe for pe in sim._ports if (not _values.is_soft_impedance(pe.impedance))]
     if port_s11_freqs is not None and ports:
         from rfx.runners._uniform_forward_result import pack_port_result
         packed = pack_port_result(packed, wire=ports[0].extent is not None)

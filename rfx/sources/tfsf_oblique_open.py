@@ -42,6 +42,8 @@ Signs, staggering and leapfrog order retain the prototype physics:
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx.model.thin_conductors import conductivity_envelope
 
 from typing import NamedTuple
@@ -300,10 +302,10 @@ def init_tfsf_methodB(
         c_cpml=jnp.asarray(electric.c, dtype=fdtype),
         magnetic_lo=magnetic_lo, magnetic_hi=magnetic_hi,
         src_idx=int(src_off),
-        src_amp=float(amplitude),
-        src_t0=float(src_t0),
-        src_tau=float(src_tau),
-        src_fcen=float(f0),
+        src_amp=_values.host_value(amplitude),
+        src_t0=_values.host_value(src_t0),
+        src_tau=_values.host_value(src_tau),
+        src_fcen=_values.host_value(f0),
         src_waveform=waveform,
         curl_sign=1.0,
         electric_component="ez",

@@ -41,6 +41,7 @@ def refuse_port_on_magnetic_face(sim, caller, *, reason):
     from rfx._grid_metric import field_index
     from rfx.measurement.plan import _pec_edges
     from rfx.sources.sources import WirePort, _wire_port_live_cells
+    from rfx.model.value_roles import is_soft_impedance
 
     grid = sim._build_realized_grid()
     faces = magnetic_image_faces(sim._boundary_spec.pmc_faces(),
@@ -48,10 +49,10 @@ def refuse_port_on_magnetic_face(sim, caller, *, reason):
     if not faces:
         return
     edges = None
-    if any(p.impedance and p.extent is not None for p in sim._ports):
+    if any(not is_soft_impedance(p.impedance) and p.extent is not None for p in sim._ports):
         edges = _pec_edges(sim, grid)
     for index, port in enumerate(sim._ports):
-        if not port.impedance:
+        if is_soft_impedance(port.impedance):
             continue
         live = (field_index(grid, port.position, port.component),)
         if port.extent is not None:

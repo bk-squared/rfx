@@ -7,6 +7,8 @@ Conductors own their realized products in rfx.model.conductors.
 """
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
@@ -203,13 +205,13 @@ def assemble_cells(
     # NU historically continues all PEC declarations before sampling any entry.
     geometry = [replace(entry, shape=continued_conductor_shape(
                     sim, grid, entry.shape, entry=entry, unextendable=conductor_findings))
-                if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
+                if _values.is_pec_material(sim._resolve_material(entry.material_name), sim._PEC_SIGMA_THRESHOLD, entry.material_name)
                 else entry for entry in sim._geometry] if nonuniform else sim._geometry
     for declared_entry, entry in zip(sim._geometry, geometry, strict=True):
         mat = sim._resolve_material(entry.material_name)
         mask = _material_cell_mask(entry.shape, _coords, _centres, grid=sampling_grid)
 
-        if mat.sigma >= sim._PEC_SIGMA_THRESHOLD:
+        if _values.is_pec_material(mat, sim._PEC_SIGMA_THRESHOLD, entry.material_name):
             solved_shape = entry.shape if nonuniform else continued_conductor_shape(
                 sim, grid, entry.shape, entry=entry, unextendable=conductor_findings)
             # True PEC (#931): volume cells into pec_mask (centre
@@ -268,10 +270,10 @@ def assemble_cells(
             _clear_pole_masks(debye_masks_by_pole, mask)
             _clear_pole_masks(lorentz_masks_by_pole, mask)
 
-        if geometry_masks is not None and mat.sigma < sim._PEC_SIGMA_THRESHOLD:
+        if geometry_masks is not None and (not _values.is_pec_material(mat, sim._PEC_SIGMA_THRESHOLD, entry.material_name)):
             geometry_masks.append((id(declared_entry), mask))
 
-        if mat.chi3 != 0.0:
+        if _values.has_kerr(mat):
             chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
             has_kerr = True
 
@@ -279,7 +281,7 @@ def assemble_cells(
         if mat.debye_poles or mat.lorentz_poles:
             # Poles retain their declared occupancy, before continuation.
             pole_mask = _material_cell_mask(declared_entry.shape, _coords, _centres, grid=sampling_grid)
-            if mat.sigma >= sim._PEC_SIGMA_THRESHOLD and cells is not None:
+            if _values.is_pec_material(mat, sim._PEC_SIGMA_THRESHOLD, entry.material_name) and cells is not None:
                 from rfx.geometry.rasterize_grid import pec_volume_cell_mask
                 pole_mask = pec_volume_cell_mask(declared_entry.shape, _centres, _cell_sizes, grid=sampling_grid)
 

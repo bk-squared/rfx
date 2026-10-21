@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import math
 
 import jax.numpy as jnp
@@ -49,7 +51,7 @@ def run_disjoint_stage2_path(
     from rfx.current_moments import refuse_current_moment_monitor
 
     refuse_current_moment_monitor(sim, "disjoint z-slab research lane")
-    unsupported_ports = [pe for pe in sim._ports if pe.impedance > 0.0]
+    unsupported_ports = [pe for pe in sim._ports if _values.is_port_impedance(pe.impedance)]
     if unsupported_ports:
         raise NotImplementedError(
             "Stage-2 disjoint research runner currently supports only soft "
@@ -103,7 +105,7 @@ def run_disjoint_stage2_path(
     source_entries = [
         (mapping, pe)
         for mapping, pe in zip(contract.source_mappings, sim._ports)
-        if pe.impedance == 0.0 and pe.waveform is not None
+        if _values.is_soft_impedance(pe.impedance) and pe.waveform is not None
     ]
     probe_entries = [
         (mapping, probe)

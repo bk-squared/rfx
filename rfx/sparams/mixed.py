@@ -31,6 +31,8 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._precision import resolve_field_dtype
 from rfx.boundaries.pmc import refuse_port_on_magnetic_face
 
@@ -217,14 +219,14 @@ def compute_mixed_s_matrix(
             "registration (for a pure lumped/wire multiport use the "
             "production scan driver / extract_s_matrix)."
         ), _diagnostics)
-    lw_entries = [pe for pe in self._ports if pe.impedance != 0.0]
+    lw_entries = [pe for pe in self._ports if (not _values.is_soft_impedance(pe.impedance))]
     if not lw_entries:
         raise diagnostic_refusal(ValueError(
             "compute_mixed_s_matrix() needs at least one sparam-eligible "
             "add_port() lumped/wire port (impedance != 0). For a pure "
             "MSL multiport use compute_msl_s_matrix()."
         ), _diagnostics)
-    if any(pe.impedance == 0.0 for pe in self._ports):
+    if any(_values.is_soft_impedance(pe.impedance) for pe in self._ports):
         raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() does not support bare sources / "
             "0-ohm ports (add_source or add_port(impedance=0)): they "
@@ -1070,7 +1072,7 @@ def compute_mixed_s_matrix(
             + ["msl"] * n_msl
         )
         z0_ref = np.asarray(
-            [float(pe.impedance) for pe in lw_entries]
+            [_values.host_value(pe.impedance) for pe in lw_entries]
             + z0_hj_per_port
         )
 

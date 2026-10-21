@@ -74,6 +74,8 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import math
 
 import numpy as np
@@ -100,6 +102,8 @@ def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
     it fires only when no dielectric carries any loss, and is hedged
     because it is harmless if you are not measuring Q.
     """
+    if _values.check_traced_values(self, _validate_cfg_lossless_resonator_in_absorber, _w, attributes=("_materials",)):
+        return
     if self._boundary not in ("cpml", "upml"):
         return
     try:
@@ -203,6 +207,8 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
     resonance-risk families additionally keep the #636 divergence
     wording. One aggregated advisory per simulation.
     """
+    if _values.check_traced_values(self, _validate_cfg_dispersive_pole_at_absorber_face, _w, dx, cpml_thick_lo, cpml_thick_hi, attributes=("_materials",)):
+        return
     if self._boundary not in ("cpml", "upml"):
         return
     if not any(t > 0 for t in list(cpml_thick_lo) + list(cpml_thick_hi)):
@@ -220,9 +226,9 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
         texts: list[str] = []
         risk = False
         for pole in (getattr(mat, "lorentz_poles", None) or ()):
-            w0 = float(pole.omega_0)
-            delta = float(pole.delta)
-            if w0 == 0.0:
+            w0 = _values.host_value(pole.omega_0)
+            delta = _values.host_value(pole.delta)
+            if _values.is_drude(pole):
                 texts.append("Drude")
                 risk = True
                 continue
@@ -236,7 +242,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
             else:
                 texts.append(q_txt + ("" if in_band else " out-of-band"))
         for pole in (getattr(mat, "debye_poles", None) or ()):
-            texts.append(f"Debye tau={float(pole.tau):.3g}s")
+            texts.append(f"Debye tau={_values.host_value(pole.tau):.3g}s")
         return texts, risk
 
     hits: list[tuple[int, str, str, str, bool]] = []
@@ -1286,7 +1292,7 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
         mat_name = getattr(entry, "material_name", None)
         if mat_name != "pec":
             try:
-                if self._resolve_material(mat_name).sigma < self._PEC_SIGMA_THRESHOLD:
+                if (not _values.is_pec_sigma(self._resolve_material(mat_name).sigma, self._PEC_SIGMA_THRESHOLD, mat_name)):
                     continue
             except Exception:
                 continue

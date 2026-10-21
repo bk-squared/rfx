@@ -46,6 +46,7 @@ there and registered; it needs no edit to this file.
 
 from __future__ import annotations
 
+
 import json
 import math
 from typing import Literal
@@ -354,6 +355,7 @@ class _PreflightMixin:
         devices: list | None = None,
     ) -> bool | None:
         """Resolve contaminated default S requests and reject unsupported explicit ones."""
+        from rfx.model import value_roles as _values
 
         requested = (
             compute_s_params is True
@@ -367,7 +369,7 @@ class _PreflightMixin:
             return compute_s_params
 
         port_entries = self._port_sparameter_entries()
-        source_only_entries = [pe for pe in self._ports if pe.impedance == 0.0]
+        source_only_entries = [pe for pe in self._ports if _values.is_soft_impedance(pe.impedance)]
         messages: list[str] = []
 
         if self._msl_ports:
@@ -461,6 +463,7 @@ class _PreflightMixin:
 
     def _validate_forward_sparameter_request(self) -> None:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
+        from rfx.model import value_roles as _values
 
         # The port S11 is the port drive's own reflection only if nothing else
         # excites the model (#1420), as on run()'s S request.
@@ -621,8 +624,7 @@ class _PreflightMixin:
                 "for a through line"
             )
         if not port_entries:
-            source_only = any(pe.impedance == 0.0 for pe in self._ports)
-            if source_only:
+            if any(_values.is_soft_impedance(pe.impedance) for pe in self._ports):
                 messages.append("add_source(...) is not an impedance port")
             detail = "; ".join(messages) if messages else (
                 "register add_port(...) first"
@@ -2000,6 +2002,7 @@ class _PreflightMixin:
 
     def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
         """Validate that the current simulation is compatible with the ADI path."""
+        from rfx.model import value_roles as _values
         if self._mode not in ("2d_tmz", "3d"):
             raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
         if self._boundary == "upml":
@@ -2029,7 +2032,7 @@ class _PreflightMixin:
         # Conductivity is now supported: implicit sigma in ADI tridiagonal.
         # Internal absorbing layers also use sigma, so no restriction needed.
         for pe in self._ports:
-            if pe.impedance != 0.0 or pe.extent is not None:
+            if (not _values.is_soft_impedance(pe.impedance)) or pe.extent is not None:
                 raise ValueError("solver='adi' currently supports only add_source()-style soft sources")
             if self._mode == "2d_tmz" and pe.component != "ez":
                 raise ValueError("solver='adi' in 2D TMz mode supports only Ez soft sources")

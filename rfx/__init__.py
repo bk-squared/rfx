@@ -383,3 +383,7 @@ __all__ = [
 ]
 
 from rfx.fidelity import fidelity_report  # noqa: E402,F401
+
+from rfx.model.declaration_roles import guard_declaration_calls as _guard_declaration_calls
+_guard_declaration_calls(Simulation)
+del _guard_declaration_calls

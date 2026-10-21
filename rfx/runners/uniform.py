@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -253,7 +255,7 @@ def run_uniform(
     wire_port_live_cells = []
     wire_port_excites = []
     for _port_index, pe in enumerate(sim._ports):
-        if pe.impedance == 0.0:
+        if _values.is_soft_impedance(pe.impedance):
             # The declared kind alone decides the drive (forward() calls the same).
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, sizing_n, field_dtype=field_dtype)

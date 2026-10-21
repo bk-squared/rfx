@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import jax.numpy as jnp
-from jax import lax, tree_util
 
 from rfx.core.yee import EPS_0, MU_0, FDTDState, e_update_coeffs
 
@@ -160,11 +159,9 @@ def require_step_bound(n_steps):
 
 
 def source_scalar(name, value):
-    """Incident-source scalars are fixed inputs, including under forward AD."""
-    from rfx.core.jax_utils import is_tracer
-    if is_tracer(value):
-        raise ValueError(f"{name}: differentiating with respect to the incident source is not supported")
-    return float(value)
+    """Keep concrete source arithmetic and traced VALUE coefficients."""
+    from rfx.model.value_roles import host_value
+    return host_value(value)
 
 
 def validate_run(entry, until_decay, decay_max_steps, under_transform):
@@ -283,7 +280,7 @@ def update_line_h(cfg, state, dx, dt):
                 - line_difference(cfg, state, target, second, b) / dx)
         name = COMPONENTS[target]
         changes[name] = getattr(state, name) - cfg.ch * curl
-    return tree_util.tree_map(lax.stop_gradient, state._replace(**changes))
+    return state._replace(**changes)
 
 
 def update_line_e(cfg, state, dx, dt, t=None):
@@ -307,7 +304,7 @@ def update_line_e(cfg, state, dx, dt, t=None):
             else:
                 field = field.at[cfg.source_nodes[target]].add(value)
         changes[name] = field
-    return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))
+    return state._replace(**changes, step=state.step + 1)
 
 
 def table_operands(cfg, incident, table, ti, magnetic):
@@ -608,10 +605,8 @@ def add_tfsf_source(
         raise ValueError(
             "TFSF plane-wave source is not supported together with lumped ports"
         )
-    if f0 is not None and f0 <= 0:
-        raise ValueError(f"f0 must be positive when provided, got {f0}")
-    if bandwidth <= 0:
-        raise ValueError(f"bandwidth must be positive, got {bandwidth}")
+    from rfx.model.value_roles import validate_tfsf_values
+    validate_tfsf_values(f0, bandwidth)
     if margin < 1:
         raise ValueError(f"margin must be >= 1, got {margin}")
     if polarization not in (("ez", "ey", "s", "p") if closed_box else ("ez", "ey")):

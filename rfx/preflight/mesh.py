@@ -80,6 +80,8 @@ instead of leaving two different functions sharing one name.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import math
 
 import numpy as np
@@ -125,6 +127,8 @@ def _validate_mesh_quality(self) -> None:
     about under-resolved features. Prevents silent garbage results
     from mesh-related setup errors.
     """
+    if _values.check_traced_values(self, _validate_mesh_quality, attributes=("_materials",)):
+        return
     import warnings as _w
 
     # Tracer-valued profiles (mesh-as-design-variable gradient) cannot
@@ -210,7 +214,7 @@ def _validate_mesh_quality(self) -> None:
 
         for axis, (dim, cell) in enumerate(zip(dims, cell_sizes)):
             mat = self._resolve_material(mat_name)
-            is_pec = mat.sigma >= self._PEC_SIGMA_THRESHOLD
+            is_pec = _values.is_pec_sigma(mat.sigma, self._PEC_SIGMA_THRESHOLD, mat_name)
             axis_name = "xyz"[axis]
             if dim <= 0:
                 # Zero-thickness geometry. For a PEC Box that IS the
@@ -296,7 +300,7 @@ def _validate_mesh_quality(self) -> None:
                             stacklevel=3,
                         )
                 else:
-                    eps_r = float(mat.eps_r) if mat.eps_r else 1.0
+                    eps_r = _values.host_value(mat.eps_r) if mat.eps_r else 1.0
                     lam_eff = (
                         C0 / self._freq_max / math.sqrt(max(eps_r, 1.0))
                     )
@@ -564,8 +568,7 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
         x_mid = np.array([0.5 * (float(c1[0]) + float(c2[0]))])
         y_mid = np.array([0.5 * (float(c1[1]) + float(c2[1]))])
         try:
-            is_pec = (self._resolve_material(entry.material_name).sigma
-                      >= self._PEC_SIGMA_THRESHOLD)
+            is_pec = (_values.is_pec_sigma(self._resolve_material(entry.material_name).sigma, self._PEC_SIGMA_THRESHOLD, entry.material_name))
         except KeyError:
             is_pec = False
         if is_pec:
@@ -920,7 +923,7 @@ def _validate_cfg_source_on_graded_node(self, _w) -> None:
     node (where ``d_above < d_below``).
     """
     entries = [pe for pe in getattr(self, "_ports", ())
-               if float(getattr(pe, "impedance", 0.0)) == 0.0]
+               if _values.is_soft_impedance(getattr(pe, "impedance", 0.0))]
     if not entries:
         return
     for pe in entries:
@@ -977,7 +980,7 @@ def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
     """
     entries = [pe for pe in getattr(self, "_ports", ())
                if getattr(pe, "extent", None) is not None
-               or float(getattr(pe, "impedance", 0.0)) > 0.0]
+               or _values.is_port_impedance(getattr(pe, "impedance", 0.0))]
     if not entries:
         return
     for pe in entries:

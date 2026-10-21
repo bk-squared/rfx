@@ -67,6 +67,8 @@ the facade" and, as of this leg, no longer does.
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import jax.numpy as jnp
 
 from rfx.grid import C0
@@ -123,8 +125,7 @@ def _validate_ntff_inverse_design(
     # lane keeps the declared-bounds test (closed).
     try:
         has_pec_geom = any(
-            self._resolve_material(e.material_name).sigma
-            >= self._PEC_SIGMA_THRESHOLD
+            _values.is_pec_sigma(self._resolve_material(e.material_name).sigma, self._PEC_SIGMA_THRESHOLD, e.material_name)
             for e in self._geometry)
     except KeyError:
         has_pec_geom = False   # unresolved material: add()/run() raise

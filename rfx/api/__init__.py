@@ -17,6 +17,7 @@ Usage
 """
 
 from __future__ import annotations
+import rfx.model as _values
 
 import inspect
 import math
@@ -1361,8 +1362,7 @@ class Simulation(
         validate_radius(radius)
         if radius is not None and extent is None:
             raise ValueError("radius requires a wire port: provide extent=...")
-        if impedance <= 0:
-            raise ValueError(f"impedance must be positive, got {impedance}")
+        _values.validate_impedance(impedance)
         if direction is not None and direction not in ("+x", "-x", "+y", "-y"):
             raise ValueError(
                 f"direction must be one of '+x','-x','+y','-y' (or None), got {direction!r}"
@@ -1565,8 +1565,7 @@ class Simulation(
             raise ValueError(f"width must be positive, got {width}")
         if height <= 0:
             raise ValueError(f"height must be positive, got {height}")
-        if impedance <= 0:
-            raise ValueError(f"impedance must be positive, got {impedance}")
+        _values.validate_impedance(impedance)
         if mode not in ("eigenmode", "laplace", "uniform"):
             raise ValueError(f"mode must be 'eigenmode', 'laplace', or 'uniform', got {mode!r}")
         if mode == "eigenmode" and direction not in ("+x", "-x"):
@@ -1694,23 +1693,7 @@ class Simulation(
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if topology not in ("series", "parallel"):
             raise ValueError(f"topology must be 'series' or 'parallel', got {topology!r}")
-        if R < 0 or L < 0 or C < 0:
-            raise ValueError(f"R, L, C must be non-negative, got R={R}, L={L}, C={C}")
-        if R == 0 and L == 0 and C == 0:
-            raise ValueError("At least one of R, L, C must be non-zero")
-
-        # Warn if series topology with single component — falls back to parallel behavior
-        if topology == "series":
-            n_comp = (R > 0) + (L > 0) + (C > 0)
-            if n_comp == 1:
-                import warnings
-                active = "R" if R > 0 else ("L" if L > 0 else "C")
-                warnings.warn(
-                    f"Series topology with single component ({active}) uses material "
-                    f"folding, not the series ADE. Add a second component or use "
-                    f"topology='parallel' to suppress this warning.",
-                    stacklevel=2,
-                )
+        _values.validate_rlc(R, L, C, topology)
 
         self._lumped_rlc.append(LumpedRLCSpec(
             R=R, L=L, C=C,
@@ -1797,14 +1780,7 @@ class Simulation(
         if probe_plane is not None:
             scalar_checks.append(("probe_plane", probe_plane, False))
         for label, value, require_positive in scalar_checks:
-            try:
-                numeric = float(value)
-            except (TypeError, ValueError):
-                raise ValueError(f"{label} must be a finite scalar, got {value!r}") from None
-            if not math.isfinite(numeric):
-                raise ValueError(f"{label} must be finite, got {value!r}")
-            if require_positive and numeric <= 0:
-                raise ValueError(f"{label} must be positive, got {value}")
+            _values.validate_source_scalar(label, value, require_positive)
 
         if self._boundary != "cpml":
             raise ValueError("Waveguide port requires boundary='cpml'")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from typing import NamedTuple
 
 from rfx._grid_metric import field_index
@@ -63,7 +65,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
         return min(rel, key=rel.get)
 
     for _port_index, pe in enumerate(sim._ports):
-        if pe.impedance == 0.0:
+        if _values.is_soft_impedance(pe.impedance):
             continue
         idx = (position_to_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                else field_index(grid, pe.position, pe.component))

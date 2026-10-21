@@ -12,6 +12,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 ``rfx.*`` / stdlib / jax / numpy.
 """
 from __future__ import annotations
+import rfx.model as _values
 
 from rfx.stepping import steps_for_periods
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -536,7 +537,7 @@ class _ExecuteMixin:
         count every ``self._ports`` entry as a calibrated port.
         """
 
-        return [pe for pe in self._ports if pe.impedance > 0.0]
+        return [pe for pe in self._ports if _values.is_port_impedance(pe.impedance)]
 
     def _auto_configure_mesh(self):
         """Compute the host-side auto-mesh proposal; _resolve_mesh owns it."""
@@ -940,7 +941,7 @@ class _ExecuteMixin:
             return all(_w[2 * d] <= cell[d] < _w[2 * d + 1] for d in range(3))
 
         for _pe in self._ports:
-            if _pe.impedance == 0.0:
+            if _values.is_soft_impedance(_pe.impedance):
                 # A plain soft source: caught as a source cell at the step --
                 # except on a held port edge, where a port's drive is
                 # accepted, so it is refused here whatever it sits on.
@@ -1582,7 +1583,7 @@ class _ExecuteMixin:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
                 1 for p in self._ports
-                if float(p.impedance) > 0.0 and p.extent is not None),
+                if _values.is_port_impedance(p.impedance) and p.extent is not None),
                 port_s11_freqs=port_s11_freqs)
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
@@ -1601,8 +1602,7 @@ class _ExecuteMixin:
         # UNIFORM forward lane only.  The non-uniform / distributed forward lanes
         # discard kerr_chi3, so a Kerr material there would silently give LINEAR
         # physics (and a linear gradient) — fail loud on those lanes only.
-        if (plan.lane != "fwd_uniform"
-                and any(getattr(m, "chi3", 0.0) != 0.0 for m in self._materials.values())):
+        if plan.lane != "fwd_uniform" and any(_values.has_kerr(m) for m in self._materials.values()):
             raise NotImplementedError(
                 "forward() supports Kerr χ³ (nonlinear) materials only on the uniform "
                 f"single-device lane, not {plan.lane!r} (which discards chi3 → silent "
@@ -2066,10 +2066,10 @@ class _ExecuteMixin:
         """
         # The caller's arguments as given, before anything below resolves them:
         # a devices= model that runs on one device is re-run with all of them.
+        admit_traced_run(self, until_decay, decay_max_steps)
         self._resolve_field_dtype()
         _call_args = dict(locals())
         del _call_args["self"]
-        admit_traced_run(self, until_decay, decay_max_steps)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
         if until_decay is not None and self._tfsf is not None:
@@ -2160,7 +2160,7 @@ class _ExecuteMixin:
             from rfx.ringdown import refuse_run_lane
             refuse_run_lane(plan.lane, sum(
                 1 for p in self._ports
-                if float(p.impedance) > 0.0 and p.extent is not None))
+                if _values.is_port_impedance(p.impedance) and p.extent is not None))
 
         # ---- Distributed multi-device lane ----
         if plan.lane in ("run_distributed", "run_distributed_nu"):

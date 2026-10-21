@@ -378,6 +378,8 @@ def _declaration_setup_at_trace_time(entry):
     """
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
+        from rfx.model.declaration_roles import refuse_traced_structure
+        refuse_traced_structure(self)
         self._resolve_field_dtype()
         guard_shape_tangents(self)
         if _setup_evaluated_at_trace_time(

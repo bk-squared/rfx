@@ -29,8 +29,7 @@ def admit_thin_conductor(
     selects (PEC sheet or Leontovich sheet); the warnings name the user's call.
     """
     if surface_impedance_f0 is not None:
-        # Concrete-value checks only: traced f0 / sigma_bulk are legal
-        # differentiable DoFs and skip these (documented on Simulation.add_thin_conductor).
+        # f0 is STRUCTURE; conductivity is validated through traced_check.
         if (not is_tracer(surface_impedance_f0)
                 and float(surface_impedance_f0) <= 0.0):
             raise ValueError(
@@ -38,11 +37,8 @@ def admit_thin_conductor(
                 f"{surface_impedance_f0!r} must be a positive frequency "
                 f"in Hz (band centre for the Leontovich surface "
                 f"resistance).")
-        if not is_tracer(sigma_bulk) and float(sigma_bulk) <= 0.0:
-            raise ValueError(
-                f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
-                f"> 0 when surface_impedance_f0 is set — Rs0 = "
-                f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
+        from rfx.model.value_roles import validate_surface_sigma
+        validate_surface_sigma(sigma_bulk)
         # #674: any shape that can rasterize itself is allowed — the
         # fold is per occupied cell and shape-agnostic. Two structural
         # requirements survive, and both fail loud on BOTH lanes rather

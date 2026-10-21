@@ -5,6 +5,8 @@ Probe planes and post-processing reference_plane shifts are not this interval.
 """
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 import numpy as np
 
 from rfx.model.waveguide_planes import entry_planes
@@ -37,8 +39,8 @@ def _medium_at(sim, point):
             continue
         if isinstance(g.shape, Box):
             spec = sim._resolve_material(g.material_name)
-            medium = (float(spec.eps_r), float(spec.sigma), float(spec.mu_r),
-                      repr(spec.debye_poles), repr(spec.lorentz_poles), float(spec.chi3))
+            medium = (_values.host_value(spec.eps_r), _values.host_value(spec.sigma), _values.host_value(spec.mu_r),
+                      repr(spec.debye_poles), repr(spec.lorentz_poles), _values.host_value(spec.chi3))
             medium = _VACUUM if medium[:3] == _VACUUM[:3] and medium[3:] == ("None", "None", 0.0) else medium
         else:
             medium = ("shape", i)

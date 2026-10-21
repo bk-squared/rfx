@@ -283,20 +283,31 @@ def test_traced_shell_requires_vacuum(observable, transform, record_property):
     assert message in str(exc.value)
 
 
-def test_custom_waveform_cannot_close_over_traced_parameter(record_property):
+@pytest.mark.parametrize("field,theta,delta", [
+    ("waveform", P0, .1), ("f0", 10e9, 1e8),
+    ("bandwidth", .5, .05), ("amplitude", 1., .1),
+])
+def test_closed_source_values_transform(field, theta, delta, record_property):
     def objective(p):
         sim = Simulation(freq_max=11e9, domain=(.032,) * 3, dx=.002,
                          boundary="cpml", cpml_layers=6)
-        sim.add_tfsf_source(f0=10e9, margin=4, closed_box=True,
-                            waveform=CustomWaveform(lambda t: p * jnp.sin(t * 1e11)))
-        return jnp.sum(sim.forward(n_steps=2, skip_preflight=True).time_series)
+        source = dict(f0=10e9, bandwidth=.5, amplitude=1.)
+        if field == "waveform":
+            source["waveform"] = CustomWaveform(lambda t: p * jnp.sin(t * 1e11))
+        else:
+            source[field] = p
+        sim.add_tfsf_source(margin=4, closed_box=True, **source)
+        sim.add_probe((.016,) * 3, "ez")
+        return jnp.sum(sim.forward(n_steps=40, skip_preflight=True).time_series ** 2)
 
-    with pytest.raises(ValueError) as exc:
-        jax.grad(objective)(jnp.float32(P0))
-    message = ("TFSF CustomWaveform is a fixed input: it cannot depend on a traced "
-               "parameter (differentiate the materials, not the source waveform)")
-    record_property("refusal", str(exc.value))
-    assert str(exc.value) == message
+    p = jnp.float32(theta)
+    value, gradient = jax.value_and_grad(objective)(p)
+    record_property("waveform_value_gradient", json.dumps([float(value), float(gradient)]))
+    assert np.isfinite([value, gradient]).all()
+    assert value != 0 and gradient != 0
+    assert objective(p + jnp.float32(delta)) != value
+    assert np.isfinite(jax.jit(objective)(p))
+    assert np.isfinite(jax.vmap(objective)(jnp.array([theta, theta + delta], jnp.float32))).all()
 
 
 @pytest.mark.parametrize("observable", ["slab-custom"], indirect=True, scope="module")

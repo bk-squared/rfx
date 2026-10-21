@@ -72,6 +72,8 @@ with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
 
 from __future__ import annotations
 
+from rfx.model import value_roles as _values
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -237,10 +239,9 @@ def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
     # Count with explicit int() casts, NOT bool ``+``.  For plain-float specs
     # ``(spec.R > 0)`` is a Python bool and ``bool + bool`` already sums as an
     # integer, so this is byte-identical on the concrete path.  The int() cast
-    # also makes the intent unambiguous for the traced lane, which always
-    # consults the STATIC (plain-float) spec for topology so ``_series_needs_ade``
-    # never sees a JAX bool array (whose ``+`` has OR semantics and miscounts).
-    n_components = int(spec.R > 0) + int(spec.L > 0) + int(spec.C > 0)
+    # also keeps the count integral when the shared classification treats a
+    # traced declaration as present; JAX bool ``+`` has OR semantics.
+    n_components = int(_values.has_element(spec.R)) + int(_values.has_element(spec.L)) + int(_values.has_element(spec.C))
     return n_components >= 2
 
 
@@ -373,16 +374,16 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
     # at its own cell (see rfx.core.yee.MaterialArrays).
     from rfx.sources.sources import (
         stamp_lumped_sigma as _stamp_sigma, stamp_lumped_eps as _stamp_eps)
-    traced = _rlc_inputs_traced(materials, r_val, c_val)
+    traced = _rlc_inputs_traced(materials, spec.R, spec.C, r_val, c_val)
     R = _resolve_value(spec.R, r_val, traced=traced)
     C = _resolve_value(spec.C, c_val, traced=traced)
-    if spec.R > 0:
+    if _values.has_element(spec.R):
         materials = _stamp_sigma(
             materials, (i, j, k),
             _port_sigma(grid, (i, j, k), spec.component, R),
             spec.component)
 
-    if spec.C > 0:
+    if _values.has_element(spec.C):
         d_par = _d_par(grid, (i, j, k), spec.component)
         dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
         materials = _stamp_eps(
@@ -414,11 +415,11 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     dual_area = _b * _c
     dt = grid.dt
 
-    has_inductor = spec.L > 0
-    has_capacitor = spec.C > 0
+    has_inductor = _values.has_element(spec.L)
+    has_capacitor = _values.has_element(spec.C)
     is_series = spec.topology == "series" and _series_needs_ade(spec)
 
-    traced = _rlc_inputs_traced(materials, r_val, l_val, c_val)
+    traced = _rlc_inputs_traced(materials, spec.R, spec.L, spec.C, r_val, l_val, c_val)
     R = _resolve_value(spec.R, r_val, traced=traced)
     L = _resolve_value(spec.L, l_val, traced=traced)
     C = _resolve_value(spec.C, c_val, traced=traced)
@@ -465,8 +466,8 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
 
 
 def _describe_spec(n, spec: LumpedRLCSpec) -> str:
-    vals = ", ".join(f"{name}={float(v):g}" for name, v in
-                     (("R", spec.R), ("L", spec.L), ("C", spec.C)) if float(v) > 0)
+    vals = ", ".join(f"{name}={str(v) if is_tracer(v) else format(float(v), 'g')}" for name, v in
+                     (("R", spec.R), ("L", spec.L), ("C", spec.C)) if _values.has_element(v))
     pos = ", ".join(f"{float(p):g}" for p in spec.position)
     return (f"add_lumped_rlc #{n} ({vals}, topology={spec.topology!r}, "
             f"component={spec.component!r}, position=({pos}))")
