@@ -399,7 +399,7 @@ def _memory(mode, mutation="none", legacy=False):
 
     stage = nu.stage_forward_dispersion_x_slab
 
-    def mutate_stage(mat, dt, spec, sg, mesh, kind):
+    def mutate_stage(mat, dt, spec, sg, mesh, kind, **kw):
         if mutation == "whole_init" and kind == "debye":
             # Reintroduce the old whole-domain initialization, process-locally.
             materials, db, _, _ = sim._assemble_materials_nu(grid)
@@ -411,7 +411,7 @@ def _memory(mode, mutation="none", legacy=False):
                                            NamedSharding(mesh, P())))
         if mutation == "whole_state" and kind == "debye":
             init_state((sg.nx_padded, *grid.shape[1:]))
-        return stage(mat, dt, spec, sg, mesh, kind)
+        return stage(mat, dt, spec, sg, mesh, kind, **kw)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(jax.lax, "scan", traced_scan)
