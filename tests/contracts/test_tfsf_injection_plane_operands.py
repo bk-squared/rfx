@@ -256,7 +256,9 @@ def test_material_leaf_classification_is_complete():
     nonspatial = {'periodic', 'grid_key', 'source_upml', 'inv_eps_smooth', 'guard_count', 'poles', 'dt'}
 
     def visit(cls, prefix):
-        names = cls._fields if hasattr(cls, '_fields') else [f.name for f in fields(cls)]
+        # Static dataclass fields are pytree metadata, never an operand array.
+        names = cls._fields if hasattr(cls, '_fields') else [
+            f.name for f in fields(cls) if not f.metadata.get('static')]
         for name in names:
             if name in nonspatial or name == 'cells_view':
                 continue
