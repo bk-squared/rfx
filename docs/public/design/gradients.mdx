@@ -94,7 +94,7 @@ smallest workflow without optimization or plotting:
 JAX_PLATFORMS=cpu python examples/inverse_design/multilayer_ar_coating.py --gradient-witness-only
 ```
 
-A passing record-length witness compares gradients at two run lengths; it
+The check from a longer run compares gradients at two run lengths; passing it
 does not establish mesh convergence or agreement with an external solver.
 
 Before you optimize a new setup, compare the autodiff gradient with a central
