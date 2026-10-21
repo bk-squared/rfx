@@ -52,8 +52,8 @@ conductor that runs into the absorber unterminated.
 | Configuration | What to know |
 |---|---|
 | Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/model/domain-mesh/). A plane wave along a graded axis leaks into the scattered-field region (preflight warns); normal incidence along x needs a uniform x axis. `add_refinement` is refused on a graded mesh. |
-| Local refinement, `add_refinement` | Takes effect only through `run()` on a uniform mesh. `forward()`, `optimize()`, `topology_optimize()` and the S-parameter calculators refuse a refined model. |
-| Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Lumped RLC elements, MSL ports, refinements, Kerr materials and DFT planes are refused. |
+| Local refinement, `add_refinement` | Refused by default; with `validation="research"` it takes effect only through `run()` on a uniform mesh, with a warning. `forward()`, `optimize()`, `topology_optimize()` and the S-parameter calculators refuse a refined model. |
+| Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Lumped RLC elements, MSL ports, refinements and Kerr materials are refused. |
 | Differentiable design | The objective is a proxy. Check the final design with a converged forward run of the RF quantity you report. |
 
 When a run argument is not implemented on the path your model takes (for
@@ -68,6 +68,6 @@ message names both.
   [Cross-Validation and Accuracy](/rfx/guide/validation/).
 - **Examples and tests cover their own setup.** A committed test pins
   behaviour at its own mesh, band and configuration.
-- **Coaxial results computed before the lanes absorbed on all three axes**
+- **Coaxial results computed before the absorber covered all three axes**
   (`cpml_axes="z"`, now refused) came from a line in a closed metal can and do
   not reproduce.

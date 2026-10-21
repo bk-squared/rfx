@@ -47,7 +47,7 @@ sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
 | Method | Signature | Notes |
 |---|---|---|
 | `add_source` | `add_source(position, component="ez", *, waveform=None, amplitude_kind=None)` | soft point source in one cell; no load, so it suits resonance work (`find_resonances`) |
-| `add_polarized_source` | `add_polarized_source(position, *, polarization="ez", waveform=None, amplitude_kind=None)` | linear polarization: `"ex"`, `"ey"`, `"ez"`, `"slant45"` or a real `(Ex, Ey)` tuple |
+| `add_polarized_source` | `add_polarized_source(position, *, polarization="ez", waveform=None, amplitude_kind=None)` | linear polarization: `"ex"`, `"ey"`, `"ez"`, `"slant45"` or a real `(Ex, Ey)` tuple. For `"slant45"` or a tuple, each component gets a `GaussianPulse` with the waveform's `f0` and `bandwidth`, so pass a `GaussianPulse` |
 | `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform=None, method="bloch")` | plane wave travelling along x, for scattering; 3-D or 2-D (`mode="2d_tmz"`/`"2d_tez"`), with CPML |
 | `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
@@ -117,8 +117,8 @@ print(result.s_params.shape)                                # (n_ports, n_ports,
 ```
 
 `result.s_params[i, j, k]` is the response at port `i` with port `j` driven, at
-frequency `result.freqs[k]`. `result.s11()` and `result.s_db(2, 1)` are
-shortcuts. The mesh here is coarse for speed. For a real one-port S11, use
+frequency `result.freqs[k]`. `result.s11()` and, on a model with two or more
+ports, `result.s_db(2, 1)` are shortcuts. The mesh here is coarse for speed. For a real one-port S11, use
 about 60 cells per wavelength at the highest frequency of interest.
 
 ### Lumped R, L, C elements
@@ -138,8 +138,8 @@ update, but it is not a reflection-referenced port: it fixes no reference
 impedance, so it gives no Z0-referenced S11. Read on its own, a one-cell
 element reports only its near-field self-interaction. To measure what a load
 does to a line, drive with `add_port(..., impedance=Z0)` and place the
-`add_lumped_rlc` element **a cell or more away from the port cell**, as in the
-example above. An element on the port cell sits in parallel with the source,
+`add_lumped_rlc` element **a cell or more away from the port cell**, as the
+example above does (it has no line, so it shows only the placement). An element on the port cell sits in parallel with the source,
 and S11 does not see it.
 
 For gradients with respect to R, L or C, pass
@@ -164,8 +164,8 @@ a short probe array downstream of the feed.
   centre.
 - `direction`: `"+x"`, `"-x"`, `"+y"` or `"-y"`. The substrate normal is always
   z.
-- `mode`: `"laplace"` (default, quasi-TEM). `"eigenmode"` is x-only and
-  outside the documented scope.
+- `mode`: `"laplace"` (default, quasi-TEM) or `"uniform"`. `"eigenmode"` is
+  x-only and outside the documented scope.
 - `n_probe_offset`, `n_probe_spacing`: in cells. When left at `None` on a
   graded runway or auto mesh, rfx recounts them in the cells under the port at
   run time.
@@ -173,21 +173,31 @@ a short probe array downstream of the feed.
 ```python
 from rfx import Box
 
+from rfx.mesh_edges import edge_aware_profiles
+
 h, w = 0.3e-3, 0.6e-3                     # 300 um substrate, 600 um trace
-msl = Simulation(freq_max=10e9, domain=(0.020, 0.008, 0.003), dx=100e-6,
-                 boundary="cpml", cpml_layers=8)
+domain = (0.020, 0.008, 0.003)
+strip = Box((0.003, 0.004 - w / 2, h), (0.017, 0.004 + w / 2, h))  # port to port
+msl = Simulation(freq_max=10e9, domain=domain, dx=100e-6,
+                 boundary="cpml", cpml_layers=8,
+                 **edge_aware_profiles(domain, 100e-6, sheets=[strip],
+                                       faces={"x": [0.003, 0.017], "y": [0.004]}))
 msl.add_material("ro4350b", eps_r=3.66)
 msl.add(Box((0.0, 0.0, 0.0), (0.020, 0.008, h)), material="ro4350b")
 msl.add_thin_conductor(Box((0.0, 0.0, 0.0), (0.020, 0.008, 0.0)))            # ground
-msl.add_thin_conductor(Box((0.0, 0.004 - w / 2, h), (0.020, 0.004 + w / 2, h)))
+msl.add_thin_conductor(strip)
 msl.add_msl_port((0.003, 0.004, 0.0), width=w, height=h, direction="+x")
 msl.add_msl_port((0.017, 0.004, 0.0), width=w, height=h, direction="-x",
                  excite=False)
 print(msl.s_matrix_lane())                # compute_msl_s_matrix
 ```
 
-A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse
-for speed: preflight warns below 4. For microstrip, the substrate thickness
+The strip runs from port to port: a strip that continued behind a port would be
+an open stub, and the calculator refuses one that shorts the port near the
+band. The edge-aware in-plane mesh keeps the 600 µm strip at its drawn width
+(on a uniform 100 µm mesh it solves 670 µm wide and is refused). A cell of
+100 µm puts 3 cells across the 300 µm substrate, which is coarse for speed:
+preflight warns below 4. For microstrip, the substrate thickness
 sets the cell size, not the wavelength.
 
 ### Waveguide ports
@@ -244,20 +254,21 @@ the waveform. See the complete example below.
 | lumped/wire, differentiable | `forward(..., port_s11_freqs=freqs)` | `ForwardResult.s_params` (S11 vectors) |
 | microstrip | `compute_msl_s_matrix(*, n_steps=None, num_periods=40.0, freqs=None, n_freqs=100, enforce_passivity=False, eps_override=None, ...)` | `MSLSMatrixResult` |
 | waveguide | `compute_waveguide_s_matrix(*, n_steps=None, num_periods=20.0, normalize=False, eps_override=None, sigma_override=None, strict_passivity=False, ...)` | `WaveguideSMatrixResult` |
-| coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes="xyz", probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
-| coax, two-port | `compute_coaxial_two_port(*, n_steps=6000, freqs=None, n_freqs=11, cpml_axes="xyz", probe_count=12, feed_impedance=None, eps_scale=None, ...)` | `CoaxialTwoPortResult` |
+| coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes=None, probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
+| coax, two-port | `compute_coaxial_two_port(*, n_steps=6000, freqs=None, n_freqs=11, cpml_axes=None, probe_count=12, feed_impedance=None, eps_scale=None, ...)` | `CoaxialTwoPortResult` |
 
 Result fields are listed on [Results & Observables](/rfx/api/results/#s-parameter-results).
 `run(compute_s_params=True)` handles lumped and wire ports only. It does not
 dispatch to the other families.
 
-**Let rfx choose.** `sim.compute_s_matrix(lane=None, **kwargs)` reads the
+**Let rfx choose.** `sim.compute_s_matrix(method=None, **kwargs)` reads the
 registered ports, calls the matching calculator and forwards your keyword
 arguments unchanged. `sim.s_matrix_lane()` returns that choice as a string and
 runs nothing. Two cases need you to decide:
 
 - One coaxial port is ambiguous. Pass
-  `lane="compute_coaxial_line_reflection"` or `lane="compute_coaxial_two_port"`.
+  `method="compute_coaxial_line_reflection"` or `method="compute_coaxial_two_port"`
+  (`lane=` still works with a deprecation warning).
 - Lumped/wire-only models raise, naming `run(compute_s_params=True)`, because
   that call needs your `n_steps`.
 
@@ -274,9 +285,12 @@ preflight_sparameters(*, calculator="run", strict=False, normalize=None,
                       include_general=False) -> PreflightReport
 ```
 
-`calculator` is `"run"`, `"forward"`, `"msl"` or `"waveguide"`. It checks that
-the registered ports suit that calculator, without running FDTD. Read
-`report.ok`. `strict=True` raises on errors only.
+`calculator` is `"run"`, `"forward"`, `"msl"` or `"waveguide"`. It checks the
+registered ports against that calculator's port rules, without running FDTD.
+Read `report.ok`. `strict=True` raises on errors only. It does not run every
+check the calculator runs when it starts: an open stub behind a microstrip
+port, for example, is refused by `compute_msl_s_matrix()` while this report
+reads `ok`. Pass `include_general=True` to add the general preflight.
 
 ```python
 print(msl.preflight_sparameters(calculator="msl").ok)
@@ -329,14 +343,14 @@ print(refl.status, f"{refl.annulus_cells:.2f} annulus cells")
 print(np.abs(refl.s11))
 ```
 
-- `termination`: `"short"` or `"matched"`. With `"matched"`,
+- `termination`: `"short"`, `"open"` or `"matched"`. With `"matched"`,
   `dut_impedance=R` makes the load a resistor R. Don't pass `dut_impedance`
   otherwise.
 - `feed_impedance`: the feed resistor. `None` uses the line's analytic TEM
   impedance.
 - `probe_count` must be at least 3, and every probe plane must fit between the
   load and the source; otherwise the call raises before running. The probe
-  ladder is placed in cells, so refining the mesh shortens the span it covers.
+  planes are placed in cells, so refining the mesh shortens the span it covers.
   Give it enough physical length.
 - `dx = 0.35 mm` puts about 4 cells across the 1.42 mm annulus. Keep at least
   4. `status` reads `"under_resolved"` below about 3.5 and `"contaminated"`
@@ -351,7 +365,7 @@ print(np.abs(refl.s11))
   resistive loads is within 0.54 dB of the closed form, and exact on a short
   or open. At 30 cells per wavelength, magnitudes are within 1.1 dB and the
   line's phase-crossing frequencies sit 1.7–2.9 % from the closed form (the
-  lumped/wire chain battery, measured through `forward(port_s11_freqs=...)`).
+  lumped and wire port tests, measured through `forward(port_s11_freqs=...)`).
   Coax: at least 4 cells across the annulus. Microstrip: at least 4 cells
   through the substrate (preflight warns below that).
 - **Port reference plane.** A one-cell lumped or wire port reads V at its node
@@ -361,8 +375,9 @@ print(np.abs(refl.s11))
   line much less well than a plane wave. Let the ports terminate the line.
 - **Coax results from before the three-axis absorber** (`cpml_axes="z"`, now
   refused) came from a line in a closed metal can and do not reproduce.
-- **Graded meshes.** Lumped-port S-parameters and coaxial ports raise on a
-  graded mesh. Microstrip and waveguide calculators run there but are
+- **Graded meshes.** Coaxial ports raise on a graded mesh. Lumped-port
+  S-parameters come from `run(compute_s_params=True)` or
+  `forward(port_s11_freqs=...)`. Microstrip and waveguide calculators run there but are
   experimental. See [Support Boundaries](/rfx/support/).
 - **Microstrip bins.** Exclude every frequency bin where any entry of
   `MSLSMatrixResult.reliable` is `False`: S is solved jointly across drives, so

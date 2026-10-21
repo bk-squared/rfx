@@ -18,7 +18,7 @@ rfx tests its solver in three independent ways.
 | Kind of check | What it compares | Where it lives | When it runs |
 |---|---|---|---|
 | **Analytic** | rfx against a closed-form answer: cavity modes, slab reflection and transmission (lossless, lossy, Debye, Lorentz, Drude, oblique TE), a PEC sphere against the Mie series, empty, shorted and slab-loaded rectangular waveguides, a WR-90 inductive iris against mode matching, lumped R, L and C loads on a line, dipole far fields | `tests/oracle/` | most on every pull request |
-| **Cross-solver** | rfx against another solver (mostly openEMS; also Palace, Meep and a boundary-element solver) on structures with no closed form: a microstrip stub notch filter, a stepped-impedance low-pass filter, a patch antenna's resonance and far field, the RCS of a PEC cube, broadband waveguide sections | `tests/crossval/` | on demand and on GPU, against frozen reference records |
+| **Cross-solver** | rfx against another solver on structures with no closed form: a microstrip open-stub notch filter (openEMS and Palace) and the resonance and input resistance of an RT/duroid 5880 patch (openEMS) | `tests/crossval/` | on demand and on GPU, against frozen reference records |
 | **Convergence** | rfx against itself as the mesh is refined. A result that moves when you refine the mesh is not converged yet | the same tests, and your own studies | as above |
 
 The cross-solver cases compare against reference records that are frozen in
@@ -32,7 +32,7 @@ Two limits apply to all of these checks:
   family and observable of that case. It does not cover your structure.
 - **Some features are checked little or not at all.** The support tables in
   [Support Boundaries](/rfx/support/) say which are
-  *recommended*, which are *limited* to stated conditions, and which are
+  *supported*, which are *limited* to stated conditions, and which are
   outside the documented scope. The maintainer
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
   has the detail for each feature.
@@ -133,7 +133,7 @@ under the current settling check, and no agreement figure is given.
 | Which cases compare rfx with another solver, and what do they show? | [Benchmarks](/rfx/guide/benchmarks/) |
 | Is this feature or combination supported? | [Support Boundaries](/rfx/support/) |
 | Where do I start, and which calculators have narrower limits? | [Recommended Configuration](/rfx/validation/recommended-configuration/) |
-| How do I run a comparison script, and what do its exit codes mean? | [Cross-Solver Validation](/rfx/validation/cross-solver/) |
+| How do I run a comparison, and what does it judge? | [Cross-Solver Validation](/rfx/validation/cross-solver/) |
 | What is currently known to be wrong? | [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) on GitHub |
 
 ## Limits

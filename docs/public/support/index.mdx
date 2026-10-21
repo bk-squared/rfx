@@ -103,7 +103,7 @@ accurate.
 | Multi-band graded profile (`rfx.make_band_profile`), adjacent cell ratio ≤ 1.4 on z, ≤ 1.3 on x and y | **limited** | Solver-level checks only (energy, transition reflection, order, gradients). Keep grading out of the absorber. Not a port, flux or far-field validation. |
 | Far field (NTFF) + graded z | **limited** | One short-dipole directivity case on one mesh (`tests/unit/farfield/test_farfield_nonuniform.py`). Other cases need their own validation. |
 | Lumped R/L/C + graded mesh | **limited** | The elements take part in the update. Component-value gradients are not documented. |
-| Lumped and wire-port S11 + graded mesh | **limited** | `forward(port_s11_freqs=...)`, on one device or several; `run()` forms lumped S when every port is lumped and exactly one is driven. |
+| Lumped and wire-port S11 + graded mesh | **limited** | `forward(port_s11_freqs=...)`, on one device or several; `run(compute_s_params=True)` forms lumped S, and by default when every port is lumped and exactly one is driven. |
 | DFT plane or flux monitor + graded mesh | **experimental** | Runs; no general accuracy statement. |
 | Plane wave + graded mesh | **experimental** | Normal incidence along ±x with x uniform, through `run()` and `forward()`. Oblique incidence, incidence along ±z, a closed box and a `CustomWaveform` are refused. |
 | Waveguide S-matrix + graded mesh | **experimental** | Single mode, `normalize=True` or `"flux"`. With `boundary` omitted a full-aperture guide is refused; declare the walls. A reference-plane shift across cells of more than one size is refused. |

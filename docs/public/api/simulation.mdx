@@ -18,7 +18,8 @@ Simulation(freq_max, domain, *, boundary="cpml", cpml_layers=16,
            cpml_kappa_max=1.0, dx=None, mode="3d",
            dz_profile=None, dx_profile=None, dy_profile=None, dt=None,
            dt_min_cell=None, precision="float32", solver="yee",
-           adi_cfl_factor=2.0, stencil_order=2, interface_eps="sampled")
+           adi_cfl_factor=2.0, stencil_order=2, nominal_profiles=None,
+           interface_eps="sampled", snap="strict")
 ```
 
 ```python
@@ -64,7 +65,7 @@ Every `add_*` method returns the simulation, so calls can be chained.
 | `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources & Ports](/rfx/api/sources-ports/) |
 | `add_lumped_rlc` | an R/L/C element in one cell | [Sources & Ports](/rfx/api/sources-ports/) |
 | `add_probe`, `add_vector_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results/) |
-| `add_refinement(z_range, *, ratio=4, ...)` | a finer z slab (subgridding) | experimental; only `run()` on a uniform mesh accepts it |
+| `add_refinement(z_range, *, ratio=4, ...)` | a finer z slab (subgridding) | refused by default; with `validation="research"`, only `run()` on a uniform mesh accepts it |
 
 ```python
 sim.add_material("slab", eps_r=3.0, sigma=0.01)
@@ -96,7 +97,8 @@ sim.fidelity_report()
 `PreflightReport` is a list of coded issues. Read `.ok`, `.errors`,
 `.warnings`, `.infos` or `.by_code(code)`. Don't test it with `if report:`: that
 raises `TypeError`, because an advisory-only report is non-empty but fine.
-`strict=True` raises on errors instead of returning them.
+`strict=True` raises on any finding, warnings included; for an errors-only
+check call `report.raise_for_failure()` on a normal report.
 
 ## `run()`
 
@@ -111,12 +113,12 @@ run(*, n_steps=None, num_periods=20.0, until_decay=None,
     snapshot=None, subpixel_smoothing=False, conformal_pec=None,
     conformal_min_weight=0.1, devices=None, exchange_interval=1,
     skip_preflight=False, report_every=None, report_label="",
-    ringdown=None) -> Result
+    ringdown=None, until_identified=False) -> Result
 ```
 
 ```python
 result = sim.run(n_steps=300)
-print(result.time_series.shape, f"settling {result.settling_db:.1f} dB")
+print(result.time_series.shape, result.settling_witness["status"])
 ```
 
 **Run length.** Give exactly one of:
@@ -143,14 +145,16 @@ studies.
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
 | `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. |
-| `conformal_pec=True` | Dey–Mittra conformal PEC for curved metal. |
+| `conformal_pec=True` | Weighted updates at cut cells of curved metal. Not for accuracy until the Dey–Mittra update lands: it makes a metal body electrically larger, and every run with it warns. Use the staircase. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
 | `devices=[...]` | Run across several devices (x-slab decomposition). `exchange_interval` must stay 1. |
 | `skip_preflight=True` | Skip the automatic preflight. Use only after you have read it once. |
 
 A run argument that the selected solver path does not implement **raises
 before the first step**, for example snapshots on a graded mesh or `until_decay`
-with the ADI solver. Nothing is silently dropped.
+with the ADI solver. The one exception is `report_every`, which only prints
+progress: the graded, ADI, subgridded and multi-device paths ignore it with a
+warning.
 
 **Warnings after the run.** `run()` warns when a probe recorded no field,
 when a Gaussian-pulse probe record had not rung down (end of record above
@@ -168,8 +172,10 @@ in the last part of the record and adds the missing tail of each spectrum in
 closed form. The completed matrix is `result.ringdown.s_params`, on the same
 frequencies as `result.s_params`, and `result.ringdown.report` holds the fitted
 poles and the checks. `report.ok` is decided by comparing the completions from
-`[T/4, T]` and `[T/2, T]`. The two-window difference `W2` is reported, not
-judged. Neither comparison is an error bound. The source must be off in
+`[T/4, T]` and `[T/2, T]`. When a source is still on in `[T/4, T]`, that
+comparison cannot be formed and a shorter second window is compared instead
+(`W2` in the report), which can read the error low. Neither comparison is an
+error bound. The source must be off in
 the fit window. It covers wire ports (one port on a uniform mesh, or a graded
 mesh) with a fixed `n_steps`. Other ports, TFSF, `until_decay` and `devices=`
 are refused with the reason. `s_params` is `None` when the report says no
@@ -187,12 +193,14 @@ and `dt`.
 forward(*, eps_override=None, sigma_override=None, mu_r_override=None,
         design_box=None, design_eps_override=None,
         design_sigma_override=None, design_occupancy_override=None,
-        pec_mask_override=None, pec_occupancy_override=None, n_steps=None,
-        num_periods=20.0, checkpoint=True, checkpoint_segments=None,
+        design_box_holds_ports=False, pec_mask_override=None,
+        pec_occupancy_override=None, subpixel_smoothing=False,
+        pinned_sheet_layout=None, n_steps=None, num_periods=20.0,
+        checkpoint=None, gradient="autodiff", checkpoint_segments=None,
         emit_time_series=True, checkpoint_every=None, n_warmup=0,
         skip_preflight=False, distributed=False, devices=None,
         exchange_interval=1, port_s11_freqs=None,
-        rlc_values_override=None) -> ForwardResult
+        rlc_values_override=None, ringdown=None) -> ForwardResult
 ```
 
 ```python
@@ -216,7 +224,7 @@ print(jax.grad(loss)(3.0))
 | `eps_override`, `sigma_override`, `mu_r_override` | whole-grid material arrays, shape `grid.shape`; they replace the registered materials everywhere |
 | `design_box=` with `design_eps_override=` / `design_sigma_override=` / `design_occupancy_override=` | a box-sized design region; far less reverse-mode memory than a whole-grid override (pass `checkpoint=False` with it) |
 | `pec_occupancy_override` | relaxed metal occupancy in [0, 1] |
-| `port_s11_freqs=` | lumped/wire S11 vectors, uniform single-device only |
+| `port_s11_freqs=` | lumped/wire S11 vectors, on either mesh; over several devices see [Run on several devices](/rfx/run/multi-device/) |
 | `rlc_values_override={index: {"R": ..., "L": ..., "C": ...}}` | values of registered `add_lumped_rlc` elements |
 
 **Per-cell versus per-edge conductivity in a design box.** A single
@@ -239,7 +247,7 @@ does not support raises instead of returning a zero gradient. A model with
 Each port family has its own calculator method on `Simulation`:
 `compute_msl_s_matrix()`, `compute_waveguide_s_matrix()`,
 `compute_coaxial_line_reflection()` and `compute_coaxial_two_port()`. Lumped
-and wire ports use `run(compute_s_params=True)`. `compute_s_matrix(lane=None,
+and wire ports use `run(compute_s_params=True)`. `compute_s_matrix(method=None,
 **kwargs)` picks the right method from the registered ports and forwards your
 arguments. `s_matrix_lane()` tells you which one it would pick without running
 anything. Details: [Sources & Ports](/rfx/api/sources-ports/#s-parameter-calculators).
@@ -255,7 +263,10 @@ auto_sim = Simulation.auto(freq_range=(1.5e9, 3.5e9), accuracy="draft")
 ```
 
 This derives `dx`, the domain and the CPML thickness from the frequency range
-alone. `accuracy` is `"draft"`, `"standard"` or `"high"`. Any keyword argument
+alone. Without geometry, `dx` is about a tenth of the shortest wavelength
+(rounded down; 7.5 mm for 1.5–3.5 GHz) and the margin a tenth of that
+wavelength, whatever the `accuracy`. `accuracy` (`"draft"`, `"standard"` or
+`"high"`) then sets only the CPML depth (at least 6, 8 or 12 layers). Any keyword argument
 overrides the derived value. It warns on purpose: the domain was sized without
 your geometry, so check it after you add shapes. To derive a mesh from your
 geometry instead, use `auto_configure` or `plan_mesh` on the
@@ -272,11 +283,13 @@ results); `conductor_mask`.
 
 ## Limits
 
-- A graded mesh accepts fewer features than a uniform one. Snapshots, lumped
-  port S-parameters, coaxial ports, UPML and Floquet ports raise there. See
+- A graded mesh accepts fewer features than a uniform one. Snapshots, coaxial
+  ports, UPML and Floquet ports raise there. See
   [Support Boundaries](/rfx/support/).
-- `add_refinement` works only through `run()` on a uniform mesh. `forward()`,
-  `optimize()` and `topology_optimize()` refuse a refined model.
+- `add_refinement` is refused by default (`validation="production"`); with
+  `validation="research"` only `run()` on a uniform mesh accepts it, with a
+  warning. `forward()`, `optimize()` and `topology_optimize()` refuse a refined
+  model.
 - `precision="mixed"` raises the CPML reflection floor. Don't use it for
   S-parameters or low-reflection work.
 - A completed run is not a converged run. Check `result.settling_db` and do a

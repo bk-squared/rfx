@@ -31,7 +31,7 @@ sim.add_source((0.018, 0.025, 0.020), "ez",
                amplitude_kind="current")
 sim.add_probe((0.042, 0.025, 0.020), "ez")
 
-grid = sim.run(n_steps=1).grid
+grid = sim.freeze_mesh()
 eps0 = jnp.full(grid.shape, 4.0, dtype=jnp.float32)
 slab_cell = grid.position_to_index((0.030, 0.025, 0.020))
 
@@ -142,12 +142,12 @@ How long the run must be, in decay times of the slowest mode, is on
 | Float32 finite differences | FD disagrees with AD by a few percent | use a larger `h` (see above) |
 
 **Precision.** The default is `precision="float32"` (complex64 DFT buffers).
-The uniform single-device lane also accepts `precision="float64"` once JAX x64
+A uniform mesh on one device also accepts `precision="float64"` once JAX x64
 is enabled (enabling x64 alone does not switch the fields to float64), and
 `precision="mixed"` (float16 field storage, float32 accumulators). Mixed
 precision with CPML has a higher absorber residual, so do not use it for
-low-reflection or S-parameter observables near that floor. The non-uniform,
-distributed and subgridded lanes refuse both non-default modes.
+low-reflection or S-parameter observables near that floor. A graded mesh,
+several devices and subgridding refuse both non-default modes.
 
 ## What is not a design variable
 
@@ -156,10 +156,11 @@ distributed and subgridded lanes refuse both non-default modes.
 - **Integer and topology choices.** Grid size, CPML layer count, number of
   steps, inserting or removing a shape. Fix them per run, or search over them
   in an outer loop of separate differentiable problems.
-- **Subpixel smoothing.** It is a `run()` option and is not part of the
-  differentiable `forward()` path, so gradients see the staircased
-  permittivity. Don't use an interface position as a design variable and
-  expect subpixel-accurate sensitivity.
+- **Subpixel smoothing.** `forward(subpixel_smoothing=True)` smooths the
+  shapes you declared, but it is refused together with `eps_override`, the
+  occupancy overrides and a design box. Gradients with respect to those design
+  variables therefore see the staircased permittivity. Don't use an interface
+  position as a design variable and expect subpixel-accurate sensitivity.
 - **Unsupported combinations.** A finite gradient from a source, port or mesh
   combination outside the support matrix shows nothing. rfx
   raises on the combinations it knows are unsupported.

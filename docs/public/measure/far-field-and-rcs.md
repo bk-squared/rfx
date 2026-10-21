@@ -140,8 +140,8 @@ incidence), so it does not depend on the observation grid you pass.
 ### Which RCS numbers to trust
 
 **Monostatic (backscatter).** `monostatic_rcs` is the quantity checked
-against the exact Mie series for a PEC sphere at ka ≈ 1 (λ/40 cells). On that
-committed case it reads 0.73 dB above Mie. It is always taken from the plain
+against the exact Mie series for a PEC sphere at ka ≈ 1 (λ/40 cells). In that
+test it reads 0.73 dB above Mie. It is always taken from the plain
 run, whatever you set for `subtract_incident_reference`.
 
 **Bistatic.** With the default `subtract_incident_reference=False`, the

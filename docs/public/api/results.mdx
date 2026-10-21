@@ -219,8 +219,10 @@ the [generated reference](/rfx/api/generated/).
 ## Limits
 
 - A spectrum from a record that stopped too early is wrong. Check
-  `settling_db` before you trust flux, DFT planes, far fields, S-parameters or
-  Q.
+  `settling_db` before you trust flux, DFT planes, far fields or S-parameters.
+  A run with probes only has no frequency for the check to judge (status
+  `absent`); judge a probe signal's decay yourself, as
+  [Resonances](/rfx/measure/resonances/) does.
 - Probes, DFT planes and flux monitors have no reference impedance and cannot
   give S-parameters. Use a port.
 - `find_resonances()` on a lossless structure returns an unbounded Q. Add a

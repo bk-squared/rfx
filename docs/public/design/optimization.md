@@ -73,7 +73,7 @@ nothing is left.
 | Option | What it does |
 |---|---|
 | `n_steps` / `num_periods` | record length per iteration (default 20 periods at `freq_max`). Fewer steps use less memory, but the run must still contain the response you optimize. |
-| `jit=True` | compile the loss and gradient once and reuse them in every iteration. Much faster on real models. See the caveats below. |
+| `jit` | default `None`: compile the loss and gradient once and reuse them in every iteration, on one device (`distributed=True` stays uncompiled). Much faster on real models. See the caveats below. |
 | `checkpoint_segments` | segmented checkpointing on a uniform mesh, for about `sqrt(n_steps)` memory at about 2x compute. Must divide `n_steps`. See [Memory Reduction](/rfx/run/memory-and-speed/). |
 | `checkpoint_every` | the non-uniform-mesh counterpart (a chunk size in steps). |
 | `n_starts=N`, `seed` | `N` restarts from random latents; returns the best one. Helps only on a multimodal loss. |
@@ -81,11 +81,12 @@ nothing is left.
 | `step_clamp=value` | cap the L2 norm of each Adam step, to stop overshoot past a sharp minimum. |
 | `port_s11_freqs` | accumulate port S11 inside the loop, for the exact S11 objective below. |
 
-With `jit=True` the objective is traced, not run. It must not read a traced
+When compiled, the objective is traced, not run. It must not read a traced
 value on the host, for example `float(x)`, `np.asarray(x)` or a Python `if` on
-an array. Two models still do not trace and stop with a
-`TracerArrayConversionError` or `ConcretizationTypeError`; use the default
-`jit=False` for them:
+an array. If the first compiled call fails that way, `optimize()` warns once and
+runs every later iteration uncompiled, which recompiles the whole simulation
+each time; `jit=False` chooses that path without the warning. Two models do
+not trace for this reason:
 
 - a model with a microstrip (MSL) port;
 - a model whose mesh is itself a design variable (a traced `dz_profile`) that
@@ -155,9 +156,10 @@ objectives, so iterate on a coarse mesh and check the final design with
 
 ### Objectives for a finished `run()`
 
-These read `result.s_params` from `run(compute_s_params=True)`. They are for
-scoring a design after a full run, not for the gradient loop: inside
-`optimize()` or `forward()` they raise `ValueError`.
+These read `result.s_params`: from `run(compute_s_params=True)` after a full
+run, or inside the gradient loop from `forward(port_s11_freqs=...)` (pass
+`port_s11_freqs=` to `optimize()`). Without S-parameters, when `s_params` is
+`None`, they raise `ValueError`.
 
 ```python
 from rfx import maximize_bandwidth, maximize_s21, minimize_s11, target_impedance
@@ -187,7 +189,7 @@ sim2.add_source((0.008, 0.010, 0.010), "ez",
                 amplitude_kind="current")
 sim2.add_probe((0.022, 0.010, 0.010), "ez")
 
-grid = sim2.run(n_steps=1).grid        # a one-step run gives you the grid
+grid = sim2.freeze_mesh()             # the grid, without running
 eps0 = jnp.ones(grid.shape, dtype=jnp.float32)
 
 
@@ -308,11 +310,12 @@ a bounded latent variable).
   through the calibrated workflow (port S-parameters, resonance extraction or
   far field) on a converged mesh. See [Validation](/rfx/guide/validation/).
 - **`ValueError` from `minimize_s11` / `maximize_s21` inside `optimize()`**:
-  those read post-processed S-parameters. Use a time-domain proxy or
-  `minimize_s11_at_freq_wave_decomp` in the loop.
+  the run formed no S-parameters. Pass `port_s11_freqs=` with the frequencies
+  the objective reads, or use a time-domain proxy.
 - **Mesh refinement**: `add_refinement` acts only through `run()`.
   `forward()`, `optimize()` and `topology_optimize()` refuse a refined model.
-- **`jit=True` fails with a tracer error**: an MSL port, or a traced mesh with a
-  wire port and a conductor. Use `jit=False`.
+- **A warning that the objective reads a traced value**: an MSL port, a traced
+  mesh with a wire port and a conductor, or a host read in your objective.
+  Every iteration then recompiles; remove the host read, or pass `jit=False`.
 - **Out of memory in the backward pass**: use a design box, segmented
   checkpointing or fewer steps. See [Memory Reduction](/rfx/run/memory-and-speed/).

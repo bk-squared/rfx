@@ -50,7 +50,8 @@ sim.add_source((0.010, 0.015, 0.015), "ez",
 sim.add_probe((0.030, 0.015, 0.015), "ez")
 
 result = sim.run(n_steps=300)
-print(result.time_series.shape, f"{result.settling_db:.1f} dB")
+print(result.time_series.shape)          # (300, 1)
+print(result.settling_witness["status"])  # absent: with probes only, no frequency to judge
 ```
 
 [Quick Start](/rfx/start/first-simulation/) walks through the same steps, and

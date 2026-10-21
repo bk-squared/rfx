@@ -25,9 +25,16 @@ Registers a named, isotropic material. Use the name in `add(...)`.
 import numpy as np
 from rfx import (Box, Cylinder, DebyePole, PolylineWire, Simulation, Sphere,
                  Via, drude_pole, lorentz_pole)
+from rfx.mesh_edges import edge_aware_profiles
 
-sim = Simulation(freq_max=5e9, domain=(0.04, 0.03, 0.02), dx=1e-3,
-                 boundary="cpml", cpml_layers=6)
+domain = (0.04, 0.03, 0.02)
+board = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.0056))
+ground = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.004))
+patch = Box((0.012, 0.010, 0.0056), (0.028, 0.020, 0.0056))
+# A mesh that keeps the sheets at their drawn size and the board faces on nodes.
+sim = Simulation(freq_max=5e9, domain=domain, dx=1e-3, boundary="cpml",
+                 **edge_aware_profiles(domain, 1e-3, sheets=[ground, patch],
+                                       solids=[board], axes="xyz"))
 
 sim.add_material("substrate", eps_r=4.3, sigma=0.02)
 sim.add_material("lossy_block", sigma=5.0e5)            # below the PEC threshold
@@ -77,9 +84,9 @@ in the order you add them. Where dielectrics overlap, the later one wins.
 Metal accumulates: a later shape cannot cut a hole in a conductor.
 
 ```python
-sim.add(Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.0056)), material="substrate")
+sim.add(board, material="substrate")
 sim.add(Sphere((0.020, 0.015, 0.012), radius=0.003), material="alumina")
-sim.add(Cylinder((0.010, 0.010, 0.0048), radius=0.0005, height=0.0016, axis="z"),
+sim.add(Cylinder((0.010, 0.010, 0.0048), radius=0.001, height=0.0016, axis="z"),
         material="pec")
 sim.add(PolylineWire(((0.028, 0.010, 0.008), (0.028, 0.020, 0.008)),
                      radius=0), material="pec")
@@ -102,8 +109,9 @@ you drew. Run it before a long solve.
 
 ### CAD import
 
-`MeshShape.from_file` reads a watertight STL, OBJ or PLY mesh, or STEP/STP
-with the `cad` extra installed (`pip install "rfx-fdtd[cad]"`). `scale` is
+`MeshShape.from_file` reads a watertight STL, OBJ, PLY or STEP/STP mesh. Every
+format needs the `cad` extra (`pip install "rfx-fdtd[cad]"`), which installs
+`trimesh`. `scale` is
 required: STL, OBJ and PLY have no units, so pass `1e-3` for a file drawn in
 millimetres. STEP files are converted to metres on load, so pass `1.0`. The
 mesh is rasterized on the host, so a CAD shape cannot carry a gradient.
@@ -121,9 +129,8 @@ plane, zero thickness, no cell of its own. Give the shape zero thickness along
 its normal.
 
 ```python
-sim.add_thin_conductor(Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.004)))
-sim.add_thin_conductor(Box((0.012, 0.010, 0.0056), (0.028, 0.020, 0.0056)),
-                       surface_impedance_f0=3e9)
+sim.add_thin_conductor(ground)
+sim.add_thin_conductor(patch, surface_impedance_f0=3e9)
 ```
 
 - With the default `sigma_bulk` (copper) the sheet is **lossless PEC**, and rfx
@@ -150,6 +157,7 @@ a PEC volume already gets both faces.
   layers, choose `dx` or a graded profile so the faces fall on grid planes, and
   check with `fidelity_report()`.
 - A sheet declared through `add_thin_conductor` must be one grid plane thick.
-  A PEC shape that is thinner than a cell but not zero is ambiguous; see
+  A PEC shape that is thinner than a cell but not zero is refused
+  (`pec_box_subcell`); see
   [How conductors land on the lattice](/rfx/model/conductors/#how-conductors-land-on-the-lattice).
 - `MeshShape` geometry is not differentiable.

@@ -79,11 +79,12 @@ storing the time history. `result.dft_planes[name].accumulator` is complex,
 shaped (frequencies, n1, n2), and holds Σ x(t)·e^(−j2πft)·dt over the run: a
 spectral density in field units times seconds, not a phasor amplitude.
 `region=` crops the plane to an index range. Name it with `name=`; the default
-is `{component}_{axis}_{index}`.
+is `{component}_{axis}_{index}`, where `index` counts the DFT planes declared
+before this one.
 
 ### Flux monitors
 
-`sim.add_flux_monitor(axis=, coordinate=, freqs=, size=, center=)` accumulates
+`sim.add_flux_monitor(axis=, coordinate=, freqs=, size=, center=, dft_window="rect", dft_window_alpha=0.25)` accumulates
 the tangential E and H over a plane; `flux_spectrum(monitor)` turns them into
 one real number per frequency, Σ Re(E × H*)·dA over the plane. It is positive
 along the plus direction of `axis`. A box is six planes; add the outward

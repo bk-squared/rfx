@@ -18,7 +18,7 @@ record frozen in the repository, so you do not need the other solver.
 # Fast checks: build the board, check what it realizes, read the record.
 pytest tests/crossval/rt5880_patch
 
-# The full comparison. The long ladders are marked gpu and slow, which the
+# The full comparison. The long mesh series are marked gpu and slow, which the
 # default test selection skips; a GPU is recommended.
 pytest tests/crossval/rt5880_patch -m gpu
 python -m pytest -o addopts="" tests/crossval/msl_notch_filter -q
