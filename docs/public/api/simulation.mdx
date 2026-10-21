@@ -131,8 +131,8 @@ print(result.time_series.shape, f"settling {result.settling_db:.1f} dB")
 watches the total energy in the interior, so it is a sound stop for spectra,
 flux and S-parameters. In a closed PEC box the energy does not decay. There
 the uniform solver falls back to a single field sample, which is reliable only
-for lossy or radiating ring-down, and a graded mesh runs the fixed `n_steps`
-with a warning. Use a fixed `n_steps` in closed structures and in convergence
+for lossy or radiating ring-down, and a graded mesh refuses `until_decay`
+(set `n_steps`). Use a fixed `n_steps` in closed structures and in convergence
 studies.
 
 **Other arguments you will use:**

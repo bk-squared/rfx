@@ -56,7 +56,7 @@ print(f"{float(value):.4g} {float(grad):.4g}")
 
 ```text
 (300, 1) (300, 1) 0.0
-0.271 -0.01133
+0.2706 -0.01127
 ```
 
 On this model the two probe records are identical. The gradient comes from
@@ -67,25 +67,28 @@ against a longer run ([Checking a gradient](/rfx/evidence/gradients/)).
 
 | | `run()` | `forward()` |
 |---|---|---|
-| returns | `Result`: `time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `snapshots`, `settling_witness`, `state`, `ringdown` | `ForwardResult`: `time_series`, `s_params` and `freqs`, `dft_planes`, far-field data, `ringdown`, and `settling_db` / `settling_witness` computed once the arrays are concrete; no `state`, no snapshots, no flux monitors |
-| differentiable | no | yes, with respect to `eps_override`, `sigma_override`, the design-box overrides (including `design_occupancy_override`), `pec_occupancy_override` and `rlc_values_override`; `mu_r_override` on a uniform mesh on one device |
-| S-parameters | full S-matrix of every port when ports exist (`s_param_freqs`, default 50 points from `freq_max/10` to `freq_max`) | per-port S11 with `port_s11_freqs` |
+| returns | `Result`: `time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `waveguide_ports` and `waveguide_sparams`, `snapshots`, `settling_witness`, `state`, `ringdown` | `ForwardResult`: the same records (`time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `waveguide_ports` and `waveguide_sparams`, `ringdown`), with `settling_db` / `settling_witness` computed once the arrays are concrete; no `state` and no snapshots |
+| differentiable | on one device, under `jax.grad`, `jax.jit` and `jax.vmap` when values in the declaration are traced; it takes no override or design arguments, and `report_every` raises under a transform | yes, with respect to `eps_override`, `sigma_override`, `pec_occupancy_override` and the design box (`design_box`, `design_eps`, `design_sigma`) on either mesh on one device; `design_occupancy_override`, `rlc_values_override` and `mu_r_override` on a uniform mesh on one device; a graded mesh over several devices takes the permittivity, conductivity and PEC overrides |
+| S-parameters | the S-matrix of the lumped and wire ports (`add_port`) at `s_param_freqs`, default 50 points from `freq_max/10` to `freq_max`; a waveguide port gives `waveguide_sparams`. On a graded mesh, without an S argument, lumped S is formed only for lumped ports with exactly one driven; otherwise S is `None` | with `port_s11_freqs`: `s_params` of shape (ports, ports, frequencies) with the driven port's column filled and the others NaN, one driven port per run; that column equals `run()`'s S |
 | stops on decay | `until_decay=` | no: a fixed number of steps |
 | progress, snapshots | `report_every=`, `snapshot=` | no |
-| memory | `checkpoint=False` by default | `checkpoint=True` by default, for the backward pass |
+| memory | `checkpoint=False` by default | `checkpoint=True` by default, for the backward pass; `forward(distributed=True)` on a uniform mesh does not checkpoint and refuses a `checkpoint` argument |
 
 Both run preflight unless you pass `skip_preflight=True`, and both refuse an
 input their solver path does not implement whether or not preflight runs
 ([Refused inputs](/rfx/check/refusals/)).
 
-<p data-rfx="note">Pending for 2.0: <code>run()</code> and <code>forward()</code>
-are being made one pipeline on every solver path. Among the known differences
-today: <code>forward()</code> refuses the multi-device uniform path;
-<code>subpixel_smoothing</code> is a <code>run()</code> argument only;
-<code>forward()</code> leaves out a declared flux monitor; on a graded mesh it
-returns no waveguide-port records or S; with <code>distributed=True</code> it
-refuses a waveguide port. The full list is in
-<code>tests/contracts/test_run_forward_one_pipeline.py</code> (tracker 1373).</p>
+Where the two calls still differ:
+
+- `forward()` has no `until_decay`, `snapshot=`, `report_every` or
+  `until_identified`, and its result has no `state` and no snapshots.
+- `forward()` refuses `Boundary(conformal=True)` and `add_refinement`.
+- `run()` forms S by default; `forward()` forms the driven port's column, and
+  only when `port_s11_freqs` is given.
+- `forward(distributed=True)` on a uniform mesh runs the declared model as it
+  is: it refuses override and design arguments, checkpoint arguments,
+  `n_warmup`, `emit_time_series=False`, an enclosing `jax.jit` and a gradient
+  through its port S.
 
 ### How long it runs
 
@@ -112,7 +115,9 @@ SnapshotSpec`) keeps the field
 every `interval` steps, optionally on one slice (`slice_axis`, `slice_index`),
 in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
 snapshot of every step is large; take a slice. Snapshots are taken on a uniform
-mesh on one device; the other solver paths refuse `snapshot=`.
+mesh, on one device or several, and by `run(devices=...)` on a graded mesh. A
+graded mesh on one device, ADI, subgridding and an oblique plane wave refuse
+`snapshot=`.
 
 ### JAX transforms
 
@@ -120,23 +125,27 @@ On one device, `forward()` can be called inside `jax.jit`, `jax.grad` and
 `jax.value_and_grad`. In an optimization loop, jit the gradient once,
 `step = jax.jit(jax.value_and_grad(loss))`: an unjitted `value_and_grad`
 compiles the whole solve again on every call. A jitted result need not be
-bit-identical to the plain one: the compiler may round in a different order. The
-multi-device paths take gradients and `vmap` unjitted; an outer `jax.jit` over
-several GPUs is refused while XLA command buffers are on, and the message says
-how to turn them off.
+bit-identical to the plain one: the compiler may round in a different order.
+On a graded mesh over several devices, `forward()` takes gradients and `vmap`
+without an outer `jax.jit`; `forward(distributed=True)` on a uniform mesh takes
+no gradient through its port S and refuses an enclosing `jax.jit`. An outer
+`jax.jit` over several GPUs is refused while XLA command buffers are on, and
+the message says how to turn them off.
 
 ### ADI and subgridding
 
 Two solver paths are outside what 2.0 validates:
 
 - **ADI** (`Simulation(solver="adi")`) allows a time step above the usual
-  stability limit. It is experimental: it needs closed (PEC) boundaries, a soft
-  source with `amplitude_kind="field"`, and refuses ports, dispersive
-  materials, lumped elements and refinement.
+  stability limit. It is experimental: it needs closed (PEC) boundaries, a
+  homogeneous fill, a soft source with `amplitude_kind="field"` and float32,
+  and refuses ports, interior metal, dispersive materials, μr ≠ 1, lumped
+  elements, refinement, DFT planes, flux monitors and the far-field box.
 - **Subgridding** (`add_refinement` on a uniform mesh) is refused by default
   because it is not yet stable and verified. `validation="research"` (or
-  `"off"`) runs it with a warning, and its result is yours to check. Use a graded mesh for local
-  resolution instead.
+  `"off"`) lets `run()` run it with a warning, and its result is yours to check.
+  `forward()`, a graded mesh, several devices and ADI refuse a refinement in
+  every mode. Use a graded mesh for local resolution instead.
 
 The [support page](/rfx/support/) gives both one row each.
 
@@ -146,7 +155,8 @@ Before the first step, both calls run preflight (unless skipped) and check
 that their solver path implements every input, refusing what it does not. After a `run()`, `result.settling_witness` says whether the run was
 long enough for the frequencies it read. A test compares the fields of
 `run()` and `forward()` over a matrix of declarations and solver paths and
-lists every known difference (`tests/contracts/test_run_forward_one_pipeline.py`).
+finds them equal on every row it admits
+(`tests/contracts/test_run_forward_one_pipeline.py`).
 
 ## What is refused, and the way through
 
@@ -155,9 +165,11 @@ lists every known difference (`tests/contracts/test_run_forward_one_pipeline.py`
 | `precision="float64"` outside `jax.enable_x64()` | all | build and run inside the block |
 | `precision="float64"` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
 | `until_decay` | multi-device, ADI, subgridded, a graded mesh with closed boundaries | `n_steps` |
-| `forward()` | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` (no waveguide ports there) |
-| `run(snapshot=...)` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
-| `add_refinement` without `validation="research"` or `"off"` | all | a graded mesh |
+| `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
+| `forward()` with `Boundary(conformal=True)` | all | `run()` |
+| `run(snapshot=...)` | graded mesh on one device, ADI, subgridded, an oblique plane wave | a uniform mesh, or `run(devices=...)` on a graded mesh |
+| `add_refinement` without `validation="research"` or `"off"` | uniform mesh, `run()` | a graded mesh |
+| `add_refinement` in any mode | `forward()`, graded mesh, multi-device, ADI | a graded mesh |
 | an outer `jax.jit` over several GPUs with command buffers on | multi-device | call unjitted, or turn command buffers off |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
