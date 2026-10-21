@@ -23,10 +23,8 @@ def _linalg(xp, operation, matrix):
     if xp is np:
         return solve(matrix)
     flat = matrix.reshape((-1, 3, 3))
-    # Library derivative rules issue products without a precision argument.
-    with jax.default_matmul_precision("highest"):
-        pieces = [solve(flat[start:start + MATRIX_BATCH_SIZE])
-                  for start in range(0, flat.shape[0], MATRIX_BATCH_SIZE)]
+    pieces = [solve(flat[start:start + MATRIX_BATCH_SIZE])
+              for start in range(0, flat.shape[0], MATRIX_BATCH_SIZE)]
     if operation == "eigh":
         w, v = zip(*pieces)
         return (jnp.concatenate(w).reshape(matrix.shape[:-1]),
@@ -124,8 +122,7 @@ def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
     g1, g2 = eye + (1 / e1 - 1) * nn, eye + (1 / e2 - 1) * nn
     gamma = lengths[..., :, None] * g1 + (1 - lengths[..., :, None]) * g2
     pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
-    with jax.default_matmul_precision("highest"):
-        singular = xp.linalg.det(pi) == 0
+    singular = xp.linalg.det(pi) == 0
     safe_pi = xp.where(singular[..., None, None], eye, pi)
     return _matmul(xp, gamma, _linalg(xp, "inv", safe_pi)), singular
 
