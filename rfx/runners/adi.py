@@ -28,7 +28,7 @@ def _run_adi_from_materials(
 ):
     """Run the integrated ADI solver path (2D TMz or 3D).
 
-        #931 §1.7: the ADI lane takes the SAME realized PEC edge masks as
+        Issue #931 §1.7: the ADI lane takes the SAME realized PEC edge masks as
         every other lane instead of zeroing E at the occupied cell
         indices.  In 2-D it applies the ``Mz`` plane to Ez; in 3-D the
         three masks componentwise.

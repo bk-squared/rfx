@@ -1082,7 +1082,7 @@ def e_update_coeffs(eps_r, sigma, dt):
     The arguments are arrays of any shape (or scalars); nothing here is
     grid-sized by construction.
 
-    #1357: the values are the SI spelling's bits and the derivative is the
+    Issue #1357: the values are the SI spelling's bits and the derivative is the
     eps_r spelling's (:func:`si_value_eps_r_grad`). A traced ``eps_r`` or
     ``sigma`` therefore gets a finite gradient at any objective scale.
     """

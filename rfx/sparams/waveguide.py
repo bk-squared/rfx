@@ -229,8 +229,8 @@ def compute_waveguide_s_matrix(
         discipline is not met.
 
         The absorber half of that discipline is checked on **every**
-        uniform path, not just this one: an in-method advisory (issue
-        #494) fires whenever the absorber on a port's propagation axis is
+        uniform path, not just this one: an in-method advisory (issue #494)
+        fires whenever the absorber on a port's propagation axis is
         thinner than ``0.5 * lambda_g`` at the **lowest** measured
         frequency, which is where ``lambda_g`` is longest and the
         ``cpml_layers=16`` default weakest. It is checked in-method

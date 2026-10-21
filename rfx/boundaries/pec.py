@@ -256,8 +256,8 @@ class SheetSpec:
 
         Refuses a range that spans fewer than two node lines on either
         in-plane axis: one node line carries no E edge between two adjacent
-        nodes, so the metal would carry no current and vanish silently (the
-        #369 class, the same rule :func:`refuse_vaporized_sheets` applies to
+        nodes, so the metal would carry no current and vanish silently (the #369
+        class, the same rule :func:`refuse_vaporized_sheets` applies to
         metric sheets).
         """
         a = int(normal_axis)

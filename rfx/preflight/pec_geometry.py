@@ -1,8 +1,8 @@
 """PEC-geometry preflight, moved verbatim out of ``rfx.api._preflight``.
 
 Issue #980 Phase 3, leg 2. The conductor-realization family: the issue-#703
-campaign-statics checks, the #931 per-declaration realization findings, the
-#669 Leontovich surface-impedance advisories and the conformal-fine-dx guard.
+campaign-statics checks, the #931 per-declaration realization findings, the #669
+Leontovich surface-impedance advisories and the conformal-fine-dx guard.
 Everything here was relocated byte for byte out of ``rfx/api/_preflight.py``
 -- same text, same order, same indentation, same docstrings, nothing renamed,
 reordered, tidied or rewritten.
@@ -609,8 +609,8 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     box contains the plane. The one E edge that reads that node's
     material is the normal edge from the sheet plane into the upper
     cell, half a cell inside a dielectric the drawing says is there,
-    so the cavity above the sheet gains a vacuum cell in series (the
-    #702 measurement: 17 % on a 127 um stack). Nothing is re-sampled
+    so the cavity above the sheet gains a vacuum cell in series (the #702
+    measurement: 17 % on a 127 um stack). Nothing is re-sampled
     silently any more (§2 deleted the #702 resample); this check names
     the slot and the remedy — extend the dielectric boxes to the sheet
     plane. ERROR-grade: the realized stack is not the drawn stack.
@@ -838,7 +838,7 @@ def _congruence_origin_shift(ctx, members, counts):
     return best
 
 def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
-    """#703 check 1: congruent conductors must realize congruently.
+    """Issue #703 check 1: congruent conductors must realize congruently.
 
     Groups conductor entries by congruence (same shape class and
     realization kind, sorted bounding-box extents equal within
@@ -1132,7 +1132,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
 
 
 def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
-    """#703 check 3: each conductor-bounded cavity's electrical thickness.
+    """Issue #703 check 3: each conductor-bounded cavity's electrical thickness.
 
     Census = every realized wall plane the contract puts on the
     lattice: a sheet's node plane along its normal, and a volume's
@@ -1489,7 +1489,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
 
 
 def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
-    """#703 check 4: census of conductor design edges landing off-lattice.
+    """Issue #703 check 4: census of conductor design edges landing off-lattice.
 
     Per conductor Box and axis, the largest distance from a declared
     face to its nearest E-node, relative to the axis extent. Under

@@ -2,7 +2,7 @@
 
 
 def reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
-    """#404: convert the complex Bloch envelope P back to the physical real field
+    """Issue #404: convert the complex Bloch envelope P back to the physical real field
     ``Re(P·exp(-j k_t·x_t))`` for the oblique-periodic path.
 
     Reconstructs the final ``state`` (per-cell transverse phase ramp along the

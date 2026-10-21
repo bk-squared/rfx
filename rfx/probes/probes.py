@@ -1248,8 +1248,7 @@ def update_wire_drive_ref_probe(
 
     Call this after update_e() / apply_pec() but **before**
     apply_wire_port() — the historical (#72) sampling slot.  The channel
-    is bit-identical to the pre-#683 ``v_dft`` and exists because the
-    #308 receive-wave sign and Z0/n_cells normalization were calibrated
+    is bit-identical to the pre-#683 ``v_dft`` and exists because the #308 receive-wave sign and Z0/n_cells normalization were calibrated
     against this sample (issue #683 x #764 decomposer recalibration; see
     ``decompose_wire_s_matrix``).  It feeds ONLY the off-diagonal
     incident-wave denominator and the byte-frozen legacy diagonal; the
@@ -1288,8 +1287,7 @@ def decompose_lumped_s_matrix(v, i, z0, v_ref=None):
     construction rather than by two copies agreeing today.
 
     For a one-cell port the whole-gap line integral IS the single cell, so
-    ``v_port = v`` and ``port_cell_counts = 1``. The whole-port frame (issue
-    #770) then gives
+    ``v_port = v`` and ``port_cell_counts = 1``. The whole-port frame (issue #770) then gives
 
         S[j,j] = (V[j,j] - Z0[j]·I[j,j]) / (V[j,j] + Z0[j]·I[j,j])
         S[i,j] = (V[j,i] - Z0[i]·I[j,i]) / (V[j,j] + Z0[j]·I[j,j])   (i != j)
@@ -1373,8 +1371,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
     circuit law ``|I| = |V_src|/(Z0+Z_L)``).
 
     ``v_port=None`` keeps the legacy per-cell decomposition byte-for-byte
-    (per-cell diagonal AND per-cell off-diagonal) — used ONLY by (a) the
-    #313 reference-plane decomposer, whose non-plane channels are
+    (per-cell diagonal AND per-cell off-diagonal) — used ONLY by (a) the #313 reference-plane decomposer, whose non-plane channels are
     documented byte-frozen legacy, and (b) replay of pre-#770 dumps whose
     recorded production S-matrix used the per-cell off-diagonal frame
     (pre-#764 dumps additionally used the legacy diagonal).
@@ -1405,8 +1402,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
     ``b_i`` is the whole-port completion of the #308 orthogonal receive
     selection (the direct combination ``V_port + Z0·I`` vanishes at the
     matched termination — it is the re-incident wave); the global
-    receive sign (+1) was re-pinned by the same DC witness class as
-    #308 (S21(DC) -> +1; measured dev -0.058/-0.115 rad at 0.5/1 GHz,
+    receive sign (+1) was re-pinned by the same DC witness class as #308 (S21(DC) -> +1; measured dev -0.058/-0.115 rad at 0.5/1 GHz,
     flipped channel at ~pi).  Measured provenance for the frame change
     (#770 harness, canonical THRU, NU lane primary + uniform parity
     3.97e-6): whole-port |S21| = 0.9341-0.9954 across 3-7 GHz vs the
@@ -1420,8 +1416,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
     ledger always called it: a regression-lock frame, now preserved
     only on the legacy path below).
 
-    LEGACY ``v_port=None`` off-diagonal (byte-frozen): the per-cell
-    #308 decomposition against the PRE-injection drive reference,
+    LEGACY ``v_port=None`` off-diagonal (byte-frozen): the per-cell #308 decomposition against the PRE-injection drive reference,
 
         a_j = (-V_ref[j,j] + Z0c_j·I[j,j]) / (2·√Z0c_j)
         b_i = (V[j,i] - Z0c_i·I[j,i]) / (2·√Z0c_i),   Z0c = Z0/n_cells
@@ -1465,8 +1460,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
         Number of wire cells per port (for per-cell impedance normalization).
     v_port : (n_ports, n_ports, n_freqs) complex or None
         Whole-port gap-voltage DFT phasors (``v_port[j, i]`` at receive
-        port *i* when driving port *j*): the driven diagonal feeds the
-        #764 physical reflection and every entry feeds the #770
+        port *i* when driving port *j*): the driven diagonal feeds the #764 physical reflection and every entry feeds the #770
         whole-port off-diagonal waves.  None selects the byte-frozen
         legacy per-cell decomposition (diagonal AND off-diagonal — see
         above).

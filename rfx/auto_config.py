@@ -722,8 +722,8 @@ def _uniform_run(length: float, dx: float, cuts=()) -> list[float]:
     """Fill ``length`` with near-``dx`` cells, putting an EDGE at each cut.
 
     ``cuts`` are offsets measured from the start of the run; each one
-    strictly inside it splits the run, so a declared plane (a PEC sheet,
-    #931 §1.9) lands on a mesh line instead of being snapped to whichever
+    strictly inside it splits the run, so a declared plane (a PEC sheet, #931
+    §1.9) lands on a mesh line instead of being snapped to whichever
     node the uniform division happens to leave nearby.
 
     A cut within ``dx/4`` of an edge the run already has — its own two

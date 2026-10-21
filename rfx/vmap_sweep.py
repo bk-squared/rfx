@@ -154,8 +154,8 @@ def _extend_batched_cpml_pad(
     byte-identical to what ``Simulation.run()`` builds for that same
     swept value.
 
-    **Why ``jax.vmap`` and not a hand-written batched copy (issue #643).**
-    #637's original version of this function reproduced
+    **Why ``jax.vmap`` and not a hand-written batched copy (issue #643).** #637's
+    original version of this function reproduced
     ``_assemble_materials``' rule *as it stood at the time* — a straight
     per-face edge-slice copy — in a second, hand-maintained
     implementation. #627 (PR #638) then changed that rule underneath it,
@@ -1102,7 +1102,7 @@ def _sequential_fallback(
 ) -> VmapSweepResult:
     """Sequential fallback when vmap is not possible.
 
-    #578: also populates ``VmapSweepResult.dft_planes`` by stacking each
+    Issue #578: also populates ``VmapSweepResult.dft_planes`` by stacking each
     swept value's ``Result.dft_planes[name].accumulator`` — the SAME
     carrier the fast path populates (dict[str, ndarray] with a leading
     batch axis), so a DFT plane registered on a simulation that must take

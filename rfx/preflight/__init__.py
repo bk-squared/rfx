@@ -73,8 +73,8 @@ Modules:
 * :mod:`rfx.preflight.ports` — the lumped/wire-port and coaxial-port
   family: five ``_PreflightMixin`` bodies (six moved; #1163 deleted the #425
   TFSF-plus-lumped-RLC warning) covering the #589 coax
-  junction-aperture short, the two
-  #313 reference-plane advisories, the #929/#931 port-frozen-by-realized-PEC
+  junction-aperture short, the two #313
+  reference-plane advisories, the #929/#931 port-frozen-by-realized-PEC
   check with its wire-port cell-centre helper, and the #71 floating
   single-cell port. Its one module-level leaf, ``_component_is_dead``,
   went to ``_common`` instead, because ``_RealizedPEC`` still reads it.

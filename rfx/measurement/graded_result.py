@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 
 
 def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_record=None) -> dict:
-    """Assemble the NU result dict (pure code motion from run_nonuniform,
-    #383). Shared by :func:`run_nonuniform` and
+    """Assemble the NU result dict (pure code motion from run_nonuniform, #383).
+    Shared by :func:`run_nonuniform` and
     :func:`run_nonuniform_until_decay` so the two paths return the exact
     same schema (state, time_series, dt, conditional dft_planes /
     flux_monitors / ntff_data / waveguide_ports / s_params...)."""

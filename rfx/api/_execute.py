@@ -1352,13 +1352,13 @@ class _ExecuteMixin:
             (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
             known-spurious warning on a deliberate configuration.
         distributed : bool, optional
-            **Opt-in, unstable, pending GPU evidence (issue #44).**  When
-            ``True``, use the mesh's distributed runner across ``devices``.
-            Uniform meshes share run(devices=...) including its one-device
-            fallbacks; graded meshes use the distributed NU runner.
-            Uniform distributed execution refuses material/design overrides
-            and explicit checkpointing; an omitted checkpoint uses the
-            runner's ordinary loop. Other lanes default to checkpointing.
+            Run on several devices. A uniform mesh uses the runner of
+            ``run(devices=...)``, including its one-device fallback; a graded mesh
+            uses the graded multi-device runner. On a uniform mesh, override and
+            design arguments and an explicit ``checkpoint`` are refused, and the
+            time loop is not checkpointed. Multi-device runs are compared with
+            one-device runs in the test suite and carry no accuracy statement
+            of their own.
         devices : list of jax.Device or None, optional
             Devices for the distributed run.  When ``distributed=True``
             and ``devices=None``, defaults to ``jax.devices()``.  When
@@ -1374,14 +1374,14 @@ class _ExecuteMixin:
             forward-compatible reservations and will raise inside the
             runner.
         port_s11_freqs : array-like or None
-            Frequencies (Hz) at which to accumulate per-port V/I DFTs inside
-            the JIT scan body so that ``ForwardResult.s_params`` is populated
-            with wave-decomposition |S11| values for lumped/wire ports
-            (issue #72) — the AD-traceable counterpart of
-            ``run(compute_s_params=True)``.  Required by the
-            :func:`minimize_s11_at_freq_wave_decomp` objective.  Currently
-            supported on uniform and graded single-device paths;
-            graded distributed execution raises ``NotImplementedError``.
+            Frequencies (Hz) at which each port's voltage and current are
+            accumulated inside the differentiable program, so that
+            ``ForwardResult.s_params`` holds the driven port's column of S for
+            lumped and wire ports, the differentiable counterpart of
+            ``run(compute_s_params=True)``. Needed by :func:`minimize_s11_at_freq_wave_decomp`.
+            Supported on both meshes on one device and with ``distributed=True``
+            on a graded mesh; on a uniform mesh with ``distributed=True``, S is
+            formed for one port and is not differentiable.
         rlc_values_override : dict or None
             Differentiable-value injection for lumped RLC elements added with
             :meth:`add_lumped_rlc` (WP 4-E).  ``LumpedRLCSpec`` stores plain
@@ -1493,11 +1493,10 @@ class _ExecuteMixin:
         if distributed and not _DISTRIBUTED_FIRST_CALL_WARNED:
             import warnings as _w
             _w.warn(
-                "Simulation.forward(distributed=True) is opt-in and pending "
-                "GPU evidence (see issue #44). The distributed lane is "
-                "'experimental / scaling' and not part of the "
-                "correctness-bearing baseline; see the Distributed row of "
-                "docs/guides/support_matrix.md before relying on it.",
+                "Simulation.forward(distributed=True): multi-device runs are "
+                "compared with one-device runs in the test suite but carry no "
+                "accuracy statement of their own; see the multi-device row of "
+                "docs/guides/support_matrix.md before relying on one.",
                 UserWarning,
                 stacklevel=2,
             )

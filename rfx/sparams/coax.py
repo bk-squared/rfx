@@ -1145,235 +1145,127 @@ def compute_coax_msl_transition(
     extra_flux_monitors: "list | None" = None,
     return_ladder_voltages: bool = False,
 ) -> "CoaxMSLTransitionResult":
-    """EXPERIMENTAL coax<->microstrip transition 2-port S-parameters (issue #489 leg 4).
+    """Compute coax-to-microstrip transition S-parameters from separate drives.
 
-    .. warning::
-        **EXPERIMENTAL — not in the validated set**
-        (``docs/guides/sparameter_support_matrix.md`` / ``.json``). One
-        pre-declared fixture has been run against this method; see that
-        fixture's own predeclaration
-        (``tests/unit/sparams/test_coax_msl_transition.py``) for the measured
-        envelope. NOT_TRACEABLE (see :class:`~rfx.api._spec.
-        CoaxMSLTransitionResult`'s class docstring for the full honesty
-        contract, including why the MSL side is extracted via the coax
-        matrix-pencil fit rather than the diagnostic-only N-probe fit
-        #488 uses). Since issue #838 this lane REFUSES by default: a
-        non-passive extracted S raises ``ValueError`` unless the caller
-        passes ``strict_passivity=False``, which returns the diagnostic
-        matrix with a ``UserWarning`` instead.
-
-    Generalizes issue #488's mixed lumped/wire<->MSL assembler
-    (:meth:`compute_mixed_s_matrix`) to a coax<->MSL pair by combining,
-    UNCHANGED, the less-invasive half of each family's own validated
-    machinery instead of writing a new geometry-specific extractor:
-
-    * The **coax side** is built exactly like :meth:`compute_coaxial_two_port`'s
-      own single-ended stub (CPML, TEM TFSF source, matched annular-
-      resistor feed, then a probe array), reusing
-      :func:`~rfx.sources.coaxial_port.stamp_coaxial_line`,
-      :func:`~rfx.sources.coaxial_port.stamp_coaxial_annular_resistor`,
-      and :func:`~rfx.sources.coaxial_port.build_coaxial_tem_plane_source_specs`
-      verbatim — but only ONE end (this method has no second coax port).
-    * The **MSL side** is consumed exactly like :meth:`compute_mixed_s_matrix`
-      consumes its MSL ports: the caller registers arbitrary DUT
-      geometry (substrate, trace, ground plane, and — unique to this
-      transition — the ground-plane clearance hole and the vertical
-      pin-to-trace post that connects the two families) via the
-      ordinary ``sim.add(Box(...)/Cylinder(...), material=...)`` API,
-      and this method reuses :func:`~rfx.sources.msl_port.compute_msl_mode_profile`,
-      :func:`~rfx.sources.msl_port.setup_msl_port`, and
-      :func:`~rfx.sources.msl_port.make_msl_port_sources` verbatim for
-      the MSL port's own termination/excitation.
-
-    This method does NOT build the junction geometry itself (the ground
-    plane, its clearance hole, or the pin-to-trace post) — those are
-    DUT-specific and belong to the caller's own registered geometry,
-    exactly as :meth:`compute_mixed_s_matrix` never builds its own
-    substrate/trace. What this method DOES fix, by construction, is
-    WHERE each port's own S-parameter reference plane sits: both are
-    placed AT the physical launch discontinuity (see ``junction_x``
-    below and ``port.position[2]`` on the registered
-    :meth:`add_coaxial_port`), specifically to minimize the
-    pre-declared "reference-plane mismatch" failure mode (the coax's
-    axial z-feed-plane convention has no direct analogue in the MSL's
-    along-trace x reference plane — these are different geometric axes
-    entirely).
-
-    Registration contract
-    ----------------------
-    Exactly one :meth:`add_coaxial_port` (``face='bottom'`` — the
-    physical convention this method assumes: the coax stub is built
-    FROM the domain's low-z CPML face UP TO ``position[2]`` (rounded to
-    the nearest grid z-node, half-cell ties to the lower node under
-    the conductor-plane convention), where ``position[0], position[1]`` is the coax
-    axis centre (x, y) and ``position[2]`` is the physical height of
-    the caller's OWN registered ground-plane conductor — i.e. this is
-    the ONE parameter that ties this method's auto-built coax stub to
-    the caller's own junction geometry; get it wrong and the pin will
-    either dangle in a gap or overlap the caller's own PEC). Exactly
-    one :meth:`add_msl_port`, whose ``position[2]`` (substrate bottom /
-    ground height) MUST equal the coax port's ``position[2]`` to within
-    one grid cell — both refer to the SAME physical ground plane. No
-    other ports (lumped/wire/waveguide/Floquet), no TFSF, no lumped
-    RLC, no pre-registered probes/DFT planes/flux monitors/NTFF (this
-    method builds its own). ``self._geometry`` must be non-empty (the
-    caller's substrate/trace/ground-plane/pin-post Boxes and
-    Cylinders). The MSL source interval must meet its realized conductor
-    surfaces. The auto-built stub stops below the junction node and
-    preserves the caller's materials at and above it. These checks do
-    not certify the junction's connectivity or its modal accuracy.
-    Same solver/precision/boundary contract as
-    :meth:`compute_coaxial_two_port` (float32, 3D uniform Yee,
-    ``boundary='cpml'`` with positive CPML on all six faces, absorption on
-    all three axes): the coax's own far end needs an absorbing z face
-    exactly like the coax lane, the MSL trace radiates in x/y too,
-    and the caller's own ground plane is an INTERNAL stamped/registered
-    PEC layer rather than the domain's z boundary — this is also WHY
-    this method cannot reuse a PEC ``z_lo`` domain boundary as the MSL
-    ground reference the way :meth:`compute_mixed_s_matrix`'s
-    ``magnitude_channel="flux"`` fixtures do (that would conflict with
-    the coax's own need for an absorbing z_lo face).
-
-    Two-drive extraction (never a naive single-ratio)
-    ---------------------------------------------------
-    Drives the coax source, then the MSL source, in two separate FDTD
-    runs (never assuming the non-driven port sees zero incident wave —
-    the terminator-floor problem :meth:`compute_coaxial_two_port`
-    already solved for symmetric coax applies here too, and likely
-    worse, since the coax feed resistor and the MSL Hammerstad-Jensen
-    termination have no reason to share a termination quality). Each
-    port's own forward/backward wave amplitudes are recovered from its
-    own probe ladder via :func:`~rfx.sources.coaxial_port.
-    coaxial_line_reflection_from_plane_voltages` (Z0-free matrix-pencil
-    fit — see :class:`~rfx.api._spec.CoaxMSLTransitionResult` for why
-    this is used for the MSL side too, not the lane's own N-probe fit),
-    converted to POWER waves via each port's own analytic reference
-    impedance, and assembled by
-    :func:`~rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
-    (the same generic two-drive solve :meth:`compute_coaxial_two_port`
-    uses). See :func:`_assemble_coax_msl_transition_from_voltages` for
-    the full pure-assembly derivation.
+    This method is experimental and is not in the validated set.
+    A non-passive S matrix raises ``ValueError`` by default;
+    ``strict_passivity=False`` returns it with a ``UserWarning``.
+    Register the substrate, trace, ground plane, clearance hole, and
+    pin-to-trace post yourself. The method builds the coax stub and each
+    port's excitation and termination, then extracts power waves from
+    probe ladders for separate coax and microstrip drives.
 
     Parameters
     ----------
     junction_x : float
-        Physical x-coordinate (metres) of the coax-to-trace launch
-        discontinuity — the MSL side's own S-parameter reference plane.
-        Must match wherever the caller's own registered pin-to-trace
-        post / trace Box actually begins; this method does not infer it
-        from geometry (mirrors the coax side's own reference plane
-        being the registered port's ``position[2]``, not inferred).
-    eps_r_sub : float, optional
-        Substrate relative permittivity. If ``None``, taken from the
-        registered :meth:`add_msl_port`'s own ``eps_r_sub`` (which must
-        then be set explicitly — this method does not attempt the
-        geometry-bounding-box auto-detection :meth:`add_msl_port`
-        itself offers, to keep the eps anchor unambiguous for the
-        Hammerstad-Jensen Z0 used in the power-wave normalization).
-    probe_count, probe_start_cells, probe_spacing_cells : int
-        The COAX side's own probe array (mirrors
-        :meth:`compute_coaxial_two_port`'s identically-named
-        parameters — this method's coax stub is short by
-        construction, between the near-source feed and the junction,
-        so these three rarely need to grow).
-    msl_probe_count, msl_probe_start_cells, msl_probe_spacing_cells : int, optional
-        The MSL side's OWN probe array, independent of the coax
-        parameters above (added issue #489 leg 4 attempt 2 — the two
-        families' probe ladders were coupled through one shared set
-        of parameters through attempt 1, which is fine when both
-        ladders are short but breaks as soon as the MSL side needs a
-        ladder spanning a meaningful fraction of a guided wavelength,
-        since the coax stub's own short z-extent cannot host the same
-        span). Each defaults to ``None``, meaning "use the
-        correspondingly-named coax parameter" — this preserves
-        attempt 1's exact behavior (and its committed fixture's
-        numbers) when left unset.
-
-        NEAR-FIELD STANDOFF (issue #823) — the one constraint these
-        three are NOT free of. Every probe must clear BOTH ends the
-        ladder is referred to (the MSL port's own feed plane AND the
-        reference plane at ``junction_x``) by at least
-        ``max(3, round(5*h_sub/dx))`` cells. Both are launch
-        discontinuities, and within a few substrate thicknesses of one
-        the field is not the guided mode yet, so a matrix-pencil fit
-        that includes such a probe reports the LADDER's error as the
-        field's: on the settled attempt-3 run (VESSL 369367257533) a
-        single probe 0.4 mm = 1.33*h_sub from the feed dragged the
-        full-ladder residual from 3.7e-3 to 0.342, and this lane spent
-        three attempts attributing that to junction physics. The
-        threshold is the repo's EXISTING issue-#80 Fix B constant —
-        see :func:`rfx.api._preflight.msl_source_near_field_standoff_cells`
-        for the derivation that licenses reusing it here, and for the
-        W/h limitation it carries. Preflight cannot enforce it on this
-        lane (these are METHOD arguments and never reach the
-        registered ``_MSLPortEntry``), so this method evaluates the
-        same predicate on its own REALIZED ladder and emits a
-        ``UserWarning`` naming the offending probes. REPORT-ONLY:
-        nothing is refused. Read it together with
-        ``result.ladder_split_gamma_dev`` /
-        ``result.ladder_split_reflection_decades`` (computed when
-        ``return_ladder_voltages=True``, ``None`` otherwise), which say
-        whether the ladder actually disagrees with itself.
-    strict_passivity : bool, default ``True``
-        Default ``True``: this lane REFUSES a non-passive extracted S,
-        raising ``ValueError`` from the shared guard
-        (:func:`_warn_if_nonpassive_smatrix` via
-        :func:`_finalize_sparam_result`) instead of returning the matrix.
-        Pass ``strict_passivity=False`` to get the diagnostic matrix back
-        with a ``UserWarning`` instead of the raise. The default is
-        ``True`` here and ``False`` on the single-family coax two-port lane
-        (:meth:`compute_coaxial_two_port`), which is unaffected by this
-        (issue #838, PI decision 2026-09-20).
-
-    ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
-    an ENERGY-WITNESS channel, not an extractor change. Pass the entry
-    objects ``Simulation.add_flux_monitor`` registers (build them on a
-    scratch ``Simulation`` with the same domain and hand over its
-    ``._flux_monitors``); each internal drive run then accumulates the
-    requested Poynting-flux planes, and per-drive spectra come back
-    name-keyed on ``result.flux_monitors``
-    (``{"coax"|"msl": {monitor_name: (n_monitor_freqs,) float64}}``,
-    net flux, positive = +axis). The S-parameter math is untouched —
-    the non-perturbation witness (S bit-identical with and without
-    monitors) is gated in
-    ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
-    The registered-monitor guard is unchanged: monitors registered ON
-    this sim still raise, because this method builds its own probes.
-
-    Unless ``skip_preflight=True``, the shared sheet-size verdict runs
-    before stepping: ``snap="strict"`` blocks an off-size sheet and
-    ``snap="declared"`` warns. Other preflight families are not run here.
-
-    ``return_ladder_voltages`` (issue #589 label-independent ladder dump):
-    a second read-only channel, additive in exactly the same sense. When
-    ``True``, the RAW per-probe modal voltages this method already
-    computed for both drives are attached to
-    ``result.ladder_voltages`` (``None`` otherwise) so the ladders can be
-    re-read OFFLINE — adjacent-pair phase slope (which way the dominant
-    wave travels), standing-wave ratio, subset matrix-pencil fits —
-    without a second FDTD run and without trusting any incident/outgoing
-    LABEL. The dict is documented field-by-field on
-    :class:`~rfx.api._spec.CoaxMSLTransitionResult`. It is built from
-    ``.copy()`` of arrays that are complete before, and consumed by,
-    :func:`_assemble_coax_msl_transition_from_voltages`, so every
-    S-parameter number is bit-identical with the option off or on —
-    gated by ``tests/unit/sparams/test_coax_msl_transition_ladder_dump.py::
-    test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
-    the same discipline as the flux witness above; the round-trip
-    assertion there also proves the dump IS what the assembler consumed).
-    The same flag switches on the issue-#823 LADDER SELF-CONSISTENCY
-    WITNESS, ``result.ladder_split_gamma_dev`` /
-    ``result.ladder_split_reflection_decades`` (``None`` when the flag
-    is off): a disjoint-half refit of each ladder, i.e. a Python loop of
-    2 drives x n_freqs x 2 matrix pencils per ladder over exactly the
-    arrays the dump exposes. It is computed AFTER the assembler from
-    those arrays and moves no S-parameter number; it is opt-in so that
-    a default call pays for no extra pencil solves. Documented
-    field-by-field on :class:`~rfx.api._spec.CoaxMSLTransitionResult`.
+        Launch discontinuity x-coordinate in metres, used as the microstrip
+        reference plane. It must match the registered pin-to-trace junction;
+        it is not inferred from geometry. The coax reference plane is the
+        registered coax port's ``position[2]``.
+    eps_r_sub : float or None, optional
+        Substrate relative permittivity. Default ``None`` uses the explicit
+        value on the registered microstrip port; geometry is not used to
+        infer it. This sets the analytic power-wave reference impedance.
+    n_steps : int or None, optional
+        Number of time steps for each drive. Default ``None`` derives the
+        duration from ``num_periods`` using the grid.
+    num_periods : float, optional
+        Simulation duration in periods when ``n_steps`` is omitted; defaults
+        to the value shown in the signature.
+    freqs : array-like or None, optional
+        Frequencies in Hz. Default ``None`` constructs an evenly spaced band
+        from the simulation's maximum frequency.
+    n_freqs : int, optional
+        Number of frequencies in the default band; ignored when ``freqs`` is
+        supplied. Defaults to the value shown in the signature.
+    field_scale : float, optional
+        Coax TEM excitation field scale; defaults to the signature value.
+    probe_count, probe_start_cells, probe_spacing_cells : int, optional
+        Coax ladder count, distance from its source in cells, and spacing in
+        cells. Defaults are shown in the signature. The ladder must fit
+        between the source and the junction.
+    msl_probe_count, msl_probe_start_cells, msl_probe_spacing_cells : int or None, optional
+        Independent microstrip ladder count, feed offset, and spacing in
+        cells. Each defaults to ``None``, using its coax counterpart.
+        Probes must remain inside the domain without being clamped. Each
+        should clear both the feed and ``junction_x`` by at least
+        ``max(3, round(5*h_sub/dx))`` cells. Violations emit a ``UserWarning``
+        without refusing the calculation. Inspect the ladder split
+        diagnostics when ``return_ladder_voltages=True``.
+    feed_impedance : float or None, optional
+        Coax feed resistance. Default ``None`` uses its TEM characteristic
+        impedance.
+    cond_warn : float, optional
+        Incident-wave matrix conditioning warning threshold passed to the
+        two-drive solve; defaults to the value shown in the signature.
+    strict_passivity : bool, optional
+        Default ``True`` raises ``ValueError`` for a non-passive extracted S.
+        ``False`` returns the diagnostic matrix with a ``UserWarning``.
+    skip_preflight : bool, optional
+        Default ``False`` runs the shared sheet-size verdict before stepping:
+        ``snap="strict"`` blocks off-size sheets and ``snap="declared"`` warns.
+        Other preflight families are not run here.
+    extra_flux_monitors : list or None, optional
+        Default ``None``. Supply monitor entries registered on a separate
+        simulation with the same domain. Per-drive net Poynting-flux spectra
+        are returned in ``result.flux_monitors``, keyed by ``"coax"`` or
+        ``"msl"``, then monitor name, with float64 arrays of shape
+        ``(n_monitor_freqs,)``. Positive flux points along the positive axis.
+        These monitors do not alter S. Monitors registered on this simulation
+        are refused.
+    return_ladder_voltages : bool, optional
+        Default ``False``. If ``True``, attach copies of both drives' raw
+        per-probe modal voltages to ``result.ladder_voltages`` for offline
+        analysis and compute disjoint-half ladder refits in
+        ``result.ladder_split_gamma_dev`` and
+        ``result.ladder_split_reflection_decades``. These fields are ``None``
+        otherwise. The extra analysis does not alter S.
 
     Returns
     -------
     CoaxMSLTransitionResult
+        Power-wave S matrix with reference planes and analytic impedances,
+        conditioning, reciprocity, fit and settling diagnostics, and the
+        requested flux spectra and ladder data. See the result class for
+        field definitions. The result is not differentiable.
+
+    Raises
+    ------
+    ValueError
+        If the boundary, solver, precision, mesh, registration, or geometry
+        violates the limits below; substrate permittivity is missing; ground
+        heights are inconsistent; the coax stub or probe ladders do not fit;
+        extra flux-monitor entries are invalid; frequency-specific surface-
+        impedance sheets are registered; sheet preflight refuses the
+        geometry; or S is non-passive with ``strict_passivity=True``.
+    TypeError
+        If an extra flux-monitor entry lacks ``name``, ``axis``, or
+        ``coordinate`` attributes.
+    NotImplementedError
+        If other port families are registered or the coax face is not
+        ``"bottom"``. Unsupported material or runner features may also be
+        refused by the solver admission checks.
+    RuntimeError
+        If no realized trace conductor is found above the substrate at the
+        microstrip feed, or the runner returns no DFT-plane records.
+
+    Limits
+    ------
+    Requires a float32, three-dimensional uniform Yee mesh with the default
+    stencil order, positive CPML on all six faces, and no periodic axes or
+    refinement. Register exactly one bottom-face coax port and one microstrip
+    port, no other ports, existing TFSF source, lumped RLC elements, probes,
+    DFT planes, flux monitors, or NTFF boxes. The registered geometry must
+    be nonempty, and the microstrip source interval must meet its realized
+    conductors. The coax ``position[2]`` locates the physical ground plane;
+    the microstrip substrate bottom must refer to that same ground layer,
+    at or above the coax junction, within one grid cell. The coax junction
+    snaps to the nearest z-node, with half-cell ties to the lower node;
+    the stub stops below it and preserves the caller's materials at and
+    above it. These checks do
+    not certify connectivity or modal accuracy. Both ladders use a
+    matrix-pencil wave fit with analytic impedance normalization; this is
+    not a traceable or validated cross-family extraction.
     """
     resolve_field_dtype(self._precision)
     from rfx.sources.coaxial_port import (
@@ -1401,11 +1293,40 @@ def compute_coax_msl_transition(
     _validate_extra_flux_monitor_entries(
         extra_flux_monitors, self._domain, "compute_coax_msl_transition"
     )
+    # Flux-monitor implementation (moved from API docstring).
+    # ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
+    # an ENERGY-WITNESS channel, not an extractor change. Pass the entry
+    # objects ``Simulation.add_flux_monitor`` registers (build them on a
+    # scratch ``Simulation`` with the same domain and hand over its
+    # ``._flux_monitors``); each internal drive run then accumulates the
+    # requested Poynting-flux planes, and per-drive spectra come back
+    # name-keyed on ``result.flux_monitors``
+    # (``{"coax"|"msl": {monitor_name: (n_monitor_freqs,) float64}}``,
+    # net flux, positive = +axis). The S-parameter math is untouched —
+    # the non-perturbation witness (S bit-identical with and without
+    # monitors) is gated in
+    # ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+    # The registered-monitor guard is unchanged: monitors registered ON
+    # this sim still raise, because this method builds its own probes.
+    #
     flux_by_drive: dict = {}
 
     # ---- Registration guards ----------------------------------------
     from rfx.materials.thin_conductor import refuse_f0_sheets
     refuse_f0_sheets(self._thin_conductors, "coax-MSL transition")
+    # Boundary rationale (moved from API docstring).
+    # Same solver/precision/boundary contract as
+    # :meth:`compute_coaxial_two_port` (float32, 3D uniform Yee,
+    # ``boundary='cpml'`` with positive CPML on all six faces, absorption on
+    # all three axes): the coax's own far end needs an absorbing z face
+    # exactly like the coax lane, the MSL trace radiates in x/y too,
+    # and the caller's own ground plane is an INTERNAL stamped/registered
+    # PEC layer rather than the domain's z boundary — this is also WHY
+    # this method cannot reuse a PEC ``z_lo`` domain boundary as the MSL
+    # ground reference the way :meth:`compute_mixed_s_matrix`'s
+    # ``magnitude_channel="flux"`` fixtures do (that would conflict with
+    # the coax's own need for an absorbing z_lo face).
+    #
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coax_msl_transition() requires boundary='cpml' "
@@ -1592,6 +1513,43 @@ def compute_coax_msl_transition(
         n_steps = grid.num_timesteps(num_periods=num_periods)
     freqs_jnp = jnp.asarray(freqs_arr, dtype=jnp.float32)
 
+    # Stub construction and reference-plane rationale (moved from the API docstring).
+    # Generalizes issue #488's mixed lumped/wire<->MSL assembler
+    # (:meth:`compute_mixed_s_matrix`) to a coax<->MSL pair by combining,
+    # UNCHANGED, the less-invasive half of each family's own validated
+    # machinery instead of writing a new geometry-specific extractor:
+    #
+    # * The **coax side** is built exactly like :meth:`compute_coaxial_two_port`'s
+    #   own single-ended stub (CPML, TEM TFSF source, matched annular-
+    #   resistor feed, then a probe array), reusing
+    #   :func:`~rfx.sources.coaxial_port.stamp_coaxial_line`,
+    #   :func:`~rfx.sources.coaxial_port.stamp_coaxial_annular_resistor`,
+    #   and :func:`~rfx.sources.coaxial_port.build_coaxial_tem_plane_source_specs`
+    #   verbatim — but only ONE end (this method has no second coax port).
+    # * The **MSL side** is consumed exactly like :meth:`compute_mixed_s_matrix`
+    #   consumes its MSL ports: the caller registers arbitrary DUT
+    #   geometry (substrate, trace, ground plane, and — unique to this
+    #   transition — the ground-plane clearance hole and the vertical
+    #   pin-to-trace post that connects the two families) via the
+    #   ordinary ``sim.add(Box(...)/Cylinder(...), material=...)`` API,
+    #   and this method reuses :func:`~rfx.sources.msl_port.compute_msl_mode_profile`,
+    #   :func:`~rfx.sources.msl_port.setup_msl_port`, and
+    #   :func:`~rfx.sources.msl_port.make_msl_port_sources` verbatim for
+    #   the MSL port's own termination/excitation.
+    #
+    # This method does NOT build the junction geometry itself (the ground
+    # plane, its clearance hole, or the pin-to-trace post) — those are
+    # DUT-specific and belong to the caller's own registered geometry,
+    # exactly as :meth:`compute_mixed_s_matrix` never builds its own
+    # substrate/trace. What this method DOES fix, by construction, is
+    # WHERE each port's own S-parameter reference plane sits: both are
+    # placed AT the physical launch discontinuity (see ``junction_x``
+    # below and ``port.position[2]`` on the registered
+    # :meth:`add_coaxial_port`), specifically to minimize the
+    # pre-declared "reference-plane mismatch" failure mode (the coax's
+    # axial z-feed-plane convention has no direct analogue in the MSL's
+    # along-trace x reference plane — these are different geometric axes
+    # entirely).
     # ---- Coax stub (mirrors compute_coaxial_two_port's single end) --
     x_feed, y_centre, msl_z_lo = (float(c) for c in msl_pe.position)
     msl_port_base = _MSLPortLL(
@@ -1738,6 +1696,10 @@ def compute_coax_msl_transition(
     # #489 leg 4 attempt 2) -- default to the coax values so an
     # existing caller (attempt 1's committed fixture) sees byte-
     # identical behavior when these new parameters are left unset.
+    # Independent ladder parameters (moved from the API docstring): the
+    # microstrip ladder may need a meaningful fraction of a guided wavelength,
+    # while the short coax stub cannot host that span. Separate optional
+    # parameters decouple those extents; None retains the shared defaults.
     _msl_probe_count = int(probe_count if msl_probe_count is None else msl_probe_count)
     _msl_probe_start_cells = int(
         probe_start_cells if msl_probe_start_cells is None else msl_probe_start_cells
@@ -1750,6 +1712,32 @@ def compute_coax_msl_transition(
         n_offset_cells=_msl_probe_start_cells,
         n_spacing_cells=_msl_probe_spacing_cells,
     )
+    # Probe standoff rationale (moved from the API docstring).
+    # NEAR-FIELD STANDOFF (issue #823) — the one constraint these
+    # three are NOT free of. Every probe must clear BOTH ends the
+    # ladder is referred to (the MSL port's own feed plane AND the
+    # reference plane at ``junction_x``) by at least
+    # ``max(3, round(5*h_sub/dx))`` cells. Both are launch
+    # discontinuities, and within a few substrate thicknesses of one
+    # the field is not the guided mode yet, so a matrix-pencil fit
+    # that includes such a probe reports the LADDER's error as the
+    # field's: on the settled attempt-3 run (VESSL 369367257533) a
+    # single probe 0.4 mm = 1.33*h_sub from the feed dragged the
+    # full-ladder residual from 3.7e-3 to 0.342, and this lane spent
+    # three attempts attributing that to junction physics. The
+    # threshold is the repo's EXISTING issue-#80 Fix B constant —
+    # see :func:`rfx.api._preflight.msl_source_near_field_standoff_cells`
+    # for the derivation that licenses reusing it here, and for the
+    # W/h limitation it carries. Preflight cannot enforce it on this
+    # lane (these are METHOD arguments and never reach the
+    # registered ``_MSLPortEntry``), so this method evaluates the
+    # same predicate on its own REALIZED ladder and emits a
+    # ``UserWarning`` naming the offending probes. REPORT-ONLY:
+    # nothing is refused. Read it together with
+    # ``result.ladder_split_gamma_dev`` /
+    # ``result.ladder_split_reflection_decades`` (computed when
+    # ``return_ladder_voltages=True``, ``None`` otherwise), which say
+    # whether the ladder actually disagrees with itself.
     xs_ladder = [float(x) for x in probe_xs]
     lx_dom = float(self._domain[0])
     mono = all(
@@ -1993,6 +1981,26 @@ def compute_coax_msl_transition(
                 dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
 
 
+    # Two-drive extraction rationale (moved from the API docstring).
+    # Two-drive extraction (never a naive single-ratio)
+    # ---------------------------------------------------
+    # Drives the coax source, then the MSL source, in two separate FDTD
+    # runs (never assuming the non-driven port sees zero incident wave —
+    # the terminator-floor problem :meth:`compute_coaxial_two_port`
+    # already solved for symmetric coax applies here too, and likely
+    # worse, since the coax feed resistor and the MSL Hammerstad-Jensen
+    # termination have no reason to share a termination quality). Each
+    # port's own forward/backward wave amplitudes are recovered from its
+    # own probe ladder via :func:`~rfx.sources.coaxial_port.
+    # coaxial_line_reflection_from_plane_voltages` (Z0-free matrix-pencil
+    # fit — see :class:`~rfx.api._spec.CoaxMSLTransitionResult` for why
+    # this is used for the MSL side too, not the lane's own N-probe fit),
+    # converted to POWER waves via each port's own analytic reference
+    # impedance, and assembled by
+    # :func:`~rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
+    # (the same generic two-drive solve :meth:`compute_coaxial_two_port`
+    # uses). See :func:`_assemble_coax_msl_transition_from_voltages` for
+    # the full pure-assembly derivation.
     s_params, cond_a, cond_a_equilibrated, rec_resid, fit_resid, gamma, a_inc, b_out = \
         _assemble_coax_msl_transition_from_voltages(
             z_coax_planes_m=z_planes_coax_m, x_msl_planes_m=np.asarray(xs_sorted),
@@ -2004,6 +2012,33 @@ def compute_coax_msl_transition(
     reference_planes = np.asarray([ref_coax_m, float(junction_x)], dtype=float)
     z0_ref = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
 
+    # Ladder dump implementation (moved from the API docstring).
+    # ``return_ladder_voltages`` (issue #589 label-independent ladder dump):
+    # a second read-only channel, additive in exactly the same sense. When
+    # ``True``, the RAW per-probe modal voltages this method already
+    # computed for both drives are attached to
+    # ``result.ladder_voltages`` (``None`` otherwise) so the ladders can be
+    # re-read OFFLINE — adjacent-pair phase slope (which way the dominant
+    # wave travels), standing-wave ratio, subset matrix-pencil fits —
+    # without a second FDTD run and without trusting any incident/outgoing
+    # LABEL. The dict is documented field-by-field on
+    # :class:`~rfx.api._spec.CoaxMSLTransitionResult`. It is built from
+    # ``.copy()`` of arrays that are complete before, and consumed by,
+    # :func:`_assemble_coax_msl_transition_from_voltages`, so every
+    # S-parameter number is bit-identical with the option off or on —
+    # gated by ``tests/unit/sparams/test_coax_msl_transition_ladder_dump.py::
+    # test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
+    # the same discipline as the flux witness above; the round-trip
+    # assertion there also proves the dump IS what the assembler consumed).
+    # The same flag switches on the issue-#823 LADDER SELF-CONSISTENCY
+    # WITNESS, ``result.ladder_split_gamma_dev`` /
+    # ``result.ladder_split_reflection_decades`` (``None`` when the flag
+    # is off): a disjoint-half refit of each ladder, i.e. a Python loop of
+    # 2 drives x n_freqs x 2 matrix pencils per ladder over exactly the
+    # arrays the dump exposes. It is computed AFTER the assembler from
+    # those arrays and moves no S-parameter number; it is opt-in so that
+    # a default call pays for no extra pencil solves. Documented
+    # field-by-field on :class:`~rfx.api._spec.CoaxMSLTransitionResult`.
     # ---- Issue #823 ladder self-consistency witness (REPORT-ONLY) ----
     # Refit each port's ladder on two disjoint contiguous halves with the
     # same reference plane and the same extractor, and report the

@@ -444,8 +444,8 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None)
 
     Inside an outer ``jax.jit`` the grid coordinates are still concrete host
     arrays, but every jnp array built from them is a tracer, so a Python
-    bool of ``jnp.any(mask)`` raises ``TracerBoolConversionError`` — the
-    #642-class defect ``rfx/api/_compile.py`` documents and the first cut
+    bool of ``jnp.any(mask)`` raises ``TracerBoolConversionError`` — the #642-class
+    defect ``rfx/api/_compile.py`` documents and the first cut
     of this refusal re-introduced one frame down (found by the #931 phase-2
     T1 test ``test_real_interior_pec_under_outer_jit_matches_eager``).
 

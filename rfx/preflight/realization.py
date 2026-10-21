@@ -16,8 +16,8 @@ Three module-level classes and four leaves carry that:
 * :class:`_EntryRealization` -- what ONE conductor declaration realizes as
   (``volume`` / ``sheet`` / ``wire`` / ``lossy`` / ``refused``), with its own
   edge masks, wall planes and shifted-origin re-realization.
-* :class:`_CampaignStaticsContext` -- the per-configuration shared state the
-  #703 campaign checks and every other conductor-reading check build once:
+* :class:`_CampaignStaticsContext` -- the per-configuration shared state the #703
+  campaign checks and every other conductor-reading check build once:
   grid, production ``GridCoords``, cell centres, per-axis spacings, periodic
   flags, the realized set and the per-entry realizations.
 * ``_shape_bounds``, ``_shift_back_np``, ``_wall_nodes_on_plane`` and
@@ -419,8 +419,8 @@ class _CampaignStaticsContext:
     # ------------------------------------------------------------------
 
     def realized(self, *, strict=False, defer_warnings=False):
-        """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
-        #931 sheet/wire collectors), once; ``None`` when the assembly
+        """:class:`_RealizedPEC` from the PRODUCTION assembly (with the #931
+        sheet/wire collectors), once; ``None`` when the assembly
         raised (``assembly_error`` says why). Strict execution/build readers
         re-raise the original exception, including after a diagnostic read.
         """

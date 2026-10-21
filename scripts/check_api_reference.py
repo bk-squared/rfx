@@ -31,6 +31,7 @@ import argparse
 import inspect
 import json
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -117,15 +118,55 @@ def check_required_gates(inv: dict) -> list[str]:
     return errors
 
 
+INDEX_PAGES = ("index.html", "index-pdoc.html")
+
+
+class _HeadingParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.headings: list[str] = []
+        self._parts: list[str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "h1":
+            self.headings.append("")
+            self._parts = []
+
+    def handle_data(self, data):
+        if self._parts is not None:
+            self._parts.append(data)
+            self.headings[-1] = "".join(self._parts).strip()
+
+    def handle_endtag(self, tag):
+        if tag == "h1":
+            self._parts = None
+
+
+def check_page_headings(html: str, page: str) -> list[str]:
+    """Require one page title, reporting all heading text on failure."""
+    parser = _HeadingParser()
+    parser.feed(html)
+    if len(parser.headings) != 1:
+        return [f"{page}: expected exactly one h1, found {len(parser.headings)}; "
+                f"h1 texts: {parser.headings!r}"]
+    return []
+
+
 def check_html(html_dir: Path, inv: dict) -> list[str]:
     errors = []
     if not html_dir.is_dir():
         return [f"html dir not found: {html_dir}"]
-    blob = "".join(
-        p.read_text(errors="ignore") for p in sorted(html_dir.rglob("*.html"))
-    )
+    pages = []
+    for path in sorted(html_dir.rglob("*.html")):
+        html = path.read_text(errors="ignore")
+        # pdoc's module list (index.html, kept as index-pdoc.html in the bundle) and the
+        # bundle's landing page carry no page title; every module page carries one.
+        if path.name not in INDEX_PAGES:
+            errors.extend(check_page_headings(html, str(path)))
+        pages.append(html)
+    blob = "".join(pages)
     if not blob:
-        return [f"no rendered .html under {html_dir}"]
+        return errors + [f"no rendered .html under {html_dir}"]
     for sym in REQUIRED_HTML_SYMBOLS:
         if sym not in blob:
             errors.append(f"rendered reference is missing required symbol: {sym}")

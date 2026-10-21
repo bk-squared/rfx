@@ -60,8 +60,8 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     other processes, or when it is traced, so each device reads it from its
     own staged slab here. The per-edge rule is the one ``make_current_source``
     and the single-device E update use: the mean over the four cells incident
-    to the edge (#1210), which this lane's own E update takes too since
-    #1303 (:func:`rfx.runners._distributed_common.slab_e_component_materials`).
+    to the edge (#1210), which this lane's own E update takes too since #1303
+    (:func:`rfx.runners._distributed_common.slab_e_component_materials`).
 
     ``eps_r`` / ``sigma`` : the staged ``(n_devices * nx_local, ny, nz)``
         arrays on ``P("x")`` -- ghost rows filled by the staging with the

@@ -650,8 +650,8 @@ def test_g6c_checkpoint_knobs_are_documented_inert_not_a_raise():
     doc = jacobian_fwd.__doc__
     assert "checkpoint" in doc
     assert "checkpoint_segments" in doc
-    assert "EXACTLY NEUTRAL" in doc
-    assert "reverse-mode knobs" in doc
+    assert "provide no forward-mode memory benefit" in doc
+    assert "reverse-mode options" in doc
 
 
 # ---------------------------------------------------------------------------

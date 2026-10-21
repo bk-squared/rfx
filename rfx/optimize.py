@@ -341,8 +341,8 @@ def optimize(
         iteration (issue #40). On a non-uniform / distributed-non-uniform
         ``sim``, this trades an APPROXIMATE (truncated) gradient for
         reduced reverse-mode memory/compute — see ``Simulation.forward``'s
-        own ``n_warmup`` docstring for the measured error curve (issue
-        #626 part 2); a design loop built on this objective inherits that
+        own ``n_warmup`` docstring for the measured error curve (issue #626
+        part 2); a design loop built on this objective inherits that
         bias, not just a single forward call, so verify the bias is
         acceptable for your loss window before using a nonzero value here.
         On a uniform-mesh ``sim`` it raises ``NotImplementedError``

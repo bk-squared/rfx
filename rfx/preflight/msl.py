@@ -630,8 +630,7 @@ def _check_msl_port_geometry(
        than the existing 8.3% geometry threshold. These are screening
        heuristics, not quantitative Z0 accuracy guarantees.
 
-       #752: the same-permittivity material-column extent is reported
-       separately. At dx=80/60um on the historical 600/254um fixture,
+       Issue #752: the same-permittivity material-column extent is reported separately. At dx=80/60um on the historical 600/254um fixture,
        that extent is 320/300um while the PEC trace's substrate-facing
        plane and the normal source interval both end at 240um. The PEC
        volume and the dielectric use different #931 samplers. A material

@@ -873,8 +873,8 @@ def _graded_node_report(self, axis: int, coord: float):
     """``(node_pos, d_below, d_above, dual, ratio)`` when the E node
     nearest ``coord`` on ``axis`` sits on a >10% grading step, else None.
 
-    Concrete profiles only (a tracer profile is skipped, matching the
-    #671 check). The node is located with ``node_positions_from_profile``
+    Concrete profiles only (a tracer profile is skipped, matching the #671
+    check). The node is located with ``node_positions_from_profile``
     — the production node convention — not a hand-rolled rule (#562
     review F2, #568). ``k == 0`` and ``k >= d.size`` are matched by
     construction and never report.

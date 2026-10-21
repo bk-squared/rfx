@@ -551,8 +551,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     counted in the runway cell beside the node the source is stamped on,
     when the span from that node through the deepest probe lies in one
     uniform zone. When it would cross a grading ramp, no cell count names
-    one length along it, and the stored counts are kept. Either way the
-    #469 interval solve and the #681 widening, which count reflector and
+    one length along it, and the stored counts are kept. Either way the #469 interval solve and the #681 widening, which count reflector and
     absorber distances in cells, do not run on a graded axis, and the skip
     warning says so. On an ungraded axis the same lengths are recounted in
     that axis's own cell before the interval solve starts from them, which
@@ -2108,8 +2107,7 @@ def _assemble_coaxial_two_port_from_voltages(
         NumPy ``lstsq`` in ``coaxial_line_reflection_from_plane_voltages``
         instead of that function's own tolerant jnp lstsq — measured to
         raise ``numpy.linalg.LinAlgError: SVD did not converge`` on a
-        marginal fit that the jnp path handles fine (the exact PR #468 /
-        #559-B1 class: an AD-vs-FD comparator silently evaluating two
+        marginal fit that the jnp path handles fine (the exact PR #468 / #559-B1 class: an AD-vs-FD comparator silently evaluating two
         different functions). See
         :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`'s
         own ``_prefer_jnp`` docstring note for the identical precedent on

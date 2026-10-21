@@ -453,8 +453,8 @@ def apply_thin_conductor(
         Existing PEC (volume) mask, passed through untouched.
     sheets : list or None
         Collector for PEC sheets.  A PEC thin conductor with no collector
-        raises: the lane would otherwise simulate no sheet at all (the
-        #369 vaporized-metal class).
+        raises: the lane would otherwise simulate no sheet at all (the #369
+        vaporized-metal class).
     sheet_specs : list or None
         Collector for surface-impedance (``surface_impedance_f0``) sheets
         (#677). An f0-mode conductor no longer touches the material arrays;
@@ -488,8 +488,8 @@ class SheetImpedanceSpec:
     ``materials.sigma`` fold (#677). ``sigma_sheet`` is the per-node sheet
     conductivity ``G/d_dual`` (S/m) on the sheet cells and 0 elsewhere, with
     ``d_dual`` the E-node DUAL spacing along the sheet normal (== grid.dx on
-    the uniform cubic lane; ``e_node_dual_spacings`` per node on NU — the
-    #671 invariant, so ``sigma_sheet * Rs0 * d_dual == 1`` per node).
+    the uniform cubic lane; ``e_node_dual_spacings`` per node on NU — the #671
+    invariant, so ``sigma_sheet * Rs0 * d_dual == 1`` per node).
     ``g_sheet = 1/Rs0`` stays AD-live in ``f0`` and ``sigma_bulk``
     (d(1/Rs0)/df0 = -(1/Rs0)/(2 f0); d(1/Rs0)/dsigma_bulk =
     +(1/Rs0)/(2 sigma_bulk) — the #669 closed forms with flipped signs,
@@ -912,7 +912,7 @@ def conductor_footprint(
 
 
 def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
-    """#931: a realized sheet plane buried strictly inside a dielectric.
+    """Issue #931: a realized sheet plane buried strictly inside a dielectric.
 
     A sheet is realized ON one node plane.  When the primal cells on BOTH
     sides of that plane along the sheet's normal carry the SAME dielectric,

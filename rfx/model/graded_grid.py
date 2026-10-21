@@ -549,8 +549,8 @@ def node_positions_from_profile(profile):
     Public because callers outside this module legitimately need the
     convention (the #325 graded-rasterization preflight models what the
     rasterizer will do, and modelling it with a private-import composition or,
-    worse, a hand-rolled copy, is how that check drifted in the first place —
-    #562 review F2, #568).
+    worse, a hand-rolled copy, is how that check drifted in the first place — #562
+    review F2, #568).
     """
     from rfx.geometry.rasterize_grid import _axis_node_positions
     return _axis_node_positions(_append_bounding_node(profile), 0)

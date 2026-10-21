@@ -46,8 +46,8 @@ Parallel topology (inductor ADE only)
 --------------------------------------
 R and C are folded into the edge's sigma and eps, which the Yee E update
 already treats time-centred (sigma*(E^{n+1}+E^n)/2).  The inductor is
-solved together with the edge field, time-centred the same way (issue
-#1245).  At the edge (d = edge length, A = dual face, D0 = eps/dt + sigma/2
+solved together with the edge field, time-centred the same way (issue #1245).
+At the edge (d = edge length, A = dual face, D0 = eps/dt + sigma/2
 of the edge = 1/Cb, e_std = Ca*E^n + Cb*curl H):
 
     Ampere:    D0*(E^{n+1} - e_std) = -I_avg/A,  I_avg = (I^{n+1} + I^n)/2
@@ -254,8 +254,8 @@ def edge_update_denominator(materials, cell, component, dt,
     the element's ``D0`` has to be built from the edge's own ``eps`` and
     ``sigma``: :func:`rfx.model.materials.e_update_material_at` at the
     element's cell and component -- the stored update operands including
-    the lumped stamps on this edge (this cell, this component: #1210,
-    #1236), the values
+    the lumped stamps on this edge (this cell, this component: #1210, #1236),
+    the values
     ``update_e`` turns into ``Cb``. Reading ``materials.eps_r[i, j, k]`` /
     ``sigma[i, j, k]`` instead is the single-cell value, which differs from
     what the update uses wherever the four cells around the edge are not one

@@ -3,8 +3,7 @@
 Lane policy (#1053, PI decision 2026-09-15). ``distributed_v2.py`` is the
 distributed development trunk: ``Simulation.run(devices=...)`` dispatches
 there for uniform AND non-uniform grids, and since #1065/#1068 it realizes
-declared PEC volumes through the shared ``apply_pec_mask_shmap`` stage at the
-#1041 ordering. THIS module is the ``forward(distributed=True)`` NU lane and
+declared PEC volumes through the shared ``apply_pec_mask_shmap`` stage at the #1041 ordering. THIS module is the ``forward(distributed=True)`` NU lane and
 stays: it uniquely carries NU-grid CPML / Debye / Lorentz, ``checkpoint_every``,
 ``n_warmup``, ``emit_time_series`` and tracer-safe array inputs, none of which
 v2 has (v2 raises on NU dispersion). Retiring it would require porting those,

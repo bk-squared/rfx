@@ -72,8 +72,8 @@ def apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr):
     ratio ≈0.95 of the (3/8)χ³A² textbook (residual ~5% = Yee dispersion), while the increment
     form scores ~0.33 there — the gate cleanly discriminates them. (An earlier pulsed-source
     3D estimate read the pair as ~0.21× increment vs ~0.59× D-based — a comparator-independent
-    2.8× relative gain, but its absolute scale was biased low by the pulsed-⟨E²⟩ ambiguity that
-    #446 resolves.) See docs/research_notes/2026-07-23_kerr_quantitative_spm_finding.md.
+    2.8× relative gain, but its absolute scale was biased low by the pulsed-⟨E²⟩ ambiguity that #446
+    resolves.) See docs/research_notes/2026-07-23_kerr_quantitative_spm_finding.md.
     The pre-#437 form ``E → E/(1+factor)`` was worse still — a nonlinear
     ABSORBER (phase-neutral to first order). χ³=0 ⇒ D_target=ε_r·E_lin, denom=ε_r ⇒
     E=E_lin (byte-identical). Stable and lossless up to strong χ³ (verified χ³≤4).

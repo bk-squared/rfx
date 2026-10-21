@@ -728,8 +728,8 @@ def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
 
 def _profile_node_index(cells, nodes, coord_m: float) -> int:
     """The node index the grid gives ``coord_m`` on a declared profile:
-    ``nearest_node_index`` (the one tie rule, a tie to the lower node,
-    #1295/#1342) on the node line the grid builds from the profile
+    ``nearest_node_index`` (the one tie rule, a tie to the lower node, #1295/#1342)
+    on the node line the grid builds from the profile
     (``node_positions_from_profile``: the closed form on a constant
     profile). ``nodes`` is the caller's line of the same length, whose entry
     at the answer the caller reads."""

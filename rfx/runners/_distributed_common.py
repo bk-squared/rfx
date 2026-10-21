@@ -443,8 +443,7 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
     ``ShardedNUGrid.nx_per_rank`` is NOT (#1038 leg 3 derives this at
     every call site).
 
-    #1038 leg 3. This is ``distributed_v2.py::_apply_pec_shmap``
-    verbatim from the ``@partial`` down. ``distributed_nu.py`` carried a
+    Issue #1038 leg 3. This is ``distributed_v2.py::_apply_pec_shmap`` verbatim from the ``@partial`` down. ``distributed_nu.py`` carried a
     copy whose kernel differed in exactly one token -- its own parameter
     spelling -- plus three comments; the rename in the preceding commit
     made the two normalised-AST hashes equal

@@ -1,8 +1,8 @@
 """One entry point that picks the right S-matrix method (issue #980 Phase 1).
 
 ``Simulation`` ships seven S-parameter calculators plus a run-lane, and each
-one is fenced to a single port family by its own precondition block. Issue
-#980 section 1 records what that costs: an agent (or a new user) calls
+one is fenced to a single port family by its own precondition block. Issue #980
+section 1 records what that costs: an agent (or a new user) calls
 ``sim.run(compute_s_params=True)`` on a simulation whose ports are waveguide
 or coaxial -- where that lane computes nothing at all -- or guesses a method
 name such as ``compute_s_params()`` that does not exist.

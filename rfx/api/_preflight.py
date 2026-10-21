@@ -1319,7 +1319,7 @@ class _PreflightMixin:
         as the original checks. No logic, ordering, or warning text
         changed — pure readability decomposition.
 
-        #980 Phase 3 leg 8: the 37 hand-written helper calls that used to
+        Issue #980 Phase 3 leg 8: the 37 hand-written helper calls that used to
         follow moved into ``rfx/preflight/_registry.py`` as
         :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS`, one entry per
         call, in the same order and with the same arguments — so a new check

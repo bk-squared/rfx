@@ -1606,8 +1606,8 @@ def msl_loop_current(
         cell-aligned and ±y-rotated variants, so the July 0.194-vs-0.073
         split does not exist here), and the "~30 Ω termination" inference
         is WITHDRAWN (it rested on a July line Zc of 38.75 Ω; the fitted
-        Zc is 41.9 Ω against the Hammerstad-Jensen 47.9 Ω, which is the
-        #487 dx bias, not a termination error). #524 stays open for the
+        Zc is 41.9 Ω against the Hammerstad-Jensen 47.9 Ω, which is the #487
+        dx bias, not a termination error). #524 stays open for the
         passive port's unexplained reflection alone.
 
     Axis generality (issue #661)

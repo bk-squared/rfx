@@ -1072,8 +1072,7 @@ class Simulation(
             with sheet conductivity ``sigma_sheet = (1/Rs0)/d_norm`` on
             exactly the tangential E edges a PEC sheet on the same cells
             would zero — so toggling ``surface_impedance_f0`` on a metal
-            changes LOSS, never the conductor's surface position (before
-            #677 the sheet folded into ``materials.sigma`` as a full-cell
+            changes LOSS, never the conductor's surface position (before #677 the sheet folded into ``materials.sigma`` as a full-cell
             slab, moving resonances by geometry). ``d_norm`` is the local
             spacing normal to the sheet: the cell size on a uniform grid,
             and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``
@@ -1538,8 +1537,7 @@ class Simulation(
             touched.
         n_probes : int
             Number of equally-spaced voltage probe planes registered for
-            the N-probe least-squares wave-decomposition extractor (issue
-            #80 Fix C). Probe ``n`` sits at ``offset + n*spacing`` cells
+            the N-probe least-squares wave-decomposition extractor (issue #80 Fix C). Probe ``n`` sits at ``offset + n*spacing`` cells
             from the feed plane. ``N >= 3`` is required; the default 5
             over-determines the 2-unknown ``(alpha, gamma)`` fit, which
             removes the 3-probe quadratic's q→1 singularity. The current
