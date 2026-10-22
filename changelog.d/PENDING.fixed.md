@@ -1,0 +1,4 @@
+### Fixed — `fidelity_report` gives an earlier PEC sheet's metal faces their own key, `overlap_faces`
+
+- In the `dielectric-after-conductor-no-op` finding, `overlap_cells` also counted those sheet faces; it now counts only
+  cells shared with an earlier PEC volume. The finding's text is unchanged.
