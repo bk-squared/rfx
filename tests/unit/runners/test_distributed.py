@@ -144,7 +144,9 @@ class TestDistributedRunner:
 
     def test_distributed_matches_single_pec(self):
         """Distributed 4-device PEC result should match single-device."""
-        # The declared solved length gives nx=12, divisible by 4
+        # 11 cells on x between PEC walls: the grid holds nx = 12 x nodes (cells + 1,
+        # no pad). The runner splits the nx nodes over the devices and pads
+        # (-nx) % n_devices rows, so 4 devices take 3 rows each, no padding.
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -176,7 +178,8 @@ class TestDistributedRunner:
 
     def test_distributed_source_at_center(self):
         """Source at domain center should produce non-zero probe signal."""
-        # The declared solved length gives nx=8, divisible by 4
+        # 7 cells on x between PEC walls: nx = 8 x nodes, so 4 devices take 2 rows
+        # each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -194,7 +197,8 @@ class TestDistributedRunner:
     def test_distributed_pec_symmetry(self):
         """Symmetric PEC cavity with center source should produce
         symmetric probe readings at equidistant points."""
-        # The declared solved length gives nx=12, divisible by 4
+        # 11 cells on x between PEC walls: nx = 12 x nodes, so 4 devices take 3
+        # rows each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -223,7 +227,8 @@ class TestDistributedRunner:
 
     def test_distributed_2_devices(self):
         """Should also work with 2 devices."""
-        # The declared solved length gives nx=12, divisible by 2
+        # 11 cells on x between PEC walls: nx = 12 x nodes, so 2 devices take 6
+        # rows each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -247,7 +252,8 @@ class TestDistributedRunner:
 
     def test_distributed_no_probe(self):
         """Distributed run with no probes should not crash."""
-        # The declared solved length gives nx=8, divisible by 4
+        # 7 cells on x between PEC walls: nx = 8 x nodes, so 4 devices take 2 rows
+        # each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
@@ -261,7 +267,8 @@ class TestDistributedRunner:
 
     def test_nx_not_divisible_pads(self):
         """Non-divisible nx should be padded automatically, not raise."""
-        # The declared solved length gives nx=10, padded to 12 for 4 devices
+        # 9 cells on x between PEC walls: nx = 10 x nodes, which 4 does not divide;
+        # the runner pads (-10) % 4 = 2 rows to 12 and trims them after the run.
         sim = Simulation(
             freq_max=3e9,
             domain=(9 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
