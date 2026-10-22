@@ -110,6 +110,27 @@ preflight. Its drawn rectangle is clipped to the sampled tangential extent, incl
 on periodic axes). Non-Box films retain their existing admission rule. Surface-impedance sheets use the same
 `sheet_effective_size` check and solved-edge model as PEC sheets.
 
+### Material touching a magnetic (PMC) wall on the domain's high side is solved with too little of it on the wall
+
+Tracker: #1966
+
+A dielectric, conductivity or resistive (DC) film that reaches a PMC face on the HIGH side of an axis (the face at the
+largest coordinate) is seen at half weight on the field edges lying in that face. The same material on the LOW-side PMC
+face, or one cell or more away from the face, is solved as drawn; on a PEC face those edges carry no field, so nothing
+changes there. A magnetic material on that face is expected to behave the same way (same averaging code, not measured).
+
+What a user sees, measured on main (uniform mesh, 1 mm cells):
+- a resistive film across a PMC-symmetric parallel-plate line, ending at the high PMC wall, carries 0.25 cell less
+  conductance than drawn: 0.25/N relative for N cells, about 3 % at 8 cells (|S21| 0.721 instead of 0.714);
+- an εr 4 slab filling 4 of the 8 cells between two PMC walls of a 20 × 8 × 16 mm cavity resonates 2.2 % higher
+  against the high wall (4.735 GHz) than its mirror image against the low wall (4.634 GHz).
+
+The error scales as one quarter cell of the material over the cells between the PMC walls, so it falls as 1/N with
+refinement. No warning is given.
+
+Workaround: put a half model's symmetry plane on the LOW side of the axis (the lower coordinate face), or keep the
+material one cell away from a high-side PMC face.
+
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 
 Tracker: #1523
