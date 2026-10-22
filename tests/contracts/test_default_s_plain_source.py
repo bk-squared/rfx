@@ -8,15 +8,17 @@ import pytest
 
 from rfx import Simulation
 
-# Verbatim refusal on origin/main f0e3805d9, not derived from the implementation.
+# Verbatim refusal text, not derived from the implementation (one text for run()
+# and forward() since the docs-2.0 freeze PR; first pinned on origin/main f0e3805d9).
 REASON = (
     "Lumped/wire S-matrix requests do not support plain sources / "
     "0-ohm ports (add_source, add_polarized_source or "
     "add_port(impedance=0)): they fire in every port drive. "
 )
 REFUSAL = REASON + (
-    "Remove the plain source, or call run(compute_s_params=False) "
-    "to get raw port waves with the source included."
+    "Remove the plain source, or drop the S request "
+    "(run(compute_s_params=False) or forward() without port_s11_freqs) "
+    "to run with the source included."
 )
 FIX = ("Remove the plain source, or pass compute_s_params=False "
        "to silence this warning; returning no S-parameters.")
