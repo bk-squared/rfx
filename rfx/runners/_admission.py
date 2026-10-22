@@ -1163,9 +1163,9 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
             "to silence this warning; returning no S-parameters.")
         return False
     raise NotImplementedError(
-        reason + "Remove the plain source, or drop the S request "
-        "(run(compute_s_params=False) or forward() without port_s11_freqs) "
-        "to run with the source included.")
+        reason + "Remove the plain source, or drop the S request to run with the "
+        "source included: run(compute_s_params=False) returns the raw port waves, "
+        "forward() without port_s11_freqs the fields and probe records.")
 
 
 def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=None):
