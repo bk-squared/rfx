@@ -378,10 +378,14 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
     R = _resolve_value(spec.R, r_val, traced=traced)
     C = _resolve_value(spec.C, c_val, traced=traced)
     if _values.has_element(spec.R):
+        if is_tracer(R):
+            R_safe = jnp.where(R > 0, R, 1.0)
+            sigma_R = jnp.where(R > 0,
+                _port_sigma(grid, (i, j, k), spec.component, R_safe), 0.0)
+        else:
+            sigma_R = _port_sigma(grid, (i, j, k), spec.component, R)
         materials = _stamp_sigma(
-            materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, R),
-            spec.component)
+            materials, (i, j, k), sigma_R, spec.component)
 
     if _values.has_element(spec.C):
         d_par = _d_par(grid, (i, j, k), spec.component)
@@ -437,14 +441,23 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
         # i.e. a CUBIC cell.  It was self-consistent with the equally cubic
         # I/(dx*dx) below, which is why the pair realized an inductance
         # L * d_par**2 / dual_area instead of L (issue #691 follow-up).
-        gamma = dt * d_par / (L * dual_area)
-        dt_dx_over_L = dt * d_par / L
+        if is_tracer(L):
+            L_safe = jnp.where(L > 0, L, 1.0)
+            gamma = jnp.where(L > 0, dt * d_par / (L_safe * dual_area), 0.0)
+            dt_dx_over_L = jnp.where(L > 0, dt * d_par / L_safe, 0.0)
+        else:
+            gamma = dt * d_par / (L * dual_area)
+            dt_dx_over_L = dt * d_par / L
     else:
         gamma = 0.0
         dt_dx_over_L = 0.0
 
     if has_capacitor:
-        dt_over_C_dx = dt / (C * d_par)
+        if is_tracer(C):
+            C_safe = jnp.where(C > 0, C, 1.0)
+            dt_over_C_dx = jnp.where(C > 0, dt / (C_safe * d_par), 0.0)
+        else:
+            dt_over_C_dx = dt / (C * d_par)
     else:
         dt_over_C_dx = 0.0
 
@@ -609,11 +622,15 @@ def _series_values(e_std, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
     per_amp = 1.0 / (meta.D0 * meta.dual_area)
     kappa = d * per_amp            # the edge's own impedance d/(D0*A)
 
-    # has_inductor / has_capacitor are static Python bools (the traced lane
-    # takes topology from the plain-float spec), so these are trace-time
-    # branches and never divide by a zero coefficient.
+    # Static presence admits traced values. A zero traced L has a zero
+    # dt_dx_over_L coefficient; keep its reciprocal and tangent absent too.
     if meta.has_inductor:
-        two_l_over_dt = 2.0 * d / meta.dt_dx_over_L      # dt_dx_over_L = dt*d/L
+        if is_tracer(meta.dt_dx_over_L):
+            rate = meta.dt_dx_over_L
+            rate_safe = jnp.where(rate > 0, rate, 1.0)
+            two_l_over_dt = jnp.where(rate > 0, 2.0 * d / rate_safe, 0.0)
+        else:
+            two_l_over_dt = 2.0 * d / meta.dt_dx_over_L      # dt_dx_over_L = dt*d/L
     else:
         two_l_over_dt = 0.0
     if meta.has_capacitor:

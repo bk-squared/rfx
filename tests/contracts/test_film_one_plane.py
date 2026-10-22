@@ -320,6 +320,8 @@ CONSTRUCTOR_EXCEPTIONS = {
 
 # Every exact cell-sigma read, including typed exclusions, is classified.
 SIGMA_READS = {
+    ('rfx/model/value_roles.py', 'is_pec_material', 'spec'): (1, 'declared material classification moved from assemble_cells'),
+    ('rfx/model/value_roles.py', 'nonvacuum_material', 'spec'): (2, 'declared non-vacuum classification moved from validate_subgrid_setup'),
     ('rfx/_realized.py', 'scalar_electric', 'materials'): (1, 'arithmetic into coefficient / observed scalar operands'),
     ('rfx/adi.py', 'adi_step_3d', 'observed'): (1, 'arithmetic into ADI damping and curl coefficients'),
     ('rfx/api/_compile.py', '_CompileMixin._has_pec_to_conform', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
@@ -350,8 +352,7 @@ SIGMA_READS = {
     ('rfx/model/pole_stability.py', 'pole_set_extremes', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
-    ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/model/materials.py', 'assemble_cells', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
+    ('rfx/model/materials.py', 'assemble_cells', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'electric_materials_traced', 'materials'): (1, 'source trace detection includes the film record'),
     ('rfx/model/materials.py', 'realize_components', 'materials'): (1, 'arithmetic: volume sigma / lumped subtraction and edge averaging'),
     ('rfx/model/overrides.py', 'apply_material_overrides', 'materials'): (2, 'slicing/passing on or retaining unoverridden cell sigma'),
@@ -397,7 +398,6 @@ SIGMA_READS = {
     ('rfx/sources/coaxial_port.py', 'stamp_coaxial_annular_resistor', 'materials'): (1, 'arithmetic/write preparation: host copy of cell sigma'),
     ('rfx/sources/coaxial_port.py', 'stamp_coaxial_line', 'materials'): (1, 'arithmetic/write preparation: host copy of cell sigma'),
     ('rfx/subgridding/validation.py', 'validate_subgrid_setup', 'materials'): (3, 'arithmetic: material plane deltas and interface-clearance test'),
-    ('rfx/subgridding/validation.py', 'validate_subgrid_setup', 'spec'): (1, 'resolved declared material in static geometry validation'),
     ('rfx/surrogate.py', '_is_pec_entry', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/topology.py', 'density_to_eps', 'fields'): (1, 'TopologyMaterialFields from density_to_material_fields; definition and producer in this file'),
     ('rfx/topology.py', 'topology_optimize', 'mat_bg'): (1, 'resolved design-region MaterialSpec, local _resolve_material assignments at :462/:466'),

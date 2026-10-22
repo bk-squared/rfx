@@ -221,12 +221,8 @@ def test_parameter_tracers_keep_geometry_checks(lane, parameter, value):
     try:
         got = float(jax.grad(total)(value))
         np.testing.assert_allclose(got, baseline/value, rtol=4e-7, atol=0)
-        if parameter == 'sigma_bulk':
-            with pytest.raises(ValueError, match='sigma_bulk.*PEC/lossy class.*abstract.*without jit'):
-                jax.jit(jax.grad(total))(value)
-        else:
-            got = float(jax.jit(jax.grad(total))(value))
-            np.testing.assert_allclose(got, baseline/value, rtol=4e-7, atol=0)
+        got = float(jax.jit(jax.grad(total))(value))
+        np.testing.assert_allclose(got, baseline/value, rtol=4e-7, atol=0)
     finally:
         sim._thin_conductors[0] = conductor
 
@@ -247,12 +243,11 @@ def test_plain_grad_copper_retains_concrete_pec_products(lane):
 
     try:
         concrete = total(5.8e7)
-        value, derivative = jax.value_and_grad(total)(5.8e7)
+        with pytest.raises(ValueError, match=r'ThinConductor.sigma_bulk has no effect.*PEC threshold 1e\+06.*zero gradient'):
+            jax.value_and_grad(total)(5.8e7)
     finally:
         sim._thin_conductors[0] = conductor
-    assert float(concrete) == float(value) == float(derivative) == 0
-    for before, traced in zip(observed[0], observed[1]):
-        np.testing.assert_array_equal(before, traced)
+    assert float(concrete) == 0
 
 
 @pytest.mark.parametrize('snap', ['strict', 'declared'])

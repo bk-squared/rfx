@@ -294,14 +294,5 @@ def test_wg_smatrix_upstream_builder_tape_break_documented():
     with pytest.raises(Exception) as exc_info:
         jax.grad(build_and_run)(jnp.array(1.0))
 
-    # Confirm it's the expected TracerArrayConversionError (not a new breakage)
-    assert "TracerArrayConversionError" in type(exc_info.value).__name__ or \
-           "TracerArrayConversionError" in str(exc_info.value), (
-        f"Expected TracerArrayConversionError from upstream builder tape break, "
-        f"got: {type(exc_info.value).__name__}: {exc_info.value}"
-    )
-    print(
-        "\n[documented] Upstream builder tape break confirmed at "
-        "rfx/api/__init__.py (~line 1405): np.asarray(freqs_arr, dtype=float). "
-        "Fix target: WI-3 or similar port-builder AD work item."
-    )
+    assert isinstance(exc_info.value, NotImplementedError)
+    assert "_WaveguidePortEntry.freqs is STRUCTURE; declare it concrete." in str(exc_info.value)

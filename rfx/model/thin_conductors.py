@@ -177,6 +177,8 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     on periodic axes). A Box on traced coordinates keeps its existing fold
     without a new refusal; preflight judges the concrete realized grid.
     """
+    from rfx.model.declaration_roles import refuse_staircase_box
+    refuse_staircase_box(shape)
     from rfx._periodic import periodic_mask, plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
     from rfx.preflight._common import PreflightWarning
@@ -302,6 +304,8 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
 
 def dc_film_plane(shape, grid):
     """The declared midpoint's nearest E node, with the shared lower tie rule."""
+    from rfx.model.declaration_roles import refuse_staircase_box
+    refuse_staircase_box(shape)
     from rfx._grid_metric import nearest_node_index
     from rfx._periodic import plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
@@ -331,6 +335,8 @@ def dc_film_plane(shape, grid):
 
 def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
     """Admission shared by Box/non-Box folds and the diagnostic audit."""
+    from rfx.model.declaration_roles import refuse_thin_mode
+    refuse_thin_mode(conductor)
     if conductor.is_pec or conductor.surface_impedance_f0 is not None:
         return
     if is_tracer(conductor.eps_r) or conductor.eps_r != 1:
@@ -464,6 +470,10 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                         sheet_specs=None, sheets=None, geometry_masks=None,
                         geometry_key=None, snap='strict'):
     """Emit PEC/f0 products or place a DC film on tangential edges of one node."""
+    from rfx.model.declaration_roles import refuse_thin_mode
+    refuse_thin_mode(conductor)
+    from rfx.model.declaration_roles import refuse_staircase_box
+    refuse_staircase_box(conductor.shape)
     nonuniform = hasattr(grid, 'dx_arr')
     lane = 'non-uniform' if nonuniform else 'uniform'
     coords = GridCoords(*_grid_coords(grid), shape=tuple(grid.shape))

@@ -152,5 +152,5 @@ def test_traced_zero_thickness_box_keeps_plane_admission():
         sim.add(box(x, x), material='dielectric')
         return sim._build_materials(sim._build_grid())[0].eps_r
     # Staircase bounds, including a plane, must remain concrete.
-    with pytest.raises(jax.errors.ConcretizationTypeError):
+    with pytest.raises(NotImplementedError, match=r"Box.corner_lo is traced; the staircase mask needs concrete corners. Use subpixel smoothing, design_box or eps_override."):
         jax.jit(material)(jnp.float32(1.5 * L)).block_until_ready()

@@ -32,6 +32,7 @@ VALUE_CASES = [
     ("_MSLPortEntry", "impedance", "msl_port", 50., 2.),
     ("CoaxialPort", "impedance", "coax_port", 50., 2.),
     ("ThinConductor", "sigma_bulk", "thin", 1e3, 50.),
+    ("ThinConductor", "thickness", "thin", 1e-4, 1e-5),
     ("ThinConductor", "surface_impedance_f0", "thin_f0", 5e9, 1e8),
 ] + [("LumpedRLCSpec", name, "rlc", theta, delta)
      for name, theta, delta in (("R", 10., 1.), ("L", 1e-9, 1e-10), ("C", 1e-12, 1e-13))
@@ -43,12 +44,27 @@ VALUE_CASES = [
      for cls in (GaussianPulse, ModulatedGaussian, CWSource)
      for name, theta, delta in (("f0", 5e9, 1e8), ("bandwidth", .8, .05), ("amplitude", 1., .1))
      if name != "bandwidth" or cls is not CWSource
-] + [("_TFSFEntry", "waveform", "custom_tfsf", 1., .1)]
+] + [("_TFSFEntry", "waveform", "custom_tfsf", 1., .1)
+] + [("Simulation", field, "profile", 0., 1e-5)
+     for field in ("_dx_profile", "_dy_profile", "_dz_profile")]
 
 
 def value_objective(record, field, feature, lane):
     def objective(theta):
-        if feature in ("material", "debye", "lorentz"):
+        if feature == "profile":
+            nominal = np.full(12, 1e-3)
+            nominal[4:8] = [9e-4, 11e-4, 11e-4, 9e-4]
+            if isinstance(theta, jax.core.Tracer):
+                widths = jnp.asarray(nominal).at[4].add(theta).at[5].add(-theta)
+            else:
+                widths = nominal.copy()
+                widths[4] += float(theta)
+                widths[5] -= float(theta)
+            sim = B._base(lane, **{field.lstrip("_"): widths},
+                          nominal_profiles={field[2]: nominal} if isinstance(widths, jax.core.Tracer) else None,
+                          dt=1e-12, dt_min_cell=5e-4)
+            B._block(sim, eps_r=4.)
+        elif feature in ("material", "debye", "lorentz"):
             sim = B._base(lane)
             kwargs = dict(eps_r=4., sigma=.5, mu_r=2.)
             if feature == "material":
@@ -84,7 +100,7 @@ def value_objective(record, field, feature, lane):
             if feature == "thin_f0":
                 kwargs["surface_impedance_f0"] = theta
             else:
-                kwargs["sigma_bulk"] = theta
+                kwargs[field] = theta
             sim.add_thin_conductor(Box((.006, .003, .003), (.006, .009, .009)),
                                    **kwargs)
         else:
@@ -106,8 +122,10 @@ def value_objective(record, field, feature, lane):
     return objective
 
 
-@pytest.mark.parametrize("lane", LANES)
-@pytest.mark.parametrize("record,field,feature,theta,delta", VALUE_CASES)
+@pytest.mark.parametrize("record,field,feature,theta,delta,lane", [
+    (*case, lane) for case in VALUE_CASES
+    for lane in (("fwd_nonuniform",) if case[2] == "profile" else LANES)
+])
 def test_value_transforms(record, field, feature, theta, delta, lane):
     objective = value_objective(record, field, feature, lane)
     # Existing lane refusals remain part of admission, as B3 specifies for Kerr.
@@ -149,6 +167,8 @@ def test_structure_fields_refused_by_name(cls, field):
             record = object.__new__(cls)
             for name in D.record_fields(cls):
                 object.__setattr__(record, name, theta if name == field else None)
+        if cls is D.ThinConductor:
+            object.__setattr__(record, "sigma_bulk", 5.8e7)
         sim = SimpleNamespace(_geometry=[record])
         D.refuse_traced_structure(sim)
         return theta
@@ -194,15 +214,15 @@ def test_traceable_shape_dimensions(cls, field, lane):
 @pytest.mark.parametrize("entry", ["run", "forward", "run_devices", "forward_devices", "vmap_sweep"])
 @pytest.mark.parametrize("transform", ["jit", "grad", "vmap"])
 @pytest.mark.parametrize("kind,record,field", [
-    ("box", "Box", "corner_lo"), ("port", "_PortEntry", "position"),
+    ("sphere", "Sphere", "center"), ("port", "_PortEntry", "position"),
     ("precision", "Simulation", "_precision"),
     ("pinned", "PinnedSheet", "normal_axis"), ("ntff", "NTFFBox", "freqs"),
 ])
 def test_structure_at_real_entries(entry, transform, kind, record, field):
     def objective(theta):
         sim = B._base("fwd_uniform")
-        if kind == "box":
-            sim.add(Box((theta, .003, .003), (.007, .009, .009)), material="pec")
+        if kind == "sphere":
+            sim.add(D.Sphere((theta, .006, .006), .0015), material="pec")
         elif kind == "port":
             sim._ports[0] = replace(sim._ports[0], position=(theta, .006, .006))
         elif kind == "precision":
@@ -231,4 +251,61 @@ def test_structure_at_real_entries(entry, transform, kind, record, field):
     with pytest.raises(NotImplementedError) as caught:
         operation(theta)
     assert record in str(caught.value) and field in str(caught.value)
-    assert "design_box / eps_override" in str(caught.value) if kind == "box" else "declare it concrete" in str(caught.value)
+    assert "design_box / eps_override" in str(caught.value) if kind == "sphere" else "declare it concrete" in str(caught.value)
+
+
+@pytest.mark.parametrize("mode", ["PEC", "surface-impedance"])
+def test_thin_thickness_no_effect_refusal(mode):
+    def objective(theta):
+        sim = B._base("fwd_uniform")
+        sim.add_thin_conductor(Box((.006, .003, .003), (.006, .009, .009)),
+            sigma_bulk=5.8e7, thickness=theta,
+            surface_impedance_f0=5e9 if mode == "surface-impedance" else None)
+        return theta
+    with pytest.raises(NotImplementedError) as caught:
+        jax.jit(objective)(jnp.float32(1e-4))
+    assert str(caught.value) == ("ThinConductor.thickness has no effect on the realized model "
+        f"in this mode: {mode}; a traced value would have a zero gradient. Declare it concrete.")
+
+
+def test_physical_dependence_refusal_text():
+    with pytest.raises(NotImplementedError) as caught:
+        jax.jit(lambda theta: D.refuse_field(D._TFSFEntry, "theta_deg", theta))(jnp.float32(20.))
+    assert str(caught.value) == ("_TFSFEntry.theta_deg changes the solved fields, but rfx has no traced "
+        "route for it yet (rfx #1961). Declare it concrete.")
+
+
+# Positive witnesses are inventory theta1 values: a:rlc_L/C/R. The absent
+# declaration cells themselves have theta1=0 and cannot supply a positive witness.
+RLC_ABSENT_CASES = [
+    ("R-only-C", "C", 1.05e-12, dict(R=10.)),
+    ("R-only-L", "L", 1.05e-9, dict(R=10.)),
+    ("series-RL-C", "C", 1.05e-12, dict(R=10., L=1e-9)),
+    ("parallel-C-only-R", "R", 10.5, dict(C=1e-12, topology="parallel")),
+]
+
+
+@pytest.mark.parametrize("lane", LANES)
+@pytest.mark.parametrize("context", ["C0", "C5"])
+@pytest.mark.parametrize("case,field,positive,values", RLC_ABSENT_CASES,
+                         ids=[case[0] for case in RLC_ABSENT_CASES])
+def test_zero_lumped_value_is_absent(case, field, positive, values, context, lane):
+    def objective(theta):
+        sim = B._base(lane)
+        sim.add_lumped_rlc((.006,) * 3, **(values | {field: theta}))
+        if context == "C5":
+            sim.add_dft_plane_probe(axis="x", coordinate=.006, n_freqs=3)
+        return jnp.sum(sim.forward(n_steps=40, checkpoint=False, skip_preflight=True).time_series ** 2)
+
+    for theta in (0.0, positive):
+        concrete = objective(float(theta))
+        operand = jnp.float32(theta)
+        plain = objective(operand)
+        compiled = jax.jit(objective)(operand)
+        gradient = jax.grad(objective)(operand)
+        assert np.isfinite(np.asarray([concrete, plain, compiled, gradient])).all(), (case, theta, lane)
+        if theta == 0.0:
+            assert gradient == 0.0, (case, context, lane)
+        else:
+            assert gradient != 0.0, (case, context, lane)
+        np.testing.assert_allclose([plain, compiled], concrete, rtol=1e-6, atol=0)

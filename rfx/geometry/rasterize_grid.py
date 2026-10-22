@@ -417,6 +417,8 @@ def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None):
     Sphere / Cylinder / any other shape: the centre
     lies inside the shape (``mask_on_coords`` on the centre coordinates).
     """
+    from rfx.model.declaration_roles import refuse_staircase_box
+    refuse_staircase_box(shape)
     if getattr(grid, 'periodic_axes', ''):
         from rfx._periodic import periodic_mask
         if getattr(shape, 'corner_lo', None) is None or getattr(shape, 'corner_hi', None) is None:
@@ -501,6 +503,8 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     tracers) cannot declare a PEC sheet — the caller decides what to do.
     Returns the spec; raises ``ValueError`` on a zero footprint.
     """
+    from rfx.model.declaration_roles import refuse_staircase_box
+    refuse_staircase_box(shape)
     from rfx.boundaries.pec import SheetSpec
     from rfx.materials.thin_conductor import sheet_bounds
 
@@ -935,6 +939,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     ``NotImplementedError``. With static metrics, resolved wires retain the
     centre-sampled volume path even when the coordinates are traced.
     """
+    from rfx.model.declaration_roles import refuse_staircase_box
+    refuse_staircase_box(shape)
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
     from rfx._periodic import periodic_shape
     pts = getattr(shape, "points", None)

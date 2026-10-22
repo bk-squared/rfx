@@ -80,7 +80,7 @@ for _cls, _values, _traceable in (
     (MaterialSpec, ("eps_r", "sigma", "mu_r", "chi3"), ()),
     (DebyePole, ("delta_eps", "tau"), ()),
     (LorentzPole, ("omega_0", "delta", "kappa"), ()),
-    (_GeometryEntry, (), ()), (Box, (), ()), (OrientedBox, (), ()), (PolylineWire, (), ()),
+    (_GeometryEntry, (), ()), (Box, (), ("corner_lo", "corner_hi")), (OrientedBox, (), ()), (PolylineWire, (), ()),
     (Sphere, (), ("radius",)), (Cylinder, (), ("radius", "height")),
     (_PortEntry, ("impedance",), ()),
     (_WaveguidePortEntry, ("f0", "bandwidth", "amplitude"), ()),
@@ -89,7 +89,7 @@ for _cls, _values, _traceable in (
     (LumpedRLCSpec, ("R", "L", "C"), ()),
     (PinnedSheet, (), ()),  # Finding: PinnedSheet.eps_r accepted and ignored.
     # Finding: ThinConductor.eps_r accepted and ignored in f0 mode; DC refuses it.
-    (ThinConductor, ("sigma_bulk", "surface_impedance_f0"), ()),
+    (ThinConductor, ("sigma_bulk", "thickness", "surface_impedance_f0"), ()),
     (_TFSFEntry, ("f0", "bandwidth", "amplitude", "waveform"), ()),
     (_ProbeEntry, (), ()), (_DFTPlaneEntry, (), ()), (_FluxMonitorEntry, (), ()),
     (NTFFBox, (), ()),
@@ -115,24 +115,71 @@ SIMULATION_STRUCTURE = (
     "_periodic_axes", "_pec_faces", "_refinement", "_internal_probe_indices",
     "_msl_auto_offset_min", "_msl_auto_probe_spacing", "_msl_auto_probe_lengths",
 )
-# These widths retain main's nominal-profile grad/jit path. Traceability does
-# not imply a tangent fence: guard_shape_tangents owns the shape-only fence.
-SIMULATION_TRACEABLE = ("_dx_profile", "_dy_profile", "_dz_profile")
+# Cell widths enter the graded solver through the nominal-profile route.
+SIMULATION_VALUE = ("_dx_profile", "_dy_profile", "_dz_profile")
 SIMULATION_ROLES = {**dict.fromkeys(SIMULATION_STRUCTURE, STRUCTURE),
-                    **dict.fromkeys(SIMULATION_TRACEABLE, STRUCTURE_TRACEABLE)}
+                    **dict.fromkeys(SIMULATION_VALUE, VALUE)}
 
 
 def _traced(value):
     return any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(value))
 
 
+def refuse_staircase_box(shape):
+    """Fence concrete Box rasterizers; the SDF route never calls this."""
+    if isinstance(shape, Box):
+        for field in ("corner_lo", "corner_hi"):
+            if _traced(getattr(shape, field)):
+                raise NotImplementedError(
+                    f"Box.{field} is traced; the staircase mask needs concrete corners. "
+                    "Use subpixel smoothing, design_box or eps_override.")
+
+
+def no_effect_text(cls, name, mode=None):
+    context = f" in this mode: {mode}" if mode else ""
+    return (f"{cls.__name__}.{name} has no effect on the realized model{context}; "
+            "a traced value would have a zero gradient. Declare it concrete.")
+
+
+def refuse_thin_mode(record):
+    """Conditional VALUE admission before constructors, entries and direct folds."""
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import _PEC_SIGMA_THRESHOLD
+    f0, sigma = record.surface_impedance_f0, record.sigma_bulk
+    mode = ("surface-impedance" if f0 is not None else
+            "PEC" if not is_tracer(sigma) and sigma is not None and sigma >= _PEC_SIGMA_THRESHOLD
+            else "DC lossy")
+    if _traced(record.eps_r):
+        text = no_effect_text(ThinConductor, "eps_r", mode)
+        if mode == "DC lossy":
+            from rfx.model.thin_conductors import DCFilmAdmissionError
+            raise DCFilmAdmissionError(
+                text + " a film on one node plane has no volume; its eps_r is not modelled",
+                code="dc_film_permittivity")
+        raise NotImplementedError(text)
+    if mode != "DC lossy" and _traced(record.thickness):
+        raise NotImplementedError(no_effect_text(ThinConductor, "thickness", mode))
+
+
 def refuse_field(cls, name, value):
     """Refuse one direct structure operand before a constructor can convert it."""
     if _traced(value):
+        if (cls is PinnedSheet and name in ("eps_r", "thickness", "sigma_bulk")) or (
+                cls is ThinConductor and name == "eps_r") or (
+                cls is _TFSFEntry and name == "direction_tol_deg"):
+            raise NotImplementedError(no_effect_text(cls, name))
+        if (cls is _TFSFEntry and name in ("theta_deg", "phi_deg")) or (
+                cls is _FloquetPortEntry and name == "scan_phi"):
+            raise NotImplementedError(
+                f"{cls.__name__}.{name} changes the solved fields, but rfx has no traced route "
+                "for it yet (rfx #1961). Declare it concrete.")
         shape_field = cls in (Box, OrientedBox, PolylineWire, Sphere, Cylinder) or (
             cls is _GeometryEntry and name == "shape")
         route = "use design_box / eps_override" if shape_field else "declare it concrete"
-        raise NotImplementedError(f"{cls.__name__}.{name} is STRUCTURE; {route}.")
+        detail = (" OrientedBox requires concrete geometry." if cls is OrientedBox else
+                  " A gradient with respect to a declared shape dimension is not supported."
+                  if shape_field else "")
+        raise NotImplementedError(f"{cls.__name__}.{name} is STRUCTURE; {route}.{detail}")
 
 
 def refuse_traced_structure(sim):
@@ -141,10 +188,12 @@ def refuse_traced_structure(sim):
         cls = type(value)
         names = record_fields(cls) if is_dataclass(value) or hasattr(cls, "_fields") else ()
         if names:
+            if cls is ThinConductor:
+                refuse_thin_mode(value)
             for name in names:
                 leaf = getattr(value, name)
                 role = ROLES.get((cls, name))
-                if role == STRUCTURE:
+                if role == STRUCTURE and not (cls is ThinConductor and name == "eps_r"):
                     walk(leaf, cls, name)
                 elif is_dataclass(leaf) or hasattr(type(leaf), "_fields"):
                     walk(leaf, cls, name)
@@ -181,8 +230,10 @@ def guard_declaration_calls(simulation):
     def guard_value(value, owner, field):
         if is_dataclass(value) or hasattr(type(value), "_fields"):
             cls = type(value)
+            if cls is ThinConductor:
+                refuse_thin_mode(value)
             for name in record_fields(cls):
-                if ROLES.get((cls, name)) == STRUCTURE:
+                if ROLES.get((cls, name)) == STRUCTURE and not (cls is ThinConductor and name == "eps_r"):
                     guard_value(getattr(value, name), cls, name)
             return
         if isinstance(value, dict):
@@ -200,6 +251,11 @@ def guard_declaration_calls(simulation):
         @functools.wraps(call)
         def wrapper(*args, **kwargs):
             bound = signature.bind(*args, **kwargs)
+            if owner is ThinConductor:
+                from types import SimpleNamespace
+                bound.apply_defaults()
+                refuse_thin_mode(SimpleNamespace(**{name: bound.arguments[name] for name in
+                    ("sigma_bulk", "thickness", "eps_r", "surface_impedance_f0")}))
             for name, value in bound.arguments.items():
                 field = (aliases or {}).get(name, name)
                 if owner is simulation and field == "_nominal_profiles":
@@ -208,7 +264,7 @@ def guard_declaration_calls(simulation):
                     continue
                 role = (SIMULATION_ROLES.get(field) if owner is simulation
                         else ROLES.get((owner, field)))
-                if role == STRUCTURE:
+                if role == STRUCTURE and not (owner is ThinConductor and field == "eps_r"):
                     # Registered nested records own the roles of their leaves.
                     guard_value(value, owner, field)
                 elif role in (VALUE, STRUCTURE_TRACEABLE) and (

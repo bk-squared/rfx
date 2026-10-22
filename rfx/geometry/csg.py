@@ -272,6 +272,9 @@ class Box:
         between the outermost occupied planes. See the class docstring for
         the PEC-obstacle consequences and the half-cell-offset recipe.
         """
+        from rfx.model.declaration_roles import refuse_staircase_box
+        refuse_staircase_box(self)
+
         def _axis_mask(coords, lo, hi):
             # Use LOCAL cell size at the geometry's midpoint — critical for
             # thin objects on a non-uniform axis. Using the first-cell dc

@@ -124,7 +124,7 @@ def test_staircase_box_corner_gradient_is_refused(periodic):
         sim.add(Box((lo, .9 * DX, .6 * DX), (8.1 * DX, 5.3 * DX, 4.1 * DX)),
                 material='dielectric')
         return jnp.sum(sim._build_materials(sim._build_grid())[0].eps_r)
-    with pytest.raises(jax.errors.ConcretizationTypeError):
+    with pytest.raises(NotImplementedError, match=r"Box.corner_lo is traced; the staircase mask needs concrete corners. Use subpixel smoothing, design_box or eps_override."):
         jax.grad(total)(jnp.float32(3.3 * DX))
 
 

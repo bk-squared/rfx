@@ -20,6 +20,15 @@ and leaves this page.
 Nothing here is a substitute for the repo's standing rule: a warning's absence is
 not an accuracy guarantee, and a preflight pass is not a convergence study.
 
+## Traced conductivity on Apple-silicon GPUs
+
+Tracker: #1961
+
+On Apple-silicon GPUs (jax-mps), traced conductivity (`add_material(sigma=...)`
+or `ThinConductor.sigma_bulk`) is refused under jit, grad and vmap. The run-time
+PEC-threshold check requires host callbacks, which jax-mps lacks. Declare the
+conductivity concrete on MPS, or run on CPU or CUDA.
+
 ## General constraints
 
 ### A domain bounded by PEC or PMC walls is solved at a whole number of cells, with no message

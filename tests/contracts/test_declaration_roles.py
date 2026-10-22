@@ -55,11 +55,12 @@ def test_reachable_fields_have_exactly_one_role():
     assert not outside, f"roles outside reachable declarations: {outside}"
     assert set(D.ROLES.values()) <= {D.VALUE, D.STRUCTURE, D.STRUCTURE_TRACEABLE}
     for field in ("_dx_profile", "_dy_profile", "_dz_profile"):
-        assert D.SIMULATION_ROLES[field] == D.STRUCTURE_TRACEABLE
+        assert D.SIMULATION_ROLES[field] == D.VALUE
     assert D.SIMULATION_ROLES["_nominal_profiles"] == D.STRUCTURE
 
 
 def test_every_value_field_has_transform_witness():
     covered = {(record, field) for record, field, *_ in VALUE_CASES}
     required = {(cls.__name__, field) for (cls, field), role in D.ROLES.items() if role == D.VALUE}
+    required |= {("Simulation", field) for field, role in D.SIMULATION_ROLES.items() if role == D.VALUE}
     assert required == covered, (required - covered, covered - required)

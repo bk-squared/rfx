@@ -17,6 +17,11 @@ def is_pec_sigma(sigma, threshold=1e6, name="MaterialSpec.sigma"):
 
     def check(value):
         if np.any(np.asarray(value) >= threshold):
+            if name == "ThinConductor.sigma_bulk":
+                from rfx.model.declaration_roles import no_effect_text
+                from rfx.materials.thin_conductor import ThinConductor
+                raise ValueError(no_effect_text(ThinConductor, "sigma_bulk",
+                    f"PEC (sigma_bulk at or above the PEC threshold {threshold:g} S/m)"))
             raise ValueError(f"{name}: traced sigma must be below the PEC threshold {threshold:g} S/m")
 
     traced_check(name, "PEC threshold", check, sigma)
