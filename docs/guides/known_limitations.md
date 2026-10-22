@@ -243,13 +243,35 @@ differentiates are one function. When a bin's largest singular value exceeds 1
 (beyond float32 rounding) the call warns with the bin count and the worst value,
 and `result.sigma_max_excess` carries the per-bin amount. A passive structure
 cannot do that: read it as a record that ended before ring-down or a mesh too
-coarse for the geometry (`settling_db`, `reliable`), not as gain.
+coarse for the geometry (`settling_db`, `reliable`), or as an absorber too close
+above the line (next entry), not as gain.
 `enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
 the raw S is gated: the microstrip chain battery holds its maximum column power at
 or below 1.02 on the open-stub notch at its 25 µm claims rung, in
 `tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
 measured notch and thru values. Coarser meshes are
 reported, not gated.
+
+### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
+
+Tracker: #1976
+
+On a passive microstrip, `compute_msl_s_matrix(...)` can return S whose column
+power is above 1 on nearly every bin. On a synthetic board with a 0.3 mm
+substrate, the excess is about 0.2 % on a matched thru and 1 % on an open-stub
+notch, 0.01–0.05 dB on `|S|`. It grows slightly as the mesh is refined. On that
+board, with 1.5 mm of air above the line and 8 CPML layers, the extra power
+enters the board region through the top face, from the absorber. With 4.5 mm of
+air above the line, or with 16 layers (the default), the column power stays at
+or below 1 on every bin from 1.5 to 7 GHz. A wider lateral margin does not
+change it. Two causes remain possible, not yet told apart: the thin top absorber
+returns the feed's upward radiation into the board, or it is not passive for the
+strip's near field.
+
+The non-passive warning from this call tells you to suspect a record that ended
+early or a coarse mesh. That advice does not fit this case: these records ring
+down to −86 to −95 dB, and a finer mesh makes the excess slightly larger. Give
+the line more air below the top absorber, or keep the default 16 layers.
 
 ### The fitted microstrip propagation constant differs from the Hammerstad–Jensen closed form, and the difference is not attributed.
 
