@@ -328,6 +328,26 @@ outside the accuracy bar.
 
 The field increment a source adds on its edge is the update's coefficient times the drive. One place still computes that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
 
+### On the uniform mesh, a waveguide port smaller than the domain cross-section closes the transverse faces with metal walls, whatever boundary is declared.
+
+Tracker: #1826
+
+When a waveguide port is given a `y_range`/`z_range` aperture smaller than the
+domain (an open-ended guide or a horn drawn as geometry), the uniform mesh puts
+the absorber only on the port's axis. The other four domain faces get no
+absorber layers and reflect like metal walls, even with `boundary="cpml"`
+declared, and no warning is given. A structure that radiates is then solved
+inside a closed box. On an open-ended WR-90 radiating into air (1.27 mm cells,
+8.2–12.4 GHz), `|S11|` on the uniform mesh was off by up to 2.9 dB (median
+1.8 dB) from the same declaration on a graded mesh. The ripple moves with the
+lateral margin, as box resonances do, and the run does not settle. The graded
+mesh keeps the declared absorber on all six faces, and its `|S11|` did not
+change when the absorber depth or the simulation time was doubled. A port that
+spans the whole cross-section is not affected: there the transverse faces are
+the guide's walls, and both meshes warn or refuse unless they are declared PEC.
+Until this is fixed, solve a partial-aperture port that radiates on a graded
+mesh (a constant `dz_profile` is enough).
+
 ---
 
 ## Ring-down completion and the early stop
