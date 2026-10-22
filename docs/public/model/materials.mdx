@@ -161,8 +161,11 @@ sim.add(part, material="pec")
 
 STL in millimetres needs `scale=1e-3`. STEP files are converted to metres on
 import, so use `scale=1.0`. `MeshShape` is not differentiable: it raises on
-traced coordinates. Use `Box`, `Sphere` or `Cylinder` for any shape that must
-be a design variable.
+traced coordinates. No shape's size or position is a gradient input either: a
+gradient with respect to a `Box`, `Sphere` or `Cylinder` dimension raises,
+because the shape is drawn onto whole cells. To design a shape, put a
+[design region](/rfx/design/design-regions/) over it and optimise the
+permittivity of its cells.
 
 ### Draw order
 

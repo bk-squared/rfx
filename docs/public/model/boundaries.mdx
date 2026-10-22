@@ -64,9 +64,11 @@ The rules the spec enforces when you build it:
   largest depth rfx allocates; a face without its own thickness gets
   `cpml_layers`.
 - CPML and UPML cannot be mixed in one model.
-- `Boundary(lo="pec", hi="pec", conformal=True)` places the metal walls at
-  their exact positions with the Dey–Mittra conformal correction, instead of on
-  the nearest cell faces.
+- `Boundary(lo="pec", hi="pec", conformal=True)` adds the Dey–Mittra conformal
+  correction at the two walls. The axis is still a wall axis, so the cell-count
+  rule below applies to it: under the default `snap="strict"` a length more
+  than 1 % off a whole number of cells is refused, and `snap="declared"`
+  accepts it with a warning.
 
 The 1.x arguments `pec_faces=` and `set_periodic_axes()` are gone; the error
 names the replacement (see [Upgrading to 2.0](/rfx/start/upgrading/)).
@@ -78,6 +80,25 @@ The absorber is added outside the domain you declare: the box from 0 to
 layers beyond it. A metal, magnetic or periodic face adds nothing. So the
 domain size is the size of the region you model, and the absorber's depth is
 extra memory, not lost space.
+
+### How the domain becomes cells
+
+The grid holds whole cells, so a declared length is solved as a whole number
+of them:
+
+- **An axis closed by walls on both faces** (PEC, PMC, or faces with no
+  absorber layers) is solved at the nearest whole number of cells. If that is
+  more than 1 % off the declared length, the default `snap="strict"` refuses
+  the model and the message names the nearest `dx` that fits;
+  `snap="declared"` runs it with a `wall_axis_off_node` warning. A `dx` that
+  rfx chooses itself is fitted to the walls. A WR-90 cross-section,
+  22.86 × 10.16 mm, fits at `dx = 1.27 mm` (18 × 8 cells) and is refused at
+  1 mm, where 10.16 mm would be solved as 10 mm.
+- **An axis with absorbing faces** is covered by whole cells and can be solved
+  up to one cell longer than declared. `sim.fidelity_report()` lists it as
+  `domain-extent-quantized` with the declared and solved lengths.
+- **A periodic axis** follows the rule in [Periodic walls](#periodic-walls-and-a-phase-across-the-cell).
+- **A graded axis** is solved as the cell profile you give.
 
 What an absorber needs from the model:
 

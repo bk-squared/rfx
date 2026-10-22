@@ -112,6 +112,11 @@ and `run()` refuses it (`sheet_effective_size`; see
 | `sigma_bulk < 1e6` (resistive film, ink) | lossy sheet with conductivity `sigma_bulk * thickness / d`, preserving the sheet resistance 1/(σ·t) |
 | `surface_impedance_f0=f0` | resistive sheet with Rs = √(π f0 μ0 / σ_bulk), same footprint and edges as the PEC sheet |
 
+On every sheet `eps_r` stays 1: a PEC or surface-impedance sheet and a pinned
+sheet refuse any other value, or a traced one, when you declare them, and a lossy
+film refuses it when the run starts. Declare the dielectric around a sheet with
+`add(..., material=...)`.
+
 Here `d` is the cell size normal to the sheet. On a graded mesh it is
 `(d[k-1] + d[k]) / 2`, the average of the two cells either side of the sheet
 plane, so you get the sheet resistance you asked for wherever the sheet lands.
@@ -130,8 +135,8 @@ The surface-impedance model is a thick-conductor (Leontovich) loss:
 A surface-impedance sheet does not appear in `pec_mask` or in the σ array. To
 find all metal in a model, use `sim.conductor_mask()`.
 
-A sheet owns no cell, so it does not take the material of the cells around
-it. If you leave a vacuum slot for the foil between two dielectric boxes, the
+A sheet owns no cell: its update uses the permittivity of the cells it lies
+in. If you leave a vacuum slot for the foil between two dielectric boxes, the
 E edges on the sheet plane sit in vacuum and the stack-up gains a thin air
 layer. Extend the dielectric to the sheet plane; preflight flags the slot.
 
@@ -140,7 +145,8 @@ layer. Extend the dielectric to the sheet plane; preflight flags the slot.
 `sim.add_pinned_sheet(plane_index=..., i_range=..., j_range=..., normal_axis=2)`
 places a PEC sheet by interior node indices (not counting the absorber) instead of coordinates. It stays on the
 same nodes when the mesh itself is a design variable and its spacings move,
-which is what it is for. It is PEC only.
+which is what it is for. It is PEC only, and like every sheet it takes no
+`eps_r` other than 1.
 
 On a graded mesh, `forward(pinned_sheet_layout=...)` switches a pinned sheet's
 metal edge by edge without compiling the solve again: one entry per
@@ -252,7 +258,11 @@ cavity is solved more than 1 % off its drawn spacing, the default
 
 ### Worked example: a plate is a volume
 
-A 2 mm iris in a WR-90 guide at `dx = 1 mm`:
+A 2 mm metal plate across a WR-90-sized cross-section at `dx = 1 mm`. Every
+face absorbs, so this is a plate in open space, not a guide; it only shows how
+a plate is realized. To close it as a guide, declare PEC walls on y and z and
+use `dx = 1.27 mm`, which fits 22.86 × 10.16 mm in whole cells (see
+[How the domain becomes cells](/rfx/model/boundaries/#how-the-domain-becomes-cells)):
 
 ```python
 guide = Simulation(freq_max=12e9, domain=(0.30, 0.02286, 0.01016), dx=1e-3,
@@ -315,6 +325,7 @@ The solver paths refuse what they do not implement:
 | a surface-impedance sheet with a Debye or Lorentz material | uniform and graded mesh, `run()` and `forward()` | a non-dispersive material, or a lossy film |
 | `conformal_pec=True` | every path except `run()` on a uniform mesh | a finer mesh near the curved metal |
 | an `OrientedBox` with `conformal_pec=True` (also when a conformal boundary face turns it on), with `subpixel_smoothing`, or in `add_thin_conductor` | all | leave `conformal_pec` and smoothing off, so the rotated body is staircased; or draw it axis-aligned as a `Box` |
+| `eps_r` other than 1, or traced, on a PEC or surface-impedance sheet (`add_thin_conductor`) or a pinned sheet (`add_pinned_sheet`) | all | refused when declared: leave `eps_r` at 1 and declare the dielectric around the sheet |
 | a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | all | the message names which |
 | a lossy film that is not a `Box` and spans more than one cell layer, misses its drawn area by more than 1 % in equivalent length, or cannot state its area | every mesh | refine the in-plane mesh or draw a `Box`; `snap="declared"` accepts the declared geometry |
 

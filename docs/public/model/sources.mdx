@@ -136,8 +136,11 @@ has no such correction; its time integral is small but not zero.
 When you declare a source: the component, `amplitude_kind`, and for a plane
 wave every argument in the table above against its allowed values and the
 faces across the beam. Before the first step, `run()` and `forward()` refuse,
-on either mesh and without depending on preflight, a dielectric or a design
-region on or next to a plane wave's injection planes, and a soft source on an
+on either mesh and without depending on preflight, anything other than vacuum
+on or next to a plane wave's injection planes (a dielectric, even
+`eps_r = 1 + 1e-6`, a dispersive or Kerr medium, a PEC volume, a sheet, a wire,
+a lumped element or a design region; the message names the plane and what it
+found), and a soft source on an
 edge the grid realizes as metal. Every excited drive's pulse, sampled at the
 time step, must exceed 10⁻⁶ of its amplitude somewhere. The solver path then
 checks that it implements the source (below).
@@ -155,7 +158,7 @@ checks that it implements the source (below).
 | `closed_box=True` with `angle_deg`, in 2-D, with a face that is not CPML, on cells that are not cubic, or in a run with no fixed step count | uniform mesh | refused | `theta_deg`/`phi_deg` for the angle, CPML on all six faces, `dx=dy=dz`, `n_steps` |
 | `method="methodB"` at normal incidence, with `"ey"`, along `"-x"`, or with a waveform other than the two Gaussians | all | refused | `method="bloch"` |
 | a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
-| a dielectric or a design region on or next to an injection plane | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
+| anything other than vacuum on or next to an injection plane: a dielectric (even a near-vacuum one), a dispersive or Kerr medium, a PEC volume, a sheet, a wire, a lumped element or a design region | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
 | a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
 | a plane wave | several devices, either mesh | runs on one device, with a warning; `Result.diagnostics` records it | — |
 | a plane wave at an angle with an NTFF box, DFT planes, flux monitors, `snapshot=` or `until_decay=` | uniform mesh | refused | probes and the final `state`, a fixed `n_steps`, or `compute_rcs` for scattering |
