@@ -172,7 +172,7 @@ def _random_design(shape, seed=1279):
 
 
 def _place(sim, host, form):
-    return jnp.asarray(host) if form == "local" else sim.shard_distributed_override(host)
+    return jnp.asarray(host) if form == "local" else sim.shard_distributed_override(host, jax.devices("cpu")[:N_DEVICES])
 
 
 def _peak_ulp(want, got):
