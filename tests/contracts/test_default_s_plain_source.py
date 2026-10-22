@@ -16,9 +16,9 @@ REASON = (
     "add_port(impedance=0)): they fire in every port drive. "
 )
 REFUSAL = REASON + (
-    "Remove the plain source, or drop the S request "
-    "(run(compute_s_params=False) or forward() without port_s11_freqs) "
-    "to run with the source included."
+    "Remove the plain source, or drop the S request to run with the "
+    "source included: run(compute_s_params=False) returns the raw port waves, "
+    "forward() without port_s11_freqs the fields and probe records."
 )
 FIX = ("Remove the plain source, or pass compute_s_params=False "
        "to silence this warning; returning no S-parameters.")

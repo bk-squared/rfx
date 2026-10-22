@@ -32,9 +32,9 @@ def test_plain_source_forward_only_requests_s_on_opt_in(path):
         "Lumped/wire S-matrix requests do not support plain sources / "
         "0-ohm ports (add_source, add_polarized_source or "
         "add_port(impedance=0)): they fire in every port drive. "
-        "Remove the plain source, or drop the S request "
-        "(run(compute_s_params=False) or forward() without port_s11_freqs) "
-        "to run with the source included.")
+        "Remove the plain source, or drop the S request to run with the "
+        "source included: run(compute_s_params=False) returns the raw port waves, "
+        "forward() without port_s11_freqs the fields and probe records.")
 
 
 @pytest.mark.parametrize('path', ['graded'])
