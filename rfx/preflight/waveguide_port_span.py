@@ -80,6 +80,17 @@ def _face_sample_points(grid, lo, hi, aperture):
         yield point
 
 
+def _built(grid, axis, x):
+    """The node a face at ``x`` is built on, placed as entry_planes places the source."""
+    name = "xyz"[axis]
+    index = grid.index_of(name, x)
+    if hasattr(grid, "dx_arr"):
+        pad = getattr(grid, f"pad_{name}_lo")
+        cells = np.asarray(grid.cells(name))
+        return float(np.insert(np.cumsum(cells[pad:]), 0, 0.0)[index - pad])
+    return grid.node_of(name, index)
+
+
 def _objects(sim, grid, axis):
     for i, g in enumerate(sim._geometry):
         bounds = _bounds(g.shape)
@@ -127,10 +138,13 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 continue
             # Open at the source plane, closed at the reference plane: a short
             # whose face lies on the reference plane reads |S22| 0.50 (review
-            # of #1923), so a face there is an obstacle too.
+            # of #1923), so a face there is an obstacle too. A face is built on
+            # its nearest node (drawn at 80.5 mm, built at 81 mm), so test both.
+            def inside(face):
+                return start + tol < face < end - tol or abs(face - reference) <= tol
+
             faces = [face for face in (lo[axis], hi[axis])
-                     if start + tol < face < end - tol
-                     or abs(face - reference) <= tol]
+                     if inside(face) or inside(_built(grid, axis, face))]
             if volume and faces:
                 # A face counts only where the medium changes across it: two
                 # abutting boxes of one material, or a vacuum box, are a
@@ -160,7 +174,7 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 f"waveguide port '{entry.name or p}' (source plane {source * 1e3:.6g} mm, "
                 f"direction {entry.direction}) measures its reflection at {reference * 1e3:.6g} mm "
                 f"(ref_offset={entry.ref_offset} cells); '{name}' has a face at "
-                f"{face * 1e3:.6g} mm between the two, so the port cannot see that "
+                f"{face * 1e3:.6g} mm between the two (built on or before the measured plane), so the port cannot see that "
                 "object's reflection and its S-parameters would not describe it. "
                 f"Move the port or the object so the face lies beyond {reference * 1e3:.6g} mm "
                 "in the launch direction, or pass a smaller ref_offset (minimum 3).",

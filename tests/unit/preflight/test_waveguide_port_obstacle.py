@@ -118,11 +118,19 @@ def test_face_on_reference_plane_refused():
     assert "face at 81 mm" in str(findings[0])
 
 
-def test_source_endpoint_is_open():
-    # A box ending on the source plane (90 mm) from behind the port is not
-    # between the planes.
+@pytest.mark.parametrize("hi,refused", [(0.0805, True), (0.0795, False)])
+def test_face_built_on_reference_plane_refused(hi, refused):
+    """Drawn at 80.5 mm the face is built at 81 mm and read |S22| 0.504 / 0.505
+    with no finding; drawn at 79.5 mm it is built at 78 mm and reads 0.999."""
     sim = _guide()
-    sim.add(Box((0.090, 0, 0), (0.093, A, B)), material="pec")
+    sim.add(Box((0.075, 0, 0), (hi, A, B)), material="pec")
+    assert len(_findings(sim)) == int(refused)
+
+
+def test_object_behind_source_admitted():
+    # Behind the -x port: not between the planes (|S22| 0.0003 / 0.0002 measured).
+    sim = _guide()
+    sim.add(Box((0.096, 0, 0), (0.099, A, B)), material="pec")
     assert not _findings(sim)
 
 
