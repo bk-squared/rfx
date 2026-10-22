@@ -11,8 +11,11 @@ rfx needs Python 3.11 or newer. The PyPI package is `rfx-fdtd`, and the import
 name is `rfx`.
 
 ```bash
-pip install rfx-fdtd
+pip install --pre rfx-fdtd
 ```
+
+rfx 2.0 is a release candidate, so `--pre` is needed; without it pip installs the
+latest stable release, 1.7.0, which these pages do not describe.
 
 This installs JAX and jaxlib 0.10.2 or newer (CPU), NumPy, SciPy, matplotlib
 and h5py.

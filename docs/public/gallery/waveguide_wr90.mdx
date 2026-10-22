@@ -132,10 +132,10 @@ symmetric TE10 launch does not excite it in an empty guide, and `|S11|` stays
 smooth to 12.4 GHz. The calculator says that with `normalize=False` the S21
 phase includes Yee dispersion; this page reads magnitudes. The port check finds
 the two ports at mirror positions on the grid and reports, as information, the
-one-cell shift of the `-x` port's source plane that rfx applies by design. With
-the ports at 40 mm and 160 mm instead (31.5 cells from each end), it warns that
-the ports are not mirror images; `|S11|` and `|S21|` come out the same to five
-decimals.
+one-cell shift of the `-x` port's source plane that rfx applies by design. Ports
+placed between cells are not mirror images on the grid, and the check then warns;
+the block above puts both ports and both reference planes on whole cells for that
+reason.
 
 ## Fields
 
@@ -192,23 +192,30 @@ check of the port.
 Reference: the exact matched empty guide (`|S11| = 0`, `|S21| = 1` above
 cutoff).
 
-**Limit — where the residual comes from.** Not the absorber: 12, 20, 26 and 32
-layers give the same `|S11|` to four decimals. It comes from the grid: with the
-cell halved to 0.635 mm the peak `|S11|` falls from 0.0062 to 0.0019. Measured;
-record kept with the project.
+**Limit — where the residual comes from.** The grid sets it, not the absorber:
+rerun the block above with more absorber layers (`cpml_layers=32`) and `|S11|`
+does not move; a finer cell lowers it.
 
 ## Autodiff
 
 Fill part of the guide with a dielectric and `|S21|` responds, and that response
-is differentiable. The design variable is the fill permittivity `εr`, entered
-through `eps_override`, and the scalar is `|S21|²`. A single `jax.value_and_grad`
-call returns `∂|S21|²/∂εr` straight through `compute_waveguide_s_matrix(
-normalize="flux", ...)` — the power-flux extraction is on the AD tape, so the
-gradient flows through the full modal S-matrix assembly.
+is differentiable. The gradient is taken on a shorter guide than the run above, so
+that it is quick: 120 mm long with 12 absorber layers, ports at 30 mm and 80 mm
+(reference planes at 40 mm and 70 mm), seven frequencies from 8.2 to 12.4 GHz and
+30 periods. A dielectric plug fills the whole cross-section between x = 56 and
+64 mm (6 cells, 7.62 mm on this grid). The design variable is its permittivity,
+entered through `eps_override` at `εr = 1.5`, and the scalar is `|S21|²` at the
+middle frequency, 10.3 GHz. A single `jax.value_and_grad` call returns
+`∂|S21|²/∂εr` straight through `compute_waveguide_s_matrix(normalize="flux", ...)`
+— the power-flux extraction is on the AD tape, so the gradient flows through the
+full modal S-matrix assembly. The code is `make_autodiff` in
+`scripts/_gallery_v3_waveguide_figs.py`. Its 12 absorber layers are thinner than
+the half guide wavelength the absorber advisory asks for; the check below compares
+the gradient with finite differences of the same model, so it tests the
+differentiation, not the absorber.
 
-There is no closed form for the filled-guide `|S21|`, so the AD gradient is
-compared against central finite differences (`h = 0.05`), asking for agreement
-within 5% and a matching sign.
+The AD gradient is compared against central finite differences (`h = 0.05`) of the
+same model, asking for agreement within 5% and a matching sign.
 
 | Check | AD value | Compared against | rel. error | Sign agrees |
 |---|---|---|---|---|
@@ -218,24 +225,27 @@ The gradient agrees to 0.22% with matching sign, inside the 5% this check asks
 for. It checks the differentiation of this one computation, not the whole
 waveguide family. The waveguide S-matrix is **limited** in the
 [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md):
-its gradient checks were closed with 64-bit JAX on the flux lane, and this
-0.22% is a float32 gradient, which sits outside that closure.
+its gradient checks were made with 64-bit JAX for `normalize="flux"`, and this
+0.22% is a float32 gradient, outside what those checks cover.
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 
-The sign is physical: a dielectric fill lowers the cutoff toward the band through
-`f_c,d = f_c / √εr` (so `∂f_c,d/∂εr = −f_c / (2·εr^{3/2})`, about `−1.8 GHz`),
-which moves the band edge and reduces transmission. The closed-form cutoff
-relation points the same way the solver gradient does.
+The sign is physical. The fill raises the propagation constant, so the filled
+section's TE10 wave impedance is lower than the empty guide's and both of its
+faces reflect. For a plug that fills the cross-section the transmission-line
+result is exact: `|S21|² = 1 / (1 + ¼·(z − 1/z)²·sin²(β_d·L))`, with `z = β_0/β_d`
+the ratio of the filled and empty wave impedances, `β_0` and `β_d` the propagation
+constants in the empty and filled guide and `L` the plug length. For this plug it
+falls as `εr` rises, the sign the solver's gradient gives.
 
 **Limits.** The broad-wall width `a` is **not** a `jax.grad` input: `a/dx` is a
 discrete cell count and the analytic mode profile is rebuilt for each width, so
 its sensitivity comes from re-meshing and finite differences, alongside the
 analytic cutoff relation `f_c = c/(2·a)` — not from automatic differentiation.
 
-The differentiable lanes are `normalize=False` and `normalize="flux"`.
-`normalize=True` is the host-assembled two-run lane and is outside the
-differentiable chain: under `jax.grad`/`jax.jit`, a traced
+`normalize=False` and `normalize="flux"` are differentiable. `normalize=True`
+divides by a separate reference run assembled outside JAX, so it is not: under
+`jax.grad`/`jax.jit`, a traced
 `eps_override`/`sigma_override` makes `compute_waveguide_s_matrix` raise
 `NotImplementedError` before any FDTD run.
 

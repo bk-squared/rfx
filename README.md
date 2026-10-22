@@ -33,7 +33,7 @@ The website identifies its source version; select the release matching your inst
   model. What is supported, and within which limits, is in the
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md); what is currently wrong is in
   [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).
-- **Python 3.11 or newer**, with JAX and jaxlib 0.10.2 or newer. Python 3.10 users stay on 1.8.x.
+- **Python 3.11 or newer**, with JAX and jaxlib 0.10.2 or newer. Python 3.10 users stay on 1.x (1.7.0 on PyPI, 1.8.0 on the GitHub releases).
 - Multi-device (distributed) execution is not part of 2.0's supported set; it is planned
   for 2.1.
 
