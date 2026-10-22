@@ -35,11 +35,11 @@ def graded_scene(kind):
      "the V_ref path needs pre-injection recordings. Use one device."),
     ("forward", "rlc", "fwd_distributed_nu",
      "Lumped RLC ports are not yet supported by forward(distributed=True) on a graded mesh; "
-     "remove the lumped_rlc spec or omit distributed=True."),
+     "remove the lumped_rlc spec or omit distributed=True and devices=."),
     ("forward", "wire", "fwd_distributed_nu",
      "Wire ports with reference_plane_cells are not supported by forward(distributed=True) "
      "on a graded mesh; the V_ref path needs pre-injection recordings. "
-     "Use one device (omit distributed=True)."),
+     "Use one device (omit distributed=True and devices=)."),
 ])
 def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     from rfx.model import distributed_ports
