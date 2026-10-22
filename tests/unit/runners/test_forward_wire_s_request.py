@@ -28,18 +28,13 @@ def test_plain_source_forward_only_requests_s_on_opt_in(path):
     bins = np.linspace(2e9, 20e9, 50)
     with pytest.raises(NotImplementedError) as forward_error:
         build_p_wire(path).forward(port_s11_freqs=bins, **options)
-    assert str(forward_error.value) == (
+    assert str(forward_error.value) == str(run_error.value) == (
         "Lumped/wire S-matrix requests do not support plain sources / "
         "0-ohm ports (add_source, add_polarized_source or "
         "add_port(impedance=0)): they fire in every port drive. "
-        "Remove the plain source, or call forward() without port_s11_freqs "
-        "to get the fields and probe records with the source included.")
-    assert str(run_error.value) == (
-        "Lumped/wire S-matrix requests do not support plain sources / "
-        "0-ohm ports (add_source, add_polarized_source or "
-        "add_port(impedance=0)): they fire in every port drive. "
-        "Remove the plain source, or call run(compute_s_params=False) "
-        "to get raw port waves with the source included.")
+        "Remove the plain source, or drop the S request "
+        "(run(compute_s_params=False) or forward() without port_s11_freqs) "
+        "to run with the source included.")
 
 
 @pytest.mark.parametrize('path', ['graded'])

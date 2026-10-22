@@ -62,15 +62,19 @@ def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     assert lanes == ([] if lane is None else [lane])
 
 
+# One message for both entries: an equal request is refused alike (run/forward
+# one-pipeline contract), and the message names the way out from either call.
+PLAIN_SOURCE_S_REFUSAL = (
+    "Lumped/wire S-matrix requests do not support plain sources / "
+    "0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): "
+    "they fire in every port drive. Remove the plain source, or drop the S request "
+    "(run(compute_s_params=False) or forward() without port_s11_freqs) "
+    "to run with the source included.")
+
+
 @pytest.mark.parametrize("entry,expected", [
-    ("forward", "Lumped/wire S-matrix requests do not support plain sources / "
-     "0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): "
-     "they fire in every port drive. Remove the plain source, or call forward() "
-     "without port_s11_freqs to get the fields and probe records with the source included."),
-    ("run", "Lumped/wire S-matrix requests do not support plain sources / "
-     "0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): "
-     "they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) "
-     "to get raw port waves with the source included."),
+    ("forward", PLAIN_SOURCE_S_REFUSAL),
+    ("run", PLAIN_SOURCE_S_REFUSAL),
 ])
 def test_plain_source_s_request(entry, expected):
     sim = model()
