@@ -71,12 +71,13 @@ def mutation_result(kind, mutation, failure):
            dict(failure=str(failure)))
 
 
-def radiating_model(boundary, n_devices, pole=False, grading='x'):
+def radiating_model(boundary, n_devices, pole=False, grading='x', profile=None):
     from rfx import Simulation, Box, DebyePole
     import jax.numpy as jnp
     host_devices(n_devices)
-    profile = (np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3] if grading == 'x'
-               else np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 6), 1e-3])
+    if profile is None:
+        profile = (np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3] if grading == 'x'
+                   else np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 6), 1e-3])
     sim = Simulation(freq_max=15e9, domain=(15e-3, 8e-3, 8e-3), dx=1e-3,
         boundary=boundary, cpml_layers=2, **{f'd{grading}_profile': profile})
     sim.add_source((5.1e-3, 3.2e-3, 4.3e-3), 'ez', amplitude_kind='field',
