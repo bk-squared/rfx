@@ -355,8 +355,9 @@ fixture setup and first compile sit in its first test's price. (`least_duration`
 rejected in review: it spreads modules over every group, paying that setup once per group,
 and it put all 11,826 tests priced 0.00 s into one group.) Missing prices use the selection
 mean. These are predictions of test time, not job wall times; install/import and shard 1's
-three-device steps (about 12 min on run 39220415396) are additional. Since 2026-10-22 those
-steps are their own job (`three-device` in `validation.yml`, 75-min limit), outside every shard.
+three-device steps (about 12 min on run 39220415396) are additional. That run's last three-device
+step was skipped after a failure; on run 39698601854 all five took about 33 min. Since 2026-10-22
+they are their own job (`three-device` in `validation.yml`, 75-min limit), outside every shard.
 
 ```sh
 RFX_S0_FULL=1 ~/Documents/rfx/.venv/bin/python -m pytest --collect-only -q -p no:cacheprovider \
@@ -377,7 +378,8 @@ RFX_S0_FULL=1 ~/Documents/rfx/.venv/bin/python -m pytest --collect-only -q -p no
 | 8 | 2,000 | 102.2 |
 | **Max** | | **116.6** |
 
-The maximum meets the <=130-minute acceptance target (group 1 about 124 min with its three-device steps). The job limit remains
+The maximum meets the <=130-minute acceptance target (group 1 about 124 min with its three-device steps, which since
+2026-10-22 run in their own job). The job limit remains
 180 minutes, its wall-time budget fraction remains 0.85 (153 minutes), and the
 headroom contract retains RUNNER_SPREAD=1.22 and SETUP_S=600.
 

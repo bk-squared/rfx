@@ -207,8 +207,11 @@ jobs:
     runs-on: ubuntu-latest
     # The limit stops a hung run before GitHub's 6 h. 75 min = about 34 min (these steps
     # plus install on run 39698601854) x 1.42 (the slowest runner seen, run 39748623375)
-    # = 48 min, x 1.5 for files added later. The last step fails above 85 % of it, before
-    # the limit cancels anything: then split this job, do not raise the limit.
+    # = 48 min, x 1.5 for files added later = 72, rounded up. The last step fails above 85 %
+    # of it, before the limit cancels anything: then split this job, do not raise the limit.
+    # Each test step runs unless the job was cancelled, so one failing step does not skip the
+    # steps after it (as fail-fast: false does for the shards). Inside the graded-record step a
+    # failing file still stops the files after it, as before.
     timeout-minutes: 75
     steps:
       - name: Check out repository
@@ -232,6 +235,7 @@ jobs:
         run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
 
       - name: Run three-device x-wall alignment cases
+        if: ${{ !cancelled() }}
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
@@ -241,6 +245,7 @@ jobs:
           -k pad_3
 
       - name: Run three-device one-vs-several occupancy cases
+        if: ${{ !cancelled() }}
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
@@ -249,6 +254,7 @@ jobs:
           tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
 
       - name: Run three-device graded wrapped-step cases (2 vs 3 devices, slab views, slab cut)
+        if: ${{ !cancelled() }}
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
@@ -259,6 +265,7 @@ jobs:
           tests/contracts/test_slab_cut.py
 
       - name: Run three-device uniform record cases (DFT planes, flux, snapshots, NTFF, current moments)
+        if: ${{ !cancelled() }}
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
@@ -277,6 +284,7 @@ jobs:
           tests/unit/runners/test_distributed_uniform_directivity_parity.py
 
       - name: Run three-device graded record cases
+        if: ${{ !cancelled() }}
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"

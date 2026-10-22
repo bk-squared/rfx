@@ -244,14 +244,15 @@ def test_three_device_cases_run_in_their_own_job() -> None:
     jobs = _workflow("validation.yml")["jobs"]
     assert not [s for s in jobs["slow-tests"]["steps"] if "xla_force_host_platform_device_count" in str(s.get("env"))]
     job = jobs["three-device"]
-    assert "if" not in job and "strategy" not in job
+    assert not {"if", "strategy", "needs", "continue-on-error"} & set(job)
     steps = job["steps"]
     assert steps[0]["uses"] == "actions/checkout@v4"
     assert steps[1]["run"] == 'echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"'
     runs = [s for s in steps if "pytest" in s.get("run", "")]
     assert runs
     for step in runs:
-        assert "if" not in step, step["name"]
+        # A failing file must not skip the later steps.
+        assert step["if"] == "${{ !cancelled() }}", step["name"]
         assert step["env"] == {"JAX_PLATFORMS": "cpu", "XLA_FLAGS": "--xla_force_host_platform_device_count=3"}
     check = steps[-1]
     assert check["name"] == "Job time against the job limit" and check["if"] == "always()"

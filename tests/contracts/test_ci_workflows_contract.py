@@ -202,10 +202,11 @@ JAX_PINS = {"jax": "==0.10.2", "jaxlib": "==0.10.2"}
         ("pr-tests.yml", "fast-suite", "3.11", "dev,cad", JAX_PINS),
         ("pr-tests.yml", "guards-and-preflight", "3.11", "dev", JAX_PINS),
         ("validation.yml", "slow-tests", "3.11", "dev", JAX_PINS),
+        ("validation.yml", "three-device", "3.11", "dev", JAX_PINS),
         ("regen-durations.yml", "fast", "3.11", "dev,cad", JAX_PINS),
         ("regen-durations.yml", "slow", "3.11", "dev", JAX_PINS),
     ],
-    ids=["required-fast", "guards", "weekly-slow", "durations-fast", "durations-slow"],
+    ids=["required-fast", "guards", "weekly-slow", "weekly-three-device", "durations-fast", "durations-slow"],
 )
 def test_cpu_suite_python_and_jax_pins(
     workflow: str, job_name: str, python_version: str, extras: str, expected_pins: dict,
@@ -1175,7 +1176,7 @@ def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, ba
 
 @pytest.mark.parametrize("workflow,jobs", [
     (PR_TESTS, ("guards-and-preflight", "fast-suite")),
-    (WORKFLOW_DIR / "validation.yml", ("slow-tests",)),
+    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device")),
     (WORKFLOW_DIR / "regen-durations.yml", ("fast", "slow")),
 ])
 def test_test_jobs_raise_the_mapping_limit_before_pytest(workflow, jobs) -> None:
