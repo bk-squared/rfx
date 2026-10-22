@@ -371,3 +371,18 @@ def test_face_samples_keep_centre_when_overlap_contains_no_cell_centres():
         sim._build_realized_grid(), np.array([0.084, 0.0209, 0.0104]),
         np.array([0.087, 0.0211, 0.0106]), {1: (0, A), 2: (0, B)}))
     np.testing.assert_allclose(points, [[0, 0.021, 0.0105]], atol=1e-12)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_fill_drawn_past_the_domain_admitted(graded):
+    """A guide fill drawn from -1 m to 1 m changes no medium in the span and must
+    not reach the node lookup outside the domain (re-review of the built-node test)."""
+    from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
+    profile = {"dx_profile": np.full(40, DX)} if graded else {}
+    sim = _guide(one_port=True, **profile)
+    sim.add_material("fill", eps_r=2.2)
+    sim.add(Box((-1.0, 0, 0), (1.0, A, B)), material="fill")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _validate_cfg_waveguide_port_span(sim, warnings)
+    assert not [w for w in caught if getattr(w.message, "code", None) == CODE]

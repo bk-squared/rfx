@@ -138,13 +138,15 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 continue
             # Open at the source plane, closed at the reference plane: a short
             # whose face lies on the reference plane reads |S22| 0.50 (review
-            # of #1923), so a face there is an obstacle too. A face is built on
-            # its nearest node (drawn at 80.5 mm, built at 81 mm), so test both.
+            # of #1923), so a face there is an obstacle too. A PEC face is built
+            # on its nearest node (drawn at 80.5 mm, built at 81 mm), so test
+            # both; a face outside the domain cannot be built on the plane.
             def inside(face):
                 return start + tol < face < end - tol or abs(face - reference) <= tol
 
             faces = [face for face in (lo[axis], hi[axis])
-                     if inside(face) or inside(_built(grid, axis, face))]
+                     if inside(face) or (0.0 <= face <= self._domain[axis]
+                                         and inside(_built(grid, axis, face)))]
             if volume and faces:
                 # A face counts only where the medium changes across it: two
                 # abutting boxes of one material, or a vacuum box, are a
@@ -174,7 +176,7 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 f"waveguide port '{entry.name or p}' (source plane {source * 1e3:.6g} mm, "
                 f"direction {entry.direction}) measures its reflection at {reference * 1e3:.6g} mm "
                 f"(ref_offset={entry.ref_offset} cells); '{name}' has a face at "
-                f"{face * 1e3:.6g} mm between the two (built on or before the measured plane), so the port cannot see that "
+                f"{face * 1e3:.6g} mm between the two (or at the measured plane once built on the mesh), so the port cannot see that "
                 "object's reflection and its S-parameters would not describe it. "
                 f"Move the port or the object so the face lies beyond {reference * 1e3:.6g} mm "
                 "in the launch direction, or pass a smaller ref_offset (minimum 3).",
