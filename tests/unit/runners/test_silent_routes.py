@@ -21,7 +21,7 @@ N_STEPS = 96
 
 def _sim(
     conformal=False, *, ports=None, solver="yee", tfsf=False, absorber=None, kappa=1,
-    periodic_tfsf=False,
+    periodic_tfsf=False, domain=None,
 ):
     walls = BoundarySpec(
         x=Boundary(lo="pec", hi="pec", conformal=conformal), y="pec", z="pec"
@@ -34,7 +34,7 @@ def _sim(
         walls = BoundarySpec(x="cpml", y="periodic", z="periodic")
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.0123, 0.015, 0.022) if periodic_tfsf else (0.0123, 0.0131, 0.0127),
+        domain=domain or ((0.0123, 0.015, 0.022) if periodic_tfsf else (0.0123, 0.0131, 0.0127)),
         dx=0.001,
         boundary=absorber or walls,
         solver=solver,
@@ -85,11 +85,11 @@ def _direct(sim, **kwargs):
     )
 
 
-def _mixed(on):
+def _mixed(on, *, domain=None):
     dx = 0.0005
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.0123, 0.0061, 0.0047),
+        domain=domain or (0.0123, 0.0061, 0.0047),
         dx=dx,
         cpml_layers=4,
         boundary=BoundarySpec(

@@ -541,9 +541,12 @@ def fidelity_report(sim, print_report: bool = True):
                         "eps_r/sigma written there is never solved); if a "
                         "clearance/hole was intended, build the conductor "
                         "with the hole")
+                # Cells and sheet faces are different things, so each has
+                # its own key; neither count is folded into the other.
                 item["findings"].append(dict(
                     kind="dielectric-after-conductor-no-op",
-                    overlap_cells=n_ov,
+                    overlap_cells=n_cells,
+                    overlap_faces=int(n_faces),
                     conductor_entities=[m for m, _ in contributors],
                     detail=detail,
                     remedy="if the overlap is intended (e.g. a slab drawn "
