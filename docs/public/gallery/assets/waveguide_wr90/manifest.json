@@ -1,6 +1,6 @@
 {
   "schema_version": "rfx-gallery-manifest-v2",
-  "generated_at": "2026-06-30T03:22:31.110097Z",
+  "generated_at": "2026-10-21T23:58:55.732579Z",
   "case_id": "waveguide_wr90",
   "title": "WR-90 Waveguide Port (Empty Guide)",
   "description": "X-band WR-90 rectangular waveguide port S-matrix for a matched (empty) guide, against the exact |S11|=0 / |S21|=1 reference.",
@@ -13,31 +13,31 @@
   ],
   "quick_smoke": false,
   "provenance": {
-    "rfx_version": "1.6.5",
-    "git_sha": "1eb551bc4971cf6e0e17f080319560149d6d42e7",
+    "rfx_version": "2.0.0rc1",
+    "git_sha": "9f1abcca892444d50798367137656e54e0a10f5b",
     "params": {
       "band": "X-band (8.2-12.4 GHz)",
       "waveguide": "WR-90 TE10",
       "f_cutoff_hz": 6557305336.832896,
-      "dx_m": 0.001,
-      "cpml_layers": 20,
+      "dx_m": 0.00127,
+      "cpml_layers": 26,
       "num_periods": 200,
-      "domain_x_m": 0.2,
-      "notes": "Empty matched-load guide; analytic reference |S11|=0, |S21|=1."
+      "domain_x_m": 0.20066,
+      "notes": "Empty matched guide; analytic reference |S11|=0, |S21|=1; normalize=False (no reference run)."
     },
-    "runtime_seconds": 12.154,
-    "hostname": "run-execution-bomtddem7h6t-0",
+    "runtime_seconds": 11.495,
+    "hostname": "docs20-wr90-gallery-v2lz4-mbrzm",
     "backend": "gpu",
     "jax_x64": false,
-    "python": "3.10.12",
-    "platform": "Linux-5.15.0-179-generic-x86_64-with-glibc2.35"
+    "python": "3.11.16",
+    "platform": "Linux-5.15.0-198-generic-x86_64-with-glibc2.35"
   },
   "validation": {
     "tier": "E5",
-    "metric": "max|S11| < 0.02, min|S21| > 0.97 vs analytic matched load",
-    "metric_value": "max|S11|=0.0000, min|S21|=1.0000",
+    "metric": "max|S11| < 0.02, min|S21| > 0.97 vs analytic matched guide",
+    "metric_value": "max|S11|=0.0062, min|S21|=0.9987",
     "tolerance": "max|S11| < 0.02, min|S21| > 0.97",
-    "reference_solver": "analytic matched-load (+ MEEP/OpenEMS/Palace cross-check)",
+    "reference_solver": "analytic matched guide",
     "passed": true
   },
   "reproducibility": {
@@ -52,79 +52,79 @@
       "filename": "sparams.json",
       "type": "sparams-json",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.json",
-      "sha256": "509c77d1276fe530f971a2c7eddb063ccd08f547cd6d1623631d347ea438da35",
-      "size_bytes": 4963
+      "sha256": "01012c0b1f36d39443bb3d2574faff363460f07c116b3daaf10c77c60df3a0b9",
+      "size_bytes": 7577
     },
     {
       "filename": "sparams.s2p",
       "type": "touchstone",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.s2p",
-      "sha256": "c3d40344d870a914ab6268515c32f69a988a570a04e8f01590a850e8bd6301d6",
-      "size_bytes": 3213
+      "sha256": "c76555bb4a1b57ce408daf1cdaabde7ca915ed7815126744c434eb6804da619a",
+      "size_bytes": 3259
     },
     {
       "filename": "geometry.png",
       "type": "geometry-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/geometry.png",
-      "sha256": "8a43373f51e8053b57aba5335ffd0cb2dadd97b2c2eadee7ce96d6f048be53cd",
-      "size_bytes": 88021
+      "sha256": "40af88d94712f4be444c11f966edc4fef25bb84a923447e826e5acc202387d38",
+      "size_bytes": 87682
     },
     {
       "filename": "field_anim.gif",
       "type": "field-animation-gif",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/field_anim.gif",
-      "sha256": "b9fae0690a250347a997c6aeeb8a07207068f1074463fc251b55949f55b44ea2",
-      "size_bytes": 1447151
+      "sha256": "bfc9995484df1ef2db23dc304e48c0c6fc79db8cefb0cb8baa37ff12f64f6eb4",
+      "size_bytes": 780966
     },
     {
       "filename": "autodiff.png",
       "type": "autodiff-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/autodiff.png",
-      "sha256": "2e097718d857232123675269c6a6306ca01eacff1e16879492a20b1e8156e824",
-      "size_bytes": 74163
+      "sha256": "d8212ab77fe4c3374a1d79e1db362d2f80c85221082ed56f38b5eadeb6665366",
+      "size_bytes": 70503
     },
     {
       "filename": "validation.png",
       "type": "validation-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/validation.png",
-      "sha256": "cacf4e0b07a65b7c3a86effb82a6d635acc939d8a7c0293a185653325cd40508",
-      "size_bytes": 92213
+      "sha256": "a053953f4b9b44f07e47ccc5f12d8f322d7a666d93bff9e4b13243e94e362eb8",
+      "size_bytes": 115042
     },
     {
       "filename": "gradient.json",
       "type": "gradient-json",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/gradient.json",
-      "sha256": "1b5a3e65f27481c6bd8b87bf30de172b14ffbca22f1eb0a60c98e3570d8453a5",
-      "size_bytes": 255
+      "sha256": "3ffaa0b615e44e5e11379639d1b8c919e70e3584bc69325edc8af269c7651433",
+      "size_bytes": 257
     },
     {
       "filename": "field_te10.png",
       "type": "field-te10-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/field_te10.png",
-      "sha256": "b0bf5f6c15a9ddd15516b918fda44cce4745f824f1d33b6bd62f75f90a79ec72",
-      "size_bytes": 88350
+      "sha256": "ec15054d73db64717c5e10b86ac60937deb2f01fed27939d3175b1c354451638",
+      "size_bytes": 89413
     },
     {
       "filename": "sparams.png",
       "type": "sparam-plot-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/sparams.png",
-      "sha256": "c4055bda57c30f21665e003307254394ced8d597619f9740e7f884b9ffb0143f",
-      "size_bytes": 70901
+      "sha256": "6dbccf0638cc77908d959e46a731be7871bed3512979b043cb93de0a719ceb6c",
+      "size_bytes": 80525
     },
     {
       "filename": "smith.png",
       "type": "smith-png",
       "served_url": "/rfx/gallery/assets/waveguide_wr90/smith.png",
-      "sha256": "5eb274a7e23dbfa37fc22518faff3369ff4488f11f0c50fd70a7a642f48aee63",
-      "size_bytes": 101170
+      "sha256": "f0b298eecd873f2a4673dcafcf32216c2c8c0dd8d6537b3d8cf9bce78b5fb19f",
+      "size_bytes": 101749
     }
   ],
   "gradient_validation": {
     "param": "dielectric_fill_eps_r",
-    "ad_value": -0.22006267309188843,
-    "fd_value": -0.2196866273880005,
+    "ad_value": -0.21493425965309143,
+    "fd_value": -0.21445512771606445,
     "fd_step_h": 0.05,
-    "rel_err_vs_fd": 0.001711736887943501,
+    "rel_err_vs_fd": 0.0022341827035320017,
     "rel_err_vs_analytic": null,
     "sign_agreement": true,
     "gate_threshold": 0.05
