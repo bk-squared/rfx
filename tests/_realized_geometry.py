@@ -125,16 +125,17 @@ def realized(sim, *, nonuniform: bool | None = None) -> Realization:
 def domain_wall_positions(grid, axis: int) -> tuple[float, float]:
     """The domain's REALIZED lo / hi face planes along ``axis`` (metres).
 
-    ``Grid`` realizes a declared extent by ``ceil(extent / dx)`` cells, so a
-    22.86 x 10.16 mm WR-90 declared on a 1 mm cell is a 23 x 11 mm guide and
-    the domain-face PEC (design note §1.8, BC-owned) stands on the LAST
+    ``Grid`` solves a wall-to-wall length at the nearest whole number of
+    cells and refuses one more than 1 % off unless ``snap="declared"``; then
+    a 22.86 x 10.16 mm WR-90 declared on a 1 mm cell is a 23 x 10 mm guide,
+    and the domain-face PEC (design note §1.8, BC-owned) stands on the LAST
     INTERIOR node, not at the declared number. A conductor that is meant to
     reach a guide wall — a shorting plug, a full-width iris — must be drawn
-    to THIS plane: a volume's face rounds to the nearest node (§1.1), so a
-    plug drawn to the declared 10.16 mm realizes its top at 10.000 mm and
-    leaves a one-cell vacuum slot under the wall at 11.000 mm. Measured
-    2026-09-07 on the WR-90 waveguide-port case: that slot is the whole
-    0.0146 -> 0.0560 pec-short |S11| step.
+    to THIS plane (a volume's face rounds to the nearest node, §1.1). Under
+    the earlier ``ceil(extent / dx)`` rule the same guide was 23 x 11 mm, and
+    a plug drawn to the declared 10.16 mm left a one-cell vacuum slot under
+    the wall: measured 2026-09-07 on the WR-90 waveguide-port case, that slot
+    was the whole 0.0146 -> 0.0560 pec-short |S11| step.
 
     Read off the grid the run builds (``interior`` slices + the node line),
     never recomputed from ``dx`` by the caller.
