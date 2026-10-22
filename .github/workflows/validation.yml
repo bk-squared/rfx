@@ -177,72 +177,6 @@ jobs:
           --splits 8 --group ${{ matrix.group }}
           --store-durations --durations-path durations/weekly_${{ matrix.group }}.json
 
-      - name: Run three-device x-wall alignment cases
-        if: matrix.group == 1
-        env:
-          JAX_PLATFORMS: cpu
-          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
-        run: >
-          pytest -v -ra -p no:cacheprovider -o addopts=""
-          tests/unit/runners/test_distributed_cpml_face_matrix.py
-          -k pad_3
-
-      - name: Run three-device one-vs-several occupancy cases
-        if: matrix.group == 1
-        env:
-          JAX_PLATFORMS: cpu
-          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
-        run: >
-          pytest -v -ra -p no:cacheprovider -o addopts=""
-          tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
-
-      - name: Run three-device graded wrapped-step cases (2 vs 3 devices, slab views, slab cut)
-        if: matrix.group == 1
-        env:
-          JAX_PLATFORMS: cpu
-          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
-        run: >
-          pytest -v -ra -p no:cacheprovider -o addopts=""
-          tests/unit/runners/test_distributed_nu_wrapped_step.py
-          tests/contracts/path_equivalence/test_slab_view_producers.py
-          tests/contracts/test_slab_cut.py
-
-      - name: Run three-device uniform record cases (DFT planes, flux, snapshots, NTFF, current moments)
-        if: matrix.group == 1
-        env:
-          JAX_PLATFORMS: cpu
-          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
-        run: >
-          pytest -v -ra -p no:cacheprovider -o addopts=""
-          tests/unit/runners/test_distributed_record_planes.py
-          tests/unit/runners/test_distributed_record_flux.py
-          tests/unit/runners/test_distributed_record_snapshots.py
-          tests/unit/runners/test_distributed_record_moments.py
-          tests/unit/runners/test_distributed_record_memory.py
-          tests/unit/runners/test_distributed_records_ntff_baseline.py
-          tests/unit/farfield/test_current_moment_monitor.py::test_uniform_distributed_moments_match_native
-          tests/unit/runners/test_distributed_uniform_forward_media_parity.py
-          tests/unit/runners/test_distributed_graded_run_poles_parity.py
-          tests/unit/runners/test_distributed_graded_derivatives_parity.py
-          tests/unit/runners/test_distributed_uniform_directivity_parity.py
-
-      - name: Run three-device graded record cases
-        if: matrix.group == 1
-        env:
-          JAX_PLATFORMS: cpu
-          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
-        run: |
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_default_frequencies.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_planes.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_flux.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_snapshots.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_ntff.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_moments.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_gradient.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_memory.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_poles.py
-          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_one_device.py
-
       - name: Shard time against the job limit
         if: always()
         # Tests are added daily: requiring zero unpriced tests would turn the lane
@@ -263,6 +197,107 @@ jobs:
           name: weekly-durations-${{ matrix.group }}
           path: durations/weekly_${{ matrix.group }}.json
           if-no-files-found: warn
+
+  # Three-device cases: since 2026-10-22 their own job, were steps after shard 1's tests.
+  # pytest-split balances only the shards' main step, so these steps (about 33 min on
+  # run 39698601854) rode on top of group 1: that green run used 80.5 % of shard 1's
+  # 180-min limit, and on run 39748623375 shard 1 was cut at 180 min with no test failed,
+  # its runner taking 1.42x as long as the green run's for the same 8,225 tests.
+  three-device:
+    runs-on: ubuntu-latest
+    # The limit stops a hung run before GitHub's 6 h. 75 min = about 34 min (these steps
+    # plus install on run 39698601854) x 1.42 (the slowest runner seen, run 39748623375)
+    # = 48 min, x 1.5 for files added later. The last step fails above 85 % of it, before
+    # the limit cancels anything: then split this job, do not raise the limit.
+    timeout-minutes: 75
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Record job start time
+        run: echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Raise the memory-mapping limit for the test process
+        # The setting slow-tests uses; these steps ran under it while they were in shard 1.
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
+
+      - name: Run three-device x-wall alignment cases
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_cpml_face_matrix.py
+          -k pad_3
+
+      - name: Run three-device one-vs-several occupancy cases
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
+
+      - name: Run three-device graded wrapped-step cases (2 vs 3 devices, slab views, slab cut)
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_nu_wrapped_step.py
+          tests/contracts/path_equivalence/test_slab_view_producers.py
+          tests/contracts/test_slab_cut.py
+
+      - name: Run three-device uniform record cases (DFT planes, flux, snapshots, NTFF, current moments)
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_record_planes.py
+          tests/unit/runners/test_distributed_record_flux.py
+          tests/unit/runners/test_distributed_record_snapshots.py
+          tests/unit/runners/test_distributed_record_moments.py
+          tests/unit/runners/test_distributed_record_memory.py
+          tests/unit/runners/test_distributed_records_ntff_baseline.py
+          tests/unit/farfield/test_current_moment_monitor.py::test_uniform_distributed_moments_match_native
+          tests/unit/runners/test_distributed_uniform_forward_media_parity.py
+          tests/unit/runners/test_distributed_graded_run_poles_parity.py
+          tests/unit/runners/test_distributed_graded_derivatives_parity.py
+          tests/unit/runners/test_distributed_uniform_directivity_parity.py
+
+      - name: Run three-device graded record cases
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: |
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_default_frequencies.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_planes.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_flux.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_snapshots.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_ntff.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_moments.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_gradient.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_memory.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_poles.py
+          pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_one_device.py
+
+      - name: Job time against the job limit
+        if: always()
+        run: |
+          used=$(( $(date +%s) - JOB_T0 ))
+          echo "three-device job: $(( used / 60 )) min of a 75 min limit"
+          test "$used" -le $(( 75 * 60 * 85 / 100 ))
 
   # The weekly external-solver job (crossval-external: Meep legs of the scheduled
   # cross-validation cases) was removed on 2026-09-21 with the last scheduled case.
@@ -299,8 +334,8 @@ jobs:
   # hand-cancelled scheduled run also gets a comment.
   #
   # `skipped` also counts as not-green (issue #717 review, 2026-09-13). No job
-  # in this workflow is supposed to skip on either trigger: slow-tests
-  # carries no `if:` at all. So a skip here means the
+  # in this workflow is supposed to skip on either trigger: neither slow-tests
+  # nor three-device carries a job-level `if:`. So a skip here means the
   # lane quietly stopped covering something — the exact silent-gap class #717
   # exists to close — and the notifier must say so instead of printing "all
   # green". tests/contracts/test_validation_workflow_signal.py pins both halves
@@ -315,7 +350,7 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests]
+    needs: [slow-tests, three-device]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10

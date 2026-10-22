@@ -33,7 +33,8 @@ SETUP_S = 600.0
 def _weekly_shards_and_limit_s() -> tuple[int, float]:
     text = (REPO_ROOT / ".github" / "workflows" / "validation.yml").read_text(encoding="utf-8")
     block = text[text.index("  slow-tests:"):]
-    block = block[:block.index("\n  notify:")]
+    # The job ends where the next job key (two-space indent) begins.
+    block = block[:re.search(r"\n  [\w-]+:\n", block).start()]
     splits = {int(n) for n in re.findall(r"--splits (\d+)", block)}
     limits = [int(n) for n in re.findall(r"^    timeout-minutes: (\d+)$", block, re.M)]
     groups = re.search(r"group: \[([\d, ]+)\]", block)

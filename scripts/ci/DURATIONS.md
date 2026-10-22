@@ -355,7 +355,8 @@ fixture setup and first compile sit in its first test's price. (`least_duration`
 rejected in review: it spreads modules over every group, paying that setup once per group,
 and it put all 11,826 tests priced 0.00 s into one group.) Missing prices use the selection
 mean. These are predictions of test time, not job wall times; install/import and shard 1's
-three-device steps (about 12 min on run 39220415396) are additional.
+three-device steps (about 12 min on run 39220415396) are additional. Since 2026-10-22 those
+steps are their own job (`three-device` in `validation.yml`, 75-min limit), outside every shard.
 
 ```sh
 RFX_S0_FULL=1 ~/Documents/rfx/.venv/bin/python -m pytest --collect-only -q -p no:cacheprovider \

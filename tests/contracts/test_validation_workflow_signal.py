@@ -32,6 +32,8 @@ reddening anything:
    does, so the prices it measures are for the tests those shards actually run.
 8. Eight weekly shards store and upload their durations, record their start after
    checkout, and finish with an always-run check against 85 % of the job limit.
+9. The three-device cases run in their own job, outside the shards' balance, with
+   the same kind of check against their own limit.
 
 The notifier tests parse ``validation.yml`` so reformatting cannot fool them.
 A separate contract scans every workflow for forbidden VESSL dependencies.
@@ -232,10 +234,30 @@ def test_weekly_uses_eight_shards() -> None:
     step = _weekly_test_step(job)
     assert step["name"] == "Run slow suite — shard ${{ matrix.group }} of 8"
     assert "--group ${{ matrix.group }}" in step["run"]
-    three_device = next(s for s in job["steps"] if s.get("name") == "Run three-device x-wall alignment cases")
-    assert three_device["if"] == "matrix.group == 1"
     assert job["timeout-minutes"] == 180
     assert _workflow("regen-durations.yml")["jobs"]["slow"]["timeout-minutes"] == 360
+
+
+def test_three_device_cases_run_in_their_own_job() -> None:
+    # pytest-split balances only a shard's main step. On run 39748623375 shard 1 carried
+    # these cases after its group and was cut at its limit with no test failed.
+    jobs = _workflow("validation.yml")["jobs"]
+    assert not [s for s in jobs["slow-tests"]["steps"] if "xla_force_host_platform_device_count" in str(s.get("env"))]
+    job = jobs["three-device"]
+    assert "if" not in job and "strategy" not in job
+    steps = job["steps"]
+    assert steps[0]["uses"] == "actions/checkout@v4"
+    assert steps[1]["run"] == 'echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"'
+    runs = [s for s in steps if "pytest" in s.get("run", "")]
+    assert runs
+    for step in runs:
+        assert "if" not in step, step["name"]
+        assert step["env"] == {"JAX_PLATFORMS": "cpu", "XLA_FLAGS": "--xla_force_host_platform_device_count=3"}
+    check = steps[-1]
+    assert check["name"] == "Job time against the job limit" and check["if"] == "always()"
+    limit = job["timeout-minutes"]
+    assert f"$(( {limit} * 60 * 85 / 100 ))" in check["run"]
+    assert f"of a {limit} min limit" in check["run"]
 
 
 def test_weekly_stores_and_always_uploads_durations() -> None:
