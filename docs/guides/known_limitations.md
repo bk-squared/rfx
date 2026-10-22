@@ -398,6 +398,20 @@ What to do: record well past the slowest mode's decay, or use a one-cell wire po
 (`add_port(..., extent=dx)`) with `run(ringdown=...)`.
 #1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
 
+### The probe decay check can pass a weak probe without reading its own tail when a much stronger probe of the same field kind shares its cell.
+
+Tracker: #1986
+
+When two point probes of the same field kind (two E components, or two H components) sit in one Yee cell, the per-frequency
+decay check (`settling_db`, `settling_witness`) treats any record whose peak is 52 dB or more below the stronger one
+(a factor 2.4×10⁻³ in float32) as rounding only, and skips it before reading its tail. The verdict then rests on the
+stronger record. A weak cross-polarized or near-null component that is still ringing at the end of the record is reported
+as settled, with no warning. In a synthetic float32 case the weak record alone fails at +13.1 dB; next to a settled
+stronger record in the same cell the verdict is a pass.
+What to do: if you read a weak component next to a strong one at the same point, check
+`result.settling_witness["skipped_records"]`; for any probe listed there, judge it alone (a probe of its own at a
+neighbouring cell, or `rfx.probes.settling.probe_record_settling_witness` on that column only), or record longer.
+
 ## Absorbing boundaries
 
 ### Magnetic faces require the single-device second-order Yee image.
