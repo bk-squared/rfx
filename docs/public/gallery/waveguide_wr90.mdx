@@ -28,9 +28,9 @@ The dominant mode of a rectangular guide is TE10. It only propagates above the
 cutoff frequency set by the broad-wall width: `f_c = c / (2·a)`. For WR-90,
 `a = 22.86 mm` gives `f_c ≈ 6.557 GHz`, so the X-band (8.2–12.4 GHz) sits
 comfortably above cutoff and the TE10 mode travels cleanly. Below `f_c` the mode
-is evanescent and the guide rejects it. Filling the guide with a dielectric `εr`
-lowers the cutoff to `f_c,d = f_c / √εr` — the lever the autodiff section below
-differentiates through.
+is evanescent and the guide rejects it. Filling the whole guide with a
+dielectric `εr` lowers the cutoff to `f_c,d = f_c / √εr`; the autodiff section
+below fills only a short section instead, whose two faces reflect.
 
 ## What you'll learn
 
@@ -133,9 +133,9 @@ smooth to 12.4 GHz. The calculator says that with `normalize=False` the S21
 phase includes Yee dispersion; this page reads magnitudes. The port check finds
 the two ports at mirror positions on the grid and reports, as information, the
 one-cell shift of the `-x` port's source plane that rfx applies by design. Ports
-placed between cells are not mirror images on the grid, and the check then warns;
-the block above puts both ports and both reference planes on whole cells for that
-reason.
+at half-cell positions do not land on mirror nodes, and the check then warns that
+they are not mirror images; the block above puts both ports and both reference
+planes on whole cells.
 
 ## Fields
 

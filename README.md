@@ -41,13 +41,13 @@ The website identifies its source version; select the release matching your inst
 
 ```bash
 pip install rfx-fdtd            # latest stable release
-pip install --pre rfx-fdtd      # 2.0 release candidate
+pip install "rfx-fdtd>=2.0.0rc1"   # 2.0 release candidate
 ```
 
 For GPU execution, use a compatible JAX/CUDA installation:
 
 ```bash
-pip install "jax[cuda12]" rfx-fdtd
+pip install "jax[cuda12]" "rfx-fdtd>=2.0.0rc1"
 ```
 
 For the development version, clone this repository and run `pip install -e ".[dev]"`.

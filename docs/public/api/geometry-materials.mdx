@@ -110,7 +110,7 @@ you drew. Run it before a long solve.
 ### CAD import
 
 `MeshShape.from_file` reads a watertight STL, OBJ, PLY or STEP/STP mesh. Every
-format needs the `cad` extra (`pip install "rfx-fdtd[cad]"`), which installs
+format needs the `cad` extra (`pip install "rfx-fdtd[cad]>=2.0.0rc1"`), which installs
 `trimesh`. `scale` is
 required: STL, OBJ and PLY have no units, so pass `1e-3` for a file drawn in
 millimetres. STEP files are converted to metres on load, so pass `1.0`. The

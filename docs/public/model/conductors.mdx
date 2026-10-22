@@ -260,9 +260,13 @@ cavity is solved more than 1 % off its drawn spacing, the default
 
 A 2 mm metal plate across a WR-90-sized cross-section at `dx = 1 mm`. Every
 face absorbs, so this is a plate in open space, not a guide; it only shows how
-a plate is realized. To close it as a guide, declare PEC walls on y and z and
-use `dx = 1.27 mm`, which fits 22.86 × 10.16 mm in whole cells (see
-[How the domain becomes cells](/rfx/model/boundaries/#how-the-domain-becomes-cells)):
+a plate is realized. A guide needs PEC walls on y and z, and its cross-section
+must then be a whole number of cells within 1 %, which 22.86 × 10.16 mm is not
+at 1 mm (see
+[How the domain becomes cells](/rfx/model/boundaries/#how-the-domain-becomes-cells)).
+At a cell size that fits the guide, put the plate's faces on cell faces too, or
+it is solved at another thickness than drawn (`fidelity_report()` shows where
+it landed):
 
 ```python
 guide = Simulation(freq_max=12e9, domain=(0.30, 0.02286, 0.01016), dx=1e-3,
