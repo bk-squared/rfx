@@ -125,21 +125,28 @@ def _validate_cfg_waveguide_port_span(self, _w):
             if not all(hi[a] > limits[0] + tol and lo[a] < limits[1] - tol
                        for a, limits in aperture.items()):
                 continue
+            # Open at the source plane, closed at the reference plane: a short
+            # whose face lies on the reference plane reads |S22| 0.50 (review
+            # of #1923), so a face there is an obstacle too.
             faces = [face for face in (lo[axis], hi[axis])
-                     if start + tol < face < end - tol]
+                     if start + tol < face < end - tol
+                     or abs(face - reference) <= tol]
             if volume and faces:
                 # A face counts only where the medium changes across it: two
                 # abutting boxes of one material, or a vacuum box, are a
                 # uniform guide (#1913 review). Sample the realised transverse
-                # cell centres and overlap centre, 10 um either side.
+                # cell centres and overlap centre, 10 um (or half the box) either side.
                 points = tuple(_face_sample_points(grid, lo, hi, aperture))
+
+                # A box thinner than 20 um has both 10 um samples outside it.
+                step = min(1e-5, 0.5 * (hi[axis] - lo[axis]))
 
                 def changes(face):
                     if hi[axis] - lo[axis] <= tol:  # a sheet: always a reflector
                         return True
                     for point in points:
                         before, after = point.copy(), point.copy()
-                        before[axis], after[axis] = face - 1e-5, face + 1e-5
+                        before[axis], after[axis] = face - step, face + step
                         if _medium_at(self, before) != _medium_at(self, after):
                             return True
                     return False

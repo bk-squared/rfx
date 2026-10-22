@@ -39,7 +39,7 @@ def _findings(sim):
     return [i for i in sim.preflight() if i.code == CODE]
 
 
-@pytest.mark.parametrize("cells,face", [(1, 87), (2, 84)])
+@pytest.mark.parametrize("cells,face", [(1, 87), (2, 84), (3, 81)])
 @pytest.mark.parametrize("dispatch", [False, True])
 def test_hidden_short_refused_by_calculator(cells, face, dispatch):
     sim = _guide(cells)
@@ -108,11 +108,49 @@ def test_filled_guide_admitted():
     assert not [i for i in report if i.code == CODE]
 
 
-def test_reference_endpoint_is_open():
+def test_face_on_reference_plane_refused():
+    """A sheet ON the measured plane (81 mm) read |S22| 0.504 / 0.505 for a
+    full short with no finding (review of #1923); the 4-cell short reads 0.999."""
     sim = _guide()
-    # A sheet ON the measured plane (81 mm) has no face in the open interval.
     sim.add(Box((0.081, 0, 0), (0.081, A, B)), material="pec")
+    findings = _findings(sim)
+    assert len(findings) == 1
+    assert "face at 81 mm" in str(findings[0])
+
+
+def test_source_endpoint_is_open():
+    # A box ending on the source plane (90 mm) from behind the port is not
+    # between the planes.
+    sim = _guide()
+    sim.add(Box((0.090, 0, 0), (0.093, A, B)), material="pec")
     assert not _findings(sim)
+
+
+def test_graded_box_thinner_than_samples_refused():
+    """A PEC box 9 um thick on 5 um local cells is realized as a volume; both
+    10 um samples fell outside it and the face read as no medium change."""
+    from tests._x64_compat import enable_x64
+    from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
+    with enable_x64():
+        # 27 cells to 81 mm, 2.99 mm, four 5 um cells over 84 mm, 2.99 mm, 11 cells.
+        profile = np.r_[np.full(27, DX), 2.99e-3, np.full(4, 5e-6), 2.99e-3,
+                        np.full(11, DX)]
+        sim = Simulation(freq_max=10e9, domain=(0.12, A, B), dx=DX,
+                         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
+                                               z=Boundary(lo="pec", hi="pec")),
+                         cpml_layers=10, dx_profile=profile)
+        sim.add(Box((0.084, 0, 0), (0.084009, A, B)), material="pec")
+        sim.add_waveguide_port(0.090, direction="-x", name="right",
+                               mode=(1, 0), mode_type="TE", freqs=FREQS, f0=6e9,
+                               ref_offset=8)
+        source, reference = entry_planes(sim._waveguide_ports[0], sim._build_nonuniform_grid())
+        assert reference < 0.084 < 0.084009 < source
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            _validate_cfg_waveguide_port_span(sim, warnings)
+    findings = [w.message for w in caught if getattr(w.message, "code", None) == CODE]
+    assert len(findings) == 1
+    assert "face at 84" in str(findings[0])
 
 
 @pytest.mark.parametrize("registry", ["geometry", "thin", "pinned"])
