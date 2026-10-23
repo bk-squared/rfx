@@ -115,6 +115,11 @@ def _eps_override(sim, deps):
     coords = coords_from_nonuniform_grid(grid)
     slab_entry = next(e for e in sim._geometry if e.material_name == "diel")
     slab_mask = slab_entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+    # #1966: assembly repairs the high-face node of the PEC-walled y and z
+    # axes from the cell inside (the 114 planes above), so the slab owns
+    # them in production; the mask takes the same rule, y then z.
+    slab_mask = slab_mask.at[:, -1, :].set(slab_mask[:, -1, :] | slab_mask[:, -2, :])
+    slab_mask = slab_mask.at[:, :, -1].set(slab_mask[:, :, -1] | slab_mask[:, :, -2])
     return jnp.where(slab_mask, materials.eps_r + deps, materials.eps_r)
 
 

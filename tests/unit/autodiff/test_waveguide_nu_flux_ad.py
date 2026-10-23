@@ -128,6 +128,11 @@ def _eps_override_for(sim, deps):
     coords = coords_from_nonuniform_grid(grid)
     slab_entry = next(e for e in sim._geometry if e.material_name == "diel_slab")
     slab_mask = slab_entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+    # #1966: assembly repairs the high-face node of the PEC-walled y and z
+    # axes from the cell inside, so the slab owns it in production; the mask
+    # takes the same rule, y then z.
+    slab_mask = slab_mask.at[:, -1, :].set(slab_mask[:, -1, :] | slab_mask[:, -2, :])
+    slab_mask = slab_mask.at[:, :, -1].set(slab_mask[:, :, -1] | slab_mask[:, :, -2])
     # Perturb the slab region: base slab eps (=4, from the production
     # assembly) + deps so deps=0 is a no-op vs the assembled materials
     # (gate 3) and deps>0 changes S21 (FD gate).
