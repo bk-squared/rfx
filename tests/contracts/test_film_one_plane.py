@@ -347,7 +347,6 @@ SIGMA_READS = {
     ('rfx/boundaries/cpml.py', 'apply_cpml_e', 'materials'): (3, 'fallback when a caller passes no step loss: the subgridded lanes, which refuse thin conductors; the uniform and graded steps pass the component loss'),
     ('rfx/measurement/decay.py', 'advisory_inputs', 'spec'): (2, 'declared material returned by _resolve_material; names lossy materials in the until_decay cap advisory (text only, no result reads it)'),
     ('rfx/measurement/decay.py', 'array_lossy', 'materials'): (1, 'names lossy cells in the until_decay cap advisory for direct loop calls (text only); a film sheet loss is not named'),
-    ('rfx/model/pole_stability.py', 'pole_set_extremes', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),

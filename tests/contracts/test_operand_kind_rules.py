@@ -8,6 +8,7 @@ import pytest
 
 # Import each rule owner so its table is registered even in an isolated run.
 from rfx.boundaries import tfsf
+from rfx.model import pole_stability
 from rfx.model.operands import (
     COMPONENTS, OPERANDS, OPERAND_RULES, OperandKind, OperandRecord,
     material_rule, operands_at, realized_operands,
@@ -16,6 +17,8 @@ from rfx.model.operands import (
 
 def test_every_rule_names_every_kind():
     assert "tfsf_injection_planes" in OPERAND_RULES
+    assert "pole_time_step" in OPERAND_RULES
+    assert set(pole_stability.POLE_TIME_STEP_REASONS) == set(OperandKind)
     for name, table in OPERAND_RULES.items():
         assert set(table) == set(OperandKind), name
         assert set(table.values()) <= {"accept", "refuse"}, name

@@ -10,6 +10,27 @@ from typing import NamedTuple
 
 import numpy as np
 
+from rfx.model.operands import OPERAND_RULES, OperandKind, operands_at, realized_operands
+
+
+POLE_TIME_STEP_REASONS = {
+    **{kind: "the judged update's own terms" for kind in (
+        OperandKind.EPS, OperandKind.SIGMA, OperandKind.DEBYE,
+        OperandKind.LORENTZ, OperandKind.DRUDE)},
+    OperandKind.MU: "mu_r >= 1 only lowers x = 4(c0 dt)^2 sum sin^2/d^2; the judge already samples x over [0, x_max]",
+    OperandKind.CHI3: "Kerr with a pole medium is refused at assembly (Kerr 2.0 rule); assert that refusal fired, else refuse here",
+    **{kind: "PEC zeroes the tangential E; a pole cell under PEC carries no growth"
+       for kind in (OperandKind.PEC_VOLUME, OperandKind.PEC_SHEET, OperandKind.PEC_WIRE)},
+    # Measured 2026-10-23 (#1961; record rfx-archive 20261023-nu-c2-a1a2): a lossless Lorentz box at 0.999 of the
+    # judged step stays bounded for 20 000 steps with each stamp; at 1.001 it diverges no earlier than without it.
+    **{kind: "passive edge conductivity the judge does not read; measured not to lower the judged step in a pole cell"
+       for kind in (OperandKind.IMPEDANCE_SHEET, OperandKind.THIN_FILM)},
+    **{kind: "passive lumped term the judge does not read; measured not to lower the judged step in a pole cell"
+       for kind in (OperandKind.RLC, OperandKind.PORT_STAMP)},
+    OperandKind.SOURCE_STAMP: "a source adds a driven term, not a term in the homogeneous update",
+}
+OPERAND_RULES["pole_time_step"] = {kind: "accept" for kind in POLE_TIME_STEP_REASONS}
+
 C0 = 299792458.0
 EPS_0 = 8.8541878128e-12
 ROOT_TOLERANCE = 1e-6
@@ -175,36 +196,74 @@ class PoleSetExtremes(NamedTuple):
     debye: tuple = ()
 
 
-def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
+def cell_pole_operands(materials, lorentz_spec, debye_spec=None):
+    """Adapt legacy cell/spec inputs to C1; canonical assembly specs keep identity."""
+    from types import SimpleNamespace
+
+    if isinstance(materials, SimpleNamespace):
+        materials = vars(materials)
+    def spec(value):
+        if value is None:
+            return None
+        poles, masks = value
+        if masks is None:
+            return value
+        if not isinstance(masks, (tuple, list)):
+            return poles, [masks] * len(poles)
+        if len(masks) != len(poles):
+            raise ValueError(f"Expected {len(poles)} pole masks, got {len(masks)}")
+        return value
+    return realized_operands(None, materials, {
+        "lorentz_spec": spec(lorentz_spec), "debye_spec": spec(debye_spec)}, ())
+
+
+def pole_set_extremes(operands, lorentz_spec=None, *, view=None, debye_spec=None):
     """Reduce static pole patterns over owned cells only; never count halos."""
     import jax.numpy as jnp
     from rfx.core.jax_utils import is_tracer
 
-    if lorentz_spec is None and debye_spec is None:
+    if hasattr(operands, "eps_r"):
+        operands = cell_pole_operands(operands, lorentz_spec, debye_spec)
+    spatial = (slice(None),) * 3 if view is None else (
+        slice(view.halo_lo, view.halo_lo + view.x1 - view.x0), slice(None), slice(None))
+    cuts = operands_at(operands, lambda _: spatial)
+    families = ({OperandKind.LORENTZ, OperandKind.DRUDE}, {OperandKind.DEBYE})
+    def pole_cut(record, cut):
+        poles, masks = record.pole_spec
+        index = int(record.name.rsplit(".", 1)[1])
+        # C1 represents None with jnp.asarray(True), which becomes a tracer
+        # inside jit. Its membership is still statically universal: do not
+        # count it as an abstract mask for the existing eight-pole cap.
+        absent = masks is None or masks[index] is None
+        return poles[index], np.asarray(True) if absent else _concrete(cut)
+    groups = [tuple(pole_cut(r, cut)
+                    for r, cut in cuts if r.pole_spec is not None and r.kinds & kinds)
+              for kinds in families]
+    if not any(groups):
         return ()
-    lp, lm = lorentz_spec if lorentz_spec is not None else ((), ())
-    dp, dm = debye_spec if debye_spec is not None else ((), ())
-    def expand(poles, masks):
-        masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
-        if len(masks) != len(poles):
-            raise ValueError(f"Expected {len(poles)} pole masks, got {len(masks)}")
-        return [_concrete(m) for m in masks]
-    poles, masks = tuple(lp) + tuple(dp), expand(lp, lm) + expand(dp, dm)
-    if not poles:
-        return ()
-    masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
-    if len(masks) != len(poles):
-        raise ValueError(f"Expected {len(poles)} Lorentz masks, got {len(masks)}")
+    from rfx._traced_check import traced_check
+    for record, cut in cuts:
+        refused = [kind for kind in record.kinds
+                   if OPERAND_RULES["pole_time_step"][kind] == "refuse"]
+        if refused or OperandKind.CHI3 in record.kinds:
+            def check(value, record=record, refused=refused):
+                if np.any(np.asarray(value) != record.vacuum):
+                    kinds = refused or [OperandKind.CHI3]
+                    raise ValueError("pole time-step cannot judge " + ", ".join(k.name for k in kinds)
+                                     + ": " + "; ".join(POLE_TIME_STEP_REASONS[k] for k in kinds))
+            traced_check(record.label, "pole time-step operand", check, _concrete(cut), ordered=True)
+    # Cell values are the judged update's inputs. Component/edge EPS and
+    # SIGMA records are deliberate accepts, not extra cell contributions.
+    eps, sigma = (next(cut for r, cut in cuts if r.name == name and kind in r.kinds)
+                  for name, kind in (("materials.eps_r", OperandKind.EPS),
+                                     ("materials.sigma", OperandKind.SIGMA)))
+    lp, dp = (tuple(p for p, _ in group) for group in groups)
+    poles = lp + dp
+    masks = [m for group in groups for _, m in group]
     abstract_masks = any(is_tracer(m) for m in masks)
     if abstract_masks and len(poles) > 8:
         raise ValueError(f"pole stability cannot judge: {len(poles)} poles give 2^{len(poles)} patterns")
-    if view is not None:
-        from types import SimpleNamespace
-        input_shape = materials.eps_r.shape
-        materials = SimpleNamespace(**{name: view.own(getattr(materials, name))
-                                       for name in ("eps_r", "sigma")})
-        masks = [None if m is None else view.own((jnp if abstract_masks else np).broadcast_to(m, input_shape)) for m in masks]
-    shape = materials.eps_r.shape
+    shape = eps.shape
     # One integer code per cell, accumulated pole by pole (no cells x poles array).
     wide = len(poles) > 62
     codes = np.zeros(int(np.prod(shape)), dtype=object if wide else np.int64)
@@ -219,7 +278,7 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     else:
         unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
     patterns = [[bool((int(code) >> bit) & 1) for bit in range(len(poles))] for code in unique_codes]
-    values = [materials.eps_r, materials.sigma] + [v for p in poles for v in p]
+    values = [eps, sigma] + [v for p in poles for v in p]
     traced = abstract_masks or any(is_tracer(v) for v in values)
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
@@ -238,9 +297,9 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
             selected = (inverse == index).reshape(shape)
         chosen = tuple(p for p, present in zip(lp, pattern) if present)
         debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
-        eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
-        sigma_low = xp.min(xp.where(selected, materials.sigma, xp.inf))
-        sigma_high = xp.max(xp.where(selected, materials.sigma, -xp.inf))
+        eps_low = xp.min(xp.where(selected, eps, xp.inf))
+        sigma_low = xp.min(xp.where(selected, sigma, xp.inf))
+        sigma_high = xp.max(xp.where(selected, sigma, -xp.inf))
 
         occupied = tuple((jnp if abstract_masks else np).any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
                          for axis in range(selected.ndim))
@@ -340,12 +399,12 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
 
-def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind, debye_spec=None,
+def refuse_unstable_cells(operands, lorentz_spec=None, dt=None, budget=None, *, grid_kind, debye_spec=None,
                           in_program=True):
     """Judge whole-cell pole patterns, retaining the legacy entry point."""
-    if (lorentz_spec is None and debye_spec is None) or budget is None:
+    if budget is None:
         return
-    judge_pole_sets(pole_set_extremes(materials, lorentz_spec, debye_spec=debye_spec),
+    judge_pole_sets(pole_set_extremes(operands, lorentz_spec, debye_spec=debye_spec),
                     dt, budget, grid_kind=grid_kind, in_program=in_program)
 
 

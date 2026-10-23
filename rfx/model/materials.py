@@ -471,9 +471,13 @@ def assemble_cells(
     if not nonuniform:
         refuse_vaporized_sheets(_pec_sheets, lane=lane, periodic=sim._periodic_flags())
     warn_unextendable_shapes(conductor_findings)
+    from rfx.model.operands import realized_operands
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
-    refuse_unstable_cells(materials, lorentz_spec, grid.dt, courant_budget(grid),
-                          grid_kind=type(grid).__name__, debye_spec=debye_spec,
+    operands = realized_operands(grid, materials, {
+        "lorentz_spec": lorentz_spec, "debye_spec": debye_spec,
+        "kerr_chi3": kerr_chi3, "pec_mask": pec_mask}, ())
+    refuse_unstable_cells(operands, dt=grid.dt, budget=courant_budget(grid),
+                          grid_kind=type(grid).__name__,
                           in_program=n_devices < 2)
     return materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
 
@@ -764,11 +768,13 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
             raise ValueError("slab Lorentz materials require pole_set_extremes / "
                              "combine_pole_extremes / judge_pole_sets before realization")
     if view is None and lorentz_spec is not None and (grid is not None or budget is not None):
+        from rfx.model.pole_stability import cell_pole_operands
         admission_budget = courant_budget(grid) if grid is not None else budget
-        refuse_unstable_cells(materials, lorentz_spec, grid.dt if grid is not None else dt,
-                              admission_budget,
-                              grid_kind=type(grid).__name__ if grid is not None else grid_kind,
-                              debye_spec=debye_spec)
+        # Low-level init_lorentz also accepts one broadcast mask for all poles.
+        operands = cell_pole_operands(materials, lorentz_spec, debye_spec)
+        refuse_unstable_cells(operands, dt=grid.dt if grid is not None else dt,
+                              budget=admission_budget,
+                              grid_kind=type(grid).__name__ if grid is not None else grid_kind)
         pole_sets_judged = admission_budget is not None
     for part in lumped_components(materials.sigma_film):
         if part is not None and part.shape != materials.eps_r.shape:

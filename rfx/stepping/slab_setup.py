@@ -177,6 +177,7 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
     """Judge owned cell reductions, then form ADE operands on uniform slabs."""
     from rfx.model.pole_stability import (pole_set_extremes, combine_pole_extremes,
                                          judge_pole_sets, courant_budget)
+    from rfx.model.operands import realized_operands
     from rfx.materials.debye import debye_e_coeffs, DebyeState
     from rfx.materials.lorentz import lorentz_e_coeffs, LorentzState
     from rfx.core.yee import ade_state_dtype
@@ -208,7 +209,9 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
             lm = local_masks(masks)
             metadata = []
             def extrema(cells):
-                found = pole_set_extremes(cells, (poles, lm), view=owned_view, debye_spec=local_debye)
+                operands = realized_operands(grid, cells, {
+                    "lorentz_spec": (poles, lm), "debye_spec": local_debye}, ())
+                found = pole_set_extremes(operands, view=owned_view)
                 if not metadata:
                     metadata.extend(found)
                 return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied) for r in found)
