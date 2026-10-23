@@ -408,3 +408,74 @@ def test_fill_drawn_past_the_domain_admitted(graded):
         _validate_cfg_waveguide_port_span(sim, warnings)
     assert not [w for w in caught if getattr(w.message, "code", None) == CODE]
     _segment_refused(sim)
+
+
+def _prism_span_findings(shapes, materials=None):
+    from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
+    sim = _guide(one_port=True)
+    sim.add_material("fill", eps_r=2.2)
+    sim.add_material("other", eps_r=3.0)
+    sim.add_material("empty_poles", eps_r=1.0, debye_poles=(), lorentz_poles=())
+    for shape, material in zip(shapes, materials or ["fill"] * len(shapes)):
+        sim.add(shape, material=material)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _validate_cfg_waveguide_port_span(sim, warnings)
+    return [w.message for w in caught if getattr(w.message, "code", None) == CODE]
+
+
+def _axial_cylinder(lo, hi, radius=0.009):
+    from rfx.geometry.csg import Cylinder
+    return Cylinder(((lo + hi) / 2, A / 2, B / 2), radius, hi - lo, axis="x")
+
+
+def test_abutting_same_material_axial_cylinders_admitted():
+    assert not _prism_span_findings([
+        _axial_cylinder(0.050, 0.085), _axial_cylinder(0.085, 0.110)])
+
+
+def test_abutting_different_material_axial_cylinders_refused():
+    findings = _prism_span_findings([
+        _axial_cylinder(0.050, 0.085), _axial_cylinder(0.085, 0.110)],
+        ["fill", "other"])
+    assert len(findings) == 2
+    for i, material in enumerate(("fill", "other")):
+        assert any(f"{material} (geometry[{i}])" in str(issue)
+                   and "face at 85 mm" in str(issue) for issue in findings)
+
+
+def test_abutting_different_radius_axial_cylinders_refused():
+    findings = _prism_span_findings([
+        _axial_cylinder(0.050, 0.085, 0.006), _axial_cylinder(0.085, 0.110)])
+    assert findings
+    assert all("face at 85 mm" in str(issue) for issue in findings)
+
+
+def test_axial_cylinder_abutting_bounding_box_refused():
+    right = _axial_cylinder(0.085, 0.110)
+    findings = _prism_span_findings([
+        _axial_cylinder(0.050, 0.085), Box(*right.bounding_box())])
+    assert findings
+    assert all("face at 85 mm" in str(issue) for issue in findings)
+
+
+def test_abutting_transverse_cylinders_still_refused():
+    from rfx.geometry.csg import Cylinder
+    # Their x bounding faces meet at 85 mm, but their sections vary along x.
+    findings = _prism_span_findings([
+        Cylinder((0.079, A / 2, B / 2), 0.006, 0.018, axis="y"),
+        Cylinder((0.091, A / 2, B / 2), 0.006, 0.018, axis="y")])
+    assert len(findings) == 2
+    assert all("face at 85 mm" in str(issue) for issue in findings)
+
+
+def test_sphere_inside_span_still_refused():
+    from rfx.geometry.csg import Sphere
+    findings = _prism_span_findings([Sphere((0.085, A / 2, B / 2), 0.002)])
+    assert len(findings) == 1
+    assert "face at 87 mm" in str(findings[0])
+
+
+def test_vacuum_box_with_empty_pole_tuples_admitted():
+    assert not _prism_span_findings([
+        Box((0.084, 0, 0), (0.087, A, B))], ["empty_poles"])
