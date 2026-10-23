@@ -44,6 +44,7 @@ import rfx.adi
 import rfx.boundaries.cpml
 import rfx.boundaries.upml
 import rfx.core.yee
+import rfx.stepping.yee
 import rfx.lumped
 import rfx.materials.thin_conductor
 from rfx import Simulation
@@ -383,7 +384,7 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
 
 # The modules that import the helper by name. The distributed runners import
 # it inside their CPML functions, from rfx.core.yee, at call time.
-_IMPORTERS = (rfx.core.yee, rfx.boundaries.cpml, rfx.boundaries.upml, rfx.adi,
+_IMPORTERS = (rfx.core.yee, rfx.stepping.yee, rfx.boundaries.cpml, rfx.boundaries.upml, rfx.adi,
               rfx.materials.thin_conductor, rfx.lumped,
               rfx.materials.debye, rfx.materials.lorentz)
 
