@@ -461,10 +461,12 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     # trace would hand the second arm the first arm's coefficients.
     jax.clear_caches()
     if mutate:
-        monkeypatch.setattr(
-            _yee, "component_e_materials",
-            lambda m, periodic=(False, False, False), *, cell_sizes=None: (
-                (m.eps_r,) * 3, (m.sigma,) * 3))
+        import rfx.stepping.yee as _stepping_yee
+        for module in (_yee, _stepping_yee):
+            monkeypatch.setattr(
+                module, "component_e_materials",
+                lambda m, periodic=(False, False, False), *, cell_sizes=None: (
+                    (m.eps_r,) * 3, (m.sigma,) * 3))
 
     idx = np.indices(SHAPE)[2]
     sigma = jnp.asarray(np.where(idx < 4, 0.0, 2e4).astype(np.float32))
