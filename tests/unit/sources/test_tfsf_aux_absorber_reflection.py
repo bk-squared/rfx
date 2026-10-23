@@ -16,8 +16,13 @@ field for every consumer of them. This file measures it.
 
 WHAT IS DECLARED, AND WHERE IT IS VALID. The bars below are the MEASURED
 maxima of the shipped absorber at the rig each test runs on, carried through
-the shared ``gate_from_envelope`` policy -- never a number chosen to pass. They
-are per angle because the reflection is per angle: the optimum reflection
+the shared ``gate_from_envelope`` policy -- never a number chosen to pass.
+Two rows are bounds, not envelope locks: the 60-degree fast row and the
+80-degree domain row read the rig's own floor at f0 and move with record length,
+so they are held between 0.5x the smallest and 2x the largest reading over three
+record lengths (rfx-archive rfx/records/20261020-aux-f0-reading/), written here,
+not through gate_from_envelope.
+They are per angle because the reflection is per angle: the optimum reflection
 target inverts between normal and near-grazing incidence, so no single absorber
 setting minimises every angle and the derivation is taken at the WORST DECLARED
 ANGLE. That angle is **82 degrees**, where cv26 declares its three grazing arms,
@@ -111,7 +116,8 @@ FAST_MEASURED = {
     # absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 1.61e-04, 4.7x the bound)
     # and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the largest of the three
     # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
-    60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06)},
+    60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06),
+           "f0_floor": 0.5 * min(1.7095e-05, 1.0833e-05, 8.0564e-06)},
 }
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
@@ -253,6 +259,15 @@ def test_the_declared_absorber_meets_its_bar(theta_deg):
         if not m.get("floor"):
             assert r["max"] == pytest.approx(m["max"], rel=0.05)
         assert r["max"] <= bar(m["max"], m["quantum"])
+    if "band_max_bound" in m:
+        assert r["max"] <= m["band_max_bound"], (
+            f"{theta_deg} deg band maximum {r['max']:.6e} exceeds bound {m['band_max_bound']:.6e}")
+    if "band_max_floor" in m:
+        assert r["max"] >= m["band_max_floor"], (
+            f"{theta_deg} deg band maximum {r['max']:.6e} falls below floor {m['band_max_floor']:.6e}")
+    if "f0_floor" in m:
+        assert r["f0_bin"] >= m["f0_floor"], (
+            f"{theta_deg} deg f0-bin reading {r['f0_bin']:.6e} falls below floor {m['f0_floor']:.6e}")
 
 
 # ==========================================================================
@@ -304,7 +319,13 @@ DOMAIN_MEASURED = {
     # do respond to it (1e-40 halves the maximum), but the maximum also moves with record length, so it is
     # not pinned; it still carries the domain check against LEAK_BAR. Bound: 2x the largest of the three
     # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
-    80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
+    # The band-maximum bound is 2x the largest and the floor 0.5x the smallest of the band maxima
+    # over the same three record lengths as the f0 bound; it catches a target reflection of 1e-20
+    # (band maximum 1.86e-03, review/rv_80_rsweep.log) and the measured sweep below.
+    80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06),
+           "f0_floor": 0.5 * min(1.0305e-06, 1.1146e-06, 1.2552e-06),
+           "band_max_bound": 2.0 * max(1.3490e-04, 1.1794e-04, 1.2891e-04),
+           "band_max_floor": 0.5 * min(1.3490e-04, 1.1794e-04, 1.2891e-04), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
     # #1234: the auxiliary H profile at the Yee half cell.
     82.0: {"max": 4.3980e-04, "quantum": 1e5, "inside": True},
@@ -324,6 +345,15 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
     else:
         assert r["max"] == pytest.approx(m["max"], rel=0.10), (theta_deg, r["max"])
         assert r["max"] <= bar(m["max"], m["quantum"])
+    if "band_max_bound" in m:
+        assert r["max"] <= m["band_max_bound"], (
+            f"{theta_deg} deg band maximum {r['max']:.6e} exceeds bound {m['band_max_bound']:.6e}")
+    if "band_max_floor" in m:
+        assert r["max"] >= m["band_max_floor"], (
+            f"{theta_deg} deg band maximum {r['max']:.6e} falls below floor {m['band_max_floor']:.6e}")
+    if "f0_floor" in m:
+        assert r["f0_bin"] >= m["f0_floor"], (
+            f"{theta_deg} deg f0-bin reading {r['f0_bin']:.6e} falls below floor {m['f0_floor']:.6e}")
     if m["inside"]:
         assert r["max"] <= LEAK_BAR, f"{theta_deg} deg is declared INSIDE the domain and reads {r['max']:.3e}"
     else:
