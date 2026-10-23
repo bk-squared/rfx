@@ -76,3 +76,32 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
     n_steps = int(np.ceil((wf.t0 + 4.5 * wf.tau) / float(sim._build_grid().dt))) + 1
     with pytest.raises(SourceChecked):
         sim.compute_coaxial_two_port(n_steps=n_steps, freqs=np.array([8e9]))
+
+
+@pytest.mark.parametrize('axis', ['x', 'y', 'z'])
+def test_grid_tem_builder_preserves_periodic_conductor_cells(monkeypatch, axis):
+    from rfx.boundaries import pec
+    from rfx.sources.coaxial_port import build_coaxial_tem_plane_source_specs
+    sim = _sim(boundary={a: 'periodic' if a == axis else 'cpml' for a in 'xyz'})
+    grid = sim._build_grid()
+    cells = jnp.zeros(grid.shape, dtype=bool)
+    cell = [3, 3, 3]
+    cell['xyz'.index(axis)] = grid.shape['xyz'.index(axis)] - 1
+    cells = cells.at[tuple(cell)].set(True)
+    original = pec.realized_pec_edge_masks
+    class ReachedPeriodicMask(Exception):
+        pass
+    def check(values, **kwargs):
+        masks = original(values, **kwargs)
+        # On a periodic transverse axis, the last cell is real and owns
+        # both its last-node edge and the wrapped node-zero edge.
+        component = 1 if axis == 'x' else 0
+        assert kwargs.get('periodic') == tuple(a == axis for a in 'xyz')
+        assert bool(masks[component][tuple(cell)])
+        cell['xyz'.index(axis)] = 0
+        assert bool(masks[component][tuple(cell)])
+        raise ReachedPeriodicMask
+    monkeypatch.setattr(pec, 'realized_pec_edge_masks', check)
+    with pytest.raises(ReachedPeriodicMask):
+        build_coaxial_tem_plane_source_specs(grid=grid, port=sim._coaxial_ports[0],
+            n_steps=2, pec_cell_mask=cells)

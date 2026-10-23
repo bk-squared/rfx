@@ -106,6 +106,30 @@ def test_port_reference_sims_eps_override_combo_raises():
         )
 
 
+def test_periodic_reference_is_refused_before_conductor_realization(monkeypatch):
+    from rfx.boundaries import pec
+    device = _tiny_two_port()
+    # Eleven periodic y cells have the same array shape as ten PEC cells
+    # plus their terminal node. The reference admission checks shape and dx.
+    ref = Simulation(freq_max=10e9, domain=(.12, .044, .02), dx=.004,
+        boundary={'x': 'cpml', 'y': 'periodic', 'z': 'pec'}, cpml_layers=10)
+    ref.add(Box((.04, .04, .004), (.06, .044, .008)), material='pec')
+    grid = ref._build_grid()
+    assert grid.shape == device._build_grid().shape
+    reference_cells = np.asarray(ref._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3])
+    original = pec.realized_pec_edge_masks
+    class ReachedReference(Exception):
+        pass
+    def check(cells, **kwargs):
+        if cells is not None and np.array_equal(np.asarray(cells), reference_cells):
+            raise ReachedReference
+        return original(cells, **kwargs)
+    monkeypatch.setattr(pec, 'realized_pec_edge_masks', check)
+    with pytest.raises(NotImplementedError, match='a periodic axis'):
+        device.compute_waveguide_s_matrix(n_steps=10, normalize='flux',
+            port_reference_sims=[ref, ref])
+
+
 # --------------------------------------------------------------------------
 # Compact T-junction builders (geometry copied from the SKIPPED
 # test_api.py::test_waveguide_branch_junction_mixed_normals_reciprocal_through_api).
