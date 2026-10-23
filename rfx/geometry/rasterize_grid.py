@@ -1554,8 +1554,9 @@ def extend_cpml_pad_materials(
     committed envelopes pin the lo-statics state. Callers that pass no
     mask keep the pre-#808 behaviour bit-for-bit.
 
-    #1966 also repairs unpadded, non-periodic high walls selected by
-    ``high_wall``. The same one-column bound and #808 pole gate apply;
+    **Unpadded high walls (#1966).** The same repair runs on the
+    non-periodic high faces selected by ``high_wall``, which have no pad.
+    The same one-column bound and #808 pole gate apply;
     no low-wall value or dispersion pole is extended by that selection.
 
     Parameters
