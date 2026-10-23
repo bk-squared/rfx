@@ -375,14 +375,21 @@ def refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates,
     import jax
     import numpy as np
     from rfx._traced_check import traced_check
-    from rfx.boundaries.tfsf import _injection_arrays
+    from rfx.model.operands import realized_operands
     from rfx.model.design_box import design_box_window
 
     reason = ("a waveguide port models an empty (vacuum) guide: its cutoff, propagation "
               "constant and modal impedance are vacuum values, so a filled or loaded "
               "segment returns the wrong S (rfx#1994). Start the fill, override or "
               "design box beyond the port's reference plane.")
-    operands = tuple(_injection_arrays(grid, materials, updates, localized, cell_scalar=True))
+    # Scalar cell media and PEC volume only: sheets, films, lumped elements and
+    # tensors are not judged here (known_limitations.md).
+    scalar = ("materials.eps_r", "materials.sigma", "materials.mu_r")
+    updates_scalar = ("debye", "lorentz", "kerr_chi3", "pec_mask", "pec_occupancy")
+    operands = tuple((r.name, r.array, r.vacuum, r.label)
+                     for r in realized_operands(grid, materials, updates, localized)
+                     if r.name in scalar
+                     or (r.source is not None and r.name.split(".", 1)[0] in updates_scalar))
     arrays, metadata = [], []
     for port, cfg in enumerate(waveguide_ports):
         bounds = waveguide_segment_cells(cfg, grid)
