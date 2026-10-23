@@ -135,12 +135,6 @@
         "to_post_processing_convention"
       ]
     },
-    "rfx/deembed.py": {
-      "S": [],
-      "M": [
-        "deembed_port_extension"
-      ]
-    },
     "rfx/differentiable_material_fit.py": {
       "S": [],
       "M": [
@@ -176,12 +170,6 @@
       ],
       "M": []
     },
-    "rfx/io.py": {
-      "S": [],
-      "M": [
-        "_parse_pair"
-      ]
-    },
     "rfx/materials/debye.py": {
       "S": [
         "update_e_debye"
@@ -213,26 +201,6 @@
         "fresnel_reflection_coefficient",
         "oblique_reflection_coefficient",
         "oblique_reflection_magnitude"
-      ]
-    },
-    "rfx/probes/msl_wave_decomp.py": {
-      "S": [],
-      "M": [
-        "_lstsq_alpha_gamma",
-        "extract_msl_nprobe"
-      ]
-    },
-    "rfx/probes/probes.py": {
-      "S": [
-        "extract_s_matrix",
-        "extract_s_matrix_wire"
-      ],
-      "M": []
-    },
-    "rfx/probes/refplane.py": {
-      "S": [],
-      "M": [
-        "decompose_wire_s_matrix_with_reference_planes"
       ]
     },
     "rfx/probes/settling.py": {
@@ -324,18 +292,6 @@
       ],
       "M": [
         "measure_incident_spectrum"
-      ]
-    },
-    "rfx/sparams/_common.py": {
-      "S": [],
-      "M": [
-        "_mixed_flux_magnitude_override"
-      ]
-    },
-    "rfx/sparams/waveguide.py": {
-      "S": [],
-      "M": [
-        "_compute_waveguide_s_matrix_nu"
       ]
     },
     "rfx/subgridding/disjoint_3d.py": {
