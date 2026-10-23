@@ -309,4 +309,7 @@ def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
     _assert_span(masks[0], 0, split)
     _assert_span(masks[1], split, len(widths) - split)
     column = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r)[1, 1]
-    np.testing.assert_array_equal(column, [2.] * split + [3.] * (len(widths) - split) + [1.])
+    # #1966: no box owns the high-face node (ownership above), and assembly
+    # repairs that dropped node from the cell inside it, as #655 does on an
+    # absorbing face (the CPML test above pins 3.7 there).
+    np.testing.assert_array_equal(column, [2.] * split + [3.] * (len(widths) - split) + [3.])
