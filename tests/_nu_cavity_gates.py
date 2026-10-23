@@ -202,7 +202,7 @@ CLUSTER_REL = 0.005     # < (142.7 MHz / 7.0 GHz) / 4 = 0.51 %
 
 
 # ---------------------------------------------------------------------------
-# The exact Yee lattice on a tensor grid (rfx/core/yee.py update_h_nu /
+# The exact Yee lattice on a tensor grid (rfx/stepping/yee.py update_h_nu /
 # update_e_nu; metrics from rfx/nonuniform.py _profile_to_inv_arrays and the
 # #562 bounding node _append_bounding_node)
 # ---------------------------------------------------------------------------
