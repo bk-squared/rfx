@@ -29,6 +29,55 @@ def _records(dtype):
             for k, rate in enumerate((.02, .03, .04))]
 
 
+def test_weak_ringing_record_above_rounding_tail_is_scored():
+    t = np.arange(400)
+    w = (1e-3*np.sin(2*np.pi*.07*t)).astype(np.float32)
+    records = _records(np.float32) + [('w', w)]
+    _, detail = settling_db_from_named_records(
+        records, rounding_groups=dict.fromkeys(dict(records), 'H'), **OPTIONS)
+    alone, alone_detail = settling_db_from_named_records([('w', w)], **OPTIONS)
+    assert 'w' not in {row['name'] for row in detail['skipped_records']}
+    np.testing.assert_allclose(detail['per_record_db']['w'], alone, rtol=0, atol=1e-9)
+    assert detail['status'] == alone_detail['status']
+    assert detail['status'] in {'fail', 'undetermined'}
+
+
+def test_weak_ringing_record_at_rounding_tail_is_skipped():
+    t = np.arange(400)
+    w = (1e-4*np.sin(2*np.pi*.07*t)).astype(np.float32)
+    records = _records(np.float32) + [('w', w)]
+    _, detail = settling_db_from_named_records(
+        records, rounding_groups=dict.fromkeys(dict(records), 'H'), **OPTIONS)
+    row, = detail['skipped_records']
+    assert row['name'] == 'w'
+    assert row['tail_ratio'] == pytest.approx(float(np.max(np.abs(w[-40:]))), rel=.01)
+
+
+def test_stationary_records_require_both_peak_and_tail_rounding_levels():
+    records = [('large', np.ones(400, dtype=np.float32)),
+               ('small', np.full(400, 1e-5, dtype=np.float32)),
+               ('ringing', np.full(400, 1e-3, dtype=np.float32))]
+    row, = witness._rounding_only_records(records, dict.fromkeys(dict(records), 'H'))
+    assert row['name'] == 'small'
+    assert row['tail_ratio'] == pytest.approx(1e-5)
+
+
+@pytest.mark.parametrize('factor', [1., 1.01])
+def test_tail_uses_ceiling_window_and_complex_storage_peak(factor):
+    limit = 2.4e3*np.finfo(np.float32).eps
+    weak = np.zeros((21, 2), dtype=np.complex64)
+    weak[0, 0] = 1e-3
+    weak[-3, 1] = factor*limit*(1 + 1j)
+    records = [('large', np.ones(21, dtype=np.float32)), ('weak', weak)]
+    skipped = witness._rounding_only_records(records, dict.fromkeys(dict(records), 'H'))
+    if factor == 1.:
+        row, = skipped
+        assert row['name'] == 'weak'
+        assert row['tail_ratio'] == limit
+    else:
+        assert skipped == ()
+
+
 @pytest.mark.parametrize('dtype,amplitude', [(np.float32, 1e-2), (np.float64, 1e-6)])
 def test_weak_physical_record_still_scored(dtype, amplitude):
     with enable_x64(dtype == np.float64):
