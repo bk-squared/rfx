@@ -908,6 +908,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/stepping/vmap_scan.py",
+      "function": "_build_vmap_scan_fn",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/stepping/yee.py",
       "function": "update_h",
       "kind": "neighbour",
@@ -1041,11 +1046,6 @@
       "file": "rfx/visualize.py",
       "function": "plot_stack_profile",
       "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/vmap_sweep.py",
-      "function": "_build_vmap_scan_fn",
-      "kind": "boundary"
     }
   ]
 }

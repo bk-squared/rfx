@@ -90,6 +90,11 @@ report in ``Result.ringdown.stop``.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
@@ -508,47 +513,9 @@ def _cmul(a, b) -> np.ndarray:
     return out
 
 
-def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:
-    """``dt * sum_n y_n exp(-j 2 pi f n dt)`` over the whole ``series``.
-
-    ``series`` is ``(n,)`` or ``(n, C)``; returns ``(nf,)`` or ``(nf, C)``,
-    complex128, float64 kernel.
-    """
-    Y, one_d = _as_2d(series)
-    freqs = np.asarray(freqs, dtype=np.float64)
-    w = -2.0 * np.pi * freqs * float(dt)
-    acc = np.zeros((freqs.size, Y.shape[1]), dtype=np.complex128)
-    for n0 in range(0, Y.shape[0], chunk):
-        n1 = min(n0 + chunk, Y.shape[0])
-        nn = np.arange(n0, n1, dtype=np.float64)
-        acc += np.exp(1j * np.outer(w, nn)) @ Y[n0:n1].astype(np.complex128)
-    out = acc * float(dt)
-    return out[:, 0] if one_d else out
-
-
-def tail_dft(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
-    """The unrecorded part of each spectrum: samples ``n_last + 1 .. inf``.
-
-    ``dt * sum_k c_k lambda_k**(N+1-n_ref) z**(N+1) / (1 - lambda_k z)`` with
-    ``N = n_last`` and ``1 - lambda_k z = -expm1(s_k dt - j 2 pi f dt)``.
-    Returns ``(nf, C)``.
-    """
-    freqs = np.asarray(freqs, dtype=np.float64)
-    s = np.asarray(model.s, dtype=np.complex128)
-    c = np.asarray(model.c, dtype=np.complex128)
-    dt = float(model.dt)
-    if s.size == 0:
-        return np.zeros((freqs.size, c.shape[1]), dtype=np.complex128)
-    n1 = int(n_last) + 1
-    wdt = 2.0 * np.pi * freqs * dt                                  # (nf,)
-    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)   # (K, C)
-    zn1 = np.exp(-1j * wdt * n1)                                    # (nf,)
-    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])      # (nf, K)
-    return dt * ((zn1[:, None] / one_minus) @ amp)
-
-
 def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> np.ndarray:
     """Plain DFT of samples ``0 .. n_record - 1`` plus the closed-form tail after them."""
+    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
     Y, one_d = _as_2d(series)
     n_record = int(n_record)
     if not (0 < n_record <= Y.shape[0]):
@@ -636,6 +603,7 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
     difference of the two observables. ``plain`` may carry the plain DFT of
     ``series[:n_record]`` at ``freqs`` when the caller already has it.
     """
+    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
     n_record, n_start = int(n_record), int(n_start)
     n_split = int(round(float(split) * n_record))
     if not (n_start < n_split < n_record):
@@ -687,6 +655,7 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     the completion from ``[window_start T, T]`` and ``plain`` the plain DFT of
     ``series[:n_record]`` when the caller already has them.
     """
+    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
     n_record = int(n_record)
     n_start = int(round(float(window_start) * n_record))
     n_long = _long_window_start(n_record, window_start)
@@ -1074,44 +1043,6 @@ def _rebuild_channels(lane: str, pms, e_cols, h_cols) -> np.ndarray:
         cols += [np.asarray(v_port, dtype=np.float64),
                  np.asarray(i_val, dtype=np.float64)]
     return np.stack(cols, axis=1)
-
-
-def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
-    """rfx's wire-port DFT accumulation re-run on the probe samples (W0).
-
-    The scan body is the lane's wire block with the field reads replaced by
-    the probe samples, using the shared physical E/H phase kernel and a
-    sequential sum in the run's accumulator dtype.
-    Returns ``((v, i, v_port) accumulators as numpy arrays of the run's dtype,
-    (v_port, i) per step)`` -- the per-step series are the values the scan
-    accumulated, in the dtype it computed them in (float32 on a float32 run).
-    """
-    import jax
-    import jax.numpy as jnp
-    from rfx.core.dft_utils import port_dft_phase
-
-    freqs = pm.freqs
-
-    def body(carry, xs):
-        step_idx, e, hx, hy, hz = xs
-        v_dft, i_dft, vp_dft = carry
-        v, v_port, i_val = _port_vi(lane, pm, None, e, hx, hy, hz)
-        phase = port_dft_phase(step_idx, freqs, dt, dtype=v_dft.dtype)
-        i_phase = port_dft_phase(step_idx, freqs, dt, 'H', dtype=i_dft.dtype)
-        return (v_dft + v * phase, i_dft + i_val * i_phase,
-                vp_dft + v_port * phase), (v_port, i_val)
-
-    nf = int(freqs.shape[0])
-    # The run's own carry dtype: complex64, or complex128 on the uniform lane
-    # under x64 (``rfx.simulation``'s ``_sparam_acc_dtype``).
-    init = tuple(jnp.zeros(nf, dtype=np.asarray(a).dtype) for a in pm.accs)
-    n = e32.shape[0]
-    xs = (jnp.arange(n, dtype=jnp.int32), jnp.asarray(e32),
-          jnp.asarray(h32["hx"]), jnp.asarray(h32["hy"]), jnp.asarray(h32["hz"]))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        final, per_step = jax.jit(lambda c, x: jax.lax.scan(body, c, x))(init, xs)
-    return tuple(np.asarray(a) for a in final), tuple(np.asarray(a) for a in per_step)
 
 
 from rfx.measurement.ringdown_port_s import (
@@ -1568,6 +1499,8 @@ class RingdownRun:
         ]
 
     def _complete(self, result, ts_all, n_user, dt, ref_hz, witnesses, state):
+        from rfx.measurement.ringdown_tail import plain_dft
+        from rfx.stepping.ringdown_emulation import _emulate_accumulators
         pms, e_cols, h_cols = self._rebuild_inputs(result, ts_all, n_user)
 
         # ---- W0: the rebuilt series, accumulated the run's way, are the run's
@@ -1822,22 +1755,6 @@ def _stop_decision(consecutive_before: int, sources_off: bool, we_ok: bool,
                      and growing_ok)
 
 
-def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
-    """Each kept pole's term of :func:`tail_dft`: ``(nf, K, C)``, K in ``model.s`` order."""
-    freqs = np.asarray(freqs, dtype=np.float64)
-    s = np.asarray(model.s, dtype=np.complex128)
-    c = np.asarray(model.c, dtype=np.complex128)
-    dt = float(model.dt)
-    if s.size == 0:
-        return np.zeros((freqs.size, 0, c.shape[1]), dtype=np.complex128)
-    n1 = int(n_last) + 1
-    wdt = 2.0 * np.pi * freqs * dt
-    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)   # (K, C)
-    zn1 = np.exp(-1j * wdt * n1)
-    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
-    return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
-
-
 def _tail_influence(model: RingdownModel, n_record: int, f_bins, spectra,
                     observable) -> tuple:
     """``(influence (K,), peak)``: how far each pole's own tail can move the answer.
@@ -1851,6 +1768,7 @@ def _tail_influence(model: RingdownModel, n_record: int, f_bins, spectra,
     return the bins on its last axis (the lanes' S) or its first (a map of the
     spectra themselves).
     """
+    from rfx.measurement.ringdown_tail import _pole_tails
     record_s = int(n_record) * float(model.dt)
     shifted = _dc_replace(model, s=_on_nearest_bin(model.s, f_bins, record_s))
     tails = _pole_tails(shifted, int(n_record) - 1, f_bins)
@@ -1924,6 +1842,7 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
     are read as :meth:`RingdownRun._complete` reads them. Returns the check's
     fields; the floor's own-check reading is ``tau_own_s`` / ``own_pole``.
     """
+    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
     kw = dict(freq_max=ref_hz, guard=spec.guard, sv_rel=spec.sv_rel,
               unit_tol=spec.unit_tol)
     try:
@@ -2837,3 +2756,21 @@ class RingdownForward(RingdownRun):
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx)
+
+
+# Lazy compatibility exports avoid a cycle with the moved implementation.
+_LAZY_EXPORTS = {
+    "_emulate_accumulators": "rfx.stepping.ringdown_emulation",
+    "plain_dft": "rfx.measurement.ringdown_tail",
+    "tail_dft": "rfx.measurement.ringdown_tail",
+}
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value

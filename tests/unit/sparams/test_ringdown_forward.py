@@ -295,6 +295,8 @@ def _midpoint_voltage(monkeypatch):
         return v, v_port, i_val
 
     monkeypatch.setattr(rd, "_port_vi", vi)
+    import rfx.stepping.ringdown_emulation as ringdown_emulation
+    monkeypatch.setattr(ringdown_emulation, "_port_vi", vi)
 
 
 def _half_step_dropped(monkeypatch):

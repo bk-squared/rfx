@@ -146,7 +146,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/topology.py": 1,
     "rfx/visualize.py": 2,
     "rfx/visualize3d.py": 3,
-    "rfx/vmap_sweep.py": 1,
+    "rfx/stepping/vmap_scan.py": 1,  # moved with _build_vmap_scan_fn; total unchanged
 }
 
 

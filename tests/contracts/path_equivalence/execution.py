@@ -260,7 +260,7 @@ def _entry_refusal(sim, cell, report):
 
     def before_scan(*args, **kwargs):
         caller = sys._getframe(1).f_code.co_filename.replace('\\', '/')
-        if any(part in caller for part in ('rfx/stepping/uniform_loop.py', 'rfx/stepping/graded_loop.py', 'rfx/nonuniform.py', 'rfx/runners/', 'rfx/progress.py')):
+        if any(part in caller for part in ('rfx/stepping/uniform_loop.py', 'rfx/stepping/graded_loop.py', 'rfx/nonuniform.py', 'rfx/runners/', 'rfx/stepping/progress_scan.py')):
             report['refusal_scan_started'] = True
             raise RuntimeError('refusal reached the first kernel scan')
         return scan(*args, **kwargs)

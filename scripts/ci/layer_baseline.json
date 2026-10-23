@@ -118,13 +118,6 @@
     }
   },
   "outside": {
-    "rfx/_ringdown_jax.py": {
-      "S": [],
-      "M": [
-        "plain_dft",
-        "tail_dft"
-      ]
-    },
     "rfx/adi.py": {
       "S": [
         "run_adi_2d",
@@ -132,22 +125,6 @@
         "thomas_solve"
       ],
       "M": []
-    },
-    "rfx/adjoint.py": {
-      "S": [
-        "design_adjoint_scan"
-      ],
-      "M": [
-        "_wavelet_basis",
-        "_wavelet_coefficients",
-        "design_adjoint_scan"
-      ]
-    },
-    "rfx/core/dft_utils.py": {
-      "S": [],
-      "M": [
-        "half_step_current_phase"
-      ]
     },
     "rfx/current_moments.py": {
       "S": [],
@@ -264,27 +241,11 @@
         "tfsf_source_drive"
       ]
     },
-    "rfx/progress.py": {
-      "S": [
-        "scan_with_progress"
-      ],
-      "M": []
-    },
     "rfx/rcs.py": {
       "S": [],
       "M": [
         "_incident_spectrum_amplitude",
         "compute_rcs"
-      ]
-    },
-    "rfx/ringdown.py": {
-      "S": [
-        "_emulate_accumulators"
-      ],
-      "M": [
-        "_pole_tails",
-        "plain_dft",
-        "tail_dft"
       ]
     },
     "rfx/ris.py": {
@@ -405,12 +366,6 @@
       "S": [
         "_update_e_only",
         "_update_h_only"
-      ],
-      "M": []
-    },
-    "rfx/vmap_sweep.py": {
-      "S": [
-        "_build_vmap_scan_fn"
       ],
       "M": []
     }
