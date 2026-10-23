@@ -244,7 +244,7 @@ def _run_subgridded_once(
     # zero-cell conductor, so ``run()`` refuses a declared sheet or wire
     # before it reaches this function (rfx/api/_execute.py, run_subgridded
     # lane). Collecting them here would only hide the refusal.
-    mats_f, _, _, pec_mask_f, _, _ = rasterize_geometry(
+    mats_f, debye_f, lorentz_f, pec_mask_f, _, _ = rasterize_geometry(
         sim._geometry,
         sim._resolve_material,
         coords_f,
@@ -259,6 +259,12 @@ def _run_subgridded_once(
         and getattr(grid_coarse, f"pad_{'xyz'[a]}_hi", 0) == 0
         and 'xyz'[a] not in grid_coarse.periodic_axes
         for a, end in enumerate((fi_hi, fj_hi, fk_hi)))
+    # #1966: a fine region that reaches a global high wall samples its last
+    # centre beyond the wall; repair it as the coarse assembler does (#655
+    # rule, statics only, #808 pole gate). Interior ends keep their samples.
+    from rfx.geometry.rasterize_grid import repair_fine_high_wall_materials
+    mats_f = repair_fine_high_wall_materials(
+        mats_f, coords_f, grid_coarse, high_wall, (debye_f, lorentz_f))
 
     # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos, component=None):
