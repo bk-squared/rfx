@@ -306,7 +306,7 @@ DOMAIN_MEASURED = {
     # 80 deg is an upper bound, not a lock (#1845). With the shipped absorber the f0 bin reads the rig's own
     # floor: the f0-bin |B/A| reads 1.03e-06 / 1.11e-06 / 1.26e-06 at 40000 / 60000 / 80000 steps, cutting
     # the absorber from 200 to 30 cells moves nothing (1.11e-06), and a target reflection of 1e-40 instead
-    # of 1e-28 moves it 4 %. A worse absorber does show at f0, and before the band maximum does. Target
+    # of 1e-28 moves it 4 %. A uniformly worse absorber (higher target reflection) shows at f0 before the band maximum does. Target
     # reflection 1e-28 / 1e-26 / 1e-24 / 1e-22 / 1e-20 at 40000 steps reads f0 1.02e-06 / 4.34e-06 /
     # 1.35e-05 / 3.89e-05 / 1.08e-04 and band maximum 1.35e-04 / 2.37e-04 / 4.63e-04 / 9.31e-04 / 1.86e-03,
     # so the f0 bound fails from 1e-26 on, while a band-maximum bound of 2x the three-length maximum
