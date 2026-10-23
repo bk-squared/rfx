@@ -27,7 +27,7 @@ docs/research_notes/experiments/kerr_cw_spm_absolute.py
 import numpy as np
 import pytest
 
-import rfx.materials.nonlinear as _nl
+import rfx.stepping.kerr as _nl
 from rfx.api import Simulation
 from rfx.grid import Grid
 from rfx.geometry import Box

@@ -141,12 +141,6 @@
         "deembed_port_extension"
       ]
     },
-    "rfx/differentiable_material_fit.py": {
-      "S": [],
-      "M": [
-        "differentiable_material_fit"
-      ]
-    },
     "rfx/farfield.py": {
       "S": [],
       "M": [
@@ -181,24 +175,6 @@
       "M": [
         "_parse_pair"
       ]
-    },
-    "rfx/materials/debye.py": {
-      "S": [
-        "update_e_debye"
-      ],
-      "M": []
-    },
-    "rfx/materials/lorentz.py": {
-      "S": [
-        "update_e_lorentz"
-      ],
-      "M": []
-    },
-    "rfx/materials/nonlinear.py": {
-      "S": [
-        "apply_kerr_ade"
-      ],
-      "M": []
     },
     "rfx/materials/thin_conductor.py": {
       "S": [

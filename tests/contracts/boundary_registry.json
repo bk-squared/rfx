@@ -57,11 +57,11 @@
       "function": "update_he_fast"
     },
     {
-      "file": "rfx/materials/debye.py",
+      "file": "rfx/stepping/poles.py",
       "function": "update_e_debye"
     },
     {
-      "file": "rfx/materials/lorentz.py",
+      "file": "rfx/stepping/poles.py",
       "function": "update_e_lorentz"
     },
     {
