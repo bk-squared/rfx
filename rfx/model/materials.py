@@ -1006,10 +1006,13 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
             fixed_s = fixed_s.at[outer].set(jnp.where(
                 use_inner, fixed_s[source], fixed_s[outer]))
             repaired = repaired.at[outer].set(repaired[outer] | use_inner)
+            # A node repaired on this axis is design-owned for the next one,
+            # as the sequential static repair does (two high walls meeting).
+            written = written.at[outer].set(written[outer] | use_inner)
         win_mats = win_mats._replace(
-            eps_r=jnp.where(repaired, fixed_e + win_mats.eps_r - eps,
+            eps_r=jnp.where(repaired, fixed_e + (win_mats.eps_r - eps),
                             win_mats.eps_r),
-            sigma=jnp.where(repaired, fixed_s + win_mats.sigma - sig,
+            sigma=jnp.where(repaired, fixed_s + (win_mats.sigma - sig),
                             win_mats.sigma))
     widths = electric_cell_sizes(grid)
     widths = None if widths is None else tuple(

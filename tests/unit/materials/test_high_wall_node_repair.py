@@ -195,6 +195,38 @@ def test_design_written_wall_value_and_derivative(seeded, end, value, wall, inte
           f"Ex={float(actual)} derivative={float(derivative)}")
 
 
+@pytest.mark.parametrize("seeded", [False, True], ids=["vacuum-background", "geometry-eps2"])
+@pytest.mark.parametrize("value", [4., 1.])
+def test_design_window_corner_of_two_high_walls(seeded, value):
+    """Two high PMC walls meet: the corner node is design-owned on both axes.
+
+    The Ez edge at the corner averages four cells (x and y transverse); all
+    four are the design cell after the sequential repair, so Ez = v, d/dv = 1.
+    """
+    from rfx.core.yee import EPS_0
+    from rfx.model.materials import _design_box_edge_coeffs
+    sim = Simulation(freq_max=10e9, domain=(6*H, 8*H, 10*H), dx=H,
+                     boundary=BoundarySpec(x="pmc", y="pmc", z="cpml"), cpml_layers=4)
+    if seeded:
+        sim.add_material("background", eps_r=2.)
+        sim.add(Box((H, 3*H, 3*H), (6*H, 8*H, 4*H)), material="background")
+    grid = sim._build_realized_grid()
+    mats = sim._assemble_materials(grid)[0]
+    z = grid.pad_z_lo + 3
+    bounds = (1, 6, 3, 8, z, z+1)
+
+    @jax.jit
+    def corner_eps(v):
+        _, _, cb = _design_box_edge_coeffs(
+            bounds, jnp.full((5, 5, 1), v), None, mats,
+            grid.dt, grid.shape, grid=grid)
+        return grid.dt / (EPS_0 * cb[2][-1, -1, 0])
+
+    actual, derivative = jax.value_and_grad(corner_eps)(value)
+    np.testing.assert_allclose(actual, value, rtol=2e-7)
+    np.testing.assert_allclose(derivative, 1., rtol=3e-7)
+
+
 def test_override_and_checkpoint_are_explicit_cell_inputs(tmp_path):
     from rfx.checkpoint import load_materials, save_materials
     from rfx.model.overrides import apply_material_overrides
