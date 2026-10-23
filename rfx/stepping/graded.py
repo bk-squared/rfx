@@ -311,7 +311,7 @@ def make_graded_step(
         # H^{n+1/2} the E update consumed.
         if ctx.use_sheet_impedance:
             from rfx.core.yee import curl_h_nu as _curl_h_nu
-            from rfx.materials.thin_conductor import (
+            from rfx.stepping.conductors import (
                 apply_sheet_impedance_e as _apply_sheet_e)
             _scd = jnp.promote_types(frame.st.ex.dtype, jnp.float32)
             _curls = _curl_h_nu(
