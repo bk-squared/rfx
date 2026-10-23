@@ -13,9 +13,10 @@ from rfx.grid import Grid
 from rfx.model.materials import with_components
 from rfx.model.occupancy import with_edge_keep
 from rfx.stepping.lumped import update_rlc_elements
+from rfx.stepping.conductors import apply_sheet_impedance_e
 from rfx.lumped import LumpedRLCSpec, build_rlc_meta, init_rlc_state, update_rlc_element
 from rfx.materials.thin_conductor import (
-    SheetImpedanceCtx, apply_sheet_impedance_e, sheet_update_coeffs,
+    SheetImpedanceCtx, sheet_update_coeffs,
 )
 from rfx.simulation import _StepContext, make_core_step
 

@@ -26,6 +26,7 @@ import jax.numpy as jnp
 
 from rfx.grid import Grid
 from rfx.geometry.smoothing import _get_sdf_fn, _yee_coords
+from rfx.stepping.conductors import apply_conformal_pec  # noqa: F401 (public compatibility)
 
 
 def _signed_distance_sphere(x, y, z, center, radius):
@@ -309,27 +310,6 @@ def compute_conformal_weights(
     w_ez[combined_mask] = 0.0
 
     return jnp.array(w_ex), jnp.array(w_ey), jnp.array(w_ez)
-
-
-def apply_conformal_pec(state, w_ex, w_ey, w_ez):
-    """Apply conformal PEC: zero E inside PEC, leave partial cells to update coefficients.
-
-    For cells with w=0 (fully inside PEC): force E=0.
-    For cells with 0<w<1 (partial PEC): do NOT multiply E by w every step.
-    The Dey-Mittra correction for partial cells should be applied by modifying
-    the material eps_r via `conformal_eps_correction()` once at setup time.
-
-    Call AFTER update_e each timestep.
-    """
-    # Only zero out fully-PEC cells (w == 0), not partial cells
-    pec_mask_ex = (w_ex == 0.0)
-    pec_mask_ey = (w_ey == 0.0)
-    pec_mask_ez = (w_ez == 0.0)
-    return state._replace(
-        ex=jnp.where(pec_mask_ex, 0.0, state.ex),
-        ey=jnp.where(pec_mask_ey, 0.0, state.ey),
-        ez=jnp.where(pec_mask_ez, 0.0, state.ez),
-    )
 
 
 def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):

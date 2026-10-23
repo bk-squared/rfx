@@ -164,18 +164,6 @@
         "update_floquet_dft"
       ]
     },
-    "rfx/geometry/conformal.py": {
-      "S": [
-        "apply_conformal_pec"
-      ],
-      "M": []
-    },
-    "rfx/geometry/csg.py": {
-      "S": [
-        "PolylineWire.mask_on_coords"
-      ],
-      "M": []
-    },
     "rfx/io.py": {
       "S": [],
       "M": [
@@ -197,12 +185,6 @@
     "rfx/materials/nonlinear.py": {
       "S": [
         "apply_kerr_ade"
-      ],
-      "M": []
-    },
-    "rfx/materials/thin_conductor.py": {
-      "S": [
-        "apply_sheet_impedance_e"
       ],
       "M": []
     },
