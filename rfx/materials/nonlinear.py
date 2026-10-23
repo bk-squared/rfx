@@ -6,7 +6,7 @@ The Kerr effect: eps_r depends on E-field intensity:
 Two implementations:
 
 1. ``apply_kerr_update`` — modifies eps_r per timestep (legacy).
-2. ``apply_kerr_ade`` — ADE polarisation-current correction applied
+2. ``apply_kerr_ade`` (in ``rfx.stepping.kerr``, re-exported here) — ADE polarisation-current correction applied
    directly to the E-field after the standard linear update.  This is
    the recommended approach for integration into the ``jax.lax.scan``
    time loop because it avoids mutating material arrays.
