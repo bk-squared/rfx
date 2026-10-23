@@ -308,7 +308,8 @@ def refuse_injection_plane_operands(cfg, grid, materials, updates, localized):
             spatial_slice["xyz".index(axis)] = slice(index, index + 1)
 
             def select(record):
-                if all(rule[kind] == "accept" for kind in record.kinds):
+                # A record with no kinds is judged against vacuum, never exempted.
+                if record.kinds and all(rule[kind] == "accept" for kind in record.kinds):
                     return None
                 field, component = record.family, record.component
                 if suffix in ("lo", "hi") and (
