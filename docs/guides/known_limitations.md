@@ -487,6 +487,20 @@ time. rfx warns when the pulse level at f_c is above −60 dB of its level at f0
 bandwidth, f_c and level. Narrow the bandwidth, or taper the tail of the time series
 before the DFT.
 
+### The absolute value of an oblique-incidence RCS is uncertain by about ±2 dB and moves with the mesh; its pattern shape and specular direction are validated.
+
+Tracker: #1991
+
+`compute_rcs(..., theta_inc=θ)` with θ ≠ 0 runs the oblique open-domain plane wave (2.5-D: open in y, a thin
+periodic slab in z). On a 2.2-wavelength PEC plate at θ = 20° and 40°, the specular peak of the returned bistatic RCS
+is +0.86 dB above a physical-optics uniform-aperture reference at λ/30 cells, and −1.55 dB below it at λ/60, a 2.4 dB
+change from mesh refinement alone. Treat the absolute value as a ±2 dB-class number at λ/30 to λ/60, not a sub-dB one.
+The far-field pattern shape and the direction of the specular peak are validated (peak within 3° at θ = 40°, gated at
+±6°; tests/oracle/test_oblique_rcs_specular.py). The returned RCS is that of a strip whose height is the
+two-cell far-field box in z, `h_eff = 2·dx`: for a physical strip of height `L_z`, scale it by `(L_z/h_eff)²`.
+What to do: compare shapes and directions directly; for an absolute level, run two meshes (λ/30 and λ/60) and
+report the spread as the uncertainty of the level.
+
 ## Gradients and optimization
 
 ### A multi-device `forward()` on a uniform mesh takes no override or design argument
