@@ -479,3 +479,15 @@ def test_sphere_inside_span_still_refused():
 def test_vacuum_box_with_empty_pole_tuples_admitted():
     assert not _prism_span_findings([
         Box((0.084, 0, 0), (0.087, A, B))], ["empty_poles"])
+
+
+def test_pec_post_under_later_dielectric_refused():
+    # A later dielectric box does not clear PEC cells when assembled, so the
+    # post's 85 mm face is a PEC/dielectric interface inside the span.
+    sim = _guide()
+    sim.add_material("fill", eps_r=2.2)
+    sim.add(Box((0.050, 0.015, 0), (0.085, 0.027, B)), material="pec")
+    sim.add(Box((0.040, 0, 0), (0.110, A, B)), material="fill")
+    findings = _findings(sim)
+    assert any("pec (geometry[0])" in str(issue) and "face at 85 mm" in str(issue)
+               and issue.severity == "error" for issue in findings)

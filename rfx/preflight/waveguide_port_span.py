@@ -32,28 +32,32 @@ def _material_medium(sim, material_name):
 
 
 def _medium_at(sim, point, axis):
-    """The declared medium at a point: later geometry wins, as when assembled.
+    """The declared medium at a point: later geometry wins, as when assembled,
+    except that a PEC volume stays PEC under later geometry (its cells are
+    OR-accumulated into the PEC mask and never cleared).
 
     Boxes and cylinders along the port axis have constant cross-sections.
     Other shapes read as their own medium throughout their bounding boxes,
     conservatively counting interfaces that may lie between bounding faces.
     """
     from rfx.geometry.csg import Box, Cylinder
-    medium = _VACUUM
+    medium = pec = _VACUUM
     for i, g in enumerate(sim._geometry):
         bounds = _bounds(g.shape)
         if bounds is None or not all(bounds[0][a] <= point[a] <= bounds[1][a] for a in range(3)):
             continue
         if isinstance(g.shape, Box):
             medium = _material_medium(sim, g.material_name)
-        elif isinstance(g.shape, Cylinder) and "xyz".index(g.shape.axis) == axis:
+        elif isinstance(g.shape, Cylinder) and g.shape.axis == "xyz"[axis]:
             if not bool(g.shape.mask_on_coords(
                     np.array([point[0]]), np.array([point[1]]), np.array([point[2]]))[0, 0, 0]):
                 continue
             medium = _material_medium(sim, g.material_name)
         else:
             medium = ("shape", i)
-    return medium
+        if pec is _VACUUM and sim._resolve_material(g.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
+            pec = medium
+    return medium if pec is _VACUUM else pec
 
 
 def _face_sample_points(grid, lo, hi, aperture):
