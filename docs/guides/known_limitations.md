@@ -406,7 +406,7 @@ When two point probes of the same field kind (two E components, or two H compone
 per-frequency decay check (`settling_db`, `settling_witness`) skips a record as rounding only when its peak is 52 dB or
 more below the stronger record (2.4×10⁻³ in float32) and its level over the last 10 % of the record is at most
 2.9×10⁻⁴ (−71 dB) of the stronger record's peak. Such a record cannot be told apart from float32 rounding at that point:
-records on a field null were measured at 1.2×10⁻⁴ of the co-located peak, still about 0.2 of their own peak at the end.
+records on a field null were measured ending at 1.4×10⁻⁵ to 2.8×10⁻⁵ of the co-located peak, still about 0.2 of their own peak.
 A weak record still ringing above −71 dB is scored like any other record. The skipped records are listed in
 `result.settling_witness["skipped_records"]` with their `tail_ratio`.
 What to do: to judge a component that weak, put a probe of its own at a neighbouring cell, or run in float64.
