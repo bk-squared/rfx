@@ -193,7 +193,7 @@ def test_more_devices(n_devices):
 @pytest.mark.parametrize("mutation", ["disable", "own_slab", "half_step"])
 def test_parity_detects_mutations(monkeypatch, mutation):
     from rfx.probes import sparam_driver as driver
-    from rfx.runners import distributed_v2 as runner
+    from rfx.stepping import slab_uniform_loop as runner
     from rfx.core import dft_utils
     import jax.numpy as jnp
 
@@ -339,22 +339,31 @@ def _assert_shared_step_order(source):
 @pytest.mark.source_scan
 def test_shared_step_order():
     import inspect
-    from rfx.runners import distributed_v2 as runner
-    _assert_shared_step_order(inspect.getsource(runner.run_distributed))
+    from rfx.stepping import slab_uniform_loop as loop
+    _assert_shared_step_order(inspect.getsource(loop.run_uniform_slab_loop))
 
 
 @pytest.mark.source_scan
 def test_drive_only_order_mutation(monkeypatch):
     import inspect
     from rfx.runners import distributed_v2 as runner
-    source = inspect.getsource(runner.run_distributed)
+    from rfx.stepping import slab_uniform_loop as loop
+    source = inspect.getsource(loop.run_uniform_slab_loop)
     source = source.replace("        st = _inject_sources_shmap(st, src_vals, ranks=ranks)",
                             "        if _source_port_indices is None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)")
     source = source.replace("        # 7. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)\n\n        # 7. Exchange E ghost cells")
     source = source.replace("        # 6. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)\n\n        # 6. Exchange E ghost cells")
-    namespace = dict(vars(runner))
+    namespace = dict(vars(loop))
     exec(compile(source, "<drive-only-order-mutation>", "exec"), namespace)
-    monkeypatch.setattr(runner, "run_distributed", namespace["run_distributed"])
+    monkeypatch.setattr(loop, "run_uniform_slab_loop", namespace["run_uniform_slab_loop"])
+    original = runner.run_distributed
+
+    def run(*args, **kwargs):
+        # The drive-selection argument stays on the runner after extraction.
+        namespace["_source_port_indices"] = kwargs.get("_source_port_indices")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "run_distributed", run)
     # All these sources are away from walls/masks: numerical parity alone
     # cannot require a shared step. The structural invariant must also fail.
     for case in (None, "debye", "lossy", "pec", "cpml_box", "eps4"):
