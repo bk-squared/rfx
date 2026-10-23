@@ -27,6 +27,8 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.measurement.phasors import exp_j
+
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
@@ -1392,7 +1394,7 @@ def _compute_waveguide_s_matrix_nu(
                         ),
                         0.0,
                     )
-                    recv_col.append(mag * jnp.exp(1j * phase))
+                    recv_col.append(mag * exp_j(phase, xp=jnp))
                 s_columns.append(recv_col)
                 continue
 

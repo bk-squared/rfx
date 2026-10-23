@@ -26,6 +26,8 @@ exports automatically. An explicit ``layout`` overrides detection.
 
 from __future__ import annotations
 
+from rfx.measurement.phasors import exp_j
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -97,10 +99,10 @@ def _parse_pair(v1: float, v2: float, fmt: str) -> complex:
     if fmt == "RI":
         return complex(v1, v2)
     elif fmt == "MA":
-        return v1 * np.exp(1j * np.radians(v2))
+        return v1 * exp_j(np.radians(v2))
     elif fmt == "DB":
         mag = 10 ** (v1 / 20)
-        return mag * np.exp(1j * np.radians(v2))
+        return mag * exp_j(np.radians(v2))
     else:
         raise ValueError(f"Unknown format: {fmt!r}")
 

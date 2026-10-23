@@ -23,6 +23,8 @@ import time.
 
 from __future__ import annotations
 
+from rfx.measurement.phasors import exp_j
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -1952,7 +1954,7 @@ def _mixed_flux_magnitude_override(
             # measurement".
             neg_power[i, :] |= p_arr < 0.0
             mag = np.sqrt(np.clip(p_arr, 0.0, None) / safe_pinc)
-            ph = jnp.exp(1j * jnp.angle(S_wave[i, col, :]))
+            ph = exp_j(jnp.angle(S_wave[i, col, :]), xp=jnp)
             S_out = S_out.at[i, col, :].set(
                 (jnp.asarray(mag) * ph).astype(S_wave.dtype)
             )

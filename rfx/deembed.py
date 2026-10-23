@@ -21,6 +21,8 @@ Three methods are implemented:
 
 from __future__ import annotations
 
+from rfx.measurement.phasors import exp_j
+
 import numpy as np
 
 # Speed of light in vacuum (m/s)
@@ -83,7 +85,7 @@ def deembed_port_extension(
     # Phase shift per port: exp(+j * beta * L_i)
     # We *add* phase to undo the delay (shift reference plane inward).
     # port_phase[i, f] = exp(j * beta[f] * L_i)
-    port_phase = np.exp(1j * np.outer(port_lengths, beta))  # (n_ports, n_freqs)
+    port_phase = exp_j(np.outer(port_lengths, beta))  # (n_ports, n_freqs)
 
     # Build the de-embedding matrix.
     # S'_ij(f) = S_ij(f) * exp(j * beta * L_i) * exp(j * beta * L_j)
