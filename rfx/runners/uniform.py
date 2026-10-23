@@ -860,7 +860,8 @@ def run_uniform(
         freqs_out = np.array(s_param_freqs)
 
         # Default to the realized main record, including an until_decay stop.
-        sp_n_steps = drive_steps(sim_result, n_steps, s_param_n_steps)
+        sp_n_steps = drive_steps(sim_result, n_steps, s_param_n_steps,
+                                 until_decay=until_decay, decay_max_steps=decay_max_steps)
 
         # item-5 Stage 4 (2026-07-03): lumped AND multi-port wire run() paths go
         # through the production-scan driver (= forward()'s graph). Stage 3

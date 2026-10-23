@@ -1,6 +1,5 @@
 """Multi-port drives use the realized main record on either mesh."""
 
-import time
 import warnings
 from types import SimpleNamespace
 
@@ -54,7 +53,6 @@ def test_decay_drives_match_main_record(mesh, monkeypatch):
     monkeypatch.setattr(_tail_witness, "port_record_witness", observe_witness)
     run_kwargs = dict(skip_preflight=True, compute_s_params=True,
                       s_param_freqs=np.linspace(3e9, 9e9, 7))
-    start = time.perf_counter()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         stopped = _box(mesh).run(until_decay=1e-3, num_periods=3, **run_kwargs)
@@ -72,9 +70,6 @@ def test_decay_drives_match_main_record(mesh, monkeypatch):
                          if issubclass(w.category, UserWarning)
                          and ("settl" in str(w.message).lower()
                               or "trunc" in str(w.message).lower())]
-    print(f"{mesh}: stop_step={stop_step}, drive_records={decay_records}, "
-          f"max_diff={difference:.12g}, peak={peak:.12g}, bound={bound:.12g}, "
-          f"settling_warnings={settling_warnings}, seconds={time.perf_counter() - start:.3f}")
     assert decay_records == [(stop_step, stop_step)] * 2, "drive records must reach the decay stop"
     assert drive_records == [(stop_step, stop_step)] * 2
     assert difference <= bound, f"max |S - S(n_steps=stop)| = {difference} > {bound}"
@@ -92,3 +87,32 @@ def test_drive_length_override_and_fixed_record(graded, stop_step, override, exp
     stop = None if stop_step is None else SimpleNamespace(values={"stop_step": stop_step})
     result = {"decay_stop": stop} if graded else SimpleNamespace(decay_stop=stop)
     assert drive_steps(result, 132, override) == expected
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_forced_length_run_drives_its_record(graded):
+    # until_decay=0 runs decay_max_steps with no stop record; the drives follow it.
+    from rfx.measurement.decay import drive_steps
+
+    result = {"decay_stop": None} if graded else SimpleNamespace(decay_stop=None)
+    assert drive_steps(result, 132, until_decay=0.0, decay_max_steps=400) == 400
+    assert drive_steps(result, 132, 80, until_decay=0.0, decay_max_steps=400) == 80
+
+
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+def test_forced_length_drives_match_main_record(mesh, monkeypatch):
+    driver = sparam_driver.compute_lumped_wire_s_matrix_via_scan
+    lengths = []
+
+    def observe_driver(*args, **kwargs):
+        lengths.append(kwargs["n_steps"])
+        return driver(*args, **kwargs)
+
+    monkeypatch.setattr(sparam_driver, "compute_lumped_wire_s_matrix_via_scan", observe_driver)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = _box(mesh).run(until_decay=0.0, decay_max_steps=400, num_periods=3,
+                                skip_preflight=True, compute_s_params=True,
+                                s_param_freqs=np.linspace(3e9, 9e9, 7))
+    assert np.asarray(result.time_series).shape[0] == 400
+    assert lengths == [400]
