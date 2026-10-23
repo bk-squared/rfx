@@ -152,7 +152,7 @@ def test_non_dividing_declared_width_names_both_numbers():
 
 
 def test_margin_heuristic_is_evaluated_on_the_rasterized_guide():
-    """11.5 GHz clears 0.90 x fc_next on the declared 22.86 mm guide and
+    """11.5 GHz clears 0.90 x fc_next on the drawn 23.5 mm domain width and
     violates it on the 24.000 mm guide this PEC-walled domain rasterizes."""
     # Both domain walls lie inside their last solved cells (fraction .75),
     # retaining the 12-by-6-cell guide and its violated 11.242 GHz margin.
