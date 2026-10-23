@@ -41,7 +41,7 @@ import numpy as np
 
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
-from rfx.stepping import recorded_scan, update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h
+from rfx.stepping import recorded_scan, update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h, scan_with_progress
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     e_update_coeffs, component_e_materials,
@@ -58,7 +58,7 @@ from rfx.boundaries.pec import (
     realized_pec_edge_masks,
 )
 from rfx.progress import (
-    ProgressReporter, check_not_traced, concat_chunks, scan_with_progress,
+    ProgressReporter, check_not_traced, concat_chunks,
     validate_report_every,
 )
 from rfx.snapshots import (
