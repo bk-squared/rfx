@@ -160,6 +160,41 @@ def test_traced_design_window_repairs_only_global_wall(end, expected):
     np.testing.assert_allclose(jax.grad(wall_eps)(4.), .5 if end == 8 else .25, rtol=3e-7)
 
 
+@pytest.mark.parametrize("seeded", [False, True], ids=["vacuum-background", "geometry-eps2"])
+@pytest.mark.parametrize("end", [8, 7], ids=["global-wall", "interior-end"])
+@pytest.mark.parametrize("value,wall,interior", [
+    (4., 2.5, 1.75), (1., 1., 1.), (1.0001, 1.00005, 1.000025),
+])
+def test_design_written_wall_value_and_derivative(seeded, end, value, wall, interior):
+    from rfx.core.yee import EPS_0
+    from rfx.model.materials import _design_box_edge_coeffs
+    sim = Simulation(freq_max=10e9, domain=(6*H, 8*H, 10*H), dx=H,
+                     boundary=BoundarySpec(x="pec", y="pmc", z="cpml"), cpml_layers=4)
+    if seeded:
+        sim.add_material("background", eps_r=2.)
+        sim.add(Box((H, 3*H, 3*H), (5*H, end*H, 4*H)), material="background")
+    grid = sim._build_realized_grid()
+    mats = sim._assemble_materials(grid)[0]
+    z = grid.pad_z_lo + 3
+    assert float(mats.eps_r[2, 8, z]) == (2. if seeded and end == 8 else 1.)
+    bounds = (1, 5, 3, end, z, z+1)
+
+    @jax.jit
+    def edge_eps(v):
+        _, _, cb = _design_box_edge_coeffs(
+            bounds, jnp.full((4, end-3, 1), v), None, mats,
+            grid.dt, grid.shape, grid=grid)
+        return grid.dt / (EPS_0 * cb[0][1, -1, 0])
+
+    # Wall: (v+v+1+1)/4. Interior plus edge: (v+1+1+1)/4,
+    # the unchanged main convention. Neither reference uses a product mean.
+    actual, derivative = jax.value_and_grad(edge_eps)(value)
+    np.testing.assert_allclose(actual, wall if end == 8 else interior, rtol=2e-7)
+    np.testing.assert_allclose(derivative, .5 if end == 8 else .25, rtol=3e-7)
+    print(f"seeded={seeded} end={end} design={value}: "
+          f"Ex={float(actual)} derivative={float(derivative)}")
+
+
 def test_override_and_checkpoint_are_explicit_cell_inputs(tmp_path):
     from rfx.checkpoint import load_materials, save_materials
     from rfx.model.overrides import apply_material_overrides
