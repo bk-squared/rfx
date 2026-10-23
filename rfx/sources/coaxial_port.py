@@ -690,7 +690,8 @@ def _coaxial_tem_edge_profile(grid, port, e_plane_idx, shell_inner_radius,
         # Match the runner: realize all four incident cells in 3-D before
         # selecting Ex/Ey at the E source plane (including the previous z cell).
         mx, my, _ = (np.asarray(m)[:, :, edge_plane] for m in
-                     realized_pec_edge_masks(cells))
+                     realized_pec_edge_masks(cells, periodic=tuple(
+                         a in getattr(grid, 'periodic_axes', '') for a in 'xyz')))
 
     # Mark both endpoints of every shorted transverse edge, using the
     # repository's realized masks rather than a second conductor rule.
