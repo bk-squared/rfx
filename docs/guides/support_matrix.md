@@ -421,6 +421,17 @@ probes downstream of each feed.
   (`tests/unit/sparams/test_msl_port_integration.py`).
 - **Cross-validation.** The open-stub notch filter is compared with frozen data
   from another solver in `tests/crossval/msl_notch_filter/`.
+- **Open-stub zero at a T junction** (by-hand comparison with openEMS,
+  2026-10; not a CI test). One feed line (2.38 mm) meeting a wider line
+  (2.58 mm) as the stem of a T, with one 5.56 mm open stub, on εr 2.2,
+  h 0.794 mm: the transmission zero converges with the mesh (7.598, 7.646,
+  7.663 GHz at cells h/4, h/8, h/12; steps 0.64 % and 0.22 %) and lies 0.34 %
+  above openEMS (7.637 GHz, its last refinement step 0.20 %). Two equal open
+  stubs fed through two such junctions (the Sheen low-pass filter layout)
+  make a nearly degenerate pair of zeros; the solvers split the pair
+  differently through the coupling between the junctions, so the upper zero
+  of such a board differs by about 2 % between solvers. The depth of a deep
+  null is not judged (rfx about −34 dB, openEMS about −27 dB here).
 
 Nonuniform `mode="laplace"` and `mode="uniform"` have internal regression
 coverage only and no comparison with another solver on a graded mesh; treat
