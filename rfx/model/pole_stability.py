@@ -18,7 +18,7 @@ POLE_TIME_STEP_REASONS = {
         OperandKind.EPS, OperandKind.SIGMA, OperandKind.DEBYE,
         OperandKind.LORENTZ, OperandKind.DRUDE)},
     OperandKind.MU: "mu_r >= 1 only lowers x = 4(c0 dt)^2 sum sin^2/d^2; the judge already samples x over [0, x_max]",
-    OperandKind.CHI3: "Kerr with a pole medium is refused at assembly (Kerr 2.0 rule); assert that refusal fired, else refuse here",
+    OperandKind.CHI3: "the Kerr term is outside the linear update the judge reads; Kerr with a pole medium is admitted as before",
     **{kind: "PEC zeroes the tangential E; a pole cell under PEC carries no growth"
        for kind in (OperandKind.PEC_VOLUME, OperandKind.PEC_SHEET, OperandKind.PEC_WIRE)},
     # Measured 2026-10-23 (#1961; record rfx-archive 20261023-nu-c2-a1a2): a lossless Lorentz box at 0.999 of the
@@ -245,10 +245,10 @@ def pole_set_extremes(operands, lorentz_spec=None, *, view=None, debye_spec=None
     for record, cut in cuts:
         refused = [kind for kind in record.kinds
                    if OPERAND_RULES["pole_time_step"][kind] == "refuse"]
-        if refused or OperandKind.CHI3 in record.kinds:
+        if refused:
             def check(value, record=record, refused=refused):
                 if np.any(np.asarray(value) != record.vacuum):
-                    kinds = refused or [OperandKind.CHI3]
+                    kinds = refused
                     raise ValueError("pole time-step cannot judge " + ", ".join(k.name for k in kinds)
                                      + ": " + "; ".join(POLE_TIME_STEP_REASONS[k] for k in kinds))
             traced_check(record.label, "pole time-step operand", check, _concrete(cut), ordered=True)

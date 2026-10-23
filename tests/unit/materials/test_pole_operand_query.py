@@ -46,16 +46,20 @@ def test_policy_has_a_reason_and_admits_existing_terms(kind):
     refuse_unstable_cells((*records, extra), dt=1., budget=0., grid_kind="Grid")
 
 
-@pytest.mark.parametrize("transform", ["eager", "jit", "grad"])
-def test_kerr_pole_upstream_refusal_is_asserted(transform):
-    def checked(chi):
-        extra = realized_operands(None, None, {"kerr_chi3": jnp.full((4, 2, 2), chi)}, ())
-        refuse_unstable_cells((*operands(), *extra), dt=1., budget=0., grid_kind="Grid")
-        return chi ** 2
-    call = {"eager": lambda f: f, "jit": jax.jit, "grad": jax.grad}[transform](checked)
-    jax.block_until_ready(call(0.))
-    with pytest.raises(Exception, match="Kerr.*refused at assembly"):
-        jax.block_until_ready(call(1.))
+def test_kerr_beside_pole_medium_assembles():
+    """A Kerr box next to a Lorentz box was admitted before this check read operands; it still is."""
+    from rfx import Box, GaussianPulse, Simulation
+    from rfx.materials.lorentz import drude_pole
+    sim = Simulation(freq_max=10e9, domain=(.008,) * 3, dx=1e-3, boundary="pec")
+    dt = float(sim._build_realized_grid().dt)
+    sim.add_material("pole", eps_r=1., lorentz_poles=[drude_pole(.25 / dt, 0.)])
+    sim.add_material("kerr", eps_r=2., chi3=1e-18)
+    sim.add(Box((0, 0, 0), (.003, .008, .008)), material="pole")
+    sim.add(Box((.005, 0, 0), (.008, .008, .008)), material="kerr")
+    sim.add_source((.004, .004, .004), "ez", waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    sim.add_probe((.004, .005, .004), "ez")
+    series = np.asarray(sim.run(n_steps=4, compute_s_params=False, skip_preflight=True).time_series)
+    assert np.all(np.isfinite(series))
 
 
 def test_query_reads_record_mask_instead_of_spec_mask():

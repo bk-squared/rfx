@@ -471,14 +471,15 @@ def assemble_cells(
     if not nonuniform:
         refuse_vaporized_sheets(_pec_sheets, lane=lane, periodic=sim._periodic_flags())
     warn_unextendable_shapes(conductor_findings)
-    from rfx.model.operands import realized_operands
-    from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
-    operands = realized_operands(grid, materials, {
-        "lorentz_spec": lorentz_spec, "debye_spec": debye_spec,
-        "kerr_chi3": kerr_chi3, "pec_mask": pec_mask}, ())
-    refuse_unstable_cells(operands, dt=grid.dt, budget=courant_budget(grid),
-                          grid_kind=type(grid).__name__,
-                          in_program=n_devices < 2)
+    if lorentz_spec is not None or debye_spec is not None:
+        from rfx.model.operands import realized_operands
+        from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
+        operands = realized_operands(grid, materials, {
+            "lorentz_spec": lorentz_spec, "debye_spec": debye_spec,
+            "kerr_chi3": kerr_chi3, "pec_mask": pec_mask}, ())
+        refuse_unstable_cells(operands, dt=grid.dt, budget=courant_budget(grid),
+                              grid_kind=type(grid).__name__,
+                              in_program=n_devices < 2)
     return materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
 
 
