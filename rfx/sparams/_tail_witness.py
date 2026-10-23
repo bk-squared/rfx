@@ -9,8 +9,9 @@ import numpy as np
 # at the rounding level of its cell. A weak record still ringing above that
 # level is scored.
 _ROUNDING_ONLY_EPS_MULTIPLE = 2e4
-# #1909 measured rounding records up to about 1.2e3 eps of the co-located
-# same-kind peak; 2.4e3 is twice that.
+# #1909 measured rounding records' peaks up to about 1.2e3 eps of the co-located
+# same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the #1909 box
+# are 120 and 235 eps (rfx-archive rfx/records/20261024-settle-skip-tail/).
 _ROUNDING_TAIL_EPS_MULTIPLE = 2.4e3
 
 
