@@ -448,6 +448,19 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
          "quantity": quantity})
 
 
+def drive_steps(sim_result, n_steps, s_param_n_steps=None):
+    """Use the realized main record for port drives unless explicitly overridden.
+
+    Uniform loops return a SimResult; graded loops keep the same decay-stop
+    Diagnostic in a dict. Fixed-length runs have no decay-stop diagnostic.
+    """
+    if s_param_n_steps is not None:
+        return s_param_n_steps
+    stop = (sim_result.get("decay_stop") if isinstance(sim_result, dict)
+            else getattr(sim_result, "decay_stop", None))
+    return stop.values["stop_step"] if stop is not None else n_steps
+
+
 def decay_stop_first(result, settling_db, witness):
     """The record-length verdict (``Result.settling_witness``) of an until_decay
     run that ended on the float32 floor or the cap: the stop line goes first in
