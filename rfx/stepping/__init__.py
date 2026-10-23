@@ -1,5 +1,18 @@
 """Time stepping: the fixed physical step order, and placement of its inputs."""
 
+from .yee import (
+    update_e,
+    update_e_aniso,
+    update_e_aniso_inv,
+    update_e_box,
+    update_e_fast,
+    update_e_nu,
+    update_e_nu_aniso,
+    update_h,
+    update_h_fast,
+    update_h_nu,
+)
+from .scan import recorded_scan
 from rfx.stepping.waveguide_source import (
     apply_waveguide_port_e,
     apply_waveguide_port_h,
@@ -30,6 +43,17 @@ from .step_count import (
 )
 
 __all__ = [
+    "update_e",
+    "update_e_aniso",
+    "update_e_aniso_inv",
+    "update_e_box",
+    "update_e_fast",
+    "update_e_nu",
+    "update_e_nu_aniso",
+    "update_h",
+    "update_h_fast",
+    "update_h_nu",
+    "recorded_scan",
     "apply_waveguide_port_e",
     "apply_waveguide_port_h",
     "compose",

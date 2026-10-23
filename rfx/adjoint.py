@@ -142,7 +142,7 @@ def design_adjoint_scan(ctx, initial, xs):
     records/final-field objectives are refused through symbolic cotangents.
     """
     import numpy as np
-    from rfx.core.jax_utils import recorded_scan
+    from rfx.stepping import recorded_scan
     from rfx.core.yee import curl_h, e_component_coeffs
     from rfx.simulation import make_core_step, core_step_invariants
 

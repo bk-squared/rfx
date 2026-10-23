@@ -50,6 +50,8 @@ def observe(monkeypatch, sim):
         return ca, cb
 
     monkeypatch.setattr(yee, 'e_component_coeffs', plain)
+    import rfx.stepping.yee as stepping_yee  # the moved kernels read it here
+    monkeypatch.setattr(stepping_yee, 'e_component_coeffs', plain)
     for module, name in ((debye, 'debye_e_component'), (lorentz, 'lorentz_e_component')):
         original_component = getattr(module, name)
 

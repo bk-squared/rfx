@@ -73,6 +73,9 @@ def test_main_kernels_and_ade_read_stored_operands(monkeypatch):
     monkeypatch.setattr(model, "realize_components", forbidden)
     monkeypatch.setattr(yee, "component_e_materials", forbidden)
     monkeypatch.setattr(yee, "component_h_materials", forbidden)
+    import rfx.stepping.yee as stepping_yee  # the moved kernels read them here
+    monkeypatch.setattr(stepping_yee, "component_e_materials", forbidden)
+    monkeypatch.setattr(stepping_yee, "component_h_materials", forbidden)
     jax.clear_caches()
     state = yee.init_state(cells.eps_r.shape)
     state = yee.update_h(state, materials, 1e-12, .001)

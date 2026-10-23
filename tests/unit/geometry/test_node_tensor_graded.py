@@ -273,7 +273,7 @@ def test_w4_internal_pec_energy(monkeypatch, tmp_path):
 
 
 def test_w5_forward_run_and_kernel_operands(monkeypatch):
-    import rfx.core.yee as yee
+    import rfx.stepping.yee as yee
     from tests.contracts.run_forward_census import build_c_full_tensor
 
     calls = []

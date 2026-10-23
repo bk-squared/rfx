@@ -7,7 +7,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-from rfx.core.jax_utils import recorded_scan
+from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import MaterialArrays
 from rfx.measurement import (
     AUTO_END, finish_decay, init_graded_records, make_decay_stop, one_step_xs,

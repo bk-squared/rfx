@@ -27,8 +27,8 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, init_materials,
-                          component_h_materials, update_e, update_h)
+from rfx.core.yee import EPS_0, MU_0, FDTDState, MaterialArrays, init_materials, component_h_materials
+from rfx.stepping import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.subgridding.jit_runner import (
     _prolong_node_aligned_2d,

@@ -41,10 +41,9 @@ import numpy as np
 
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
-from rfx.core.jax_utils import recorded_scan
+from rfx.stepping import recorded_scan, update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, component_e_materials,
     EPS_0, MU_0, curl_h, CurlBoundary,
     map_lumped, lumped_total,

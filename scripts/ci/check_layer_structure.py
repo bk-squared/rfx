@@ -136,6 +136,16 @@ class Sources:
                     if (alias.asname or alias.name.split(".")[0]) == name:
                         target = alias.name if alias.asname else alias.name.split(".")[0]
                         return self._is_function(".".join([target, *tail]), hops - 1, seen)
+        # A module-level __getattr__ serving names from a literal _LAZY_EXPORTS
+        # table (name -> module) is an import edge too: a moved kernel stays
+        # countable under its old import path.
+        for node in self.tree(path).body if hops else ():
+            if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                    and any(isinstance(t, ast.Name) and t.id == "_LAZY_EXPORTS" for t in node.targets)):
+                for key, value in zip(node.value.keys, node.value.values):
+                    if (isinstance(key, ast.Constant) and key.value == name
+                            and isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                        return self._is_function(".".join([value.value, name, *tail]), hops - 1, seen)
         return False
 
 

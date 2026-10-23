@@ -27,8 +27,9 @@ from rfx.model import with_edge_keep
 import numpy as np
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
-from rfx.core.jax_utils import recorded_scan
-from rfx.core.yee import FDTDState, MaterialArrays, init_state, update_e, update_e_aniso, update_e_aniso_inv, curl_h, CurlBoundary, precompute_coeffs
+from rfx.stepping.scan import recorded_scan
+from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary, precompute_coeffs
+from rfx.stepping.yee import update_e, update_e_aniso, update_e_aniso_inv
 from rfx.boundaries.pec import resolve_wall_faces, kottke_fenced_edge_masks, realized_pec_edge_masks
 from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, scan_with_progress, validate_report_every
 from rfx.snapshots import plan_snapshot_pieces, snapshot_axes, snapshot_extractor, validate_snapshot_spec
