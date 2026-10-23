@@ -57,7 +57,7 @@ def record_face_values(cfg, state, dx, dt):
         st = update_line_e(cfg, st, dx, dt)
         return st, (h_values, e_values)
 
-    from rfx.core.jax_utils import recorded_scan
+    from rfx.stepping.scan import recorded_scan
     _, record = recorded_scan(step, state, None, length=cfg.n_steps)
     return tuple(lax.stop_gradient(row) for row in record), (h_gathers, e_gathers)
 

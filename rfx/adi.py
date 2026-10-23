@@ -25,7 +25,8 @@ import jax.numpy as jnp
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import (EPS_0, MU_0, MaterialArrays, component_h_materials,
                           si_value_eps_r_grad)
-from rfx.core.jax_utils import is_tracer, recorded_scan
+from rfx.core.jax_utils import is_tracer
+from rfx.stepping import recorded_scan
 
 
 ADI_INTERIOR_PEC_MESSAGE = (

@@ -383,6 +383,8 @@ def fallback_solve(monkeypatch):
     from rfx.core import jax_utils
 
     monkeypatch.setattr(jax_utils, "compile_time_switch", lambda: None)
+    import rfx.stepping.scan as scan  # recorded_scan reads it here
+    monkeypatch.setattr(scan, "compile_time_switch", lambda: None)
     sim, graded, observable, design, n_steps = _model("lumped port, cpml/uniform")
 
     def solve():
@@ -466,6 +468,8 @@ def test_recorded_scan_in_the_region_hides_every_concrete_operand(
 
     if fallback:
         monkeypatch.setattr(jax_utils, "compile_time_switch", lambda: None)
+        import rfx.stepping.scan as scan  # recorded_scan reads it here
+        monkeypatch.setattr(scan, "compile_time_switch", lambda: None)
     xs = jnp.ones((5, 7), jnp.float32)
     body, solve = _toy_region_scan(xs)
     jaxpr = jax.make_jaxpr(solve)().jaxpr

@@ -20,7 +20,8 @@ import numpy as np
 
 from rfx.boundaries.pec import apply_edge_keep, apply_pec_edges, apply_pec_faces
 from rfx.core.drives import inject_drives
-from rfx.core.yee import CurlBoundary, update_e_nu, update_h_nu
+from rfx.core.yee import CurlBoundary
+from rfx.stepping.yee import update_e_nu, update_h_nu
 from .sequence import HookPoint, Kernel, compose
 
 if TYPE_CHECKING:
@@ -238,7 +239,7 @@ def make_graded_step(
                 boundary=ctx.curl_boundary,
             )
         elif frame.aniso_eps is not None:
-            from rfx.core.yee import update_e_nu_aniso
+            from rfx.stepping.yee import update_e_nu_aniso
             _eex, _eey, _eez = frame.aniso_eps
             frame.st = update_e_nu_aniso(
                 frame.st, frame.materials, _eex, _eey, _eez, ctx.dt,
@@ -253,7 +254,7 @@ def make_graded_step(
         # uniform lane — immediately after the E update, on the same H,
         # before anything that reads or writes E.
         if ctx.use_design_box:
-            from rfx.core.yee import update_e_box
+            from rfx.stepping.yee import update_e_box
             frame.st = update_e_box(
                 frame.st, frame.st_prev_design, frame.design_box_coeffs.bounds,
                 frame.design_box_coeffs.ca, frame.design_box_coeffs.cb, ctx.grid.dx,

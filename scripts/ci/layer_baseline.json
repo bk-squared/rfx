@@ -94,11 +94,6 @@
         "rfx.core.yee:lumped_total",
         "rfx.core.yee:map_lumped",
         "rfx.core.yee:precompute_coeffs",
-        "rfx.core.yee:update_e",
-        "rfx.core.yee:update_e_aniso",
-        "rfx.core.yee:update_e_aniso_inv",
-        "rfx.core.yee:update_e_box",
-        "rfx.core.yee:update_h",
         "rfx.core.yee:update_he_fast",
         "rfx.model.materials:e_update_coefficient_at",
         "rfx.model.materials:electric_grid_kwargs",
@@ -153,28 +148,6 @@
       "M": [
         "half_step_current_phase"
       ]
-    },
-    "rfx/core/jax_utils.py": {
-      "S": [
-        "_scan_with_opaque_operands",
-        "recorded_scan"
-      ],
-      "M": []
-    },
-    "rfx/core/yee.py": {
-      "S": [
-        "update_e",
-        "update_e_aniso",
-        "update_e_aniso_inv",
-        "update_e_box",
-        "update_e_fast",
-        "update_e_nu",
-        "update_e_nu_aniso",
-        "update_h",
-        "update_h_fast",
-        "update_h_nu"
-      ],
-      "M": []
     },
     "rfx/current_moments.py": {
       "S": [],

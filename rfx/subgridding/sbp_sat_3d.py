@@ -155,7 +155,8 @@ def _make_mats(shape):
 
 def _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None):
     """H half-step only (Faraday)."""
-    from rfx.core.yee import FDTDState, update_h
+    from rfx.core.yee import FDTDState
+    from rfx.stepping import update_h
     shape = ex.shape
     state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
                       step=jnp.array(0, dtype=jnp.int32))
@@ -168,7 +169,8 @@ def _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None):
 def _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None,
                    pec_mask=None, boundary_pec=True):
     """E full-step only (Ampere) + PEC."""
-    from rfx.core.yee import FDTDState, update_e
+    from rfx.core.yee import FDTDState
+    from rfx.stepping import update_e
     from rfx.boundaries.pec import apply_pec, apply_pec_mask
     shape = ex.shape
     state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,

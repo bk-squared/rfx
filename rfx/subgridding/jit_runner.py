@@ -23,10 +23,8 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout, inject_drives
 
-from rfx.core.yee import (
-    FDTDState, MaterialArrays, init_state,
-    update_h, update_e,
-)
+from rfx.core.yee import FDTDState, MaterialArrays, init_state
+from rfx.stepping import update_h, update_e
 from rfx.boundaries.pec import apply_pec, apply_pec_faces, apply_pec_mask
 from rfx.grid import Grid
 from rfx.subgridding.sbp_sat_3d import (
