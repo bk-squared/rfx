@@ -367,9 +367,16 @@ def _fold_dc_plane(grid, conductor, materials, mask, normal):
     """In-plane cell coverage, carried only by tangential edges on one node."""
     from rfx.core.yee import lumped_components
     from rfx.model.materials import edge_coverage_weights
+    from rfx.geometry.rasterize_grid import extend_cpml_pad_materials, unpadded_high_walls
     normal, plane = dc_film_plane(conductor.shape, grid)
     footprint = mask.any(axis=normal)
     field = jnp.broadcast_to(jnp.expand_dims(footprint, normal), materials.sigma.shape)
+    # #1966: repair the assembled coverage before its edge mean, using
+    # the same #655 vacuum/one-column rule as the volume statics.
+    vacuum = jnp.ones_like(materials.sigma)
+    _, field, _ = extend_cpml_pad_materials(
+        vacuum, field.astype(materials.sigma.dtype), vacuum, 0, 0, 0, 0, 0, 0,
+        high_wall=unpadded_high_walls(grid))
     periodic = tuple(a in getattr(grid, 'periodic_axes', '') for a in 'xyz')
     weights = edge_coverage_weights(grid, field.astype(materials.sigma.dtype), periodic)
     dual = (e_node_dual_spacings((grid.dx_arr, grid.dy_arr, grid.dz)[normal])[plane]

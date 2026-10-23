@@ -45,7 +45,7 @@ import numpy as np
 from rfx.core.yee import MaterialArrays, init_state
 from rfx.geometry.rasterize_grid import (
     _material_cell_mask, centres_from_uniform_grid, coords_from_uniform_grid,
-    extend_cpml_pad_materials,
+    extend_cpml_pad_materials, unpadded_high_walls,
 )
 from rfx.materials.thin_conductor import apply_thin_conductor
 from rfx.measurement.accumulators import plane_metadata
@@ -200,10 +200,8 @@ def _extend_batched_cpml_pad(
     matrix in
     ``tests/unit/runners/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity``.
 
-    A no-op on any face with zero pad depth (non-CPML boundary, or a
-    reflector/periodic face with ``pad=0`` on that side), so this is safe
-    to call unconditionally; with every face at zero it returns its inputs
-    untouched rather than materialising broadcast views through ``vmap``.
+    Unpadded non-periodic high walls receive the same #655 node repair
+    as ordinary assembly (#1966). Periodic faces remain untouched.
 
     Returns
     -------
@@ -212,7 +210,8 @@ def _extend_batched_cpml_pad(
     plx, phx = grid.pad_x_lo, grid.pad_x_hi
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz, phz = grid.pad_z_lo, grid.pad_z_hi
-    if max(plx, phx, ply, phy, plz, phz) <= 0:
+    walls = unpadded_high_walls(grid)
+    if max(plx, phx, ply, phy, plz, phz) <= 0 and not any(walls):
         return eps_r, sigma, mu_r
 
     def _one(e, s, m):
@@ -223,7 +222,7 @@ def _extend_batched_cpml_pad(
         # ``run()`` hands it (#808 gate).
         return extend_cpml_pad_materials(
             e, s, m, plx, phx, ply, phy, plz, phz,
-            dispersion_pole_mask=dispersion_pole_mask)
+            dispersion_pole_mask=dispersion_pole_mask, high_wall=walls)
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)
 

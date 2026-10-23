@@ -28,6 +28,7 @@ from rfx.geometry.rasterize_grid import (
     cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
     centres_from_nonuniform_grid, centres_from_uniform_grid,
     classify_pec_entry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
+    unpadded_high_walls,
     refuse_vaporized_sheets, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.geometry.smoothing import continued_conductor_shape
@@ -118,6 +119,8 @@ def assemble_cells(
         When False, skip the CPML pad extension entirely and return the
         arrays exactly as the geometry rasterized them — vacuum in the
         padding, and vacuum at any boundary node the rasterizer dropped.
+        This also skips the unpadded high-wall repair (#1966), so the
+        batched writer can repair each swept value at the same stage.
 
         Same caller, same reason, one issue later. #637/#643 let the
         batched sweep re-extend already-extended arrays, on the argument
@@ -335,13 +338,11 @@ def assemble_cells(
     # anchor diverged wherever that mismatch interacted with subpixel smoothing.
     # Extend statics only, before thin folds. Never extend poles or Kerr (#627b);
     # pole occupancy gates hi-face static promotion (#808).
-    if (include_cpml_pad_extension
-            and sim._boundary in ("cpml", "upml")
-            and sim._cpml_layers > 0):
-        # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Reflector /
-        # periodic faces have pad=0 on that side and the corresponding
-        # replicate step is skipped so the interior cells are not
-        # overwritten. The replicate depth matches the actual
+    if include_cpml_pad_extension:
+        # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Periodic
+        # faces stay untouched. Unpadded high walls receive only the
+        # #655 boundary-node repair; absorbing faces additionally copy
+        # the pad. The replicate depth matches the actual
         # allocation on that face (``pad_*_lo`` or ``pad_*_hi``).
         plx, phx = grid.pad_x_lo, grid.pad_x_hi
         ply, phy = grid.pad_y_lo, grid.pad_y_hi
@@ -354,6 +355,7 @@ def assemble_cells(
         eps_r, sigma, mu_r = extend_cpml_pad_materials(
             eps_r, sigma, mu_r, plx, phx, ply, phy, plz, phz,
             dispersion_pole_mask=_pole_mask_any,
+            high_wall=unpadded_high_walls(grid),
         )
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
@@ -978,6 +980,23 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     win_mats = apply_material_overrides(
         materials, eps_override=eps_r_box, sigma_override=sigma_box,
         window=win, box_local=box_local)
+    # A cropped window repairs only a GLOBAL high wall, after its traced
+    # blend. Lumped records remain edge-owned and must not be promoted.
+    walls = tuple(wall and w.stop == n for wall, w, n in
+                  zip(unpadded_high_walls(grid), win, shape))
+    if any(walls):
+        eps = permittivity_without_lumped(win_mats)
+        stamp = lumped_total(win_mats.sigma_lumped)
+        sig = win_mats.sigma if stamp is None else win_mats.sigma - stamp
+        mu = (jnp.ones_like(eps) if materials.mu_r is None else
+              jnp.broadcast_to(materials.mu_r, shape)[win])
+        fixed_e, fixed_s, _ = extend_cpml_pad_materials(
+            eps, sig, mu, 0, 0, 0, 0, 0, 0, high_wall=walls)
+        win_mats = win_mats._replace(
+            eps_r=jnp.where(fixed_e == eps, win_mats.eps_r,
+                            fixed_e + win_mats.eps_r - eps),
+            sigma=jnp.where(fixed_s == sig, win_mats.sigma,
+                            fixed_s + win_mats.sigma - sig))
     widths = electric_cell_sizes(grid)
     widths = None if widths is None else tuple(
         None if d is None else d[w] for d, w in zip(widths, win))
