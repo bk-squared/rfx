@@ -1346,7 +1346,7 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=
 def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
 
-    Per E component (#1260), as ``rfx.materials.lorentz.update_e_lorentz``
+    Per E component (#1260), as ``rfx.stepping.poles.update_e_lorentz``
     without its dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz

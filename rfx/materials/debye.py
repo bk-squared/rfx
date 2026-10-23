@@ -44,7 +44,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from rfx.core.yee import (
-    si_value_eps_r_grad, EPS_0, FDTDState, MaterialArrays, curl_h, ade_state_dtype,
+    si_value_eps_r_grad, EPS_0, MaterialArrays, ade_state_dtype,
 )
 
 
@@ -313,55 +313,17 @@ def debye_e_component(coeffs: DebyeCoeffs, c: int, e_old, curl, p,
     return e_new, p_new
 
 
-def update_e_debye(
-    state: FDTDState,
-    coeffs: DebyeCoeffs,
-    debye_state: DebyeState,
-    dt: float,
-    dx: float,
-    periodic: tuple = (False, False, False),
-    boundary=None,
-) -> tuple[FDTDState, DebyeState]:
-    """E-field update with Debye ADE dispersion.
+# Lazy compatibility export for the time-step implementation.
+_LAZY_EXPORTS = {
+    "update_e_debye": "rfx.stepping.poles",
+}
 
-    Replaces update_e() when Debye materials are present.
-    Handles conductivity (via ca/cb) and Debye polarization simultaneously.
 
-    Update order:
-    1. Compute curl(H) (backward differences)
-    2. E^{n+1} = Ca·E^n + Cb·curl(H) + Σ_p Cc_p·P_p^n
-    3. P_p^{n+1} = α_p·P_p^n + β_p·(E^{n+1} + E^n)
+def __getattr__(name):
+    from importlib import import_module
 
-    Dtype note (issue #656)
-    -----------------------
-    Both outputs are narrowed back to the dtype of the carry they came from.
-    See the fuller note on ``rfx.materials.lorentz.update_e_lorentz``: the
-    coefficients are built at setup time from ``dt`` (``grid.dt``, a numpy
-    float64 scalar, STRONGLY typed in JAX), so allocation-site promotion
-    alone does not close this scan.
-    """
-    _fdtype = state.ex.dtype
-    _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
-
-    hx, hy, hz = state.hx, state.hy, state.hz
-
-    # curl(H) via backward differences
-    curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
-
-    # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
-    # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component (#1260)
-    ex_new, px_new = debye_e_component(coeffs, 0, state.ex, curl_x,
-                                       debye_state.px, _fdtype, _pdtype)
-    ey_new, py_new = debye_e_component(coeffs, 1, state.ey, curl_y,
-                                       debye_state.py, _fdtype, _pdtype)
-    ez_new, pz_new = debye_e_component(coeffs, 2, state.ez, curl_z,
-                                       debye_state.pz, _fdtype, _pdtype)
-
-    new_fdtd = state._replace(
-        ex=ex_new, ey=ey_new, ez=ez_new,
-        step=state.step + 1,
-    )
-    new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
-
-    return new_fdtd, new_debye
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value

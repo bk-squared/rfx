@@ -55,8 +55,7 @@ from rfx.core.yee import MaterialArrays, ade_state_dtype, init_materials
 from rfx.geometry.csg import Box, rasterize
 from rfx.farfield import ntff_accum_dtype, init_ntff_data, NTFFBox
 from rfx.lumped import init_rlc_state
-import rfx.materials.debye as _debye_mod
-import rfx.materials.lorentz as _lorentz_mod
+import rfx.stepping.poles as _poles_mod
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import drude_pole, init_lorentz, lorentz_pole
 from rfx.rcs import compute_rcs
@@ -333,7 +332,7 @@ def _scan_body_dtypes(monkeypatch, kind, precision):
     """Dtypes AS SEEN INSIDE the scan body, not inferred from the API.
 
     Wraps the dispersive E-update so the field storage dtype and the ADE P
-    carry dtype are read off the actual traced arguments. ``rfx.simulation``
+    carry dtype are read off the actual traced arguments. ``rfx.stepping.uniform_setup``
     imports these two names inside the function body, so patching the module
     attribute is what the scan actually calls.
     """
@@ -349,10 +348,10 @@ def _scan_body_dtypes(monkeypatch, kind, precision):
             return out
         return wrapped
 
-    monkeypatch.setattr(_lorentz_mod, "update_e_lorentz",
-                        _wrap(_lorentz_mod.update_e_lorentz))
-    monkeypatch.setattr(_debye_mod, "update_e_debye",
-                        _wrap(_debye_mod.update_e_debye))
+    monkeypatch.setattr(_poles_mod, "update_e_lorentz",
+                        _wrap(_poles_mod.update_e_lorentz))
+    monkeypatch.setattr(_poles_mod, "update_e_debye",
+                        _wrap(_poles_mod.update_e_debye))
     _dispersive_sim(kind, precision).run(n_steps=4, skip_preflight=True)
     return seen
 

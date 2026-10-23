@@ -38,7 +38,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import (
-    si_value_eps_r_grad, EPS_0, FDTDState, curl_h, ade_state_dtype,
+    si_value_eps_r_grad, EPS_0, ade_state_dtype,
 )
 from rfx.materials.debye import per_component, pole_reach
 
@@ -368,72 +368,17 @@ def _mixed_e_coeffs_eps_r(beta, alpha, lorentz_ca, lorentz_cc, dt):
     return ca, cb, cc_debye, cc_lorentz
 
 
-def update_e_lorentz(
-    state: FDTDState,
-    coeffs: LorentzCoeffs,
-    lor_state: LorentzState,
-    dt: float,
-    dx: float,
-    periodic: tuple = (False, False, False),
-    boundary=None,
-) -> tuple[FDTDState, LorentzState]:
-    """E-field update with Lorentz/Drude ADE dispersion.
+# Lazy compatibility export for the time-step implementation.
+_LAZY_EXPORTS = {
+    "update_e_lorentz": "rfx.stepping.poles",
+}
 
-    Update order:
-    1. P^{n+1} = a P^n + b P^{n-1} + c E^n  (explicit)
-    2. E^{n+1} = Ca E^n + Cb curl(H) - Cc Σ(P^{n+1} - P^n)
 
-    Dtype note (issue #656)
-    -----------------------
-    Both outputs are narrowed back to the dtype of the carry they came from,
-    the ``rfx.core.yee.update_e`` idiom (#630) plus #646's "let the body
-    derive its dtype from the carry". Allocation-site promotion alone does
-    NOT close this scan: ``ca``/``cb``/``cc`` and (masked) ``a``/``b``/``c``
-    are built at setup time from ``dt``, which is ``grid.dt``, a **numpy
-    float64 scalar** — and numpy scalars are STRONGLY typed in JAX where
-    Python floats are weak. So under x64 the coefficients are float64 and
-    this body would return float64 for a float32 field/P carry.
+def __getattr__(name):
+    from importlib import import_module
 
-    ``_pdtype`` promotes rather than pinning to ``lor_state.px.dtype`` on
-    purpose: with a real P carry and a COMPLEX field (oblique Bloch, #404) it
-    stays complex, so the carry mismatch is still raised. Pinning would cast
-    the imaginary part away and close the scan on wrong physics — the
-    dispersive branches ignore the Bloch phase entirely.
-    """
-    _fdtype = state.ex.dtype
-    _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
-
-    hx, hy, hz = state.hx, state.hy, state.hz
-
-    # curl(H)
-    curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
-
-    # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
-    px_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev, _pdtype)
-    py_new = lorentz_p_component(coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev, _pdtype)
-    pz_new = lorentz_p_component(coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev, _pdtype)
-
-    # ΔP = P^{n+1} - P^n, summed over poles
-    dpx = jnp.sum(px_new - lor_state.px, axis=0)
-    dpy = jnp.sum(py_new - lor_state.py, axis=0)
-    dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
-
-    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component (#1260)
-    ex_new = lorentz_e_component(coeffs, 0, state.ex, curl_x, dpx, _fdtype)
-    ey_new = lorentz_e_component(coeffs, 1, state.ey, curl_y, dpy, _fdtype)
-    ez_new = lorentz_e_component(coeffs, 2, state.ez, curl_z, dpz, _fdtype)
-
-    new_fdtd = state._replace(
-        ex=ex_new, ey=ey_new, ez=ez_new,
-        step=state.step + 1,
-    )
-    new_lor = LorentzState(
-        px=px_new, py=py_new, pz=pz_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
-    )
-
-    return new_fdtd, new_lor
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value

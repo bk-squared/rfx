@@ -87,7 +87,7 @@ def _update_e_with_optional_dispersion(
                         stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
 
     if debye is not None and lorentz is None:
-        from rfx.materials.debye import update_e_debye
+        from rfx.stepping.poles import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
@@ -95,7 +95,7 @@ def _update_e_with_optional_dispersion(
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
-        from rfx.materials.lorentz import update_e_lorentz
+        from rfx.stepping.poles import update_e_lorentz
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
@@ -660,7 +660,7 @@ def _build_step_setup(
         rlc_meta = tuple(lumped_rlc)
 
     if use_kerr:
-        from rfx.materials.nonlinear import apply_kerr_ade
+        from rfx.stepping.kerr import apply_kerr_ade
 
     # ---- metadata tuples ----
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]

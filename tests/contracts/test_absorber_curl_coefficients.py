@@ -35,6 +35,7 @@ def observe(monkeypatch, sim):
     import rfx.boundaries.cpml as cpml
     import rfx.materials.debye as debye
     import rfx.materials.lorentz as lorentz
+    import rfx.stepping.poles as poles
     jax.clear_caches()
     observed = {'absorber': {}, 'update': {}}
 
@@ -60,6 +61,7 @@ def observe(monkeypatch, sim):
             return _original(coeffs, c, *args, **kwargs)
 
         monkeypatch.setattr(module, name, component)
+        monkeypatch.setattr(poles, name, component)
     original_mixed = lorentz.mixed_e_component_coeffs
 
     def mixed(db, lr, c, dt):
