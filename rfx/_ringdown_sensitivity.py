@@ -40,6 +40,10 @@ def sensitivity_truncation_error(t_over_tau, detuning_halfwidths=0.0):
     valid = (x > 0) & xp.isfinite(x) & xp.isfinite(d)
     if not traced and not np.all(np.asarray(valid)):
         raise ValueError("t_over_tau must be positive and finite; detuning_halfwidths must be finite")
+    if traced:
+        # Keep invalid arithmetic out of the gradient of the outer where.
+        x = xp.where(valid, x, 1)
+        d = xp.where(valid, d, 0)
     result = xp.exp(-x) * xp.hypot(1 + x, d * x)
     if traced:
         result = xp.where(valid, result, xp.nan)
