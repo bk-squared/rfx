@@ -988,15 +988,29 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
         eps = permittivity_without_lumped(win_mats)
         stamp = lumped_total(win_mats.sigma_lumped)
         sig = win_mats.sigma if stamp is None else win_mats.sigma - stamp
-        mu = (jnp.ones_like(eps) if materials.mu_r is None else
-              jnp.broadcast_to(materials.mu_r, shape)[win])
-        fixed_e, fixed_s, _ = extend_cpml_pad_materials(
-            eps, sig, mu, 0, 0, 0, 0, 0, 0, high_wall=walls)
+        # Use exactly the cell slice written by apply_material_overrides.
+        # A geometry-seeded boundary node may already be non-vacuum, and
+        # an exactly-vacuum design still owns its derivative at the wall.
+        written = jnp.zeros(eps.shape, dtype=bool).at[box_local].set(True)
+        repaired = jnp.zeros_like(written)
+        fixed_e, fixed_s = eps, sig
+        for axis, wall in enumerate(walls):
+            if not wall or eps.shape[axis] < 2:
+                continue
+            outer, source = [slice(None)] * 3, [slice(None)] * 3
+            outer[axis], source[axis] = -1, -2
+            outer, source = tuple(outer), tuple(source)
+            use_inner = written[source]
+            fixed_e = fixed_e.at[outer].set(jnp.where(
+                use_inner, fixed_e[source], fixed_e[outer]))
+            fixed_s = fixed_s.at[outer].set(jnp.where(
+                use_inner, fixed_s[source], fixed_s[outer]))
+            repaired = repaired.at[outer].set(repaired[outer] | use_inner)
         win_mats = win_mats._replace(
-            eps_r=jnp.where(fixed_e == eps, win_mats.eps_r,
-                            fixed_e + win_mats.eps_r - eps),
-            sigma=jnp.where(fixed_s == sig, win_mats.sigma,
-                            fixed_s + win_mats.sigma - sig))
+            eps_r=jnp.where(repaired, fixed_e + win_mats.eps_r - eps,
+                            win_mats.eps_r),
+            sigma=jnp.where(repaired, fixed_s + win_mats.sigma - sig,
+                            win_mats.sigma))
     widths = electric_cell_sizes(grid)
     widths = None if widths is None else tuple(
         None if d is None else d[w] for d, w in zip(widths, win))
