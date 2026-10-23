@@ -475,3 +475,22 @@ def test_graded_passive_port_is_carried(entry):
     assert len(multi.sparam_time_records) == 2
     for a, b in zip(one.sparam_time_records, multi.sparam_time_records):
         np.testing.assert_array_equal(a.samples, b.samples)
+
+
+@pytest.mark.parametrize('request_s', [{}, {'compute_s_params': True}, {'s_param_freqs': [3e9, 5e9, 7e9]}],
+                         ids=['default', 'explicit', 'freqs'])
+def test_uniform_user_jit_refuses_port_s(request_s):
+    from tests.unit.runners.test_distributed_uniform_user_jit import scene
+
+    if len(jax.devices('cpu')) < 2:
+        pytest.skip('requires two CPU devices')
+    sim = scene('pec', port=True)
+
+    def call():
+        return sim.run(n_steps=60, devices=jax.devices('cpu')[:2], skip_preflight=True, **request_s).s_params
+
+    with pytest.raises(NotImplementedError, match="cannot compute port S-parameters inside jax.jit"):
+        jax.jit(call)()
+    if not request_s:
+        # The refusal is for the staged request only: the same call made directly still measures S.
+        assert call() is not None
