@@ -19,7 +19,6 @@ def refuse_distributed_options(self, *, entry="run", subpixel_smoothing=False, *
         _one_uniform = (f"omit {omit} and run on a uniform mesh "
                         "(no dx/dy/dz profile)")
         _dist_instead = {"*": _one_device,
-                         "snapshot": _one_uniform,
                          "conformal_pec": _one_uniform}
         if self._boundary not in ("cpml", "upml"):
             _dist_instead["until_decay"] = _one_uniform
@@ -85,6 +84,14 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             s_param_n_steps=s_param_n_steps,
             devices=devices,
         )
+    from rfx.api._dispatch import _staged_by_an_outer_trace
+    if (plan.lane != "run_distributed_nu" and compute_s_params
+            and _staged_by_an_outer_trace()):
+        raise NotImplementedError(
+            "run(devices=...) on a uniform mesh cannot compute port S-parameters inside jax.jit "
+            "(or another JAX trace that stages it): the S-parameters are measured from a second "
+            "multi-device run outside the trace. Pass compute_s_params=False for the fields and "
+            "probe records, call run() directly, or run on one device (omit devices=).")
     if compute_s_params:
         _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
         if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
