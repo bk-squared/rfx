@@ -348,25 +348,34 @@ the guide's walls, and both meshes warn or refuse unless they are declared PEC.
 Until this is fixed, solve a partial-aperture port that radiates on a graded
 mesh (a constant `dz_profile` is enough).
 
-### Material placed inside a waveguide port's measurement segment through an override or a design box is not checked.
+### A waveguide port assumes an empty (vacuum) guide: inside a dielectric fill it reports the wrong S, and material in its measurement section through an override or a design box is not checked.
 
 Tracker: #1994
 
-A rectangular-waveguide port models an empty guide: its mode, cutoff, modal
-impedance and de-embedding assume the medium between its source plane and its
-reference or probe plane is what the port was built for. A face drawn between
-the source plane and the reflection plane is refused by the port span
-preflight; the stretch on to the probe plane and a user `reference_plane` are
-not checked for drawn geometry either. Material put there through
-`eps_override`, `sigma_override` or `forward(design_box=..., design_eps_override=...)`
-is not checked: the run gives no refusal and no warning, and the S-parameters it
-reports are then not the port's S. Measured on a 23.4 × 11.7 mm guide with a
-box of relative permittivity 4 over a port's source plane (uniform mesh,
-8.4–11.6 GHz): the design-box and `eps_override` routes give the same result
-bit for bit, and neither flags the box. A design box or override placed away
-from every port's segment is not affected. Until a check covers these routes,
-keep drawn faces, overrides and design boxes out of the guide section between
-each port's source plane and its reference and probe planes. A traced override over that
+A rectangular-waveguide port models an empty guide: its cutoff, propagation
+constant and modal impedance use vacuum values, and so does the de-embedding to
+a `reference_plane`. Where the guide section the port uses (its source plane to
+its reference and probe planes) holds any other medium, the S it reports is not
+the structure's S, and the run does not refuse it:
+
+- A port inside a uniformly filled guide. On a straight WR-90 filled end to end
+  (two TE10 ports 80 mm apart, matched line, so |S11| should be 0 and |S21| 1),
+  |S11| came out 0.53 to 0.33 at relative permittivity 2.2 (7.0–8.6 GHz) and
+  0.74 to 0.60 at 4 (6.8–7.3 GHz), exactly the mismatch between the vacuum and
+  the filled modal impedance, while |S21| stayed 1.00, so |S11|² + |S21|²
+  exceeds 1 on a lossless line. The S21 phase was off by 2–3 %, and by up to
+  14 % with the reference planes moved 30 mm. The same guide empty gave |S11| ≤
+  0.004 and the phase within 0.06 %. A fill drawn as geometry gives only an
+  advisory that names mode mixing; it is not refused.
+- Material placed in the section through `eps_override`, `sigma_override` or
+  `forward(design_box=..., design_eps_override=...)` gives no refusal and no
+  warning. A face drawn between the source plane and the reflection plane is
+  refused; the stretch on to the probe plane and a user `reference_plane` are
+  not checked.
+
+Until this is fixed, keep every port's section, from its source plane to its
+reference and probe planes, empty: start a dielectric fill, an override or a
+design box beyond the farthest of those planes. A traced override over that
 section cannot be judged before the run.
 
 ---
