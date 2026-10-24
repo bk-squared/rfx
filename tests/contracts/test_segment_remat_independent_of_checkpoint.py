@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from tests.contracts.test_ad_memory_tape_terms import _scene
 
 

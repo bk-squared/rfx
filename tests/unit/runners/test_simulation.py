@@ -20,8 +20,14 @@ from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.geometry.csg import Box
 from rfx.sources.sources import GaussianPulse, LumpedPort
 from rfx.sources.tfsf import (
-    init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e, apply_tfsf_h, apply_tfsf_e,
+    init_tfsf,
+    update_tfsf_1d_h,
+    update_tfsf_1d_e,
     is_tfsf_2d,
+)
+from rfx.stepping.tfsf import (
+    apply_tfsf_h,
+    apply_tfsf_e,
 )
 from rfx.simulation import (
     ProbeSpec, make_source, make_probe, run, run_until_decay,
@@ -476,7 +482,11 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
     _is_2d = is_tfsf_2d(tfsf_cfg)
     if _is_2d:
         from rfx.sources.tfsf_2d import (
-            update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+            update_tfsf_2d_h,
+            update_tfsf_2d_e,
+        )
+        from rfx.stepping.tfsf_2d import (
+            bloch_phase_tuple,
         )
         _bloch = bloch_phase_tuple(tfsf_cfg, grid.dx)
         _fdt = jnp.complex64

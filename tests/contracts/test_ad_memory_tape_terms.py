@@ -13,7 +13,7 @@ import numpy as np
 
 from rfx.api import Simulation
 from rfx.api._ad_memory_types import ADMemoryUnavailable
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from rfx.geometry import Sphere
 
 

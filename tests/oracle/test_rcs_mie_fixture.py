@@ -44,7 +44,7 @@ import jax.numpy as jnp
 from rfx.grid import Grid, C0
 from rfx.geometry.csg import Sphere, rasterize
 from rfx.core.yee import MaterialArrays
-from rfx.rcs import compute_rcs
+from rfx.measurement.rcs import compute_rcs
 
 FIXTURE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures", "rcs_sphere_mie",

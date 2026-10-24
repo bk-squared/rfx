@@ -99,7 +99,7 @@ def test_forward_result_preserves_source_end_through_jit():
 
 def test_tfsf_uses_its_waveform_and_box_diagonal():
     from rfx.grid import Grid
-    from rfx.probes.settling import tfsf_source_drive
+    from rfx.measurement.settling import tfsf_source_drive
     from rfx.sources.tfsf import init_tfsf
 
     grid = Grid(freq_max=10e9, domain=(.03, .03, .03), dx=.003, cpml_layers=4)

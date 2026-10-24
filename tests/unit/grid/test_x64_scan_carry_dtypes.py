@@ -59,7 +59,7 @@ import rfx.materials.debye as _debye_mod
 import rfx.materials.lorentz as _lorentz_mod
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import drude_pole, init_lorentz, lorentz_pole
-from rfx.rcs import compute_rcs
+from rfx.measurement.rcs import compute_rcs
 from rfx.simulation import run, ProbeSpec
 from rfx.sources.tfsf import init_tfsf
 

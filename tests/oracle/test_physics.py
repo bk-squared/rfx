@@ -49,8 +49,13 @@ def test_fresnel_normal_incidence():
     Probe in the scattered-field region directly measures the reflected wave.
     """
     from rfx.sources.tfsf import (
-        init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
-        apply_tfsf_e, apply_tfsf_h,
+        init_tfsf,
+        update_tfsf_1d_h,
+        update_tfsf_1d_e,
+    )
+    from rfx.stepping.tfsf import (
+        apply_tfsf_e,
+        apply_tfsf_h,
     )
 
     eps_r = 4.0

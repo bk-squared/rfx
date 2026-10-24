@@ -10,9 +10,18 @@ import pytest
 from rfx.api import Simulation
 from rfx.core.yee import EPS_0, MU_0, init_state
 from rfx.sources.sources import CustomWaveform, GaussianPulse
+from rfx.stepping.tfsf import (
+    apply_tfsf_e,
+    apply_tfsf_h,
+    update_tfsf_1d,
+)
 from rfx.sources.tfsf import (
-    apply_tfsf_e, apply_tfsf_h, init_tfsf, tfsf_injection_planes,
-    update_tfsf_1d, update_tfsf_1d_e, measure_normal_incident_spectrum,
+    init_tfsf,
+    tfsf_injection_planes,
+    update_tfsf_1d_e,
+)
+from rfx.measurement.incident import (
+    measure_normal_incident_spectrum,
 )
 
 

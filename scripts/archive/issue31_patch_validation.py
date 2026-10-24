@@ -256,7 +256,7 @@ def run_farfield(G, *, f_res):
     res = sim.run(num_periods=40, compute_s_params=False)
     print(f"[run] done in {time.time() - t0:.1f}s")
 
-    from rfx.farfield import compute_far_field
+    from rfx.measurement.farfield import compute_far_field
     theta = np.linspace(0, np.pi / 2, 91)   # upper hemisphere only (ground below)
     phi = np.linspace(0, 2 * np.pi, 181)
     grid = sim._build_nonuniform_grid()
@@ -340,7 +340,7 @@ def run_farfield_3d(G, *, f_res):
     res = sim.run(num_periods=40, compute_s_params=False)
     print(f"[run] done in {time.time() - t0:.1f}s")
 
-    from rfx.farfield import compute_far_field
+    from rfx.measurement.farfield import compute_far_field
     theta = np.linspace(0.01, np.pi / 2, 60)  # avoid theta=0 singularity
     phi = np.linspace(0, 2 * np.pi, 121)
     grid = sim._build_nonuniform_grid()

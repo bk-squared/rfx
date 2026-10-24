@@ -1,0 +1,320 @@
+"""Fresnel reflection extraction from field records."""
+
+from __future__ import annotations
+
+from rfx.probes.fresnel import _C0
+import jax.numpy as jnp
+import numpy as np
+
+
+def extract_fresnel_coefficient(
+    ez_plane_dft: jnp.ndarray,
+    angle_deg: float,
+    dx: float,
+    freq: float,
+    axis: str = "y",
+) -> complex:
+    """Extract Fresnel coefficient via phase de-rotation (single frequency).
+
+    De-rotates the oblique phase front (k_y * y) before averaging.
+    This works best when the domain is commensurate with the transverse
+    wavelength.  For non-commensurate domains, prefer
+    :func:`extract_fresnel_from_planes` which uses per-cell spectral
+    ratios with best-aligned cell selection.
+
+    Parameters
+    ----------
+    ez_plane_dft : array
+        DFT of field component on a yz-plane (at fixed x).
+        Shape ``(ny, nz)`` for a full plane, or ``(ny,)`` for a line.
+    angle_deg : float
+        Incidence angle in degrees.
+    dx : float
+        Cell size in metres.
+    freq : float
+        Frequency in Hz.
+    axis : str
+        Transverse axis label (``"y"`` or ``"z"``).
+
+    Returns
+    -------
+    complex
+        De-rotated plane-wave amplitude.
+    """
+    theta = np.radians(angle_deg)
+    k0 = 2.0 * np.pi * freq / _C0
+    k_t = k0 * np.sin(theta)
+
+    arr = jnp.asarray(ez_plane_dft)
+
+    if arr.ndim == 1:
+        n_trans = arr.shape[0]
+        y_coords = jnp.arange(n_trans, dtype=jnp.float32) * dx
+        derot = jnp.exp(-1j * k_t * y_coords)
+        return complex(jnp.mean(arr * derot))
+
+    elif arr.ndim == 2:
+        if axis == "y":
+            n_trans = arr.shape[0]
+            y_coords = jnp.arange(n_trans, dtype=jnp.float32) * dx
+            derot = jnp.exp(-1j * k_t * y_coords)
+            derotated = arr * derot[:, None]
+        else:
+            n_trans = arr.shape[1]
+            z_coords = jnp.arange(n_trans, dtype=jnp.float32) * dx
+            derot = jnp.exp(-1j * k_t * z_coords)
+            derotated = arr * derot[None, :]
+        return complex(jnp.mean(derotated))
+
+    else:
+        raise ValueError(f"ez_plane_dft must be 1D or 2D, got shape {arr.shape}")
+
+
+def fresnel_reflection_coefficient(
+    total_series: jnp.ndarray,
+    incident_series: jnp.ndarray,
+    *,
+    f0: float,
+    dt: float,
+    probe_distances: jnp.ndarray,
+    n_gate: int | None = None,
+    background_index: float = 1.0,
+) -> jnp.ndarray:
+    """Differentiable COMPLEX reflection coefficient Γ(f0) from two probe-line runs.
+
+    Unlike the numpy siblings above (magnitude-only, DFT-plane, concretizing),
+    this is **jax.numpy-native and grad-safe**: the returned Γ stays on the AD
+    tape, so ``jax.grad`` flows from a scatterer permittivity (via
+    ``Simulation.forward(eps_override=…)``) through this extractor to a
+    reflection-amplitude/phase objective. It is the primitive behind
+    differentiable RIS / FSS / coating design.
+
+    Method (the #404/#414-validated recipe; see the physics protocol below):
+    two-run reference subtraction of a spatial **plateau** — a line of probes in
+    the scattered-field-free total-field region in front of the scatterer. The
+    reflected phasor ``T - I`` (scatterer run minus vacuum run) is a pure
+    traveling wave whose |amplitude| is flat along the line; averaging the
+    per-probe, reference-plane-de-embedded Γ suppresses discretization noise::
+
+        Γ = mean_p[ (T_p - I_p) / I_p · exp(+j·2k·d_p) ],   k = 2π·f0·n_bg / c
+
+    where ``T_p``/``I_p`` are the f0 DFT phasors at probe ``p`` and ``d_p`` is its
+    distance in front of the reference plane.
+
+    Physics protocol the CALLER must satisfy (this function does only the
+    extraction math — it cannot see the geometry):
+
+    1. **Finite scatterer ending before the absorber.** A CPML filled with
+       dielectric is not impedance-matched and reflects; keep the slab/scatterer
+       clear of the CPML.
+    2. **Time-gate** ``n_gate`` to the FRONT-face reflection only (stop before the
+       back-face reflection reaches the plateau) ⇒ a half-space Fresnel Γ with no
+       Fabry–Pérot ripple. For a spectrum, drop the gate and place the absorber to
+       swallow the transmitted wave instead.
+    3. **Broadband source** (e.g. ``bandwidth≈0.5``) so the pulse develops within
+       the short gated window — this resolves the narrowband↔time-gating tension.
+    4. **Plateau probes** in the total-field region, clear of the scatterer's
+       evanescent near-field.
+
+    Parameters
+    ----------
+    total_series : (n_steps, n_probes) real array
+        Probe time series from the run WITH the scatterer.
+    incident_series : (n_steps, n_probes) real array
+        Probe time series from the vacuum reference run (same probes).
+    f0 : float
+        Extraction frequency in Hz.
+    dt : float
+        Time step in seconds.
+    probe_distances : (n_probes,) float array
+        Distance from each probe to the reference plane, in metres, positive when
+        the probe is in FRONT of (before) the plane. This is where you choose the
+        reference plane — Γ's phase is reported relative to it. A residual ~half-
+        cell (Yee) offset remains: it is an εr-independent constant, calibratable
+        against a known reference, not a physics error.
+    n_gate : int, optional
+        DFT window length (time-gate). Defaults to the full series.
+    background_index : float
+        Refractive index of the medium the probes sit in (1.0 for vacuum), used
+        for the de-embedding wavenumber ``k``.
+
+    Returns
+    -------
+    jnp.ndarray
+        Complex scalar Γ(f0) de-embedded to the reference plane. Differentiable
+        in ``total_series`` (and hence in the scatterer permittivity upstream).
+
+    Notes
+    -----
+    The complex output differentiates correctly through a phase-sensitive RIS loss
+    ``|Γ − Γ_target|²`` (FD-verified). Precision (ch08): Γ is formed from ``(T − I)``,
+    a difference of two similar phasors, accumulated in complex64. For a WEAK reflector
+    (``|Γ| ≲ 1e-4``) this cancellation loses digits — run the two forwards under a
+    per-test ``jax.experimental.enable_x64`` context (never flip x64 at module level).
+
+    See Also
+    --------
+    fresnel_r_te : analytic |R_TE| ground-truth for validation.
+    extract_fresnel_from_planes : numpy magnitude-only DFT-plane extractor.
+    """
+    total = jnp.asarray(total_series)
+    inc = jnp.asarray(incident_series)
+    if total.ndim != 2 or inc.shape != total.shape:
+        raise ValueError(
+            "total_series and incident_series must both be (n_steps, n_probes) and "
+            f"equal-shaped; got {total.shape} and {inc.shape}"
+        )
+    ns = total.shape[0] if n_gate is None else int(n_gate)
+    t = jnp.arange(ns) * dt
+    kern = jnp.exp(-1j * 2.0 * jnp.pi * f0 * t) * dt  # real field -> standard -j DFT
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)  # (n_probes,)
+    ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    k = 2.0 * jnp.pi * f0 * background_index / _C0
+    deembed = jnp.exp(+1j * 2.0 * k * jnp.asarray(probe_distances))  # probe -> reference plane
+    gamma_p = (tp - ip) / ip * deembed
+    return jnp.mean(gamma_p)
+
+
+def oblique_reflection_coefficient(
+    total_series: jnp.ndarray,
+    incident_series: jnp.ndarray,
+    *,
+    f0: float,
+    dt: float,
+    probe_index: jnp.ndarray,
+    interface_index: float,
+    n_gate: int | None = None,
+) -> jnp.ndarray:
+    """Differentiable COMPLEX Γ(θ) (amplitude AND phase) for OBLIQUE incidence.
+
+    Supersedes :func:`oblique_reflection_magnitude` (magnitude-only) by also recovering the
+    reflected PHASE — the RIS phase-steering knob. The obstacle at oblique incidence is that
+    the reflected phase varies by many π across the plateau, so a de-embedded complex mean
+    cancels unless the EXACT discrete k_x is used (the nominal ``k0·cosθ`` is dispersion-
+    shifted and wrong). The fix here is SELF-CALIBRATING: the de-rotation slope is measured
+    from the INCIDENT wave itself (its phase slope along the probe line = the true discrete
+    ``k_x``), so no analytic k_x / dispersion model is needed::
+
+        ratio_p = (T_p - I_p) / I_p                       # |ratio|≈|Γ|, ∠ = ∠Γ + 2·k_x·x_p
+        S       = -2 · d(∠I_p)/d(x_p)                     # from the incident (design-independent)
+        Γ       = mean_p[ ratio_p · e^{-j S x_p} ] · e^{+j S x_iface}
+
+    Because ``S`` is derived from the incident (vacuum) reference it is a CONSTANT w.r.t. the
+    scatterer, so ``Γ`` stays differentiable in ``total_series``. Uses the +j (conjugate) DFT
+    kernel for complex Bloch envelopes and reconstructed real fields. Same oblique physics
+    protocol as :func:`oblique_reflection_magnitude` (narrowband, thick slab, time-gate, plateau).
+
+    Parameters
+    ----------
+    total_series, incident_series : (n_steps, n_probes) arrays
+        Reconstructed real probe series (scatterer / vacuum) from oblique
+        ``run()`` or ``forward()``, or complex Bloch envelopes.
+        ``incident_series`` is the design-independent reference (its phase sets ``S``).
+    f0, dt : float
+    probe_index : (n_probes,) array
+        Cell index of each probe along the propagation (x) axis. The phase slope is per-cell.
+    interface_index : float
+        Cell index of the reference plane (the scatterer front face) the phase is reported at.
+        A residual ~half-cell Yee offset remains (an εr-independent constant; calibratable).
+    n_gate : int, optional
+        DFT window (time-gate). Defaults to the full series.
+
+    Returns
+    -------
+    jnp.ndarray
+        Complex scalar Γ(f0) at the injected oblique angle, de-embedded to the reference plane.
+        Differentiable in ``total_series``. Validated vs analytic ``fresnel_r_te`` at θ=30°/45°:
+        |Γ| ~4-7%, phase ~180° up to the ~11° Yee reference-plane offset.
+
+    See Also
+    --------
+    oblique_reflection_magnitude : magnitude-only oblique |Γ| (no phase).
+    fresnel_reflection_coefficient : normal-incidence complex Γ.
+    """
+    total = jnp.asarray(total_series)
+    inc = jnp.asarray(incident_series)
+    if total.ndim != 2 or inc.shape != total.shape:
+        raise ValueError(
+            "total_series and incident_series must both be (n_steps, n_probes) and "
+            f"equal-shaped; got {total.shape} and {inc.shape}"
+        )
+    ns = total.shape[0] if n_gate is None else int(n_gate)
+    t = jnp.arange(ns) * dt
+    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt  # +j conjugate kernel (oblique envelope)
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    idx = jnp.asarray(probe_index, jnp.float32)
+    # self-calibrated de-rotation slope S = -2·(incident phase slope), in-graph linear fit.
+    ph = jnp.unwrap(jnp.angle(ip))
+    xm = idx - jnp.mean(idx)
+    slope_inc = jnp.sum(xm * (ph - jnp.mean(ph))) / jnp.sum(xm * xm)
+    s = -2.0 * slope_inc
+    ratio = (tp - ip) / ip
+    return jnp.mean(ratio * jnp.exp(-1j * s * idx)) * jnp.exp(1j * s * float(interface_index))
+
+
+def oblique_reflection_magnitude(
+    total_series: jnp.ndarray,
+    incident_series: jnp.ndarray,
+    *,
+    f0: float,
+    dt: float,
+    n_gate: int | None = None,
+) -> jnp.ndarray:
+    """Differentiable |Γ|(θ) MAGNITUDE for OBLIQUE incidence from probe traces.
+
+    ``Simulation.run()`` and ``Simulation.forward()`` return reconstructed real
+    fields for oblique TFSF. This helper also accepts complex Bloch envelopes.
+    Two differences from the normal-incidence :func:`fresnel_reflection_coefficient`:
+
+    * **+j (conjugate) DFT kernel** — for a complex envelope, ``P(t) ∝ exp(-j2πf0t)`` has its f0 content
+      at ``-f0``, so it is extracted with ``exp(+j2πf0t)``. A ``-j`` kernel averages the
+      incident to noise ⇒ nonphysical |Γ|≫1 (the #404 trap).
+    * **magnitude ratio, de-embed-free** — ``mean|T−I| / mean|I|``. At oblique the reflected
+      phase varies by many π across the plateau, so a de-embedded COMPLEX mean cancels
+      (a wrong/nominal k_x gives |Γ|→0). The magnitude ratio is robust; the reflected phase
+      is NOT recovered here (see Notes).
+
+    Same physics protocol as :func:`fresnel_reflection_coefficient` but OBLIQUE-specific:
+    narrowband source (``bandwidth≲0.15`` — the Bloch phase ``k_y=k0 sinθ`` is single-f0),
+    finite THICK slab before the CPML, time-gate to the front-face, plateau probes.
+
+    Parameters
+    ----------
+    total_series, incident_series : (n_steps, n_probes) arrays
+        Reconstructed real probe series from the scatterer and vacuum runs,
+        or complex Bloch envelopes.
+    f0, dt : float
+    n_gate : int, optional
+        DFT window (time-gate). Defaults to the full series.
+
+    Returns
+    -------
+    jnp.ndarray
+        Real scalar |Γ|(f0) at the injected oblique angle, differentiable in ``total_series``.
+
+    Notes
+    -----
+    MAGNITUDE ONLY. The reflected PHASE (complex Γ, the RIS phase-steering knob) is not
+    provided: de-embedding to the interface needs the exact DISCRETE k_x (the injected angle
+    is dispersion-shifted from the nominal, e.g. 29.5° for a 30° request), which is an open
+    follow-up. Validated vs analytic ``fresnel_r_te`` at θ=30°/45° to ~4–7%.
+
+    See Also
+    --------
+    fresnel_reflection_coefficient : normal-incidence COMPLEX Γ (amplitude + phase).
+    fresnel_r_te : analytic |R_TE|(θ) ground truth.
+    """
+    total = jnp.asarray(total_series)
+    inc = jnp.asarray(incident_series)
+    if total.ndim != 2 or inc.shape != total.shape:
+        raise ValueError(
+            "total_series and incident_series must both be (n_steps, n_probes) and "
+            f"equal-shaped; got {total.shape} and {inc.shape}"
+        )
+    ns = total.shape[0] if n_gate is None else int(n_gate)
+    t = jnp.arange(ns) * dt
+    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt  # +j conjugate kernel (oblique envelope)
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
+    return jnp.mean(jnp.abs(tp - ip)) / jnp.mean(jnp.abs(ip))

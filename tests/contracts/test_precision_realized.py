@@ -376,7 +376,7 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                     result = invoke(model(precision, entry), entry)
             output = list(numeric_arrays(result))
             if entry in ('run_ntff', 'forward_ntff'):
-                from rfx.farfield import compute_far_field, compute_far_field_jax
+                from rfx.measurement.farfield import compute_far_field, compute_far_field_jax
                 ff = compute_far_field_jax(result.ntff_data, result.ntff_box,
                                            result.grid, [1.1], [.7])
                 assert ff.E_theta.dtype == ff.E_phi.dtype == expected_complex

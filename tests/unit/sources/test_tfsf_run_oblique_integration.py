@@ -14,9 +14,14 @@ from rfx.api import Simulation
 from rfx.grid import Grid
 from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
-from rfx.sources.tfsf import init_tfsf, apply_tfsf_e, apply_tfsf_h, is_tfsf_2d
+from rfx.sources.tfsf import init_tfsf, is_tfsf_2d
+from rfx.stepping.tfsf import apply_tfsf_e, apply_tfsf_h
 from rfx.sources.tfsf_2d import (
-    update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+    update_tfsf_2d_h,
+    update_tfsf_2d_e,
+)
+from rfx.stepping.tfsf_2d import (
+    bloch_phase_tuple,
 )
 
 _DOMAIN = (0.6, 0.12, 0.006)
