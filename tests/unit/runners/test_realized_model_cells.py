@@ -360,7 +360,7 @@ def test_dump_is_consumed(lane, row):
 @pytest.mark.parametrize("row", ["eps", "sigma"])
 def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
     from rfx.runners import _distributed_common as dc
-    from rfx.stepping import slab_setup
+    from rfx.stepping import slab_setup, slab_update
 
     original = dc._slab_x_lo_view
     original_view_rows = slab_setup.uniform_from_cut
@@ -380,7 +380,9 @@ def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
 
     measured.cache_clear()
     try:
-        monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
+        # Both owners: the uniform slab update reads its own import.
+        for owner in (dc, slab_update):
+            monkeypatch.setattr(owner, "_slab_x_lo_view", broken_ghost)
         monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
         dump = measured(lane, row)
         for axis in (1, 2):
