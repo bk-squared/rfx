@@ -99,8 +99,6 @@ class ScatteringResponse(NamedTuple):
     polarization: str
 
 
-
-
 def compute_rcs_jax(
     ntff_data,
     box: NTFFBox,
@@ -135,7 +133,7 @@ def compute_rcs_jax(
     e_inc_amplitude : (n_freqs,) complex array
         Incident plane-wave spectral amplitude for normalization — source-only, hence a
         CONSTANT for the gradient. At normal incidence use
-        :func:`rfx.sources.tfsf.measure_normal_incident_spectrum`
+        :func:`rfx.measurement.incident.measure_normal_incident_spectrum`
         (``cfg, state, n_steps, freqs, dt``) on the same ``init_tfsf`` config the run
         uses — the incident the grid carries, as ``compute_rcs`` does. The source
         waveform's own DFT (``_incident_spectrum_amplitude``) is about 1.1 dB larger
@@ -157,8 +155,6 @@ def compute_rcs_jax(
     power_inc = jnp.abs(jnp.asarray(e_inc_amplitude)) ** 2          # (nf,)
     safe_power_inc = jnp.where(power_inc > 0, power_inc, 1e-30)
     return 4.0 * jnp.pi * power_scat / safe_power_inc[:, None, None]
-
-
 
 
 # Lazy compatibility exports keep record definitions free of import cycles.

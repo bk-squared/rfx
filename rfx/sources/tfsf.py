@@ -701,16 +701,11 @@ def line_source_value(cfg, t, amplitude):
     return amplitude * (-2.0 * arg) * env
 
 
-
-
-
-
-
-
 # Lazy compatibility exports keep record definitions free of import cycles.
 _LAZY_EXPORTS = {
     "apply_tfsf_e": "rfx.stepping.tfsf",
     "apply_tfsf_h": "rfx.stepping.tfsf",
+    "measure_normal_incident_spectrum": "rfx.measurement.incident",
 }
 
 

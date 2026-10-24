@@ -618,7 +618,7 @@ def _incident_spectrum_amplitude(
     This is the WAVEFORM, not the incident field: the auxiliary line adds it
     as a soft source and launches 1/(2 S cos(k~dx/2)) of it (issue #820), so
     it is not an RCS normalization -- use
-    ``rfx.sources.tfsf.measure_normal_incident_spectrum``.
+    ``rfx.measurement.incident.measure_normal_incident_spectrum``.
     """
     tau = 1.0 / (f0 * bandwidth * np.pi)
     t0 = 3.0 * tau
