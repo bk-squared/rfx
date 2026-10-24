@@ -407,11 +407,6 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/geometry/csg.py",
-      "function": "PolylineWire.mask_on_coords",
-      "kind": "difference"
-    },
-    {
       "file": "rfx/geometry/node_tensor.py",
       "function": "_next",
       "kind": "roll/diff"
@@ -509,6 +504,11 @@
     {
       "file": "rfx/model/waveguide_mode_solver.py",
       "function": "_cell_centred_gradient",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/model/wire_mask.py",
+      "function": "polyline_tube_mask",
       "kind": "difference"
     },
     {
