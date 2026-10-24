@@ -264,6 +264,9 @@ def test_waveguide_s_matrix_ad_end_to_end():
     sim = _build_wg_sim()
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
+    # Differentiate a mid-guide slab; both vacuum modal segments stay fixed.
+    lo, hi = (grid.index_of("x", x) for x in (.020, .030))
+    design = jnp.zeros(grid.shape, dtype=jnp.float32).at[lo:hi].set(1.)
 
     def objective(alpha: jnp.ndarray) -> jnp.ndarray:
         with warnings.catch_warnings():
@@ -271,7 +274,7 @@ def test_waveguide_s_matrix_ad_end_to_end():
             result = sim.compute_waveguide_s_matrix(
                 n_steps=200,
                 normalize=False,
-                eps_override=eps_base * alpha,
+                eps_override=eps_base + design * (alpha - 1.),
             )
         S = result.s_params
         k0 = S.shape[-1] // 2
@@ -285,7 +288,7 @@ def test_waveguide_s_matrix_ad_end_to_end():
         fwd_result = sim.compute_waveguide_s_matrix(
             n_steps=200,
             normalize=False,
-            eps_override=eps_base * alpha0,
+            eps_override=eps_base + design * (alpha0 - 1.),
         )
     S_fwd = np.asarray(fwd_result.s_params)
     s_max = float(np.max(np.abs(S_fwd)))

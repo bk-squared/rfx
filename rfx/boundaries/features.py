@@ -328,21 +328,26 @@ def admit_grid_waveguide(grid, ports):
 
 
 def waveguide_segment_cells(cfg, grid):
-    """Half-open xyz bounds covering H, source, measured and declared planes.
+    """Half-open xyz bounds from H through the reference plane, excluding probes.
 
     H acts at x_index-1 for a positive launch and x_index for a negative
-    launch. Declared positions select their containing cell, also behind
-    the source. Transverse bounds are the compiled aperture cell spans.
+    launch. A declared reference includes cell centres strictly on its port
+    side, also when behind the source. S extraction reads reference waves
+    only; the reference shift uses vacuum beta. Transverse bounds are the
+    compiled aperture cell spans.
     """
     import numpy as np
     from rfx.geometry.rasterize_grid import _axis_node_positions
     axis = "xyz".index(cfg.normal_axis)
     h = cfg.x_index - 1 if cfg.direction.startswith("+") else cfg.x_index
-    endpoints = [h, cfg.x_index, cfg.ref_x, cfg.probe_x]
+    endpoints = [h, cfg.x_index, cfg.ref_x]
     if cfg.segment_planes:
         nodes = np.asarray(_axis_node_positions(
             grid.cells(cfg.normal_axis), getattr(grid, f"pad_{cfg.normal_axis}_lo")))
-        endpoints.extend(int(np.searchsorted(nodes, p, side="right") - 1)
+        centres = nodes + np.asarray(grid.cells(cfg.normal_axis)) / 2
+        endpoints.extend(int(np.searchsorted(centres, p, side="left") - 1)
+                         if p >= nodes[cfg.x_index] else
+                         int(np.searchsorted(centres, p, side="right"))
                          for p in cfg.segment_planes)
     bounds = [(cfg.u_lo, cfg.u_hi), (cfg.v_lo, cfg.v_hi)]
     bounds.insert(axis, (max(0, min(endpoints)), min(grid.shape[axis], max(endpoints) + 1)))
@@ -351,11 +356,15 @@ def waveguide_segment_cells(cfg, grid):
 
 def refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates,
                                    localized, design_box=None):
-    """Require vacuum in the realized segment, including overrides and PEC.
+    """Require scalar vacuum in the reference segment, including overrides/PEC.
 
     Vacuum is stored exactly as 1.0 / 0.0: comparisons are exact. The shared
-    TF/SF enumeration reads MATERIAL materials.sigma and its realized sigma
-    components on both meshes, never CPML profiles. A traced override over
+    TF/SF enumeration reads MATERIAL materials.sigma on both meshes, never
+    CPML profiles. Only scalar cells, pole presence, chi3 and PEC volumes are
+    judged. Interface smoothing and wall edges are the guide's own realization:
+    tensors, per-component permittivity, upml_eps, cells_view duplicates and PEC
+    edges are excluded. A user-drawn anisotropic per-component fill inside the
+    segment is not checked. A traced override over
     the segment cannot be judged before the run: traced_check retains a host
     callback, or refuses backends without callbacks, exactly as for TF/SF.
     """
@@ -372,8 +381,8 @@ def refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates,
     reason = ("a waveguide port models an empty (vacuum) guide: its cutoff, propagation "
               "constant and modal impedance are vacuum values, so a filled or loaded "
               "segment returns the wrong S (rfx#1994). Start the fill, override or "
-              "design box beyond the port's reference and probe planes.")
-    operands = tuple(_injection_arrays(grid, materials, updates, localized))
+              "design box beyond the port's reference plane.")
+    operands = tuple(_injection_arrays(grid, materials, updates, localized, cell_scalar=True))
     arrays, metadata = [], []
     for port, cfg in enumerate(waveguide_ports):
         bounds = waveguide_segment_cells(cfg, grid)

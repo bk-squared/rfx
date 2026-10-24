@@ -223,7 +223,8 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
             cpml_layers=4,
         )
         sim.add_material("substrate", eps_r=4.0, sigma=0.0)
-        sim.add(Box((0.012, 0.012, 0.012), (0.028, 0.028, 0.028)),
+        # Keep the launch-to-reference segment vacuum on both compared paths.
+        sim.add(Box((0.028, 0.012, 0.012), (0.036, 0.028, 0.028)),
                 material="substrate")
         sim.add_waveguide_port(
             0.020, direction="+x", mode=(1, 0), mode_type="TE",

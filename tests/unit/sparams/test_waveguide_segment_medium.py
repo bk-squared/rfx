@@ -52,14 +52,21 @@ def test_filled_guide_refused(graded, route):
 
 
 @pytest.mark.parametrize("graded", [False, True])
-@pytest.mark.parametrize("placement", ["between", "h", "declared", "pec"])
+@pytest.mark.parametrize("placement", ["h", "declared", "pec"])
 def test_segment_extents(graded, placement):
     sim = guide(graded, **({"reference_plane": .07} if placement == "declared" else {}))
-    lo, hi = {"between": (.032, .034), "h": (.018, .0199),
-              "declared": (.06, .062), "pec": (.032, .034)}[placement]
+    lo, hi = {"h": (.018, .0199), "declared": (.06, .062), "pec": (.022, .024)}[placement]
     fill(sim, lo, hi, "pec" if placement == "pec" else "fill")
     with pytest.raises(ValueError, match=r"launch.*(eps|PEC).*cell.*rfx#1994"):
         execute(sim)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_between_reference_and_probe_admitted(graded):
+    """S-matrix extraction reads reference waves only, not the probe plane."""
+    sim = guide(graded)
+    fill(sim, .032, .034)
+    execute(sim)
 
 
 @pytest.mark.parametrize("graded", [False, True])
@@ -68,7 +75,7 @@ def test_vacuum_and_beyond_admitted(graded, medium, record_property, monkeypatch
     from rfx.boundaries import features
     sim = guide(graded)
     if medium == "beyond":
-        fill(sim, .042, .050)
+        fill(sim, .028, .036)
     elif medium == "vacuum":
         sim.add(Box((0, 0, 0), (L, A, B)), material="vacuum")
     elif medium == "empty_poles":
@@ -78,7 +85,7 @@ def test_vacuum_and_beyond_admitted(graded, medium, record_property, monkeypatch
 
     def observe(ports, grid, materials, *args, **kwargs):
         cfg = ports[0]
-        measured.append(float(np.asarray(materials.eps_r)[cfg.probe_x, cfg.u_lo, cfg.v_lo]))
+        measured.append(float(np.asarray(materials.eps_r)[cfg.ref_x, cfg.u_lo, cfg.v_lo]))
         return original(ports, grid, materials, *args, **kwargs)
 
     monkeypatch.setattr(features, "refuse_waveguide_segment_medium", observe)
@@ -93,7 +100,7 @@ def test_override_refused(graded, operand):
     sim = guide(graded)
     grid = sim._build_realized_grid()
     vacuum = 1. if operand == "eps_override" else 0.
-    value = jnp.full(grid.shape, vacuum).at[grid.index_of("x", .032), :, :].set(2.2)
+    value = jnp.full(grid.shape, vacuum).at[grid.index_of("x", .022), :, :].set(2.2)
     with pytest.raises(ValueError, match=r"launch.*(eps|sigma).*2\.2"):
         execute(sim, "forward", **{operand: value})
 
@@ -102,8 +109,8 @@ def test_override_refused(graded, operand):
 @pytest.mark.parametrize("near", [True, False])
 def test_design_box_window(graded, near):
     sim = guide(graded)
-    box = ((.03 if near else .06, .004, .004),
-           (.034 if near else .064, .006, .006))
+    box = ((.022 if near else .06, .004, .004),
+           (.024 if near else .064, .006, .006))
     grid = sim._build_realized_grid()
     lo, hi = [tuple(grid.index_of(axis, value) for axis, value in zip("xyz", p)) for p in box]
     eps = jnp.full(tuple(b-a+1 for a, b in zip(lo, hi)), 2.2)
@@ -131,8 +138,8 @@ def test_axes_and_h_index(graded, axis, direction):
         cfg = sim._build_waveguide_port_config(entry, grid, entry.freqs, 2)
     bounds = waveguide_segment_cells(cfg, grid)
     a = "xyz".index(axis)
-    assert bounds[a] == ((cfg.x_index-1, cfg.probe_x+1) if direction.startswith("+")
-                         else (cfg.probe_x, cfg.x_index+1))
+    assert bounds[a] == ((cfg.x_index-1, cfg.ref_x+1) if direction.startswith("+")
+                         else (cfg.ref_x, cfg.x_index+1))
     execute(sim)
 
 
@@ -156,13 +163,42 @@ def test_traced_override_retains_callback():
 
 
 @pytest.mark.parametrize("graded", [False, True])
-@pytest.mark.parametrize("plane", ["reference_plane", "probe_plane"])
 @pytest.mark.parametrize("behind", [False, True])
-def test_declared_plane_extends_segment(graded, plane, behind):
-    sim = guide(graded, **{plane: .006 if behind else .07})
+def test_declared_reference_extends_segment(graded, behind):
+    sim = guide(graded, reference_plane=.006 if behind else .07)
     fill(sim, .01 if behind else .06, .012 if behind else .062)
     with pytest.raises(ValueError, match="launch.*eps"):
         execute(sim)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_declared_probe_does_not_extend_segment(graded):
+    sim = guide(graded, probe_plane=.07)
+    fill(sim, .06, .062)
+    execute(sim)
+    sim.add_waveguide_port(.10, direction="-x", f0=9e9, freqs=np.array([8e9, 10e9]))
+    with pytest.raises(ValueError, match="does not use per-port probe_plane"):
+        execute(sim, "compute_waveguide_s_matrix")
+
+
+@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize("behind", [False, True])
+def test_declared_reference_excludes_its_cell_centre(graded, behind):
+    from rfx.geometry.rasterize_grid import _axis_node_positions
+    sim = guide(graded)
+    grid = sim._build_realized_grid()
+    entry = sim._waveguide_ports[0]
+    if graded:
+        from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+        cfg = _build_waveguide_port_config_nu(sim, entry, grid, entry.freqs, 2)
+    else:
+        cfg = sim._build_waveguide_port_config(entry, grid, entry.freqs, 2)
+    nodes = np.asarray(_axis_node_positions(grid.cells("x"), grid.pad_x_lo))
+    index = cfg.x_index - 4 if behind else cfg.ref_x + 4
+    plane = nodes[index] + grid.cells("x")[index] / 2
+    cfg = cfg._replace(segment_planes=(plane,))
+    lo, hi = waveguide_segment_cells(cfg, grid)[0]
+    assert (lo if behind else hi) == (index+1 if behind else index)
 
 
 @pytest.mark.parametrize("graded", [False, True])
@@ -215,7 +251,7 @@ def test_other_operands(graded, kind):
         "chi3": dict(chi3=1e-3),
     }
     sim = guide(graded)
-    fill(sim, .032, .034, eps_r=1., **properties[kind])
+    fill(sim, .022, .024, eps_r=1., **properties[kind])
     if graded and kind == "chi3":
         with pytest.raises(NotImplementedError, match="Kerr|chi3"):
             execute(sim)

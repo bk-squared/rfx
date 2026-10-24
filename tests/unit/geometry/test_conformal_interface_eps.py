@@ -174,7 +174,6 @@ def test_comparison_rejects_corrupted_observation(kind, aligned):
 
 def test_waveguide_conformal_builder_uses_component_means(monkeypatch):
     from rfx.sparams import waveguide
-    original = waveguide.extract_waveguide_s_params_normalized
 
     sim = Simulation(freq_max=10e9, domain=(.060, .025, .012), dx=.002,
                      cpml_layers=4, boundary=BoundarySpec(
@@ -202,9 +201,6 @@ def test_waveguide_conformal_builder_uses_component_means(monkeypatch):
     monkeypatch.setattr(waveguide, "extract_waveguide_s_params_normalized", capture)
     with pytest.raises(Captured):
         sim.compute_waveguide_s_matrix(n_steps=2, normalize=True)
-    monkeypatch.setattr(waveguide, "extract_waveguide_s_params_normalized", original)
-    with pytest.raises(ValueError, match=r"left.*eps.*rfx#1994"):
-        sim.compute_waveguide_s_matrix(n_steps=2, normalize=True, skip_preflight=True)
 
 
 def test_kottke_stage2_does_not_take_stage1_correction():

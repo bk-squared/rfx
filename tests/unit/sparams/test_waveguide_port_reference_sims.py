@@ -215,11 +215,6 @@ def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
                 if getattr(w.message, "code", None) == "port_junction_probe_clearance"]
     assert [finding.loc for finding in findings] == ["port:0", "port:1", "port:2"]
     assert all(finding.severity == "warning" for finding in findings)
-    monkeypatch.undo()
-    with pytest.raises(ValueError, match="left.*(PEC|eps).*rfx#1994"):
-        _tj_device(freqs, f0).compute_waveguide_s_matrix(
-            n_steps=2, normalize="flux", port_reference_sims=_tj_refs(freqs, f0),
-            skip_preflight=True)
 
 
 @pytest.mark.parametrize("subpixel_smoothing", [None, "kottke_pec"])
@@ -258,12 +253,6 @@ def test_identical_port_references_have_no_junction_clearance_advisory(
         )
     assert not any(getattr(w.message, "code", None) == "port_junction_probe_clearance"
                    for w in record)
-    monkeypatch.undo()
-    with pytest.raises(ValueError, match="left.*(PEC|eps).*rfx#1994"):
-        _tj_ref_horizontal(freqs, 5.5e9).compute_waveguide_s_matrix(
-            n_steps=2, normalize="flux", subpixel_smoothing=subpixel_smoothing,
-            port_reference_sims=[_tj_ref_horizontal(freqs, 5.5e9) for _ in range(3)],
-            skip_preflight=True)
 
 
 @pytest.mark.parametrize("difference,expected", [
@@ -375,5 +364,3 @@ def test_tj_walls_are_realized_where_they_are_drawn():
                        what="T-junction guide walls")
     inner_lo, inner_hi = pad + 20, pad + 40
     assert (inner_hi - inner_lo) * rz.grid.dx == pytest.approx(0.040, rel=1e-12)
-    with pytest.raises(ValueError, match="left.*PEC.*rfx#1994"):
-        sim.compute_waveguide_s_matrix(n_steps=2, normalize="flux", skip_preflight=True)

@@ -25,6 +25,13 @@ def _sim():
     return sim
 
 
+def _device_override(sim, value, vacuum):
+    """Keep scalar perturbations in the slab, clear of both port references."""
+    grid = sim._build_grid()
+    lo, hi = (grid.index_of("x", x) for x in (.026, .035))
+    return jnp.full(grid.shape, vacuum, dtype=jnp.float32).at[lo:hi].set(value)
+
+
 @pytest.mark.parametrize("smoothing", [True, "kottke_pec"])
 def test_eps_override_with_smoothing_is_refused_before_the_solve(smoothing):
     sim = _sim()
@@ -48,25 +55,24 @@ def test_the_refusal_comes_before_the_override_is_used():
 def test_smoothing_switched_off_by_any_falsy_value_is_not_refused(off):
     import warnings
     sim = _sim()
-    ones = jnp.ones(sim._build_grid().shape, dtype=jnp.float32)
+    eps = _device_override(sim, 3., 1.)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(ValueError, match="waveguide_0.*eps.*3.0.*rfx#1994"):
-            sim.compute_waveguide_s_matrix(n_steps=2, eps_override=ones * 3.0,
-                                          subpixel_smoothing=off)
+        result = sim.compute_waveguide_s_matrix(n_steps=20, eps_override=eps,
+                                                subpixel_smoothing=off)
+    assert np.all(np.isfinite(np.asarray(result.s_params)))
 
 
 @pytest.mark.parametrize("kwargs", ["override", "smoothing", "sigma_and_smoothing"])
 def test_each_input_alone_is_still_admitted(kwargs):
-    """Each input reaches setup, which refuses this fixture's loaded segment."""
+    """Only the combination is refused; sigma_override is read by the tensor kernels."""
     import warnings
     sim = _sim()
-    ones = jnp.ones(sim._build_grid().shape, dtype=jnp.float32)
-    call = {"override": dict(eps_override=ones * 3.0),
+    call = {"override": dict(eps_override=_device_override(sim, 3., 1.)),
             "smoothing": dict(subpixel_smoothing=True),
-            "sigma_and_smoothing": dict(sigma_override=ones * 0.01,
+            "sigma_and_smoothing": dict(sigma_override=_device_override(sim, .01, 0.),
                                         subpixel_smoothing=True)}[kwargs]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(ValueError, match="waveguide_0.*eps.*rfx#1994"):
-            sim.compute_waveguide_s_matrix(n_steps=2, **call)
+        result = sim.compute_waveguide_s_matrix(n_steps=20, **call)
+    assert np.all(np.isfinite(np.asarray(result.s_params)))

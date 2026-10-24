@@ -177,8 +177,6 @@ def test_assemble_materials_injects_halfspace_for_conformal_face():
         f"expected a half-space Box with corner_lo[2]={WR_90_B:.5f} m for "
         f"z_hi conformal PEC; got pec_shapes={pec_shapes!r}"
     )
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_assemble_materials_unchanged_without_conformal():
@@ -230,8 +228,6 @@ def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
         f"WR-90 dx=1 mm boundary-cell weight should be ≈0.36, got "
         f"{w_at_boundary:.4f}"
     )
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 # -----------------------------------------------------------------------------
@@ -240,10 +236,17 @@ def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
 
 
 def test_run_smokes_with_conformal_boundary():
-    """Conformal wall operands load the modal aperture and must be refused."""
+    """Stage 1 step 2: end-to-end run with ``Boundary(conformal=True)``
+    must not raise and must produce finite fields. Catches plumbing
+    bugs where the half-space Box trips up downstream code paths
+    (initialisation, JIT compile, scan body)."""
     sim = _wr90_sim(conformal=True)
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
+    result = sim.run(n_steps=20)
+    ey = np.asarray(result.state.ey)
+    assert np.all(np.isfinite(ey)), "non-finite ey after conformal run"
+    assert float(np.max(np.abs(ey))) > 0, (
+        "ey is identically zero after 20 steps — source did not fire"
+    )
 
 
 def test_run_conformal_auto_routes_from_boundaryspec():
@@ -371,8 +374,6 @@ def test_assemble_materials_injects_when_yrange_omitted():
         f"expected z_hi half-space Box at corner_lo[2]=0.02 m for "
         f"battery geometry; got pec_shapes={pec_shapes!r}"
     )
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_grid_carries_conformal_faces_from_boundaryspec():
@@ -388,8 +389,6 @@ def test_grid_carries_conformal_faces_from_boundaryspec():
     sim_off = _wr90_battery_sim(conformal=False)
     grid_off = sim_off._build_grid()
     assert getattr(grid_off, "conformal_faces", set()) == set()
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_waveguide_port_skips_drop_on_conformal_face():
@@ -473,8 +472,6 @@ def test_waveguide_port_skips_drop_on_conformal_face():
         f"got dA[-1,:]={ll_on[-1, :]}")
     assert np.all(ll_off[:, -1] == 0.0)
     assert np.all(ll_on[:, -1] > 0.0)
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-        sim_on.run(n_steps=2, skip_preflight=True)
 
 
 def test_run_battery_geometry_auto_routes():
@@ -962,8 +959,7 @@ def test_guardrail_conformal_normalize_no_longer_warns():
     sim = _wr90_meshconv_sim(dx=0.003, conformal=True, cpml_layers=8)
     with _warnings.catch_warnings(record=True) as caught:
         _warnings.simplefilter("always")
-        with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
-            sim.compute_waveguide_s_matrix(n_steps=2, normalize=True, skip_preflight=True)
+        sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
 
     stale = [
         w for w in caught

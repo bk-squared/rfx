@@ -202,8 +202,6 @@ def test_sub_aperture_port_does_not_fire_a_snap_finding():
     # fix keyed the note on ``declared == aperture`` and printed it here.
     texts = [str(i) for i in _issues(sim)]
     assert not any("no explicit range" in t for t in texts), texts
-    with pytest.raises(ValueError, match="left.*PEC.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_sub_aperture_walls_are_realized_where_they_are_drawn():
@@ -228,8 +226,6 @@ def test_sub_aperture_walls_are_realized_where_they_are_drawn():
     inner_lo, inner_hi = pad + 20, pad + 40
     assert (inner_hi - inner_lo) * grid.dx == pytest.approx(0.040, rel=1e-12), (
         "the drawn 40 mm gap must be the realized one")
-    with pytest.raises(ValueError, match="left.*PEC.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_sub_aperture_guide_is_measured_from_the_pec_walls():
@@ -270,8 +266,6 @@ def test_sub_aperture_guide_is_measured_from_the_pec_walls():
     assert "2.248" not in text and "1.249" not in text, (
         f"the 120 mm DOMAIN must not be used as the guide; got {text!r}"
     )
-    with pytest.raises(ValueError, match="left.*PEC.*rfx#1994"):
-        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_explicit_range_is_not_labelled_a_none_range():

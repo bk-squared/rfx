@@ -587,8 +587,7 @@ def test_advisory_fires_with_geometry_present_and_under_flux(normalize):
     sim = _two_port_with_obstacle(10)
     assert sim._geometry, "fixture must be non-empty to bind the geometry gate"
     with pytest.warns(UserWarning, match=ADVISORY_KEY):
-        with pytest.raises(ValueError, match="waveguide_0.*PEC.*rfx#1994"):
-            sim.compute_waveguide_s_matrix(normalize=normalize, n_steps=2)
+        sim.compute_waveguide_s_matrix(normalize=normalize, num_periods=6.0)
 
 
 def test_advisory_message_recomputes_every_number_it_quotes():
