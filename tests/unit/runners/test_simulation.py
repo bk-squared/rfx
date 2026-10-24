@@ -724,8 +724,10 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
     freqs = jnp.linspace(5.0e9, 7.0e9, 10)
     n_steps = grid.num_timesteps(num_periods=30)
     padx, pady, padz = grid.axis_pads
-    xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)) + 1)
-    yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)) + 1)
+    # Half-open slices end at the wall: the cell at 0.08 m is the sigma wall,
+    # and a port aperture holding wall material is refused (rfx#1994).
+    xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)))
+    yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)))
     zslice = (padz, grid.nz - padz)
 
     left = WaveguidePort(
