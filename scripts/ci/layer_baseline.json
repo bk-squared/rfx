@@ -530,6 +530,7 @@
     },
     "rfx/stepping/uniform.py": {
       "R": [
+        "rfx.simulation",
         "rfx.simulation:_StepContext",
         "rfx.sources.waveguide_port:apply_waveguide_port_e",
         "rfx.sources.waveguide_port:apply_waveguide_port_h",

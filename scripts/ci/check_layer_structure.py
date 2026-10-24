@@ -369,8 +369,11 @@ def reverse_imports(sources: Sources, path: str) -> list[str]:
     for node in ast.walk(sources.tree(path)):
         if isinstance(node, ast.ImportFrom):
             module = import_module(path, node)
-            if module in CALLER_MODULES:
-                hits.update(f"{module}:{alias.name}" for alias in node.names)
+            for alias in node.names:
+                if module in CALLER_MODULES:
+                    hits.add(f"{module}:{alias.name}")
+                elif f"{module}.{alias.name}" in CALLER_MODULES:  # from rfx import simulation
+                    hits.add(f"{module}.{alias.name}")
         elif isinstance(node, ast.Import):
             hits.update(alias.name for alias in node.names if alias.name in CALLER_MODULES)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)) and isinstance(node.value, ast.Dict):

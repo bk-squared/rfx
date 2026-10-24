@@ -1009,7 +1009,9 @@ def test_class_prefix_requires_new_module_class(synthetic, capsys, existing, bod
     ("rfx/stepping/__init__.py", "from ..progress import Y\n", "rfx.progress:Y"),
     ("rfx/stepping/nested/example.py", "from ...progress import Y\n", "rfx.progress:Y"),
     ("rfx/stepping/__init__.py", '_LAZY_EXPORTS = {"Z": "rfx.ringdown"}\n', "rfx.ringdown:Z"),
-], ids=["local", "relative", "nested-relative", "lazy"])
+    ("rfx/stepping/__init__.py", "def local():\n    from rfx import simulation\n", "rfx.simulation"),
+    ("rfx/stepping/__init__.py", "from .. import progress\n", "rfx.progress"),
+], ids=["local", "relative", "nested-relative", "lazy", "package-attribute", "relative-package-attribute"])
 def test_reverse_mutations_red_then_restored_green(tmp_path, generated, path, code, entry):
     assert path not in generated["reverse"]
     original = (REPO / path).read_text() if (REPO / path).exists() else ""
