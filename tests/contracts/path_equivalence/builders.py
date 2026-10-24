@@ -168,6 +168,9 @@ def build(row, lane, *, graded=False, dt=None):
     if row[0] == '_tfsf':
         # Addendum 5b: same x slab and eps, invariant through transverse pads.
         sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
+    elif row[0] == '_waveguide_ports':
+        # Beyond the port's reference plane: its section must be vacuum (rfx#1994).
+        sim.add(Box(point(6.2, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
     else:
         sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
     # add_source is a zero-impedance _PortEntry internally. Driven port,
