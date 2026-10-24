@@ -56,7 +56,7 @@ def _medium_at(sim, point, axis):
         else:
             medium = ("shape", i)
         if pec is _VACUUM and sim._resolve_material(g.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
-            pec = medium
+            pec = medium if medium == ("shape", i) else "PEC"
     return medium if pec is _VACUUM else pec
 
 

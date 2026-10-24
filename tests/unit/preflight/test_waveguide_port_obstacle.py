@@ -469,3 +469,12 @@ def test_pec_post_under_later_dielectric_refused():
     findings = _findings(sim)
     assert any("pec (geometry[0])" in str(issue) and "face at 85 mm" in str(issue)
                and issue.severity == "error" for issue in findings)
+
+
+def test_abutting_boxes_of_two_pec_materials_admitted():
+    # Both resolve above the PEC threshold, so assembly builds one PEC wall.
+    sim = _guide()
+    sim.add_material("pec_b", eps_r=1.0, sigma=1e10)
+    sim.add(Box((0.050, 0, 0), (0.085, 0.010, B)), material="pec")
+    sim.add(Box((0.085, 0, 0), (0.110, 0.010, B)), material="pec_b")
+    assert not _findings(sim)
