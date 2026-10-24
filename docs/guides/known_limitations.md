@@ -348,35 +348,47 @@ the guide's walls, and both meshes warn or refuse unless they are declared PEC.
 Until this is fixed, solve a partial-aperture port that radiates on a graded
 mesh (a constant `dz_profile` is enough).
 
-### A waveguide port assumes an empty (vacuum) guide: inside a dielectric fill it reports the wrong S, and material in its measurement section through an override or a design box is not checked.
+### A waveguide port assumes an empty (vacuum) guide: a filled or loaded port section is refused, and a dielectric-filled port is not available.
 
 Tracker: #1994
 
 A rectangular-waveguide port models an empty guide: its cutoff, propagation
 constant and modal impedance use vacuum values, and so does the de-embedding to
-a `reference_plane`. Where the guide section the port uses (its source plane to
-its reference and probe planes) holds any other medium, the S it reports is not
-the structure's S, and the run does not refuse it:
+a `reference_plane`. Measured before the refusal existed: on a straight WR-90
+filled end to end (two TE10 ports 80 mm apart, matched line, so |S11| should be
+0 and |S21| 1), |S11| came out 0.53 to 0.33 at relative permittivity 2.2
+(7.0–8.6 GHz) and 0.74 to 0.60 at 4 (6.8–7.3 GHz), exactly the mismatch between
+the vacuum and the filled modal impedance, while |S21| stayed 1.00, so
+|S11|² + |S21|² exceeded 1 on a lossless line. The S21 phase was off by 2–3 %,
+and by up to 14 % with the reference planes moved 30 mm. The same guide empty
+gave |S11| ≤ 0.004 and the phase within 0.06 %.
 
-- A port inside a uniformly filled guide. On a straight WR-90 filled end to end
-  (two TE10 ports 80 mm apart, matched line, so |S11| should be 0 and |S21| 1),
-  |S11| came out 0.53 to 0.33 at relative permittivity 2.2 (7.0–8.6 GHz) and
-  0.74 to 0.60 at 4 (6.8–7.3 GHz), exactly the mismatch between the vacuum and
-  the filled modal impedance, while |S21| stayed 1.00, so |S11|² + |S21|²
-  exceeds 1 on a lossless line. The S21 phase was off by 2–3 %, and by up to
-  14 % with the reference planes moved 30 mm. The same guide empty gave |S11| ≤
-  0.004 and the phase within 0.06 %. A fill drawn as geometry gives only an
-  advisory that names mode mixing; it is not refused.
-- Material placed in the section through `eps_override`, `sigma_override` or
-  `forward(design_box=..., design_eps_override=...)` gives no refusal and no
-  warning. A face drawn between the source plane and the reflection plane is
-  refused; the stretch on to the probe plane and a user `reference_plane` are
-  not checked.
+Every run now refuses, at setup, a port whose section holds anything but
+vacuum. The section runs from the cell of the port's H correction through its
+source and reference planes, and on to a user `reference_plane`, over the port
+aperture. Refused there: realized relative permittivity or permeability other
+than 1, material conductivity, Debye or Lorentz poles, a Kerr coefficient, a PEC
+volume, a concrete `eps_override` or `sigma_override` that is not vacuum, and a
+`forward(design_box=...)` whose update window reaches the section. This holds on
+the uniform and graded meshes, for `run()`, `forward()` and
+`compute_waveguide_s_matrix()`. Material between the reference plane and the
+probe plane is the device, not the port, and is admitted: the S-matrix reads
+the waves at the reference planes only.
 
-Until this is fixed, keep every port's section, from its source plane to its
-reference and probe planes, empty: start a dielectric fill, an override or a
-design box beyond the farthest of those planes. A traced override over that
-section cannot be judged before the run.
+Not checked:
+
+- A single-port `run()` reads its S21 at the probe plane. When the probe plane's
+  own cells, or the stretch to a declared `probe_plane`, are not vacuum, that
+  S21 uses vacuum modal impedance and propagation constant there.
+- A fill whose permittivity differs per component (anisotropic), drawn inside
+  the section. The check reads the per-cell value; smoothing at metal walls and
+  at material faces is part of the realized guide and is not judged.
+- A traced override over the section cannot be judged before the run.
+
+A guide that must be filled at the port (a dielectric-loaded line, a taper
+ending in a filled section) has no port model yet: start the fill, override or
+design box beyond the port's reference plane, or wait for the filled-port
+model tracked in #1994.
 
 ---
 
