@@ -26,12 +26,12 @@ exports automatically. An explicit ``layout`` overrides detection.
 
 from __future__ import annotations
 
-from rfx.measurement.phasors import exp_j
-
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+from rfx.measurement.phasors import exp_j
 
 # Maximum number of S-parameter pairs per line for N>=3 ports (Touchstone v1).
 _MAX_PAIRS_PER_LINE = 4

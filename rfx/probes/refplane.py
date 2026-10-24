@@ -59,14 +59,14 @@ accumulators).
 
 from __future__ import annotations
 
-from rfx.measurement.phasors import exp_j
-
 import warnings
 from typing import NamedTuple
 
 import numpy as np
 
 import jax.numpy as jnp
+
+from rfx.measurement.phasors import exp_j
 
 _COMP_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _H_OF_AXIS = {0: "hx", 1: "hy", 2: "hz"}
