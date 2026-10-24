@@ -383,6 +383,11 @@ Not checked:
 - A fill whose permittivity differs per component (anisotropic), drawn inside
   the section. The check reads the per-cell value; smoothing at metal walls and
   at material faces is part of the realized guide and is not judged.
+- A zero-thickness metal sheet or thin conductor, a sheet impedance, a thin
+  conductive film or a lumped RLC element inside the section. The check judges
+  metal by volume only; a sheet drawn across the guide between the source and
+  the reference plane is refused by the port's preflight (face check), which
+  `skip_preflight=True` turns off.
 - A traced override over the section cannot be judged before the run.
 
 A guide that must be filled at the port (a dielectric-loaded line, a taper
