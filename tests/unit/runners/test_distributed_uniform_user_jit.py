@@ -142,9 +142,16 @@ def test_record_user_jit_matches_eager(kind, graded):
 
     eager_acc, eager_meta = jax.tree.map(np.asarray, call())
     actual_acc, actual_meta = jax.tree.map(np.asarray, jax.jit(call)())
-    peak = max(np.max(np.abs(value)) for value in eager_acc.values())
-    assert peak > 0
+    # One peak per physical quantity: the flux monitor's E and H accumulators
+    # differ by about the wave impedance, so each pair gets its own peak; a
+    # compensation array shares its accumulator's peak.
+    group = {name: name[0] if kind == 'flux' else kind for name in eager_acc}
+    peaks = {}
+    for name, value in eager_acc.items():
+        peaks[group[name]] = max(peaks.get(group[name], 0.0), np.max(np.abs(value)))
     for name, expected in eager_acc.items():
+        peak = peaks[group[name]]
+        assert peak > 0, (kind, graded, name)
         error = np.max(np.abs(actual_acc[name] - expected))
         assert error <= 1e-4 * peak, (kind, graded, name, error, peak)
     assert actual_meta.keys() == eager_meta.keys()
@@ -154,14 +161,16 @@ def test_record_user_jit_matches_eager(kind, graded):
         assert actual.tobytes() == expected.tobytes(), name
 
 
-def test_traced_dft_frequencies_are_refused():
+@pytest.mark.parametrize('kind,what', [('dft', 'a DFT plane probe'), ('flux', 'a flux monitor')])
+def test_traced_monitor_frequencies_are_refused(kind, what):
     def call(scale):
-        sim = record_scene('dft', freqs=jnp.array([4e9, 6e9]) * scale)
-        return sim.run(n_steps=N_STEPS, devices=jax.devices('cpu')[:2],
-                       skip_preflight=True, compute_s_params=False).dft_planes['record'].accumulator
+        sim = record_scene(kind, freqs=jnp.array([4e9, 6e9]) * scale)
+        result = sim.run(n_steps=N_STEPS, devices=jax.devices('cpu')[:2],
+                         skip_preflight=True, compute_s_params=False)
+        return (result.dft_planes if kind == 'dft' else result.flux_monitors)['record']
 
     with pytest.raises(NotImplementedError, match='needs concrete monitor arguments') as failure:
         jax.jit(call)(1.0)
     assert str(failure.value) == (
-        'a DFT plane probe on the distributed multi-device path needs concrete monitor arguments '
+        f'{what} on the distributed multi-device path needs concrete monitor arguments '
         '(frequencies, positions) inside jax.jit: declare them outside the traced function.')
