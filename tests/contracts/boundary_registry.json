@@ -397,11 +397,6 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/floquet.py",
-      "function": "apply_bloch_periodic_x._wrap",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/geometry/csg.py",
       "function": "Box._axis_masks_on_coords._axis_mask",
       "kind": "roll/diff"
@@ -803,48 +798,13 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_e_tez",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_e_tez",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_e_tmz",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_e_tmz",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_h_tez",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_h_tez",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_h_tmz",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/sources/tfsf_2d.py",
-      "function": "_update_h_tmz",
-      "kind": "roll/diff"
-    },
-    {
       "file": "rfx/stepping/absorber.py",
       "function": "apply_cpml_e_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/floquet.py",
+      "function": "apply_bloch_periodic_x._wrap",
       "kind": "boundary"
     },
     {
@@ -875,6 +835,46 @@
     {
       "file": "rfx/stepping/slab_wrap.py",
       "function": "cut_probe_table",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_e_tez",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_e_tez",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_e_tmz",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_e_tmz",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_h_tez",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_h_tez",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_h_tmz",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/tfsf_2d.py",
+      "function": "_update_h_tmz",
       "kind": "roll/diff"
     },
     {

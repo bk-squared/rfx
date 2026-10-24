@@ -64,7 +64,7 @@ KERNEL_CALLERS = {
     "rfx/sparams/coax.py:compute_coax_msl_transition": "coax_msl_transition",
     "rfx/differentiable_material_fit.py:differentiable_material_fit": "material_fit",
     "rfx/gpu.py:benchmark": "grid-level: times rfx.run on a Grid",
-    "rfx/rcs.py:compute_rcs": "grid-level: takes a Grid and a TFSF/NTFF setup",
+    "rfx/measurement/rcs.py:compute_rcs": "grid-level: takes a Grid and a TFSF/NTFF setup",
 }
 
 # Top-level functions that call a field update themselves: a new one is a new
