@@ -118,7 +118,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/artifacts.py": 2,
     "rfx/boundaries/upml.py": 1,
     "rfx/checkpoint.py": 2,
-    "rfx/farfield.py": 6,
+    "rfx/farfield.py": 2,
     "rfx/geometry/conformal.py": 2,
     "rfx/geometry/rasterize_grid.py": 3,
     "rfx/geometry/smoothing.py": 6,
@@ -126,7 +126,6 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/io.py": 1,
     "rfx/model/graded_grid.py": 2,  # the traced-axis fallback width, read once in _traced_fallback_width (position_to_index and the ring-down host helpers)
     "rfx/preflight/realization.py": 1,
-    "rfx/rcs.py": 1,
     "rfx/runners/adi.py": 5,  # moved, not new: rfx/api/_execute.py's 5 reads moved with _run_adi_from_materials (Block E1; total unchanged)
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/subgridded.py": 1,
@@ -147,6 +146,8 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/visualize.py": 2,
     "rfx/visualize3d.py": 3,
     "rfx/stepping/vmap_scan.py": 1,  # moved with _build_vmap_scan_fn; total unchanged
+    "rfx/measurement/farfield.py": 4,
+    "rfx/measurement/rcs.py": 1,
 }
 
 

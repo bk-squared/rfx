@@ -545,5 +545,3 @@ def _substrate_material_kwargs(material: str) -> dict:
 def _substrate_eps(material: str) -> float:
     """Relative permittivity (scalar) of a substrate material."""
     return _substrate_material_kwargs(material)["eps_r"]
-
-
