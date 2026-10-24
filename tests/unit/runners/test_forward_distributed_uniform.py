@@ -237,7 +237,7 @@ def test_gradient_of_port_s_refused_in_plain_words():
                              port_s11_freqs=np.array([8e9, 12e9]), skip_preflight=True)
         return minimize_s11_at_freq_wave_decomp(12e9)(result)
 
-    with pytest.raises(NotImplementedError, match="take this gradient on one device") as failure:
+    with pytest.raises(NotImplementedError, match="cannot trace this request") as failure:
         jax.grad(loss)(2.0)
     assert isinstance(failure.value.__cause__, (
         jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError))

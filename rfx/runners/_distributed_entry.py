@@ -265,14 +265,19 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
             devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
             conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
-        if port_s11_freqs is None:
-            raise
-        # Measured: jax.grad through port_s11_freqs fails inside the S driver,
-        # which reads its records as concrete arrays.
+        if port_s11_freqs is not None:
+            # Measured: jax.grad or jax.vmap over a traced declaration with
+            # port_s11_freqs fails inside the S driver, which reads its records
+            # as concrete arrays (jax.jit is refused before the solve).
+            raise NotImplementedError(
+                "forward(distributed=True) on a uniform mesh cannot trace this request "
+                "(jax.grad or jax.vmap over a traced declaration): its port S-parameters from "
+                "port_s11_freqs are measured outside the trace. Take it on one device "
+                "(omit distributed=True).") from error
         raise NotImplementedError(
-            "forward(distributed=True) on a uniform mesh cannot differentiate this request "
-            "(its port S-parameters from port_s11_freqs are measured outside the trace): "
-            "take this gradient on one device (omit distributed=True).") from error
+            "forward(distributed=True) on a uniform mesh read a traced value on the host inside a JAX "
+            "transform (jax.jit, jax.grad or jax.vmap), so this request cannot be traced on this path: "
+            "call forward() directly, or run on one device (omit distributed=True).") from error
     packed = pack_nu_forward_result(
         diagnostics=result.diagnostics, time_series=result.time_series,
         grid=result.grid, dt=result.dt, dft_planes=result.dft_planes,
