@@ -177,6 +177,7 @@ def _build_guide():
     sim.add_material("slab", eps_r=4.0)
     # Runs INTO the x-hi face, i.e. into the port-side absorber.
     sim.add(Box((lx / 2.0, 0.0, 0.0), (lx, a_wg, b_wg)), material="slab")
+    # Refused until a dielectric-filled waveguide port exists (rfx#1994): the right port sits in the slab.
     for pos, direction, nm in ((6 * dx, "+x", "left"),
                                (lx - 6 * dx, "-x", "right")):
         sim.add_waveguide_port(pos, direction=direction, freqs=freqs,

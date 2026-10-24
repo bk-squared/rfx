@@ -96,11 +96,13 @@ def build_simulation() -> Simulation:
 # Objective: |S11|^2 summed over all frequencies, w.r.t. a scalar design eps
 # ---------------------------------------------------------------------------
 
-def _make_objective(sim: Simulation, eps_base: jnp.ndarray):
+def _make_objective(sim: Simulation, eps_base: jnp.ndarray, design: jnp.ndarray):
     """Return a scalar objective(alpha) = sum_f |S11(f)|^2.
 
-    ``alpha`` scales the background permittivity array via eps_override,
-    acting as a single differentiable design degree of freedom.  The target
+    ``alpha`` scales the permittivity of the mid-guide slab ``design`` via
+    eps_override, acting as a single differentiable design degree of freedom.
+    The guide at both ports stays empty: a waveguide port models a vacuum
+    guide, so a filled port segment is refused (rfx#1994). The target
     frequency index is the midpoint of the frequency array.
     """
     def objective(alpha: jnp.ndarray) -> jnp.ndarray:
@@ -109,7 +111,7 @@ def _make_objective(sim: Simulation, eps_base: jnp.ndarray):
             result = sim.compute_waveguide_s_matrix(
                 n_steps=200,
                 normalize=False,
-                eps_override=eps_base * alpha,
+                eps_override=eps_base + design * (alpha - 1.0),
             )
         S = result.s_params
         k0 = S.shape[-1] // 2
@@ -134,9 +136,12 @@ if __name__ == "__main__":
     # padding it fixes is final.
     grid = sim.freeze_mesh()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
+    # Design slab x = 40-60 mm, clear of both ports' reference planes.
+    lo, hi = (grid.index_of("x", x) for x in (0.040, 0.060))
+    design = jnp.zeros(grid.shape, dtype=jnp.float32).at[lo:hi].set(1.0)
     alpha0 = jnp.float32(1.0)
 
-    objective = _make_objective(sim, eps_base)
+    objective = _make_objective(sim, eps_base, design)
 
     # --- Forward pass (sanity check) ----------------------------------------
     print("\n[1/3] Forward pass …")
@@ -146,7 +151,7 @@ if __name__ == "__main__":
         fwd_result = sim.compute_waveguide_s_matrix(
             n_steps=200,
             normalize=False,
-            eps_override=eps_base * alpha0,
+            eps_override=eps_base + design * (alpha0 - 1.0),
         )
     S_fwd = np.asarray(fwd_result.s_params)
     s_max = float(np.max(np.abs(S_fwd)))

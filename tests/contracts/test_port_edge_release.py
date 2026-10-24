@@ -636,7 +636,9 @@ def test_w7_waveguide_mutations(monkeypatch, mutation):
         with pytest.raises(AssertionError):
             test_w2_waveguide_kernel_weights(capture_patch, 'uniform', 'measurement', .5)
     if mutation == 'removed':
-        with pytest.raises(AssertionError):
+        # Unreleased PEC occupancy now sits in the port's guide segment: the
+        # setup refuses it (rfx#1994) before the source record can differ.
+        with pytest.raises(ValueError, match=r'rfx#1994'):
             test_w3_waveguide_source_record()
     else:
         test_w3_waveguide_source_record()
