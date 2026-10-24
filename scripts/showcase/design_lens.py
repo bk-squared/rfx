@@ -336,7 +336,8 @@ class Model(common.ModelBase):
     def response_fn(self, n_steps, normalize="flux"):
         import jax
         import jax.numpy as jnp
-        from rfx.farfield import compute_far_field_jax, make_ntff_box
+        from rfx.measurement.farfield import compute_far_field_jax
+        from rfx.farfield import make_ntff_box
         if n_steps in self._functions:
             return self._functions[n_steps]
         dtype = jnp.float64 if self.precision == "float64" else jnp.float32

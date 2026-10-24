@@ -39,12 +39,21 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
     it matches the real ``**2`` for the normal path).
     """
     from rfx.sources.tfsf import (
-        init_tfsf, apply_tfsf_e, apply_tfsf_h,
-        update_tfsf_1d_h, update_tfsf_1d_e,
+        init_tfsf,
+        update_tfsf_1d_h,
+        update_tfsf_1d_e,
         is_tfsf_2d,
     )
+    from rfx.stepping.tfsf import (
+        apply_tfsf_e,
+        apply_tfsf_h,
+    )
     from rfx.sources.tfsf_2d import (
-        update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+        update_tfsf_2d_h,
+        update_tfsf_2d_e,
+    )
+    from rfx.stepping.tfsf_2d import (
+        bloch_phase_tuple,
     )
 
     dx = 1e-3

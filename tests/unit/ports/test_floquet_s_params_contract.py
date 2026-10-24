@@ -58,9 +58,11 @@ from rfx.core.yee import (
 )
 from rfx.floquet import (
     init_floquet_dft,
-    update_floquet_dft,
     extract_floquet_modes,
     compute_floquet_s_params,
+)
+from rfx.measurement.floquet import (
+    update_floquet_dft,
 )
 
 ETA0 = float(jnp.sqrt(MU_0 / EPS_0))  # ~377 ohms

@@ -362,7 +362,7 @@ def test_class_W_calculator(normalize, n_modes):
 
 def test_class_R_oblique_calculator():
     from rfx.core.yee import init_materials
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
     sim = Simulation(15e9, (.06, .08, .006), dx=.002, cpml_layers=6, boundary='cpml')
     grid = sim._build_grid()
     got = capture(sim, 'calculator', 'uniform', invoke=lambda: compute_rcs(

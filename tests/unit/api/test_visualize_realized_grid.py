@@ -102,6 +102,6 @@ def test_farfield_selects_realized_grid_with_only_transverse_profile(monkeypatch
         assert grid.shape["xyz".index(graded_axis)] == 5
         raise GridCaptured
 
-    monkeypatch.setattr("rfx.farfield.compute_far_field", capture)
+    monkeypatch.setattr("rfx.measurement.farfield.compute_far_field", capture)
     with pytest.raises(GridCaptured):
         visualize_farfield_3d(result, sim)

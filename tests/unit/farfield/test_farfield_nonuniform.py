@@ -32,7 +32,8 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
-from rfx.farfield import compute_far_field, directivity
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity
 
 #: Ring-down rule (#885): the record must have decayed this far before a
 #: rect-window DFT of it means anything.

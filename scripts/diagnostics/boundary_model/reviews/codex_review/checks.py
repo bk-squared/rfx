@@ -118,7 +118,7 @@ except Exception as ex:
  res['current_bloch_vmap']=type(ex).__name__+': '+str(ex)[:500]
 # The RIS result fallback peak-normalizes any nonzero trace, even without S parameters.
 from types import SimpleNamespace
-from rfx.ris import _extract_reflection
+from rfx.measurement.ris import _extract_reflection
 ts=np.cos(2*np.pi*5e9*np.arange(128)*1e-12)
 synthetic=SimpleNamespace(s_params=None,freqs=None,time_series=ts,dt=1e-12)
 ris_s,ris_f=_extract_reflection(synthetic,(1e9,10e9),19)

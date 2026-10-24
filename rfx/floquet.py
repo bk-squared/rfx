@@ -42,45 +42,6 @@ from rfx.core.yee import FDTDState, EPS_0, MU_0
 # Phase shift computation
 # ---------------------------------------------------------------------------
 
-def floquet_phase_shift(
-    Lx: float,
-    Ly: float,
-    freq: float,
-    theta_deg: float,
-    phi_deg: float,
-) -> tuple[complex, complex]:
-    """Compute Bloch phase shifts for periodic BC at a given scan angle.
-
-    Parameters
-    ----------
-    Lx : float
-        Unit cell period in x (metres).
-    Ly : float
-        Unit cell period in y (metres).
-    freq : float
-        Frequency (Hz).
-    theta_deg : float
-        Scan angle theta from broadside (degrees).
-    phi_deg : float
-        Scan angle phi in the xy-plane (degrees).
-
-    Returns
-    -------
-    phase_x, phase_y : complex
-        Bloch phase factors: exp(j * kx * Lx), exp(j * ky * Ly).
-        At broadside (theta=0), both are 1+0j.
-    """
-    theta = math.radians(theta_deg)
-    phi = math.radians(phi_deg)
-    k0 = 2.0 * math.pi * freq / C0
-
-    kx = k0 * math.sin(theta) * math.cos(phi)
-    ky = k0 * math.sin(theta) * math.sin(phi)
-
-    phase_x = complex(np.exp(1j * kx * Lx))
-    phase_y = complex(np.exp(1j * ky * Ly))
-
-    return phase_x, phase_y
 
 
 def floquet_wave_vector(
@@ -119,61 +80,6 @@ def floquet_wave_vector(
 # Bloch-periodic field wrapping
 # ---------------------------------------------------------------------------
 
-def apply_bloch_periodic_x(
-    state: FDTDState,
-    phase_x: jnp.ndarray,
-) -> FDTDState:
-    """Apply Bloch-periodic BC on x-axis boundaries.
-
-    For real-valued FDTD with complex Bloch phase, we split into
-    real and imaginary parts. However, since standard FDTD operates
-    on real fields, we use the split-field technique: the actual
-    fields carry the spatially-varying phase factor.
-
-    For broadside (phase_x = 1), this reduces to standard periodic BC
-    (copy field from one side to the other).
-
-    Parameters
-    ----------
-    state : FDTDState
-        Current field state.
-    phase_x : complex scalar
-        Bloch phase factor exp(j * kx * Lx).
-
-    Returns
-    -------
-    Updated FDTDState with Bloch-periodic x boundaries.
-    """
-    # For the Yee grid, periodic wrapping copies the field from the
-    # last interior cell to the ghost cell at the opposite end, with
-    # the appropriate phase factor applied.
-    #
-    # For H-field forward differences: F[N] = F[0] * phase
-    # For E-field backward differences: F[-1] = F[N-1] * conj(phase)
-    #
-    # In the standard periodic case (phase=1), jnp.roll handles this
-    # automatically. For Bloch-periodic, we need explicit wrapping.
-    phase_re = jnp.real(phase_x)
-
-    # Apply to each field component at x boundaries
-    # x=0 boundary: field = field[nx-1] * conj(phase_x)
-    # x=nx-1 boundary: field = field[0] * phase_x
-    def _wrap(f):
-        # For real FDTD, we only apply the real part of the phase shift.
-        # This is exact for broadside and a good approximation for small angles.
-        # For full complex Bloch, a split-field formulation would be needed.
-        f = f.at[0, :, :].set(f[-1, :, :] * phase_re)
-        f = f.at[-1, :, :].set(f[0, :, :] * phase_re)
-        return f
-
-    return state._replace(
-        ex=_wrap(state.ex),
-        ey=_wrap(state.ey),
-        ez=_wrap(state.ez),
-        hx=_wrap(state.hx),
-        hy=_wrap(state.hy),
-        hz=_wrap(state.hz),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,74 +126,6 @@ def init_floquet_dft(
     )
 
 
-def update_floquet_dft(
-    acc: FloquetDFTAccumulator,
-    state: FDTDState,
-    port_index: int,
-    axis: int,
-    freqs: jnp.ndarray,
-    dt: float,
-    step: int,
-) -> FloquetDFTAccumulator:
-    """Accumulate one timestep into the Floquet DFT.
-
-    Extracts tangential fields at the port plane and applies running
-    DFT at each frequency point.
-
-    Parameters
-    ----------
-    acc : FloquetDFTAccumulator
-        Current accumulator state.
-    state : FDTDState
-        Current FDTD field state.
-    port_index : int
-        Grid index along the port normal axis.
-    axis : int
-        Normal axis (0=x, 1=y, 2=z).
-    freqs : (n_freqs,) array
-        Frequencies for DFT.
-    dt : float
-        Timestep.
-    step : int
-        Current timestep index.
-    """
-    t = step * dt
-    # DFT kernel: exp(-j * 2*pi*f*t) for each frequency
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t)  # (n_freqs,)
-
-    # Extract tangential field plane based on normal axis
-    if axis == 2:  # z-normal
-        sl = (slice(None), slice(None), port_index)
-        e1 = state.ex[sl]  # (nx, ny)
-        e2 = state.ey[sl]
-        h1 = state.hx[sl]
-        h2 = state.hy[sl]
-    elif axis == 0:  # x-normal
-        sl = (port_index, slice(None), slice(None))
-        e1 = state.ey[sl]  # (ny, nz)
-        e2 = state.ez[sl]
-        h1 = state.hy[sl]
-        h2 = state.hz[sl]
-    else:  # y-normal
-        sl = (slice(None), port_index, slice(None))
-        e1 = state.ex[sl]  # (nx, nz)
-        e2 = state.ez[sl]
-        h1 = state.hx[sl]
-        h2 = state.hz[sl]
-
-    # Accumulate: outer product of phase vector with field plane
-    # phase: (n_freqs,), field: (nu, nv) -> (n_freqs, nu, nv)
-    e1_contrib = phase[:, None, None] * e1[None, :, :]
-    e2_contrib = phase[:, None, None] * e2[None, :, :]
-    h1_contrib = phase[:, None, None] * h1[None, :, :]
-    h2_contrib = phase[:, None, None] * h2[None, :, :]
-
-    return FloquetDFTAccumulator(
-        e_tang1_dft=acc.e_tang1_dft + e1_contrib,
-        e_tang2_dft=acc.e_tang2_dft + e2_contrib,
-        h_tang1_dft=acc.h_tang1_dft + h1_contrib,
-        h_tang2_dft=acc.h_tang2_dft + h2_contrib,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -431,91 +269,6 @@ class FloquetPort:
 # Plane-wave source injection for Floquet excitation
 # ---------------------------------------------------------------------------
 
-def inject_floquet_source(
-    state: FDTDState,
-    port_index: int,
-    axis: int,
-    dt: float,
-    dx: float,
-    step: int,
-    f0: float,
-    bandwidth: float,
-    amplitude: float,
-    polarization: str = "te",
-    theta_deg: float = 0.0,
-    phi_deg: float = 0.0,
-    Lx: float = 0.0,
-    Ly: float = 0.0,
-) -> FDTDState:
-    """Inject a Floquet plane-wave source at the port plane.
-
-    Uses a soft source (additive) that launches a Gaussian-modulated
-    plane wave. For non-zero scan angles, the spatial phase gradient
-    across the port plane is applied.
-
-    Parameters
-    ----------
-    state : FDTDState
-    port_index : int
-        Grid index along the normal axis.
-    axis : int
-        Normal axis (0=x, 1=y, 2=z).
-    dt, dx : float
-        Timestep and cell size.
-    step : int
-        Current timestep index.
-    f0 : float
-        Center frequency (Hz).
-    bandwidth : float
-        Fractional bandwidth.
-    amplitude : float
-        Source amplitude (V/m).
-    polarization : str
-        "te" or "tm".
-    theta_deg, phi_deg : float
-        Scan angles (degrees).
-    Lx, Ly : float
-        Unit cell periods for phase computation.
-    """
-    t = step * dt
-    tau = 1.0 / (f0 * bandwidth * jnp.pi)
-    t0 = 3.0 * tau
-
-    # Gaussian pulse envelope
-    arg = (t - t0) / tau
-    pulse = amplitude * (-2.0 * arg) * jnp.exp(-(arg ** 2))
-
-    if axis == 2:  # z-normal
-        if polarization == "te":
-            # TE: inject Ex
-            field = state.ex
-            field = field.at[:, :, port_index].add(pulse)
-            state = state._replace(ex=field)
-        else:
-            # TM: inject Ey
-            field = state.ey
-            field = field.at[:, :, port_index].add(pulse)
-            state = state._replace(ey=field)
-    elif axis == 0:  # x-normal
-        if polarization == "te":
-            field = state.ey
-            field = field.at[port_index, :, :].add(pulse)
-            state = state._replace(ey=field)
-        else:
-            field = state.ez
-            field = field.at[port_index, :, :].add(pulse)
-            state = state._replace(ez=field)
-    else:  # y-normal (axis == 1)
-        if polarization == "te":
-            field = state.ex
-            field = field.at[:, port_index, :].add(pulse)
-            state = state._replace(ex=field)
-        else:
-            field = state.ez
-            field = field.at[:, port_index, :].add(pulse)
-            state = state._replace(ez=field)
-
-    return state
 
 
 # ---------------------------------------------------------------------------
@@ -607,3 +360,21 @@ def compute_floquet_s_params(
         )
 
     return result
+
+
+# Lazy compatibility exports keep record definitions free of import cycles.
+_LAZY_EXPORTS = {
+    "floquet_phase_shift": "rfx.measurement.floquet",
+    "inject_floquet_source": "rfx.stepping.floquet",
+    "update_floquet_dft": "rfx.measurement.floquet",
+}
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value
