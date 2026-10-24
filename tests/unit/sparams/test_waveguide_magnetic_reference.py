@@ -71,3 +71,6 @@ def test_reference_has_vacuum_physics_and_same_mesh(kind):
         np.testing.assert_array_equal(getattr(mats,name),getattr(vacuum,name))
     assert debye is None and lorentz is None
     assert pec is None or not np.any(pec)
+    if kind in ('mu', 'debye'):
+        with pytest.raises(ValueError, match='waveguide_0.*(permeability|Debye).*rfx#1994'):
+            device.compute_waveguide_s_matrix(n_steps=2, normalize='flux', skip_preflight=True)

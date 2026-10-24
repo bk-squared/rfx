@@ -353,16 +353,16 @@ def test_waveguide_s_matrix_refuses_smoothing_and_conformal_with_debye(
 
 
 def test_waveguide_s_matrix_still_smooths_without_dispersion():
-    """Control: the same call with a plain dielectric slab runs."""
+    """A plain slab reaches setup, where its loaded port segment is refused."""
     def build():
         sim = _wr90_sim(debye=False, solved_domain=True)
         sim.add(Box((0.024, 0.0, 0.0), (0.036, 0.02286, 0.01016)),
                 material="fr4")
         return sim
     sim = _quiet(build)
-    res = _quiet(lambda: sim.compute_waveguide_s_matrix(
-        n_steps=20, normalize=True, subpixel_smoothing=True))
-    assert np.asarray(res.s_params).shape[:2] == (2, 2)
+    with pytest.raises(ValueError, match="l.*eps.*rfx#1994"):
+        _quiet(lambda: sim.compute_waveguide_s_matrix(
+            n_steps=2, normalize=True, subpixel_smoothing=True))
 
 
 # --------------------------------------------------------------------

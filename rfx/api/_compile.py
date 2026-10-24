@@ -362,6 +362,7 @@ class _CompileMixin:
         freqs: jnp.ndarray,
         n_steps: int,
     ):
+        from rfx.model.waveguide_planes import with_segment_declaration
         if self._precision == "float64":
             freqs = jnp.asarray(freqs, dtype=jnp.float64)
         normal_axis = entry.direction[1]
@@ -431,7 +432,7 @@ class _CompileMixin:
                 grid=grid,
                 field_dtype=jnp.float64 if self._precision == "float64" else jnp.float32,
             )
-            return cfgs
+            return with_segment_declaration(cfgs, entry)
         cfg = init_waveguide_port(
             port,
             grid.dx,
@@ -448,7 +449,7 @@ class _CompileMixin:
             grid=grid,
             field_dtype=jnp.float64 if self._precision == "float64" else jnp.float32,
         )
-        return cfg
+        return with_segment_declaration(cfg, entry)
     def _build_nonuniform_grid(self, *, cpml_axes=None) -> NonUniformGrid:
         """Build a NonUniformGrid from stored dz_profile (and optional
         dx_profile / dy_profile). A uniform profile on any axis is

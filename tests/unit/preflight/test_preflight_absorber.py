@@ -563,6 +563,9 @@ def test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab():
     assert "bounds 15.2–25.4 mm on x" in msg, msg
     assert found[0].severity == "warning", found[0].severity
     assert found[0].source == "_validate_cfg_waveguide_reference_plane"
+    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
+        _waveguide_refplane_in_slab_sim().compute_waveguide_s_matrix(
+            n_steps=2, skip_preflight=True)
 
 
 def test_waveguide_reference_plane_device_overlap_silent_when_slab_is_clear():

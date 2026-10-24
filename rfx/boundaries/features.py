@@ -325,3 +325,89 @@ def admit_grid_waveguide(grid, ports):
         _warn_caller("Waveguide boundary default: " + ", ".join(faces)
                      + " are solved as PEC electric walls.")
         state[0] = True
+
+
+def waveguide_segment_cells(cfg, grid):
+    """Half-open xyz bounds covering H, source, measured and declared planes.
+
+    H acts at x_index-1 for a positive launch and x_index for a negative
+    launch. Declared positions select their containing cell, also behind
+    the source. Transverse bounds are the compiled aperture cell spans.
+    """
+    import numpy as np
+    from rfx.geometry.rasterize_grid import _axis_node_positions
+    axis = "xyz".index(cfg.normal_axis)
+    h = cfg.x_index - 1 if cfg.direction.startswith("+") else cfg.x_index
+    endpoints = [h, cfg.x_index, cfg.ref_x, cfg.probe_x]
+    if cfg.segment_planes:
+        nodes = np.asarray(_axis_node_positions(
+            grid.cells(cfg.normal_axis), getattr(grid, f"pad_{cfg.normal_axis}_lo")))
+        endpoints.extend(int(np.searchsorted(nodes, p, side="right") - 1)
+                         for p in cfg.segment_planes)
+    bounds = [(cfg.u_lo, cfg.u_hi), (cfg.v_lo, cfg.v_hi)]
+    bounds.insert(axis, (max(0, min(endpoints)), min(grid.shape[axis], max(endpoints) + 1)))
+    return tuple(bounds)
+
+
+def refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates,
+                                   localized, design_box=None):
+    """Require vacuum in the realized segment, including overrides and PEC.
+
+    Vacuum is stored exactly as 1.0 / 0.0: comparisons are exact. The shared
+    TF/SF enumeration reads MATERIAL materials.sigma and its realized sigma
+    components on both meshes, never CPML profiles. A traced override over
+    the segment cannot be judged before the run: traced_check retains a host
+    callback, or refuses backends without callbacks, exactly as for TF/SF.
+    """
+    if not waveguide_ports:
+        return
+    waveguide_ports = [cfg for group in waveguide_ports
+                       for cfg in (group if isinstance(group, list) else [group])]
+    import jax
+    import numpy as np
+    from rfx._traced_check import traced_check
+    from rfx.boundaries.tfsf import _injection_arrays
+    from rfx.model.design_box import design_box_window
+
+    reason = ("a waveguide port models an empty (vacuum) guide: its cutoff, propagation "
+              "constant and modal impedance are vacuum values, so a filled or loaded "
+              "segment returns the wrong S (rfx#1994). Start the fill, override or "
+              "design box beyond the port's reference and probe planes.")
+    operands = tuple(_injection_arrays(grid, materials, updates, localized))
+    arrays, metadata = [], []
+    for port, cfg in enumerate(waveguide_ports):
+        bounds = waveguide_segment_cells(cfg, grid)
+        prefix = f"Waveguide port {cfg.port_name or port!r}: segment cells {bounds}: "
+        if design_box is not None:
+            write, _, _, _ = design_box_window(design_box.bounds, grid.shape)
+            if all(max(lo, write[2*a]) < min(hi, write[2*a+1])
+                   for a, (lo, hi) in enumerate(bounds)):
+                raise ValueError(prefix + f"design_box update window {write} intersects; " + reason)
+        for name, array, vacuum, label in operands:
+            trailing = 2 if vacuum == "identity" else 0
+            start = array.ndim - 3 - trailing
+            slices = [slice(None)] * array.ndim
+            offsets = [0] * array.ndim
+            if start >= 0:
+                for a, (lo, hi) in enumerate(bounds):
+                    offsets[start+a] = lo
+                    if array.shape[start+a] != 1:
+                        slices[start+a] = slice(lo, hi)
+            arrays.append(array[tuple(slices)])
+            metadata.append((prefix, name, vacuum, label, offsets, start, bounds))
+    traced = any(isinstance(x, jax.core.Tracer) for x in jax.tree.leaves(arrays))
+
+    def check(*values):
+        for value, (prefix, name, vacuum, label, offsets, start, bounds) in zip(values, metadata):
+            host = np.asarray(value)
+            bad = host != (np.eye(3) if vacuum == "identity" else vacuum)
+            if np.any(bad):
+                first = tuple(np.argwhere(bad)[0])
+                index = (tuple(int(first[start+a] + offsets[start+a]) for a in range(3))
+                         if start >= 0 else tuple(lo for lo, _ in bounds))
+                trace = ("traced override over the segment cannot be judged before the run; "
+                         if traced else "")
+                raise ValueError(prefix + f"{label} ({name})={host[first]!r} at cell {index}; "
+                                 + trace + reason)
+
+    traced_check("waveguide port", "vacuum segment", check, *arrays, ordered=True)

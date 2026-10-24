@@ -253,6 +253,7 @@ def build_sim() -> Simulation:
         freqs=jnp.asarray(FREQS_HZ), f0=F0_HZ, bandwidth=BANDWIDTH_REL,
         waveform="modulated_gaussian", reference_plane=REF_OFFSET, name="left",
     )
+    # Refused until a dielectric-filled waveguide port exists (rfx#1994): this port sits in the eps_r=9 load.
     sim.add_waveguide_port(
         DOMAIN_X - PORT_OFFSET, direction="-x",
         freqs=jnp.asarray(FREQS_HZ), f0=F0_HZ, bandwidth=BANDWIDTH_REL,

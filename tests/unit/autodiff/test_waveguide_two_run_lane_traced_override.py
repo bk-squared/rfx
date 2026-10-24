@@ -149,19 +149,21 @@ def test_two_run_lane_traced_override_fails_fast_at_dispatch(override_kw):
     assert not any(f.name == _EXTRACTOR for f in frames), (
         "the extractor was entered with a tracer:\n" + record
     )
+    if override_kw == "sigma_override":
+        sim = _wr90_sim()
+        with pytest.raises(ValueError, match="left.*sigma.*0.001.*rfx#1994"):
+            sim.compute_waveguide_s_matrix(
+                n_steps=2, sigma_override=_override_base(sim, override_kw),
+            )
 
 
 def test_two_run_lane_concrete_eps_override_still_runs_forward():
-    """The guard is tracer-scoped: a concrete eps_override on normalize=True
-    still produces a finite S-matrix (forward use of the override channel)."""
+    """Concrete overrides reach setup, which refuses a loaded port segment."""
     sim = _wr90_sim()
     eps = _override_base(sim, "eps_override") * 1.5
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = sim.compute_waveguide_s_matrix(
-            n_steps=200, normalize=True, eps_override=eps,
-        )
-    s = np.asarray(res.s_params)
-    assert s.shape == (2, 2, 4), s.shape
-    assert np.all(np.isfinite(s)), s
-    print(f"\n[two-run lane, concrete eps_override] |S| per bin:\n{np.abs(s)}")
+        with pytest.raises(ValueError, match="left.*eps.*1.5.*rfx#1994"):
+            sim.compute_waveguide_s_matrix(
+                n_steps=2, normalize=True, eps_override=eps,
+            )

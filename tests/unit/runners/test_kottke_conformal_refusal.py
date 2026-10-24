@@ -181,6 +181,10 @@ def test_conformal_faces_still_refuse_without_interior_pec(entry):
     pytest.param(True, "B", id="conformal-stage1"),
 ])
 def test_waveguide_controls_run(smoothing, source):
+    if source == "B":
+        with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
+            _invoke("waveguide", source, smoothing=smoothing)
+        return
     result = _invoke("waveguide", source, smoothing=smoothing)
     assert result.s_params.shape == (2, 2, 3)
     assert np.isfinite(np.asarray(result.s_params)).all()

@@ -176,6 +176,8 @@ class WaveguidePortConfig(NamedTuple):
     h_offset: tuple[float, float] = (0.0, 0.0)
     mode_indices: tuple[int, int] = (0, 0)
     mode_profile: str = "discrete"
+    segment_planes: tuple[float, ...] = ()
+    port_name: str = ""
 
 
 def _te_mode_profiles(a: float, b: float, m: int, n: int,

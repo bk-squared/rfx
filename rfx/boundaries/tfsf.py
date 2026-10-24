@@ -25,6 +25,8 @@ def _leaves(value, name):
         return
     if hasattr(value, "shape"):
         yield name, value
+    elif np.isscalar(value) and not isinstance(value, (str, bytes)):
+        yield name, np.asarray(value)
     elif is_dataclass(value):
         for field in fields(value):
             yield from _leaves(getattr(value, field.name), f"{name}.{field.name}")
@@ -450,8 +452,10 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
                 localized, periodic, pec_faces=None, pmc_faces=None,
                 feature_owned=False, nonuniform=False):
     """Last check on actual low-level inputs, including AD material overrides."""
-    from rfx.boundaries.features import admit_grid_waveguide
+    from rfx.boundaries.features import admit_grid_waveguide, refuse_waveguide_segment_medium
     admit_grid_waveguide(grid, waveguide_ports)
+    refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates, localized,
+                                   design_box=updates.get("design_box"))
     if tfsf is None:
         return
     cfg = tfsf[0]

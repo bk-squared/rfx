@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx import Simulation, Box
 from rfx.boundaries.spec import BoundarySpec, Boundary
@@ -133,3 +134,5 @@ def test_wr90_short_realizes_both_drawn_faces():
                                               rz.grid.nz // 2]), (
         "the Ex edge inside the short must be PEC: a volume shorts every "
         "normal edge between its faces (#931 §1.2)")
+    with pytest.raises(ValueError, match="right.*PEC.*rfx#1994"):
+        sim.compute_waveguide_s_matrix(n_steps=2, normalize="flux", skip_preflight=True)

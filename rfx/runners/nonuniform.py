@@ -347,8 +347,9 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         u_slice=u_slice,
         v_slice=v_slice,
     )
+    from rfx.model.waveguide_planes import with_segment_declaration
     if entry.n_modes > 1:
-        return init_multimode_waveguide_port(
+        return with_segment_declaration(init_multimode_waveguide_port(
             port, grid, freqs,
             n_modes=entry.n_modes,
             f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
@@ -360,8 +361,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
             dt=float(grid.dt),
             waveform=entry.waveform,
             mode_profile=entry.mode_profile,
-        )
-    return init_waveguide_port(
+        ), entry)
+    return with_segment_declaration(init_waveguide_port(
         port, grid, freqs,
         f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
         bandwidth=entry.bandwidth,
@@ -372,7 +373,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         dt=float(grid.dt),
         waveform=entry.waveform,
         mode_profile=entry.mode_profile,
-    )
+    ), entry)
 
 
 def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
