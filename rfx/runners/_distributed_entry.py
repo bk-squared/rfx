@@ -1,6 +1,5 @@
 """Shared public entry seam for the distributed runners; no stepping here."""
 
-import jax.numpy as jnp
 import numpy as np
 
 from rfx.api._spec import Result, _warn_if_nonfinite_result
@@ -47,7 +46,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
                                  "devices": None,
                                  "exchange_interval": 1, "skip_preflight": True},
                                  reason=reason, requested_devices=len(devices),
-                                 diagnostics=_diagnostics)
+                                 diagnostics=_diagnostics,
+                                 path=plan.lane if _forward_port_s11 else None)
     from rfx.model.distributed_ports import (
         refuse_unsupported_distributed_features,
     )
@@ -87,6 +87,12 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     from rfx.api._dispatch import _staged_by_an_outer_trace
     if (plan.lane != "run_distributed_nu" and compute_s_params
             and _staged_by_an_outer_trace()):
+        if _forward_port_s11:
+            raise NotImplementedError(
+                "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "
+                "(or another JAX trace that stages it): the S-parameters are measured from a second "
+                "multi-device run outside the trace. Omit port_s11_freqs for the fields and probe records, "
+                "call forward() directly, or run on one device (omit distributed=True).")
         raise NotImplementedError(
             "run(devices=...) on a uniform mesh cannot compute port S-parameters inside jax.jit "
             "(or another JAX trace that stages it): the S-parameters are measured from a second "
@@ -238,16 +244,6 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     """Admit the fixed-model forward request, execute once, and pack observables."""
     import jax
     from rfx.api._forward_result import pack_nu_forward_result
-    from rfx.core.jax_utils import is_tracer
-
-    if is_tracer(jnp.zeros(())):
-        # The uniform multi-device runner reads concrete values while it runs
-        # (measured: jax.jit of this call fails inside it with a tracer error).
-        raise NotImplementedError(
-            "forward(distributed=True) on a uniform mesh cannot run inside jax.jit "
-            "(or another JAX trace that stages it): call it directly. For a staged or "
-            "differentiated solve with override or design arguments, run on one device "
-            "(omit distributed=True) or use a graded mesh.")
     sim._refuse_unsupported_run_kwargs(
         "uniform distributed forward", {
             **overrides,
@@ -269,6 +265,8 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
             devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
             conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
+        if port_s11_freqs is None:
+            raise
         # Measured: jax.grad through port_s11_freqs fails inside the S driver,
         # which reads its records as concrete arrays.
         raise NotImplementedError(

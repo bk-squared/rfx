@@ -463,7 +463,7 @@ def one_device_reason(sim):
     return None
 
 
-def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics, entry="run"):
+def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics, entry="run", path=None):
     """Run the full-domain fallback and record the requested and used devices."""
     import warnings
 
@@ -481,7 +481,7 @@ def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics
     diagnostic = Diagnostic(
         "distributed.one_device_fallback", "warning", reason, message,
         {"requested_devices": requested_devices, "devices_used": 1, "memory": memory},
-        path="fwd_distributed_nu" if entry == "forward" else "run_distributed",
+        path=path if path is not None else ("fwd_distributed_nu" if entry == "forward" else "run_distributed"),
     )
     return result_with_diagnostics(getattr(sim, entry)(**run_kwargs), diagnostics + (diagnostic,))
 
