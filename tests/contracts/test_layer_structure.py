@@ -305,7 +305,7 @@ def test_calibration_from_declaration_and_leader_correction(generated):
 
 def empty_baseline():
     return {"files": {p: {r: [] for r in gate.RULES} for p in gate.FIVE_FILES},
-            "outside": {}}
+            "outside": {}, "reverse": {}}
 
 
 @pytest.fixture
@@ -706,6 +706,8 @@ def test_outside_report_blocks_and_count_order(synthetic, capsys):
     five, outside = output.split("\noutside the layer packages — may only fall, not a 2.0 condition "
                                  "(PI to decide how far 2.0 reaches)\n")
     assert five.startswith("2.0 condition — five files\n")
+    outside, reverse = outside.split("\nreverse imports from layers to callers — may only fall\n")
+    assert reverse == "reverse totals: R=0\n"
     assert outside.splitlines() == [
         "outside rfx/z.py: S=1 M=1", "outside rfx/a.py: S=0 M=1",
         "outside rfx/b.py: S=1 M=0", "outside totals: S=2 M=2",
@@ -1000,3 +1002,157 @@ def test_class_prefix_requires_new_module_class(synthetic, capsys, existing, bod
     else:
         assert output.err == ""
         assert f"renamed: {path} M A.{name} -> B.{name}" in output.out
+
+
+@pytest.mark.parametrize("path,code,entry", [
+    ("rfx/stepping/__init__.py", "def local():\n    from rfx.simulation import X\n", "rfx.simulation:X"),
+    ("rfx/stepping/__init__.py", "from ..progress import Y\n", "rfx.progress:Y"),
+    ("rfx/stepping/nested/example.py", "from ...progress import Y\n", "rfx.progress:Y"),
+    ("rfx/stepping/__init__.py", '_LAZY_EXPORTS = {"Z": "rfx.ringdown"}\n', "rfx.ringdown:Z"),
+], ids=["local", "relative", "nested-relative", "lazy"])
+def test_reverse_mutations_red_then_restored_green(tmp_path, generated, path, code, entry):
+    assert path not in generated["reverse"]
+    original = (REPO / path).read_text() if (REPO / path).exists() else ""
+    write(tmp_path, path, original + "\n" + code)
+    sources = CopiedSources(tmp_path)
+    assert gate.count_file(sources, path) == {"R": [entry]}
+    actual = gate.count(sources)["baseline"]
+    expected = deepcopy(generated)
+    expected["reverse"][path] = {"R": [entry]}
+    assert actual == expected
+    assert gate.violations(actual, generated) == [f"{path} R: unlisted violation {entry}"]
+    write(tmp_path, path, original)
+    restored = gate.count(CopiedSources(tmp_path))["baseline"]
+    assert restored == generated
+    assert gate.violations(restored, generated) == []
+
+
+@pytest.mark.parametrize("code", [
+    "from rfx.core.yee import update_h\n",
+    "from rfx.api._spec import Spec\n",
+    "import rfx.sources.waveguide_port_x\n",
+    '_LAZY_EXPORTS = {"Spec": "rfx.api._spec"}\n',
+    'import importlib\nimportlib.import_module("rfx.simulation")\n',
+])
+def test_reverse_exact_target_controls(tmp_path, generated, code):
+    path = "rfx/stepping/__init__.py"
+    write(tmp_path, path, (REPO / path).read_text() + "\n" + code)
+    assert gate.count_file(CopiedSources(tmp_path), path) == {"R": []}
+    assert gate.count(CopiedSources(tmp_path))["baseline"] == generated
+
+
+@pytest.mark.parametrize("package", gate.LAYERS)
+def test_reverse_all_import_forms_scopes_and_dedup(synthetic, package):
+    path = package.replace(".", "/") + "/example.py"
+    write(synthetic, path, '''
+import rfx.simulation, rfx.progress as progress
+from rfx.api._execute import a, b as alias
+if TYPE_CHECKING:
+    from rfx.nonuniform import c
+class Nested:
+    def local(self):
+        from rfx.api import d
+        from rfx.adjoint import e
+        from rfx.sources.waveguide_port import f
+        import rfx.simulation as sim
+        from rfx.api._execute import a
+_LAZY_EXPORTS: dict = {"tail": "rfx.ringdown", "ignored": dynamic}
+''')
+    entries = ["rfx.adjoint:e", "rfx.api._execute:a", "rfx.api._execute:b", "rfx.api:d",
+               "rfx.nonuniform:c", "rfx.progress", "rfx.ringdown:tail", "rfx.simulation",
+               "rfx.sources.waveguide_port:f"]
+    assert gate.count_file(gate.Sources(synthetic), path) == {"R": entries}
+    assert gate.count(gate.Sources(synthetic))["baseline"]["reverse"] == {path: {"R": entries}}
+
+
+@pytest.mark.parametrize("case", ["adoption", "new", "grow", "stale", "grow-stale", "shrink"])
+def test_reverse_base_adoption_and_ratchet(synthetic, monkeypatch, capsys, case):
+    path = "rfx/stepping/example.py"
+    previous, current = empty_baseline(), empty_baseline()
+    if case == "adoption":
+        del previous["reverse"]
+    else:
+        previous["reverse"][path] = {"R": ["rfx.simulation:old"]}
+    if case in {"adoption", "new", "grow"}:
+        write(synthetic, path, "from rfx.simulation import new\n")
+    if case in {"adoption", "grow", "grow-stale", "stale"}:
+        current["reverse"][path] = {"R": ["rfx.simulation:old" if case == "stale" else "rfx.simulation:new"]}
+    write(synthetic, gate.BASELINE, json.dumps(current))
+    mock_base(monkeypatch, previous)
+
+    def no_renames(*args):
+        pytest.fail("reverse imports must not use RenameMatcher")
+
+    # Empty non-reverse groups also call pairs, so exempt those paths.
+    monkeypatch.setattr(gate.RenameMatcher, "pairs",
+                        lambda self, p, gone, new: no_renames() if p == path else set())
+    assert gate.main(["--repo", str(synthetic), "--base", "base"]) == int(case not in {"adoption", "shrink"})
+    errors = capsys.readouterr().err.splitlines()
+    expected = {
+        "adoption": [], "shrink": [],
+        "new": [f"{path} R: unlisted violation rfx.simulation:new",
+                f"{path} R: new violation against BASE rfx.simulation:new"],
+        "grow": [f"{path} R: new violation against BASE rfx.simulation:new",
+                 f"{path} R: baseline grew against BASE rfx.simulation:new"],
+        "stale": [f"{path} R: stale baseline entry rfx.simulation:old"],
+        "grow-stale": [f"{path} R: stale baseline entry rfx.simulation:new",
+                       f"{path} R: baseline grew against BASE rfx.simulation:new"],
+    }
+    assert errors == expected[case]
+    # Reverting each rejected source/baseline pair is green against the same BASE.
+    if errors:
+        write(synthetic, path, "from rfx.simulation import old\n")
+        write(synthetic, gate.BASELINE, json.dumps(previous))
+        assert gate.main(["--repo", str(synthetic), "--base", "base"]) == 0
+        assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("reverse", [
+    [], {"rfx/simulation.py": {"R": ["x"]}}, {"rfx/stepping_x/a.py": {"R": ["x"]}},
+    {"rfx/stepping/../a.py": {"R": ["x"]}}, {"rfx/stepping//a.py": {"R": ["x"]}},
+    {"rfx/stepping/a.txt": {"R": ["x"]}}, {"rfx/stepping/a.py": {"S": []}},
+    {"rfx/stepping/a.py": {"R": [], "S": []}}, {"rfx/stepping/a.py": {"R": "x"}},
+    {"rfx/stepping/a.py": {"R": ["b", "a"]}}, {"rfx/stepping/a.py": {"R": ["x", "x"]}},
+    {"rfx/stepping/a.py": {"R": [""]}}, {"rfx/stepping/a.py": {"R": [1]}},
+])
+def test_reverse_malformed_baseline_red_then_restored_green(synthetic, monkeypatch, capsys, reverse):
+    invalid = empty_baseline()
+    invalid["reverse"] = reverse
+    write(synthetic, gate.BASELINE, json.dumps(invalid))
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert "layer-structure ratchet failed:" in capsys.readouterr().err
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    assert gate.main(["--repo", str(synthetic)]) == 0
+    assert capsys.readouterr().err == ""
+    mock_base(monkeypatch, invalid)
+    assert gate.main(["--repo", str(synthetic), "--base", "base"]) == 1
+    assert "layer-structure ratchet failed:" in capsys.readouterr().err
+    mock_base(monkeypatch, empty_baseline())
+    assert gate.main(["--repo", str(synthetic), "--base", "base"]) == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_reverse_required_at_head_even_when_empty(synthetic, capsys):
+    legacy = empty_baseline()
+    del legacy["reverse"]
+    assert gate.baseline(json.dumps(legacy).encode()) == legacy
+    write(synthetic, gate.BASELINE, json.dumps(legacy))
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert capsys.readouterr().err == "HEAD baseline must contain reverse\n"
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    assert gate.main(["--repo", str(synthetic)]) == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_reverse_report_order_and_totals(synthetic, capsys):
+    for name, code in [("a", "import rfx.simulation"), ("b", "import rfx.progress"),
+                       ("z", "from rfx.simulation import a, b")]:
+        write(synthetic, f"rfx/stepping/{name}.py", code + "\n")
+    gate.report(gate.count(gate.Sources(synthetic)))
+    outside, reverse = capsys.readouterr().out.split(
+        "\nreverse imports from layers to callers — may only fall\n")
+    assert outside.endswith("outside totals: S=0 M=0\n")
+    assert reverse.splitlines() == [
+        "reverse rfx/stepping/z.py: R=2", "reverse rfx/stepping/a.py: R=1",
+        "reverse rfx/stepping/b.py: R=1", "reverse totals: R=4",
+    ]
