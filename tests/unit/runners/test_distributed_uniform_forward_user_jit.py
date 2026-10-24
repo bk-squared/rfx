@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import GaussianPulse, Simulation
 from tests.unit.runners.test_distributed_uniform_user_jit import (
     N_STEPS, assert_record_matches, record_arrays, record_scene, scene,
 )
@@ -90,7 +90,7 @@ def test_uniform_fallback_user_jit_and_path(kind):
         assert eager.tobytes() == native.tobytes()
 
 
-def test_record_tracer_error_without_port_s_is_not_relabelled(monkeypatch):
+def test_record_tracer_error_without_port_s_is_named_with_its_cause(monkeypatch):
     from rfx.runners._distributed_records import SlabRecords
 
     def broken_record_step(self, buffer, state, dt, step, **kwargs):
@@ -98,11 +98,24 @@ def test_record_tracer_error_without_port_s_is_not_relabelled(monkeypatch):
 
     monkeypatch.setattr(SlabRecords, 'update', broken_record_step)
     sim = record_scene('dft')
-    with pytest.raises(jax.errors.TracerArrayConversionError) as failure:
+    with pytest.raises(NotImplementedError, match='read a traced value on the host') as failure:
         jax.jit(lambda: sim.forward(
             n_steps=N_STEPS, distributed=True, devices=jax.devices('cpu')[:2],
             skip_preflight=True).time_series)()
     assert 'port S-parameters' not in str(failure.value)
+    assert isinstance(failure.value.__cause__, jax.errors.TracerArrayConversionError)
+
+
+def test_fallback_port_s_under_jit_is_refused_by_name():
+    # The one-device fallback runs before the staged port-S refusal, but forward()'s
+    # S-request check refuses every fallback scene (waveguide port or TFSF) with
+    # port_s11_freqs before dispatch (probe 5); a waveguide port with a lumped port here.
+    sim = fallback_scene('waveguide')
+    sim.add_port((.040, .010, .004), 'ez', impedance=50., waveform=GaussianPulse(f0=10e9, bandwidth=.8))
+    with pytest.raises(NotImplementedError, match='waveguide ports use compute_waveguide_s_matrix'):
+        jax.jit(lambda: sim.forward(
+            n_steps=N_STEPS, distributed=True, devices=jax.devices('cpu')[:2], skip_preflight=True,
+            port_s11_freqs=np.array([10e9, 11e9])).s_params)()
 
 
 def test_forward_traced_dft_frequencies_are_refused():
