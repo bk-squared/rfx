@@ -348,6 +348,27 @@ the guide's walls, and both meshes warn or refuse unless they are declared PEC.
 Until this is fixed, solve a partial-aperture port that radiates on a graded
 mesh (a constant `dz_profile` is enough).
 
+### Material placed inside a waveguide port's measurement segment through an override or a design box is not checked.
+
+Tracker: #1994
+
+A rectangular-waveguide port models an empty guide: its mode, cutoff, modal
+impedance and de-embedding assume the medium between its source plane and its
+reference or probe plane is what the port was built for. A face drawn between
+the source plane and the reflection plane is refused by the port span
+preflight; the stretch on to the probe plane and a user `reference_plane` are
+not checked for drawn geometry either. Material put there through
+`eps_override`, `sigma_override` or `forward(design_box=..., design_eps_override=...)`
+is not checked: the run gives no refusal and no warning, and the S-parameters it
+reports are then not the port's S. Measured on a 23.4 × 11.7 mm guide with a
+box of relative permittivity 4 over a port's source plane (uniform mesh,
+8.4–11.6 GHz): the design-box and `eps_override` routes give the same result
+bit for bit, and neither flags the box. A design box or override placed away
+from every port's segment is not affected. Until a check covers these routes,
+keep drawn faces, overrides and design boxes out of the guide section between
+each port's source plane and its reference and probe planes. A traced override over that
+section cannot be judged before the run.
+
 ---
 
 ## Ring-down completion and the early stop
