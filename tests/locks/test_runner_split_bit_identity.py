@@ -674,7 +674,7 @@ def _flatten(obj, prefix, out, missing):
         return
     from rfx.sparams._record_selection import SReadPorts
     if isinstance(obj, SReadPorts):
-        out[f"{key}.ids"] = np.asarray(obj.ids, dtype="<U64")
+        out[f"{key}.ids"] = np.asarray(obj.ids, dtype=str)
         return
     raise TypeError(
         f"{key}: unhandled type {type(obj).__name__} in the runner observable. "

@@ -493,8 +493,9 @@ def _zero_cc_pad(original):
 
 def _mutation_cc():
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(slab_update, "_pad_slab_dispersion_coeffs",
-                      _zero_cc_pad(slab_update._pad_slab_dispersion_coeffs))
+        mutant = _zero_cc_pad(slab_update._pad_slab_dispersion_coeffs)
+        for owner in (slab_update, common):
+            patch.setattr(owner, "_pad_slab_dispersion_coeffs", mutant)
         try:
             _per_shard()
         except AssertionError as error:
