@@ -9,10 +9,12 @@ import argparse
 import ast
 import copy
 import dataclasses
+import difflib
 import importlib
 from pathlib import Path
 import subprocess
 import sys
+import types
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -89,6 +91,11 @@ def ast_check():
             new = function(source(target), name)
             old_normal = Expand().visit(copy.deepcopy(old))
             new_normal = Expand().visit(copy.deepcopy(new))
+            # Display the raw changes before accepting only the designed expansion.
+            print(f"AST DIFF {module}.{name}", flush=True)
+            for line in difflib.unified_diff(ast.unparse(old).splitlines(), ast.unparse(new).splitlines(),
+                                             fromfile="old", tofile="new", n=0, lineterm=""):
+                print(line, flush=True)
             assert ast.dump(old_normal) == ast.dump(new_normal), (module, name)
             old_calls = [ast.unparse(n) for n in ast.walk(old) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "exp"]
             new_calls = [ast.unparse(n) for n in ast.walk(new) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "exp_j"]
@@ -97,15 +104,11 @@ def ast_check():
 
 def pair(module, name):
     current = importlib.import_module(module)
-    old_globals = dict(vars(current))
-    # Old dependencies also execute their old bodies, rather than reusing the moved solve.
-    if module == "rfx.probes.msl_wave_decomp":
-        for dependency in ["_lstsq_alpha_gamma", "_estimate_beta"]:
-            exec(compile(ast.fix_missing_locations(ast.Module([function(source(module, True), dependency)], [])), module, "exec"), old_globals)
-        from rfx._precision import HIGHEST
-        old_globals["HIGHEST"] = HIGHEST
-    exec(compile(ast.fix_missing_locations(ast.Module([function(source(module, True), name)], [])), module, "exec"), old_globals)
-    return old_globals[name], getattr(current, name)
+    old = types.ModuleType(module + "_ports_old")
+    old.__package__ = module.rpartition(".")[0]
+    sys.modules[old.__name__] = old  # dataclass annotation resolution
+    exec(compile(source(module, True), old.__name__, "exec"), vars(old))
+    return getattr(old, name), getattr(current, name)
 
 
 def equal(a, b):
@@ -126,6 +129,7 @@ def equal(a, b):
     else:
         x, y = np.asarray(a), np.asarray(b)
         assert x.shape == y.shape and x.dtype == y.dtype
+        assert np.array_equal(x, y), (x, y)
         assert x.tobytes() == y.tobytes(), (x, y)
 
 
@@ -139,12 +143,46 @@ def measurements():
     import numpy as np
     import jax.numpy as jnp
     from rfx.measurement.phasors import exp_j
-    for xp in (np, jnp):
-        for dtype in (xp.float32, xp.complex64):
+    for xp, dtypes in ((np, (np.float64, np.complex128)), (jnp, (jnp.float32, jnp.complex64))):
+        for dtype in dtypes:
             x = xp.asarray([0.13, -0.7, 1.5], dtype=dtype)
             for unit in (1j, -1j):
                 equal(xp.exp(unit * x * x), exp_j(x, x, unit=unit, xp=xp))
-    print("BITS PASS exp_j: numpy/jax x float32/complex64 x +/-1j", flush=True)
+            equal(xp.exp(1j * x), exp_j(x, xp=xp))
+            print(f"BITS PASS exp_j {xp.__name__} {dtype}: one/two factors, +/-1j", flush=True)
+    # Exercise every original call-site expression, selected from git's old AST.
+    # Each expression is evaluated in a separate old module namespace.
+    for module, names in NAMES.items():
+        if module == "rfx.probes.probes":
+            continue
+        old_fn, _ = pair(module, names[0])
+        for name in names:
+            old = function(source(module, True), name)
+            target = "rfx.measurement.msl_waves" if name == "_lstsq_alpha_gamma" else module
+            new = function(source(target), name)
+            before = [n for n in ast.walk(old) if isinstance(n, ast.Call)
+                      and isinstance(n.func, ast.Attribute) and n.func.attr == "exp"]
+            after = [n for n in ast.walk(new) if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Name) and n.func.id == "exp_j"]
+            if name == "_lstsq_alpha_gamma":
+                continue  # The entire unchanged solve is compared below.
+            assert len(before) == len(after) and before, (module, name)
+            for a, b in zip(before, after):
+                xp = jnp if ast.unparse(a.func).startswith("jnp.") else np
+                if name == "_compute_waveguide_s_matrix_nu":
+                    a = next(n for n in ast.walk(old) if isinstance(n, ast.BinOp) and n.right is a)
+                    b = next(n for n in ast.walk(new) if isinstance(n, ast.BinOp) and n.right is b)
+                for dtype in ((np.float64, np.complex128) if xp is np else (jnp.float32, jnp.complex64)):
+                    x = xp.asarray([0.13, -0.7, 1.5], dtype=dtype)
+                    env = dict(old_fn.__globals__, exp_j=exp_j, beta=x, d_j=0.003,
+                               d_i=-0.002, i=0, j=1, col=0, port_lengths=x,
+                               v2=np.asarray([-37.2, 0., 51.3], np.float64),
+                               S_wave=x.reshape(1, 1, 3), phase=x, mag=xp.abs(x),
+                               delta=xp.asarray(0.001, xp.float32))
+                    evaluate = lambda node: eval(compile(ast.Expression(node), "<original-expression>", "eval"), env)
+                    equal(evaluate(a), evaluate(b))
+                    print(f"BITS PASS {module}.{name} {dtype}: {ast.unparse(a)}", flush=True)
+    print("waveguide: changed mag * exponential in isolation; full function requires a simulation", flush=True)
     for dtype in (np.float32, np.float64):
         for fmt in ("RI", "MA", "DB"):
             check("rfx.io", "_parse_pair", dtype(0.7), dtype(-37.2), fmt)

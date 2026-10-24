@@ -27,8 +27,6 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
-from rfx.measurement.phasors import exp_j
-
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
@@ -41,6 +39,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.measurement.phasors import exp_j
 from rfx.sources.waveguide_port import (
     extract_waveguide_s_matrix,
     extract_waveguide_s_matrix_flux,

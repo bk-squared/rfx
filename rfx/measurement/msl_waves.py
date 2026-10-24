@@ -39,5 +39,3 @@ def _lstsq_alpha_gamma(
     pred = jnp.matmul(a_mat, sol, precision=HIGHEST)
     residual = jnp.sqrt(jnp.sum(jnp.abs(v - pred) ** 2))
     return alpha, gamma, residual
-
-

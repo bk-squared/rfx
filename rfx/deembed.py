@@ -21,9 +21,9 @@ Three methods are implemented:
 
 from __future__ import annotations
 
-from rfx.measurement.phasors import exp_j
-
 import numpy as np
+
+from rfx.measurement.phasors import exp_j
 
 # Speed of light in vacuum (m/s)
 _C0 = 299_792_458.0

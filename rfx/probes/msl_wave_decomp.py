@@ -29,14 +29,13 @@ Absolute ``Z0`` is intentionally omitted (use
 """
 from __future__ import annotations
 
-from rfx.measurement.phasors import exp_j
-
 from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 
 from rfx.measurement.msl_waves import _lstsq_alpha_gamma
+from rfx.measurement.phasors import exp_j
 
 
 @dataclass(frozen=True)

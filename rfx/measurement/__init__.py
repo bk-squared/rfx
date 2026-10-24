@@ -23,6 +23,9 @@ from rfx.measurement.monitors import (
 from rfx.measurement.oblique import (
     reconstruct_oblique_physical,
 )
+from rfx.measurement.phasors import (
+    exp_j,
+)
 from rfx.measurement.plan import (
     build_measurement_plan,
     measurement_plan,
@@ -97,6 +100,7 @@ __all__ = [
     "build_measurement_plan",
     "decay_stop_first",
     "default_frequency_grid",
+    "exp_j",
     "extract_multimode_s_matrix",
     "extract_multimode_s_matrix_flux",
     "extract_waveguide_port_waves",
