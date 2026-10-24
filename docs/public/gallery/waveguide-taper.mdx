@@ -9,6 +9,8 @@ example asks how the section permittivities change the reflected-wave spectrum.
 
 <p data-rfx="note"><strong>Historical design visualization.</strong> These films preserve a presentation-era run. They have not been regenerated with the documentation source revision and do not establish current RF accuracy.</p>
 
+<p data-rfx="note"><strong>The related example is withheld.</strong> Its right-hand port sits inside the εr 9 load. rfx currently models a rectangular-waveguide port as an empty guide (<a href="https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#ports-and-extraction">known limitations, ports and extraction</a>), so that port's S21, S12 and S22 are not the filled guide's. The objective and the reflection curves use only the left-hand port, which sits in vacuum ahead of the taper; in the run that gives that reflection the right-hand port is not driven, and its model does not enter the result. The films come from a run whose source revision is not recorded. Read them for the method, the profile, reflection and sensitivity changing together during gradient descent, and not for the absolute |S11|, which is not validated. The example returns when the port model uses the medium of the guide it sits in.</p>
+
 <figure data-rfx="media">
   <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/taper_traj.jpg" aria-label="Dielectric taper optimization: material profile, reflection and sensitivity">
     <source src="/rfx/gallery/assets/showcase-20260927/taper_traj.mp4" type="video/mp4" />
@@ -45,7 +47,10 @@ The legacy [empty-guide example](/rfx/gallery/waveguide_wr90/) is a different mo
 
 ## Run the related example
 
-In a source checkout matching the linked revision, install the project's example
+The example is withheld until rfx models a waveguide port inside a dielectric
+(see the note above): a waveguide port's S-parameters are the port's own only
+where the guide around it is empty. To inspect the reflection workflow, in a
+source checkout matching the linked revision, install the project's example
 dependencies and run its documented CPU setup:
 
 ```bash
