@@ -297,8 +297,18 @@ class SlabRecords:
             from rfx.farfield import make_ntff_box
             self.ntff_box = make_ntff_box(grid, *sim._ntff)
             self.layouts["ntff"] = SlabNTFF(self.ntff_box, grid.shape, nx_per, mesh, field_dtype)
-        planes = _host_arrays(build_planes(sim, grid, n_steps))
-        flux = _host_arrays(build_flux_monitor_cfgs(sim, grid, n_steps))
+        with jax.ensure_compile_time_eval():
+            planes = build_planes(sim, grid, n_steps)
+            flux = build_flux_monitor_cfgs(sim, grid, n_steps)
+            monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
+        for what, template in (("a DFT plane probe", planes), ("a flux monitor", flux),
+                               ("a current-moment monitor", monitor)):
+            if any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(template)):
+                raise NotImplementedError(
+                    f"{what} on the distributed multi-device path needs concrete monitor arguments "
+                    "(frequencies, positions) inside jax.jit: declare them outside the traced function.")
+        planes = _host_arrays(planes)
+        flux = _host_arrays(flux)
         if any(m.axis == 0 and m.index == 0 for m in flux):
             raise NotImplementedError("x-normal flux at global x index 0 is not supported on the distributed path; use one device")
         if planes:
@@ -306,7 +316,7 @@ class SlabRecords:
         if flux:
             self.layouts["flux"] = PlaneRecords(mesh, flux, grid.shape, nx_per, flux=True,
                 window_from_state=not sim._uses_nonuniform_mesh)
-        self.monitor = _host_arrays(monitor_for_simulation(sim, grid, sim._periodic_flags()))
+        self.monitor = _host_arrays(monitor)
         if self.monitor is not None:
             self.layouts["moments"] = MomentRecords(mesh, self.monitor, nx_per, field_dtype)
         if snapshot is not None:
