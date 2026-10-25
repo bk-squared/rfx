@@ -64,6 +64,97 @@ def test_debye_selects_only_direct_imports(sources, durations):
     }
 
 
+def test_package_directory_selects_geometry_through_top_level_helper():
+    sources = {
+        "tests/unit/geometry/test_x.py": "from tests._fixture import build",
+        "tests/_fixture.py": "from rfx import Simulation\ndef build(): return Simulation()",
+        "tests/unit/rasterize_grid/test_wrong.py": "",
+        "tests/unit/geometry_extra/test_other.py": "",
+    }
+    result = selector.select_tests(["rfx/geometry/rasterize_grid.py"], sources, {
+        "tests/unit/geometry/test_x.py::test_x[a]": 3,
+        "tests/unit/geometry/test_x.py::test_x[b]": 4,
+    })
+    assert result.files == ("tests/unit/geometry/test_x.py",)
+    assert result.selected_seconds == 7
+    assert "package directory tests added: 1 files, recorded 7.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("changed", [
+    "rfx/sources/ports/x.py", "rfx/sources/__init__.py", "rfx/sources/ports/data.json",
+])
+def test_package_directory_uses_first_package_at_any_depth(changed):
+    result = selector.select_tests([changed], {
+        "tests/unit/sources/test_root.py": "",
+        "tests/unit/sources/ports/test_nested.py": "",
+        "tests/unit/ports/test_other.py": "",
+    }, {})
+    assert result.files == (
+        "tests/unit/sources/ports/test_nested.py", "tests/unit/sources/test_root.py",
+    )
+    assert "package directory tests added: 2 files, recorded 0.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("changed", ["rfx/fidelity.py", "rfx/absent/x.py"])
+def test_package_directory_missing_or_top_level_adds_nothing(changed):
+    result = selector.select_tests([changed], {
+        "tests/unit/fidelity/test_x.py": "", "tests/unit/geometry/test_x.py": "",
+    }, {})
+    assert result.files == ()
+    assert "package directory tests added: 0 files, recorded 0.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("edited", [False, True])
+def test_package_directory_budget_excludes_heavy_unless_edited(edited):
+    path = "tests/unit/geometry/test_heavy.py"
+    changed = ["rfx/geometry/rasterize_grid.py"]
+    if edited:
+        changed.append(path)
+    result = selector.select_tests(changed, {
+        path: "", "tests/unit/geometry/test_boundary.py": "",
+    }, {
+        "tests/unit/geometry/test_heavy.py::test_x[a]": 200,
+        "tests/unit/geometry/test_heavy.py::test_x[b]": 201,
+        "tests/unit/geometry/test_boundary.py::test_x": 400,
+    })
+    if edited:
+        assert result.files == (
+            "tests/unit/geometry/test_boundary.py", "tests/unit/geometry/test_heavy.py",
+        )
+        assert result.excluded == {}
+    else:
+        assert result.files == ("tests/unit/geometry/test_boundary.py",)
+        assert result.excluded == {"tests/unit/geometry/test_heavy.py": 401}
+    assert "package directory tests added: 1 files, recorded 400.000000 s" in result.summary()
+
+
+def test_package_directory_never_adds_contracts():
+    result = selector.select_tests([
+        "rfx/geometry/rasterize_grid.py", "rfx/contracts/x.py",
+        "tests/contracts/geometry/test_x.py",
+    ], {
+        "tests/contracts/geometry/test_x.py": "import rfx.geometry.rasterize_grid",
+        "tests/contracts/test_x.py": "from rfx import Simulation",
+        "tests/unit/geometry/test_x.py": "",
+    }, {})
+    assert result.files == ("tests/unit/geometry/test_x.py",)
+
+
+def test_package_directory_summary_counts_only_new_candidates():
+    result = selector.select_tests([
+        "rfx/runners/x.py", "rfx/runners/nested/y.py", "tests/unit/runners/test_edited.py",
+    ], {
+        "tests/unit/runners/test_direct.py": "import rfx.runners.x",
+        "tests/unit/runners/test_edited.py": "",
+        "tests/unit/runners/test_added.py": "",
+    }, {"tests/unit/runners/test_added.py::test_x": 5}, central_paths=True)
+    assert result.files == (
+        "tests/unit/runners/test_added.py", "tests/unit/runners/test_direct.py",
+        "tests/unit/runners/test_edited.py",
+    )
+    assert "package directory tests added: 0 files, recorded 0.000000 s" in result.summary()
+
+
 def test_central_change_adds_runners_and_autodiff_except_over_budget(sources, durations):
     result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
     assert set(result.files) == {

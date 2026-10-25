@@ -31,6 +31,7 @@ CENTRAL_PATHS = (
 )
 CENTRAL_TEST_DIRS = ("tests/unit/runners/", "tests/unit/autodiff/")
 CONTRACT_DIR = "tests/contracts/"
+PACKAGE_TEST_ROOT = "tests/unit/"
 
 
 def is_test_file(path: str) -> bool:
@@ -71,6 +72,8 @@ class Selection:
     not_run_seconds: float
     central_skipped_count: int | None
     central_skipped_seconds: float
+    package_directory_files: int
+    package_directory_seconds: float
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
@@ -83,6 +86,8 @@ class Selection:
         lines = [
             f"selected-tests: {len({item.split('::', 1)[0] for item in self.files})} files, "
             f"recorded {self.selected_seconds:.6f} s",
+            f"package directory tests added: {self.package_directory_files} files, "
+            f"recorded {self.package_directory_seconds:.6f} s",
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"source-scan tests that run: {self.source_scan_run_count} tests, "
@@ -142,6 +147,13 @@ def select_tests(
     central_tests = {path for path in tests if path.startswith(CENTRAL_TEST_DIRS)}
     if central_changed and central_paths:
         candidates.update(central_tests)
+    package_test_dirs = tuple(sorted({
+        f"{PACKAGE_TEST_ROOT}{parts[1]}/"
+        for path in changed
+        if path.startswith("rfx/") and len(parts := PurePosixPath(path).parts) > 2
+    }))
+    package_added = {path for path in tests if path.startswith(package_test_dirs)} - candidates
+    candidates.update(package_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
     totals: dict[str, float] = defaultdict(float)
     for nodeid, seconds in durations.items():
@@ -151,6 +163,7 @@ def select_tests(
         if totals[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
     }
     selected = candidates - excluded.keys()
+    package_added &= selected
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
@@ -197,6 +210,7 @@ def select_tests(
         len(not_run), sum(not_run),
         len(central_tests) if central_changed and not central_paths else None,
         sum(totals[path] for path in sorted(central_tests)),
+        len(package_added), sum(totals[path] for path in sorted(package_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),
