@@ -115,9 +115,9 @@ on periodic axes). Non-Box films retain their existing admission rule. Surface-i
 Tracker: #1966
 
 The high-side boundary-node repair now covers assembled static dielectric, conductivity and magnetic material,
-and DC film coverage. It leaves dispersive columns unchanged under the #808 gate: promoting their static
-permittivity without their poles would create an undeclared material. Pole extension remains excluded after
-the #627b stability failure.
+and DC film coverage. It leaves dispersive columns unchanged: promoting their static permittivity without
+their poles would create an undeclared material, and extending the poles into a boundary node is excluded
+after an earlier stability failure.
 
 Measured on assembled arrays with a Debye box (epsilon infinity 4, delta epsilon 3) occupying one z cell
 and reaching the high-y PMC wall: the wall node's cell permittivity is 1, the Ex static edge permittivity
