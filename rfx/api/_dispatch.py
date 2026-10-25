@@ -113,12 +113,16 @@ def _dispatch_plan(
     self._require_no_half_node_split()
     is_nonuniform = self._uses_nonuniform_mesh
 
+    if distributed or (devices is not None and len(devices) > 1):
+        from rfx.runners._admission import refuse_distributed_sources
+        refuse_distributed_sources(self, f"{mode}_distributed" + ("_nu" if is_nonuniform else ""))
+
     if self._tfsf is not None:
         from rfx.sources.sources import CustomWaveform
         extended_tfsf = (self._tfsf.closed_box
                          or isinstance(self._tfsf.waveform, CustomWaveform))
         if extended_tfsf and (
-            is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+            is_nonuniform
             or self._refinement is not None or self._mode != "3d"
             or self._solver != "yee" or self._stencil_order != 2
         ):
@@ -246,10 +250,7 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     # Distributed graded meshes share forward's NU runner and staging.
-    # Features solved on one device (one_device_reason) skip the sharded
-    # grading admission, as forward() does; the rest is checked here.
-    from rfx.runners.distributed_v2 import one_device_reason
-    if distributed_run and is_nonuniform and not one_device_reason(self):
+    if distributed_run and is_nonuniform:
         import warnings as _wmod
         # Grading ratio check (shared single dt) across provided profiles.
         _max_ratio = 1.0

@@ -354,19 +354,10 @@ def forward_from_materials(
             'current_moment_data', 'current_moment_monitor')})
 
 
-def dispatch_forward(self, *, plan, _solve_assembly, _call_args, fallback_only=False):
-    """Try the full-domain fallback before distributed-only admission fences."""
-    from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
-    if reason := one_device_reason(self):
-        diagnostics = _solve_assembly.diagnostics
-        del _solve_assembly
-        devices = _call_args["devices"]
-        return run_on_one_device(
-            self, {**_call_args, "distributed": False, "devices": None, "skip_preflight": True},
-            reason=reason, requested_devices=len(jax.devices() if devices is None else devices),
-            diagnostics=diagnostics, entry="forward")
-    if fallback_only:
-        return None
+def dispatch_forward(self, *, plan, _solve_assembly, _call_args):
+    """Refuse unsupported sources before the graded execution fences."""
+    from rfx.runners._admission import refuse_distributed_sources
+    refuse_distributed_sources(self, "fwd_distributed_nu")
     from rfx.api._gradient_witness import with_conductivity_record
     from rfx.materials.thin_conductor import refuse_f0_sheets
     refuse_f0_sheets(self._thin_conductors,

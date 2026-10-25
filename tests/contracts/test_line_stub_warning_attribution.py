@@ -48,20 +48,3 @@ def test_entry_stacklevel_warning_is_attributed_to_caller(method):
             sys.settrace(previous)
     warning, = caught
     assert warning.filename == __file__, (method, warning.filename, warning.lineno)
-
-
-def test_run_rerun_arguments_exclude_the_private_read_scope(monkeypatch):
-    """The devices= fallback reuses captured public arguments, never scope state."""
-    sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
-
-    class CapturedArguments(Exception):
-        pass
-
-    def admission(*args):
-        captured = sys._getframe(1).f_locals['_call_args']
-        assert captured.keys() == inspect.signature(sim.run).parameters.keys()
-        raise CapturedArguments
-
-    monkeypatch.setattr('rfx.api._execute._line_stub_admit', admission)
-    with pytest.raises(CapturedArguments):
-        sim.run(n_steps=1)

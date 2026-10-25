@@ -40,7 +40,7 @@ Test inventory (V3 plan §Phase 1 Tolerance Contract):
     |   the minimal-reproducer xfail sentinel is no longer needed.
   1 | test_forward_distributed_flag_requires_multi_device          | E/API
   3 | test_forward_distributed_admits_uniform_mesh                | E/API
-  4 | test_forward_distributed_falls_back_for_tfsf_on_nu_path             | E/API
+  4 | test_forward_distributed_refuses_tfsf_on_nu_path             | E/API
   5 | test_forward_distributed_requested_devices_gt_available_raises| E/API
   6 | test_forward_distributed_devices_without_distributed_flag_raises| E/API
   7 | test_forward_distributed_pec_two_device_matches_single_device_small_case | B
@@ -195,8 +195,8 @@ def test_forward_distributed_admits_uniform_mesh():
     assert np.isfinite(np.asarray(result.time_series)).all()
 
 
-def test_forward_distributed_falls_back_for_tfsf_on_nu_path():
-    """TFSF uses the same one-device graded forward program."""
+def test_forward_distributed_refuses_tfsf_on_nu_path():
+    """Graded multi-device TFSF is refused by name."""
     devices = _require_two_devices()
 
     from rfx import Simulation
@@ -211,10 +211,8 @@ def test_forward_distributed_falls_back_for_tfsf_on_nu_path():
         direction="+x",
     )
 
-    expected = sim.forward(n_steps=4)
-    with pytest.warns(UserWarning, match="Falling back to single-device"):
-        actual = sim.forward(n_steps=4, distributed=True, devices=devices)
-    assert np.array_equal(actual.time_series, expected.time_series)
+    with pytest.raises(NotImplementedError, match="TFSF.*graded multi-device"):
+        sim.forward(n_steps=4, distributed=True, devices=devices)
 
 
 def test_forward_distributed_requested_devices_gt_available_raises():

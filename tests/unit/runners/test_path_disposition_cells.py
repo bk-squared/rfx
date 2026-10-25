@@ -240,10 +240,11 @@ def _guide(lane, on, ref=False):
 
 
 def _plane_wave(lane, on, ref=False):
-    sim = _simulation(lane, (24, 6, 6), ref=ref, boundary="cpml")
+    closed = lane in {"run_distributed", "fwd_distributed"}
+    sim = _simulation(lane, (24, 12, 14) if closed else (24, 6, 6), ref=ref, boundary="cpml")
     if on:
-        sim.add_tfsf_source(f0=5e9, bandwidth=0.5, margin=3)
-    sim.add_probe(mm(14, 3, 3), "ez")
+        sim.add_tfsf_source(f0=5e9, bandwidth=0.5, margin=3, closed_box=closed)
+    sim.add_probe(mm(14, 5, 6) if closed else mm(14, 3, 3), "ez")
     if lane == "run_subgridded" and not ref:
         # #1465: explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")

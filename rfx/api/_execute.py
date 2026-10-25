@@ -1561,12 +1561,6 @@ class _ExecuteMixin:
                 subpixel_smoothing=subpixel_smoothing, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
                 checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
                 emit_time_series=emit_time_series, ringdown=ringdown)
-        if plan.lane == "fwd_distributed_nu":
-            from rfx.runners._distributed_nu_execute import dispatch_forward
-            fallback = dispatch_forward(self, plan=plan, _solve_assembly=_solve_assembly,
-                                        _call_args=_call_args, fallback_only=True)
-            if fallback is not None:
-                return fallback
         checkpoint = True if checkpoint is None else checkpoint
         # No forward lane (and so no optimize()) applies Dey-Mittra weights.
         self._refuse_conformal_boundary(
@@ -2063,11 +2057,7 @@ class _ExecuteMixin:
         -------
         Result
         """
-        # The caller's arguments as given, before anything below resolves them:
-        # a devices= model that runs on one device is re-run with all of them.
         self._resolve_field_dtype()
-        _call_args = dict(locals())
-        del _call_args["self"]
         admit_traced_run(self, until_decay, decay_max_steps)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
@@ -2166,7 +2156,7 @@ class _ExecuteMixin:
             from rfx.runners._distributed_entry import execute_distributed
             return execute_distributed(
                 self, plan=plan, _solve_assembly=_solve_assembly,
-                _diagnostics=_diagnostics, _call_args=_call_args,
+                _diagnostics=_diagnostics,
                 n_steps=n_steps, num_periods=num_periods, devices=devices,
                 exchange_interval=exchange_interval, skip_preflight=skip_preflight,
                 compute_s_params=compute_s_params, s_param_freqs=s_param_freqs,

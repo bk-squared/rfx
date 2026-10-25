@@ -7,23 +7,20 @@ Replaces the pmap-based distributed.py with the modern JAX sharding API:
 
 Uses 1D slab decomposition along the x-axis with ghost cell exchange via
 lax.ppermute inside shard_map.  Supports PEC and CPML boundaries, soft
-sources, point probes, lumped ports, and dispersive materials
-(Debye / Lorentz / Drude).
+sources, closed-box TF/SF plane waves, point probes, lumped ports, and
+dispersive materials (Debye / Lorentz / Drude).
 
 A direct one-device call uses the same ``shard_map`` path on a one-device mesh.
-The TFSF/modal-port fallback refuses extra keyword arguments and non-None
-``_source_port_indices`` or ``_record_probes`` instead of dropping them.
+Unsupported TF/SF kinds and waveguide ports are refused before stepping.
 
 Declared PEC volumes, sheets and sub-cell wires share the conductor object's
 edge masks. Each slab applies only owned rows after source injection and
 before E ghost exchange; the high-side slab owns a seam node plane.
 ``Simulation.run(devices=...)`` routes here only for ``len(devices) > 1``.
 
-Known limitations (transparent single-device fallback):
-- TFSF plane-wave sources: require full-domain field injection, not
-  compatible with slab decomposition.  Detected and warned at runtime.
-- Waveguide / Floquet ports: modal decomposition needs the full
-  cross-section on one device.  Detected and warned at runtime.
+Source limitations (named refusals, without a one-device reroute):
+- Open-slab TF/SF needs periodic y/z, which this lane does not implement.
+- Method B, the 2-D Bloch line, face-record replay and modal ports do not run.
 - Non-divisible nx: automatically padded to nearest multiple of n_devices
   with PEC-filled cells, then trimmed after gathering.
 
@@ -454,38 +451,6 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         )
 
 
-def one_device_reason(sim):
-    """Name the feature that needs the full domain on one device."""
-    if sim._tfsf is not None:
-        return "TFSF plane-wave sources"
-    if sim._waveguide_ports:
-        return "waveguide ports"
-    return None
-
-
-def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics, entry="run"):
-    """Run the full-domain fallback and record the requested and used devices."""
-    import warnings
-
-    from rfx._diagnostic_transport import result_with_diagnostics
-    from rfx.diagnostic_records import Diagnostic
-
-    memory = ("the whole domain is held on one device; peak memory is that of a "
-              "one-device run, not divided over the requested devices")
-    message = (
-        f"Distributed runner does not yet support {reason}. "
-        "Falling back to single-device execution with the same arguments. "
-        + memory
-    )
-    warnings.warn(message, stacklevel=3)
-    diagnostic = Diagnostic(
-        "distributed.one_device_fallback", "warning", reason, message,
-        {"requested_devices": requested_devices, "devices_used": 1, "memory": memory},
-        path="fwd_distributed_nu" if entry == "forward" else "run_distributed",
-    )
-    return result_with_diagnostics(getattr(sim, entry)(**run_kwargs), diagnostics + (diagnostic,))
-
-
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
@@ -495,7 +460,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     records the per-path disposition of every Simulation attribute;
     ``tests/unit/runners/test_path_disposition_cells.py`` enforces it.
 
-    Call after the TFSF and waveguide single-device fallbacks, before sharding.
+    Call before sharding.
     ``bloch`` also accepts an explicit phase from a direct caller.
     """
     single_device_hint = (
@@ -505,6 +470,8 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         if lane == "distributed multi-device forward()"
         else "call sim.run(...) without devices= instead of calling this runner"
     )
+    from rfx.runners._admission import refuse_distributed_sources
+    refuse_distributed_sources(sim, lane)
     forward = lane == "distributed multi-device forward()"
     refuse_distributed_periodic(sim, lane=lane, bloch=bloch)
 
@@ -591,10 +558,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     CPML boundaries, soft sources, point probes, lumped ports, and
     Debye/Lorentz dispersive materials.
 
-    TFSF sources and waveguide ports warn and fall back to one device;
-    that fallback refuses extra keyword arguments and non-None
-    ``_source_port_indices`` or ``_record_probes``. Excited wire ports
-    without radius or reference planes run.
+    Closed-box TFSF runs on slabs. Other TFSF sources and waveguide ports
+    are refused before stepping. Excited wire ports without radius or
+    reference planes run.
 
     Parameters
     ----------
@@ -621,33 +587,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, result_with_diagnostics
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
-    from rfx.sources.tfsf import _refuse_extended_tfsf
-    _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
-
-    # ------------------------------------------------------------------
-    # Graceful fallback for features that require the full domain on a
-    # single device.
-    # ------------------------------------------------------------------
-    reason = one_device_reason(sim)
-    if reason is not None:
-        if _source_port_indices is not None or _record_probes is not None or kwargs:
-            raise NotImplementedError(
-                f"Distributed runner does not yet support {reason}; "
-                "the one-device run cannot honour those arguments "
-                "(_source_port_indices, _record_probes, or keyword arguments)."
-            )
-        # The nested run builds its own solve product; release the one
-        # built for this call's preflight first.
-        assembly = None
-        return run_on_one_device(
-            sim, {"n_steps": n_steps, **({"snapshot": snapshot} if snapshot is not None else {})}, reason=reason,
-            requested_devices=len(jax.devices() if devices is None else devices),
-            diagnostics=diagnostics,
-        )
 
     refuse_unsupported_distributed_features(
         sim,
@@ -656,8 +599,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         diagnostics=diagnostics,
     )
 
-    # Only now, past the single-device fallbacks above: those return through
-    # ``sim.run()``, which DOES accumulate the monitor.
     from rfx.runners._distributed_records import refuse_record_options
     refuse_record_options(sim, kwargs)
 
@@ -737,7 +678,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
     # Every declared input this lane does not carry is refused here, after
-    # the single-device fallbacks (judged on the lane they fall back to) and
     # the specific refusals above, and before the first step.
     from rfx.runners._admission import admit
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
@@ -1130,6 +1070,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
     from ._distributed_records import SlabRecords
     records = SlabRecords(sim, grid, nx_per, mesh, sharded_state.ex.dtype, n_steps, snapshot)
+    from rfx.stepping import slab_tfsf
+    tfsf_cfg, tfsf_line, tfsf_tables = slab_tfsf.prepare(sim, grid, n_steps, layout, mesh)
 
     # ------------------------------------------------------------------
     # Step function (operates on sharded arrays)
@@ -1151,14 +1093,14 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        cpml_params_arg, pec_mask_arg, e_materials,
+        cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg,
         *, ranks,
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
 
         Stage order (#1041)::
 
-            H -> CPML-H -> exch H -> PMC face -> E -> CPML-E
+            H -> TF/SF-H -> CPML-H -> exch H -> PMC face -> E -> TF/SF-E -> CPML-E
               -> sources -> PEC face -> PEC mask -> exch E -> probes
 
         The E ghost exchange is the LAST stage of the E half-step, so a
@@ -1184,6 +1126,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         # 1. H update
         st = _update_h_shmap(st, materials_arg, ranks=ranks)
+        st, incident = slab_tfsf.apply_h(
+            st, carry["tfsf"], tfsf_tables_arg[0], tfsf_cfg, mesh, ranks=ranks)
 
         # 2. CPML H correction (material-aware, #205)
         st, cpml_st = _apply_cpml_h_shmap(
@@ -1203,6 +1147,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             st, materials_arg,
             debye_coeffs_arg, db_st,
             lorentz_coeffs_arg, lr_st, e_materials, ranks=ranks)
+        st, incident = slab_tfsf.apply_e(
+            st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
         # 5. CPML E correction (material-aware, #205), with the permittivity
         #    the E update just used (#1043): each component's edge mean.
@@ -1270,20 +1216,21 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         updated = {"fdtd": st, "cpml": cpml_st,
                    "debye": db_st, "lorentz": lr_st}
+        updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
         return updated, probe_out
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        pec_mask_arg, e_materials,
+        pec_mask_arg, e_materials, tfsf_tables_arg,
         *, ranks,
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
 
         Stage order (#1041)::
 
-            H -> exch H -> PMC face -> E -> sources -> PEC face
+            H -> TF/SF-H -> exch H -> PMC face -> E -> TF/SF-E -> sources -> PEC face
               -> PEC mask -> exch E -> probes
 
         Same invariant as ``step_fn_cpml``: the E ghost exchange is last,
@@ -1303,6 +1250,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         # 1. H update
         st = _update_h_shmap(st, materials_arg, ranks=ranks)
+        st, incident = slab_tfsf.apply_h(
+            st, carry["tfsf"], tfsf_tables_arg[0], tfsf_cfg, mesh, ranks=ranks)
 
         # 2. Exchange H ghost cells
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
@@ -1316,6 +1265,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             st, materials_arg,
             debye_coeffs_arg, db_st,
             lorentz_coeffs_arg, lr_st, e_materials, ranks=ranks)
+        st, incident = slab_tfsf.apply_e(
+            st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -1364,6 +1315,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         probe_out = _sample_probes_shmap(st, ranks=ranks)
 
         updated = {"fdtd": st, "debye": db_st, "lorentz": lr_st}
+        updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
         return updated, probe_out
@@ -1389,10 +1341,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
+        carry_init["tfsf"] = tfsf_line
         carry_init["records"] = records.initial()
         def _run_cpml(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-            cpml_params_arg, pec_mask_arg,
+            cpml_params_arg, pec_mask_arg, tfsf_tables_arg,
             *, ranks,
         ):
             e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
@@ -1401,7 +1354,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 lambda scan_carry, scan_inputs: step_fn_cpml(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    cpml_params_arg, pec_mask_arg, e_materials,
+                    cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg,
                     ranks=ranks,
                 ),
                 carry,
@@ -1419,7 +1372,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         final_carry, probe_ts = run_fn(
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
-            cpml_params, sharded_pec_mask,
+            cpml_params, sharded_pec_mask, tfsf_tables,
             ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
     else:
@@ -1428,10 +1381,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
+        carry_init["tfsf"] = tfsf_line
         carry_init["records"] = records.initial()
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-            pec_mask_arg,
+            pec_mask_arg, tfsf_tables_arg,
             *, ranks,
         ):
             e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
@@ -1440,7 +1394,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 lambda scan_carry, scan_inputs: step_fn_pec(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    pec_mask_arg, e_materials,
+                    pec_mask_arg, e_materials, tfsf_tables_arg,
                     ranks=ranks,
                 ),
                 carry,
@@ -1458,7 +1412,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         final_carry, probe_ts = run_fn(
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
-            sharded_pec_mask,
+            sharded_pec_mask, tfsf_tables,
             ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
 
