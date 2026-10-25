@@ -8,6 +8,8 @@ from typing import Any
 
 import jax
 
+from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory, plan_checkpoint_lengths
+
 from rfx.api._ad_memory_model import (
     tape_accounting, segment_counts, tape_warning, validate_counts, face_record_resident_bytes,
 )
@@ -37,6 +39,14 @@ from rfx.api._validators import (
 
 
 AD_MEMORY_FIT_SAFETY_FACTOR = 1.15
+
+
+def _checkpoint_param(name, value):
+    if isinstance(value, tuple):
+        if name == "checkpoint_segments":
+            raise ValueError("AD memory checkpoint_segments must be an int; use checkpoint_every for levels")
+        return checkpoint_lengths(value)
+    return _require_integral_param(name, value)
 
 
 AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES = (
@@ -182,7 +192,7 @@ class _AdMemoryMixin:
         n_steps: int,
         *,
         available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
         design_box: object | None = None,
@@ -211,12 +221,12 @@ class _AdMemoryMixin:
         checkpoint_every_i = (
             None
             if checkpoint_every is None
-            else _require_integral_param("checkpoint_every", checkpoint_every)
+            else _checkpoint_param("checkpoint_every", checkpoint_every)
         )
         checkpoint_segments_i = (
             None
             if checkpoint_segments is None
-            else _require_integral_param("checkpoint_segments", checkpoint_segments)
+            else _checkpoint_param("checkpoint_segments", checkpoint_segments)
         )
         avail_gb = (
             None
@@ -228,11 +238,14 @@ class _AdMemoryMixin:
 
         validate_counts(n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         accounting = self._ad_memory_static_accounting()
+        segmented = checkpoint_segments_i is not None or checkpoint_every_i is not None
+        if isinstance(checkpoint_every_i, tuple):
+            segmented = checkpoint_every_i[0] < n_steps_i - n_warmup_i
         model = tape_accounting(
             self, accounting, design_box=design_box, design=design,
             checkpoint=checkpoint, distributed=distributed, n_steps=n_steps_i,
             checkpoint_every=checkpoint_every_i, checkpoint_segments=checkpoint_segments_i, n_warmup=n_warmup_i,
-            segmented=checkpoint_segments_i is not None or checkpoint_every_i is not None)
+            segmented=segmented)
         forward_bytes = accounting["forward_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes  # legacy heuristic
@@ -284,6 +297,14 @@ class _AdMemoryMixin:
         warning = tape_warning(model, checkpoint=checkpoint,
                                segments=segmented_active_segments,
                                live=segmented_live_tape_steps, active=active_steps)
+        if isinstance(checkpoint_every_i, tuple):
+            memory = checkpoint_memory(active_steps,
+                checkpoint_every_i if checkpoint_every_i[0] < active_steps else None,
+                boundary_bytes=model["carry_bytes"], step_bytes=model["tape_step_bytes"],
+                static_bytes=model["c0_bytes"])
+            warning = " ".join(filter(None, (warning,
+                f"Checkpoint lengths {memory.lengths}: {memory.levels} levels, "
+                f"{memory.forward_passes} forward passes (estimate).")))
         if memory_limit_unknown and avail_gb is None:
             warning = " ".join(filter(None, (
                 "The device memory limit cannot be read on this backend; "
@@ -323,7 +344,7 @@ class _AdMemoryMixin:
 
     def explain_ad_memory(
         self, n_steps: int, *, available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None, checkpoint_segments: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None, checkpoint_segments: int | None = None,
         n_warmup: int = 0, design_box: object | None = None,
         design: str = "permittivity", checkpoint: bool = True, distributed: bool = False,
     ) -> ADMemoryExplainabilityReport:
@@ -407,12 +428,19 @@ class _AdMemoryMixin:
         design: str = "permittivity",
         checkpoint: bool = True,
         distributed: bool = False,
+        max_levels: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
     ) -> ADMemoryPlan:
         """Compare full AD with segmented candidates using checkpoint=True.
 
         The selected plan returns the checkpoint flag it assumes. Uniform
         candidates are divisors, in ascending K order, retaining the smallest
         fitting K; graded candidates retain the smallest fitting chunk.
+        On graded single-device meshes, ``max_levels`` enables the nested
+        length planner, preferring fewer levels; None keeps the original
+        one-level search. ``checkpoint_every`` evaluates an explicit int or
+        tuple candidate. The selected estimate reports active lengths,
+        levels and forward passes without changing result fields.
         A box also tries the window-only, unsegmented checkpoint=False lane.
         A non-fitting result is diagnostic, never permission to launch.
         plan_ad_memory promises XLA's requirement (memory_analysis:
@@ -427,8 +455,16 @@ class _AdMemoryMixin:
         The fixed term is GPU-calibrated, so a CPU plan is not a fit guarantee;
         plan_ad_memory traces twice and ad_memory_preflight up to four times;
         closed-box plans additionally trace each candidate's representation.
+        Nested planning also traces the segmented carry and selected lengths.
         """
         available = _require_positive_finite_scalar("available_memory_gb", available_memory_gb)
+        graded = any(p is not None for p in (self._dx_profile, self._dy_profile, self._dz_profile))
+        if max_levels is not None:
+            max_levels = _require_integral_param("max_levels", max_levels)
+            if max_levels < 1:
+                raise ValueError("max_levels must be >= 1")
+            if not graded or distributed:
+                raise ValueError("max_levels requires the graded single-device path; uniform/distributed are unsupported")
         fraction = _require_positive_finite_scalar("target_fraction", target_fraction)
         safety = _require_positive_finite_scalar("safety_factor", safety_factor)
         if fraction > 1:
@@ -468,13 +504,30 @@ class _AdMemoryMixin:
                 checkpoint_segments=estimate.checkpoint_segments, checkpoint_mode=mode,
                 checkpoint=estimate.checkpoint, fit_safety_factor=safety,
                 selected_estimate=estimate, full_ad_fits=full_fits, segmented_fits=segmented_fits,
-                recommendation=f"{advice}; estimate {_format_memory_with_safety(memory, safety)}, target {_format_memory_gb(target)}")
+                recommendation=f"{advice}; estimate {_format_memory_with_safety(memory, safety)}, target {_format_memory_gb(target)}"
+                + (f"; {estimate.warning}" if isinstance(estimate.checkpoint_every, tuple) else ""))
 
+        if checkpoint_every is not None:
+            estimate = self.estimate_ad_memory(n, available_memory_gb=available,
+                n_warmup=warmup, checkpoint=True, checkpoint_every=checkpoint_every, **options)
+            return result(estimate, segmented_fits=estimate.modelled and estimate.ad_segmented_gb * safety <= target)
         if not full.modelled:
             return result(full)
         if full.ad_full_gb * safety <= target:
             return result(full, full_fits=True)
-        graded = any(p is not None for p in (self._dx_profile, self._dy_profile, self._dz_profile))
+        if max_levels is not None:
+            accounting = self._ad_memory_static_accounting()
+            model = tape_accounting(self, accounting, design_box=design_box, design=design,
+                checkpoint=True, segmented=True, distributed=distributed, n_steps=n,
+                checkpoint_every=1, n_warmup=warmup)
+            extra = accounting["sheet_bytes"] + accounting["ntff_bytes"] + model["resident_bytes"]
+            plan = plan_checkpoint_lengths(n - warmup, boundary_bytes=model["carry_bytes"],
+                step_bytes=model["tape_step_bytes"], static_bytes=model["c0_bytes"],
+                budget_bytes=target * 1e9 / safety - extra, max_levels=max_levels)
+            estimate = self.estimate_ad_memory(n, available_memory_gb=available,
+                n_warmup=warmup, checkpoint=True, checkpoint_every=plan.lengths, **options)
+            peak = estimate.ad_segmented_gb if plan.lengths else estimate.ad_full_gb
+            return result(estimate, segmented_fits=bool(plan.lengths) and peak * safety <= target)
         candidates = range(1, n + 1) if graded else _positive_divisors(n)
         least = None
         for knob in sorted(candidates):
@@ -724,7 +777,7 @@ class _AdMemoryMixin:
         n_steps: int,
         available_memory_gb: float,
         target_fraction: float = 0.85,
-        checkpoint_every: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
         design_box: object | None = None,
@@ -752,12 +805,12 @@ class _AdMemoryMixin:
         checkpoint_every_i = (
             None
             if checkpoint_every is None
-            else _require_integral_param("checkpoint_every", checkpoint_every)
+            else _checkpoint_param("checkpoint_every", checkpoint_every)
         )
         checkpoint_segments_i = (
             None
             if checkpoint_segments is None
-            else _require_integral_param("checkpoint_segments", checkpoint_segments)
+            else _checkpoint_param("checkpoint_segments", checkpoint_segments)
         )
         available_memory_gb_f = _require_positive_finite_scalar(
             "available_memory_gb",

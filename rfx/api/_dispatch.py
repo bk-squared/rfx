@@ -158,6 +158,8 @@ def _dispatch_plan(
             )
 
     if mode == "forward":
+        if isinstance(checkpoint_segments, tuple):
+            raise ValueError("forward checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
         def _fwd_nu_n_steps() -> int:
             return self._nu_n_steps(num_periods)
 

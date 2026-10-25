@@ -24,7 +24,7 @@ class AD_MemoryEstimate(NamedTuple):
     available_gb: float | None
     warning: str | None
     ad_segmented_gb: float | None = None
-    checkpoint_every: int | None = None
+    checkpoint_every: int | tuple[int, ...] | None = None
     checkpoint_segments: int | None = None
     ad_active_steps: int | None = None
     ad_segmented_active_segments: int | None = None
