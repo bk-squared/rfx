@@ -6,7 +6,9 @@ Usage: python scripts/ci/merge_test_durations.py OUT_PATH SHARD_JSON [SHARD_JSON
 Every input is a {nodeid: seconds} map written by ``pytest --store-durations``.
 The output holds exactly the union of the measured nodeids (later inputs win on
 duplicates), sorted, so the committed file lists what the lanes actually run
-and nothing that no longer exists.
+and nothing that no longer exists. Prices are rounded to two significant figures
+(``round_price``): a re-measurement then rewrites only the tests whose price really
+moved, and no positive price becomes 0, which pytest-split would place at no cost.
 
 It prints each input's test count and summed seconds. Compare each shard's sum with the pytest
 session time its job log reports (the ``= ... in Ns =`` line): a shard well short of it has lost
@@ -14,6 +16,11 @@ a phase, most often a setup or teardown over 600 s, which ``--store-durations`` 
 """
 import json
 import sys
+
+
+def round_price(seconds: float) -> float:
+    """Two significant figures; a positive price stays positive."""
+    return float(f"{seconds:.2g}")
 
 
 def main(argv: list[str]) -> int:
@@ -27,7 +34,7 @@ def main(argv: list[str]) -> int:
             part = json.load(f)
         if not isinstance(part, dict):
             raise SystemExit(f"{path}: not a nodeid->seconds map")
-        merged.update({k: float(v) for k, v in part.items()})
+        merged.update({k: round_price(float(v)) for k, v in part.items()})
         print(f"{path}: {len(part)} tests, {sum(part.values()):.1f} s")
     with open(out, "w") as f:
         json.dump(dict(sorted(merged.items())), f, indent=4, sort_keys=True)
