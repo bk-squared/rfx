@@ -141,12 +141,6 @@
         "deembed_port_extension"
       ]
     },
-    "rfx/differentiable_material_fit.py": {
-      "S": [],
-      "M": [
-        "differentiable_material_fit"
-      ]
-    },
     "rfx/farfield.py": {
       "S": [],
       "M": [

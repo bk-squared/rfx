@@ -68,7 +68,7 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
+from rfx.measurement.dft import probe_spectrum
 import numpy as np
 
 from rfx.materials.debye import DebyePole, init_debye
@@ -586,18 +586,8 @@ def differentiable_material_fit(
         # Use probe time series and compute S-params from voltage/current DFTs
         ts = result.time_series  # (n_steps, n_probes)
 
-        # Compute DFT of probe time series at target frequencies
-        times = jnp.arange(n_steps) * dt
-        # (n_steps, n_freqs)
-        phase_matrix = jnp.exp(
-            -1j * 2.0 * jnp.pi * jnp.array(freqs)[None, :] * times[:, None]
-        ) * dt
-
-        if ts.ndim == 1:
-            ts = ts[:, None]
-
         # S_raw ~ DFT of probe signals, shape (n_probes, n_freqs) complex
-        s_raw = jnp.dot(ts.T.astype(jnp.complex64), phase_matrix, precision=HIGHEST)
+        s_raw = probe_spectrum(ts, freqs, dt)
 
         # Probe spectra -> diagonal S-proxy under the selected mode
         # (issue #580; the pure helper carries the unit-tested arithmetic)

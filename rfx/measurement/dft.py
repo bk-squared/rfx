@@ -248,3 +248,21 @@ def half_step_current_phase(freqs: jnp.ndarray, dt: float) -> jnp.ndarray:
 half_step_current_phase.__annotations__ = {
     "freqs": "jnp.ndarray", "dt": "float", "return": "jnp.ndarray",
 }
+
+
+def probe_spectrum(ts, freqs, dt):
+    """Probe spectra using the material-fit floating-time phase and complex64 dot."""
+    from rfx._precision import HIGHEST
+
+    # Compute DFT of probe time series at target frequencies
+    times = jnp.arange(ts.shape[0]) * dt
+    # (n_steps, n_freqs)
+    phase_matrix = jnp.exp(
+        -1j * 2.0 * jnp.pi * jnp.array(freqs)[None, :] * times[:, None]
+    ) * dt
+
+    if ts.ndim == 1:
+        ts = ts[:, None]
+
+    # S_raw ~ DFT of probe signals, shape (n_probes, n_freqs) complex
+    return jnp.dot(ts.T.astype(jnp.complex64), phase_matrix, precision=HIGHEST)
