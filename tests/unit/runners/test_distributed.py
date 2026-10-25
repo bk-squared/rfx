@@ -686,7 +686,7 @@ class TestDistributedSources:
             self.scene(False).run(n_steps=50, devices=jax.devices()[:_N_MULTI])
 
     def test_closed_tfsf_slab_produces_valid_signal(self):
-        result = self.scene(True).run(n_steps=50, devices=jax.devices()[:_N_MULTI])
+        result = self.scene(True).run(n_steps=50, devices=jax.devices()[:2])
         assert result.time_series.shape[0] == 50
         assert np.max(np.abs(result.time_series)) > 0
         assert all(d.code != "distributed.one_device_fallback" for d in result.diagnostics)
@@ -694,9 +694,19 @@ class TestDistributedSources:
     def test_closed_tfsf_slab_matches_single_device(self):
         sim = self.scene(True)
         one = sim.run(n_steps=50)
-        multi = sim.run(n_steps=50, devices=jax.devices()[:_N_MULTI])
+        multi = sim.run(n_steps=50, devices=jax.devices()[:2])
         np.testing.assert_allclose(multi.time_series, one.time_series, atol=1e-6,
                                    err_msg="TF/SF slabs differ from single-device")
+
+    @pytest.mark.parametrize("entry", ["run", "forward"])
+    def test_closed_tfsf_on_three_devices_refused_by_name(self, entry):
+        if len(jax.devices()) < 3:
+            pytest.skip("requires 3 devices")
+        kw = dict(n_steps=50, devices=jax.devices()[:3])
+        if entry == "forward":
+            kw["distributed"] = True
+        with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
+            getattr(self.scene(True), entry)(**kw)
 
     def test_waveguide_port_refused_by_name(self):
         sim = Simulation(freq_max=10e9, domain=(.13, .04, .04), boundary="cpml")

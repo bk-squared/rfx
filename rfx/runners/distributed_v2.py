@@ -607,6 +607,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     if devices is None:
         devices = jax.devices()
     n_devices = len(devices)
+    from rfx.runners._admission import refuse_slab_tfsf_devices
+    refuse_slab_tfsf_devices(sim._tfsf, n_devices)
     # The multi-process path is needed only when the mesh holds a device
     # this process cannot address: the final fields must be gathered across
     # hosts, and non-uniform grids are not supported across processes.

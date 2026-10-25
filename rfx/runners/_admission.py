@@ -1086,6 +1086,21 @@ def refuse_slab_tfsf(entry, lane="uniform multi-device"):
     raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
 
 
+#: Device counts a closed-box TF/SF has been validated on (rfx-lead L:5446b5): one seam is measured
+#: (PEC sphere backscatter vs Mie, far field vs one device, the right-Hx ghost invariant); two seams
+#: and a box face on a seam are not.
+SLAB_TFSF_MAX_DEVICES = 2
+
+
+def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
+    """Refuse a closed-box TF/SF on more devices than its multi-seam validation covers."""
+    if entry is not None and getattr(entry, "closed_box", False) and n_devices > SLAB_TFSF_MAX_DEVICES:
+        raise NotImplementedError(
+            f"closed-box TFSF (add_tfsf_source(closed_box=True)) on {n_devices} devices is not supported on "
+            f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (one seam); 3 or more wait for "
+            f"the multi-seam validation (two seams, a box face on a seam). Use devices=jax.devices()[:2] or one device")
+
+
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
