@@ -375,9 +375,12 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
 def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
 
-    The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
-    and the opposite ghosts are dead: local ghost updates are overwritten
-    by the next live exchange before a real cell can consume them.
+    The second-order Yee H curl reads only these two x-neighbours.
+    Observers have additional reads: NTFF y/z faces read the RIGHT Hx
+    ghost. It is valid because every admitted H writer updates that ghost
+    like the owner's row, except closed-box TF/SF, whose module explicitly
+    sends the corrected owner Hx. Admission of another owner-only H writer
+    requires its own ghost-invariant test at the NTFF read.
 
     Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
 

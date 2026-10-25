@@ -82,6 +82,12 @@ LANE_WORDS = {
 
 _PEC_SIGMA = 1e6   # Simulation._PEC_SIGMA_THRESHOLD
 
+# An owner-only H writer must supply the right Hx ghost consumed by NTFF.
+# Extend this inventory when admitting one (including a magnetic source or
+# lumped element); the adjacent admission tests require a collected invariant
+# witness for every name. Curl/CPML-H already update the ghost like its owner.
+SLAB_OWNER_ONLY_H_WRITERS = ("closed_box_tfsf",)
+
 
 # ----------------------------------------------------------------- helpers
 
