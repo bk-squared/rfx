@@ -801,6 +801,15 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
     pec_edges = conductors.pec_edges
+    if sim._tfsf is not None and sim._tfsf.closed_box:
+        from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
+        from rfx.sources.tfsf_discrete_plane_wave import box_bounds
+        # Final whole-grid operands, after port stamping/PEC release, before
+        # cutting slabs or preparing the incident line. Both public entries
+        # share this runner. Other operator families are refused by admission.
+        validate_realized_vacuum_boundary(
+            sim, grid, materials, box_bounds(grid.shape, grid.cpml_layers, sim._tfsf.margin),
+            pec_edge_masks=pec_edges, debye_spec=debye_spec, lorentz_spec=lorentz_spec)
     del conductors, base_materials
     # Create state directly on its owning devices and stage materials one
     # addressable slab at a time, without whole-domain slab stacks.

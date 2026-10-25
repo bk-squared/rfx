@@ -482,3 +482,74 @@ def test_uniform_user_jit_refuses_port_s(request_s):
     if not request_s:
         # The refusal is for the staged request only: the same call made directly still measures S.
         assert call() is not None
+
+
+def _closed_box_scene(**angles):
+    sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001,
+                     boundary="cpml", cpml_layers=4, snap="declared")
+    sim.add_tfsf_source(f0=7.5e9, closed_box=True, margin=3, **angles)
+    sim.add_probe((.015, .009, .008), "ez")
+    return sim
+
+
+def _closed_box_execute(sim, entry, count):
+    options = dict(n_steps=4)
+    if count > 1:
+        options["devices"] = _devices()[:count]
+    if entry == "forward":
+        options.update(distributed=count > 1, checkpoint=False)
+    return getattr(sim, entry)(**options)
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_closed_box_late_sheet_face_refusal_matches_one_device(entry):
+    """A declaration-time cell check cannot see a later realized PEC sheet."""
+    errors = []
+    for count in (1, 2):
+        sim = _closed_box_scene()
+        # x=3 mm is the low TF face (CPML padding is outside physical coords).
+        sim.add_thin_conductor(Box((.003, .006, .006), (.003, .010, .010)))
+        with pytest.raises(ValueError, match="closed_box TFSF requires vacuum on and adjacent to all six faces") as exc:
+            _closed_box_execute(sim, entry, count)
+        errors.append(exc.value)
+    assert type(errors[0]) is type(errors[1])
+    assert str(errors[0]) == str(errors[1])
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("count", [1, 2])
+def test_closed_box_late_sheet_inside_runs(entry, count):
+    sim = _closed_box_scene()
+    sim.add_thin_conductor(Box((.012, .006, .006), (.012, .010, .010)))
+    result = _closed_box_execute(sim, entry, count)
+    assert result.time_series.shape == (4, 1)
+    assert np.isfinite(result.time_series).all()
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("angles", [dict(theta_deg=30.), dict(phi_deg=30.)])
+def test_oblique_closed_box_refused_only_on_slabs(entry, angles):
+    sim = _closed_box_scene(polarization="s", **angles)
+    one = _closed_box_execute(sim, entry, 1)
+    assert one.time_series.shape == (4, 1)
+    with pytest.raises(NotImplementedError, match="oblique closed-box TFSF.*theta_deg or phi_deg"):
+        _closed_box_execute(sim, entry, 2)
+
+
+@pytest.mark.parametrize("angles", [dict(theta_deg=30.), dict(phi_deg=30.)])
+def test_realized_oblique_closed_box_refused(angles):
+    from rfx.runners._admission import refuse_slab_tfsf
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim = _closed_box_scene(polarization="s", **angles)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4)
+    with pytest.raises(NotImplementedError, match="oblique closed-box TFSF"):
+        refuse_slab_tfsf(cfg)
+
+
+def test_closed_box_device_limit_without_mesh():
+    from types import SimpleNamespace
+    from rfx.runners._admission import refuse_slab_tfsf_devices
+    declaration = SimpleNamespace(closed_box=True)
+    refuse_slab_tfsf_devices(declaration, 2)
+    with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
+        refuse_slab_tfsf_devices(declaration, 3)

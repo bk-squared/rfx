@@ -189,10 +189,15 @@ def test_d4_declaration_refusals(kind):
 
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
-def test_d4_multidevice_refused_at_execution_declaration(entry):
-    sim = scene()
-    kwargs = {'devices': [jax.devices()[0]] * 2} if entry == 'run' else {'distributed': True}
-    with pytest.raises(NotImplementedError, match='single-device'):
+def test_d4_oblique_multidevice_refused_at_execution_declaration(entry):
+    sim = scene(theta=30)
+    devices = jax.devices('cpu')[:2]
+    if len(devices) < 2:
+        pytest.skip("requires two host devices")
+    kwargs = dict(devices=devices)
+    if entry == 'forward':
+        kwargs['distributed'] = True
+    with pytest.raises(NotImplementedError, match='oblique closed-box TFSF'):
         getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
 
 

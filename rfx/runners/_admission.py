@@ -1079,6 +1079,10 @@ def refuse_slab_tfsf(entry, lane="uniform multi-device"):
         kind = "TFSF Method B oblique (is_tfsf_methodB)"
     elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
         kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
+    elif getattr(entry, "closed_box", False) and (
+        getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
+    ):
+        kind = "oblique closed-box TFSF (theta_deg or phi_deg != 0)"
     elif not getattr(entry, "closed_box", False):
         kind = "open-slab normal-incidence TFSF (periodic y/z is not on slabs)"
     else:

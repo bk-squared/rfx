@@ -200,7 +200,18 @@ def test_new_input_is_never_dropped_on_unsupported_lanes(entry, kind, lane):
     if lane in ("nonuniform", "distributed_nu"):
         params["dz_profile"] = [0.001] * 14
     sim = Simulation(**params)
-    with pytest.raises(NotImplementedError, match="CustomWaveform and closed_box"):
+    if lane == "distributed" and kind == "box":
+        devices = jax.devices("cpu")[:2]
+        if len(devices) < 2:
+            pytest.skip("requires two host devices")
+        sim.add_tfsf_source(closed_box=True)
+        options = dict(devices=devices)
+        if entry == "forward":
+            options.update(distributed=True, checkpoint=False)
+        getattr(sim, entry)(n_steps=2, skip_preflight=True, **options)
+        return
+    with pytest.raises(NotImplementedError, match=(
+            "open-slab" if lane == "distributed" else "CustomWaveform and closed_box|graded multi-device")):
         sim.add_tfsf_source(closed_box=kind == "box", waveform=(
             CustomWaveform(lambda t: jnp.sin(t * 1e11)) if kind == "custom"
             else "differentiated_gaussian"))
@@ -209,9 +220,9 @@ def test_new_input_is_never_dropped_on_unsupported_lanes(entry, kind, lane):
         kwargs = dict(n_steps=2, skip_preflight=True)
         if lane in ("distributed", "distributed_nu"):
             if entry == "run":
-                kwargs["devices"] = [jax.devices()[0]] * 2
+                kwargs["devices"] = jax.devices("cpu")[:2]
             else:
-                kwargs["distributed"] = True
+                kwargs.update(distributed=True, devices=jax.devices("cpu")[:2])
         getattr(sim, entry)(**kwargs)
 
 
@@ -234,13 +245,18 @@ def test_custom_source_refuses_decay_without_source_off_contract():
 @pytest.mark.parametrize("runner", ("nonuniform", "distributed", "subgridded"))
 def test_direct_runner_calls_cannot_bypass_source_admission(runner):
     sim = _sim()
+    if runner == "distributed":
+        from rfx.runners.distributed_v2 import run_distributed
+        devices = jax.devices("cpu")[:2]
+        if len(devices) < 2:
+            pytest.skip("requires two host devices")
+        result = run_distributed(sim, n_steps=2, devices=devices)
+        assert np.isfinite(np.asarray(result.state.ez)).all()
+        return
     with pytest.raises(NotImplementedError, match="CustomWaveform and closed_box"):
         if runner == "nonuniform":
             from rfx.runners.nonuniform import run_nonuniform_path
             run_nonuniform_path(sim, n_steps=2)
-        elif runner == "distributed":
-            from rfx.runners.distributed_v2 import run_distributed
-            run_distributed(sim, n_steps=2)
         else:
             from rfx.runners.subgridded import run_subgridded_path
             run_subgridded_path(sim, None, None, None, 2)

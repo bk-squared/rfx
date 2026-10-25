@@ -625,27 +625,13 @@ def run_uniform(
     # builder.
     sheet_ctx = conductors.sheet_context(pec_edge_masks)
     if sim._tfsf is not None and sim._tfsf.closed_box:
-        nonvacuum = list(pec_edge_masks or ())
-        # These operators can replace the scalar material/PEC update.
-        # Check what they actually apply, including conformal PEC's path
-        # that deliberately removes pec_mask after building its weights.
-        for arrays in (aniso_eps, aniso_inv_eps, conformal_weights):
-            if arrays is not None:
-                nonvacuum.extend(value != 1.0 for value in arrays)
-        for spec in (debye_spec, lorentz_spec):
-            if spec is not None:
-                nonvacuum.extend(spec[1])
-        if kerr_chi3 is not None:
-            nonvacuum.append(kerr_chi3)
-        if sheet_ctx is not None:
-            nonvacuum.extend((sheet_ctx.mask_ex, sheet_ctx.mask_ey, sheet_ctx.mask_ez))
-        if rlc_metas:
-            mask = jnp.zeros(grid.shape, dtype=bool)
-            for meta in rlc_metas:
-                mask = mask.at[meta.i, meta.j, meta.k].set(True)
-            nonvacuum.append(mask)
-        sim._validate_tfsf_vacuum_boundary(
-            materials, tfsf[0], nonvacuum_masks=tuple(nonvacuum))
+        from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
+        validate_realized_vacuum_boundary(
+            sim, grid, materials, tfsf[0], pec_edge_masks=pec_edge_masks,
+            aniso_eps=aniso_eps, aniso_inv_eps=aniso_inv_eps,
+            conformal_weights=conformal_weights, debye_spec=debye_spec,
+            lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3, sheet_ctx=sheet_ctx,
+            rlc_indices=((m.i, m.j, m.k) for m in (rlc_metas or ())))
 
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.

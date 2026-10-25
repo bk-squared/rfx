@@ -37,6 +37,47 @@ OPERAND_RULES["tfsf_injection_planes"] = {
 }
 
 
+def validate_realized_vacuum_boundary(
+    sim, grid, materials, cfg, *, pec_edge_masks=None, aniso_eps=None,
+    aniso_inv_eps=None, conformal_weights=None, debye_spec=None,
+    lorentz_spec=None, kerr_chi3=None, sheet_ctx=None, rlc_indices=(),
+    extra_masks=(), design_regions=(),
+):
+    """Check the whole-grid operators each lane actually hands to its step.
+
+    Forward also supplies PEC occupancy and design regions; run supplies
+    conformal weights and both anisotropic arrays. Keep those lane-specific
+    operands explicit rather than replacing one lane's list with another's.
+    """
+    import jax.numpy as jnp
+
+    nonvacuum = list(pec_edge_masks or ())
+    for arrays in (aniso_eps, aniso_inv_eps, conformal_weights):
+        if arrays is not None:
+            nonvacuum.extend(value != 1.0 for value in arrays)
+    for spec in (debye_spec, lorentz_spec):
+        if spec is not None:
+            nonvacuum.extend(spec[1])
+    if kerr_chi3 is not None:
+        nonvacuum.append(kerr_chi3)
+    if sheet_ctx is not None:
+        nonvacuum.extend((sheet_ctx.mask_ex, sheet_ctx.mask_ey, sheet_ctx.mask_ez))
+    indices = tuple(rlc_indices)
+    if indices:
+        mask = jnp.zeros(grid.shape, dtype=bool)
+        for index in indices:
+            mask = mask.at[index].set(True)
+        nonvacuum.append(mask)
+    nonvacuum.extend(mask for mask in extra_masks if mask is not None)
+    for spec in design_regions:
+        if spec is not None:
+            b = spec.bounds
+            window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                           for d in range(3))
+            nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+    sim._validate_tfsf_vacuum_boundary(materials, cfg, nonvacuum_masks=tuple(nonvacuum))
+
+
 def validate_source_boundary(sim, *, closed_box):
     """Addendum 5c does not admit the previously unsupported UPML source."""
     if any(token == "upml" for _, _, token in sim._boundary_spec.faces()):

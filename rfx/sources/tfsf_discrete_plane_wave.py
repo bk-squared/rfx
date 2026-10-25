@@ -79,6 +79,9 @@ class PlaneWaveConfig:
     face_record: object = None
     face_gathers: tuple = ()
     record_faces: bool = False
+    # Preserve the requested angles for lane admission after realization.
+    theta_deg: float = 0.0
+    phi_deg: float = 0.0
 
     def __getattr__(self, name):
         if name in {a + side for a in "xyz" for side in ("_lo", "_hi")}:
@@ -254,7 +257,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                           float(source_p), dx, dt, ca, cb, ch, amplitude, tau, t0, f0,
                           "custom" if custom is not None else waveform, custom,
                           tuple(w._replace(nodes=(w.nodes - origin).astype(np.int32))
-                                for w in windows), sigma, q1)
+                                for w in windows), sigma, q1,
+                          theta_deg=theta_deg, phi_deg=phi_deg)
     fields = [jnp.zeros(n_nodes, dtype) for _ in range(6)]
     return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
 
@@ -457,7 +461,7 @@ def validate_declaration(sim, theta, phi, tol, cap, pol, direction, angle, wavef
         raise NotImplementedError("closed_box requires normal incidence angle_deg=0; use theta_deg/phi_deg")
     if (sim._uses_nonuniform_mesh or sim._refinement is not None or sim._mode != "3d"
             or sim._solver != "yee" or sim._stencil_order != 2):
-        raise NotImplementedError("CustomWaveform and closed_box TFSF require a uniform, single-device, "
+        raise NotImplementedError("CustomWaveform and closed_box TFSF require a uniform, "
                                   "3D second-order Yee run/forward with no subgrids")
     if any(token != "cpml" for _, _, token in sim._boundary_spec.faces()):
         raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")

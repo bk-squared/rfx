@@ -391,7 +391,8 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_floquet_ports", "scan_angle"): Feature(_floquet_cell(30.0)),
     ("_lumped_rlc", "R"): _plus(lambda s, _: s.add_lumped_rlc(mm(6, 6, 6), "ez", R=10.0)),
     ("_lumped_rlc", "series_RL"): _plus(lambda s, _: s.add_lumped_rlc(mm(6, 6, 6), "ez", R=10.0, L=1e-9)),
-    ("_tfsf", "plane_wave"): Feature(_plane_wave),
+    ("_tfsf", "plane_wave"): Feature(
+        _plane_wave, variant=lambda lane: "closed" if lane in {"run_distributed", "fwd_distributed"} else ""),
     ("_refinement", "slab"): Feature(_refinement, parity=False),
     ("_boundary", "cpml"): _boundary({"boundary": "cpml"}, adi_layers=4,
                                      boundary={lane: ("cpml", "adi") for lane in ADI}),

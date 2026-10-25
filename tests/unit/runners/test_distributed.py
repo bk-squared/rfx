@@ -691,12 +691,37 @@ class TestDistributedSources:
         assert np.max(np.abs(result.time_series)) > 0
         assert all(d.code != "distributed.one_device_fallback" for d in result.diagnostics)
 
-    def test_closed_tfsf_slab_matches_single_device(self):
+    def _closed_tfsf_probe_parity(self, entry):
+        import sys
         sim = self.scene(True)
-        one = sim.run(n_steps=50)
-        multi = sim.run(n_steps=50, devices=jax.devices()[:2])
-        np.testing.assert_allclose(multi.time_series, one.time_series, atol=1e-6,
-                                   err_msg="TF/SF slabs differ from single-device")
+        # Cover the incident pulse, including its peak at the central probe.
+        steps = 600
+        options = {"checkpoint": False} if entry == "forward" else {}
+        one = getattr(sim, entry)(n_steps=steps, **options)
+        options.update(devices=jax.devices()[:2])
+        if entry == "forward":
+            options["distributed"] = True
+        multi = getattr(sim, entry)(n_steps=steps, **options)
+        reference = np.asarray(one.time_series)
+        actual = np.asarray(multi.time_series)
+        assert actual.shape == reference.shape == (steps, 1)
+        assert np.isfinite(reference).all() and np.isfinite(actual).all()
+        peak = float(np.max(np.abs(reference)))
+        peak_step = int(np.argmax(np.abs(reference[:, 0]))) + 1
+        difference = float(np.max(np.abs(actual - reference)))
+        assert peak > 0
+        ratio = difference / peak
+        print(f"TF/SF {entry}: steps={steps}, peak_step={peak_step}, peak={peak:.12g}, "
+              f"first_50_peak={np.max(np.abs(reference[:50])):.12g}, "
+              f"max_abs={difference:.12g}, ratio={ratio:.12g}, bar=1e-5", file=sys.stderr)
+        assert 50 < peak_step < steps
+        assert difference <= 1e-5 * peak, f"TF/SF {entry} probe ratio {ratio} > 1e-5"
+
+    def test_closed_tfsf_slab_matches_single_device(self):
+        self._closed_tfsf_probe_parity("run")
+
+    def test_closed_tfsf_slab_forward_matches_single_device(self):
+        self._closed_tfsf_probe_parity("forward")
 
     @pytest.mark.parametrize("entry", ["run", "forward"])
     def test_closed_tfsf_on_three_devices_refused_by_name(self, entry):

@@ -227,9 +227,12 @@ def test_unsupported_forward_lane_still_refuses_under_grad(lane, source):
                 design_eps_override=p * jnp.ones((4, 4, 4))).time_series)
 
         jax.grad(objective)(jnp.float32(P0))
-    assert str(exc.value) == (
-        "CustomWaveform and closed_box TFSF require a uniform, single-device, "
-        "3D second-order Yee run/forward with no subgrids")
+    if lane == "distributed":
+        assert ("open-slab" if source == "custom" else "design_box") in str(exc.value)
+    else:
+        assert str(exc.value) == (
+            "CustomWaveform and closed_box TFSF require a uniform, "
+            "3D second-order Yee run/forward with no subgrids")
 
 
 @pytest.fixture(scope="module")

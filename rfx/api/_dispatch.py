@@ -127,7 +127,7 @@ def _dispatch_plan(
             or self._solver != "yee" or self._stencil_order != 2
         ):
             raise NotImplementedError(
-                "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+                "CustomWaveform and closed_box TFSF require a uniform, "
                 "3D second-order Yee run/forward with no subgrids")
         if self._tfsf.closed_box and any(
             getattr(getattr(self._boundary_spec, axis), side) != "cpml"

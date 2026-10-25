@@ -28,7 +28,7 @@ UPML = (
     "implement UPML."
 )
 CLOSED_GRADED = (
-    "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+    "CustomWaveform and closed_box TFSF require a uniform, "
     "3D second-order Yee run/forward with no subgrids"
 )
 
