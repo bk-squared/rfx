@@ -198,8 +198,16 @@ def test_port_planes_and_theta_window_sit_on_declared_coordinates(sims, dx):
         diff = ov - base
         assert np.all(diff[i_lo:i_hi] == 1.0) and np.all(diff[:i_lo] == 0.0) and np.all(diff[i_hi:] == 0.0)
         if dut == "slab":
-            # The base must carry the slab itself: eps_r=4 on the slab's own cells.
-            assert int((base == F.SLAB_EPS_R).sum()) == 144 * s ** 3
+            # The base must carry the slab itself: eps_r=4 on the slab's own cells
+            # inside the guide. The last y and z index is the high PEC wall's node,
+            # which the high-wall node repair (#1966) fills with the slab too; its
+            # edges lie in the PEC face and carry no field.
+            assert int((base[:, :-1, :-1] == F.SLAB_EPS_R).sum()) == 144 * s ** 3
+            wall = np.zeros(base.shape, dtype=bool)
+            wall[:, -1, :] = wall[:, :, -1] = True
+            assert np.all(base[i_lo:i_hi][wall[i_lo:i_hi]] == F.SLAB_EPS_R)
+            n_wall = 4 * s * ((9 * s + 1) * (4 * s + 1) - 36 * s ** 2)
+            assert int((base == F.SLAB_EPS_R).sum()) == 144 * s ** 3 + n_wall
 
     # The shifted plane pair and the DUT faces are multiples of the coarse cell.
     for x in (F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M, *F.PEC_SHORT_X_M, *F.SLAB_X_M,
