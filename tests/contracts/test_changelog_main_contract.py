@@ -1,7 +1,6 @@
 """Main and release trees must contain only numbered changelog fragments."""
 
 import importlib.util
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -9,6 +8,7 @@ import sys
 import pytest
 
 from tests._git_tracked import git_available
+from tests._changelog_context import allow_topic_fragments
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -29,7 +29,7 @@ def topic_fragment_problems(fragment_dir: Path) -> list[str]:
 
 
 def test_no_topic_fragments_on_main():
-    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+    if allow_topic_fragments():
         pytest.skip("topic fragments are allowed before the merge train lands a pull request")
     assert topic_fragment_problems(REPO / "changelog.d") == []
 
@@ -52,18 +52,33 @@ def test_post_landing_tree_without_rename_is_reported(tmp_path):
     ]
 
 
-@pytest.mark.parametrize("event", [None, "push", "merge_group", "workflow_dispatch", "pull_request"])
-def test_main_contract_skips_only_pull_requests(tmp_path, monkeypatch, event):
+@pytest.mark.parametrize("event,base,context,lenient", [
+    (None, "main", None, False), ("", "main", None, False),
+    (None, "main", "pre-landing", True), ("", "main", "pre-landing", True),
+    (None, "main", "other", False),
+    ("push", "main", "pre-landing", False),
+    ("merge_group", "main", "pre-landing", False),
+    ("workflow_dispatch", "main", "pre-landing", False),
+    ("pull_request", "main", None, True),
+    ("pull_request", "feature/base", None, True),
+    ("pull_request", "release", "pre-landing", False),
+    ("pull_request", "release/2.0", "pre-landing", False),
+    ("pull_request", "release-next", "pre-landing", False),
+])
+def test_main_contract_pre_landing_policy(tmp_path, monkeypatch, event, base, context, lenient):
     (tmp_path / "changelog.d").mkdir()
     (tmp_path / "changelog.d/unrenamed.fixed.md").write_text("### Fixed — value (#PR)\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "REPO", tmp_path)
-    if event is None:
-        monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
-    else:
-        monkeypatch.setenv("GITHUB_EVENT_NAME", event)
-    if event == "pull_request":
+    for name, value in (("GITHUB_EVENT_NAME", event), ("GITHUB_BASE_REF", base),
+                        ("RFX_CHANGELOG_CONTEXT", context)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    if lenient:
         with pytest.raises(pytest.skip.Exception, match="before the merge train lands"):
             test_no_topic_fragments_on_main()
     else:
-        with pytest.raises(AssertionError):
+        with pytest.raises((AssertionError, pytest.skip.Exception)) as failure:
             test_no_topic_fragments_on_main()
+        assert isinstance(failure.value, AssertionError), "strict contexts must not skip the contract"

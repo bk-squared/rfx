@@ -155,6 +155,8 @@ def transform_topic_tree(repo: Path, tree: str, merge_base: str, sha: str, numbe
         targets.add(target)
         if target in entries:
             raise ValueError(f"changelog target already exists: {target}")
+        if source not in entries:
+            raise ValueError(f"topic fragment missing from merge tree: {source}")
         mode, kind, oid = entries[source]
         if kind != "blob" or mode not in {"100644", "100755"}:
             raise ValueError(f"topic fragment is not a regular file: {source}")

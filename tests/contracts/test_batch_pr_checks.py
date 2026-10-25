@@ -296,6 +296,18 @@ def test_topic_destination_collision_is_rejected(tmp_path):
     assert_rejected(batch.run(), "changelog target already exists: changelog.d/11.fixed.md")
 
 
+def test_topic_missing_from_merge_tree_is_a_validation_error(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    import check_batch
+
+    batch = topic_batch(tmp_path)
+    # The base tree predates the member's added topic fragment.
+    with pytest.raises(ValueError, match=f"topic fragment missing from merge tree: {TOPIC_PATH}"):
+        check_batch.transform_topic_tree(
+            batch.repo, batch.base, batch.base, batch.shas[11], 11,
+        )
+
+
 def test_two_topics_of_one_type_are_rejected(tmp_path):
     batch = Batch(tmp_path, member_changes={11: {
         TOPIC_PATH: TOPIC_CONTENT, "changelog.d/another-fix.fixed.md": TOPIC_CONTENT,

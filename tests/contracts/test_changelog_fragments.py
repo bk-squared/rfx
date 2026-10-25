@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from tests._git_tracked import git_available
+from tests._changelog_context import allow_topic_fragments
 
 REPO = Path(__file__).resolve().parents[2]
 ASSEMBLER_PATH = REPO / "scripts" / "changelog" / "assemble.py"
@@ -86,14 +86,21 @@ def test_iter_fragments_and_validate_all_refuse_topics(workspace):
     assert (workspace / "CHANGELOG.md").read_text(encoding="utf-8") == SYNTHETIC
 
 
-@pytest.mark.parametrize("event,base,accepted", [
-    (None, None, False), ("push", "main", False), ("merge_group", "main", False),
-    ("pull_request", "main", True), ("pull_request", "feature/base", True),
-    ("pull_request", "release", False), ("pull_request", "release/2.0", False),
-    ("pull_request", "release-next", False),
+@pytest.mark.parametrize("event,base,context,accepted", [
+    (None, None, None, False), ("", None, None, False),
+    (None, None, "pre-landing", True), ("", None, "pre-landing", True),
+    (None, None, "other", False),
+    ("push", "main", "pre-landing", False),
+    ("merge_group", "main", "pre-landing", False),
+    ("workflow_dispatch", "main", "pre-landing", False),
+    ("pull_request", "main", None, True), ("pull_request", "feature/base", None, True),
+    ("pull_request", "release", "pre-landing", False),
+    ("pull_request", "release/2.0", "pre-landing", False),
+    ("pull_request", "release-next", "pre-landing", False),
 ])
-def test_checkout_topic_policy(workspace, monkeypatch, event, base, accepted):
-    for name, value in (("GITHUB_EVENT_NAME", event), ("GITHUB_BASE_REF", base)):
+def test_checkout_topic_policy(workspace, monkeypatch, event, base, context, accepted):
+    for name, value in (("GITHUB_EVENT_NAME", event), ("GITHUB_BASE_REF", base),
+                        ("RFX_CHANGELOG_CONTEXT", context)):
         if value is None:
             monkeypatch.delenv(name, raising=False)
         else:
@@ -254,6 +261,54 @@ def test_check_accepts_valid_fragments(workspace: Path):
     assert rc == 0
 
 
+@pytest.mark.parametrize("flags,accepted", [
+    (["--check", "--allow-topic"], True),
+    (["--check"], False),
+    ([], False),
+    (["--allow-topic"], False),
+    (["--dry-run", "--allow-topic"], False),
+    (["--release", "2.0.0"], False),
+    (["--release", "2.0.0", "--allow-topic"], False),
+    (["--release", "2.0.0", "--check", "--allow-topic"], False),
+])
+def test_cli_topic_validation_is_check_only(workspace, capsys, flags, accepted):
+    directory = workspace / "changelog.d"
+    _write_fragments(workspace, [(3, "fixed", "Fixed")])
+    (directory / "correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    assert assemble.main([
+        "--changelog", str(workspace / "CHANGELOG.md"), "--fragments", str(directory), *flags,
+    ]) == int(not accepted)
+    output = capsys.readouterr()
+    if accepted:
+        assert output.out == "changelog fragments OK (2 pending)\n"
+        assert output.err == ""
+    else:
+        assert "only the train may land it" in output.err
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    assert (workspace / "CHANGELOG.md").read_text(encoding="utf-8") == SYNTHETIC
+
+
+@pytest.mark.parametrize("name,text", [
+    ("correct-value.fixed.md", "### Fixed — value (#77)\n"),
+    ("correct-value.fixed.md", "### Fixed — value\n\n- Body (#PR).\n"),
+    ("correct-value.fixed.md", "### Added — value (#PR)\n"),
+    ("correct-value.fixed.md", "### Fixed - value (#PR)\n"),
+    ("correct-value.fixed.md", "### Fixed — value (#PR)\n\n## Forged section\n"),
+    ("ab.fixed.md", TOPIC_TEXT),
+    ("correct-value.unknown.md", TOPIC_TEXT),
+    ("correct-value.fixed.txt", TOPIC_TEXT),
+    ("12.fixed.md", TOPIC_TEXT),
+])
+def test_check_allow_topic_still_validates_fragments(workspace, name, text):
+    directory = workspace / "changelog.d"
+    (directory / name).write_text(text, encoding="utf-8")
+    assert assemble.main([
+        "--changelog", str(workspace / "CHANGELOG.md"), "--fragments", str(directory),
+        "--check", "--allow-topic",
+    ]) == 1
+
+
 @pytest.mark.parametrize("name", [
     "abc.fixed.md",          # no number
     "12.wrong.md",           # unknown type
@@ -311,26 +366,8 @@ def test_refuses_a_changelog_without_an_unreleased_heading(workspace: Path):
 
 
 def validate_checkout_fragments(fragment_dir: Path) -> list[str]:
-    """Topic fragments are valid only in a non-release pull-request checkout."""
-    if (os.environ.get("GITHUB_EVENT_NAME") != "pull_request"
-            or os.environ.get("GITHUB_BASE_REF", "").startswith("release")):
-        return assemble.validate_all(fragment_dir)
-    problems = []
-    for path in sorted(fragment_dir.iterdir()):
-        if not path.is_file() or path.name == "README.md":
-            continue
-        if path.suffix != ".md":
-            problems.append(f"{path.name}: fragments must be .md files")
-            continue
-        validate = (
-            assemble.validate_topic_fragment_text if assemble.TOPIC_NAME_RE.fullmatch(path.name)
-            else assemble.validate_fragment_text
-        )
-        try:
-            validate(path.name, assemble.read_text(path)[0])
-        except assemble.FragmentError as exc:
-            problems.append(str(exc))
-    return problems
+    """Validate topic fragments only in an explicit pre-landing context."""
+    return assemble.validate_all(fragment_dir, allow_topic=allow_topic_fragments())
 
 
 def test_the_repo_changelog_and_fragments_are_currently_valid():

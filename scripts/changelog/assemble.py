@@ -19,6 +19,7 @@ Usage::
     python scripts/changelog/assemble.py                  # move fragments into Unreleased
     python scripts/changelog/assemble.py --dry-run        # print the diff, touch nothing
     python scripts/changelog/assemble.py --check          # validate names/headings only
+    python scripts/changelog/assemble.py --check --allow-topic  # pre-landing validation
     python scripts/changelog/assemble.py --release 2.0.0 [--date 2026-09-18]
 """
 
@@ -201,7 +202,7 @@ def iter_fragments(fragment_dir: Path) -> List[Path]:
     return sorted(paths, key=sort_key)
 
 
-def validate_all(fragment_dir: Path) -> List[str]:
+def validate_all(fragment_dir: Path, *, allow_topic: bool = False) -> List[str]:
     """Return every fragment problem in *fragment_dir* as a message list."""
     problems: List[str] = []
     if not fragment_dir.is_dir():
@@ -213,7 +214,12 @@ def validate_all(fragment_dir: Path) -> List[str]:
             problems.append(f"{path.name}: fragments must be .md files")
             continue
         try:
-            validate_fragment_text(path.name, read_text(path)[0])
+            validate = (
+                validate_topic_fragment_text
+                if allow_topic and TOPIC_NAME_RE.fullmatch(path.name)
+                else validate_fragment_text
+            )
+            validate(path.name, read_text(path)[0])
         except FragmentError as exc:
             problems.append(str(exc))
     return problems
@@ -340,12 +346,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--check", action="store_true",
         help="validate fragment names and headings; exit 1 if any is malformed",
     )
+    parser.add_argument(
+        "--allow-topic", action="store_true",
+        help="accept topic fragments with --check only; releases and assembly remain numeric-only",
+    )
     args = parser.parse_args(argv)
 
     if args.date and not args.release:
         parser.error("--date only means something with --release")
 
-    problems = validate_all(args.fragments)
+    problems = validate_all(
+        args.fragments, allow_topic=args.check and args.allow_topic and not args.release,
+    )
     if args.check:
         try:
             find_unreleased_index(read_text(args.changelog)[0].split("\n"))
@@ -355,7 +367,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             for problem in problems:
                 print(f"changelog fragment: {problem}", file=sys.stderr)
             return 1
-        count = len(iter_fragments(args.fragments))
+        count = sum(
+            path.is_file() and path.name != "README.md"
+            for path in args.fragments.glob("*.md")
+        )
         print(f"changelog fragments OK ({count} pending)")
         return 0
     if problems:

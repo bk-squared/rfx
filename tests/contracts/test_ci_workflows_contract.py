@@ -789,6 +789,17 @@ def test_local_sh_runs_the_changelog_gate_ci_runs_not_a_lookalike() -> None:
     assert "--base" in local and "--head" in local
 
 
+def test_local_changelog_checks_use_pre_landing_context() -> None:
+    local = LOCAL_SH.read_text(encoding="utf-8")
+    export = re.search(r"^export RFX_CHANGELOG_CONTEXT=pre-landing$", local, re.MULTILINE)
+    assert export is not None
+    assert export.start() < local.index("begin 0\n")
+    assert re.search(
+        r'^"\$PYTHON" scripts/changelog/assemble\.py --check --allow-topic \|\| fail$',
+        local, re.MULTILINE,
+    )
+
+
 def test_every_local_step_can_pick_its_interpreter() -> None:
     """One `PYTHON=` covers the whole run, ruff included.
 
