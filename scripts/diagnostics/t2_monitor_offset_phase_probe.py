@@ -117,7 +117,7 @@ def probe(direction: str, port_x: float, label: str):
     # --- rfx Yee-DISCRETE β (for the continuous-vs-discrete gap; NOT used to
     #     gate, only to size the T2.4 tolerance term).
     beta_yee = np.asarray(
-        _compute_beta(freqs, F_CUTOFF_HZ, dt=float(cfg.dt), dx=float(cfg.dx))
+        _compute_beta(freqs, F_CUTOFF_HZ, dt=float(cfg.dt), dx=float(cfg.dx), medium=cfg.medium)
     ).real
     predicted_yee = np.angle(np.exp(1j * (-beta_yee * (step_sign * dx_planes))))
 

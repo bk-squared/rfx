@@ -381,7 +381,7 @@ def _build_nu_scan(
     use_pec_edges = pec_edge_masks is not None
     use_pec_occupancy = pec_occupancy is not None or bool(pinned_sheet_layout)
 
-    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+    waveguide_ports = admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
                 ntff=ntff_box if use_ntff else None, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                 pec_faces=pec_faces, pmc_faces=pmc_faces, feature_owned=_feature_tfsf, nonuniform=True,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps, pec_mask=pec_mask,

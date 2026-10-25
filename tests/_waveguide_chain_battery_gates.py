@@ -32,6 +32,7 @@ Sign conventions used throughout (pre-declaration §5(b), §5(d)):
 """
 
 from __future__ import annotations
+from rfx.model.waveguide_modes import PortMedium
 
 import math
 import sys
@@ -211,7 +212,7 @@ def beta_yee(freqs_hz, dt_s: float, dx_m: float) -> np.ndarray:
     """Yee-discrete β of the port cross-section (``_compute_beta(dt, dx)``)."""
     import jax.numpy as jnp
     b = _compute_beta(jnp.asarray(np.asarray(freqs_hz, dtype=float)), FC_TE10_HZ,
-                      dt=float(dt_s), dx=float(dx_m))
+                      dt=float(dt_s), dx=float(dx_m), medium=PortMedium())
     return np.real(np.asarray(b, dtype=complex))
 
 
@@ -227,7 +228,7 @@ def beta_yee_fc(freqs_hz, fc_hz: float, dt_s: float, dx_m: float) -> np.ndarray:
     ``fc_hz`` is the port config's ``f_cutoff``)."""
     import jax.numpy as jnp
     b = _compute_beta(jnp.asarray(np.asarray(freqs_hz, dtype=float)), float(fc_hz),
-                      dt=float(dt_s), dx=float(dx_m))
+                      dt=float(dt_s), dx=float(dx_m), medium=PortMedium())
     return np.real(np.asarray(b, dtype=complex))
 
 

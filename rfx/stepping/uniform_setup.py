@@ -413,7 +413,7 @@ def _build_step_setup(
     # when the Huygens box encloses the whole injected region. Plain ints,
     # evaluated here at trace time.
     from rfx.boundaries.tfsf import admit_setup
-    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+    waveguide_ports = admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
                 ntff=ntff if use_ntff else None, periodic=periodic, feature_owned=_feature_tfsf,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps,
                              aniso_inv_eps=aniso_inv_eps, pec_mask=pec_mask, pec_edge_masks=pec_edge_masks,

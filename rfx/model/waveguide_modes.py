@@ -24,6 +24,18 @@ from rfx.model.waveguide_mode_solver import (
 C0_LOCAL = 1.0 / np.sqrt(EPS_0 * MU_0)
 
 
+class PortMedium(NamedTuple):
+    """Realized homogeneous, isotropic, lossless section medium."""
+    eps_r: float = 1.0
+    mu_r: float = 1.0
+
+
+def port_light_speed(cfg) -> float:
+    """Speed in a port config (or its medium during compilation)."""
+    medium = cfg.medium if hasattr(cfg, "medium") else cfg
+    return C0_LOCAL / np.sqrt(medium.eps_r * medium.mu_r)
+
+
 class WaveguidePort(NamedTuple):
     """Waveguide port definition.
 
@@ -178,6 +190,10 @@ class WaveguidePortConfig(NamedTuple):
     mode_profile: str = "discrete"
     segment_planes: tuple[float, ...] = ()
     port_name: str = ""
+    medium: PortMedium = PortMedium()
+    probe_medium_matches: bool = True
+    probe_medium_description: str = ""
+    multimode: bool = False
 
 
 def _te_mode_profiles(a: float, b: float, m: int, n: int,
@@ -549,6 +565,7 @@ def init_waveguide_port(
     mode_profile: str = "discrete",
     grid=None,
     h_offset: tuple[float, float] = (0.5, 0.5), field_dtype=jnp.float32,
+    medium: PortMedium = PortMedium(),
 ) -> WaveguidePortConfig:
     """Initialize a waveguide port with precomputed mode profiles.
 
@@ -731,7 +748,7 @@ def init_waveguide_port(
             )
         # Use the discrete eigenvalue's kc for f_c so h_inc_table's
         # β(ω) = √(k² − kc_num²) matches the Yee-grid mode exactly.
-        f_c = kc_num * C0_LOCAL / (2.0 * np.pi)
+        f_c = kc_num * port_light_speed(medium) / (2.0 * np.pi)
     else:
         if port.mode_type == "TE":
             ey, ez, hy, hz = _te_mode_profiles(
@@ -747,7 +764,7 @@ def init_waveguide_port(
                 aperture_dA=aperture_dA_np,
                 h_offset=h_offset,
             )
-        f_c = cutoff_frequency(port.a, port.b, m, n)
+        f_c = cutoff_frequency(port.a, port.b, m, n) / np.sqrt(medium.eps_r * medium.mu_r)
 
     if waveform != "modulated_gaussian":
         raise ValueError(
@@ -831,135 +848,10 @@ def init_waveguide_port(
     real_dtype = jnp.zeros((), dtype=freqs.dtype).dtype if hasattr(freqs, 'dtype') else jnp.float32
     zeros_t = jnp.zeros((n_t,), dtype=real_dtype)
 
-    # Precompute companion H waveform for TFSF-style E correction.
-    # For a forward-only wave whose E-amplitude at x_src matches the source
-    # pulse, we need h_inc(t + dt/2) at (x_src − 0.5·dx). Computed in the
-    # frequency domain: h_spec(ω) = e_spec(ω) · e^{−jβ(ω)·dx/2 − jω·dt/2} /
-    # Z_mode(ω), filtered to propagating frequencies |ω| ≥ ω_c.
-    n_steps_aux = int(dft_total_steps) if dft_total_steps > 0 else 0
-    if n_steps_aux > 1 and dt > 0.0:
-        t_arr = np.arange(n_steps_aux, dtype=np.float64) * float(dt)
-        arg_arr = (t_arr - t0) / tau
-        # Compute tables with unit amplitude; ``apply_waveguide_port_h/e``
-        # scale by ``cfg.src_amp`` at runtime so ``_reset_cfg(drive=False)``
-        # zeros both corrections together.
-        if waveform == "modulated_gaussian":
-            # Meep-style carrier-centered shape. Its low-frequency content is
-            # negligible for this configured source, so no sub-cutoff filter is
-            # applied; this eliminates the raised-cosine filter tail
-            # that drives directional leakage in the differentiated-Gaussian
-            # path. The hard ±5·width cutoff (= ±t0) matches Meep's
-            # gaussian_src_time::dipole and kills any residual early/late
-            # envelope numerics.
-            tt = t_arr - t0
-            e_inc_raw = np.cos(2.0 * np.pi * f0 * tt) * np.exp(-(arg_arr ** 2))
-            e_inc_raw = np.where(np.abs(tt) > t0, 0.0, e_inc_raw)
-        else:
-            e_inc_raw = (-2.0 * arg_arr) * np.exp(-(arg_arr ** 2))
-        e_spec_raw = np.fft.rfft(e_inc_raw)
-        freqs_spec = np.fft.rfftfreq(n_steps_aux, d=float(dt))
-        omega = 2.0 * np.pi * freqs_spec
-        kc = 2.0 * np.pi * f_c / C0_LOCAL
-        k_arr = omega / C0_LOCAL
-        propagating = omega > (2.0 * np.pi * f_c)
-        if mode_profile == "discrete":
-            # Invert the 3D Yee dispersion relation along the port-normal axis
-            # for the given transverse kc_num:
-            #   (sin(ω·dt/2)/(c·dt/2))² = (sin(β·dx/2)/(dx/2))² + kc_num².
-            # Using the discrete β in the half-cell phase shift eliminates the
-            # O((β·dx)²) continuous-vs-Yee dispersion residue in h_inc_table.
-            s_t = np.sin(omega * 0.5 * float(dt)) / (0.5 * float(dt))
-            s_x_sq = np.maximum(
-                (s_t / C0_LOCAL) ** 2 - kc ** 2, 0.0,
-            ) * (0.5 * float(dx)) ** 2
-            s_x = np.sqrt(np.minimum(s_x_sq, 1.0))
-            beta_arr = np.where(propagating,
-                                (2.0 / float(dx)) * np.arcsin(s_x), 0.0)
-        else:
-            beta_arr = np.where(
-                propagating,
-                np.sqrt(np.maximum(k_arr ** 2 - kc ** 2, 0.0)),
-                0.0,
-            )
-        if mode_profile == "discrete":
-            # Yee-discrete modal impedance derived from the 3D Yee Faraday
-            # update applied to a plane wave exp(j(ωt − β·x)):
-            #   H₀ · sin(ω·dt/2) = (dt/(μ·dx)) · E₀ · sin(β·dx/2)
-            # → Z_TE_disc = μ·dx·sin(ω·dt/2) / (dt·sin(β·dx/2)).
-            # In the continuous limit this collapses to ω·μ/β. Using the
-            # analytic continuous form against the discrete β leaves an
-            # O((β·dx)²) broadband impedance mismatch — the dominant
-            # backward-emission driver once the mode profile and β are
-            # already discrete-correct.
-            s_w = np.sin(omega * 0.5 * float(dt))
-            s_b = np.sin(beta_arr * 0.5 * float(dx))
-            if port.mode_type == "TE":
-                z_mode_arr = np.where(
-                    propagating,
-                    MU_0 * float(dx) * s_w
-                    / np.maximum(float(dt) * s_b, 1e-30),
-                    np.inf,
-                )
-            else:  # TM
-                z_mode_arr = np.where(
-                    propagating,
-                    float(dt) * s_b
-                    / np.maximum(EPS_0 * float(dx) * s_w, 1e-30),
-                    0.0,
-                )
-        elif port.mode_type == "TE":
-            z_mode_arr = np.where(
-                propagating,
-                omega * MU_0 / np.maximum(beta_arr, 1e-30),
-                np.inf,
-            )
-        else:  # TM
-            z_mode_arr = np.where(
-                propagating,
-                beta_arr / np.maximum(omega * EPS_0, 1e-30),
-                0.0,
-            )
-        # Bandpass-filter the source to propagating-mode content only.
-        # The raw differentiated-Gaussian spectrum spans DC → ~3·f0; in a
-        # guided structure, sub-cutoff content cannot propagate and just
-        # excites evanescent near-field if injected. A smooth raised-
-        # cosine taper across [f_c, 1.2·f_c] avoids Gibbs ringing that a
-        # hard cutoff would leave in e_inc_time.
-        #
-        # The modulated-Gaussian pulse has effectively zero DC content and
-        # its spectrum is naturally bandpassed around f₀, so the taper is
-        # skipped — the raised-cosine tail is the dominant directional
-        # leakage driver for the differentiated source.
-        if waveform == "modulated_gaussian":
-            e_spec_filt = e_spec_raw
-        else:
-            # Unreachable for waveguide ports since the #1942 refusal; kept for the causal table (#1942).
-            f_c_arr = np.full_like(freqs_spec, f_c)
-            f_taper_hi = 1.2 * f_c
-            taper_ratio = np.clip(
-                (freqs_spec - f_c_arr) / (f_taper_hi - f_c), 0.0, 1.0,
-            )
-            filt_weight = 0.5 * (1.0 - np.cos(np.pi * taper_ratio))
-            e_spec_filt = e_spec_raw * filt_weight
-        e_inc_time = np.fft.irfft(e_spec_filt, n_steps_aux)
-        # Forward wave in rfx's engineering convention exp(j(ωt − βx)):
-        # shifting from (x_src, t) to (x_src − dx/2, t + dt/2) multiplies
-        # the spectrum by exp(+jβ·dx/2 + jω·dt/2).
-        phase_shift = np.exp(+1j * beta_arr * 0.5 * float(dx)
-                             + 1j * omega * 0.5 * float(dt))
-        h_spec = np.where(
-            propagating,
-            e_spec_filt / z_mode_arr * phase_shift,
-            0.0,
-        )
-        h_inc_time = np.fft.irfft(h_spec, n_steps_aux)
-        e_inc_table = jnp.asarray(e_inc_time, dtype=field_dtype)
-        h_inc_table = jnp.asarray(h_inc_time, dtype=field_dtype)
-    else:
-        # Tables unavailable (dt=0 at init). Size-1 sentinel triggers the
-        # legacy soft-E source fallback inside apply_waveguide_port_e.
-        e_inc_table = jnp.zeros((1,), dtype=field_dtype)
-        h_inc_table = jnp.zeros((1,), dtype=field_dtype)
+    e_inc_table, h_inc_table = _incident_tables(
+        f_c=f_c, medium=medium, dt=dt, dx=dx, dft_total_steps=dft_total_steps,
+        t0=t0, tau=tau, f0=f0, waveform=waveform, mode_profile=mode_profile,
+        mode_type=port.mode_type, field_dtype=field_dtype)
 
     return WaveguidePortConfig(
         x_index=port.x_index,
@@ -1010,7 +902,103 @@ def init_waveguide_port(
         h_offset=(float(h_offset[0]), float(h_offset[1])),
         mode_indices=(int(m), int(n)),
         mode_profile=str(mode_profile),
+        medium=medium,
     )
+
+
+def _incident_tables(*, f_c, medium, dt, dx, dft_total_steps, t0, tau,
+                     f0, waveform, mode_profile, mode_type, field_dtype):
+    # Precompute companion H waveform for TFSF-style E correction.
+    # For a forward-only wave whose E-amplitude at x_src matches the source
+    # pulse, we need h_inc(t + dt/2) at (x_src − 0.5·dx). Computed in the
+    # frequency domain: h_spec(ω) = e_spec(ω) · e^{−jβ(ω)·dx/2 − jω·dt/2} /
+    # Z_mode(ω), filtered to propagating frequencies |ω| ≥ ω_c.
+    n_steps_aux = int(dft_total_steps) if dft_total_steps > 0 else 0
+    if n_steps_aux > 1 and dt > 0.0:
+        t_arr = np.arange(n_steps_aux, dtype=np.float64) * float(dt)
+        arg_arr = (t_arr - t0) / tau
+        # Compute tables with unit amplitude; ``apply_waveguide_port_h/e``
+        # scale by ``cfg.src_amp`` at runtime so ``_reset_cfg(drive=False)``
+        # zeros both corrections together.
+        if waveform == "modulated_gaussian":
+            # Meep-style carrier-centered shape. Its low-frequency content is
+            # negligible for this configured source, so no sub-cutoff filter is
+            # applied; this eliminates the raised-cosine filter tail
+            # that drives directional leakage in the differentiated-Gaussian
+            # path. The hard ±5·width cutoff (= ±t0) matches Meep's
+            # gaussian_src_time::dipole and kills any residual early/late
+            # envelope numerics.
+            tt = t_arr - t0
+            e_inc_raw = np.cos(2.0 * np.pi * f0 * tt) * np.exp(-(arg_arr ** 2))
+            e_inc_raw = np.where(np.abs(tt) > t0, 0.0, e_inc_raw)
+        else:
+            e_inc_raw = (-2.0 * arg_arr) * np.exp(-(arg_arr ** 2))
+        e_spec_raw = np.fft.rfft(e_inc_raw)
+        freqs_spec = np.fft.rfftfreq(n_steps_aux, d=float(dt))
+        omega = 2.0 * np.pi * freqs_spec
+        propagating = omega > (2.0 * np.pi * f_c)
+        beta_arr = _compute_beta(
+            freqs_spec, f_c, medium=medium,
+            dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
+        z_mode_arr = _compute_mode_impedance(
+            freqs_spec, f_c, mode_type, medium=medium,
+            dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
+        # Bandpass-filter the source to propagating-mode content only.
+        # The raw differentiated-Gaussian spectrum spans DC → ~3·f0; in a
+        # guided structure, sub-cutoff content cannot propagate and just
+        # excites evanescent near-field if injected. A smooth raised-
+        # cosine taper across [f_c, 1.2·f_c] avoids Gibbs ringing that a
+        # hard cutoff would leave in e_inc_time.
+        #
+        # The modulated-Gaussian pulse has effectively zero DC content and
+        # its spectrum is naturally bandpassed around f₀, so the taper is
+        # skipped — the raised-cosine tail is the dominant directional
+        # leakage driver for the differentiated source.
+        if waveform == "modulated_gaussian":
+            e_spec_filt = e_spec_raw
+        else:
+            # Unreachable for waveguide ports since the #1942 refusal; kept for the causal table (#1942).
+            f_c_arr = np.full_like(freqs_spec, f_c)
+            f_taper_hi = 1.2 * f_c
+            taper_ratio = np.clip(
+                (freqs_spec - f_c_arr) / (f_taper_hi - f_c), 0.0, 1.0,
+            )
+            filt_weight = 0.5 * (1.0 - np.cos(np.pi * taper_ratio))
+            e_spec_filt = e_spec_raw * filt_weight
+        e_inc_time = np.fft.irfft(e_spec_filt, n_steps_aux)
+        # Forward wave in rfx's engineering convention exp(j(ωt − βx)):
+        # shifting from (x_src, t) to (x_src − dx/2, t + dt/2) multiplies
+        # the spectrum by exp(+jβ·dx/2 + jω·dt/2).
+        phase_shift = np.exp(+1j * beta_arr * 0.5 * float(dx)
+                             + 1j * omega * 0.5 * float(dt))
+        h_spec = np.where(
+            propagating,
+            e_spec_filt / z_mode_arr * phase_shift,
+            0.0,
+        )
+        h_inc_time = np.fft.irfft(h_spec, n_steps_aux)
+        e_inc_table = jnp.asarray(e_inc_time, dtype=field_dtype)
+        h_inc_table = jnp.asarray(h_inc_time, dtype=field_dtype)
+    else:
+        # Tables unavailable (dt=0 at init). Size-1 sentinel triggers the
+        # legacy soft-E source fallback inside apply_waveguide_port_e.
+        e_inc_table = jnp.zeros((1,), dtype=field_dtype)
+        h_inc_table = jnp.zeros((1,), dtype=field_dtype)
+
+    return e_inc_table, h_inc_table
+
+
+def with_port_medium(cfg, medium):
+    """Resolve the cutoff and source tables without rebuilding geometric profiles."""
+    if cfg.medium == medium:
+        return cfg
+    f_c = cfg.f_cutoff * port_light_speed(medium) / port_light_speed(cfg)
+    e, h = _incident_tables(
+        f_c=f_c, medium=medium, dt=cfg.dt, dx=cfg.dx,
+        dft_total_steps=cfg.dft_total_steps, t0=cfg.src_t0, tau=cfg.src_tau,
+        f0=cfg.src_fcen, waveform=cfg.waveform, mode_profile=cfg.mode_profile,
+        mode_type=cfg.mode_type, field_dtype=cfg.e_inc_table.dtype)
+    return cfg._replace(medium=medium, f_cutoff=float(f_c), e_inc_table=e, h_inc_table=h)
 
 
 def _aperture_dA(cfg: WaveguidePortConfig) -> jnp.ndarray:
@@ -1027,98 +1015,61 @@ def _aperture_dA(cfg: WaveguidePortConfig) -> jnp.ndarray:
     return cfg.u_widths[:, None] * cfg.v_widths[None, :]
 
 
-def _compute_beta(
-    freqs: jnp.ndarray,
-    f_cutoff: float,
-    *,
-    dt: float = 0.0,
-    dx: float = 0.0,
-) -> jnp.ndarray:
-    """Guided propagation constant β(f) for a vacuum-filled rectangular guide.
+def _compute_beta(freqs, f_cutoff, *, medium, dt=0.0, dx=0.0, _table=False):
+    """Guided beta from the section medium and geometric transverse eigenvalue.
 
-    With ``dt > 0`` and ``dx > 0`` the **Yee-discrete** dispersion relation
-    is used::
-
-        (sin(ω·dt/2) / (c·dt/2))² = (sin(β·dx/2) / (dx/2))² + kc²
-
-    This matches the numerical phase velocity the FDTD simulation actually
-    propagates — critical when shifting modal waves across a plane by
-    ``exp(∓jβ·Δz)``. With ``dt == 0`` or ``dx == 0`` the legacy analytic
-    continuous-medium form ``β = sqrt(k² − kc²)`` is returned for
-    backwards compatibility. Evanescent (sub-cutoff) branch falls back to
-    analytic imaginary β in both modes — those waves are not propagated
-    by ``_shift_modal_waves`` and their accuracy does not affect S-params.
+    Source tables use host float64, preserving their historical arithmetic;
+    measurement uses JAX and retains the evanescent branch for diagnostics.
     """
-    omega = 2 * jnp.pi * freqs
-    kc = 2 * jnp.pi * f_cutoff / C0_LOCAL
-
+    xp = np if _table else jnp
+    omega = 2 * xp.pi * freqs
+    speed = port_light_speed(medium)
+    kc = 2 * xp.pi * f_cutoff / speed
     if dt > 0.0 and dx > 0.0:
-        # Yee 3D dispersion with transverse cutoff kc (2D-FD eigenvalue).
-        # Temporal term: sin(ωdt/2) / (c·dt/2).
-        s_t_over_c = jnp.sin(omega * 0.5 * dt) / (C0_LOCAL * 0.5 * dt)
-        s_x_sq = s_t_over_c ** 2 - kc ** 2
-        # Propagating branch: clip arcsin argument to (-1, 1) to protect
-        # against grid-dispersion-induced s_x·dx/2 > 1 numerical noise.
-        arg = jnp.clip(0.5 * dx * jnp.sqrt(jnp.maximum(s_x_sq, 0.0)),
-                       -1.0 + 1e-12, 1.0 - 1e-12)
-        beta_prop = (2.0 / dx) * jnp.arcsin(arg)
-        # Evanescent branch: β = j·sqrt(-s_x_sq), units m⁻¹ (s_x_sq is m⁻²). The prior
-        # form multiplied by C0_LOCAL, giving s⁻¹ (~c× too large) and inconsistent with both
-        # beta_prop above and the non-dispersive fallback below — a spurious factor of c
-        # (RF-audit 2026-07-23, Codex pass). Below-cutoff bins are preflight-flagged invalid,
-        # but a c×-wrong |β| in the plane-shift exp(-jβ·d) would blow up to inf/nan.
-        beta_evan = 1j * jnp.sqrt(jnp.maximum(-s_x_sq, 0.0))
-        return jnp.where(s_x_sq >= 0, beta_prop, beta_evan)
-
-    k = omega / C0_LOCAL
-    beta_sq = k**2 - kc**2
-    return jnp.where(
-        beta_sq >= 0,
-        jnp.sqrt(jnp.maximum(beta_sq, 0.0)),
-        1j * jnp.sqrt(jnp.maximum(-beta_sq, 0.0)),
-    )
+        if _table:
+            s_t = xp.sin(omega * 0.5 * dt) / (0.5 * dt)
+            s_x_sq = (s_t / speed) ** 2 - kc ** 2
+            arg = xp.sqrt(xp.minimum(xp.maximum(s_x_sq, 0.0) * (0.5 * dx) ** 2, 1.0))
+        else:
+            s_t_over_c = xp.sin(omega * 0.5 * dt) / (speed * 0.5 * dt)
+            s_x_sq = s_t_over_c ** 2 - kc ** 2
+            arg = xp.clip(0.5 * dx * xp.sqrt(xp.maximum(s_x_sq, 0.0)),
+                          -1.0 + 1e-12, 1.0 - 1e-12)
+        prop = (2.0 / dx) * xp.arcsin(arg)
+    else:
+        s_x_sq = (omega / speed) ** 2 - kc ** 2
+        prop = xp.sqrt(xp.maximum(s_x_sq, 0.0))
+    if _table:
+        return xp.where(freqs > f_cutoff, prop, 0.0)
+    return xp.where(s_x_sq >= 0, prop, 1j * xp.sqrt(xp.maximum(-s_x_sq, 0.0)))
 
 
-def _compute_mode_impedance(
-    freqs: jnp.ndarray,
-    f_cutoff: float,
-    mode_type: str,
-    *,
-    dt: float = 0.0,
-    dx: float = 0.0,
-) -> jnp.ndarray:
-    """Rectangular-waveguide modal impedance for TE/TM modes.
-
-    TE: Z = ωμ / β
-    TM: Z = β / (ωε)
-    """
-    omega = 2 * jnp.pi * freqs
-    beta = _compute_beta(freqs, f_cutoff, dt=dt, dx=dx)
-    safe_beta = jnp.where(jnp.abs(beta) > 1e-30, beta,
-                          1e-30 * jnp.ones_like(beta))
-    safe_omega = jnp.where(jnp.abs(omega) > 1e-30, omega,
-                           1e-30 * jnp.ones_like(omega))
+def _compute_mode_impedance(freqs, f_cutoff, mode_type, *, medium,
+                            dt=0.0, dx=0.0, _table=False):
+    """TE/TM impedance using the same discrete beta as injection and extraction."""
+    xp = np if _table else jnp
+    omega = 2 * xp.pi * freqs
+    beta = _compute_beta(freqs, f_cutoff, medium=medium, dt=dt, dx=dx, _table=_table)
+    mu, eps = MU_0 * medium.mu_r, EPS_0 * medium.eps_r
+    safe_beta = xp.where(xp.abs(beta) > 1e-30, beta, 1e-30 * xp.ones_like(beta))
+    safe_omega = xp.where(xp.abs(omega) > 1e-30, omega, 1e-30 * xp.ones_like(omega))
     if dt > 0.0 and dx > 0.0:
-        propagating = freqs > f_cutoff
-        s_w = jnp.sin(omega * 0.5 * dt)
-        s_b = jnp.sin(beta * 0.5 * dx)
-        # Evanescent sentinel: use a LARGE FINITE scalar (not jnp.inf).
-        # inf × complex(i, 0) numerically yields nan in the imaginary component
-        # on most NumPy/JAX implementations — see test_multimode cutoff cases.
-        # A finite stand-in keeps downstream `(V ± Z·I)` arithmetic defined.
-        te_evanescent = jnp.asarray(1e30, dtype=jnp.float32)
-        tm_evanescent = jnp.asarray(0.0, dtype=jnp.float32)
+        s_w, s_b = xp.sin(omega * 0.5 * dt), xp.sin(beta * 0.5 * dx)
         if mode_type == "TE":
-            z_disc = MU_0 * dx * s_w / jnp.maximum(dt * s_b, 1e-30)
-            return jnp.where(propagating, z_disc, te_evanescent)
-        if mode_type == "TM":
-            z_disc = dt * s_b / jnp.maximum(EPS_0 * dx * s_w, 1e-30)
-            return jnp.where(propagating, z_disc, tm_evanescent)
+            z = mu * dx * s_w / xp.maximum(dt * s_b, 1e-30)
+        elif mode_type == "TM":
+            z = dt * s_b / xp.maximum(eps * dx * s_w, 1e-30)
+        else:
+            raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
+        sentinel = (np.inf if _table else jnp.asarray(1e30, dtype=jnp.float32)) if mode_type == "TE" else 0.0
+        return xp.where(freqs > f_cutoff, z, sentinel)
     if mode_type == "TE":
-        return omega * MU_0 / safe_beta
-    if mode_type == "TM":
-        return safe_beta / (safe_omega * EPS_0)
-    raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
+        z = omega * mu / safe_beta
+    elif mode_type == "TM":
+        z = beta / (xp.maximum(omega * eps, 1e-30) if _table else safe_omega * eps)
+    else:
+        raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
+    return xp.where(freqs > f_cutoff, z, np.inf if mode_type == "TE" else 0.0) if _table else z
 
 
 def solve_rectangular_modes(
@@ -1267,7 +1218,7 @@ def init_multimode_waveguide_port(
             dt=dt, waveform=waveform, mode_profile=mode_profile,
             grid=grid, h_offset=h_offset, field_dtype=field_dtype,
         )
-        cfgs.append(cfg)
+        cfgs.append(cfg._replace(multimode=True))
 
     return _gram_schmidt_modes(cfgs)
 

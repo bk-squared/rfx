@@ -113,7 +113,9 @@ def test_default_reaches_modulated_config(graded, internal, route, monkeypatch):
     monkeypatch.setattr(jax.lax, "scan", _no_steps)
     if route == "preflight" and graded:
         _enter(sim, route)
-        assert seen == []  # Graded general preflight uses declared geometry.
+        # An undrawn vacuum domain needs no section build; graded general
+        # preflight retains its declared-geometry path in this case.
+        assert seen == []
         assert all(e.waveform == "modulated_gaussian" for e in sim._waveguide_ports)
         return
     with pytest.raises(Built):

@@ -1259,7 +1259,8 @@
         "mode_profile",
         "grid",
         "h_offset",
-        "field_dtype"
+        "field_dtype",
+        "medium"
       ]
     },
     "init_wire_sparam_probe": {

@@ -498,6 +498,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                         report_every=None, report_label="",
                         subpixel_smoothing: bool = False,
                         attach_waveguide_flux: bool = False,
+                        waveguide_reference_only: bool = False,
                         strip_sheet_impedance: bool = False,
                         until_decay: float | None = None,
                         decay_check_interval: int = 50,
@@ -1290,6 +1291,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         sim, grid,
         flux_monitors=r.get("flux_monitors", ()),
         waveguide_cfgs=r.get("waveguide_ports", ()),
+        waveguide_reference_only=waveguide_reference_only,
     )
 
     # Repack DFT planes into {name: DFTPlaneProbe} dict to match

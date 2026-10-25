@@ -115,8 +115,7 @@ def test_filled_guide_admitted():
     report = sim.preflight()
     assert report.ok
     assert not [i for i in report if i.code == CODE]
-    with pytest.raises(ValueError, match=r"left.*eps.*2\.2.*rfx#1994"):
-        sim.compute_waveguide_s_matrix(n_steps=2)
+    sim.compute_waveguide_s_matrix(n_steps=2)
 
 
 def test_face_on_reference_plane_refused():
@@ -258,11 +257,7 @@ def test_uniform_guide_drawn_in_pieces_admitted():
         assert not [w for w in caught
                     if "waveguide_port_obstacle_before_reference" in str(getattr(w.message, "code", ""))
                     or "cannot see that object" in str(w.message)], boxes
-        if boxes[0][0] == "fill":
-            with pytest.raises(ValueError, match=r"right.*eps.*2\.2.*rfx#1994"):
-                sim.run(n_steps=2, skip_preflight=True)
-        else:
-            sim.run(n_steps=2, skip_preflight=True)
+        sim.run(n_steps=2, skip_preflight=True)
 
 
 def test_dielectric_step_inside_the_interval_refused():
@@ -407,7 +402,8 @@ def test_fill_drawn_past_the_domain_admitted(graded):
         warnings.simplefilter("always")
         _validate_cfg_waveguide_port_span(sim, warnings)
     assert not [w for w in caught if getattr(w.message, "code", None) == CODE]
-    _segment_refused(sim)
+    result = sim.run(n_steps=2, skip_preflight=True)
+    assert next(iter(result.waveguide_ports.values())).medium.eps_r == pytest.approx(2.2)
 
 
 def _prism_span_findings(shapes, materials=None):

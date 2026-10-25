@@ -334,12 +334,12 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
                 localized, periodic, pec_faces=None, pmc_faces=None,
                 feature_owned=False, nonuniform=False):
     """Last check on actual low-level inputs, including AD material overrides."""
-    from rfx.boundaries.features import admit_grid_waveguide, refuse_waveguide_segment_medium
+    from rfx.boundaries.features import admit_grid_waveguide, resolve_waveguide_section_medium
     admit_grid_waveguide(grid, waveguide_ports)
-    refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates, localized,
+    waveguide_ports = resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates, localized,
                                    design_box=updates.get("design_box"))
     if tfsf is None:
-        return
+        return waveguide_ports
     cfg = tfsf[0]
     refuse_injection_plane_operands(cfg, grid, materials, updates, localized)
     if ntff is not None:
@@ -350,7 +350,7 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
     if getattr(cfg, "closed_box", False) or not feature_owned:
         # Explicit low-level periodic flags are the caller's declaration,
         # not a feature rewrite (Addendum 5c(5)).
-        return
+        return waveguide_ports
     check_arrays(cfg, grid, dict(materials=materials, **updates),
                  # The low-level RCS path does not install the slab wrap.
                  # Its open transverse operator is unchanged in PR3a. The
@@ -361,3 +361,5 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
                      axis for axis, wraps in zip("xyz", periodic) if wraps),
                  records=grid_face_depths(grid, pec_faces=pec_faces, pmc_faces=pmc_faces),
                  localized=localized, nonuniform=nonuniform)
+
+    return waveguide_ports

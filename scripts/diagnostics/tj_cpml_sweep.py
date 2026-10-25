@@ -2,8 +2,11 @@
 matched guide and measure the far-end |Gamma| (apparent reflection). If |Gamma|
 drops with more CPML -> it's CPML absorption of the TE10 mode (fix = more/better
 CPML). If unchanged -> it's the port-plane structure. --nc layers."""
-import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
-import numpy as np, jax.numpy as jnp
+import sys
+import argparse
+sys.path.insert(0, "/tmp/rfx-tj")
+import numpy as np
+import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box
@@ -34,6 +37,6 @@ res = run_sim(grid, mat, n_steps, boundary="cpml", cpml_axes="xy", pec_axes="z",
 c = res.waveguide_ports[0]; nv = int(np.asarray(c.n_steps_recorded)); dt = float(c.dt)
 Vr = np.asarray(_rect_dft(c.v_ref_t, freqs, dt, nv)); Vp = np.asarray(_rect_dft(c.v_probe_t, freqs, dt, nv))
 Ir = np.asarray(_co_located_current_spectrum(c, _rect_dft(c.i_ref_t, freqs, dt, nv)))
-Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx))
+Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx, medium=c.medium))
 G = (Vr - Z*Ir)/(Vr + Z*Ir)
 print(f"[CPML nc={nc} ({nc*dx*1000:.0f}mm)] far-end |Gamma|: band-mean={np.abs(G).mean():.3f} max={np.abs(G).max():.3f}  |Vp|/|Vr| std(SW depth)={np.abs(Vp/Vr).std():.3f}", flush=True)
