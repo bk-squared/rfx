@@ -328,6 +328,7 @@ SIGMA_READS = {
     ('rfx/runners/adi.py', '_run_adi_from_materials', 'materials'): (5, 'interface/refusal test, tracer test, broadcasting and slicing to ADI'),
     ('rfx/artifacts.py', '_material_summary', 'material'): (1, 'report text / safe scalar conversion'),
     ('rfx/auto_config.py', 'analyze_features', 'mat'): (1, 'documented dict of MaterialSpec or dict at :136; no assembled grid input'),
+    ('rfx/boundaries/features.py', 'resolve_waveguide_section_medium', 'materials'): (2, 'port-section medium judge: per-component conductivity over the section is compared with zero and refused, never assembled into a coefficient'),
     ('rfx/boundaries/cpml.py', '_flip_profile', 'p'): (1, 'CPMLParams profile record, returned explicitly as CPMLParams in this function'),
     ('rfx/boundaries/cpml.py', '_pad_profile_at_end', 'p'): (2, 'CPMLParams profile record, returned explicitly as CPMLParams in this function'),
     ('rfx/boundaries/cpml.py', '_pad_profile_at_start', 'p'): (2, 'CPMLParams profile record, returned explicitly as CPMLParams in this function'),
