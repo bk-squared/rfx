@@ -294,6 +294,8 @@ def admit_waveguide(sim, *, lane="dispatch"):
         _warn_caller("Waveguide boundary default: " + ", ".join(incompatible)
                      + " are solved as PEC electric walls.")
         state[0] = True
+    from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+    refuse_bare_waveguide_edges(sim, grid, lane=lane)
 
 
 def _admit_graded_guide(sim, lane):
@@ -316,6 +318,8 @@ def _admit_graded_guide(sim, lane):
             f"{lane}: full-aperture waveguide boundary was not declared on {', '.join(faces)}; "
             "the graded mesh keeps absorbers there, so the port would not be in a guide; "
             f"declare boundary={_guide_declaration(sim, faces)!r} (absorber on the port axis).")
+    from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+    refuse_bare_waveguide_edges(sim, grid, lane=lane)
 
 
 def _refuse_periodic_guide(sim, faces):
