@@ -457,7 +457,10 @@ def extract_waveguide_s_matrix(
                                              medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
                 zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
                                              medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
-                ratio = ratio * jnp.sqrt(zj / zi)
+                # A power wave needs both ports propagating: where either is at or below its own
+                # cutoff (its Z is the evanescent sentinel) the entry has no power meaning.
+                below = (cfg.freqs <= cfg.f_cutoff) | (drive_cfg.freqs <= drive_cfg.f_cutoff)
+                ratio = jnp.where(below, jnp.nan, ratio * jnp.sqrt(zj / zi))
             col_slices.append(ratio)
         # Stack recv slices into column (n_ports, n_freqs).
         s_cols.append(jnp.stack(col_slices, axis=0))
@@ -710,6 +713,13 @@ def extract_waveguide_s_matrix_flux(
         dev_final_mons = dev_result.flux_monitors or ()
         if len(dev_final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+        for idx, (ref_cfg, dev_cfg) in enumerate(zip(ref_final_cfgs, dev_final_cfgs)):
+            if ref_cfg.medium != dev_cfg.medium:
+                # P_inc and a_inc from a guide with another modal impedance would scale |S| silently.
+                raise ValueError(
+                    f"waveguide S-matrix: port {idx}'s reference guide resolved medium {ref_cfg.medium} but the "
+                    f"device port resolved {dev_cfg.medium}; a reference run must share its port's medium "
+                    "(fill the reference guide like the device's port section)")
         if return_settling:
             # worst over BOTH runs of the pair: the reference run's records
             # feed P_inc/a_inc, so its truncation corrupts the same S values
@@ -1269,8 +1279,8 @@ def extract_multimode_s_matrix_flux(
             mode_map.append((
                 port_idx,
                 mode_within,
-            cfg.mode_type,
-            _mode_indices_from_config(cfg),
+                cfg.mode_type,
+                _mode_indices_from_config(cfg),
             ))
 
     if len(flat_cfgs) < 2:

@@ -508,3 +508,39 @@ def test_conformal_geometry_factor_does_not_hide_material_anisotropy(extra_aniso
         resolved=resolve_waveguide_section_medium([cfg],grid,MaterialArrays(one,0.,one),updates,())[0]
         assert resolved.medium.eps_r == 1.
         assert resolved.probe_medium_matches
+
+
+def test_power_wave_entries_below_either_cutoff_are_nan():
+    # Vacuum launch (TE10 cutoff 6.25 GHz) facing an eps_r 2.2 receive port (4.21 GHz): at 5 GHz only the filled port
+    # propagates, its partner's Z is the evanescent sentinel, and S21/S12 have no power meaning.
+    sim = Simulation(freq_max=12e9, domain=(L, A, B), dx=DX, boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                     cpml_layers=8)
+    fill(sim, .06, .22)
+    freqs = np.array([5e9, 8e9])
+    sim.add_waveguide_port(.02, direction="+x", name="launch", f0=8e9, freqs=freqs)
+    sim.add_waveguide_port(.10, direction="-x", name="receive", f0=8e9, freqs=freqs)
+    s = np.asarray(execute(sim, "compute_waveguide_s_matrix", normalize=False).s_params)
+    assert np.all(np.isnan(s[1, 0, 0])) and np.all(np.isnan(s[0, 1, 0])), "transmission below the vacuum cutoff"
+    assert np.all(np.isfinite(s[:, :, 1])), "both ports propagate at 8 GHz"
+    assert np.isfinite(s[0, 0, 0]) and np.isfinite(s[1, 1, 0]), "reflections are not renormalized"
+
+
+def test_traced_override_at_probe_plane_refused():
+    # The section stays vacuum; only the probe plane sees eps_r 2.2, so a traced S21 split would use the wrong Z.
+    sim = guide()
+    grid = sim._build_realized_grid()
+    eps = np.ones(grid.shape)
+    eps[grid.index_of('x', .032):grid.index_of('x', .08)] = 2.2
+    def call(eps):
+        return execute(sim, "forward", eps_override=eps).time_series
+    with pytest.raises(Exception, match="probe plane"):
+        jax.jit(call)(jnp.asarray(eps)).block_until_ready()
+
+
+def test_vacuum_reference_sim_for_filled_ports_refused():
+    # A vacuum reference guide would give P_inc and a_inc at the wrong modal impedance, scaling |S| without a word.
+    sim=guide();fill(sim,-.1,.22)
+    sim.add_waveguide_port(.10,direction='-x',name='receive',f0=9e9,freqs=np.array([8e9,10e9]))
+    reference=guide()
+    with pytest.raises(ValueError,match="share its port's medium"):
+        execute(sim,'compute_waveguide_s_matrix',normalize='flux',port_reference_sims=[reference,reference])

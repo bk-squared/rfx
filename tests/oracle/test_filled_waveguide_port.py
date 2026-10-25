@@ -87,8 +87,10 @@ def test_three_mesh_trend_filled():
         assert np.all(np.abs(rows[fine]['phase_error_continuous'])<=np.abs(rows[coarse]['phase_error_continuous'])), 'O1 phase refinement'
 
 
+# Measured (records 20261025-nu-filled-port-oracles): the per-bin |S11| error at 7.2 GHz rises from 4e-5 (a/45) to
+# 7.6e-4 (a/60) while other bins fall; its cause being #2013's per-bin ripple is an estimate, which the #2013 fix tests.
 @pytest.mark.slow
-@H_TABLE_WRAP
+@pytest.mark.xfail(strict=True,reason='#2013 H table wrap (estimate): O2 reflection refinement fails at 7.2 GHz')
 def test_three_mesh_trend_step():
     rows=three_mesh('O2')
     err=lambda n: np.abs(np.array(rows[n]['s11_abs'])-np.abs(rows[n]['s11_closed']))

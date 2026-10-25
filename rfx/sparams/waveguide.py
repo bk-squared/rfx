@@ -1065,7 +1065,8 @@ def _homogeneous_reference_materials(shape, medium):
     materials = init_materials(shape)
     if medium == PortMedium():
         return materials
-    return materials._replace(eps_r=jnp.full(shape, medium.eps_r), mu_r=jnp.full(shape, medium.mu_r))
+    return materials._replace(eps_r=jnp.full(shape, medium.eps_r, dtype=materials.eps_r.dtype),
+                              mu_r=jnp.full(shape, medium.mu_r, dtype=materials.mu_r.dtype))
 
 
 def _empty_waveguide_reference(self, medium=None):

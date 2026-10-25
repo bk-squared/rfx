@@ -464,35 +464,47 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                 raise ValueError(prefix + f"eps_r={medium.eps_r}, mu_r={medium.mu_r}: multimode filled ports are unsupported; " + reason)
             return medium
 
+        probe_bounds = list(bounds)
+        probe_bounds["xyz".index(cfg.normal_axis)] = (cfg.probe_x, cfg.probe_x + 1)
+        probe_arrays = [section(array, probe_bounds)[0] for _, array, _, _ in operands]
+
+        def probe_medium(medium, *values):
+            matches, descriptions = True, []
+            for (name, _, vacuum, label), value in zip(operands, values):
+                value = np.asarray(value)
+                if name == "materials.eps_r":
+                    target = medium.eps_r
+                elif name == "materials.mu_r":
+                    target = medium.mu_r
+                elif vacuum is not None:
+                    target = vacuum
+                else:
+                    if ".nodes." in name:
+                        continue
+                    target = 1 / medium.eps_r if name.startswith("aniso_inv_eps") else medium.eps_r
+                bad = ~np.isclose(value, target, rtol=2e-7, atol=0)
+                component = name.rsplit(".", 1)[-1]
+                if vacuum is None and component in ("0", "1", "2") and value.ndim == 3:
+                    bad &= ~np.asarray(section(wall_masks[int(component)], probe_bounds)[0])
+                if value.size == 0 or np.any(bad):
+                    matches = False
+                    descriptions.append(f"{label} ({name})={np.unique(value).tolist()}")
+            return matches, "; ".join(descriptions)
+
         if traced:
-            traced_check("waveguide port", "section medium", judge, *arrays, ordered=True)
+            # The probe-plane medium cannot mark the config inside a trace, so a mismatch refuses the run.
+            def judge_traced(*values):
+                medium = judge(*values[:len(arrays)])
+                matches, description = probe_medium(medium, *values[len(arrays):])
+                if not matches:
+                    raise ValueError(prefix + "traced override puts another medium at the probe plane ("
+                                     + description + "); its S21 cannot be split; " + reason)
+            traced_check("waveguide port", "section medium", judge_traced, *arrays, *probe_arrays, ordered=True)
             return cfg
         medium = judge(*arrays)
         cfg = with_port_medium(cfg, medium)
-        probe_bounds = list(bounds)
-        probe_bounds["xyz".index(cfg.normal_axis)] = (cfg.probe_x, cfg.probe_x + 1)
-        matches, descriptions = True, []
-        for name, array, vacuum, label in operands:
-            value = np.asarray(section(array, probe_bounds)[0])
-            if name == "materials.eps_r":
-                target = medium.eps_r
-            elif name == "materials.mu_r":
-                target = medium.mu_r
-            elif vacuum is not None:
-                target = vacuum
-            else:
-                if ".nodes." in name:
-                    continue
-                target = 1 / medium.eps_r if name.startswith("aniso_inv_eps") else medium.eps_r
-            bad = ~np.isclose(value, target, rtol=2e-7, atol=0)
-            component = name.rsplit(".", 1)[-1]
-            if vacuum is None and component in ("0", "1", "2") and value.ndim == 3:
-                bad &= ~np.asarray(section(wall_masks[int(component)], probe_bounds)[0])
-            if value.size == 0 or np.any(bad):
-                matches = False
-                descriptions.append(f"{label} ({name})={np.unique(value).tolist()}")
-        return cfg._replace(probe_medium_matches=matches,
-                            probe_medium_description="; ".join(descriptions))
+        matches, description = probe_medium(medium, *probe_arrays)
+        return cfg._replace(probe_medium_matches=matches, probe_medium_description=description)
 
     return [[resolve(cfg, True) for cfg in group] if isinstance(group, list)
             else resolve(group, False) for group in waveguide_ports]

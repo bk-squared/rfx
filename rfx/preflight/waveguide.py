@@ -1341,7 +1341,7 @@ def _waveguide_far_geometry(self, grid, cfgs):
     distance twice, in two places, is how the two would drift apart.
 
     Returns ``(findings, skipped)`` where each finding is
-    ``(label, direction, axis, side, x_p, pad_m, far_path, f_c)`` in input
+    ``(label, direction, axis, side, x_p, pad_m, far_path, f_c, speed)`` in input
     units (metres, hertz) and ``skipped`` names the ports whose launch
     direction could not be read.
     """
@@ -1364,9 +1364,10 @@ def _waveguide_far_geometry(self, grid, cfgs):
         else:
             side, pad_m = "lo", _axis_pad_thickness_m(grid, ax_i, "lo")
             far_path = x_p + pad_m
+        from rfx.model.waveguide_modes import port_light_speed
         f_c = float(cfg.f_cutoff)
         findings.append((label, direction, axis, side, x_p, pad_m,
-                         far_path, f_c))
+                         far_path, f_c, port_light_speed(cfg)))
     return findings, skipped
 
 def _validate_cfg_layout_from_band_low_edge(
@@ -1425,7 +1426,7 @@ def _validate_cfg_layout_from_band_low_edge(
         return
     note = _waveguide_skipped_note(skipped)
 
-    for (label, direction, _axis, _side, _x_p, pad_m, far_path, f_c) in findings:
+    for (label, direction, _axis, _side, _x_p, pad_m, far_path, f_c, speed) in findings:
         if f_c <= 0.0 or f_min <= f_c:
             # lambda_g is undefined at or below the port's own cutoff;
             # the record-length check already speaks about that band.
@@ -1433,8 +1434,6 @@ def _validate_cfg_layout_from_band_low_edge(
         ratio = f_min / f_c
         if ratio >= ratio_gate:
             continue
-        from rfx.model.waveguide_modes import port_light_speed
-        speed = next(port_light_speed(c) for c in cfgs if c.direction == direction and float(c.f_cutoff) == f_c)
         lam_g = (speed / f_min) / math.sqrt(1.0 - (f_c / f_min) ** 2)
         _w.warn(PreflightWarning(
             f"{label} ({direction}): at f_min/f_c = {ratio:.7g} "
@@ -1513,7 +1512,7 @@ def _validate_cfg_record_vs_far_boundary(
         return
     note = _waveguide_skipped_note(skipped)
 
-    for (label, direction, axis, side, x_p, pad_m, far_path, f_c) in findings:
+    for (label, direction, axis, side, x_p, pad_m, far_path, f_c, speed) in findings:
         geom = (
             f"far_path = {far_path * 1e3:.4g} mm (port plane "
             f"{x_p * 1e3:.4g} mm to the {axis}-{side} outer wall on a "
@@ -1537,8 +1536,6 @@ def _validate_cfg_record_vs_far_boundary(
                 source="_validate_cfg_record_vs_far_boundary",
             ), stacklevel=3)
             continue
-        from rfx.model.waveguide_modes import port_light_speed
-        speed = next(port_light_speed(c) for c in cfgs if c.direction == direction and float(c.f_cutoff) == f_c)
         v_g = speed * math.sqrt(max(0.0, 1.0 - (f_c / f_min) ** 2)) if f_c > 0 else speed
         if v_g <= 0.0 or far_path <= 0.0:
             continue
