@@ -5,7 +5,9 @@
 # Two CI failures on one PR on 2026-09-18 could not be reproduced locally,
 # because the commands that produced them lived inline in workflow yaml. The
 # gates now live in scripts; this file is the one command that runs them in the
-# order CI does, and stops at the first failure.
+# order CI does. Every stage-1 step runs and reports even after an earlier one
+# failed, so one run names every failing step; the selected tests (step 10) run
+# only when steps 1-9 all passed.
 #
 # What it does NOT run in full: the fast suite and the guard/preflight suite.
 # Those are 35 minutes, and `.github/workflows/pr-tests.yml` only starts them
@@ -41,11 +43,18 @@ CHANGELOG_BASE="${CHANGELOG_BASE:-origin/main}"
 CHANGELOG_HEAD="${CHANGELOG_HEAD:-HEAD}"
 step_index=0
 
+failed_steps=()
+
+# Steps 1-9 each run in a subshell, so `fail` ends only that step;
+# step_failed records it and the next step still runs.
 fail() {
-  echo
-  echo "FAILED: ${STEP_NAMES[$step_index]}"
-  echo "(steps after it were not run)"
   exit 1
+}
+
+step_failed() {
+  failed_steps+=("${STEP_NAMES[$step_index]}")
+  echo
+  echo "FAILED: ${STEP_NAMES[$step_index]} (the remaining steps still run)"
 }
 
 begin() {
@@ -55,12 +64,17 @@ begin() {
 }
 
 begin 0
+(
 bash scripts/ci/lint.sh || fail
+) || step_failed
 
 begin 1
+(
 bash scripts/ci/docs_hygiene.sh || fail
+) || step_failed
 
 begin 2
+(
 # The SAME script the changelog-fragment workflow runs. `assemble.py --check`
 # validates fragment names and headings, which is a different question: it never
 # notices a missing fragment on an rfx/ change, nor a CHANGELOG.md edit without
@@ -75,30 +89,38 @@ echo "fragment required? $CHANGELOG_BASE...$CHANGELOG_HEAD"
 echo "  ok — a fragment exists for every rfx/ change, and CHANGELOG.md is untouched"
 # Fragment names and headings, which the workflow leaves to the release run.
 "$PYTHON" scripts/changelog/assemble.py --check || fail
+) || step_failed
 
 begin 3
+(
 # The SAME script the data-budget step of guards-and-preflight runs. Locally
 # PR_LABELS_JSON is empty, so the exception label never applies here: a red
 # step means CI will be red until the records move or the label is applied.
 "$PYTHON" scripts/ci/check_data_budget.py \
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
+) || step_failed
 
 begin 4
+(
 # The working tree, so uncommitted growth counts too.
 BASE_SHA="$CHANGELOG_BASE" \
   "$PYTHON" scripts/ci/check_file_size_ratchet.py || fail
 BASE_SHA="$CHANGELOG_BASE" \
   "$PYTHON" scripts/ci/check_layer_structure.py || fail
+) || step_failed
 
 begin 5
+(
 if [ -n "$BODY_PATH" ]; then
   "$PYTHON" scripts/ci/check_pr_body.py --file "$BODY_PATH" || fail
   echo "PR body OK: $BODY_PATH"
 else
   echo "skipped — pass a path to check a PR body: scripts/ci/local.sh /tmp/body.md"
 fi
+) || step_failed
 
 begin 6
+(
 "$PYTHON" - <<'PYEOF' || fail
 import sys
 from pathlib import Path
@@ -123,21 +145,41 @@ for path in workflows:
 if bad:
     sys.exit(f"{bad} workflow file(s) do not parse")
 PYEOF
+) || step_failed
 
 begin 7
+(
 # The inventory half of the api-reference job of public-docs-source: a changed
 # public signature without a regenerated docs/guides/api_symbol_inventory.json.
 # That job is path-filtered and not a required check, so nothing else stops it
 # before the merge (PR 1570 reached main red on it, 2026-10-09). The rendered
 # HTML half needs pdoc and stays in CI.
 "$PYTHON" scripts/check_api_reference.py || fail
+) || step_failed
 
 begin 8
+(
 # The same flags the required gate in pr-tests.yml uses. Without `-o addopts=""`
 # the local run silently collects two fewer tests than CI does, which is the
 # local-is-weaker-than-CI gap these scripts exist to close. Costs about 27 s.
-PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -m pytest tests/contracts -q -x -p rfx_gate_memory \
+PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -m pytest tests/contracts -q -p rfx_gate_memory \
   -o addopts="" -m "not gpu and not docs_consistency" --strict-markers || fail
+) || step_failed
+
+if [ "${#failed_steps[@]}" -gt 0 ]; then
+  echo
+  echo "=== [10/${#STEP_NAMES[@]}] ${STEP_NAMES[9]} === not run: steps 1-9 must pass first"
+  echo
+  echo "FAILED steps: ${failed_steps[*]}"
+  exit 1
+fi
+
+# From here on a failure ends the run: the selected tests are the last step.
+fail() {
+  echo
+  echo "FAILED: ${STEP_NAMES[$step_index]}"
+  exit 1
+}
 
 begin 9
 selection_dir=$(mktemp -d) || fail
