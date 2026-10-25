@@ -106,7 +106,8 @@ def record_steps(cells):
 def measure(case,cells=45,*,layers=12,shift=False,n_steps=None):
     sim,f=build(case,cells,layers=layers,shift=shift,one_port=case.startswith('W2'))
     grid=sim._build_realized_grid()
-    n_steps=record_steps(cells) if n_steps is None else n_steps
+    # W2 (test_waveguide_section_medium.py) keeps its own 8000-step record; the bars' record is the oracle's.
+    n_steps=(round(8000*cells/45) if case.startswith('W2') else record_steps(cells)) if n_steps is None else n_steps
     realized_b=grid.node_of('z',grid.nz-1)-grid.node_of('z',0)
     realized_a=grid.node_of('y',grid.ny-1)-grid.node_of('y',0)
     preflight = preflight_findings(sim,f,n_steps) if case in ('O1','O2') else []

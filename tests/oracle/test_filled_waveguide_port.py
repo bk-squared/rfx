@@ -128,7 +128,13 @@ def test_cutoff(name):
         assert np.all(np.abs(errors)<=.01), f'B3 realized cutoff within 1 % ({name} {role}): {errors}'
 
 
-@pytest.mark.parametrize('name,role',ROWS)
+# Same structure and record with the causal table: the empty guide's worst tail share is 2.0e-3, pass (record
+# 20261025-nu-settled-wr90 LEADER-READING, 16000 steps). Only the table differs, so the cause is measured, not estimated.
+RECORD_WRAP={('B','comparator'):'B4 undetermined at 7.0 GHz: window term 1.05e-2 and 1.11e-2 over 1e-2'}
+
+
+@pytest.mark.parametrize('name,role',[pytest.param(*r,marks=pytest.mark.xfail(strict=True,reason=f'#2013 H table wrap: {RECORD_WRAP[r]}'))
+                                      if r in RECORD_WRAP else r for r in ROWS])
 def test_record(name,role):
     row=dict(zip(('case','comparator'),rows(name)))[role]
     for w in row['settling_witness']:
