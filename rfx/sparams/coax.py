@@ -53,6 +53,7 @@ from rfx.sparams._common import (
     _assemble_coaxial_two_port_from_voltages,
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
+    renormalize_power_waves,
 )
 
 
@@ -1078,6 +1079,12 @@ def compute_coaxial_two_port(
         status = "passed"
 
     reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
+    # #2014: the Z0-free wave ratio is S at the line's own impedance (the
+    # analytic TEM Z0 at both ends); refer it to the registered impedance=.
+    line_impedances = np.full(2, float(z_tem))
+    reference_impedances = np.full(2, float(port.impedance))
+    s_params = renormalize_power_waves(
+        s_params, line_impedances, reference_impedances)
     result_obj = CoaxialTwoPortResult(
         s_params=s_params,
         freqs=np.asarray(freqs, dtype=float),
@@ -1091,6 +1098,8 @@ def compute_coaxial_two_port(
         settling_db=settling_db, settling_witness=tuple(settling_details),
         status=status,
         flux_monitors=(flux_by_drive if extra_flux_monitors else None),
+        reference_impedances=reference_impedances,
+        line_impedances=line_impedances,
     )
     # Issue #662: the witness above is computed but was never compared to
     # the -40 dB bar this result's own docstring documents. NaN on the
@@ -1162,7 +1171,9 @@ def compute_coax_msl_transition(
     eps_r_sub : float or None, optional
         Substrate relative permittivity. Default ``None`` uses the explicit
         value on the registered microstrip port; geometry is not used to
-        infer it. This sets the analytic power-wave reference impedance.
+        infer it. This sets the analytic line impedance the microstrip waves
+        are formed at (``line_impedances``); S is referenced to the
+        registered ``impedance=`` of each port (``z0_ref``, #2014).
     n_steps : int or None, optional
         Number of time steps for each drive. Default ``None`` derives the
         duration from ``num_periods`` using the grid.
@@ -1221,7 +1232,8 @@ def compute_coax_msl_transition(
     Returns
     -------
     CoaxMSLTransitionResult
-        Power-wave S matrix with reference planes and analytic impedances,
+        Power-wave S matrix referenced to the registered impedances, with
+        reference planes and the analytic line impedances,
         conditioning, reciprocity, fit and settling diagnostics, and the
         requested flux spectra and ladder data. See the result class for
         field definitions. The result is not differentiable.
@@ -1655,15 +1667,14 @@ def compute_coax_msl_transition(
         msl_pe.width, msl_pe.height, eps_r_sub_resolved
     )
 
-    # Registered impedance= divergence advisory (issue #581 review N2):
-    # add_coaxial_port(impedance=...) / add_msl_port(impedance=...) size
-    # the feed resistor / termination sigma and (for coax) the TEM
-    # source amplitude calibration — but the POWER-WAVE NORMALIZATION
-    # (z0_ref, feeding sqrt(Z0) in the assembler) always uses the
-    # ANALYTIC z_tem / z0_msl computed here, never the registered
-    # impedance. A large silent divergence between the two is a
-    # footgun: the source/termination is calibrated for one Z0 while
-    # the extraction is normalized against another.
+    # Registered impedance= is the S reference (#2014): the waves are
+    # formed at the ANALYTIC z_tem / z0_msl computed here (line_impedances,
+    # feeding sqrt(Z0) in the assembler) and s_params is then referred to
+    # the registered impedance (z0_ref) by renormalize_power_waves, which is
+    # exact for real references. What still diverges is the line itself: a
+    # line whose Z0 is far from the reference reflects at the port plane by
+    # |Z0 - R|/(Z0 + R), and that reflection is in S as a property of the
+    # declared line, not an extraction error. Said once, for a gap > 5 %.
     for _label, _registered, _analytic in (
         ("coax", float(port.impedance), float(z_tem)),
         ("msl", float(msl_pe.impedance), float(z0_msl)),
@@ -1674,18 +1685,17 @@ def compute_coax_msl_transition(
                 import warnings as _wz
                 _wz.warn(
                     f"compute_coax_msl_transition(): the registered "
-                    f"{_label} port impedance ({_registered:.2f} ohm) "
-                    f"diverges {_rel_dev * 100:.1f}% from the analytic "
-                    f"{_label} Z0 ({_analytic:.2f} ohm) this method "
-                    "actually uses for the power-wave normalization "
-                    "(z0_ref) and for sizing the feed resistor / "
-                    "termination. The registered impedance= is NOT "
-                    "the reference impedance of the returned "
-                    "s_params; it only affects source/termination "
-                    "sizing. Pass a matching pin_radius/outer_radius "
-                    "(coax) or width/height/eps_r_sub (msl), or "
-                    "reconcile the mismatch, before trusting a "
-                    "specific reference-impedance interpretation.",
+                    f"{_label} port impedance ({_registered:.2f} ohm), "
+                    "which is the reference impedance of the returned "
+                    f"s_params, differs {_rel_dev * 100:.1f}% from the "
+                    f"analytic {_label} line Z0 ({_analytic:.2f} ohm, "
+                    "line_impedances). S therefore includes the line-"
+                    "to-reference mismatch at that port "
+                    f"(|Gamma| = {abs(_registered - _analytic) / (_registered + _analytic):.3f}). "
+                    "Pass a matching pin_radius/outer_radius (coax) or "
+                    "width/height/eps_r_sub (msl), or impedance= equal "
+                    "to the line Z0, if the line's own reference is "
+                    "wanted.",
                     stacklevel=2,
                 )
 
@@ -2007,7 +2017,12 @@ def compute_coax_msl_transition(
         )
 
     reference_planes = np.asarray([ref_coax_m, float(junction_x)], dtype=float)
-    z0_ref = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
+    # #2014: waves formed at the analytic line impedances; s_params referred
+    # to the registered impedance= of each port.
+    line_impedances = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
+    z0_ref = np.asarray(
+        [float(port.impedance), float(msl_pe.impedance)], dtype=float)
+    s_params = renormalize_power_waves(s_params, line_impedances, z0_ref)
 
     # Ladder dump implementation (moved from the API docstring).
     # ``return_ladder_voltages`` (issue #589 label-independent ladder dump):
@@ -2077,7 +2092,7 @@ def compute_coax_msl_transition(
             "drive_order": ("coax", "msl"),
             "ref_coax_m": float(ref_coax_m),
             "ref_msl_m": float(junction_x),
-            "z0_ref": z0_ref.copy(),
+            "z0_ref": line_impedances.copy(),
         }
 
     result_obj = CoaxMSLTransitionResult(
@@ -2086,6 +2101,7 @@ def compute_coax_msl_transition(
         port_names=("coax", "msl"),
         reference_planes=reference_planes,
         z0_ref=z0_ref,
+        line_impedances=line_impedances,
         cond_a=cond_a,
         cond_a_equilibrated=cond_a_equilibrated,
         recurrence_residual=rec_resid,

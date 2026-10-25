@@ -56,6 +56,7 @@ from rfx.sparams._common import (
     _warn_msl_beta_scan_railed,
     _warn_if_ringdown_truncated,
     _project_passive,
+    renormalize_power_waves,
     _warn_if_passivity_projected,
     _warn_if_nonpassive_smatrix,
     _assemble_mixed_power_wave_s,
@@ -1068,10 +1069,22 @@ def compute_mixed_s_matrix(
             [("wire" if wire_mode else "lumped")] * n_lw
             + ["msl"] * n_msl
         )
-        z0_ref = np.asarray(
+        # #2014: S is referenced to every port's declared impedance=. The
+        # MSL waves were formed at the analytic line Z0 (line_impedances);
+        # lumped/wire ports already use their declared impedance, so only
+        # the MSL rows and columns move, once, before the projection.
+        line_impedances = np.asarray(
             [float(pe.impedance) for pe in lw_entries]
             + z0_hj_per_port
         )
+        z0_ref = np.asarray(
+            [float(pe.impedance) for pe in lw_entries]
+            + [float(pe.impedance) for pe in entries]
+        )
+        S = renormalize_power_waves(S, line_impedances, z0_ref)
+        if s_wave_full is not None:
+            s_wave_full = renormalize_power_waves(
+                s_wave_full, line_impedances, z0_ref)
 
         S = jnp.where(refused_positions[..., None], jnp.nan, S)
         s_raw = None
@@ -1091,6 +1104,7 @@ def compute_mixed_s_matrix(
             port_names=port_names,
             port_families=port_families,
             z0_ref=z0_ref,
+            line_impedances=line_impedances,
             settling_db=settling_db_runs,
             settling_witness=tuple(settling_details),
             s21_power_witness=s21_power,

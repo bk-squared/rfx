@@ -1339,7 +1339,12 @@ class CoaxialTwoPortResult:
     ``s_params[j, i, :]`` is the response measured at port ``j`` while port
     ``i`` is driven (standard S-matrix convention), referenced to each port's
     OWN reference plane (its feed resistor's axial plane — see
-    ``reference_planes``). ``cond_a`` is the per-frequency condition number of
+    ``reference_planes``), and to the registered ``add_coaxial_port
+    (impedance=...)`` at both ports (``reference_impedances``, #2014): the
+    Z0-free wave ratio is the S at the line's own impedance, taken as the
+    analytic TEM Z0 (``line_impedances``), and referred to the registered
+    impedance by :func:`rfx.sparams._common.renormalize_power_waves`
+    (nothing is computed where the two are equal). ``cond_a`` is the per-frequency condition number of
     the incident-wave matrix inverted by the two-drive solve: it bounds
     DEGENERACY of the two drives only, and is blind to a systematic
     incident/outgoing mislabel at one port (see the cited function's
@@ -1416,6 +1421,8 @@ class CoaxialTwoPortResult:
     status: str
     flux_monitors: dict | None = None
     settling_witness: tuple | None = None
+    reference_impedances: np.ndarray | None = None
+    line_impedances: np.ndarray | None = None
 
 
 @dataclass(frozen=True)
@@ -1482,16 +1489,22 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
     ----------
     S : (n_ports, n_ports, n_freqs) complex
         Power-wave S (a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)), R the
-        positive real analytic Hammerstad-Jensen reference of each port) formed
-        at the first probe plane, shifted to the DECLARED FEED PLANE. Bracketing H
+        port's declared ``impedance=``, #2014) formed at the first probe plane
+        at the analytic line Z0, shifted to the DECLARED FEED PLANE, then
+        referred to R. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
     reference_impedances : (n_ports,) float, optional
-        Actual positive real R values used to define S, in ohms and in
-        port_names order. These are distinct from fitted Z0 and the
-        source/load resistances. Present on generated results; None is
-        retained for manually constructed legacy result objects.
+        The positive real R values S is referenced to, in ohms and in
+        port_names order: each port's declared ``impedance=`` (default 50).
+        Distinct from the fitted Z0 and from ``line_impedances``. Present on
+        generated results; None is retained for manually constructed legacy
+        result objects.
+    line_impedances : (n_ports,) float, optional
+        Analytic Hammerstad-Jensen Z0 of each declared line, in ohms: the
+        reference the power waves were formed at before S was referred to
+        ``reference_impedances``. Before #2014 this was the S reference.
     freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
@@ -1647,6 +1660,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
     sigma_max_excess: np.ndarray | None = None
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
+    line_impedances: np.ndarray | None = None
 
 
 @dataclass
@@ -1677,7 +1691,12 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
         ``"lumped"`` / ``"wire"`` / ``"msl"`` per port, same order.
     z0_ref : (n_ports,) float
         Power-wave reference impedance per port: the registered port
-        impedance for lumped/wire, analytic Hammerstad-Jensen Z0 for MSL.
+        ``impedance=`` for every family (#2014; before it, MSL ports were
+        referenced to their analytic Hammerstad-Jensen Z0).
+    line_impedances : (n_ports,) float, optional
+        The reference each port's waves were formed at before S was
+        referred to ``z0_ref``: the registered impedance for lumped/wire,
+        the analytic Hammerstad-Jensen Z0 for MSL.
     settling_db : (n_ports,) float, optional
         Per-drive pole-tail amplitude share in dB over recorded S channels
         and witness probes at the extraction bins.
@@ -1731,6 +1750,7 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
+    line_impedances: np.ndarray | None = None
 
 
 @dataclass
@@ -1942,17 +1962,20 @@ class CoaxMSLTransitionResult:
         the physical launch discontinuity (see class docstring); they are
         NOT on a shared axis and must not be subtracted from one another.
     z0_ref : (2,) float
-        ``[z0_coax_ohm, z0_msl_ohm]`` — the power-wave reference impedance
-        used for each port: analytic coax TEM Z0
+        ``[coax_impedance_ohm, msl_impedance_ohm]`` — the power-wave
+        reference impedance of ``s_params`` per port: the registered
+        ``add_coaxial_port(impedance=...)`` / ``add_msl_port(impedance=...)``
+        (#2014). The waves are formed at ``line_impedances`` and the matrix
+        is then referred to these values by
+        :func:`rfx.sparams._common.renormalize_power_waves`.
+    line_impedances : (2,) float
+        ``[z0_coax_ohm, z0_msl_ohm]`` — the analytic line impedances the
+        power waves (and ``a_inc``/``b_out``) were formed at: analytic coax
+        TEM Z0
         (:func:`rfx.sources.coaxial_port.coaxial_tem_characteristic_impedance`)
         and analytic Hammerstad-Jensen microstrip Zc
         (:func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`).
-        NOTE: the registered ``add_coaxial_port(impedance=...)`` /
-        ``add_msl_port(impedance=...)`` values are NOT used here (they only
-        size the feed resistor / termination and, for coax, the source
-        amplitude calibration) — :meth:`_SparamMixin.compute_coax_msl_transition`
-        warns when a registered impedance diverges from the analytic value
-        actually used by more than 5%.
+        Before #2014 these were the S reference.
     cond_a : (n_freqs,) float
         Per-frequency condition number of the two-drive incident-wave
         matrix, RAW (same contract as :class:`CoaxialTwoPortResult`'s own
@@ -1979,7 +2002,8 @@ class CoaxMSLTransitionResult:
         number from a new fixture.
     a_inc, b_out : (2, 2, n_freqs) complex
         The POWER-wave incident/outgoing amplitudes actually fed to the
-        two-drive solve (after the ``sqrt(Z0)`` division), exposed for
+        two-drive solve (after the ``sqrt(Z0)`` division, at
+        ``line_impedances``, not at ``z0_ref``), exposed for
         audit (issue #581 review finding B2) — e.g. to check each drive's
         own excitation actually reached a comparable amplitude before
         trusting ``cond_a``/``cond_a_equilibrated``.
@@ -2054,7 +2078,8 @@ class CoaxMSLTransitionResult:
         grid x-indices; ``drive_order`` ``("coax", "msl")``; ``ref_coax_m``
         / ``ref_msl_m`` float, each port's own reference plane (identical to
         ``reference_planes``); ``z0_ref`` (2,) float64 copy of the two
-        analytic reference impedances.
+        analytic line impedances the assembler formed the waves at (equal to
+        ``line_impedances``; since #2014 not the reference of ``s_params``).
 
         DIAGNOSTIC ONLY, and label-FREE: these are modal voltages, not
         wave amplitudes — no incident/outgoing role is assigned here (that
@@ -2088,6 +2113,7 @@ class CoaxMSLTransitionResult:
     flux_monitors: dict | None = None
     ladder_voltages: dict | None = None
     settling_witness: tuple | None = None
+    line_impedances: np.ndarray | None = None
 
 
 __all__ = [
