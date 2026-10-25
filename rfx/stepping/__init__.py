@@ -13,6 +13,9 @@ from .graded import (
 from .remat import (
     segmented_scan,
 )
+from .scan import (
+    recorded_scan,
+)
 from .sequence import (
     compose,
     HookPoint,
@@ -27,6 +30,18 @@ from .slab import (
 )
 from .step_count import (
     steps_for_periods,
+)
+from .yee import (
+    update_e,
+    update_e_aniso,
+    update_e_aniso_inv,
+    update_e_box,
+    update_e_fast,
+    update_e_nu,
+    update_e_nu_aniso,
+    update_h,
+    update_h_fast,
+    update_h_nu,
 )
 
 __all__ = [
@@ -44,6 +59,7 @@ __all__ = [
     "Kernel",
     "make_core_step",
     "make_graded_step",
+    "recorded_scan",
     "run_nonuniform",
     "run_nonuniform_until_decay",
     "run_uniform_loop",
@@ -52,6 +68,16 @@ __all__ = [
     "Slab",
     "STEP_SEQUENCE",
     "steps_for_periods",
+    "update_e",
+    "update_e_aniso",
+    "update_e_aniso_inv",
+    "update_e_box",
+    "update_e_fast",
+    "update_e_nu",
+    "update_e_nu_aniso",
+    "update_h",
+    "update_h_fast",
+    "update_h_nu",
 ]
 
 # rfx.measurement → rfx.model → rfx.nonuniform → rfx.stepping loads this package

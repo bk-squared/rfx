@@ -12,7 +12,7 @@ HELPERS = frozenset({"component_e_materials", "component_h_materials",
                      "cell_component_e_materials", "edge_averaged_materials",
                      "edge_mean_components", "cell_owned_component_materials",
                      "permittivity_without_lumped"})
-EXCLUDED = {"rfx/core/yee.py", "rfx/model/materials.py"}
+EXCLUDED = {"rfx/core/yee.py", "rfx/stepping/yee.py", "rfx/model/materials.py"}  # the Yee kernels moved to rfx/stepping/yee.py
 
 # May only shrink. With seven helpers the base (5a7e4f28) has 52 sites in
 # 27 modules (the original five: 46 in 26), including two nonuniform.py aliases.

@@ -10,9 +10,8 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-from rfx.core.yee import (
-    FDTDState, MaterialArrays, update_h, update_e,
-)
+from rfx.core.yee import FDTDState, MaterialArrays
+from rfx.stepping import update_h, update_e
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
 # Patching rfx.boundaries.cpml.init_cpml later does not replace this bound import.
 from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e

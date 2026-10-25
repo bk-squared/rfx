@@ -25,31 +25,31 @@
       "function": "h_neighbor"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_e_aniso"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_e_aniso_inv"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_e_fast"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_e_nu_aniso"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_h"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_h_fast"
     },
     {
-      "file": "rfx/core/yee.py",
+      "file": "rfx/stepping/yee.py",
       "function": "update_h_nu"
     },
     {
@@ -368,30 +368,6 @@
       "function": "h_neighbor",
       "kind": "roll/diff",
       "count": 1
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_h",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_h_fast",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_h_fast",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_h_nu",
-      "kind": "neighbour",
-      "count": 6
     },
     {
       "file": "rfx/core/yee.py",
@@ -930,6 +906,30 @@
       "file": "rfx/stepping/uniform_setup.py",
       "function": "_build_step_setup",
       "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/yee.py",
+      "function": "update_h",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/stepping/yee.py",
+      "function": "update_h_fast",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/stepping/yee.py",
+      "function": "update_h_fast",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/stepping/yee.py",
+      "function": "update_h_nu",
+      "kind": "neighbour",
+      "count": 6
     },
     {
       "file": "rfx/subgridding/disjoint_3d.py",

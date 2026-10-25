@@ -60,11 +60,11 @@ BUILDERS = {
         "Cb-normalised source",
     ("rfx/core/yee.py", "precompute_coeffs"):
         "the GPU fast lane's baked Ca/Cb (_bake)",
-    ("rfx/core/yee.py", "update_e_aniso"):
+    ("rfx/stepping/yee.py", "update_e_aniso"):
         "Stage-1 subpixel Ca/Cb (uniform)",
-    ("rfx/core/yee.py", "update_e_nu_aniso"):
+    ("rfx/stepping/yee.py", "update_e_nu_aniso"):
         "Stage-1 subpixel Ca/Cb (graded mesh)",
-    ("rfx/core/yee.py", "update_e_aniso_inv"):
+    ("rfx/stepping/yee.py", "update_e_aniso_inv"):
         "Stage-2 inverse-eps Ca/Cb (kottke_pec)",
     ("rfx/boundaries/cpml.py", "apply_cpml_e"):
         "the CPML psi coefficient dt/eps",
@@ -422,7 +422,7 @@ def test_discovery_finds_a_missed_builder():
 def test_a_builder_with_one_coefficient_left_in_si_is_named():
     """One of update_e_aniso's three components back in SI next to two
     routed ones: the route check alone passes it, the EPS_0 read does not."""
-    rel = "rfx/core/yee.py"
+    rel = "rfx/stepping/yee.py"
     fn = _parse(REPO)[rel].defs["update_e_aniso"]
     text = (REPO / rel).read_text(encoding="utf-8")
     body = "\n".join(text.splitlines()[fn.lineno - 1:fn.end_lineno])
