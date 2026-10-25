@@ -21,6 +21,7 @@ replays that JSON:
 Pure arithmetic, no time stepping, no settling witness applies.
 """
 from __future__ import annotations
+from rfx.model.waveguide_modes import PortMedium
 
 import json
 import sys
@@ -127,11 +128,11 @@ def test_live_functions_reproduce_the_committed_beta(envelope):
     with enable_x64():
         for r in envelope["rows"]:
             f = jnp.asarray([r["f_hz"]], dtype=jnp.float64)
-            bb = float(np.real(np.asarray(_compute_beta(f, inp["f_cutoff_hz"], dt=inp["dt_s"], dx=inp["dx_boundary_m"])))[0])
-            bl = float(np.real(np.asarray(_compute_beta(f, inp["f_cutoff_hz"], dt=inp["dt_s"], dx=inp["dx_local_m"])))[0])
-            bc = float(np.real(np.asarray(_compute_beta(f, inp["f_cutoff_hz"])))[0])
-            zb = float(np.real(np.asarray(_compute_mode_impedance(f, inp["f_cutoff_hz"], "TE", dt=inp["dt_s"], dx=inp["dx_boundary_m"])))[0])
-            zl = float(np.real(np.asarray(_compute_mode_impedance(f, inp["f_cutoff_hz"], "TE", dt=inp["dt_s"], dx=inp["dx_local_m"])))[0])
+            bb = float(np.real(np.asarray(_compute_beta(f, inp["f_cutoff_hz"], dt=inp["dt_s"], dx=inp["dx_boundary_m"], medium=PortMedium())))[0])
+            bl = float(np.real(np.asarray(_compute_beta(f, inp["f_cutoff_hz"], dt=inp["dt_s"], dx=inp["dx_local_m"], medium=PortMedium())))[0])
+            bc = float(np.real(np.asarray(_compute_beta(f, inp["f_cutoff_hz"], medium=PortMedium())))[0])
+            zb = float(np.real(np.asarray(_compute_mode_impedance(f, inp["f_cutoff_hz"], "TE", dt=inp["dt_s"], dx=inp["dx_boundary_m"], medium=PortMedium())))[0])
+            zl = float(np.real(np.asarray(_compute_mode_impedance(f, inp["f_cutoff_hz"], "TE", dt=inp["dt_s"], dx=inp["dx_local_m"], medium=PortMedium())))[0])
             assert bb == pytest.approx(r["beta_boundary_cell_rad_per_m"], rel=1e-9)
             assert bl == pytest.approx(r["beta_local_cell_rad_per_m"], rel=1e-9)
             assert bc == pytest.approx(r["beta_continuous_rad_per_m"], rel=1e-9)

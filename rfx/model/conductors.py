@@ -733,7 +733,7 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     if assembly is not None:
         conductors = assembly.realized()
     # A validator bug must propagate, rather than become an advisory.
-    if getattr(sim, "_tfsf", None) is not None and any(v is not None for v in tfsf_material_overrides):
+    if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
             _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
     else:

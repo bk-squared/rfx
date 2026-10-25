@@ -362,6 +362,49 @@ _WAVEGUIDE_UV_AXES = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
 WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET = 2000
 
 
+def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_override=None, mu_r_override=None):
+    """Read the drawn realization and concrete call overrides through setup's resolver."""
+    import jax
+    from rfx.boundaries.features import resolve_waveguide_section_medium
+    from rfx.model.overrides import apply_material_overrides
+    from rfx.model.pole_stability import courant_budget
+    call_values = getattr(sim, "_waveguide_call_overrides", (None, None, None))
+    eps_override = call_values[0] if eps_override is None else eps_override
+    sigma_override = call_values[1] if sigma_override is None else sigma_override
+    mu_r_override = call_values[2] if mu_r_override is None else mu_r_override
+    with jax.ensure_compile_time_eval():
+        materials, ds, ls, pec, _, _, _ = sim._assemble_materials(grid)
+        _, debye, lorentz = sim._init_dispersion(
+            materials, grid.dt, ds, ls, budget=courant_budget(grid),
+            periodic=sim._periodic_flags())
+        overrides = {}
+        for name, value in (("eps_override", eps_override), ("sigma_override", sigma_override), ("mu_r_override", mu_r_override)):
+            if is_tracer(value):
+                import warnings
+                warnings.warn("Waveguide preflight reads drawn geometry; traced section overrides are judged at setup.",
+                              stacklevel=2)
+            elif value is not None:
+                overrides[name] = value
+        materials = apply_material_overrides(materials, **overrides)
+        return resolve_waveguide_section_medium(cfgs, grid, materials,
+                                                dict(debye=debye, lorentz=lorentz, pec_mask=pec), ())
+
+
+def _preflight_entry_config(sim, entry):
+    import warnings
+    grid = sim._build_realized_grid()
+    freqs = resolve_waveguide_port_freqs(sim, entry)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Explicitly requested dtype.*")
+        if sim._uses_nonuniform_mesh:
+            from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+            cfg = _build_waveguide_port_config_nu(sim, entry, grid, freqs, 1)
+        else:
+            cfg = sim._build_waveguide_port_config(entry, grid, freqs, 1)
+    resolved = resolve_preflight_port_configs(sim, grid, [cfg])[0]
+    return resolved[0] if isinstance(resolved, list) else resolved
+
+
 def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     """What ONE waveguide port's cutoff is actually built from, measured.
 
@@ -454,6 +497,7 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
             with _w.catch_warnings():
                 _w.simplefilter("ignore")
                 built = sim._build_waveguide_port_config(entry, grid, freqs, 1)
+                built = resolve_preflight_port_configs(sim, grid, [built])[0]
             # ``WaveguidePortConfig`` is a NamedTuple, so it IS a tuple --
             # test for the field, never for tuple-ness. The multimode builder
             # returns a LIST of configs sorted by cutoff whose first entry is
@@ -745,13 +789,24 @@ def _emit_waveguide_port_cutoff_findings(
     """
     import warnings as _w
 
+    from rfx.model.waveguide_modes import port_light_speed
+    try:
+        speed = port_light_speed(_preflight_entry_config(self, entry))
+    except ValueError:
+        # Setup owns material/waveform refusal. Continue preflight so the
+        # geometric span check can report its more specific obstruction.
+        return
+    except RuntimeError as exc:
+        _w.warn(f"Waveguide preflight could not resolve the section medium ({exc!r}); "
+                "cutoff checks are unchecked for this port.", stacklevel=2)
+        return
     m0, n0 = entry.mode
 
     def _fc_ap(m, n, _a=a_ap, _b=b_ap):
-        return (C0 / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
+        return (speed / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
 
     def _fc_gd(m, n, _a=a_gd, _b=b_gd):
-        return (C0 / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
+        return (speed / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
 
     fc_excited = _fc_ap(m0, n0)
 
@@ -1155,6 +1210,12 @@ def _validate_cfg_waveguide_reference_plane(
                     except (NotImplementedError, TypeError):
                         continue
                     if lo_c <= effective <= hi_c:
+                        try:
+                            _preflight_entry_config(self, entry)
+                        except ValueError:
+                            pass  # A nonuniform section retains the geometry advisory.
+                        else:
+                            break  # The realized section is homogeneous, including fill.
                         _w.warn(
                             PreflightWarning(
                                 f"waveguide_port reference plane at "
@@ -1233,6 +1294,7 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
             cfgs = [self._build_waveguide_port_config(e, grid, f,
                                                       int(n_steps))
                     for e in entries]
+        cfgs = resolve_preflight_port_configs(self, grid, cfgs)
     except Exception as exc:  # noqa: BLE001 - reported, not swallowed
         _w.warn(PreflightWarning(
             "the waveguide setup audits (record length vs the far-boundary "
@@ -1356,7 +1418,9 @@ def _validate_cfg_layout_from_band_low_edge(
         ratio = f_min / f_c
         if ratio >= ratio_gate:
             continue
-        lam_g = (C0 / f_min) / math.sqrt(1.0 - (f_c / f_min) ** 2)
+        from rfx.model.waveguide_modes import port_light_speed
+        speed = next(port_light_speed(c) for c in cfgs if c.direction == direction and float(c.f_cutoff) == f_c)
+        lam_g = (speed / f_min) / math.sqrt(1.0 - (f_c / f_min) ** 2)
         _w.warn(PreflightWarning(
             f"{label} ({direction}): at f_min/f_c = {ratio:.7g} "
             f"(f_min = {f_min / 1e9:.7g} GHz, the port's own discrete "
@@ -1458,7 +1522,9 @@ def _validate_cfg_record_vs_far_boundary(
                 source="_validate_cfg_record_vs_far_boundary",
             ), stacklevel=3)
             continue
-        v_g = C0 * math.sqrt(max(0.0, 1.0 - (f_c / f_min) ** 2)) if f_c > 0 else C0
+        from rfx.model.waveguide_modes import port_light_speed
+        speed = next(port_light_speed(c) for c in cfgs if c.direction == direction and float(c.f_cutoff) == f_c)
+        v_g = speed * math.sqrt(max(0.0, 1.0 - (f_c / f_min) ** 2)) if f_c > 0 else speed
         if v_g <= 0.0 or far_path <= 0.0:
             continue
         tau_far = 2.0 * far_path / v_g

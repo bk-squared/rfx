@@ -20,6 +20,7 @@ the run test.
 """
 
 from __future__ import annotations
+from rfx.model.waveguide_modes import PortMedium
 
 import math
 
@@ -50,7 +51,7 @@ L_M = F.REF_RIGHT_DEFAULT_M - F.REF_LEFT_DEFAULT_M
 
 def _beta() -> np.ndarray:
     return np.real(np.asarray(
-        _compute_beta(jnp.asarray(FREQS), F_C_HZ, dt=DT_S, dx=DX_M),
+        _compute_beta(jnp.asarray(FREQS), F_C_HZ, dt=DT_S, dx=DX_M, medium=PortMedium()),
         dtype=complex,
     ))
 

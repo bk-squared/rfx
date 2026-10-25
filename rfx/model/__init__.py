@@ -59,6 +59,7 @@ from rfx.model.waveguide_modes import (
     solve_rectangular_modes,
     WaveguidePort,
     WaveguidePortConfig,
+    PortMedium,
 )
 from rfx.model.waveguide_waveform import (
     waveguide_waveform_error,
@@ -101,6 +102,7 @@ __all__ = [
     "waveguide_waveform_error",
     "WaveguidePort",
     "WaveguidePortConfig",
+    "PortMedium",
     "with_edge_keep",
     "with_graded_edge_keep",
     "with_sheet_layout_reports",

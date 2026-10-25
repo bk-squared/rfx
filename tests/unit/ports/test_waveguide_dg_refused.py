@@ -111,11 +111,7 @@ def test_default_reaches_modulated_config(graded, internal, route, monkeypatch):
     for module in (compile_module, modes, facade):
         monkeypatch.setattr(module, "init_waveguide_port", capture)
     monkeypatch.setattr(jax.lax, "scan", _no_steps)
-    if route == "preflight" and graded:
-        _enter(sim, route)
-        assert seen == []  # Graded general preflight uses declared geometry.
-        assert all(e.waveform == "modulated_gaussian" for e in sim._waveguide_ports)
-        return
+    # Both meshes now build the realized port to resolve its section medium.
     with pytest.raises(Built):
         _enter(sim, route)
     assert seen == ["modulated_gaussian"]

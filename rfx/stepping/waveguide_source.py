@@ -83,7 +83,7 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
                          0, table_size - 1)
     src_val = cfg.src_amp * table[safe_step]
     from rfx.core.yee import MaterialArrays, component_h_materials
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, cfg.medium.mu_r))[0] * MU_0
     coeff = dt / (mu_abs * dx)
 
     # For a "+axis" port the source's backward emission travels in "−axis";
@@ -125,7 +125,7 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
     Same pattern as ``apply_tfsf_e`` in ``rfx/sources/tfsf.py``. Call AFTER
     ``update_e``, along with the paired ``apply_waveguide_port_h``.
     """
-    coeff = dt / (EPS_0 * dx)
+    coeff = dt / (EPS_0 * cfg.medium.eps_r * dx)
 
     # h_inc_table is empty (shape (1,)) when dt or dft_total_steps was not
     # supplied at init time. In that case the paired H correction is also

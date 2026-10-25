@@ -1,4 +1,4 @@
-"""Vacuum modal ports must never measure a loaded launch segment (#1994)."""
+"""Modal ports resolve one lossless homogeneous section medium (#1994)."""
 import warnings
 
 import jax
@@ -41,14 +41,15 @@ def fill(sim, lo, hi, material="fill", **props):
 
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("route", ["run", "forward", "compute_waveguide_s_matrix"])
-def test_filled_guide_refused(graded, route):
+def test_filled_guide_admitted(graded, route):
     sim = guide(graded)
     fill(sim, -.1, L+.1)
     if route == "compute_waveguide_s_matrix":
         sim.add_waveguide_port(.10, direction="-x", name="receive", f0=9e9,
                               freqs=np.array([8e9, 10e9]))
-    with pytest.raises(ValueError, match=r"launch.*eps.*2\.2.*rfx#1994"):
-        execute(sim, route)
+    result = execute(sim, route)
+    if route != "compute_waveguide_s_matrix":
+        assert result.waveguide_ports["launch"].medium.eps_r == pytest.approx(2.2)
 
 
 @pytest.mark.parametrize("graded", [False, True])
@@ -80,7 +81,7 @@ def test_vacuum_and_beyond_admitted(graded, medium, record_property, monkeypatch
         sim.add(Box((0, 0, 0), (L, A, B)), material="vacuum")
     elif medium == "empty_poles":
         fill(sim, 0, L, eps_r=1., debye_poles=[], lorentz_poles=[])
-    original = features.refuse_waveguide_segment_medium
+    original = features.resolve_waveguide_section_medium
     measured = []
 
     def observe(ports, grid, materials, *args, **kwargs):
@@ -88,7 +89,7 @@ def test_vacuum_and_beyond_admitted(graded, medium, record_property, monkeypatch
         measured.append(float(np.asarray(materials.eps_r)[cfg.ref_x, cfg.u_lo, cfg.v_lo]))
         return original(ports, grid, materials, *args, **kwargs)
 
-    monkeypatch.setattr(features, "refuse_waveguide_segment_medium", observe)
+    monkeypatch.setattr(features, "resolve_waveguide_section_medium", observe)
     execute(sim)
     assert measured == [1.0]
     record_property("last_segment_eps", measured)
@@ -212,7 +213,7 @@ def test_cpml_material_sigma_only(graded):
 @pytest.mark.parametrize("graded", [False, True])
 def test_isolated_h_operand(graded):
     """Direct setup material isolates H from the assembler's E-edge averaging."""
-    from rfx.boundaries.features import refuse_waveguide_segment_medium
+    from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.core.yee import MaterialArrays
     sim = guide(graded)
     grid = sim._build_realized_grid()
@@ -225,18 +226,18 @@ def test_isolated_h_operand(graded):
     eps = jnp.ones(grid.shape).at[cfg.x_index-1, :, :].set(2.2)
     materials = MaterialArrays(eps, jnp.zeros(grid.shape), jnp.ones(grid.shape))
     with pytest.raises(ValueError, match="launch.*eps"):
-        refuse_waveguide_segment_medium([cfg], grid, materials, {}, ())
+        resolve_waveguide_section_medium([cfg], grid, materials, {}, ())
 
 
 def test_scalar_low_level_medium():
-    from rfx.boundaries.features import refuse_waveguide_segment_medium
+    from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.core.yee import MaterialArrays
     sim = guide()
     grid = sim._build_realized_grid()
     entry = sim._waveguide_ports[0]
     cfg = sim._build_waveguide_port_config(entry, grid, entry.freqs, 2)
-    with pytest.raises(ValueError, match="permeability.*mu_r.*2"):
-        refuse_waveguide_segment_medium([cfg], grid, MaterialArrays(1., 0., 2.), {}, ())
+    resolved = resolve_waveguide_section_medium([cfg], grid, MaterialArrays(1., 0., 2.), {}, ())
+    assert resolved[0].medium.mu_r == 2.
 
 
 @pytest.mark.parametrize("graded", [False, True])
@@ -262,7 +263,7 @@ def test_other_operands(graded, kind):
 
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("route", ["run", "forward"])
-def test_two_device_routes_refuse(graded, route, record_property):
+def test_two_device_routes(graded, route, record_property):
     sim = guide(graded)
     fill(sim, 0, L)
     devices = jax.devices("cpu")
@@ -270,9 +271,8 @@ def test_two_device_routes_refuse(graded, route, record_property):
     kwargs = dict(devices=devices[:2])
     if route == "forward":
         kwargs["distributed"] = True
-    with pytest.raises((ValueError, NotImplementedError), match="waveguide|Waveguide|launch") as caught:
-        execute(sim, route, **kwargs)
-    record_property("refusal", str(caught.value))
+    result = execute(sim, route, **kwargs)
+    assert result.waveguide_ports["launch"].medium.eps_r == pytest.approx(2.2)
 
 
 @pytest.mark.parametrize("validation", ["production", "research"])
@@ -282,3 +282,124 @@ def test_subgridded_refuses(validation, record_property):
     with pytest.raises((ValueError, NotImplementedError), match="waveguide|Waveguide|subgridded") as caught:
         execute(sim)
     record_property("refusal", str(caught.value))
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('profile', ['analytic', 'discrete'])
+def test_filled_profiles_and_smoothing(graded, profile):
+    sim = guide(graded, mode_profile=profile)
+    fill(sim, -.1, .22)
+    result = execute(sim, subpixel_smoothing=True)
+    assert result.waveguide_ports['launch'].medium.eps_r == pytest.approx(2.2)
+
+
+@pytest.mark.parametrize('graded', [False, True])
+def test_probe_medium_refuses_s21_only(graded):
+    from rfx.measurement.waveguide_s import extract_waveguide_s11, extract_waveguide_s21
+    from rfx.preflight.waveguide import resolve_preflight_port_configs
+    sim = guide(graded)
+    fill(sim, .032, .08)
+    with pytest.raises(ValueError, match='probe plane.*port medium'):
+        execute(sim)
+    grid = sim._build_realized_grid()
+    entry = sim._waveguide_ports[0]
+    if graded:
+        from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+        cfg = _build_waveguide_port_config_nu(sim, entry, grid, entry.freqs, 2)
+    else:
+        cfg = sim._build_waveguide_port_config(entry, grid, entry.freqs, 2)
+    cfg = resolve_preflight_port_configs(sim, grid, [cfg])[0]
+    assert not cfg.probe_medium_matches
+    assert np.all(np.isfinite(extract_waveguide_s11(cfg)))
+    with pytest.raises(ValueError, match='probe plane'):
+        extract_waveguide_s21(cfg)
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('normalize', [True, 'flux'])
+def test_unequal_normalized_media_refused(graded, normalize):
+    sim = guide(graded)
+    fill(sim, .06, .22)
+    sim.add_waveguide_port(.10, direction='-x', name='receive', f0=9e9,
+                          freqs=np.array([8e9,10e9]))
+    with pytest.raises(ValueError, match='share one medium'):
+        execute(sim, 'compute_waveguide_s_matrix', normalize=normalize)
+
+
+@pytest.mark.parametrize('graded', [False, True])
+def test_concrete_fill_under_jit_vmap(graded):
+    sim = guide(graded)
+    fill(sim, -.1, .22)
+    def call(dummy):
+        cfg = execute(sim, 'forward').waveguide_ports['launch']
+        return cfg.v_ref_t + dummy * 0
+    plain = call(0.)
+    compiled = jax.jit(call)(0.)
+    np.testing.assert_array_equal(compiled, plain)
+    np.testing.assert_array_equal(jax.jit(jax.vmap(call))(jnp.zeros(2)), jnp.stack([plain,plain]))
+
+
+def test_injection_purity():
+    from tests._filled_waveguide import measure
+    from tests.oracle.test_filled_waveguide_port import dump
+    empty, filled = measure('W2_empty'), measure('W2')
+    dump(empty); dump(filled)
+    assert np.all(np.array(filled['reflection']) <= np.maximum(2*np.array(empty['reflection']), .01)), 'W2 backward injection floor'
+
+@pytest.mark.parametrize('graded', [False, True])
+def test_preflight_uses_fill_cutoff(graded):
+    from rfx.preflight.waveguide import _preflight_entry_config
+    sim = guide(graded)
+    fill(sim, -.1, .22)
+    cfg = _preflight_entry_config(sim, sim._waveguide_ports[0])
+    assert cfg.f_cutoff < 4.3e9, 'preflight must use filled cutoff, not vacuum cutoff'
+    assert cfg.medium.eps_r == pytest.approx(2.2)
+
+
+def test_interface_between_source_and_reference_refused():
+    sim = guide()
+    fill(sim, .022, .026)
+    with pytest.raises(ValueError, match='section cells.*eps.*cell'):
+        execute(sim)
+
+
+def test_injection_coefficients_use_medium():
+    from rfx.model import PortMedium
+    from rfx.core.yee import init_state
+    from rfx.stepping.waveguide_source import apply_waveguide_port_h, apply_waveguide_port_e
+    sim=guide()
+    grid=sim._build_realized_grid()
+    entry=sim._waveguide_ports[0]
+    cfg=sim._build_waveguide_port_config(entry,grid,entry.freqs,4)
+    cfg=cfg._replace(e_inc_table=jnp.ones(4),h_inc_table=jnp.ones(4))
+    filled=cfg._replace(medium=PortMedium(4.,2.))
+    state=init_state(grid.shape)
+    for update,field,factor in ((apply_waveguide_port_h,'hy',.5),(apply_waveguide_port_e,'ez',.25)):
+        vacuum=getattr(update(state,cfg,0,grid.dt,grid.dx),field)
+        actual=getattr(update(state,filled,0,grid.dt,grid.dx),field)
+        assert np.max(np.abs(vacuum))>0
+        np.testing.assert_allclose(actual,vacuum*factor,rtol=1e-7,err_msg='filled TF/SF coefficient')
+
+
+@pytest.mark.parametrize('graded',[False,True])
+def test_preflight_concrete_override_is_call_local(graded):
+    sim=guide(graded)
+    grid=sim._build_realized_grid()
+    eps=jnp.full(grid.shape,2.2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        result=sim.forward(n_steps=2,eps_override=eps)
+    assert result.waveguide_ports['launch'].medium.eps_r == pytest.approx(2.2)
+    assert not hasattr(sim,'_waveguide_call_overrides')
+    from rfx.preflight.waveguide import _preflight_entry_config
+    assert _preflight_entry_config(sim,sim._waveguide_ports[0]).medium.eps_r == 1.
+
+
+def test_per_component_conductivity_refused():
+    from rfx.boundaries.features import resolve_waveguide_section_medium
+    from rfx.core.yee import MaterialArrays
+    sim=guide();grid=sim._build_realized_grid();entry=sim._waveguide_ports[0]
+    cfg=sim._build_waveguide_port_config(entry,grid,entry.freqs,2)
+    zero=jnp.zeros(grid.shape)
+    materials=MaterialArrays(jnp.ones(grid.shape),(zero,zero,zero.at[cfg.ref_x,2,2].set(.1)),jnp.ones(grid.shape))
+    with pytest.raises(ValueError,match='conductivity.*cell'):
+        resolve_waveguide_section_medium([cfg],grid,materials,{},())

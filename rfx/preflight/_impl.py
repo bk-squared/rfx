@@ -29,6 +29,10 @@ def _preflight_impl(
     import warnings
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(self)
+    if getattr(self, "_waveguide_ports", ()) and _tfsf_material_overrides:
+        import copy
+        self = copy.copy(self)
+        self._waveguide_call_overrides = _tfsf_material_overrides
     if _conductors is not None:
         # Execution lends its assembled, pre-port products for this call only.
         # Bind the legacy validators to an isolated reader, never the public

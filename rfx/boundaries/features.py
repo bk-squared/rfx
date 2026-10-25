@@ -354,69 +354,135 @@ def waveguide_segment_cells(cfg, grid):
     return tuple(bounds)
 
 
-def refuse_waveguide_segment_medium(waveguide_ports, grid, materials, updates,
-                                   localized, design_box=None):
-    """Require scalar vacuum in the reference segment, including overrides/PEC.
+def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
+                                     localized, design_box=None):
+    """Resolve one scalar lossless medium over each corrected/reference section.
 
-    Vacuum is stored exactly as 1.0 / 0.0: comparisons are exact. The shared
-    TF/SF enumeration reads MATERIAL materials.sigma on both meshes, never
-    CPML profiles. Only scalar cells, pole presence, chi3 and PEC volumes are
-    judged. Interface smoothing and wall edges are the guide's own realization:
-    tensors, per-component permittivity, upml_eps, cells_view duplicates and PEC
-    edges are excluded. A user-drawn anisotropic per-component fill inside the
-    segment is not checked. A traced override over
-    the segment cannot be judged before the run: traced_check retains a host
-    callback, or refuses backends without callbacks, exactly as for TF/SF.
+    Material conductivity is checked, never the CPML profile. Geometric PEC
+    edges at the aperture boundary do not constitute a PEC volume. A probe is
+    judged separately: only consumers of its waves refuse a different medium.
     """
     if not waveguide_ports:
-        return
-    waveguide_ports = [cfg for group in waveguide_ports
-                       for cfg in (group if isinstance(group, list) else [group])]
+        return waveguide_ports
     import jax
     import numpy as np
     from rfx._traced_check import traced_check
-    from rfx.boundaries.tfsf import _injection_arrays
+    from rfx.boundaries.tfsf import _injection_arrays, _leaves
     from rfx.model.design_box import design_box_window
+    from rfx.model.waveguide_modes import PortMedium, with_port_medium
+    from rfx.boundaries.pec import wall_edge_masks, resolve_wall_faces
 
-    reason = ("a waveguide port models an empty (vacuum) guide: its cutoff, propagation "
-              "constant and modal impedance are vacuum values, so a filled or loaded "
-              "segment returns the wrong S (rfx#1994). Start the fill, override or "
-              "design box beyond the port's reference plane.")
-    operands = tuple(_injection_arrays(grid, materials, updates, localized, cell_scalar=True))
-    arrays, metadata = [], []
-    for port, cfg in enumerate(waveguide_ports):
+    wall_masks = wall_edge_masks(grid.shape, resolve_wall_faces(
+        grid, tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0])
+
+    operands = list(_injection_arrays(grid, materials, updates, localized, cell_scalar=True))
+    if isinstance(materials.sigma, (tuple, list)):
+        operands.extend((name, array, 0, "conductivity")
+                        for name, array in _leaves(materials.sigma, "materials.sigma"))
+    # Explicit component overrides must describe this same scalar medium.
+    # Scalar-cell enumeration deliberately excludes wall-derived component means.
+    for key in ("aniso_eps", "aniso_inv_eps"):
+        value = updates.get(key)
+        if value is not None:
+            for name, array in _leaves(value, key):
+                operands.append((name, array, None, "anisotropic permittivity"))
+    reason = ("waveguide sections require one homogeneous, isotropic, lossless, "
+              "non-dispersive medium (rfx#1994)")
+
+    def section(array, bounds):
+        trailing = 0
+        start = array.ndim - 3 - trailing
+        slices = [slice(None)] * array.ndim
+        offsets = [0] * array.ndim
+        if start >= 0:
+            for axis, (lo, hi) in enumerate(bounds):
+                offsets[start+axis] = lo
+                if array.shape[start+axis] != 1:
+                    slices[start+axis] = slice(lo, hi)
+        return array[tuple(slices)], start, offsets
+
+    def resolve(cfg, multimode):
         bounds = waveguide_segment_cells(cfg, grid)
-        prefix = f"Waveguide port {cfg.port_name or port!r}: segment cells {bounds}: "
+        prefix = f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
+        for field in ("eps_r", "mu_r"):
+            if isinstance(getattr(materials, field), (tuple, list)):
+                raise ValueError(prefix + f"per-component {field} is unsupported; " + reason)
         if design_box is not None:
             write, _, _, _ = design_box_window(design_box.bounds, grid.shape)
             if all(max(lo, write[2*a]) < min(hi, write[2*a+1])
                    for a, (lo, hi) in enumerate(bounds)):
                 raise ValueError(prefix + f"design_box update window {write} intersects; " + reason)
+        portions = [section(array, bounds) for _, array, _, _ in operands]
+        arrays = [p[0] for p in portions]
+        traced = any(isinstance(x, jax.core.Tracer) for x in arrays)
+
+        def judge(*values):
+            scalars = {}
+            for (name, _, vacuum, label), value, (_, start, offsets) in zip(operands, values, portions):
+                host = np.asarray(value)
+                if not host.size:
+                    continue
+                if name in ("materials.eps_r", "materials.mu_r"):
+                    target = float(host.flat[0])
+                    scalars[name] = target
+                    bad = (host != target) | ~np.isfinite(host) | (host <= 0)
+                elif vacuum is not None:
+                    bad = host != vacuum
+                else:
+                    eps = scalars.get("materials.eps_r", 1.0)
+                    target = 1 / eps if name.startswith("aniso_inv_eps") else eps
+                    # Node smoothing owns off-diagonal and PEC keep records; compare
+                    # explicit diagonal components here, not its geometric metadata.
+                    if ".nodes." in name:
+                        continue
+                    bad = ~np.isclose(host, target, rtol=2e-7, atol=0)
+                    component = name.rsplit(".", 1)[-1]
+                    if component in ("0", "1", "2") and host.ndim == 3:
+                        # Wall smoothing averages with exterior vacuum only on
+                        # tangential edges that the PEC update pins to zero.
+                        pinned = np.asarray(section(wall_masks[int(component)], bounds)[0])
+                        bad &= ~pinned
+                if np.any(bad):
+                    first = tuple(np.argwhere(bad)[0])
+                    index = (tuple(int(first[start+a] + offsets[start+a]) for a in range(3))
+                             if start >= 0 else tuple(lo for lo, _ in bounds))
+                    raise ValueError(prefix + f"{label} ({name})={host[first]!r} at cell {index}; " + reason)
+            medium = PortMedium(scalars.get("materials.eps_r", 1.), scalars.get("materials.mu_r", 1.))
+            if traced and medium != cfg.medium:
+                raise ValueError(prefix + "traced override over the segment cannot be judged before the run; " + reason)
+            if (multimode or cfg.multimode) and medium != PortMedium():
+                raise ValueError(prefix + f"eps_r={medium.eps_r}, mu_r={medium.mu_r}: multimode filled ports are unsupported; " + reason)
+            return medium
+
+        if traced:
+            traced_check("waveguide port", "section medium", judge, *arrays, ordered=True)
+            return cfg
+        medium = judge(*arrays)
+        cfg = with_port_medium(cfg, medium)
+        probe_bounds = list(bounds)
+        probe_bounds["xyz".index(cfg.normal_axis)] = (cfg.probe_x, cfg.probe_x + 1)
+        matches, descriptions = True, []
         for name, array, vacuum, label in operands:
-            trailing = 2 if vacuum == "identity" else 0
-            start = array.ndim - 3 - trailing
-            slices = [slice(None)] * array.ndim
-            offsets = [0] * array.ndim
-            if start >= 0:
-                for a, (lo, hi) in enumerate(bounds):
-                    offsets[start+a] = lo
-                    if array.shape[start+a] != 1:
-                        slices[start+a] = slice(lo, hi)
-            arrays.append(array[tuple(slices)])
-            metadata.append((prefix, name, vacuum, label, offsets, start, bounds))
-    traced = any(isinstance(x, jax.core.Tracer) for x in jax.tree.leaves(arrays))
+            value = np.asarray(section(array, probe_bounds)[0])
+            if name == "materials.eps_r":
+                target = medium.eps_r
+            elif name == "materials.mu_r":
+                target = medium.mu_r
+            elif vacuum is not None:
+                target = vacuum
+            else:
+                if ".nodes." in name:
+                    continue
+                target = 1 / medium.eps_r if name.startswith("aniso_inv_eps") else medium.eps_r
+            bad = ~np.isclose(value, target, rtol=2e-7, atol=0)
+            component = name.rsplit(".", 1)[-1]
+            if vacuum is None and component in ("0", "1", "2") and value.ndim == 3:
+                bad &= ~np.asarray(section(wall_masks[int(component)], probe_bounds)[0])
+            if value.size == 0 or np.any(bad):
+                matches = False
+                descriptions.append(f"{label} ({name})={np.unique(value).tolist()}")
+        return cfg._replace(probe_medium_matches=matches,
+                            probe_medium_description="; ".join(descriptions))
 
-    def check(*values):
-        for value, (prefix, name, vacuum, label, offsets, start, bounds) in zip(values, metadata):
-            host = np.asarray(value)
-            bad = host != (np.eye(3) if vacuum == "identity" else vacuum)
-            if np.any(bad):
-                first = tuple(np.argwhere(bad)[0])
-                index = (tuple(int(first[start+a] + offsets[start+a]) for a in range(3))
-                         if start >= 0 else tuple(lo for lo, _ in bounds))
-                trace = ("traced override over the segment cannot be judged before the run; "
-                         if traced else "")
-                raise ValueError(prefix + f"{label} ({name})={host[first]!r} at cell {index}; "
-                                 + trace + reason)
-
-    traced_check("waveguide port", "vacuum segment", check, *arrays, ordered=True)
+    return [[resolve(cfg, True) for cfg in group] if isinstance(group, list)
+            else resolve(group, False) for group in waveguide_ports]
