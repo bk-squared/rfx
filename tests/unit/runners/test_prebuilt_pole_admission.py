@@ -114,13 +114,31 @@ def test_prebuilt_cost_reduces_per_pole_set(monkeypatch, n, levels):
 
 
 def test_prebuilt_binary_masks_recover_cell_patterns(monkeypatch):
+    """The inverse recovers the REALIZED cell pattern, not the stored one.
+
+    On an axis with an unpadded high wall the last stored row lies beyond the
+    high-wall node. No edge of the realized model reads it: the wall edges take
+    the last inside row, as the low-wall mirror replicates row 0 (#1966). The
+    stored row entered the model only through the earlier per-writer repair, so
+    the expected pattern replicates the last inside row on every flagged axis.
+    """
     from rfx.grid import Grid
     import rfx.model.pole_stability as stability
     grid = Grid(freq_max=10e9, domain=(.004,) * 3, dx=.001, cpml_layers=0)
     rng = np.random.default_rng(42)
     mask = rng.random(grid.shape) > .5
+    high_wall = unpadded_high_walls(grid)
+    assert high_wall == (True, True, True)
     materials = init_materials(grid.shape)
-    lorentz = init_lorentz([drude_pole(.123 / grid.dt, 0.)], materials, grid.dt, mask=mask, high_wall=unpadded_high_walls(grid))
+    lorentz = init_lorentz([drude_pole(.123 / grid.dt, 0.)], materials, grid.dt, mask=mask, high_wall=high_wall)
+    realized = mask.copy()
+    for axis, flagged in enumerate(high_wall):
+        if flagged:
+            inside = np.take(realized, [-2], axis=axis)
+            index = [slice(None)] * 3
+            index[axis] = slice(-1, None)
+            realized[tuple(index)] = inside
+    mask = realized
     recorded = []
     original = stability.judge_pole_sets
     def measured(records, *args, **kwargs):
