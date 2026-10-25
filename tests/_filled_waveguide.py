@@ -82,11 +82,33 @@ def _json_witness(value):
     return _json_witness(np.asarray(value).tolist())
 
 
+def _resolved_ports(call):
+    """Run ``call``; return its result and every port config rfx built after resolving the section medium."""
+    from rfx.boundaries import features
+    original,seen=features.resolve_waveguide_section_medium,[]
+    def capture(*args,**kwargs):
+        cfgs=original(*args,**kwargs)
+        seen.extend(cfgs)
+        return cfgs
+    features.resolve_waveguide_section_medium=capture
+    try:
+        return call(),seen
+    finally:
+        features.resolve_waveguide_section_medium=original
+
+
+def record_steps(cells):
+    """The predeclared record: the a/45 settled table's worst tail share at 16000 steps is 2.0e-3 (empty) and 1.8e-3
+    (step), record 20261025-nu-settled-wr90 LEADER-READING."""
+    return round(16000*cells/45)
+
+
 def measure(case,cells=45,*,layers=12,shift=False,n_steps=None):
     sim,f=build(case,cells,layers=layers,shift=shift,one_port=case.startswith('W2'))
     grid=sim._build_realized_grid()
-    n_steps=round(8000*cells/45) if n_steps is None else n_steps
+    n_steps=record_steps(cells) if n_steps is None else n_steps
     realized_b=grid.node_of('z',grid.nz-1)-grid.node_of('z',0)
+    realized_a=grid.node_of('y',grid.ny-1)-grid.node_of('y',0)
     preflight = preflight_findings(sim,f,n_steps) if case in ('O1','O2') else []
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -109,29 +131,23 @@ def measure(case,cells=45,*,layers=12,shift=False,n_steps=None):
                         freqs=f.tolist(),reflection=np.abs(ratio).tolist(),
                         reflection_complex=[[float(z.real),float(z.imag)] for z in ratio],
                         warnings=[str(w.message) for w in caught])
-        result=sim.compute_waveguide_s_matrix(n_steps=n_steps,normalize=False,skip_preflight=True)
+        result,cfgs=_resolved_ports(lambda: sim.compute_waveguide_s_matrix(n_steps=n_steps,normalize=False,skip_preflight=True))
     s=np.asarray(result.s_params)
-    eps=EPS if case=='O1' else 1.
-    distance=abs(np.diff(result.reference_planes)[0])
-    bd,bc=beta(f,eps,grid,discrete=True),beta(f,eps,grid,discrete=False)
-    phase=-np.angle(s[1,0]*np.exp(1j*bd*distance))
-    phase_cont=-np.angle(s[1,0]*np.exp(1j*bc*distance))
+    # The fill each port sits in, from the structure drawn: the closed forms' medium, not the port's own reading.
+    port_eps=dict(p1=EPS if case=='O1' else 1.,p2=EPS if case in ('O1','O2') else 1.)
     b0,bf=(beta(f,1.,grid,discrete=False),beta(f,EPS,grid,discrete=False)) if case=='O2' else (np.ones_like(f),np.ones_like(f))
     expected_r=(b0-bf)/(b0+bf) if case=='O2' else np.zeros_like(f)
     expected_t=2*np.sqrt(b0*bf)/(b0+bf) if case=='O2' else np.ones_like(f)
-    b0d = beta(f,1.,grid,discrete=True) if case=='O2' else np.zeros_like(f)
-    interface_phase=np.angle(s[0,0]*np.exp(2j*b0d*.04)/(-1))
     return dict(case=case,cells=cells,layers=layers,shift=shift,dx=float(grid.dx),dt=float(grid.dt),
-                n_steps=n_steps,realized_b=realized_b,shape=grid.shape,interface=round(.060/float(grid.dx))*float(grid.dx),freqs=f.tolist(),planes=np.asarray(result.reference_planes).tolist(),
+                n_steps=n_steps,realized_a=realized_a,realized_b=realized_b,shape=grid.shape,interface=round(.060/float(grid.dx))*float(grid.dx),freqs=f.tolist(),planes=np.asarray(result.reference_planes).tolist(),
+                source_planes=[float(c.source_x_m) for c in cfgs[:2]],
+                ports=[dict(name=c.port_name,f_cutoff=float(c.f_cutoff),eps_r=float(c.medium.eps_r),mu_r=float(c.medium.mu_r),
+                            aperture_cells=int(c.u_hi-c.u_lo),expected_eps_r=port_eps[c.port_name]) for c in cfgs],
                 s11_abs=np.abs(s[0,0]).tolist(),s21_abs=np.abs(s[1,0]).tolist(),
                 s11_complex=[[float(z.real),float(z.imag)] for z in s[0,0]],
                 s21_complex=[[float(z.real),float(z.imag)] for z in s[1,0]],
                 sum=(np.abs(s[0,0])**2+np.abs(s[1,0])**2).tolist(),
-                phase_error_discrete=(phase/(bd*distance)).tolist(),
-                phase_error_continuous=(phase_cont/(bc*distance)).tolist(),
                 s11_closed=expected_r.tolist(),s21_closed=expected_t.tolist(),
-                interface_phase_error=interface_phase.tolist(),
-                half_cell_phase=(b0d*float(grid.dx)/2).tolist(),
                 preflight=preflight,settling_db=np.asarray(result.settling_db).tolist(),
                 settling_witness=_json_witness(result.settling_witness),
                 warnings=[str(w.message) for w in caught])

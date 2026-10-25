@@ -1,4 +1,5 @@
-"""Lossless homogeneous WR-90 and dielectric-step scattering oracles (#1994)."""
+"""Lossless homogeneous WR-90 and dielectric-step scattering oracles (#1994), judged by bars B1-B5 and the group delay
+(rfx-lead L:fd8d39)."""
 import functools
 import json
 import os
@@ -6,7 +7,8 @@ import sys
 from pathlib import Path
 import numpy as np
 import pytest
-from tests._filled_waveguide import measure, build, preflight_findings, assert_preflight_clean
+from tests._electrical_length import ELECTRICAL_LENGTH_FRAC, electrical_length_ratio, transmitting_bins
+from tests._filled_waveguide import C0, EPS, measure, build, beta, preflight_findings, assert_preflight_clean, record_steps
 
 
 def dump(row):
@@ -17,103 +19,143 @@ def dump(row):
         (path/f"{row['case']}-{row['cells']}-{int(row.get('shift',False))}-{row.get('layers',12)}.json").write_text(json.dumps(row,indent=2))
 
 
-def judge(row,empty,*,power_checks=True):
-    assert_preflight_clean(row['preflight'])
-    reflection=np.array(row['s11_abs'])
-    power=np.array(row['sum'])
-    if row['case']=='O1':
-        assert np.all(reflection<=np.maximum(2*np.array(empty['s11_abs']),.01)), 'O1 reflection floor'
-        assert np.all(np.abs(row['phase_error_discrete'])<=.001), 'O1 discrete propagation phase'
-        assert np.all(np.abs(row['phase_error_continuous'])<=.01), 'O1 continuous propagation phase'
-    else:
-        assert np.all(np.abs(reflection-np.abs(row['s11_closed']))<=.02), 'O2 reflection closed form'
-        assert np.all(np.abs(np.array(row['s21_abs'])-row['s21_closed'])<=.02), 'O2 power-wave transmission'
-        assert np.all(np.abs(row['interface_phase_error'])<=np.array(row['half_cell_phase'])), 'O2 interface half-cell phase'
-        if power_checks:
-            # rfx-lead L:921b26, chosen after the settled-record result (rfx-archive rfx/records/20261025-nu-settled-wr90):
-            # Amendment 1's W1 control form; the fill may add at most 1e-3 to the empty guide's own |1-sum|.
-            assert np.all(np.abs(1-power)<=np.abs(1-np.array(empty['sum']))+1e-3), 'O2 power conservation against the empty guide'
-    if power_checks:
-        assert np.all(power<=1+np.maximum(2*np.abs(1-np.array(empty['sum'])),1e-3)), 'W1 per-bin passivity'
-
-
 @pytest.mark.parametrize('case',['O1','O2'])
 @pytest.mark.parametrize('cells',[30,45,60])
 def test_filled_waveguide_preflight_clean(case,cells):
     sim,freqs=build(case,cells)
-    assert_preflight_clean(preflight_findings(sim,freqs,round(8000*cells/45)))
+    assert_preflight_clean(preflight_findings(sim,freqs,record_steps(cells)))
 
 
 measured=functools.lru_cache(maxsize=None)(measure)
-# Settled record at a/45 near cutoff: 8 times the default; the power sum stops moving from about 32k steps on (record
-# 20261025-nu-settled-wr90).
-SETTLED=64000
+COMPARATOR=dict(O1='empty_filled_band',O2='empty')
+# Case A fills the whole guide; case B is the step; A-shift is case A with its reference planes moved inward.
+CASES={'A':('O1',False),'B':('O2',False),'A-shift':('O1',True)}
 
 
-@pytest.mark.parametrize('case',['O1','O2'])
-def test_filled_waveguide_oracles(case):
-    empty=measured('empty_filled_band' if case=='O1' else 'empty')
-    row=measured(case)
-    dump(empty);dump(row)
-    judge(row,empty,power_checks=case=='O1')
+def passivity_excess(row):
+    # B1. derived estimate: float32 rounding of the DFT ratio over N steps; not measured
+    delta=np.sqrt(row['n_steps'])*2**-24*10
+    return np.array(row['sum'])-1-delta
 
 
-# Measured on this code (record 20261025-nu-settled-wr90/pr2016-code): the port's H source table wraps its cutoff
-# tail into the record (#2013), so the empty guide reads |1-sum| up to 2.3e-2 at 64k steps and the step exceeds it by
-# 2.8e-3. The #2013 fix removes this mark.
-@pytest.mark.slow
-@pytest.mark.xfail(strict=True,reason='#2013 H table wrap: empty guide off 2e-2 on settled records')
-def test_step_power_conservation():
-    sums=[]
-    for n in (SETTLED,SETTLED*3//2):
-        empty=measured('empty',n_steps=n)
-        row=measured('O2',n_steps=n)
-        dump(row);judge(row,empty)
-        sums.append(np.array(row['sum']))
-    # Settled in the bar's own unit, per bin (ports D:3d2f7f; chosen after the result, as the form above).
-    moved=np.abs(sums[1]-sums[0])
-    print('step power sum moved from T to 1.5T, per bin:',moved.tolist(),file=sys.stderr)
-    assert np.all(moved<=1e-3), 'record settled: sum(1.5T) against sum(T) per bin'
+def db(x):
+    return 20*np.log10(np.asarray(x,dtype=float))
 
 
-def test_filled_waveguide_inward_reference_shift():
-    empty=measure('empty_filled_band')
-    shifted=measure('O1',shift=True)
-    dump(empty);dump(shifted)
-    judge(shifted,empty)
+def cutoff_errors(row):
+    """B3: each realized port cutoff against c0/(2 a_r sqrt(eps_r mu_r)), a_r the realized aperture."""
+    return [p['f_cutoff']/(C0/(2*row['realized_a']*np.sqrt(p['expected_eps_r']*1.)))-1 for p in row['ports']]
+
+
+def group_delay(row):
+    """v2 item 5: the electrical length between the reference planes against exp(-j beta L) in the fill."""
+    f=np.array(row['freqs'])
+    s21=np.array([complex(*z) for z in row['s21_complex']])
+    length=abs(np.diff(row['planes'])[0])
+    return electrical_length_ratio(f,s21,np.exp(-1j*beta(f,EPS,None,discrete=False)*length),transmitting_bins(s21))
+
+
+def shares(row):
+    return [(w['status'],float(np.nanmax(np.asarray(w.get('share_per_bin') or [np.nan],dtype=float))))
+            for w in row['settling_witness']]
+
+
+def log(name,row,empty):
+    out=lambda *a: print(f"{name} a/{row['cells']} N={row['n_steps']}",*a,file=sys.stderr)
+    out('freqs',row['freqs'])
+    out('1-sum case',(1-np.array(row['sum'])).tolist())
+    out('1-sum comparator',(1-np.array(empty['sum'])).tolist())
+    s11,s21=np.array(row['s11_abs']),np.array(row['s21_abs'])
+    if row['case']=='O1':
+        out('B2 |S21| dB',db(s21).tolist())
+        out('B2 |S11|/(2|S11|_empty)',(s11/(2*np.array(empty['s11_abs']))).tolist())
+        out('|S11| case',s11.tolist())
+        out('group delay ratio',group_delay(row))
+    else:
+        out('B2 |S11| dB error',db(s11/np.abs(row['s11_closed'])).tolist())
+        out('B2 |S21| dB error',db(s21/np.array(row['s21_closed'])).tolist())
+        out('||S11|-|Gamma||',np.abs(s11-np.abs(row['s11_closed'])).tolist())
+    out('B3 cutoff error case',cutoff_errors(row),'comparator',cutoff_errors(empty))
+    out('B4 witness case',shares(row),'comparator',shares(empty))
 
 
 @functools.lru_cache(maxsize=None)
-def three_mesh(case):
-    rows={}
-    for cells in (30,45,60):
-        empty=measure('empty_filled_band' if case=='O1' else 'empty',cells)
-        row=measure(case,cells)
-        dump(empty);dump(row);judge(row,empty,power_checks=case=='O1')
-        rows[cells]=row
-    return rows
+def rows(name,cells=45):
+    case,shift=CASES[name]
+    empty,row=measured(COMPARATOR[case],cells,shift=False),measured(case,cells,shift=shift)
+    dump(empty);dump(row)
+    assert_preflight_clean(row['preflight'])
+    log(name,row,empty)
+    return row,empty
+
+
+ROWS=[('A','case'),('A','comparator'),('B','case'),('B','comparator'),('A-shift','case')]
+# Measured at a/45, 16000 steps, on this branch's port H source table, which wraps its cutoff tail into the record
+# (#2013; record 20261025-nu-settled-wr90/pr2016-code). The #2013 fix removes these marks.
+WRAP={('B','case'):'B1 measured sum-1-delta +9.7e-3 at 7.1 GHz',('B','comparator'):'B1 measured sum-1-delta +1.2e-2 at 7.1 GHz'}
+
+
+@pytest.mark.parametrize('name,role',[pytest.param(*r,marks=pytest.mark.xfail(strict=True,reason=f'#2013 H table wrap: {WRAP[r]}'))
+                                      if r in WRAP else r for r in ROWS])
+def test_passivity(name,role):
+    row=dict(zip(('case','comparator'),rows(name)))[role]
+    excess=passivity_excess(row)
+    assert np.all(excess<=0), f'B1 passivity {name} {role}: sum-1-delta per bin {excess.tolist()}'
+
+
+@pytest.mark.parametrize('name',['A','A-shift'])
+def test_filled_magnitude(name):
+    row,empty=rows(name)
+    s11,s21=np.array(row['s11_abs']),np.array(row['s21_abs'])
+    assert np.all(np.abs(db(s21))<=2), f'B2 |S21| within 2 dB of 1: {db(s21).tolist()}'
+    # falsifier separation: a port on vacuum constants reads its own mismatch |Gamma| = 0.53 at 7.0 GHz and 0.38 at
+    # 7.9 GHz (closed form, declared aperture)
+    assert np.all(s11<=2*np.array(empty['s11_abs'])), f"B2 |S11| at most twice the empty guide's: {s11.tolist()}"
+
+
+def test_step_magnitude():
+    row,_=rows('B')
+    reflection=db(np.array(row['s11_abs'])/np.abs(row['s11_closed']))
+    transmission=db(np.array(row['s21_abs'])/np.array(row['s21_closed']))
+    assert np.all(np.abs(reflection)<=2), f'B2 |S11| within 2 dB of |Gamma|: {reflection.tolist()}'
+    assert np.all(np.abs(transmission)<=2), f'B2 |S21| within 2 dB of T: {transmission.tolist()}'
+
+
+@pytest.mark.parametrize('name',CASES)
+def test_cutoff(name):
+    for role,row in zip(('case','comparator'),rows(name)):
+        errors=cutoff_errors(row)
+        assert np.all(np.abs(errors)<=.01), f'B3 realized cutoff within 1 % ({name} {role}): {errors}'
+
+
+@pytest.mark.parametrize('name,role',ROWS)
+def test_record(name,role):
+    row=dict(zip(('case','comparator'),rows(name)))[role]
+    for w in row['settling_witness']:
+        if w['status']=='undetermined':
+            print(f"B4 {name} {role}: status {w['status']}, reason {w.get('reason')}",file=sys.stderr)
+        assert w['status']!='undetermined', f"B4 cannot judge ({name} {role}): {w.get('reason')}"
+        share=np.asarray(w['share_per_bin'],dtype=float)
+        assert w['status']=='pass' and np.all(share<=1e-2), f"B4 record ({name} {role}): {w['status']}, share {share.tolist()}"
+
+
+@pytest.mark.parametrize('name',['A','A-shift'])
+def test_group_delay(name):
+    ratio=group_delay(rows(name)[0])
+    assert abs(ratio)<=ELECTRICAL_LENGTH_FRAC, f'group delay between the reference planes: ratio {ratio}'
+
+
+def three_mesh(name):
+    return {cells: rows(name,cells) for cells in (30,45,60)}
 
 
 @pytest.mark.slow
 def test_three_mesh_trend_filled():
-    rows=three_mesh('O1')
-    for coarse,fine in ((30,45),(45,60)):
-        assert np.all(np.abs(rows[fine]['phase_error_continuous'])<=np.abs(rows[coarse]['phase_error_continuous'])), 'O1 phase refinement'
+    s11={cells: np.array(row['s11_abs']) for cells,(row,_) in three_mesh('A').items()}
+    assert np.all(s11[45]<s11[30]) and np.all(s11[60]<s11[45]), f'B5 case A |S11| falls a/30, a/45, a/60: {[s11[c].tolist() for c in (30,45,60)]}'
 
 
 @pytest.mark.slow
 def test_three_mesh_trend_step():
-    # Closed-form checks at a/30, a/45 and a/60 stay visible while the refinement order waits for #2013.
-    three_mesh('O2')
-
-
-# Measured: at the default record the |S11| error at 7.2 GHz rises from 4e-5 (a/45) to 7.6e-4 (a/60) (record
-# 20261025-nu-filled-port-oracles); on settled records with this code the 7.0 GHz error rises 2.3e-3, 3.6e-3, 4.2e-3
-# (pr2016-code). Its cause being #2013 is an estimate, which the #2013 fix tests.
-@pytest.mark.slow
-@pytest.mark.xfail(strict=True,reason='#2013 H table wrap (estimate): O2 reflection refinement fails')
-def test_three_mesh_refinement_step():
-    rows=three_mesh('O2')
-    err=lambda n: np.abs(np.array(rows[n]['s11_abs'])-np.abs(rows[n]['s11_closed']))
-    for coarse,fine in ((30,45),(45,60)):
-        assert np.all(err(fine)<=err(coarse)), 'O2 reflection refinement'
+    err={cells: np.abs(np.array(row['s11_abs'])-np.abs(row['s11_closed'])) for cells,(row,_) in three_mesh('B').items()}
+    assert np.all(err[45]<err[30]) and np.all(err[60]<err[45]), f'B5 case B ||S11|-|Gamma|| falls a/30, a/45, a/60: {[err[c].tolist() for c in (30,45,60)]}'
