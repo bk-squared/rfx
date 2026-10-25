@@ -94,7 +94,7 @@ def test_bloch_requires_order2(fn):
     st = _state(jnp.complex64)
     with pytest.raises(ValueError, match="stencil_order=2"):
         fn(st, mat, DT, DX, periodic=(False, True, True), stencil_order=4,
-           bloch=(1.0 + 0j, 1.0 + 0.5j, 1.0 + 0j))
+           bloch=(1.0 + 0j, 1.0 + 0.5j, 1.0 + 0j), high_wall=(False,) * 3)
 
 
 def _kernel_prop_angle(theta_deg, ny=16, nx=600):

@@ -273,7 +273,7 @@ def test_update_e_aniso_inv_jit_compatible():
     dx = 0.001
     dt = dx / (3e8 * np.sqrt(3.0)) * 0.99
 
-    fn_jit = jax.jit(update_e_aniso_inv)
+    fn_jit = jax.jit(update_e_aniso_inv, static_argnames=('high_wall',))
 
     state0 = _make_state_with_seeded_field(shape, seed=1)
     materials = _make_materials_constant(shape, eps_r=2.0, sigma=0.5)
@@ -281,7 +281,8 @@ def test_update_e_aniso_inv_jit_compatible():
     inv_yy = jnp.full(shape, 0.5, dtype=jnp.float32)
     inv_zz = jnp.full(shape, 0.5, dtype=jnp.float32)
 
-    out = fn_jit(state0, materials, inv_xx, inv_yy, inv_zz, dt, dx)
+    out = fn_jit(state0, materials, inv_xx, inv_yy, inv_zz, dt, dx,
+                 high_wall=(False,) * 3)
     assert np.all(np.isfinite(np.asarray(out.ex)))
     assert np.all(np.isfinite(np.asarray(out.ey)))
     assert np.all(np.isfinite(np.asarray(out.ez)))

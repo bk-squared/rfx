@@ -294,7 +294,8 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
         return tuple(out)
 
     ref = ref_nu(st, mats, *inv)
-    got = jax.jit(update_e_nu)(st, mats, dt, *inv, cell_sizes=cell_sizes)
+    got = jax.jit(update_e_nu, static_argnames=('high_wall',))(
+        st, mats, dt, *inv, cell_sizes=cell_sizes, high_wall=(False,) * 3)
     _assert_e_fields((got.ex, got.ey, got.ez), ref)
 
 
