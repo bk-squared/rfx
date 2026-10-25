@@ -89,6 +89,45 @@ def test_integer_jaxpr_equals_base(box, monkeypatch, gradient):
     assert trace() == actual
 
 
+def test_nested_conductivity_gradient_matches_forward_finite_difference(box, record_property):
+    """Anchor the nested conductivity derivative in float32 plain-forward differences.
+
+    CPU measurement (2026-10-26): J(0)=2.0156135094318017e-10;
+    FD(1e-2)=-2.1824209106569015e-11, FD(5e-3)=-2.184918912462308e-11;
+    AD=-2.1824507479006883e-11. Relative FD resolution=0.0011432926829268292,
+    AD/FD difference=0.00112963668699187; |FD(5e-3)|/|J(0)|=0.1083996958.
+    These observations do not replace the predeclared bars below.
+    """
+    sim, eps, sigma = box
+    mask = sigma != 0
+    sigma_background = jnp.zeros_like(sigma)
+    sigma_block = jnp.float32(.1)
+
+    def objective(alpha, chunk):
+        conductivity = sigma_background + (jnp.float32(1) + alpha) * sigma_block * mask
+        return jnp.sum(outputs(sim, eps, conductivity, chunk)[1])
+
+    plain = jax.jit(lambda alpha: objective(alpha, None))
+    zero = jnp.float32(0)
+    j0 = float(plain(zero))
+    differences = []
+    for h in (np.float32(1e-2), np.float32(5e-3)):
+        positive = np.float32(plain(jnp.float32(h)))
+        negative = np.float32(plain(jnp.float32(-h)))
+        differences.append(float((positive - negative) / (np.float32(2) * h)))
+    fd_h, fd_half = differences
+    ad = float(jax.jit(jax.grad(lambda alpha: objective(alpha, (30, 7, 3))))(zero))
+    scale = abs(fd_half)
+    measurements = dict(J0=j0, FD_h=fd_h, FD_half=fd_half, AD=ad,
+                        fd_relative_difference=abs(fd_h - fd_half) / scale if scale else None,
+                        ad_relative_difference=abs(ad - fd_half) / scale if scale else None)
+    print(json.dumps(measurements))
+    record_property("finite_difference_anchor", json.dumps(measurements))
+    assert abs(fd_h - fd_half) <= 1e-2 * scale, f"bar (a): FD is unresolved: {measurements}"
+    assert abs(ad - fd_half) <= 2e-2 * scale, f"bar (b): nested AD differs from FD: {measurements}"
+    assert ad != 0 and scale >= 1e-3 * abs(j0), f"bar (c): probe must see the lossy block: {measurements}"
+
+
 def test_planner_uses_main_tape_terms(box, monkeypatch):
     import rfx.api._ad_memory as api
     sim, _, _ = box
