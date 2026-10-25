@@ -15,6 +15,8 @@ a git repository this file builds. No network, no package import.
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -37,6 +39,94 @@ def _load(name: str, path: Path):
 
 assemble = _load("_test_changelog_assemble", ASSEMBLER_PATH)
 checker = _load("_test_changelog_checker", CHECKER_PATH)
+
+TOPIC_TEXT = "### Fixed — correct the value (#PR)\n\n- Keep the result finite.\n"
+
+
+@pytest.mark.parametrize("topic", ["abc", "fix-123", "a" * 60])
+def test_topic_fragment_validates(topic):
+    assemble.validate_topic_fragment_text(f"{topic}.fixed.md", TOPIC_TEXT)
+
+
+@pytest.mark.parametrize("name", [
+    "ab.fixed.md", "a" * 61 + ".fixed.md", "123.fixed.md", "Abc.fixed.md",
+    "abc_def.fixed.md", "abc.unknown.md",
+])
+def test_invalid_topic_name_fails(name):
+    with pytest.raises(assemble.FragmentError):
+        assemble.validate_topic_fragment_text(name, TOPIC_TEXT)
+
+
+@pytest.mark.parametrize("text", [
+    "### Fixed — correct the value\n\n- (#PR) belongs in the heading.\n",
+    "### Fixed — correct the value (#77)\n",
+    "### Fixed - correct the value (#PR)\n",
+    "### Added — correct the value (#PR)\n",
+    "### Fixed — correct the value (#PR)\n\n## Forged section\n",
+    "\n### Fixed — correct the value (#PR)\n",
+    "",
+])
+def test_invalid_topic_text_fails(text):
+    with pytest.raises(assemble.FragmentError):
+        assemble.validate_topic_fragment_text("correct-value.fixed.md", text)
+
+
+def test_iter_fragments_and_validate_all_refuse_topics(workspace):
+    directory = workspace / "changelog.d"
+    (directory / "correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    with pytest.raises(assemble.FragmentError, match="only the train may land it"):
+        assemble.iter_fragments(directory)
+    problems = assemble.validate_all(directory)
+    assert len(problems) == 1
+    assert "changelog.d/<topic>.<type>.md" in problems[0]
+    assert "only the train may land it" in problems[0]
+    assert assemble.main(["--changelog", str(workspace / "CHANGELOG.md"),
+                          "--fragments", str(directory), "--release", "2.0.0"]) == 1
+    assert (directory / "correct-value.fixed.md").read_text(encoding="utf-8") == TOPIC_TEXT
+    assert (workspace / "CHANGELOG.md").read_text(encoding="utf-8") == SYNTHETIC
+
+
+@pytest.mark.parametrize("event,base,accepted", [
+    (None, None, False), ("push", "main", False), ("merge_group", "main", False),
+    ("pull_request", "main", True), ("pull_request", "feature/base", True),
+    ("pull_request", "release", False), ("pull_request", "release/2.0", False),
+    ("pull_request", "release-next", False),
+])
+def test_checkout_topic_policy(workspace, monkeypatch, event, base, accepted):
+    for name, value in (("GITHUB_EVENT_NAME", event), ("GITHUB_BASE_REF", base)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    (workspace / "changelog.d" / "correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    assert (validate_checkout_fragments(workspace / "changelog.d") == []) is accepted
+
+
+@pytest.mark.parametrize("labels,accepted", [([], True), (["merge-train"], True),
+                                            (["merge-train-batch"], False)])
+def test_topic_fragment_pr_policy(git_repo, monkeypatch, capsys, labels, accepted):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "rfx/simulation.py").write_text("x = 2\n", encoding="utf-8")
+    (git_repo / "changelog.d/correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    head = _commit(git_repo, "Add a topic fragment")
+    failures = _run_check(git_repo, base, head, labels=labels)
+    assert (failures == []) is accepted
+    if not accepted:
+        assert "only the train may land it" in failures[0]
+    monkeypatch.setenv("PR_LABELS_JSON", json.dumps(labels))
+    assert checker.main(["--repo", str(git_repo), "--base", base, "--head", head]) == int(not accepted)
+    assert (capsys.readouterr().err == "") is accepted
+
+
+@pytest.mark.parametrize("reference", ["", "(#77)"])
+def test_pr_topic_requires_literal_placeholder(git_repo, reference):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "changelog.d/correct-value.fixed.md").write_text(
+        f"### Fixed — correct the value {reference}\n", encoding="utf-8")
+    head = _commit(git_repo, "Add an invalid topic fragment")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1
+    assert "heading must reference (#PR)" in failures[0]
 
 SYNTHETIC = """# Changelog
 
@@ -220,9 +310,32 @@ def test_refuses_a_changelog_without_an_unreleased_heading(workspace: Path):
     assert (workspace / "changelog.d" / "8.fixed.md").exists()
 
 
+def validate_checkout_fragments(fragment_dir: Path) -> list[str]:
+    """Topic fragments are valid only in a non-release pull-request checkout."""
+    if (os.environ.get("GITHUB_EVENT_NAME") != "pull_request"
+            or os.environ.get("GITHUB_BASE_REF", "").startswith("release")):
+        return assemble.validate_all(fragment_dir)
+    problems = []
+    for path in sorted(fragment_dir.iterdir()):
+        if not path.is_file() or path.name == "README.md":
+            continue
+        if path.suffix != ".md":
+            problems.append(f"{path.name}: fragments must be .md files")
+            continue
+        validate = (
+            assemble.validate_topic_fragment_text if assemble.TOPIC_NAME_RE.fullmatch(path.name)
+            else assemble.validate_fragment_text
+        )
+        try:
+            validate(path.name, assemble.read_text(path)[0])
+        except assemble.FragmentError as exc:
+            problems.append(str(exc))
+    return problems
+
+
 def test_the_repo_changelog_and_fragments_are_currently_valid():
     """The live directory passes its own gate."""
-    assert assemble.validate_all(REPO / "changelog.d") == []
+    assert validate_checkout_fragments(REPO / "changelog.d") == []
     lines = (REPO / "CHANGELOG.md").read_text(encoding="utf-8").split("\n")
     assert assemble.find_unreleased_index(lines) >= 0
 
@@ -344,7 +457,8 @@ def _commit(repo: Path, message: str) -> str:
 
 
 def _run_check(repo: Path, base: str, head: str, labels=(), pr_number="77"):
-    return checker.check(base, head, list(labels), repo, pr_number)
+    return checker.check(base, head, list(labels), repo, pr_number,
+                         allow_topic="merge-train-batch" not in labels)
 
 
 def test_package_change_without_a_fragment_fails(git_repo: Path):

@@ -16,6 +16,9 @@ changelog.d/<number>.<type>.md
 identified by the issue. `<type>` is one of `added`, `breaking`, `changed`,
 `deprecated`, `fixed`, `removed`.
 
+Before a PR has a number, use `<topic>.<type>.md`, with `<topic>` matching `[a-z][a-z0-9-]{2,59}` and literal `(#PR)` on the heading line.
+Only the merge train may land this form: it renames it to `<PR>.<type>.md` and replaces `(#PR)` on the first line; main and releases require numeric names.
+
 ## Content
 
 Exactly the text you would have pasted under `## [Unreleased]`: a heading line

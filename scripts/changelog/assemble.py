@@ -49,6 +49,7 @@ TYPE_HEADINGS = {
 }
 
 FRAGMENT_NAME_RE = re.compile(r"^(?P<number>[1-9][0-9]*)\.(?P<type>[a-z]+)\.md$")
+TOPIC_NAME_RE = re.compile(r"^(?P<topic>[a-z][a-z0-9-]{2,59})\.(?P<type>[a-z]+)\.md$")
 UNRELEASED_HEADING_RE = re.compile(r"^## \[Unreleased[^\]]*\]\s*$")
 SECTION_HEADING_RE = re.compile(r"^## ")
 #: A fragment body may only carry ``###`` and deeper. A ``#`` or ``##`` line
@@ -95,6 +96,11 @@ def parse_fragment_name(name: str) -> Tuple[int, str]:
     """Return ``(number, type)`` for a fragment filename, or raise."""
     match = FRAGMENT_NAME_RE.match(name)
     if match is None:
+        if TOPIC_NAME_RE.fullmatch(name):
+            raise FragmentError(
+                f"{name}: topic form changelog.d/<topic>.<type>.md is only for PRs; "
+                "only the train may land it, renamed to <number>.<type>.md"
+            )
         raise FragmentError(
             f"{name}: expected changelog.d/<number>.<type>.md, "
             f"<type> one of {', '.join(sorted(TYPE_HEADINGS))}"
@@ -117,6 +123,27 @@ def validate_fragment_text(name: str, text: str) -> None:
     the heading the body may only use ``###`` and deeper.
     """
     number, kind = parse_fragment_name(name)
+    _validate_fragment_text(name, text, kind, number)
+
+
+def validate_topic_fragment_text(name: str, text: str) -> None:
+    """Validate a pre-landing fragment with a literal ``(#PR)`` on its first line."""
+    match = TOPIC_NAME_RE.fullmatch(name)
+    if match is None:
+        raise FragmentError(
+            f"{name}: expected changelog.d/<topic>.<type>.md, "
+            "with <topic> matching [a-z][a-z0-9-]{2,59}"
+        )
+    kind = match.group("type")
+    if kind not in TYPE_HEADINGS:
+        raise FragmentError(
+            f"{name}: unknown type {kind!r}; expected one of "
+            f"{', '.join(sorted(TYPE_HEADINGS))}"
+        )
+    _validate_fragment_text(name, text, kind, None)
+
+
+def _validate_fragment_text(name: str, text: str, kind: str, number: int | None) -> None:
     body = text.replace("\r\n", "\n").strip("\n")
     if not body:
         raise FragmentError(f"{name}: fragment is empty")
@@ -131,9 +158,14 @@ def validate_fragment_text(name: str, text: str) -> None:
     headline = first[len(expected):].strip()
     if not headline:
         raise FragmentError(f"{name}: heading has no headline after the em dash")
-    if number not in {int(ref) for ref in ISSUE_REF_RE.findall(first)}:
+    reference = "(#PR)" if number is None else f"(#{number})"
+    has_reference = (
+        reference in text.partition("\n")[0] if number is None
+        else number in {int(ref) for ref in ISSUE_REF_RE.findall(first)}
+    )
+    if not has_reference:
         raise FragmentError(
-            f"{name}: heading must reference (#{number}); got {first!r}"
+            f"{name}: heading must reference {reference}; got {first!r}"
         )
     for lineno, line in enumerate(lines[1:], start=2):
         if FORBIDDEN_BODY_HEADING_RE.match(line):
