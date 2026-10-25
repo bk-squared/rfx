@@ -28,7 +28,7 @@ from rfx.geometry.rasterize_grid import (
     cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
     centres_from_nonuniform_grid, centres_from_uniform_grid,
     classify_pec_entry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
-    unpadded_high_walls,
+    fine_high_walls, unpadded_high_walls,
     refuse_vaporized_sheets, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.geometry.smoothing import continued_conductor_shape
@@ -932,6 +932,20 @@ def h_components(materials, grid, *, periodic):
         return components.mu_update
     widths = (grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None
     return component_h_materials(materials, periodic, high_wall=unpadded_high_walls(grid), cell_sizes=widths)
+
+
+def sat_face_mu(materials, sl):
+    """Tangential (x, y) mu components a subgrid SAT face reads, from the wall-aware precomputed components."""
+    if materials.components is None:
+        raise ValueError("material SAT requires precomputed wall-aware components")
+    return tuple(component[sl] for component in h_components(materials, None, periodic=(False,) * 3)[:2])
+
+
+def subgrid_components(mats_c, mats_f, grid_c, config):
+    """Coarse and fine materials with components; the fine grid flags only the global walls it reaches (#1966)."""
+    periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
+    return (with_components(mats_c, grid_c, periodic=periodic, high_wall=unpadded_high_walls(grid_c)),
+            with_components(mats_f, None, periodic=(False,) * 3, high_wall=fine_high_walls(grid_c, config)))
 
 
 def validate_dispersion(realized, poles, dt):

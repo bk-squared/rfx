@@ -36,7 +36,7 @@ from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0, component_h_materials
 from rfx.probes.probes import _ampere_loop
 from rfx.geometry.rasterize_grid import unpadded_high_walls, fine_high_walls
-from rfx.model.materials import with_components
+from rfx.model.materials import sat_face_mu, subgrid_components
 
 
 class SubgridResult(NamedTuple):
@@ -858,11 +858,7 @@ def _z_slab_material_coupling_h_3d(
 
     def face_coeffs(materials, sl, site):
         eps = materials.eps_r[sl]
-        if materials.components is None:
-            raise ValueError("material SAT requires precomputed wall-aware components")
-        from rfx.model.materials import h_components
-        mu = tuple(component[sl] for component in h_components(
-            materials, None, periodic=(False,) * 3)[:2])
+        mu = sat_face_mu(materials, sl)
         if _realized.ACTIVE is not None:
             # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
@@ -1287,11 +1283,7 @@ def _z_slab_material_coupling_e_3d(
 
     def face_coeffs(materials, sl, site):
         eps = materials.eps_r[sl]
-        if materials.components is None:
-            raise ValueError("material SAT requires precomputed wall-aware components")
-        from rfx.model.materials import h_components
-        mu = tuple(component[sl] for component in h_components(
-            materials, None, periodic=(False,) * 3)[:2])
+        mu = sat_face_mu(materials, sl)
         if _realized.ACTIVE is not None:
             # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
@@ -1654,8 +1646,6 @@ _STEP_FN_CAPTURES = (
     "dx_f",
     "fine_physical_pec_faces",
     "grid_c",
-    "high_wall_c",
-    "high_wall_f",
     "inject_sources_before_e_coupling",
     "inject_sources_on_coarse_shadow",
     "is_full_xy_z_slab",
@@ -1707,8 +1697,6 @@ _STEP_FN_REQUIRED_CAPTURES = frozenset({
     "dx_c",
     "dx_f",
     "grid_c",
-    "high_wall_c",
-    "high_wall_f",
     "lumped_sparam_freqs_arr",
     "lumped_sparam_meta",
     "mats_c",
@@ -1762,8 +1750,7 @@ def _make_step_fn(ctx):
     mask_coarse_shadow_interior = ctx.get("mask_coarse_shadow_interior")
     mats_c = ctx.get("mats_c")
     mats_f = ctx.get("mats_f")
-    high_wall_c = ctx["high_wall_c"]
-    high_wall_f = ctx["high_wall_f"]
+    high_wall_c, high_wall_f = unpadded_high_walls(grid_c), fine_high_walls(grid_c, config)
     n_lumped_sparams = ctx.get("n_lumped_sparams")
     n_probes = ctx.get("n_probes")
     n_probes_c = ctx.get("n_probes_c")
@@ -2493,11 +2480,7 @@ def run_subgridded_jit(
     dx_c = config.dx_c
     dx_f = config.dx_f
 
-    high_wall_c = unpadded_high_walls(grid_c)
-    high_wall_f = fine_high_walls(grid_c, config)
-    periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
-    mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=high_wall_c)
-    mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=high_wall_f)
+    mats_c, mats_f = subgrid_components(mats_c, mats_f, grid_c, config)
 
     # Override coarse grid dt to match subgrid global timestep
     grid_c.dt = dt
