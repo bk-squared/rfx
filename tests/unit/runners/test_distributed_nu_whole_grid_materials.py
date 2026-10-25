@@ -1,5 +1,4 @@
 """Whole-grid realization is structural on CPU and a value gate on GPUs."""
-import inspect
 import re
 import sys
 import warnings
@@ -185,7 +184,7 @@ def test_no_cpu_fallback_warns_once(n, monkeypatch):
     runtime = [w for w in caught if w.category is RuntimeWarning]
     assert len(runtime) == 1
     assert runtime[0].filename == __file__
-    expected_line = inspect.getsourcelines(build)[1] + 1
+    expected_line = build.__code__.co_firstlineno + 1
     assert runtime[0].lineno == expected_line
     print(f'warning caller={runtime[0].filename}:{runtime[0].lineno}', file=sys.stderr)
     assert str(runtime[0].message) == (
@@ -224,7 +223,8 @@ def test_closed_over_concrete_products_under_jit(n, family, monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(setup, 'realize_components', observe)
-    if family == 'lorentz' and s.mesh.devices.flat[0].platform == 'gpu':
+    from rfx.stepping import rank
+    if family == 'lorentz' and s.mesh.devices.flat[0].platform == 'gpu' and rank._command_buffers_on():
         from rfx.stepping.rank import OUTER_JIT_REFUSAL
         with pytest.raises(NotImplementedError, match=re.escape(OUTER_JIT_REFUSAL)):
             jax.jit(lambda: products(s))()
