@@ -227,12 +227,13 @@ def _weekly_test_step(job: dict[str, Any]) -> dict[str, Any]:
     return steps[0]
 
 
-def test_weekly_uses_eight_shards() -> None:
+def test_weekly_uses_sixteen_shards() -> None:
+    # 2026-10-25: 16, was 8 (runner spread 1.78; tests/contracts/test_weekly_shard_headroom.py).
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
-    assert job["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6, 7, 8]
-    assert _slow_shards(job)["splits"] == 8
+    assert job["strategy"]["matrix"]["group"] == list(range(1, 17))
+    assert _slow_shards(job)["splits"] == 16
     step = _weekly_test_step(job)
-    assert step["name"] == "Run slow suite — shard ${{ matrix.group }} of 8"
+    assert step["name"] == "Run slow suite — shard ${{ matrix.group }} of 16"
     assert "--group ${{ matrix.group }}" in step["run"]
     assert job["timeout-minutes"] == 180
     assert _workflow("regen-durations.yml")["jobs"]["slow"]["timeout-minutes"] == 360
