@@ -90,7 +90,7 @@ def rows(name,cells=45):
     assert_preflight_clean(row['preflight'])
     # The planes the group delay and B2 read are the planes asked for (build()), within half a cell.
     asked=(.050,.070) if shift else ((row['interface']-.040,row['interface']+.040) if case=='O2' else (.020,.100))
-    assert np.allclose(row['planes'],asked,atol=row['dx']/2), f"reference planes {row['planes']} against {asked}" 
+    assert np.allclose(row['planes'],asked,atol=row['dx']/2), f"reference planes {row['planes']} against {asked}"
     log(name,row,empty)
     return row,empty
 
