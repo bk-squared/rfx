@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import warnings
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -31,7 +32,9 @@ def renormalize_power_waves(S, z_from, z_to):
     the formula is applied per frequency bin. A jax array (or tracer) is
     transformed with ``jnp`` and stays differentiable; a NumPy array is
     transformed with NumPy at its own precision. ``z_from`` and ``z_to`` are
-    concrete ``(n,)`` real positive impedances.
+    ``(n,)`` real positive impedances; either may be traced (a line impedance
+    that depends on a design variable), and then every port is transformed
+    with ``jnp`` and the value checks are left to the caller.
 
     When ``z_to == z_from`` for every port, ``S`` itself is returned (same
     object, nothing computed). Ports whose reference does not change enter
@@ -39,28 +42,37 @@ def renormalize_power_waves(S, z_from, z_to):
     only the columns driven at changed ports, so a NaN column driven at an
     unchanged port (a refused column) stays confined to itself.
     """
-    zf = np.asarray(z_from, dtype=np.float64)
-    zt = np.asarray(z_to, dtype=np.float64)
     n = int(S.shape[0])
-    for name, z in (("z_from", zf), ("z_to", zt)):
-        if (z.shape != (n,) or not np.all(np.isfinite(z))
-                or not np.all(z > 0)):
-            raise ValueError(
-                f"renormalize_power_waves: {name} must be {n} finite "
-                f"positive real impedances, got {z!r}")
     if S.ndim not in (2, 3) or S.shape[1] != n:
         raise ValueError(
             "renormalize_power_waves: S must be (n, n) or (n, n, n_freqs), "
             f"got shape {tuple(S.shape)}")
-    if np.array_equal(zf, zt):
-        return S
+    zf, zt = _concrete(z_from), _concrete(z_to)
+    if zf is None or zt is None:
+        # A traced reference: every port is transformed, with jnp.
+        xp = jnp
+        zf, zt = jnp.asarray(z_from), jnp.asarray(z_to)
+        if zf.shape != (n,) or zt.shape != (n,):
+            raise ValueError(
+                f"renormalize_power_waves: z_from and z_to must be ({n},), "
+                f"got {zf.shape} and {zt.shape}")
+        m, k = np.arange(n), np.arange(0)
+    else:
+        for name, z in (("z_from", zf), ("z_to", zt)):
+            if (z.shape != (n,) or not np.all(np.isfinite(z))
+                    or not np.all(z > 0)):
+                raise ValueError(
+                    f"renormalize_power_waves: {name} must be {n} finite "
+                    f"positive real impedances, got {z!r}")
+        if np.array_equal(zf, zt):
+            return S
+        xp = np if isinstance(S, np.ndarray) else jnp
+        m = np.flatnonzero(zf != zt)     # ports whose reference changes
+        k = np.flatnonzero(zf == zt)     # ports whose reference stays
 
-    xp = np if isinstance(S, np.ndarray) else jnp
     out_dtype = xp.result_type(S.dtype, xp.complex64)
     r = (zt - zf) / (zt + zf)
-    c = (zf + zt) / (2.0 * np.sqrt(zf * zt))
-    m = np.flatnonzero(zf != zt)     # ports whose reference changes
-    k = np.flatnonzero(zf == zt)     # ports whose reference stays
+    c = (zf + zt) / (2.0 * xp.sqrt(zf * zt))
     rm, cm = r[m], c[m]
 
     s_f = xp.moveaxis(S if S.ndim == 3 else S[..., None], -1, 0)  # (nf, n, n)
@@ -94,6 +106,14 @@ def renormalize_power_waves(S, z_from, z_to):
     return out if S.ndim == 3 else out[..., 0]
 
 
+def _concrete(z):
+    """``z`` as a float64 NumPy array, or ``None`` when it is traced."""
+    try:
+        return np.asarray(z, dtype=np.float64)
+    except jax.errors.TracerArrayConversionError:
+        return None
+
+
 def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
     """Say once per port when the declared reference is far from the line Z0.
 
@@ -122,3 +142,52 @@ def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
             "line's own reference is wanted.",
             stacklevel=3,
         )
+
+
+def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
+                             pin_radius, outer_radius, ladders):
+    """The coax two-port's S as power waves at each ladder's line impedance.
+
+    Returns ``(S_line, line_impedances)`` (#2014 review). The wave split is a
+    voltage-only ratio, so its waves sit at the impedance of the line under
+    each probe ladder. Without ``eps_scale`` that is the stamped fill's
+    ``z_tem`` at both ends and ``S`` is returned as it is. ``eps_scale``
+    multiplies the fill's permittivity, so the line under ladder ``i`` is
+    ``z_tem / sqrt(s_i)``, ``s_i`` the scale over the annulus cells of that
+    ladder's planes, and a voltage ratio between ladders on unequal lines
+    becomes a power-wave ratio by ``sqrt(Z_driven / Z_receiver)``. A concrete
+    scale that is not uniform over a ladder is refused (the ladder fit
+    assumes one uniform line there); a traced one is averaged.
+    """
+    if eps_scale is None:
+        return S, np.full(len(ladders), float(z_tem))
+    dx = float(grid.dx)
+    u = (np.arange(grid.nx) - grid.pad_x_lo + 0.5) * dx - float(center_xy[0])
+    v = (np.arange(grid.ny) - grid.pad_y_lo + 0.5) * dx - float(center_xy[1])
+    annulus = np.hypot(u[:, None], v[None, :])
+    annulus = (annulus > float(pin_radius)) & (annulus < float(outer_radius))
+    scale = jnp.broadcast_to(jnp.asarray(eps_scale), grid.shape)
+    z_line = []
+    for i, zs in enumerate(ladders):
+        cells = scale[:, :, np.asarray(zs, dtype=int)][annulus]
+        concrete = _concrete(cells)
+        if concrete is None:
+            z_line.append(float(z_tem) / jnp.sqrt(jnp.mean(cells)))
+            continue
+        if np.ptp(concrete) > 1e-6 * float(np.max(np.abs(concrete))):
+            raise ValueError(
+                "compute_coaxial_two_port(): eps_scale varies over the "
+                f"annulus of probe ladder {i} (from {concrete.min():.6g} to "
+                f"{concrete.max():.6g}); the ladder reads one uniform line, "
+                "so keep eps_scale uniform over each probe ladder and put "
+                "the device between them.")
+        z_line.append(float(z_tem) / float(np.sqrt(concrete.mean())))
+    if all(isinstance(z, float) for z in z_line):
+        z_line = np.asarray(z_line, dtype=np.float64)
+        if np.all(z_line == z_line[0]):
+            return S, z_line
+        root = np.sqrt(z_line)
+    else:
+        z_line = jnp.stack([jnp.asarray(z) for z in z_line])
+        root = jnp.sqrt(z_line)
+    return S * (root[None, :, None] / root[:, None, None]), z_line

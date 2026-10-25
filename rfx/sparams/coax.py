@@ -54,7 +54,7 @@ from rfx.sparams._common import (
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
 )
-from rfx.sparams._port_reference import (
+from rfx.sparams._port_reference import (coax_two_port_line_waves,
     renormalize_power_waves, warn_line_reference_mismatch)
 
 
@@ -1080,12 +1080,11 @@ def compute_coaxial_two_port(
         status = "passed"
 
     reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
-    # #2014: the Z0-free wave ratio is S at the line's own impedance (the
-    # analytic TEM Z0 at both ends); refer it to the registered impedance=.
-    line_impedances = np.full(2, float(z_tem))
+    # #2014: waves at each ladder's line impedance, referred to impedance=.
+    s_params, line_impedances = coax_two_port_line_waves(s_params, grid, eps_scale, z_tem,
+        center_xy=center_xy, pin_radius=a, outer_radius=b, ladders=(probes_top, probes_bot))
     reference_impedances = np.full(2, float(port.impedance))
-    s_params = renormalize_power_waves(
-        s_params, line_impedances, reference_impedances)
+    s_params = renormalize_power_waves(s_params, line_impedances, reference_impedances)
     result_obj = CoaxialTwoPortResult(
         s_params=s_params,
         freqs=np.asarray(freqs, dtype=float),

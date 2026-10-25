@@ -258,3 +258,137 @@ def test_jnp_path_matches_numpy_and_is_differentiable():
         h = 1e-6
         fd = (float(objective(0.7 + h)) - float(objective(0.7 - h))) / (2 * h)
         assert abs(grad - fd) < 1e-6 * max(1.0, abs(fd))
+
+
+# ---- Coax two-port: the line under each probe ladder is the wave reference ----
+#
+# No FDTD: the run, the plane voltage and the ladder assembly are replaced, and
+# the assembly returns a planted voltage-wave S. What is left is exactly the
+# producer's reference handling, compared with the impedance-matrix route.
+
+_PLANTED_COAX = np.array([[[0.21 + 0.05j], [0.62 - 0.31j]],
+                          [[0.58 - 0.36j], [-0.17 + 0.12j]]])
+
+
+def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
+    from rfx.sources.coaxial_port import coaxial_tem_characteristic_impedance
+    from rfx.sources import GaussianPulse
+    import rfx.simulation as simulation_mod
+    import rfx.sources.coaxial_port as coax_mod
+    import rfx.sparams.coax as coax_lane
+
+    class _Acc:
+        accumulator = np.ones(1, dtype=np.complex128)
+
+    class _Run:
+        def __init__(self, n_planes, n_probes, dt):
+            self.dft_planes = [_Acc() for _ in range(n_planes)]
+            self.time_series = np.full((10, n_probes), 1e-6)
+            self.dt = dt
+
+    def fake_run(grid_, materials, n_steps, *, probes, dft_planes, **_):
+        return _Run(len(dft_planes), len(probes), grid_.dt)
+
+    def fake_assemble(**kwargs):
+        n_f = _PLANTED_COAX.shape[-1]
+        return (_PLANTED_COAX, np.ones(n_f), np.zeros((2, 2, n_f)),
+                np.zeros((2, 2, n_f)), np.zeros((2, 2, n_f), dtype=complex))
+
+    monkeypatch.setattr(simulation_mod, "run", fake_run)
+    monkeypatch.setattr(coax_mod, "coaxial_line_plane_voltage",
+                        lambda grid_, ex, ey, **_: np.asarray(ex))
+    monkeypatch.setattr(coax_mod, "coaxial_line_plane_voltage_jnp",
+                        lambda grid_, ex, **_: jnp.asarray(ex))
+    monkeypatch.setattr(coax_lane, "_assemble_coaxial_two_port_from_voltages",
+                        fake_assemble)
+    sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=40.0e9,
+                     boundary="cpml")
+    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
+                         impedance=impedance,
+                         waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
+    port = sim._coaxial_ports[0]
+    z_tem = coaxial_tem_characteristic_impedance(port.pin_radius,
+                                                 port.outer_radius)
+    run = lambda scale: sim.compute_coaxial_two_port(  # noqa: E731
+        n_steps=10, freqs=np.array([8.0e9]), probe_count=12, eps_scale=scale)
+    return run, sim, z_tem
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_is_referenced_to_the_declared_impedance(monkeypatch):
+    run, _, z_tem = _coax_two_port(monkeypatch)
+    res = run(None)
+    np.testing.assert_array_equal(res.reference_impedances, [50.0, 50.0])
+    np.testing.assert_array_equal(res.line_impedances, [z_tem, z_tem])
+    want = _route_via_z(_PLANTED_COAX, [z_tem, z_tem], [50.0, 50.0])
+    assert np.max(np.abs(np.asarray(res.s_params) - want)) < 1e-12
+    assert np.max(np.abs(want - _PLANTED_COAX)) > 1e-3
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_at_its_line_z0_returns_the_ratio_unchanged(monkeypatch):
+    from rfx.sources.coaxial_port import (
+        SMA_OUTER_RADIUS, SMA_PIN_RADIUS, coaxial_tem_characteristic_impedance)
+    z_tem = coaxial_tem_characteristic_impedance(SMA_PIN_RADIUS, SMA_OUTER_RADIUS)
+    run, _, _ = _coax_two_port(monkeypatch, impedance=z_tem)
+    res = run(None)
+    assert np.asarray(res.s_params).tobytes() == _PLANTED_COAX.tobytes()
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_eps_scale_moves_the_line_under_the_ladders(monkeypatch):
+    # A uniform scale s over the whole line: the line under both ladders is
+    # z_tem / sqrt(s), and that is the impedance the waves sit at.
+    run, _, z_tem = _coax_two_port(monkeypatch)
+    res = run(jnp.asarray(1.21))
+    z_line = z_tem / 1.1
+    np.testing.assert_allclose(res.line_impedances, [z_line, z_line], rtol=1e-7)  # float32 1.21
+    want = _route_via_z(_PLANTED_COAX, [z_line, z_line], [50.0, 50.0])
+    assert np.max(np.abs(np.asarray(res.s_params) - want)) < 1e-6
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_unequal_ladder_lines_are_power_waves(monkeypatch):
+    # The top half filled 1.21x: port 1 (top) reads a z_tem/1.1 line, port 2
+    # (bottom) z_tem. The voltage ratio between them is a power-wave S only
+    # after sqrt(Z_driven / Z_receiver).
+    run, sim, z_tem = _coax_two_port(monkeypatch)
+    nz = sim._build_grid().shape[2]
+    scale = np.ones(sim._build_grid().shape)
+    scale[:, :, nz // 2:] = 1.21
+    res = run(jnp.asarray(scale))
+    z_line = np.array([z_tem / 1.1, z_tem])
+    np.testing.assert_allclose(res.line_impedances, z_line, rtol=1e-7)  # float32 1.21
+    root = np.sqrt(z_line)
+    s_power = _PLANTED_COAX * root[None, :, None] / root[:, None, None]
+    want = _route_via_z(s_power, z_line, [50.0, 50.0])
+    assert np.max(np.abs(np.asarray(res.s_params) - want)) < 1e-6
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_refuses_a_scale_that_varies_over_a_ladder(monkeypatch):
+    run, sim, _ = _coax_two_port(monkeypatch)
+    shape = sim._build_grid().shape
+    scale = 1.0 + 0.2 * (np.arange(shape[0]) % 2)[:, None, None] * np.ones(shape)
+    with pytest.raises(ValueError, match="varies over the annulus"):
+        run(jnp.asarray(scale))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_gradient_carries_the_line_impedance_term(monkeypatch):
+    # With the planted S fixed, everything d|S'|^2/ds holds comes from the
+    # line under the ladders moving against the fixed 50 ohm reference.
+    run, _, z_tem = _coax_two_port(monkeypatch)
+
+    def route(s):
+        z = z_tem / math.sqrt(s)
+        return float(np.sum(np.abs(_route_via_z(_PLANTED_COAX, [z, z],
+                                                [50.0, 50.0])) ** 2))
+
+    with enable_x64():
+        grad = float(jax.grad(
+            lambda s: jnp.sum(jnp.abs(run(s).s_params) ** 2))(jnp.asarray(1.21)))
+    h = 1e-6
+    fd = (route(1.21 + h) - route(1.21 - h)) / (2 * h)
+    assert abs(fd) > 1e-2
+    assert abs(grad - fd) < 1e-6 * max(1.0, abs(fd))
