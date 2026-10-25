@@ -204,12 +204,15 @@ _MSL_FREQS = jnp.linspace(2e9, 18e9, 16)
 def _msl_result():
     # #1138: the 1.2 mm trace is solved as 1.34 mm (+11.67 %); this A/B lock
     # checks bit identity across a code move, not sheet size.
+    # #1512: the strip spans the port nodes (2 and 10 mm), as _thru() of
+    # test_msl_passivity_enforcement.py; drawn across the domain it left 2 mm
+    # open stubs (quarter wave near 23.8 GHz) that the line-stub preflight refuses.
     sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8, snap="declared")
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    sim.add(Box((0.0, 0.0034, 0.0008), (0.012, 0.0046, 0.0008)), material="pec")
+    sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
