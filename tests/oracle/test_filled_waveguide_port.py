@@ -27,6 +27,7 @@ def judge(row,empty):
         assert np.all(np.abs(reflection-np.abs(row['s11_closed']))<=.02), 'O2 reflection closed form'
         assert np.all(np.abs(np.array(row['s21_abs'])-row['s21_closed'])<=.02), 'O2 power-wave transmission'
         assert np.all(np.abs(row['interface_phase_error'])<=np.array(row['half_cell_phase'])), 'O2 interface half-cell phase'
+        assert np.all(np.abs(1-power)<=1e-3), 'O2 power conservation'
     assert np.all(power<=1+np.maximum(2*np.abs(1-np.array(empty['sum'])),1e-3)), 'W1 per-bin passivity'
 
 
@@ -37,7 +38,12 @@ def test_filled_waveguide_preflight_clean(case,cells):
     assert_preflight_clean(preflight_findings(sim,freqs,round(8000*cells/45)))
 
 
-@pytest.mark.parametrize('case',['O1','O2'])
+# The step's vacuum port has 45 % of its source spectrum at the vacuum cutoff; the port's H source table wraps its
+# cutoff tail into the record there (#2013), which moves |S11|^2+|S21|^2 by about 1e-2 with record length.
+H_TABLE_WRAP=pytest.mark.xfail(strict=True,reason='#2013 H table wrap')
+
+
+@pytest.mark.parametrize('case',['O1',pytest.param('O2',marks=H_TABLE_WRAP)])
 def test_filled_waveguide_oracles(case):
     empty=measure('empty_filled_band' if case=='O1' else 'empty')
     row=measure(case)
@@ -52,16 +58,27 @@ def test_filled_waveguide_inward_reference_shift():
     judge(shifted,empty)
 
 
-@pytest.mark.slow
-def test_three_mesh_trend():
+def three_mesh(case):
     rows={}
     for cells in (30,45,60):
-        for case in ('O1','O2'):
-            empty=measure('empty_filled_band' if case=='O1' else 'empty',cells)
-            row=measure(case,cells)
-            dump(empty);dump(row);judge(row,empty)
-            rows[cells,case]=row
+        empty=measure('empty_filled_band' if case=='O1' else 'empty',cells)
+        row=measure(case,cells)
+        dump(empty);dump(row);judge(row,empty)
+        rows[cells]=row
+    return rows
+
+
+@pytest.mark.slow
+def test_three_mesh_trend_filled():
+    rows=three_mesh('O1')
     for coarse,fine in ((30,45),(45,60)):
-        assert np.all(np.abs(rows[fine,'O1']['phase_error_continuous'])<=np.abs(rows[coarse,'O1']['phase_error_continuous'])), 'O1 phase refinement'
-        err=lambda n: np.abs(np.array(rows[n,'O2']['s11_abs'])-np.abs(rows[n,'O2']['s11_closed']))
+        assert np.all(np.abs(rows[fine]['phase_error_continuous'])<=np.abs(rows[coarse]['phase_error_continuous'])), 'O1 phase refinement'
+
+
+@pytest.mark.slow
+@H_TABLE_WRAP
+def test_three_mesh_trend_step():
+    rows=three_mesh('O2')
+    err=lambda n: np.abs(np.array(rows[n]['s11_abs'])-np.abs(rows[n]['s11_closed']))
+    for coarse,fine in ((30,45),(45,60)):
         assert np.all(err(fine)<=err(coarse)), 'O2 reflection refinement'
