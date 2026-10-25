@@ -130,6 +130,29 @@ def record_arrays(result, kind):
     return accumulators, numeric
 
 
+def assert_record_matches(kind, eager, actual, *, context):
+    """Field accumulators within the summed-quantity bar, metadata bitwise."""
+    eager_acc, eager_meta = jax.tree.map(np.asarray, eager)
+    actual_acc, actual_meta = jax.tree.map(np.asarray, actual)
+    # One peak per physical quantity: the flux monitor's E and H accumulators
+    # differ by about the wave impedance, so each pair gets its own peak; a
+    # compensation array shares its accumulator's peak.
+    group = {name: name[0] if kind == 'flux' else kind for name in eager_acc}
+    peaks = {}
+    for name, value in eager_acc.items():
+        peaks[group[name]] = max(peaks.get(group[name], 0.0), np.max(np.abs(value)))
+    for name, expected in eager_acc.items():
+        peak = peaks[group[name]]
+        assert peak > 0, (context, name)
+        error = np.max(np.abs(actual_acc[name] - expected))
+        assert error <= 1e-4 * peak, (context, name, error, peak)
+    assert actual_meta.keys() == eager_meta.keys()
+    for name, expected in eager_meta.items():
+        got = actual_meta[name]
+        assert got.shape == expected.shape and got.dtype == expected.dtype, (context, name)
+        assert got.tobytes() == expected.tobytes(), (context, name)
+
+
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 @pytest.mark.parametrize('kind', ['ntff', 'dft', 'flux', 'moments'])
 def test_record_user_jit_matches_eager(kind, graded):
@@ -140,25 +163,7 @@ def test_record_user_jit_matches_eager(kind, graded):
                          skip_preflight=True, compute_s_params=False)
         return record_arrays(result, kind)
 
-    eager_acc, eager_meta = jax.tree.map(np.asarray, call())
-    actual_acc, actual_meta = jax.tree.map(np.asarray, jax.jit(call)())
-    # One peak per physical quantity: the flux monitor's E and H accumulators
-    # differ by about the wave impedance, so each pair gets its own peak; a
-    # compensation array shares its accumulator's peak.
-    group = {name: name[0] if kind == 'flux' else kind for name in eager_acc}
-    peaks = {}
-    for name, value in eager_acc.items():
-        peaks[group[name]] = max(peaks.get(group[name], 0.0), np.max(np.abs(value)))
-    for name, expected in eager_acc.items():
-        peak = peaks[group[name]]
-        assert peak > 0, (kind, graded, name)
-        error = np.max(np.abs(actual_acc[name] - expected))
-        assert error <= 1e-4 * peak, (kind, graded, name, error, peak)
-    assert actual_meta.keys() == eager_meta.keys()
-    for name, expected in eager_meta.items():
-        actual = actual_meta[name]
-        assert actual.shape == expected.shape and actual.dtype == expected.dtype, name
-        assert actual.tobytes() == expected.tobytes(), name
+    assert_record_matches(kind, call(), jax.jit(call)(), context=(kind, graded))
 
 
 @pytest.mark.parametrize('kind,what', [('dft', 'a DFT plane probe'), ('flux', 'a flux monitor')])

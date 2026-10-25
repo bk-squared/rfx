@@ -136,15 +136,6 @@ def test_refusal_says_what_works_today(keyword, works_today):
     assert "run_distributed" not in message and "#" not in message
 
 
-def test_refused_in_plain_words_inside_jax_jit():
-    """The uniform multi-device runner reads concrete values while it runs; without
-    this refusal jax.jit of the call fails inside it with a tracer error."""
-    import jax
-    with pytest.raises(NotImplementedError, match="cannot run inside jax.jit"):
-        jax.jit(lambda: scene().forward(n_steps=8, distributed=True, devices=devices(),
-                                        skip_preflight=True).time_series)()
-
-
 @pytest.mark.parametrize("family", ["lumped", "wire"])
 def test_requested_port_fields_match_one_device_forward(family):
     from tests.contracts.run_forward_census import build_p_lumped, build_p_wire
@@ -246,5 +237,7 @@ def test_gradient_of_port_s_refused_in_plain_words():
                              port_s11_freqs=np.array([8e9, 12e9]), skip_preflight=True)
         return minimize_s11_at_freq_wave_decomp(12e9)(result)
 
-    with pytest.raises(NotImplementedError, match="take this gradient on one device"):
+    with pytest.raises(NotImplementedError, match="cannot trace this request") as failure:
         jax.grad(loss)(2.0)
+    assert isinstance(failure.value.__cause__, (
+        jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError))
