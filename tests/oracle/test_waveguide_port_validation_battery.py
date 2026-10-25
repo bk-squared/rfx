@@ -835,6 +835,7 @@ def test_below_cutoff_z_mode_no_nan():
             self.mode_type = str(mode_type)
             self.dt = 1.5e-12
             self.dx = 1.0e-3
+            self.medium = PortMedium()
     cfg = _MinCfg(freqs, f_cutoff, "TE")
     V = jnp.asarray([1.0 + 0j, 1.0 + 0j, 1.0 + 0j], dtype=jnp.complex64)
     I = jnp.asarray([0.01 + 0j, 0.01 + 0j, 0.01 + 0j], dtype=jnp.complex64)
