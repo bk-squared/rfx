@@ -110,26 +110,6 @@ preflight. Its drawn rectangle is clipped to the sampled tangential extent, incl
 on periodic axes). Non-Box films retain their existing admission rule. Surface-impedance sheets use the same
 `sheet_effective_size` check and solved-edge model as PEC sheets.
 
-### Dispersive material touching a high-side magnetic (PMC) wall retains reduced wall-edge weight
-
-Tracker: #1966
-
-The high-side boundary-node repair now covers assembled static dielectric, conductivity and magnetic material,
-and DC film coverage. It leaves dispersive columns unchanged: promoting their static permittivity without
-their poles would create an undeclared material, and extending the poles into a boundary node is excluded
-after an earlier stability failure.
-
-Measured on assembled arrays with a Debye box (epsilon infinity 4, delta epsilon 3) occupying one z cell
-and reaching the high-y PMC wall: the wall node's cell permittivity is 1, the Ex static edge permittivity
-is 1.75, and the Ex pole fraction is 0.25 (delta epsilon contribution 0.75). The static counterpart's
-Ex edge permittivity is 2.5. These are material-array measurements, not a new field-level accuracy claim.
-
-Whole-grid material overrides, prebuilt MaterialArrays and checkpoint loads preserve their supplied cells;
-they enter after the geometry repair and do not infer a dropped boundary node from those values.
-
-Workaround: put a half model's symmetry plane on the LOW side of the axis (the lower coordinate face), or keep the
-dispersive material one cell away from a high-side PMC face.
-
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 
 Tracker: #1523
