@@ -5,11 +5,14 @@ from typing import NamedTuple
 import numpy as np
 
 
-# #1909: a probe on a field null holds eps times the fields cancelling at its
-# own point, measured up to ~1.2e3 eps of the co-located same-kind peak. A record
-# at 2e4 eps has its own rounding near 0.06 of its peak (-24 dB), above the -40 dB
-# the settling bar reads, so nothing skipped could be judged at that bar anyway.
+# A record is skipped only when both its peak and its end-of-record level are
+# at the rounding level of its cell. A weak record still ringing above that
+# level is scored.
 _ROUNDING_ONLY_EPS_MULTIPLE = 2e4
+# #1909 measured rounding records' peaks up to about 1.2e3 eps of the co-located
+# same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the #1909 box
+# are 120 and 235 eps (rfx-archive rfx/records/20261024-settle-skip-tail/).
+_ROUNDING_TAIL_EPS_MULTIPLE = 2.4e3
 
 
 def _rounding_only_records(records, groups):
@@ -26,19 +29,26 @@ def _rounding_only_records(records, groups):
             continue
         group = groups[name]
         peak = float(np.max(np.maximum(np.abs(y.real), np.abs(y.imag))))
-        peaks.append((name, group, peak, y.real.dtype))
+        peaks.append((name, group, peak, y))
         largest[group] = max(largest.get(group, 0.), peak)
     skipped = []
-    for name, group, peak, dtype in peaks:
+    for name, group, peak, y in peaks:
+        dtype = y.real.dtype
         if not np.issubdtype(dtype, np.floating):
             continue
         threshold = _ROUNDING_ONLY_EPS_MULTIPLE * float(np.finfo(dtype).eps)
         # float16 (precision='mixed'): the margin reaches the peak itself,
         # so it separates nothing; those records are scored as before.
         if threshold < 1. and peak < threshold * largest[group]:
+            end = np.atleast_1d(y)
+            end = end[-((len(end) + 9) // 10):]
+            tail = float(np.max(np.maximum(np.abs(end.real), np.abs(end.imag))))
+            if tail > _ROUNDING_TAIL_EPS_MULTIPLE * float(np.finfo(dtype).eps) * largest[group]:
+                continue
             ratio = peak / largest[group]
             skipped.append(dict(
                 name=name, group=group, peak_ratio=ratio, threshold=float(threshold),
+                tail_ratio=tail / largest[group],
                 reason=f"peak {ratio:.3g} of the largest co-located record ({group}), below "
                        f"{_ROUNDING_ONLY_EPS_MULTIPLE:g} x eps({dtype}): rounding only"))
     return tuple(skipped)
