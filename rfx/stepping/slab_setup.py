@@ -142,6 +142,22 @@ def input_materials(materials, layout, mesh):
 _warned_no_cpu = False
 
 
+@jax.custom_jvp
+def _custom_rule_probe(x):
+    return x
+
+
+_custom_rule_probe.defjvp(lambda primals, tangents: (primals[0], tangents[0]))
+
+
+def _custom_rules_evaluate_concretely():
+    """Inside jax.vmap a custom_jvp call returns a batch tracer even under
+    ensure_compile_time_eval (the H-material harmonic mean is one), so the
+    host producer could not read its products back."""
+    with jax.ensure_compile_time_eval():
+        return not isinstance(_custom_rule_probe(np.float32(0)), jax.core.Tracer)
+
+
 def _material_host_device(*inputs, mesh=None):
     """One concreteness/backend decision for both material producers."""
     global _warned_no_cpu
@@ -152,6 +168,8 @@ def _material_host_device(*inputs, mesh=None):
         return None, 'multi-process'
     if any(isinstance(a, jax.core.Tracer) for a in leaves):
         return None, 'traced inputs'
+    if not _custom_rules_evaluate_concretely():
+        return None, 'batching transform'
     try:
         return host_cpu_device(), None
     except RuntimeError:
