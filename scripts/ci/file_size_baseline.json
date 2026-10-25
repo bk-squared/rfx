@@ -5,7 +5,7 @@
     "rfx/api/__init__.py": 2089,
     "rfx/api/_execute.py": 2089,
     "rfx/api/_preflight.py": 1145,
-    "rfx/api/_spec.py": 1809,
+    "rfx/api/_spec.py": 1803,
     "rfx/interop/_design.py": 1643,
     "rfx/interop/emitters/openems.py": 1668,
     "rfx/nonuniform.py": 309,

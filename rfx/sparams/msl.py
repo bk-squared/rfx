@@ -258,6 +258,23 @@ def compute_msl_s_matrix(
     Returns
     -------
     MSLSMatrixResult
+        Field meanings are on :class:`rfx.api._spec.MSLSMatrixResult`.
+
+        **``assembly``: read this before trusting a fallback result.** The
+        fallback's characteristic symptom is column power above 1, which the
+        default ``enforce_passivity=False`` leaves standing in ``S`` and
+        ``sigma_max_excess`` measures. Under ``enforce_passivity=True``
+        the symptom is clipped out of ``S`` — but it is not erased from
+        the result: ``passivity_correction`` records how much was clipped
+        and ``S_raw`` keeps the unprojected matrix, and the run also emits
+        both a fallback warning and a passivity-guard
+        warning. So a fallback is not silent; ``assembly`` is simply the
+        *specific* signal. Column power above 1 has several causes (an
+        under-settled record, a standing-wave null, a mis-scaled current) and
+        only one of them is the fallback — that is what ``assembly``
+        disambiguates. It is ``None`` while tracing (the finiteness test
+        cannot run on a tracer, so the solve result is taken as-is — see
+        ``cond_a``).
     """
     resolve_field_dtype(self._precision)
     _diagnostics = ()
