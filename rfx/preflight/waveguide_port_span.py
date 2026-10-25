@@ -23,26 +23,41 @@ def _bounds(shape):
 _VACUUM = (1.0, 0.0, 1.0, None, None, 0.0)
 
 
-def _medium_at(sim, point):
-    """The declared medium at a point: later geometry wins, as when assembled.
+def _material_medium(sim, material_name):
+    """Compare declared prism materials, treating empty pole tuples as no poles."""
+    spec = sim._resolve_material(material_name)
+    medium = (float(spec.eps_r), float(spec.sigma), float(spec.mu_r),
+              repr(spec.debye_poles or None), repr(spec.lorentz_poles or None), float(spec.chi3))
+    return _VACUUM if medium[:3] == _VACUUM[:3] and medium[3:] == ("None", "None", 0.0) else medium
 
-    A Box is its bounding box; any other shape reads as its own medium, so a
-    face it straddles always counts (the conservative side).
+
+def _medium_at(sim, point, axis):
+    """The declared medium at a point: later geometry wins, as when assembled,
+    except that a PEC volume stays PEC under later geometry (its cells are
+    OR-accumulated into the PEC mask and never cleared).
+
+    Boxes and cylinders along the port axis have constant cross-sections.
+    Other shapes read as their own medium throughout their bounding boxes,
+    conservatively counting interfaces that may lie between bounding faces.
     """
-    from rfx.geometry.csg import Box
-    medium = _VACUUM
+    from rfx.geometry.csg import Box, Cylinder
+    medium = pec = _VACUUM
     for i, g in enumerate(sim._geometry):
         bounds = _bounds(g.shape)
         if bounds is None or not all(bounds[0][a] <= point[a] <= bounds[1][a] for a in range(3)):
             continue
         if isinstance(g.shape, Box):
-            spec = sim._resolve_material(g.material_name)
-            medium = (float(spec.eps_r), float(spec.sigma), float(spec.mu_r),
-                      repr(spec.debye_poles), repr(spec.lorentz_poles), float(spec.chi3))
-            medium = _VACUUM if medium[:3] == _VACUUM[:3] and medium[3:] == ("None", "None", 0.0) else medium
+            medium = _material_medium(sim, g.material_name)
+        elif isinstance(g.shape, Cylinder) and g.shape.axis == "xyz"[axis]:
+            if not bool(g.shape.mask_on_coords(
+                    np.array([point[0]]), np.array([point[1]]), np.array([point[2]]))[0, 0, 0]):
+                continue
+            medium = _material_medium(sim, g.material_name)
         else:
             medium = ("shape", i)
-    return medium
+        if pec is _VACUUM and sim._resolve_material(g.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
+            pec = medium if medium == ("shape", i) else "PEC"
+    return medium if pec is _VACUUM else pec
 
 
 def _face_sample_points(grid, lo, hi, aperture):
@@ -163,7 +178,7 @@ def _validate_cfg_waveguide_port_span(self, _w):
                     for point in points:
                         before, after = point.copy(), point.copy()
                         before[axis], after[axis] = face - step, face + step
-                        if _medium_at(self, before) != _medium_at(self, after):
+                        if _medium_at(self, before, axis) != _medium_at(self, after, axis):
                             return True
                     return False
 
