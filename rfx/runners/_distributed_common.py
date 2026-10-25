@@ -866,81 +866,7 @@ from rfx.model.electric_metrics import _slab_x_lo_view, _slab_model_rows
 from rfx.model.materials import slab_pole_fractions
 
 
-def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
-    """Per-E-component ``(eps_r, sigma)`` of one x slab, by the single-device
-    rule (#1303).
-
-    A Yee E component lies on an edge shared by four cells, and every lane
-    gives it the mean of their eps and sigma: THE rule is
-    :func:`rfx.core.yee.component_e_materials` (#1210, lumped stamps on their
-    own edge #1236), and this function only hands it the right cells. The
-    mean along x reads the row BEFORE the edge (Ey: i-1 and k-1, Ez: i-1 and
-    j-1; Ex never reads x), so a slab needs one row below its first real row:
-
-    * at a seam, the neighbour's last real cell. The staged material halo
-      already holds it in the left ghost row; nothing is exchanged per step.
-    * at the domain's x-lo face (rank 0), the boundary cell itself: outside
-      the lattice the single-device rule edge-replicates. The staged ghost
-      row there is vacuum padding, so the mean reads the first real row in
-      its place. Only the mean does; the staged ghost keeps its value for
-      every other reader (the #1317 drive reads it the same way).
-
-    Rows that are not cells of the model -- the ghost rows at both slab ends
-    and the high-x alignment pad -- keep the value of the cell they hold
-    (:func:`rfx.core.yee.cell_owned_component_materials`), as they had before
-    this lane was converted: their fields are replaced by the ghost exchange
-    or stand in for the outside of the domain, and what the domain faces do
-    is left as it was.
-
-    ``materials`` : the slab's :class:`MaterialArrays`, ``(nx_local, ny, nz)``
-        with one ghost row at each x end (lumped records optional).
-    ``nx_per`` : real rows per slab (``nx_padded // n_devices``).
-    ``nx`` : the unpadded global x cell count.
-    ``rank`` : the slab's mesh position, supplied as data by the shard-map adapter.
-
-    Returns ``((eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z))``, slab-shaped.
-    y and z are whole on every slab and non-periodic on these lanes (periodic
-    axes are refused), so they take the helper's own edge replication.
-    """
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    nx_local = materials.eps_r.shape[0]
-
-    from rfx.model.electric_metrics import slab_wall_view
-    from rfx.core.yee import permittivity_without_lumped, lumped_total, lumped_components, add_lumped_eps, add_film
-    def read(arr):
-        return slab_wall_view(arr, nx_per, nx, rank, high_wall=high_wall)
-    sigma = materials.sigma
-    stamp = lumped_total(materials.sigma_lumped)
-    if stamp is not None:
-        sigma = sigma - stamp
-    view = MaterialArrays(eps_r=read(permittivity_without_lumped(materials)),
-                          sigma=read(sigma), mu_r=materials.mu_r, sigma_film=None)
-    if cell_sizes is not None:
-        cell_sizes = (read(cell_sizes[0]), *cell_sizes[1:])
-    eps_edge, sig_edge = component_e_materials(view, (False,) * 3,
-        high_wall=(False, *high_wall[1:]), cell_sizes=cell_sizes)
-    eps_edge = add_lumped_eps(eps_edge, materials.eps_r_lumped)
-    sig_edge = tuple(s if p is None else s + p for s, p in
-                     zip(sig_edge, lumped_components(materials.sigma_lumped)))
-    sig_edge = add_film(sig_edge, materials)
-    eps_cell, sig_cell = cell_owned_component_materials(materials)
-    model_cell = _slab_model_rows(nx_local, nx_per, nx, rank)
-
-    def per_row(edge, cell):
-        return tuple(jnp.where(model_cell, e, c) for e, c in zip(edge, cell))
-
-    eps, sigma = per_row(eps_edge, eps_cell), per_row(sig_edge, sig_cell)
-    if _realized.ACTIVE is not None:
-        # Both coefficient paths consume these operands, including the
-        # checkpointed shard_map. Record global ownership for the
-        # full-grid reference.
-        site = ("distributed_nu.E" if _realized.ACTIVE.lane == "fwd_distributed_nu"
-                else "distributed.E")
-        eps, sigma = _realized.electric(
-            view, eps, sigma, site, owned_start=rank * nx_per,
-            owned_count=jnp.minimum(nx_per, nx - rank * nx_per))
-    return eps, sigma
+from rfx.model.electric_metrics import slab_e_component_materials
 
 
 def component_e_coeffs(e_materials, dt):
@@ -953,7 +879,7 @@ def component_e_coeffs(e_materials, dt):
 
 def slab_e_coeffs(materials, nx_per, nx, dt, rank=None, *, high_wall: tuple[bool, bool, bool]):
     """The E coefficients of one x slab (#1303): :func:`component_e_coeffs`
-    of :func:`slab_e_component_materials`. With :func:`slab_e_materials_shmap`
+    of :func:`rfx.model.electric_metrics.slab_e_component_materials`. With :func:`slab_e_materials_shmap`
     the one path the multi-device E updates take to their coefficients."""
     return component_e_coeffs(
         slab_e_component_materials(materials, nx_per, nx, rank, high_wall=high_wall), dt)

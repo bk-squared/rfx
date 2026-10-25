@@ -215,7 +215,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     The psi coefficient takes the permittivity the E update of the same step
     used (#1043): with ``e_slab = (nx_per, nx)`` each component's four-cell
     edge mean, built on each slab by
-    :func:`rfx.runners._distributed_common.slab_e_component_materials`
+    :func:`rfx.model.electric_metrics.slab_e_component_materials`
     (#1303), including on dispersive models (#1260). ``e_materials`` can
     supply the same means already formed before the time loop.
 
