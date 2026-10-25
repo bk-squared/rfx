@@ -1,4 +1,7 @@
 """Whole-grid realization is structural on CPU and a value gate on GPUs."""
+import inspect
+import re
+import sys
 import warnings
 from types import SimpleNamespace
 
@@ -111,7 +114,7 @@ def test_every_product_matches_per_slab(n, family, monkeypatch):
     if s.mesh.devices.flat[0].platform != 'cpu':
         pytest.skip('GPU per-slab reference has the corner rounding defect')
     actual = products(s)
-    monkeypatch.setattr(setup, '_material_host_device', lambda *args: (None, 'traced inputs'))
+    monkeypatch.setattr(setup, '_material_host_device', lambda *args, **kwargs: (None, 'traced inputs'))
     expected = products(s)  # Eager reference: no outer jit changes its rounding.
     a_leaves = jax.tree_util.tree_flatten_with_path(actual)[0]
     e_leaves = jax.tree_util.tree_flatten_with_path(expected)[0]
@@ -130,6 +133,9 @@ def test_every_product_matches_per_slab(n, family, monkeypatch):
 @pytest.mark.parametrize('n', [2, 3])
 def test_owned_components_match_one_device(n):
     s = staged_scene(n)
+    mu = np.asarray(s.materials.mu_r)
+    assert np.all(mu[4:9, 3:8, 2:7] == np.float32(1.3))
+    assert np.count_nonzero(mu != 1) == 5 * 5 * 5
     staged = products(s)[0][0]
     whole = realize_components(s.materials, s.grid, periodic=(False,) * 3)
     for name in ('eps_update', 'sigma_update', 'mu_update'):
@@ -139,21 +145,29 @@ def test_owned_components_match_one_device(n):
                 lo = rank * s.layout.nx_per_rank
                 hi = min((rank + 1) * s.layout.nx_per_rank, s.grid.shape[0])
                 start = rank * s.layout.nx_local + s.layout.ghost_width
-                assert np.array_equal(actual[start:start + hi - lo], expected[lo:hi]), (name, rank)
+                a, e = actual[start:start + hi - lo], expected[lo:hi]
+                if name == 'mu_update' and s.mesh.devices.flat[0].platform == 'gpu':
+                    # CPU host vs GPU realization differs by 1 float32 ULP at the mu_r=1.3 box face.
+                    assert a.dtype == e.dtype == np.float32
+                    np.testing.assert_array_max_ulp(a, e, maxulp=1)
+                else:
+                    assert np.array_equal(a, e), (name, rank)
+                if name == 'mu_update' and lo < 9 and hi > 4:
+                    assert np.any(e != 1), 'owned comparison must read the magnetic box'
 
 
 @pytest.mark.parametrize('n', [2, 3])
 def test_no_cpu_fallback_warns_once(n, monkeypatch):
     s = staged_scene(n, 'debye')
-    devices = jax.devices
+    local_devices = jax.local_devices
     monkeypatch.setattr(setup, '_warned_no_cpu', False)
 
-    def unavailable(backend=None):
+    def unavailable(*args, backend=None, **kwargs):
         if backend == 'cpu':
             raise RuntimeError('CPU backend unavailable')
-        return devices(backend)
+        return local_devices(*args, backend=backend, **kwargs)
 
-    monkeypatch.setattr(jax, 'devices', unavailable)
+    monkeypatch.setattr(jax, 'local_devices', unavailable)
     calls = []
     original = setup.realize_components
 
@@ -170,6 +184,10 @@ def test_no_cpu_fallback_warns_once(n, monkeypatch):
             assert result.materials_realized_reason == 'no CPU backend'
     runtime = [w for w in caught if w.category is RuntimeWarning]
     assert len(runtime) == 1
+    assert runtime[0].filename == __file__
+    expected_line = inspect.getsourcelines(build)[1] + 1
+    assert runtime[0].lineno == expected_line
+    print(f'warning caller={runtime[0].filename}:{runtime[0].lineno}', file=sys.stderr)
     assert str(runtime[0].message) == (
         'no CPU backend in this JAX process (JAX_PLATFORMS does not list cpu), '
         'so the graded multi-device lane forms its material coefficients per slab; '
@@ -182,7 +200,7 @@ def test_no_cpu_fallback_warns_once(n, monkeypatch):
 def test_traced_switch_never_probes_cpu(leaf, monkeypatch):
     def forbidden(*args):
         raise AssertionError('traced switch probed CPU')
-    monkeypatch.setattr(jax, 'devices', forbidden)
+    monkeypatch.setattr(jax, 'local_devices', forbidden)
 
     def call(value):
         inputs = dict(materials=1., occupancy=0., mask=True, parameter=1.)
@@ -206,6 +224,11 @@ def test_closed_over_concrete_products_under_jit(n, family, monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(setup, 'realize_components', observe)
+    if family == 'lorentz' and s.mesh.devices.flat[0].platform == 'gpu':
+        from rfx.stepping.rank import OUTER_JIT_REFUSAL
+        with pytest.raises(NotImplementedError, match=re.escape(OUTER_JIT_REFUSAL)):
+            jax.jit(lambda: products(s))()
+        return
     actual = jax.jit(lambda: products(s))()
     assert calls and all(view is None for view in calls)
     expected = products(s)
@@ -235,3 +258,42 @@ def test_traced_pole_inputs_keep_setup_on_per_slab_route(monkeypatch):
 
     jax.make_jaxpr(traced)(1.)
     assert calls and all(view is not None for view in calls)
+
+
+@pytest.mark.parametrize('n', [2, 3])
+def test_non_addressable_input_keeps_slab_views(n, monkeypatch):
+    s = staged_scene(n, 'debye')
+    target = s.inputs.eps_r
+    array_type = type(target)
+    addressable = array_type.is_fully_addressable
+    # Real local JAX array, with only this leaf's addressability metadata overridden.
+    monkeypatch.setattr(array_type, 'is_fully_addressable', property(
+        lambda a: False if a is target else addressable.__get__(a, array_type)))
+    calls = []
+    original = setup.realize_components
+
+    def observe(*args, **kwargs):
+        calls.append(kwargs.get('view'))
+        return original(*args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('non-addressable input reached a host read')
+
+    monkeypatch.setattr(setup, 'realize_components', observe)
+    monkeypatch.setattr(setup, '_whole_material_rows', forbidden)
+    monkeypatch.setattr(jax, 'local_devices', forbidden)
+    result = build(s)
+    assert result.materials_realized == 'per_slab'
+    assert result.materials_realized_reason == 'multi-process'
+    assert calls and all(view is not None for view in calls)
+
+
+def test_multi_process_mesh_never_probes_cpu(monkeypatch):
+    mesh = SimpleNamespace(devices=np.asarray([
+        SimpleNamespace(process_index=0), SimpleNamespace(process_index=1)]))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('multi-process mesh probed CPU')
+
+    monkeypatch.setattr(jax, 'local_devices', forbidden)
+    assert setup._material_host_device(np.ones(1), mesh=mesh) == (None, 'multi-process')

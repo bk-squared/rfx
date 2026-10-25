@@ -1,8 +1,8 @@
 """Material realization and slab inputs for the canonical graded step."""
-from dataclasses import replace
 from contextlib import nullcontext
 from functools import lru_cache
 from types import SimpleNamespace
+import sys
 import warnings
 
 import jax
@@ -53,10 +53,10 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     cb = None
     if debye is not None and lorentz is not None:
         from rfx.materials.lorentz import mixed_e_component_coeffs
-        def coefficients(d, l):
+        def coefficients(d, lorentz_coeffs):
             # Staging packs each device's pole-first leaves along axis zero.
-            d, l = jax.tree.map(lambda a: a.reshape((mesh.size, -1) + a.shape[1:]), (d, l))
-            values = tuple(jax.vmap(lambda d, l: mixed_e_component_coeffs(d, l, axis, dt)[1])(d, l)
+            d, lorentz_coeffs = jax.tree.map(lambda a: a.reshape((mesh.size, -1) + a.shape[1:]), (d, lorentz_coeffs))
+            values = tuple(jax.vmap(lambda d, lc: mixed_e_component_coeffs(d, lc, axis, dt)[1])(d, lorentz_coeffs)
                            for axis in range(3))
             return device_rows(values, mesh, unpack=False)
         cb = jax.checkpoint(coefficients)(debye[0], lorentz[0])
@@ -69,7 +69,8 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     scalar_cells = tuple((0, (n, 0, 0)) for n in range(len(sources)))
     samples = jnp.stack([jnp.asarray(s.waveform) for s in sources], axis=-1)
     def local(e, s, k, c, rank, samples=samples, volumes=volumes):
-        arrays = lambda a: None if a is None else (a[:, None, None],)
+        def arrays(a):
+            return None if a is None else (a[:, None, None],)
         return drive_columns(arrays(e), arrays(s), arrays(k), scalar_cells,
                              owners == rank, samples, volumes, dt, cb=c)
     if _realized.ACTIVE is None:
@@ -140,20 +141,31 @@ def input_materials(materials, layout, mesh):
 _warned_no_cpu = False
 
 
-def _material_host_device(*inputs):
+def _material_host_device(*inputs, mesh=None):
     """One concreteness/backend decision for both material producers."""
     global _warned_no_cpu
-    if any(isinstance(a, jax.core.Tracer) for a in jax.tree.leaves(inputs)):
+    leaves = jax.tree.leaves(inputs)
+    if ((mesh is not None and len({d.process_index for d in mesh.devices.flat}) > 1)
+            or any(isinstance(a, jax.Array) and not isinstance(a, jax.core.Tracer)
+                   and not a.is_fully_addressable for a in leaves)):
+        return None, 'multi-process'
+    if any(isinstance(a, jax.core.Tracer) for a in leaves):
         return None, 'traced inputs'
     try:
-        return jax.devices('cpu')[0], None
+        return jax.local_devices(backend='cpu')[0], None
     except RuntimeError:
         if not _warned_no_cpu:
+            stacklevel = 2
+            frame = sys._getframe(1)
+            while frame is not None and frame.f_globals.get('__name__', '').startswith('rfx.'):
+                stacklevel += 1
+                frame = frame.f_back
+            del frame
             warnings.warn(
                 'no CPU backend in this JAX process (JAX_PLATFORMS does not list cpu), '
                 'so the graded multi-device lane forms its material coefficients per slab; '
                 'on a GPU they can differ from a one-device run in the last float32 bit '
-                'at dielectric corner edges (within every accuracy bar)', RuntimeWarning, stacklevel=2)
+                'at dielectric corner edges (within every accuracy bar)', RuntimeWarning, stacklevel=stacklevel)
             _warned_no_cpu = True
         return None, 'no CPU backend'
 
@@ -197,7 +209,8 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
                       debye=False, lorentz=False, _material_inputs=()):
     """Realize concrete materials on the whole CPU grid, then cut host products.
 
-    Traced inputs retain the per-slab producer; a missing CPU backend also
+    Traced or non-addressable inputs and multi-process meshes retain the
+    per-slab producer; a missing CPU backend also
     retains it, with one RuntimeWarning per process. Whole-grid host arrays
     live during formation. Fresh-process macOS measurements (ru_maxrss in
     bytes), with occupancy and CPML operands, including compilation and cut
@@ -207,7 +220,7 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     """
     from rfx.model.occupancy import with_edge_keep
     from rfx.stepping.absorber import graded_cpml_operands
-    device, _ = _material_host_device(materials, occupancy, _material_inputs)
+    device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
     with jax.ensure_compile_time_eval() if device is not None else nullcontext():
         inputs = input_materials(materials, layout, mesh)
         occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
@@ -259,7 +272,8 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
     from rfx.core.yee import ade_state_dtype
     if spec is None:
         return None
-    device, _ = _material_host_device(materials, spec, debye_spec)
+    # Families decide separately: traced Lorentz masks need not trace Debye products.
+    device, _ = _material_host_device(materials, spec, debye_spec, mesh=mesh)
     poles, masks = spec
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
     with jax.ensure_compile_time_eval() if device is not None else nullcontext():
@@ -271,7 +285,7 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
     if family == 'lorentz':
         # Static masks define each slab's pole patterns. Only their small
         # reduced records leave the shard_map; no staged slab is indexed here.
-        from rfx.stepping.rank import rank_shard_map, mesh_ranks
+        from rfx.stepping.rank import mesh_ranks
         records = []
         for view in slab_views(grid, layout.n_devices):
             owned_view = view._replace(halo_lo=2,
@@ -362,7 +376,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.core.drives import drive_layout
     # Pole masks/parameters can be traced even when the cell arrays are fixed.
     pole_inputs = (None if debye is None else debye[0], None if lorentz is None else lorentz[0])
-    device, reason = _material_host_device(materials, occupancy, pole_inputs)
+    device, reason = _material_host_device(materials, occupancy, pole_inputs, mesh=mesh)
     # Pole kernels drop their electric material components, just as one device
     # does; retain the absorber's operands separately in the native slab layout.
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
