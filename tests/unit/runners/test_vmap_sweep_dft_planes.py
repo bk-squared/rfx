@@ -1088,7 +1088,7 @@ class TestVmapPortFamilyEligibility:
 class TestVmapAmplitudeKindCurrent:
     """PR #617 (issue #571) added ``amplitude_kind='current'`` soft
     sources with a dynamic per-batch Cb-normalization path in
-    ``_build_vmap_scan_fn`` (rfx/vmap_sweep.py:450-468) -- until this
+    ``_build_vmap_scan_fn`` (rfx/stepping/vmap_scan.py) -- until this
     file, no test exercised it at the ``vmap_material_sweep`` level (the
     #617 coverage gap named in the #578 design doc). Tolerance is looser
     than the DFT-plane gate above: ``rtol=1e-3`` on the raw time series.
