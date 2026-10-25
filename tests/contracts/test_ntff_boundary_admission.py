@@ -13,8 +13,9 @@ EXTERIOR = (
     "an NTFF box radiates its surface currents into free space, but {faces}: "
     "the far field would miss their images (a symmetry or ground plane is not "
     "reconstructed). Every face of the realized model must be absorbing: draw a "
-    "finite ground plane as geometry, and note that a waveguide port on the uniform mesh "
-    "solves its transverse faces as PEC walls; a symmetry plane is not supported "
+    "finite ground plane as geometry, and note that a full-aperture waveguide port "
+    "with an undeclared boundary on the uniform mesh solves its transverse faces "
+    "as PEC walls; a symmetry plane is not supported "
     "with NTFF yet."
 )
 
@@ -223,10 +224,8 @@ def test_adi_ntff_refusal_precedes_exterior(entry, monkeypatch):
 
 
 WAVEGUIDE_TABLE = (
-    ("small", "default", "y_hi is zero-depth absorber; y_lo is zero-depth absorber; "
-     "z_hi is zero-depth absorber; z_lo is zero-depth absorber"),
-    ("small", "cpml", "y_hi is zero-depth absorber; y_lo is zero-depth absorber; "
-     "z_hi is zero-depth absorber; z_lo is zero-depth absorber"),
+    ("small", "default", None),
+    ("small", "cpml", None),
     ("full", "default", "y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec"),
     ("full", "cpml", None),
 )
@@ -241,6 +240,10 @@ def test_waveguide_realized_exterior(aperture, boundary, faces, entry, monkeypat
     port = {} if aperture == "full" else {"y_range": (.002, .010), "z_range": (.002, .010)}
     sim.add_waveguide_port(.006, direction="+x", f0=7.5e9, **port)
     sim.add_ntff_box((.004, .004, .004), (.020, .008, .008), n_freqs=3)
+    if aperture == "small":
+        result = getattr(sim, entry)(n_steps=1)
+        assert result is not None
+        return
     forbid_field_loops(monkeypatch)
     expected = (f"{entry} dispatch: " + EXTERIOR.format(faces=faces) if faces else
                 f"{entry} dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
