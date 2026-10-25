@@ -165,7 +165,7 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
     # The fill's own cells: stamp_coaxial_line's Cylinder masks (node
     # coordinates), over the whole z extent.
     from rfx.geometry.csg import Cylinder
-    span = 2.0 * grid.shape[2] * float(grid.dx)
+    span = 2.0 * float(np.sum(grid.cells(2)))
     centre = (float(center_xy[0]), float(center_xy[1]), 0.0)
     annulus = np.asarray(
         Cylinder(center=centre, radius=float(outer_radius), height=span,
