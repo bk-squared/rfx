@@ -28,6 +28,7 @@ from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec, Boundary
 
 NUM_PERIODS = 8.0
+FREQS = jnp.linspace(5e9, 6.5e9, 4)
 
 
 def _wr90_sim():
@@ -42,21 +43,35 @@ def _wr90_sim():
         ),
         cpml_layers=8,
     )  # solved length; #1887
-    freqs = jnp.linspace(5e9, 6.5e9, 4)
     sim.add_waveguide_port(0.010, direction="+x", mode=(1, 0), mode_type="TE",
-                           freqs=freqs, f0=6e9, bandwidth=0.5, name="left")
+                           freqs=FREQS, f0=6e9, bandwidth=0.5, name="left")
     sim.add_waveguide_port(0.090, direction="-x", mode=(1, 0), mode_type="TE",
-                           freqs=freqs, f0=6e9, bandwidth=0.5, name="right")
+                           freqs=FREQS, f0=6e9, bandwidth=0.5, name="right")
     return sim
+
+
+def _slab_cells(sim, grid):
+    """A 4-cell slab between the two ports' realized S21 probe planes, off both
+    ports' sections: a traced medium at a probe plane is refused (#2016)."""
+    from rfx.boundaries.features import waveguide_segment_cells
+    n_steps = grid.num_timesteps(num_periods=NUM_PERIODS)
+    cfgs = [sim._build_waveguide_port_config(e, grid, FREQS, n_steps)
+            for e in sim._waveguide_ports]
+    lo, hi = sorted(cfg.probe_x for cfg in cfgs)
+    i_lo = (lo + hi) // 2 - 2
+    i_hi = i_lo + 4
+    assert lo < i_lo and i_hi <= hi, f"slab {i_lo}:{i_hi} not between probes {lo}, {hi}"
+    for cfg in cfgs:
+        s_lo, s_hi = waveguide_segment_cells(cfg, grid)[0]
+        assert i_hi <= s_lo or s_hi <= i_lo, f"slab {i_lo}:{i_hi} in {cfg.port_name} section {s_lo}:{s_hi}"
+    return i_lo, i_hi
 
 
 def _eps_override_for(sim, deps):
     """Uniform-eps grid override 1.0 + deps in a slab mid-guide (traced)."""
     grid = sim._build_grid()
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
-    # slab x in [0.054, 0.066] m -> a 4-cell perturbation region
-    i_lo = grid.position_to_index((0.054, 0.0, 0.0))[0]
-    i_hi = grid.position_to_index((0.066, 0.0, 0.0))[0]
+    i_lo, i_hi = _slab_cells(sim, grid)
     return eps.at[i_lo:i_hi, :, :].add(deps)
 
 
