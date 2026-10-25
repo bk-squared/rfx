@@ -1069,10 +1069,10 @@ def _homogeneous_reference_materials(shape, medium):
 
 
 def _empty_waveguide_reference(self, medium=None):
-    """Build vacuum physics from mesh/boundary configuration only."""
-    # Construct an empty guide from configuration, never from device physics.
-    # Its empty geometry rasterizes vacuum exactly as init_materials does on
-    # the uniform calculator. Only the mesh, boundary walls and modal ports
+    """Build a straight guide at the resolved port medium."""
+    # Construct from mesh/boundary configuration, never from device geometry.
+    # Vacuum retains empty geometry; a fill extends through both CPML pads.
+    # Only the mesh, boundary walls and modal ports
     # are shared; material poles, sheets and lumped elements cannot leak in.
     from rfx.boundaries.serialization import constructor_boundary
     reference = type(self)(
@@ -1106,14 +1106,13 @@ def _compute_waveguide_s_matrix_nu(
 ) -> WaveguideSMatrixResult:
     """Non-uniform-mesh two-run S-matrix extraction.
 
-    Drives each port in turn, running device + vacuum-reference
+    Drives each port in turn, running device + homogeneous-reference
     scans through ``run_nonuniform_path`` so ``dx_profile`` /
     ``dy_profile`` / ``dz_profile`` actually flow into the Yee update. The per-port
     drive is implemented by temporarily zeroing ``amplitude`` on
     non-driven entries; the original port list is restored in a
-    ``finally`` block. Reference run uses ``eps_override`` /
-    ``sigma_override`` to replace the assembled materials with
-    vacuum before the scan launches.
+    ``finally`` block. The reference's whole domain has the shared port
+    medium. Unequal port media are refused before launching either scan.
 
     Current scope (matches the uniform path minus a few niceties):
       - ``normalize=True`` or ``normalize='flux'``.
@@ -1122,7 +1121,7 @@ def _compute_waveguide_s_matrix_nu(
         design variable) are wired only for ``normalize='flux'``: they
         are threaded into the *device* run so the traced eps flows
         through the jnp-native flux extraction and back to the
-        S-matrix gradient. The *reference* run stays vacuum. They are
+        S-matrix gradient. The reference keeps the fixed section medium. They are
         rejected for ``normalize=True`` (its diagonal a_inc_ref
         denominator carries the #88 band-edge fragility).
 

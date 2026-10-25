@@ -51,7 +51,7 @@ c = res.waveguide_ports[0]; nv = int(np.asarray(c.n_steps_recorded)); dt = float
 Vr = np.asarray(_rect_dft(c.v_ref_t, freqs, dt, nv)); Vp = np.asarray(_rect_dft(c.v_probe_t, freqs, dt, nv))
 Ir = np.asarray(_co_located_current_spectrum(c, _rect_dft(c.i_ref_t, freqs, dt, nv)))
 Ip = np.asarray(_co_located_current_spectrum(c, _rect_dft(c.i_probe_t, freqs, dt, nv)))
-Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx))
+Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx, medium=c.medium))
 out = f"/tmp/rfx-tj/scripts/diagnostics/_artifacts/tj_od_{A.mode}_dx{A.dx_mm:.1f}.npz"
 np.savez(out, Vr=Vr, Vp=Vp, Ir=Ir, Ip=Ip, Z=Z, band=BAND,
          ref_x_m=float(c.reference_x_m), probe_x_m=float(c.probe_x_m), f_cutoff=float(c.f_cutoff))

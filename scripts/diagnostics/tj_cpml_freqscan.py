@@ -36,7 +36,7 @@ cfgs = [c._replace(src_amp=c.src_amp if i==0 else 0.0) for i,c in enumerate(cfgs
 res = run_sim(grid, mat, n_steps, boundary="cpml", cpml_axes="xy", pec_axes="z", waveguide_ports=cfgs, return_state=False)
 c = res.waveguide_ports[0]; nv = int(np.asarray(c.n_steps_recorded)); dt = float(c.dt)
 Vr = np.asarray(_rect_dft(c.v_ref_t, freqs, dt, nv)); Ir = np.asarray(_co_located_current_spectrum(c, _rect_dft(c.i_ref_t, freqs, dt, nv)))
-Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx))
+Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx, medium=c.medium))
 G = np.abs((Vr - Z*Ir)/(Vr + Z*Ir))
 np.savez(f"/tmp/rfx-tj/scripts/diagnostics/_artifacts/tj_cpmlfreq_nc{nc}.npz", G=G, band=BAND)
 print(f"[FREQSCAN nc={nc}] matched-guide far-end |Gamma| vs f (cutoff ratio f/3.75):", flush=True)

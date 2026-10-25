@@ -1061,7 +1061,8 @@ def _compute_mode_impedance(freqs, f_cutoff, mode_type, *, medium,
             z = dt * s_b / xp.maximum(eps * dx * s_w, 1e-30)
         else:
             raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
-        return xp.where(freqs > f_cutoff, z, (np.inf if _table else 1e30) if mode_type == "TE" else 0.0)
+        sentinel = (np.inf if _table else jnp.asarray(1e30, dtype=jnp.float32)) if mode_type == "TE" else 0.0
+        return xp.where(freqs > f_cutoff, z, sentinel)
     if mode_type == "TE":
         z = omega * mu / safe_beta
     elif mode_type == "TM":

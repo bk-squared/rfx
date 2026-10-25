@@ -754,6 +754,7 @@ def _reference_free_fit_from_cfgs(
             monitor_cfgs[0].f_cutoff,
             dt=monitor_cfgs[0].dt,
             dx=monitor_cfgs[0].dx,
+            medium=monitor_cfgs[0].medium,
         ),
         dtype=np.complex128,
     )
@@ -1658,6 +1659,7 @@ def run_phase2a_center_lockin_ref_free(
                 monitor_cfgs[0].f_cutoff,
                 dt=monitor_cfgs[0].dt,
                 dx=monitor_cfgs[0].dx,
+                medium=monitor_cfgs[0].medium,
             ),
             dtype=np.complex128,
         )
@@ -2035,8 +2037,8 @@ def run_phase2b_mode_ledger(freqs_hz: np.ndarray, *, cpml_layers: int, num_perio
         e_power = float(np.sum((ey * ey + ez * ez) * d_a))
         cross_power = float(np.sum((ey * hz - ez * hy) * d_a))
         reversed_cross_power = float(np.sum((ey * (-hz) - ez * (-hy)) * d_a))
-        beta_disc = np.asarray(_compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx), dtype=np.complex128)
-        beta_cont = np.asarray(_compute_beta(cfg.freqs, cfg.f_cutoff, dt=0.0, dx=0.0), dtype=np.complex128)
+        beta_disc = np.asarray(_compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium), dtype=np.complex128)
+        beta_cont = np.asarray(_compute_beta(cfg.freqs, cfg.f_cutoff, dt=0.0, dx=0.0, medium=cfg.medium), dtype=np.complex128)
         beta_delta = np.abs(beta_disc - beta_cont)
         phase_to_short = -2.0 * beta_disc * float(PEC_SHORT_X - cfg.reference_x_m)
         pass_mode = (
@@ -2135,11 +2137,11 @@ def _source_table_spectral_residual(cfg: WaveguidePortConfig) -> dict[str, Any]:
     h_spec = np.fft.rfft(h_table)
     freqs_spec = np.fft.rfftfreq(e_table.size, d=float(cfg.dt))
     beta = np.asarray(
-        _compute_beta(jnp.asarray(freqs_spec), cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx),
+        _compute_beta(jnp.asarray(freqs_spec), cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium),
         dtype=np.complex128,
     )
     z_mode = np.asarray(
-        _compute_mode_impedance(jnp.asarray(freqs_spec), cfg.f_cutoff, cfg.mode_type, dt=cfg.dt, dx=cfg.dx),
+        _compute_mode_impedance(jnp.asarray(freqs_spec), cfg.f_cutoff, cfg.mode_type, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium),
         dtype=np.complex128,
     )
     omega = 2.0 * np.pi * freqs_spec
@@ -2517,7 +2519,7 @@ def run_phase2b_causal_window_ledger(
     center_freq = float(np.asarray(freqs_hz, dtype=float)[len(freqs_hz) // 2])
     delta_f = max(center_freq * 1.0e-4, 1.0e6)
     freqs_pair = np.asarray([center_freq - delta_f, center_freq + delta_f])
-    beta_pair = np.asarray(_compute_beta(jnp.asarray(freqs_pair), cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx), dtype=np.complex128).real
+    beta_pair = np.asarray(_compute_beta(jnp.asarray(freqs_pair), cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium), dtype=np.complex128).real
     group_delay_per_m = float((beta_pair[1] - beta_pair[0]) / (2.0 * 2.0 * np.pi * delta_f))
     monitor_mid = float(np.asarray(monitor_x_m, dtype=float)[len(monitor_x_m) // 2])
     incident_delay = abs(monitor_mid - PORT_LEFT_X) * group_delay_per_m

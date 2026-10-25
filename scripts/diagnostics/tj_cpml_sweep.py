@@ -34,6 +34,6 @@ res = run_sim(grid, mat, n_steps, boundary="cpml", cpml_axes="xy", pec_axes="z",
 c = res.waveguide_ports[0]; nv = int(np.asarray(c.n_steps_recorded)); dt = float(c.dt)
 Vr = np.asarray(_rect_dft(c.v_ref_t, freqs, dt, nv)); Vp = np.asarray(_rect_dft(c.v_probe_t, freqs, dt, nv))
 Ir = np.asarray(_co_located_current_spectrum(c, _rect_dft(c.i_ref_t, freqs, dt, nv)))
-Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx))
+Z = np.asarray(_compute_mode_impedance(c.freqs, c.f_cutoff, c.mode_type, dt=c.dt, dx=c.dx, medium=c.medium))
 G = (Vr - Z*Ir)/(Vr + Z*Ir)
 print(f"[CPML nc={nc} ({nc*dx*1000:.0f}mm)] far-end |Gamma|: band-mean={np.abs(G).mean():.3f} max={np.abs(G).max():.3f}  |Vp|/|Vr| std(SW depth)={np.abs(Vp/Vr).std():.3f}", flush=True)

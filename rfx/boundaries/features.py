@@ -333,7 +333,7 @@ def waveguide_segment_cells(cfg, grid):
     H acts at x_index-1 for a positive launch and x_index for a negative
     launch. A declared reference includes cell centres strictly on its port
     side, also when behind the source. S extraction reads reference waves
-    only; the reference shift uses vacuum beta. Transverse bounds are the
+    only; the reference shift uses the section's beta. Transverse bounds are the
     compiled aperture cell spans.
     """
     import numpy as np

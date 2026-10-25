@@ -343,7 +343,48 @@ def test_injection_purity():
     from tests.oracle.test_filled_waveguide_port import dump
     empty, filled = measure('W2_empty'), measure('W2')
     dump(empty); dump(filled)
-    assert np.all(np.array(filled['reflection']) <= np.maximum(2*np.array(empty['reflection']), .01)), 'W2 backward injection floor'
+    assert np.all(np.array(filled['reflection']) <= np.maximum(2*np.array(empty['reflection']), .005)), 'W2 upstream injection leakage'
+
+
+@pytest.mark.parametrize('profile',['analytic','discrete'])
+@pytest.mark.parametrize('mode',['TE','TM'])
+@pytest.mark.parametrize('x64',[False,True])
+def test_vacuum_bit_identical_to_hand_written_main(profile,mode,x64):
+    with jax.enable_x64(x64):
+        _assert_vacuum_main(profile,mode,jnp.float64 if x64 else jnp.float32)
+
+
+def _assert_vacuum_main(profile,mode,dtype):
+    from rfx.model.waveguide_modes import PortMedium, _compute_beta, _compute_mode_impedance, _incident_tables
+    from tests._waveguide_vacuum_main import main_beta, main_impedance, main_tables
+    fc,dt,dx,n,t0,tau,f0 = 3e9, .5e-12, .5e-3, 1024, 200e-12, 40e-12, 8e9
+    freqs=jnp.asarray([0.,2e9,3e9,5e9,8e9,11e9])
+    modal_dt=dt if profile=='discrete' else 0.
+    np.testing.assert_array_equal(_compute_beta(freqs,fc,medium=PortMedium(),dt=modal_dt,dx=dx),
+                                  main_beta(freqs,fc,modal_dt,dx))
+    np.testing.assert_array_equal(_compute_mode_impedance(freqs,fc,mode,medium=PortMedium(),dt=modal_dt,dx=dx),
+                                  main_impedance(freqs,fc,mode,modal_dt,dx))
+    actual=_incident_tables(f_c=fc,medium=PortMedium(),dt=dt,dx=dx,dft_total_steps=n,
+                            t0=t0,tau=tau,f0=f0,waveform='modulated_gaussian',
+                            mode_profile=profile,mode_type=mode,field_dtype=dtype)
+    expected=main_tables(fc,dt,dx,n,t0,tau,f0,profile,mode,dtype)
+    for got,want in zip(actual,expected):
+        np.testing.assert_array_equal(got,want)
+
+
+@pytest.mark.parametrize('budget',[0,2000])
+def test_analytic_cutoff_reading_uses_section_medium(monkeypatch,budget):
+    from rfx.preflight import waveguide as preflight
+    sim=guide()
+    fill(sim,-.1,.22)
+    grid=sim._build_realized_grid()
+    entry=sim._waveguide_ports[0]
+    spans=sim._port_transverse_spans(entry,grid,None)
+    monkeypatch.setattr(preflight,'WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET',budget)
+    row=preflight._waveguide_port_cutoff_reading(sim,entry,grid,spans)
+    speed=1/np.sqrt(8.8541878128e-12*1.25663706212e-6*np.float32(2.2))
+    for key,width in [('declared_hz',spans['y']['declared']),('realized_hz',spans['y']['rasterized'])]:
+        assert row[key] == pytest.approx(speed/(2*width),rel=1e-7)
 
 @pytest.mark.parametrize('graded', [False, True])
 def test_preflight_uses_fill_cutoff(graded):
@@ -385,7 +426,7 @@ def test_preflight_concrete_override_is_call_local(graded):
     sim=guide(graded)
     grid=sim._build_realized_grid()
     eps=jnp.full(grid.shape,2.2)
-    with warnings.catch_warnings(record=True) as caught:
+    with warnings.catch_warnings(record=True):
         warnings.simplefilter('always')
         result=sim.forward(n_steps=2,eps_override=eps)
     assert result.waveguide_ports['launch'].medium.eps_r == pytest.approx(2.2)
@@ -403,3 +444,46 @@ def test_per_component_conductivity_refused():
     materials=MaterialArrays(jnp.ones(grid.shape),(zero,zero,zero.at[cfg.ref_x,2,2].set(.1)),jnp.ones(grid.shape))
     with pytest.raises(ValueError,match='conductivity.*cell'):
         resolve_waveguide_section_medium([cfg],grid,materials,{},())
+
+
+@pytest.mark.parametrize('graded,normalize,explicit_reference',[
+    (False,True,False),(False,'flux',False),(True,True,False),
+    (True,'flux',False),(False,'flux',True)])
+def test_filled_reference_runs_resolve_medium(graded,normalize,explicit_reference,monkeypatch):
+    from rfx.measurement import waveguide_s
+    sim=guide(graded);fill(sim,-.1,.22)
+    sim.add_waveguide_port(.10,direction='-x',name='receive',f0=9e9,freqs=np.array([8e9,10e9]))
+    seen=[]
+    original=waveguide_s._extract_global_waves
+    def observe(cfg,*args,**kw):
+        seen.append(cfg.medium.eps_r)
+        return original(cfg,*args,**kw)
+    monkeypatch.setattr(waveguide_s,'_extract_global_waves',observe)
+    kwargs={}
+    if explicit_reference:
+        reference=guide();fill(reference,-.1,.22)
+        kwargs['port_reference_sims']=[reference,reference]
+    execute(sim,'compute_waveguide_s_matrix',normalize=normalize,**kwargs)
+    assert len(seen)>=4
+    np.testing.assert_allclose(seen,2.2,rtol=1e-7)
+
+
+def test_filled_overlap_decomposition_and_probe_guard():
+    from types import SimpleNamespace
+    from rfx.measurement.waveguide_modal import extract_waveguide_sparams_overlap
+    from rfx.preflight.waveguide import _preflight_entry_config
+    sim=guide();fill(sim,-.1,.22)
+    cfg=_preflight_entry_config(sim,sim._waveguide_ports[0])
+    omega=2*np.pi*np.asarray(cfg.freqs,dtype=float)
+    c=1/np.sqrt(8.8541878128e-12*1.25663706212e-6*float(np.float32(2.2)))
+    kc=2*np.pi*cfg.f_cutoff/c
+    beta=2/cfg.dx*np.arcsin(cfg.dx/2*np.sqrt((np.sin(omega*cfg.dt/2)/(c*cfg.dt/2))**2-kc**2))
+    z=1.25663706212e-6*cfg.dx*np.sin(omega*cfg.dt/2)/(cfg.dt*np.sin(beta*cfg.dx/2))
+    phase=np.exp(-1j*beta*.04)
+    acc=SimpleNamespace(p1_ref_dft=jnp.ones_like(cfg.freqs)*2,p2_ref_dft=jnp.asarray(2/z),
+                        p1_probe_dft=jnp.asarray(2*phase),p2_probe_dft=jnp.asarray(2*phase/z))
+    s11,s21=extract_waveguide_sparams_overlap(acc,cfg,ref_shift=.003)
+    np.testing.assert_allclose(s11,0,atol=2e-6)
+    np.testing.assert_allclose(s21,np.exp(-1j*beta*.037),atol=2e-6)
+    with pytest.raises(ValueError,match='probe plane'):
+        extract_waveguide_sparams_overlap(acc,cfg._replace(probe_medium_matches=False))

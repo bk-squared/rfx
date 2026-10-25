@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import numpy as np
 import pytest
-from tests._filled_waveguide import measure
+from tests._filled_waveguide import measure, build, preflight_findings, assert_preflight_clean
 
 
 def dump(row):
@@ -16,6 +16,7 @@ def dump(row):
 
 
 def judge(row,empty):
+    assert_preflight_clean(row['preflight'])
     reflection=np.array(row['s11_abs'])
     power=np.array(row['sum'])
     if row['case']=='O1':
@@ -30,15 +31,25 @@ def judge(row,empty):
 
 
 @pytest.mark.parametrize('case',['O1','O2'])
+@pytest.mark.parametrize('cells',[30,45,60])
+def test_filled_waveguide_preflight_clean(case,cells):
+    sim,freqs=build(case,cells)
+    assert_preflight_clean(preflight_findings(sim,freqs,round(8000*cells/45)))
+
+
+@pytest.mark.parametrize('case',['O1','O2'])
 def test_filled_waveguide_oracles(case):
     empty=measure('empty_filled_band' if case=='O1' else 'empty')
     row=measure(case)
     dump(empty);dump(row)
     judge(row,empty)
-    if case=='O1':
-        shifted=measure(case,shift=True)
-        dump(shifted)
-        judge(shifted,empty)
+
+
+def test_filled_waveguide_inward_reference_shift():
+    empty=measure('empty_filled_band')
+    shifted=measure('O1',shift=True)
+    dump(empty);dump(shifted)
+    judge(shifted,empty)
 
 
 @pytest.mark.slow

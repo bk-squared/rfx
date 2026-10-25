@@ -405,6 +405,19 @@ def _preflight_entry_config(sim, entry):
     return resolved[0] if isinstance(resolved, list) else resolved
 
 
+def _preflight_section_medium(sim, entry):
+    """Read section operands without paying for a transverse eigensolve."""
+    from dataclasses import replace
+    from rfx.model.waveguide_modes import PortMedium
+    if not sim._geometry and not any(
+            v is not None for v in getattr(sim, "_waveguide_call_overrides", ())):
+        return PortMedium()  # An undrawn domain with no overrides realizes vacuum.
+    # The analytic builder has the same section/recording indices. Only the
+    # scalar medium is read here; the actual mode/cutoff is built separately.
+    entry = replace(entry, mode_profile="analytic", n_modes=1)
+    return _preflight_entry_config(sim, entry).medium
+
+
 def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     """What ONE waveguide port's cutoff is actually built from, measured.
 
@@ -551,14 +564,16 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
         # its number belongs to.
         label = f"driven {label}"
 
+    medium = cfg.medium if cfg is not None else _preflight_section_medium(sim, entry)
+    medium_factor = 1.0 / math.sqrt(medium.eps_r * medium.mu_r)
     return {
         "built_hz": None if cfg is None else float(cfg.f_cutoff),
         "skipped": skipped,
         "build_error": build_error,
         "declared_hz": float(cutoff_frequency(
-            du["declared"], dv["declared"], m, n)),
+            du["declared"], dv["declared"], m, n)) * medium_factor,
         "realized_hz": float(cutoff_frequency(
-            du["rasterized"], dv["rasterized"], m, n)),
+            du["rasterized"], dv["rasterized"], m, n)) * medium_factor,
         "cells": cells,
         "cells_total": int(cells_total),
         "mode": (int(m), int(n)),
@@ -791,7 +806,7 @@ def _emit_waveguide_port_cutoff_findings(
 
     from rfx.model.waveguide_modes import port_light_speed
     try:
-        speed = port_light_speed(_preflight_entry_config(self, entry))
+        speed = port_light_speed(_preflight_section_medium(self, entry))
     except ValueError:
         # Setup owns material/waveform refusal. Continue preflight so the
         # geometric span check can report its more specific obstruction.
