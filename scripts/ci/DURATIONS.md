@@ -1,5 +1,14 @@
 # .test_durations — provenance
 
+**When these files change (rfx-lead 2026-10-26).** `.test_durations` and `.test_durations_weekly`
+change at most once a week, in one pull request, built with `merge_test_durations.py` from that
+week's weekly-lane artifacts (`weekly-durations-<k>`, for the weekly prices) and one
+`regen-durations` dispatch with `lanes=fast` (for the fast prices; the weekly lane does not run the
+fast-lane tests). No other pull request touches them. A shard that reaches its job limit on main
+moves that week's pull request forward; it never adds a second one. Prices are rounded to two
+significant figures when merged, so a refresh rewrites only the prices that moved. Before this
+rule, four re-pricings in two weeks changed about 144,000 lines.
+
 2026-10-21: fast lane re-priced. fast-suite shard 8 ran 55 min on average over 36 runs (61 over its
 successful runs; 75-76 when cancelled at the 75-min job limit); shard 9 averaged 45 min. They held
 209 and 370 tests without a price (the distributed graded-records, wrapped-step and ports files),
