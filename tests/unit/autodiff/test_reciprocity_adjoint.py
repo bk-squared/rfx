@@ -206,7 +206,8 @@ def test_g5_mutation(precision, record_property):
             transform = jnp.exp(-2j*jnp.pi*freqs[:, None]*(n+1)*dt)*dt
             diagonal = jnp.diag(transform @ basis)
             return target / diagonal[:, None, None]
-        with patch.object(adjoint, "_wavelet_coefficients", drop_solve):
+        import rfx.stepping.adjoint_scan as adjoint_scan
+        with patch.object(adjoint_scan, "_wavelet_coefficients", drop_solve):
             mutated = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, sigma)
         err = errors(mutated, reference)
         record_property("measurement", f"G5 mutation {precision=} {err=}")

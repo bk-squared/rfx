@@ -4,17 +4,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
-from rfx.measurement.dft import dft_window_weight, phase
-
-
-def half_step_current_phase(freqs: jnp.ndarray, dt: float) -> jnp.ndarray:
-    """exp(+j pi f dt): turns an E-stamped current spectrum into an H-stamped one.
-
-    For spectra supplied already stamped at E's time (legacy callers, the
-    ring-down's slot-relative completion). Scan records never need it: the
-    kernel stamps H itself.
-    """
-    return jnp.exp(1j * jnp.pi * jnp.asarray(freqs) * dt)
+from rfx.measurement.dft import dft_window_weight, half_step_current_phase, phase
 
 
 def port_dft_phase(step, freqs, dt, kind='E', *, dtype=jnp.complex64):
