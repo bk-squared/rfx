@@ -1,4 +1,5 @@
 """Lossless homogeneous WR-90 and dielectric-step scattering oracles (#1994)."""
+import functools
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,7 @@ def dump(row):
         (path/f"{row['case']}-{row['cells']}-{int(row.get('shift',False))}-{row.get('layers',12)}.json").write_text(json.dumps(row,indent=2))
 
 
-def judge(row,empty):
+def judge(row,empty,*,power_checks=True):
     assert_preflight_clean(row['preflight'])
     reflection=np.array(row['s11_abs'])
     power=np.array(row['sum'])
@@ -27,8 +28,10 @@ def judge(row,empty):
         assert np.all(np.abs(reflection-np.abs(row['s11_closed']))<=.02), 'O2 reflection closed form'
         assert np.all(np.abs(np.array(row['s21_abs'])-row['s21_closed'])<=.02), 'O2 power-wave transmission'
         assert np.all(np.abs(row['interface_phase_error'])<=np.array(row['half_cell_phase'])), 'O2 interface half-cell phase'
-        assert np.all(np.abs(1-power)<=1e-3), 'O2 power conservation'
-    assert np.all(power<=1+np.maximum(2*np.abs(1-np.array(empty['sum'])),1e-3)), 'W1 per-bin passivity'
+        if power_checks:
+            assert np.all(np.abs(1-power)<=1e-3), 'O2 power conservation'
+    if power_checks:
+        assert np.all(power<=1+np.maximum(2*np.abs(1-np.array(empty['sum'])),1e-3)), 'W1 per-bin passivity'
 
 
 @pytest.mark.parametrize('case',['O1','O2'])
@@ -40,14 +43,23 @@ def test_filled_waveguide_preflight_clean(case,cells):
 
 # The step's vacuum port has 45 % of its source spectrum at the vacuum cutoff; the port's H source table wraps its
 # cutoff tail into the record there (#2013), which moves |S11|^2+|S21|^2 by about 1e-2 with record length.
+# Reflection, power-wave transmission and interface phase stay always-on; only the power sum waits for #2013.
 H_TABLE_WRAP=pytest.mark.xfail(strict=True,reason='#2013 H table wrap')
+measured=functools.lru_cache(maxsize=None)(measure)
 
 
-@pytest.mark.parametrize('case',['O1',pytest.param('O2',marks=H_TABLE_WRAP)])
+@pytest.mark.parametrize('case',['O1','O2'])
 def test_filled_waveguide_oracles(case):
-    empty=measure('empty_filled_band' if case=='O1' else 'empty')
-    row=measure(case)
+    empty=measured('empty_filled_band' if case=='O1' else 'empty')
+    row=measured(case)
     dump(empty);dump(row)
+    judge(row,empty,power_checks=case=='O1')
+
+
+@H_TABLE_WRAP
+def test_step_power_conservation():
+    empty=measured('empty')
+    row=measured('O2')
     judge(row,empty)
 
 
@@ -63,7 +75,7 @@ def three_mesh(case):
     for cells in (30,45,60):
         empty=measure('empty_filled_band' if case=='O1' else 'empty',cells)
         row=measure(case,cells)
-        dump(empty);dump(row);judge(row,empty)
+        dump(empty);dump(row);judge(row,empty,power_checks=case=='O1')
         rows[cells]=row
     return rows
 
