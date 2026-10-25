@@ -95,7 +95,7 @@ refiled; the problem does not.
 ## Before every push
 
 Run every short gate locally first. `bash scripts/ci/local.sh` runs them in the order
-CI runs them, stopping at the first failure, then the tests the diff selects; it calls
+CI runs them, each reporting even after an earlier one fails, then (only if all passed) the tests the diff selects; it calls
 the same scripts the workflows call, and a file path argument checks a pull-request
 body too. It does not run the twelve simulator shards or the guard suite in full, so a
 green local run is a pass on the short gates and the selected tests only. The step list
