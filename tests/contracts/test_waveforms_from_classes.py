@@ -70,7 +70,8 @@ KNOWN = (
     ("rfx/sources/tfsf_2d.py", "_update_e_tmz", "lane:absorber", "issue 1668"),
     ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e",
      "lane:waveguide-port", "issue 1668"),
-    ("rfx/model/waveguide_modes.py", "init_waveguide_port",
+    # Same legacy waveform, moved with the shared incident-table builder.
+    ("rfx/model/waveguide_modes.py", "_incident_tables",
      "lane:waveguide-port", "issue 1668"),
     ("rfx/stepping/waveguide_source.py", "inject_waveguide_port",
      "lane:waveguide-port", "issue 1668"),

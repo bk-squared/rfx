@@ -365,6 +365,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     if not waveguide_ports:
         return waveguide_ports
     import jax
+    import jax.numpy as jnp
     import numpy as np
     from rfx._traced_check import traced_check
     from rfx.boundaries.tfsf import _injection_arrays, _leaves
@@ -385,6 +386,15 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
         value = updates.get(key)
         if value is not None:
             for name, array in _leaves(value, key):
+                component = name.rsplit(".", 1)[-1]
+                weights = updates.get("conformal_weights")
+                if (key == "aniso_eps" and weights is not None
+                        and ".nodes." not in name and component in ("0", "1", "2")):
+                    # finish_tensor_operands applies eps_edge / safe_w for
+                    # conformal PEC. That known geometric factor is not a
+                    # material anisotropy; any residual mismatch still refuses.
+                    weight = weights[int(component)]
+                    array = array * jnp.where(weight > 0, weight, 1.0)
                 operands.append((name, array, None, "anisotropic permittivity"))
     reason = ("waveguide sections require one homogeneous, isotropic, lossless, "
               "non-dispersive medium (rfx#1994)")

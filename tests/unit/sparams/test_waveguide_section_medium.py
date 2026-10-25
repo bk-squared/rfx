@@ -487,3 +487,24 @@ def test_filled_overlap_decomposition_and_probe_guard():
     np.testing.assert_allclose(s21,np.exp(-1j*beta*.037),atol=2e-6)
     with pytest.raises(ValueError,match='probe plane'):
         extract_waveguide_sparams_overlap(acc,cfg._replace(probe_medium_matches=False))
+
+
+@pytest.mark.parametrize('extra_anisotropy',[False,True])
+def test_conformal_geometry_factor_does_not_hide_material_anisotropy(extra_anisotropy):
+    from rfx.boundaries.features import resolve_waveguide_section_medium
+    from rfx.model.materials import MaterialArrays
+    sim=guide()
+    grid=sim._build_realized_grid()
+    entry=sim._waveguide_ports[0]
+    cfg=sim._build_waveguide_port_config(entry,grid,entry.freqs,2)
+    one=jnp.ones(grid.shape)
+    weights=(one,one.at[cfg.ref_x,2,2].set(.5),one)
+    eps=(one,one.at[cfg.ref_x,2,2].set(2.1 if extra_anisotropy else 2.),one)
+    updates=dict(aniso_eps=eps,conformal_weights=weights)
+    if extra_anisotropy:
+        with pytest.raises(ValueError,match='anisotropic permittivity'):
+            resolve_waveguide_section_medium([cfg],grid,MaterialArrays(one,0.,one),updates,())
+    else:
+        resolved=resolve_waveguide_section_medium([cfg],grid,MaterialArrays(one,0.,one),updates,())[0]
+        assert resolved.medium.eps_r == 1.
+        assert resolved.probe_medium_matches

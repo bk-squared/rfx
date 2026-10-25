@@ -69,10 +69,24 @@ def beta(freqs, eps, grid, *, discrete):
     return 2/dx*np.arcsin(dx/2*np.sqrt((np.sin(omega*dt/2)/(C0/np.sqrt(eps)*dt/2))**2-kc**2))
 
 
-def measure(case,cells=45,*,layers=12,shift=False):
+def _json_witness(value):
+    """Preserve the result's witness, including arrays and complex pole values."""
+    if isinstance(value, dict):
+        return {str(k): _json_witness(v) for k, v in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_json_witness(v) for v in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    if isinstance(value, complex):
+        return {'real': value.real, 'imag': value.imag}
+    return _json_witness(np.asarray(value).tolist())
+
+
+def measure(case,cells=45,*,layers=12,shift=False,n_steps=None):
     sim,f=build(case,cells,layers=layers,shift=shift,one_port=case.startswith('W2'))
     grid=sim._build_realized_grid()
-    n_steps=round(8000*cells/45)
+    n_steps=round(8000*cells/45) if n_steps is None else n_steps
+    realized_b=grid.node_of('z',grid.nz-1)-grid.node_of('z',0)
     preflight = preflight_findings(sim,f,n_steps) if case in ('O1','O2') else []
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -88,7 +102,9 @@ def measure(case,cells=45,*,layers=12,shift=False):
             _,away=_extract_port_waves_from_time_series(cfg,cfg.v_probe_t,cfg.i_probe_t)
             ratio=np.asarray(away/a)
             return dict(case=case,cells=cells,layers=layers,dx=float(grid.dx),dt=float(grid.dt),
-                        n_steps=n_steps,source_index=cfg.x_index,probe_index=cfg.probe_x,
+                        n_steps=n_steps,realized_b=realized_b,
+                        settling_witness=_json_witness(getattr(result,'settling_witness',None)),
+                        source_index=cfg.x_index,probe_index=cfg.probe_x,
                         cpml_end_index=grid.pad_x_lo,probe_plane=cfg.probe_x_m,
                         freqs=f.tolist(),reflection=np.abs(ratio).tolist(),
                         reflection_complex=[[float(z.real),float(z.imag)] for z in ratio],
@@ -106,7 +122,7 @@ def measure(case,cells=45,*,layers=12,shift=False):
     b0d = beta(f,1.,grid,discrete=True) if case=='O2' else np.zeros_like(f)
     interface_phase=np.angle(s[0,0]*np.exp(2j*b0d*.04)/(-1))
     return dict(case=case,cells=cells,layers=layers,shift=shift,dx=float(grid.dx),dt=float(grid.dt),
-                n_steps=n_steps,shape=grid.shape,interface=round(.060/float(grid.dx))*float(grid.dx),freqs=f.tolist(),planes=np.asarray(result.reference_planes).tolist(),
+                n_steps=n_steps,realized_b=realized_b,shape=grid.shape,interface=round(.060/float(grid.dx))*float(grid.dx),freqs=f.tolist(),planes=np.asarray(result.reference_planes).tolist(),
                 s11_abs=np.abs(s[0,0]).tolist(),s21_abs=np.abs(s[1,0]).tolist(),
                 s11_complex=[[float(z.real),float(z.imag)] for z in s[0,0]],
                 s21_complex=[[float(z.real),float(z.imag)] for z in s[1,0]],
@@ -116,4 +132,6 @@ def measure(case,cells=45,*,layers=12,shift=False):
                 s11_closed=expected_r.tolist(),s21_closed=expected_t.tolist(),
                 interface_phase_error=interface_phase.tolist(),
                 half_cell_phase=(b0d*float(grid.dx)/2).tolist(),
-                preflight=preflight,settling_db=np.asarray(result.settling_db).tolist(),warnings=[str(w.message) for w in caught])
+                preflight=preflight,settling_db=np.asarray(result.settling_db).tolist(),
+                settling_witness=_json_witness(result.settling_witness),
+                warnings=[str(w.message) for w in caught])

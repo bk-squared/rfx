@@ -2,8 +2,11 @@
 matched guide and measure the far-end |Gamma| (apparent reflection). If |Gamma|
 drops with more CPML -> it's CPML absorption of the TE10 mode (fix = more/better
 CPML). If unchanged -> it's the port-plane structure. --nc layers."""
-import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
-import numpy as np, jax.numpy as jnp
+import sys
+import argparse
+sys.path.insert(0, "/tmp/rfx-tj")
+import numpy as np
+import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box

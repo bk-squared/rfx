@@ -5,8 +5,11 @@ NUMERICAL beta from the load two-plane phase, builds S11 per standard, does an
 over-determined least-squares SOL solve with held-out validation, and applies it
 to the device. --mode load | s<delta_mm> | device.
 """
-import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
-import numpy as np, jax.numpy as jnp
+import sys
+import argparse
+sys.path.insert(0, "/tmp/rfx-tj")
+import numpy as np
+import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box

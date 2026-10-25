@@ -316,7 +316,7 @@ def test_waveguide_port_geometry_changes_response():
         mode_type="TE",
         freqs=jnp.linspace(4.5e9, 8e9, 12),
         f0=6e9,
-        probe_offset=15,
+        probe_offset=40,  # x=90 mm: vacuum beyond the loaded slab.
         ref_offset=3,
         name="wg0",
     )
@@ -330,7 +330,7 @@ def test_waveguide_port_geometry_changes_response():
         mode_type="TE",
         freqs=jnp.linspace(4.5e9, 8e9, 12),
         f0=6e9,
-        probe_offset=15,
+        probe_offset=40,  # Match the launch medium for S21 decomposition.
         ref_offset=3,
         name="wg0",
     )

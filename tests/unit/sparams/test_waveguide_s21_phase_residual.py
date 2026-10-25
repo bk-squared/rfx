@@ -207,7 +207,7 @@ def test_a_real_two_port_run_carries_the_field_and_prints_the_banner(capsys):
 
 def _fake_cfgs():
     from types import SimpleNamespace
-    return [SimpleNamespace(f_cutoff=F_C_HZ, dt=DT_S, dx=DX_M, normal_axis="x")
+    return [SimpleNamespace(f_cutoff=F_C_HZ, dt=DT_S, dx=DX_M, normal_axis="x", medium=PortMedium())
             for _ in range(2)]
 
 

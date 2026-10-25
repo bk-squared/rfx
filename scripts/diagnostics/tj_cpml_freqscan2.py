@@ -1,8 +1,11 @@
 """Generalization across GUIDE WIDTH: confirm the CPML far-end |Gamma| follows the
 cutoff RATIO (f/fc), independent of absolute frequency. Parametrized W and band.
 Compare the |Gamma|(f/fc) curve to the W=0.04 result. --w_mm --nc --fmin_ghz --fmax_ghz."""
-import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
-import numpy as np, jax.numpy as jnp
+import sys
+import argparse
+sys.path.insert(0, "/tmp/rfx-tj")
+import numpy as np
+import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box

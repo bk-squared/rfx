@@ -5,8 +5,11 @@ at the left, fine frequency grid. If the apparent-reflection phase slope
 d(phase Gamma)/d(beta) = -2*L_refl tracks the measurement->receiving-port distance,
 the reflection is at the receiving port (far end). --lx in meters.
 """
-import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
-import numpy as np, jax.numpy as jnp
+import sys
+import argparse
+sys.path.insert(0, "/tmp/rfx-tj")
+import numpy as np
+import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box

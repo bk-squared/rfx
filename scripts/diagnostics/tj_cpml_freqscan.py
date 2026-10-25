@@ -3,8 +3,11 @@ far-end |Gamma| across a BROAD single-mode band (4.3-7.3 GHz; TE10 cutoff 3.75,
 TE20 onset 7.5) at a given CPML count. Physical prediction: CPML absorbs worst near
 the TE10 cutoff (low vg) -> |Gamma| should rise toward 4.3 GHz, and nc=24 should
 reduce it across the whole band. --nc layers."""
-import sys, argparse; sys.path.insert(0, "/tmp/rfx-tj")
-import numpy as np, jax.numpy as jnp
+import sys
+import argparse
+sys.path.insert(0, "/tmp/rfx-tj")
+import numpy as np
+import jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box
