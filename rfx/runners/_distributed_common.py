@@ -915,7 +915,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: t
     if stamp is not None:
         sigma = sigma - stamp
     view = MaterialArrays(eps_r=read(permittivity_without_lumped(materials)),
-                          sigma=read(sigma), mu_r=materials.mu_r)
+                          sigma=read(sigma), mu_r=materials.mu_r, sigma_film=None)
     if cell_sizes is not None:
         cell_sizes = (read(cell_sizes[0]), *cell_sizes[1:])
     eps_edge, sig_edge = component_e_materials(view, (False,) * 3,
