@@ -12,7 +12,7 @@ from types import MethodType
 
 import jax.numpy as jnp
 import numpy as np
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -153,11 +153,14 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     expected_s11 = (voltage - zi) / (voltage + zi)
     expected_wrong = (voltage - zi * (1 + SLOPE / 2)) / (voltage + zi * (1 + SLOPE / 2))
     assert abs(expected_wrong - expected_s11) > 0.05
-    np.testing.assert_allclose(probe0_s(reference)[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
-    np.testing.assert_allclose(probe0_s(bypassed)[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
+    # The MSL wave split is formed at the line Z0 (#2014: S is then referred
+    # to the declared impedance), so it is checked on S brought back there.
+    ref_line, bypassed_line = line_s(reference), line_s(bypassed)
+    np.testing.assert_allclose(probe0_s(reference, ref_line)[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
+    np.testing.assert_allclose(probe0_s(bypassed, bypassed_line)[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
     # The refused lumped diagonal cannot contribute a numeric difference;
     # this falsifier measures the MSL diagonal derived immediately above.
-    assert np.max(np.abs(bypassed.S[1, 1] - reference.S[1, 1])) > 0.05
+    assert np.max(np.abs(bypassed_line[1, 1] - ref_line[1, 1])) > 0.05
 
 
 @pytest.mark.parametrize("entry", ["compute_mixed_s_matrix", "compute_s_matrix"])
