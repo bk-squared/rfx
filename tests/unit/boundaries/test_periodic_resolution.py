@@ -10,6 +10,7 @@ from rfx.core.yee import EPS_0
 from rfx.grid import C0, Grid
 from rfx.probes.msl_wave_decomp import register_msl_wave_probes
 from rfx.ris import RISUnitCell
+from tests.unit.boundaries.test_periodic_anchor import largest_period_fit
 
 
 def wall_model(*, geometry=False, domain=(.0103, .008, .006), dx=None, mode='3d'):
@@ -21,16 +22,25 @@ def wall_model(*, geometry=False, domain=(.0103, .008, .006), dx=None, mode='3d'
     return sim
 
 
-@pytest.mark.parametrize('geometry,period_cells,wall_cells', [
-    (False, 11, (9, 7)), (True, 21, (17, 13)),
-])
-def test_automatic_periodic_mesh_reports_costly_exact_wall_spacing(
-        geometry, period_cells, wall_cells):
+@pytest.mark.parametrize('geometry', [False, True])
+def test_automatic_periodic_mesh_reports_costly_exact_wall_spacing(geometry):
     sim = wall_model(geometry=geometry)
-    # Wall anchors are multiples of 0.1 mm; only 0.1 mm also divides 10.3 mm.
-    with pytest.raises(ValueError, match="largest fitting dx=0.0001 m") as caught:
-        sim._build_grid()
-    assert "0.75 * requested dx" in str(caught.value)
+    requested = .0005 if geometry else .001
+    expected = largest_period_fit(.0103, (.008, .006), requested)
+    assert expected == .0103 / 26
+    # Period anchors find the 1 %-fitting spacing missed by exact wall anchors.
+    if geometry:
+        with pytest.warns(UserWarning, match='snapped'):
+            grid = sim._build_grid()
+        assert .75 * requested <= grid.dx <= requested
+        for count, length in zip((grid.ny - 1, grid.nz - 1), (.008, .006)):
+            assert abs(count * grid.dx / length - 1) <= .01
+        assert grid.dx == expected and grid.shape == (26, 21, 16)
+    else:
+        assert expected < .75 * requested
+        with pytest.raises(ValueError, match=f"largest fitting dx={expected:.12g} m") as caught:
+            sim._build_grid()
+        assert "0.75 * requested dx" in str(caught.value)
 
 
 @pytest.mark.parametrize('domain,expected_dx,shape', [
@@ -66,10 +76,13 @@ def test_automatic_wall_snap_ignores_the_invariant_axis(mode):
 
 
 @pytest.mark.parametrize('length', [.0103, .010])
-def test_bounded_snap_warning_names_every_moved_wall(length):
+def test_bounded_snap_refuses_and_reports_largest_fitting_spacing(length):
     sim = wall_model(domain=(length, .008123, .006157))
-    # No wall-anchored candidate down to dx/16 divides this period exactly.
-    with pytest.raises(ValueError, match="no fitting spacing found") as caught:
+    expected = largest_period_fit(length, (.008123, .006157), .001)
+    assert expected == length / (32 if length == .0103 else 21)
+    assert expected < .75 * .001
+    # Period anchors find advice where no exact wall anchor divided the period.
+    with pytest.raises(ValueError, match=f"largest fitting dx={expected:.12g} m") as caught:
         sim._build_grid()
     assert "requested dx/16" in str(caught.value)
     assert "0.75 * requested dx" in str(caught.value)

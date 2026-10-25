@@ -15,7 +15,6 @@ scan body, runners/uniform.py public API, and NU runner hard-fail.
 
 from __future__ import annotations
 
-from tests._wall_axis_declaration import assert_declared_wall_warning
 import numpy as np
 import jax.numpy as jnp
 import pytest

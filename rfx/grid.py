@@ -70,7 +70,7 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
         if fits(dx):
             return dx
         minimum = dx / PERIODIC_COMMON_SEARCH_REFINEMENT
-        anchors = list(walls.values()) or lengths[:1]
+        anchors = list(walls.values()) + lengths
         candidates = sorted({length / n for length in anchors
                              for n in range(max(1, int(np.ceil(length / dx))),
                                             int(np.floor(length / minimum)) + 1)}, reverse=True)
