@@ -47,6 +47,7 @@ from rfx.sources.sources import GaussianPulse
 from rfx.api._spec import MixedSMatrixResult
 
 from rfx.sparams._mixed_checks import _mixed_refusal_masks, _warn_refused_mixed_entries
+from rfx.sparams._port_reference import renormalize_power_waves
 
 from rfx.sparams._common import (
     _msl_cell_profile,
@@ -56,7 +57,6 @@ from rfx.sparams._common import (
     _warn_msl_beta_scan_railed,
     _warn_if_ringdown_truncated,
     _project_passive,
-    renormalize_power_waves,
     _warn_if_passivity_projected,
     _warn_if_nonpassive_smatrix,
     _assemble_mixed_power_wave_s,
@@ -98,6 +98,10 @@ def compute_mixed_s_matrix(
     impedances across families a pseudo-wave ratio would be off by
     ``sqrt(Z_j/Z_i)``; reciprocity of a reciprocal
     structure is the committed internal falsifier for this choice.
+    The returned ``S`` and ``S_wave`` are referenced to every port's
+    declared ``impedance=`` (``z0_ref``, #2014): MSL waves are formed at
+    the analytic line Z0 (``line_impedances``) and the matrix is then
+    referred to ``z0_ref`` by ``renormalize_power_waves``.
 
     MAGNITUDE CHANNEL (``magnitude_channel``, default ``"flux"``):
     the mixed-family falsifier battery + an independent Poynting-flux referee

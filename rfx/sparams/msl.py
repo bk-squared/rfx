@@ -52,8 +52,8 @@ from rfx.sparams._common import (
     _register_msl_h_planes,
     _collocated_msl_h,
     _msl_power_wave_scales,
-    renormalize_power_waves,
 )
+from rfx.sparams._port_reference import renormalize_power_waves
 
 
 def compute_msl_s_matrix(

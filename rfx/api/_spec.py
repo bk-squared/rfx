@@ -1343,7 +1343,7 @@ class CoaxialTwoPortResult:
     (impedance=...)`` at both ports (``reference_impedances``, #2014): the
     Z0-free wave ratio is the S at the line's own impedance, taken as the
     analytic TEM Z0 (``line_impedances``), and referred to the registered
-    impedance by :func:`rfx.sparams._common.renormalize_power_waves`
+    impedance by :func:`rfx.sparams._port_reference.renormalize_power_waves`
     (nothing is computed where the two are equal). ``cond_a`` is the per-frequency condition number of
     the incident-wave matrix inverted by the two-drive solve: it bounds
     DEGENERACY of the two drives only, and is blind to a systematic
@@ -1967,7 +1967,7 @@ class CoaxMSLTransitionResult:
         ``add_coaxial_port(impedance=...)`` / ``add_msl_port(impedance=...)``
         (#2014). The waves are formed at ``line_impedances`` and the matrix
         is then referred to these values by
-        :func:`rfx.sparams._common.renormalize_power_waves`.
+        :func:`rfx.sparams._port_reference.renormalize_power_waves`.
     line_impedances : (2,) float
         ``[z0_coax_ohm, z0_msl_ohm]`` — the analytic line impedances the
         power waves (and ``a_inc``/``b_out``) were formed at: analytic coax

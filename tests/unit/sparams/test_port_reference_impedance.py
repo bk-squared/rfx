@@ -17,7 +17,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
-from rfx.sparams._common import renormalize_power_waves
+from rfx.sparams._port_reference import renormalize_power_waves
 from tests.unit.sparams.test_msl_passivity_enforcement import _thru
 from tests._x64_compat import enable_x64
 

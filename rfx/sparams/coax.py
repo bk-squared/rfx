@@ -53,8 +53,9 @@ from rfx.sparams._common import (
     _assemble_coaxial_two_port_from_voltages,
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
-    renormalize_power_waves,
 )
+from rfx.sparams._port_reference import (
+    renormalize_power_waves, warn_line_reference_mismatch)
 
 
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
@@ -1667,37 +1668,10 @@ def compute_coax_msl_transition(
         msl_pe.width, msl_pe.height, eps_r_sub_resolved
     )
 
-    # Registered impedance= is the S reference (#2014): the waves are
-    # formed at the ANALYTIC z_tem / z0_msl computed here (line_impedances,
-    # feeding sqrt(Z0) in the assembler) and s_params is then referred to
-    # the registered impedance (z0_ref) by renormalize_power_waves, which is
-    # exact for real references. What still diverges is the line itself: a
-    # line whose Z0 is far from the reference reflects at the port plane by
-    # |Z0 - R|/(Z0 + R), and that reflection is in S as a property of the
-    # declared line, not an extraction error. Said once, for a gap > 5 %.
-    for _label, _registered, _analytic in (
-        ("coax", float(port.impedance), float(z_tem)),
-        ("msl", float(msl_pe.impedance), float(z0_msl)),
-    ):
-        if _analytic > 0.0:
-            _rel_dev = abs(_registered - _analytic) / _analytic
-            if _rel_dev > 0.05:
-                import warnings as _wz
-                _wz.warn(
-                    f"compute_coax_msl_transition(): the registered "
-                    f"{_label} port impedance ({_registered:.2f} ohm), "
-                    "which is the reference impedance of the returned "
-                    f"s_params, differs {_rel_dev * 100:.1f}% from the "
-                    f"analytic {_label} line Z0 ({_analytic:.2f} ohm, "
-                    "line_impedances). S therefore includes the line-"
-                    "to-reference mismatch at that port "
-                    f"(|Gamma| = {abs(_registered - _analytic) / (_registered + _analytic):.3f}). "
-                    "Pass a matching pin_radius/outer_radius (coax) or "
-                    "width/height/eps_r_sub (msl), or impedance= equal "
-                    "to the line Z0, if the line's own reference is "
-                    "wanted.",
-                    stacklevel=2,
-                )
+    # Registered impedance= is the S reference (#2014); waves are formed at
+    # the analytic z_tem / z0_msl. A gap > 5 % is said once per port.
+    warn_line_reference_mismatch("compute_coax_msl_transition()", (
+        ("coax", port.impedance, z_tem), ("msl", msl_pe.impedance, z0_msl)))
 
     # MSL-side probe ladder is independent of the coax-side one (issue
     # #489 leg 4 attempt 2) -- default to the coax values so an
