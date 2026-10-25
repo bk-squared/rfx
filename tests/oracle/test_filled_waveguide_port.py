@@ -44,6 +44,9 @@ def db(x):
 
 def cutoff_errors(row):
     """B3: each realized port cutoff against c0/(2 a_r sqrt(eps_r mu_r)), a_r the realized aperture."""
+    assert {p['name'] for p in row['ports']}=={'p1','p2'}, f"B3 read no port config the run built: {row['ports']}"
+    for p in row['ports']:
+        assert np.isclose(p['aperture_cells']*row['dx'],row['realized_a']), f"B3 aperture {p['aperture_cells']} cells against {row['realized_a']} m"
     return [p['f_cutoff']/(C0/(2*row['realized_a']*np.sqrt(p['expected_eps_r']*1.)))-1 for p in row['ports']]
 
 
@@ -85,6 +88,9 @@ def rows(name,cells=45):
     empty,row=measured(COMPARATOR[case],cells,shift=False),measured(case,cells,shift=shift)
     dump(empty);dump(row)
     assert_preflight_clean(row['preflight'])
+    # The planes the group delay and B2 read are the planes asked for (build()), within half a cell.
+    asked=(.050,.070) if shift else ((row['interface']-.040,row['interface']+.040) if case=='O2' else (.020,.100))
+    assert np.allclose(row['planes'],asked,atol=row['dx']/2), f"reference planes {row['planes']} against {asked}" 
     log(name,row,empty)
     return row,empty
 
@@ -92,7 +98,8 @@ def rows(name,cells=45):
 ROWS=[('A','case'),('A','comparator'),('B','case'),('B','comparator'),('A-shift','case')]
 # Measured at a/45, 16000 steps, on this branch's port H source table, which wraps its cutoff tail into the record
 # (#2013; record 20261025-nu-settled-wr90/pr2016-code). The #2013 fix removes these marks.
-WRAP={('B','case'):'B1 measured sum-1-delta +9.7e-3 at 7.1 GHz',('B','comparator'):'B1 measured sum-1-delta +1.2e-2 at 7.1 GHz'}
+WRAP={('B','case'):'B1 measured sum-1-delta +9.7e-3 at 7.1 GHz',
+      ('B','comparator'):'B1 measured sum-1-delta +1.2e-2 at 7.1 GHz; the causal-table residual at this record is not measured'}
 
 
 @pytest.mark.parametrize('name,role',[pytest.param(*r,marks=pytest.mark.xfail(strict=True,reason=f'#2013 H table wrap: {WRAP[r]}'))
@@ -129,7 +136,8 @@ def test_cutoff(name):
 
 
 # Same structure and record with the causal table: the empty guide's worst tail share is 2.0e-3, pass (record
-# 20261025-nu-settled-wr90 LEADER-READING, 16000 steps). Only the table differs, so the cause is measured, not estimated.
+# 20261025-nu-settled-wr90 LEADER-READING, 16000 steps). The table differs, and that run's witness also read the source
+# end from E only, as this branch does; the cause is the table (#2013).
 RECORD_WRAP={('B','comparator'):'B4 undetermined at 7.0 GHz: window term 1.05e-2 and 1.11e-2 over 1e-2'}
 
 
