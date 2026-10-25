@@ -108,6 +108,19 @@ def test_whole_grid_structure(n, family, monkeypatch):
 
 @pytest.mark.parametrize('n', [2, 3])
 @pytest.mark.parametrize('family', ['plain', 'debye', 'lorentz'])
+def test_host_products_release_input_layout_copies(n, family):
+    s = staged_scene(n, family)
+    before = {id(a) for a in jax.live_arrays()}
+    result = products(s)
+    jax.block_until_ready(result)
+    shapes = {s.inputs.eps_r.shape, (1,) + s.inputs.eps_r.shape[1:]}
+    retained = [(a.shape, str(a.sharding)) for a in jax.live_arrays()
+                if id(a) not in before and a.shape in shapes]
+    assert not retained, retained
+
+
+@pytest.mark.parametrize('n', [2, 3])
+@pytest.mark.parametrize('family', ['plain', 'debye', 'lorentz'])
 def test_every_product_matches_per_slab(n, family, monkeypatch):
     s = staged_scene(n, family)
     if s.mesh.devices.flat[0].platform != 'cpu':

@@ -194,6 +194,11 @@ def _whole_material_rows(value, layout):
     def whole(a):
         if not hasattr(a, 'ndim'):
             return a
+        if isinstance(a, jax.Array):
+            # NumPy readback caches shard wrappers on its JAX source. Read a
+            # producer-owned copy so caller-held mesh inputs retain none.
+            with jax.ensure_compile_time_eval():
+                a = a.copy()
         a = np.asarray(a)
         if a.ndim != 4:
             return a
