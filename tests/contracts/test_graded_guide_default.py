@@ -173,6 +173,14 @@ def test_refusal_substitutes_port_axis(axis):
 def test_explicit_aperture_ranges_on_graded_mesh(full, distributed, skip, monkeypatch):
     sim = Simulation(12e9, (.06, .02, .01), dx=.002, cpml_layers=8,
                      dz_profile=np.full(5, .002))
+    if not full:
+        for lo, hi in (
+            ((0., -.002, -.002), (.06, 0., .012)),
+            ((0., .010, -.002), (.06, .012, .012)),
+            ((0., -.002, -.002), (.06, .012, 0.)),
+            ((0., -.002, .010), (.06, .012, .012)),
+        ):
+            sim.add(Box(lo, hi), material="pec")
     sim.add_waveguide_port(.010, direction="+x", y_range=(0., .02 if full else .01),
                            z_range=(0., .01), f0=11e9, probe_offset=2, ref_offset=1)
     original = sim._dispatch_plan

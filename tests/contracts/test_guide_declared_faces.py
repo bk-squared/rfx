@@ -4,12 +4,28 @@ import warnings
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Simulation
 from rfx.boundaries.depths import grid_face_depths
 from rfx.boundaries.features import (
     WaveguideBoundaryWarning, admit_ntff, admit_waveguide, full_aperture,
 )
 from rfx.measurement.waveguide_planes import admit_waveguide_planes
+
+
+def draw_aperture_walls(sim):
+    """Make these face-allocation fixtures legal guides under rule 4."""
+    for port in sim._waveguide_ports:
+        normal = "xyz".index(port.direction[1])
+        spans = [getattr(port, f"{axis}_range") or (0., sim._domain[a])
+                 for a, axis in enumerate("xyz")]
+        spans[normal] = (port.x_position - .002, port.x_position + .002)
+        for a in range(3):
+            if a == normal:
+                continue
+            for plane in spans[a]:
+                lo, hi = [s[0] for s in spans], [s[1] for s in spans]
+                lo[a] = hi[a] = plane
+                sim.add(Box(tuple(lo), tuple(hi)), material="pec")
 
 
 def partial_guide(*, graded=False, declared=True):
@@ -22,6 +38,7 @@ def partial_guide(*, graded=False, declared=True):
                            freqs=np.array([9e9, 10e9, 11e9]),
                            y_range=(.01778, .04064), z_range=(.01524, .0254),
                            ref_offset=1, probe_offset=2)
+    draw_aperture_walls(sim)
     return sim
 
 
@@ -85,6 +102,8 @@ def test_full_aperture_default_and_port_axis_precedence(second):
         sim.add_waveguide_port(.032, direction="-x", f0=10e9,
                                y_range=(.002, .018), z_range=(.002, .01),
                                ref_offset=1, probe_offset=2)
+    if second is not None:
+        draw_aperture_walls(sim)
     expected = {
         "x_lo": ("ABSORBER", 4), "x_hi": ("ABSORBER", 4),
         "y_lo": ("PEC", 0), "y_hi": ("PEC", 0),

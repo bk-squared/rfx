@@ -22,7 +22,10 @@ def test_waveguide_preflight_matches_its_grid_pads(nonuniform):
     # §7 Addendum 3: diagnostics describe realized waveguide pads, not declared absorbers.
     assert sim._preflight_face_layers() == expected
     assert {face.name: face.realized for face in simulation_face_depths(sim)} == expected
-    assert expected["y_lo"] == (4 if nonuniform else 0)
+    assert expected["y_lo"] == 4
+    from rfx.boundaries.features import admit_waveguide
+    with pytest.raises(ValueError, match="full-aperture waveguide requires PEC"):
+        admit_waveguide(sim)
 
 
 def test_distributed_sizing_uses_nonabsorbing_axis_and_asymmetric_record():
@@ -56,16 +59,19 @@ def test_distributed_all_wall_scan_keeps_grid_allocation_budget():
     assert _distributed_boundary_layers(grid, 2, pec_faces=walls, cpml_layers=0) == dict.fromkeys(walls, 0)
 
 
-def test_waveguide_does_not_warn_about_unallocated_transverse_absorbers():
+def test_refused_waveguide_reports_its_allocated_transverse_absorbers():
     transverse = Boundary(lo="cpml", hi="cpml", lo_thickness=1, hi_thickness=1)
     sim = Simulation(freq_max=14e9, domain=(0.064, 0.012, 0.002), dx=1e-3,
                      cpml_layers=16, boundary=BoundarySpec(x="cpml", y=transverse, z=transverse))
     sim.add_waveguide_port(0.010, direction="+x", f0=13.5e9, freqs=np.array([13.5e9]),
                            probe_offset=2, ref_offset=1)
-    # §7 Addendum 3: the uniform guide allocates no transverse absorbers to warn about.
+    # #1826: the explicit declaration allocates pads before guide admission refuses it.
     report = sim.preflight()
     assert not any(issue.severity == "error" for issue in report), report
-    assert "absorber_budget_exceeds_axis" not in {issue.code for issue in report}
+    assert {"absorber_budget_exceeds_axis", "thin_absorber"} <= {issue.code for issue in report}
+    from rfx.boundaries.features import admit_waveguide
+    with pytest.raises(ValueError, match="full-aperture waveguide requires PEC"):
+        admit_waveguide(sim)
 
 
 @pytest.mark.parametrize("model,nonuniform", [

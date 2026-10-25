@@ -25,7 +25,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Simulation
 from rfx.boundaries.features import admit_waveguide
 from rfx.interop import design_to_dict, simulation_from_design
 
@@ -180,6 +180,14 @@ def guide(declaration, *, graded):
         boundary = {"x": "cpml", "y": "cpml", "z": "pec"} if declaration == "perpendicular-pec-z" else "cpml"
         sim = Simulation(12e9, (.016, .016, .008), dx=.004,
                          cpml_layers=2, boundary=boundary, **kwargs)
+        if declaration == "perpendicular-pec-z":
+            for lo, hi in (
+                ((-.004, 0., 0.), (0., .016, .008)),
+                ((.016, 0., 0.), (.020, .016, .008)),
+                ((0., -.004, 0.), (.016, 0., .008)),
+                ((0., .016, 0.), (.016, .020, .008)),
+            ):
+                sim.add(Box(lo, hi), material="pec")
         for direction in ("+x", "+y"):
             sim.add_waveguide_port(.004, direction=direction, freqs=np.array([10e9, 11e9]),
                                    f0=10e9, ref_offset=1, probe_offset=1)

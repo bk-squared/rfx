@@ -7,7 +7,7 @@ import warnings
 
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Simulation
 from rfx.boundaries.depths import Kind
 from rfx.boundaries.features import WaveguideBoundaryWarning
 from rfx.boundaries.pec import resolve_wall_faces
@@ -31,6 +31,14 @@ def guide(boundary=None, *, partial=False, **mesh):
                      cpml_layers=4, **kwargs, **mesh)
     sim.add_waveguide_port(.01, f0=8e9, probe_offset=2, ref_offset=1,
                            y_range=(.003, .017) if partial else None)
+    if partial:
+        for lo, hi in (
+            ((0., .003, 0.), (.04, .003, .01)),
+            ((0., .017, 0.), (.04, .017, .01)),
+            ((0., .003, 0.), (.04, .017, 0.)),
+            ((0., .003, .01), (.04, .017, .01)),
+        ):
+            sim.add(Box(lo, hi), material="pec")
     return sim
 
 

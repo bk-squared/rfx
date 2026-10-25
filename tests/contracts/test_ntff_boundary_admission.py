@@ -5,7 +5,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import GaussianPulse, Simulation
+from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
@@ -239,6 +239,14 @@ def test_waveguide_realized_exterior(aperture, boundary, faces, entry, monkeypat
     sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001, **kwargs)
     port = {} if aperture == "full" else {"y_range": (.002, .010), "z_range": (.002, .010)}
     sim.add_waveguide_port(.006, direction="+x", f0=7.5e9, **port)
+    if aperture == "small":
+        for lo, hi in (
+            ((0., .001, .001), (.016, .002, .011)),
+            ((0., .010, .001), (.016, .011, .011)),
+            ((0., .001, .001), (.016, .011, .002)),
+            ((0., .001, .010), (.016, .011, .011)),
+        ):
+            sim.add(Box(lo, hi), material="pec")
     sim.add_ntff_box((.004, .004, .004), (.020, .008, .008), n_freqs=3)
     if aperture == "small":
         result = getattr(sim, entry)(n_steps=1)
