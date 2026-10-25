@@ -264,6 +264,12 @@ def refusal(case, entry, path):
         return 'closed_box TFSF require a uniform, 3D'
     if case == 'periodic' and path.startswith('distributed'):
         return 'periodic'
+    if case == 'plane' and path == 'distributed-uniform':
+        return 'open-slab normal-incidence TFSF'
+    if case == 'plane' and path.startswith('distributed'):
+        return 'graded multi-device'
+    if case == 'W-guide' and path.startswith('distributed'):
+        return r'waveguide ports \(add_waveguide_port\) are not supported'
     return None
 
 
