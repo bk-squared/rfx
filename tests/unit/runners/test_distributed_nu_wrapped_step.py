@@ -953,6 +953,9 @@ def test_item6_owned_ulp_mutation_is_caught():
 
 def test_item6_missing_extra_runtime_row_is_caught(monkeypatch):
     from rfx.stepping import slab_setup
+    # Whole-grid host reconstruction ignores the extra input row; this gate
+    # checks the retained per-slab producer's stencil halo.
+    monkeypatch.setattr(slab_setup, '_material_host_device', lambda *args: (None, 'traced inputs'))
     original = slab_setup.uniform_from_cut
     def missing(*args, **kwargs):
         a = original(*args, **kwargs)

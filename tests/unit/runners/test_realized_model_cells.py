@@ -380,6 +380,9 @@ def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
 
     measured.cache_clear()
     try:
+        # Concrete whole-grid realization reads owned rows, never these halos.
+        # This mutation continues to gate the retained per-slab producer.
+        monkeypatch.setattr(slab_setup, "_material_host_device", lambda *args: (None, "traced inputs"))
         monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
         monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
         dump = measured(lane, row)

@@ -1,7 +1,9 @@
-"""Slab-local inputs for the canonical graded step (rfx #1402 item 6)."""
+"""Material realization and slab inputs for the canonical graded step."""
 from dataclasses import replace
+from contextlib import nullcontext
 from functools import lru_cache
 from types import SimpleNamespace
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -135,46 +137,121 @@ def input_materials(materials, layout, mesh):
                         materials._replace(components=None, edge_keep=None))
 
 
+_warned_no_cpu = False
+
+
+def _material_host_device(*inputs):
+    """One concreteness/backend decision for both material producers."""
+    global _warned_no_cpu
+    if any(isinstance(a, jax.core.Tracer) for a in jax.tree.leaves(inputs)):
+        return None, 'traced inputs'
+    try:
+        return jax.devices('cpu')[0], None
+    except RuntimeError:
+        if not _warned_no_cpu:
+            warnings.warn(
+                'no CPU backend in this JAX process (JAX_PLATFORMS does not list cpu), '
+                'so the graded multi-device lane forms its material coefficients per slab; '
+                'on a GPU they can differ from a one-device run in the last float32 bit '
+                'at dielectric corner edges (within every accuracy bar)', RuntimeWarning, stacklevel=2)
+            _warned_no_cpu = True
+        return None, 'no CPU backend'
+
+
+def _whole_material_rows(value, layout):
+    """Read each real row from its owner, excluding input halos and padding."""
+    def whole(a):
+        if not hasattr(a, 'ndim'):
+            return a
+        a = np.asarray(a)
+        if a.ndim != 4:
+            return a
+        i = np.arange(layout.nx)
+        rank = i // layout.nx_per_rank
+        return a[rank, i - rank * layout.nx_per_rank + layout.ghost_width + 1]
+    return jax.tree.map(whole, value)
+
+
+def _host_products(producer, device, *inputs):
+    """Release every whole-grid JAX product before placing any mesh shards."""
+    with jax.default_device(device), jax.ensure_compile_time_eval():
+        products = producer(*inputs)
+        host = jax.tree.map(lambda a: np.asarray(a) if isinstance(a, jax.Array) else a, products)
+        del products
+    return host
+
+
+def _host_arrays(value):
+    """Concrete metric and pole leaves must not retain GPU placement."""
+    return jax.tree.map(lambda a: np.asarray(a) if isinstance(a, jax.Array) else a, value)
+
+
+@lru_cache(maxsize=128)
+def _pole_first_map(mesh):
+    """Reorder each cut shard from x/pole to the step's pole/x layout."""
+    return jax.jit(jax.shard_map(lambda a: jnp.moveaxis(a, 1, 0), mesh=mesh,
+                                in_specs=P('x'), out_specs=P('x'), check_vma=False))
+
+
 def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=False,
-                      debye=False, lorentz=False):
-    """Run the owners' producers eagerly, preserving their operation order."""
+                      debye=False, lorentz=False, _material_inputs=()):
+    """Realize concrete materials on the whole CPU grid, then cut host products.
+
+    Traced inputs retain the per-slab producer; a missing CPU backend also
+    retains it, with one RuntimeWarning per process. Whole-grid host arrays
+    live during formation. Fresh-process macOS measurements (ru_maxrss in
+    bytes), with occupancy and CPML operands, including compilation and cut
+    placement but no time steps: peak RSS increments were 2289.13 B/cell at
+    44,361 cells and 661.85 B/cell at 255,915 cells. The two-size incremental
+    slope was 320.63 B/cell, measured as (peak2 - peak1)/(cells2 - cells1).
+    """
     from rfx.model.occupancy import with_edge_keep
     from rfx.stepping.absorber import graded_cpml_operands
-    inputs = input_materials(materials, layout, mesh)
-    rows = uniform_slab_rows(layout)
-    indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
-    occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
-    widths = stage_x_widths(grid, rows, mesh)
+    device, _ = _material_host_device(materials, occupancy, _material_inputs)
+    with jax.ensure_compile_time_eval() if device is not None else nullcontext():
+        inputs = input_materials(materials, layout, mesh)
+        occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
+    model_grid = _host_arrays(grid) if device is not None else grid
 
     def local(cells, index, occupancy, widths):
-        view = UniformSlabView(index, grid, {'x_widths': widths})
-        components = realize_components(cells, grid, periodic=(False,) * 3, view=view)
+        view = None if index is None else UniformSlabView(index, grid, {'x_widths': widths})
+        components = realize_components(cells, model_grid, periodic=(False,) * 3, view=view)
         cells = cells._replace(components=components)
         cells = with_edge_keep(cells, occupancy, dtype=jnp.float32, view=view)
         inverse, loss = graded_cpml_operands(cells, None, use_cpml=cpml,
                                             use_debye=debye, use_lorentz=lorentz)
         return cells, inverse, loss
-    staged, inverse, loss = uniform_apply(local, inputs, indices, occ, widths,
-                                          mesh=mesh, row_count=layout.nx_local + 1)
+    if device is not None:
+        staged, inverse, loss = _host_products(local, device,
+            _whole_material_rows(inputs, layout), None, _whole_material_rows(occ, layout), None)
+    else:
+        rows = uniform_slab_rows(layout)
+        indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
+        widths = stage_x_widths(grid, rows, mesh)
+        staged, inverse, loss = uniform_apply(local, inputs, indices, occ, widths,
+                                              mesh=mesh, row_count=layout.nx_local + 1)
+    def publish(a, kind):
+        return (cut(a, layout, kind, mesh=mesh) if device is not None else
+                product_rows(a, layout, mesh, kind))
     def finish(path, a):
-        if not hasattr(a, 'ndim') or a.ndim < 4:
+        if not hasattr(a, 'ndim') or a.ndim < (3 if device is not None else 4):
             return a
         names = [str(getattr(p, 'name', getattr(p, 'key', ''))) for p in path]
         name = next((p for p in reversed(names) if p), '')
         kind = ('edge_keep' if 'edge_keep' in names else
                 'eps_r' if 'eps' in name else 'sigma' if 'sigma' in name
                 else 'mu_r' if 'mu' in name else 'lumped')
-        return product_rows(a, layout, mesh, kind)
+        return publish(a, kind)
     staged = jax.tree_util.tree_map_with_path(finish, staged)
-    inverse = jax.tree.map(lambda a: product_rows(a, layout, mesh, 'eps_r'), inverse)
+    inverse = jax.tree.map(lambda a: publish(a, 'eps_r'), inverse)
     if loss is not None:
-        loss = (jax.tree.map(lambda a: product_rows(a, layout, mesh, 'eps_r'), loss[0]),
-                jax.tree.map(lambda a: product_rows(a, layout, mesh, 'sigma'), loss[1]))
+        loss = (jax.tree.map(lambda a: publish(a, 'eps_r'), loss[0]),
+                jax.tree.map(lambda a: publish(a, 'sigma'), loss[1]))
     return staged, inverse, loss
 
 
 def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_spec=None):
-    """Judge owned cell reductions, then form ADE operands on uniform slabs."""
+    """Judge owned cell reductions, then realize concrete ADE operands on CPU."""
     from rfx.model.pole_stability import (pole_set_extremes, combine_pole_extremes,
                                          judge_pole_sets, courant_budget)
     from rfx.materials.debye import debye_e_coeffs, DebyeState
@@ -182,12 +259,15 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
     from rfx.core.yee import ade_state_dtype
     if spec is None:
         return None
+    device, _ = _material_host_device(materials, spec, debye_spec)
     poles, masks = spec
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
-    inputs = input_materials(materials, layout, mesh)
+    with jax.ensure_compile_time_eval() if device is not None else nullcontext():
+        inputs = input_materials(materials, layout, mesh)
     rows = uniform_slab_rows(layout)
     indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
-    staged_masks = [None if m is None else stack_and_place(m, rows, mesh) for m in masks]
+    staged_masks = (None if device is not None else
+                    [None if m is None else stack_and_place(m, rows, mesh) for m in masks])
     if family == 'lorentz':
         # Static masks define each slab's pole patterns. Only their small
         # reduced records leave the shard_map; no staged slab is indexed here.
@@ -219,12 +299,13 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
                         grid_kind=type(grid).__name__, in_program=mesh.devices.size < 2)
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
-    widths = stage_x_widths(grid, rows, mesh)
+    model_grid = _host_arrays(grid) if device is not None else grid
     def local(cells, index, masks, widths):
-        view = UniformSlabView(index, grid, {'pole_sets_judged': True, 'x_widths': widths})
+        view = (None if index is None else
+                UniformSlabView(index, grid, {'pole_sets_judged': True, 'x_widths': widths}))
         specs = dict(debye_spec=None, lorentz_spec=None)
         specs[family + '_spec'] = (poles, masks)
-        c = realize_components(ComponentCells(cells, **specs), grid,
+        c = realize_components(ComponentCells(cells, **specs), model_grid,
                                 periodic=(False,) * 3, view=view)
         terms = getattr(c, family).coefficients
         coeffs = (debye_e_coeffs if family == 'debye' else lorentz_e_coeffs)(
@@ -232,11 +313,25 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
         return type(coeffs)(*(value if name in spatial else
             jax.tree.map(lambda a: jnp.moveaxis(a, 1, 0), value)
             for name, value in zip(coeffs._fields, coeffs)))
-    coeffs = uniform_apply(local, inputs, indices, staged_masks, widths, mesh=mesh, row_count=layout.nx_local + 1)
-    coeffs = type(coeffs)(*(jax.tree.map(
-        lambda a: product_rows(a, layout, mesh, family + '_' + name,
-            dt=dt, pole_rows=name not in spatial), value)
-        for name, value in zip(coeffs._fields, coeffs)))
+    if device is not None:
+        poles, dt = _host_arrays((poles, dt))
+        coeffs = _host_products(local, device, _whole_material_rows(inputs, layout),
+                                None, _whole_material_rows(masks, layout), None)
+        def publish(a, name):
+            a = cut(a, layout, family + '_' + name, dt=dt, mesh=mesh)
+            if name not in spatial:
+                with jax.ensure_compile_time_eval():
+                    a = _pole_first_map(mesh)(a)
+            return a
+        coeffs = type(coeffs)(*(jax.tree.map(lambda a: publish(a, name), value)
+            for name, value in zip(coeffs._fields, coeffs)))
+    else:
+        widths = stage_x_widths(grid, rows, mesh)
+        coeffs = uniform_apply(local, inputs, indices, staged_masks, widths, mesh=mesh, row_count=layout.nx_local + 1)
+        coeffs = type(coeffs)(*(jax.tree.map(
+            lambda a: product_rows(a, layout, mesh, family + '_' + name,
+                dt=dt, pole_rows=name not in spatial), value)
+            for name, value in zip(coeffs._fields, coeffs)))
     state = zero_pole_state(DebyeState if family == 'debye' else LorentzState,
         len(poles), layout, tuple(grid.shape[1:]), mesh=mesh, dtype=ade_state_dtype(), kind=family + '_state')
     return coeffs, state
@@ -265,11 +360,14 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout
+    # Pole masks/parameters can be traced even when the cell arrays are fixed.
+    pole_inputs = (None if debye is None else debye[0], None if lorentz is None else lorentz[0])
+    device, reason = _material_host_device(materials, occupancy, pole_inputs)
     # Pole kernels drop their electric material components, just as one device
     # does; retain the absorber's operands separately in the native slab layout.
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
         cpml=cpml and (debye is not None or lorentz is not None),
-        debye=debye is not None, lorentz=lorentz is not None)
+        debye=debye is not None, lorentz=lorentz is not None, _material_inputs=pole_inputs)
     bundles = [debye, lorentz]
     for i, bundle in enumerate(bundles):
         if bundle is not None and bundle[0].ca is None:
@@ -346,7 +444,9 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         if cpml_state is not None:
             carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,
-                            step_fn_inv=make_graded_step(ctx))
+                            step_fn_inv=make_graded_step(ctx),
+                            materials_realized='whole_grid_host' if device is not None else 'per_slab',
+                            materials_realized_reason=reason)
 
 
 def stage_pec(cells, sheets, wires, grid, layout, mesh):
