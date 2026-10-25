@@ -11,9 +11,8 @@ import numpy as np
 from rfx import Box, Simulation
 
 
-def scene(graded, layers=12):
+def scene(graded, layers=12, margin=6):
     dx = .00254
-    margin = 6
     ny, nz = 11 + 2 * margin, 6 + 2 * margin
     kwargs = {"dz_profile": np.full(nz, dx)} if graded else {}
     sim = Simulation(11e9, (32 * dx, ny * dx, nz * dx), dx=dx,
@@ -40,6 +39,25 @@ def test_partial_aperture_uniform_graded_parity():
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 result = scene(graded).run(n_steps=240, skip_preflight=True)
+                values.append(np.asarray(result.waveguide_sparams["p1"].s11))
+        assert all(np.all(np.isfinite(value)) for value in values)
+        ratio = values[0] / values[1]
+        db = np.abs(20 * np.log10(np.abs(ratio)))
+        degrees = np.abs(np.angle(ratio, deg=True))
+        assert np.all(db <= .01), db
+        assert np.all(degrees <= .1), degrees
+    finally:
+        jax.clear_caches()
+
+
+def test_partial_aperture_uniform_margin_invariance():
+    """An open guide's reflection is independent of the lateral domain margin."""
+    values = []
+    try:
+        for margin in (6, 10):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                result = scene(False, margin=margin).run(n_steps=240, skip_preflight=True)
                 values.append(np.asarray(result.waveguide_sparams["p1"].s11))
         assert all(np.all(np.isfinite(value)) for value in values)
         ratio = values[0] / values[1]
