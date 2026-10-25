@@ -212,6 +212,7 @@ from rfx.probes.probes import (
     FluxMonitor, init_flux_monitor, update_flux_monitor, flux_spectrum,
     subtract_flux_monitors,
 )
+from rfx.sparams._port_reference import renormalize_power_waves
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
 from rfx.pcb import PCBLayer, Stackup
@@ -309,6 +310,7 @@ __all__ = [
     "extract_waveguide_s_matrix", "extract_waveguide_sparams",
     "extract_waveguide_s11", "extract_waveguide_s21",
     "extract_s_matrix_wire", "compute_floquet_s_params",
+    "renormalize_power_waves",
     "compute_rcs", "compute_rcs_jax", "RCSResult", "ScatteringResponse",
     # materials / dispersion / fitting
     "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
