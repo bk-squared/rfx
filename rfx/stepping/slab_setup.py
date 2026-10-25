@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
+from rfx.backend import host_cpu_device
 from rfx.core.yee import FDTDState
 from rfx.model.materials import (ComponentCells, realize_components, kernel_materials)
 from rfx.stepping.slab import cut, zero_pole_state, place
@@ -152,7 +153,7 @@ def _material_host_device(*inputs, mesh=None):
     if any(isinstance(a, jax.core.Tracer) for a in leaves):
         return None, 'traced inputs'
     try:
-        return jax.local_devices(backend='cpu')[0], None
+        return host_cpu_device(), None
     except RuntimeError:
         if not _warned_no_cpu:
             stacklevel = 2
