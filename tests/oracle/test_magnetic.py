@@ -9,6 +9,8 @@ Tests:
 Reference: Codex Spec 6D — docs/codex_specs/6D_magnetic_material_validation.md
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 
 from rfx.grid import Grid, C0
@@ -107,12 +109,12 @@ def test_magnetic_impedance_reflection():
             t = step * dt
 
             # Correct leapfrog interleaving (Taflove Ch. 5)
-            state = update_h(state, materials, dt, dx, periodic)
+            state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
             state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
             state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
             tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
 
-            state = update_e(state, materials, dt, dx, periodic)
+            state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
             state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
             state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
             tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx, dt, t)
@@ -234,12 +236,12 @@ def test_magnetic_phase_velocity():
     for step in range(n_steps):
         t = step * dt
 
-        state = update_h(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
         tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
 
-        state = update_e(state, materials, dt, dx, periodic)
+        state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx, dt, t)

@@ -4,6 +4,8 @@ The TEM resonance is c/L up to second-order Yee dispersion. Probes and flux
 planes at L sample the same physical plane as at zero, and a constant
 broadside plane wave has no dependence on its transverse period.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -256,7 +258,7 @@ def test_material_averaging_uses_last_physical_cell_at_the_seam(graded):
         from rfx.model.materials import with_components
         eps = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in 'xyz')).components.eps_update
     else:
-        eps, _ = component_e_materials(materials, sim._periodic_flags())
+        eps, _ = component_e_materials(materials, sim._periodic_flags(), high_wall=unpadded_high_walls(grid))
     # Ez at x=0 lies between eps=1 at x=0 and eps=9 at x=L-dx.
     _check_material(float(eps[2][0, 3, 2]))
 

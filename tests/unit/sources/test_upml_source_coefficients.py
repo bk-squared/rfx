@@ -118,7 +118,7 @@ def test_tensor_audit_predicate_is_edge_specific(inverse):
     from rfx.model.source_coefficients import tensor_replaced_edges
     ones = jnp.ones((3,) * 3)
     materials = with_components(MaterialArrays(ones, 0 * ones, ones), None,
-                                periodic=(False,) * 3)
+                                periodic=(False,) * 3, high_wall=(False, False, False))
     tensors = (ones, ones.at[1, 1, 1].set(.25 if inverse else 4.), ones)
     mask = tensor_replaced_edges(materials, **{
         'aniso_inv_eps' if inverse else 'aniso_eps': tensors})

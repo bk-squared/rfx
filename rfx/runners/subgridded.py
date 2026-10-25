@@ -254,17 +254,13 @@ def _run_subgridded_once(
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
     # An interior fine-grid end is a coarse/fine interface, not a wall.
+    from rfx.geometry.rasterize_grid import unpadded_high_walls, coords_from_uniform_grid
+    coarse_coords = coords_from_uniform_grid(grid_coarse)
+    global_walls = unpadded_high_walls(grid_coarse)
     high_wall = tuple(
-        end == grid_coarse.shape[a]
-        and getattr(grid_coarse, f"pad_{'xyz'[a]}_hi", 0) == 0
-        and 'xyz'[a] not in grid_coarse.periodic_axes
+        global_walls[a] and end == grid_coarse.shape[a]
+        and float(coords_f[a][-1]) > float(coarse_coords[a][-1])
         for a, end in enumerate((fi_hi, fj_hi, fk_hi)))
-    # #1966: a fine region that reaches a global high wall samples its last
-    # centre beyond the wall; repair it as the coarse assembler does (#655
-    # rule, statics only, #808 pole gate). Interior ends keep their samples.
-    from rfx.geometry.rasterize_grid import repair_fine_high_wall_materials
-    mats_f = repair_fine_high_wall_materials(
-        mats_f, coords_f, grid_coarse, high_wall, (debye_f, lorentz_f))
 
     # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos, component=None):
@@ -461,8 +457,12 @@ def _run_subgridded_once(
                 source_requests.append((pe, idx, (sigma_port, 1 / dx_f)))
 
     from rfx.model.source_coefficients import subgrid_source_tables
+    from rfx.model.materials import with_components
+    base_materials_coarse = with_components(base_materials_coarse, grid_coarse,
+        periodic=tuple(a in grid_coarse.periodic_axes for a in "xyz"), high_wall=global_walls)
+    mats_f = with_components(mats_f, fine_grid, periodic=(False,) * 3, high_wall=high_wall)
     sources_f, sources_c = subgrid_source_tables(
-        source_requests, fine_grid, mats_f, n_steps,
+        source_requests, fine_grid, mats_f, n_steps, high_wall=high_wall,
         native="cb" if sim._boundary in ("cpml", "upml") else "raw",
         fine_scale=fine_source_scale, volume=dx_f ** 3,
         shadow_entries=(_coarse_shadow_source_entries

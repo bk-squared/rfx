@@ -280,6 +280,7 @@ class ShardedNUGrid(_NamedTuple):
     nx_trim: int
     x_starts: tuple
     x_stops: tuple
+    high_wall: tuple[bool, bool, bool]
     face_layers: dict[str, int] | None = None
     dy_cells: object = None
     dz_cells: object = None
@@ -372,6 +373,7 @@ def build_sharded_nu_grid(
     x_starts, x_stops = zip(*layout.owned)
 
     from rfx.model.materials import electric_cell_sizes
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     return ShardedNUGrid(
         nx=nx,
         ny=ny,
@@ -395,6 +397,7 @@ def build_sharded_nu_grid(
         nx_trim=pad_x,
         x_starts=x_starts,
         x_stops=x_stops,
+        high_wall=unpadded_high_walls(grid),
         face_layers=grid.face_layers,
         dy_cells=np.asarray(grid.dy_arr),
         dz_cells=np.asarray(grid.dz),
@@ -921,6 +924,7 @@ def run_nonuniform_distributed_pec(
     nx_local = sharded_grid.nx_local
     nx_per = sharded_grid.nx_per_rank
     nx_real = sharded_grid.nx   # an int for the step closures (#1303)
+    high_wall = sharded_grid.high_wall
     ghost = sharded_grid.ghost_width
     ny = sharded_grid.ny
     nz = sharded_grid.nz
@@ -1030,7 +1034,7 @@ def run_nonuniform_distributed_pec(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
-            ranks=ranks, cell_sizes=spacings[6:])
+            ranks=ranks, nx_per=nx_per, nx=nx_real, high_wall=high_wall, cell_sizes=spacings[6:])
 
     def _update_e_shmap(st, mat, spacings, e_materials, *, ranks):
         inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
@@ -1042,7 +1046,7 @@ def run_nonuniform_distributed_pec(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             nx_per, nx_real, e_materials=e_materials,
-            ranks=ranks, boundary=curl_boundary, ghost=ghost, pad_x=pad_x)
+            ranks=ranks, high_wall=high_wall, boundary=curl_boundary, ghost=ghost, pad_x=pad_x)
 
     # ------------------------------------------------------------------
     # Phase 2D: dispersive E shmap helper
@@ -1382,8 +1386,12 @@ def run_nonuniform_distributed_pec(
                 psi_hx_zlo=psi_hx_zlo, psi_hx_zhi=psi_hx_zhi,
                 psi_hy_zlo=psi_hy_zlo, psi_hy_zhi=psi_hy_zhi,
             )
-            mu = magnetic_low_ghost(mu_r_slab, rank, ghost)
-            means = component_h_materials(MaterialArrays(None, None, mu), cell_sizes=cell_sizes_slab)
+            mu = magnetic_low_ghost(mu_r_slab, rank, ghost, nx_per=nx_per, nx=nx_real, high_wall=high_wall)
+            from rfx.model.electric_metrics import slab_wall_view
+            widths = (slab_wall_view(cell_sizes_slab[0], nx_per, nx_real, rank,
+                                    high_wall=high_wall), *cell_sizes_slab[1:])
+            means = component_h_materials(MaterialArrays(None, None, mu),
+                high_wall=(False, *high_wall[1:]), cell_sizes=widths)
             material_view = SimpleNamespace(mu_r=mu, components=SimpleNamespace(mu_update=means))
             new_st, new_cs = apply_cpml_h(
                 _st, cpml_params, _cs, global_grid, materials=material_view,
@@ -1675,7 +1683,7 @@ def run_nonuniform_distributed_pec(
 
     @jax.jit
     def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks, e_cell_sizes):
-        electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local)
+        electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local, high_wall)
         scales = None
         if drives:
             # #1279: the drive sees the materials the E update sees -- the
@@ -1698,7 +1706,7 @@ def run_nonuniform_distributed_pec(
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
         # coefficients are finished from these same means inside the loop.
         e_materials = slab_e_materials_shmap(
-            invariants[0], mesh, nx_per, nx_real, ranks=ranks, grid=electric_grid)
+            invariants[0], mesh, nx_per, nx_real, ranks=ranks, grid=electric_grid, high_wall=high_wall)
         scan_step = partial(step_fn, invariants=invariants, e_materials=e_materials, ranks=ranks)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the

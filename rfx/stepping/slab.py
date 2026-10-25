@@ -336,10 +336,10 @@ def _vacuum_dispersion_values(kind, n_poles, dt):
         masks = [jnp.zeros((1, 1, 1), dtype=bool)] * n_poles
         if kind == "debye":
             coeffs, _ = init_debye([DebyePole(1.0, 1e-11)] * n_poles, vacuum, dt,
-                                   mask=masks)
+                                   mask=masks, high_wall=(False, False, False))
         else:
             coeffs, _ = init_lorentz([LorentzPole(1.0, 1.0, 1.0)] * n_poles, vacuum,
-                                     dt, mask=masks)
+                                     dt, mask=masks, high_wall=(False, False, False))
     values = {}
     for name, field in zip(coeffs._fields, coeffs):
         leaves = [float(v) for leaf in jax.tree.leaves(field)

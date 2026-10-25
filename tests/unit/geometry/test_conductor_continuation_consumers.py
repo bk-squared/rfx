@@ -1,4 +1,6 @@
 """Solved occupancy and diagnostics at each conductor realization site."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import warnings
 
 import numpy as np
@@ -48,7 +50,7 @@ def test_dual_average_excludes_continued_metal_from_edge_average():
     sim.add(Box((0., 2., 2.), (8., 6., 4.4)), material="pec")
     grid = sim._build_nonuniform_grid()
     materials = assemble_materials_nu(sim, grid, pec_sheets=[], pec_wires=[])[0]
-    eps = assemble_interface_eps_nu(sim, grid, materials)
+    eps = assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
     # Only the upper vacuum contributes; including the lower cell gives 2.5.
     assert float(eps[0][0, 6, 6]) == 1.
 

@@ -9,6 +9,8 @@ Test 2: test_overlap_passivity
     |S11|² + |S21|² < 1.10 in the well-resolved mid-band.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -103,9 +105,9 @@ def _run_waveguide_sim_overlap(
     for step in range(n_steps):
         t = step * dt
 
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         state = apply_pec(state, axes="yz")
 

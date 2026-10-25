@@ -379,9 +379,10 @@ def run(
     # so it must never be used for stencil_order=4 — that would silently
     # produce a 2nd-order result. Gate it on order==2.
     use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     _fast_coeffs = (
         precompute_coeffs(_setup.ctx_kwargs["materials"], dt, dx, pec_faces=_setup.pec_faces,
-                          periodic=periodic)
+                          periodic=periodic, high_wall=unpadded_high_walls(grid))
         if use_fast_he else None
     )
 

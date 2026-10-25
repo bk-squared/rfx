@@ -1,5 +1,7 @@
 """Tests for rectangular waveguide port with analytical TE/TM mode profiles."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -310,9 +312,9 @@ def _run_waveguide_sim(a_wg, b_wg, length, f0, dx, nc, freqs,
     for step in range(n_steps):
         t = step * dt
 
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         state = apply_pec(state, axes="yz")  # PEC on y/z only (waveguide walls)
 

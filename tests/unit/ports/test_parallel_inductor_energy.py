@@ -33,6 +33,8 @@ D0/(D0 + gamma/4) scales the whole edge field every step).
 """
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -75,7 +77,7 @@ def _energy_trace(field_dtype):
                          sigma=mats.sigma.astype(field_dtype),
                          mu_r=mats.mu_r.astype(field_dtype))
     periodic = (False, False, False)
-    _, cbs = e_component_coeffs(mats, dt, periodic)
+    _, cbs = e_component_coeffs(mats, dt, periodic, high_wall=unpadded_high_walls(grid))
     eps_c = [dt / cb for cb in cbs]
     dv = dx ** 3
 
@@ -91,10 +93,10 @@ def _energy_trace(field_dtype):
         w_e = 0.5 * dv * sum(jnp.sum(eps * f ** 2)
                              for eps, f in zip(eps_c, (st.ex, st.ey, st.ez)))
         w_l = 0.5 * L_H * rlc.inductor_current ** 2
-        st = update_h(st, mats, dt, dx, periodic)
+        st = update_h(st, mats, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
         w_h = 0.5 * MU_0 * dv * sum(jnp.sum(a * b) for a, b in
                                     zip(h_old, (st.hx, st.hy, st.hz)))
-        st = apply_pec(update_e(st, mats, dt, dx, periodic))
+        st = apply_pec(update_e(st, mats, dt, dx, periodic, high_wall=unpadded_high_walls(grid)))
         st, rlc = lumped.update_rlc_element(st, rlc, meta, e_prev)
         return (st, rlc), (w_e + w_h + w_l, w_l)
 

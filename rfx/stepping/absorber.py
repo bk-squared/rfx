@@ -29,7 +29,7 @@ def apply_cpml_e_step(*args, debye=None, lorentz=None, **kwargs):
 
 
 def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
-                          slab, e_materials, rank, boundary=None, frame=None, owned=None):
+                          slab, e_materials, rank, high_wall, boundary=None, frame=None, owned=None):
     """Build local ADE coefficients once, inside the distributed E step."""
     from rfx.runners._distributed_common import (
         _update_e_local_with_dispersion, slab_e_component_materials,
@@ -39,7 +39,7 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
     # Only ADE owners need them here; CPML uses its existing face operands.
     means = e_materials
     if (debye is not None or lorentz is not None) and means is None:
-        means = slab_e_component_materials(materials, *slab, rank=rank)
+        means = slab_e_component_materials(materials, *slab, rank=rank, high_wall=high_wall)
     if debye is not None:
         debye = (slab_dispersion_coeffs(debye[0], means, dt, *slab, rank=rank), debye[1])
     if lorentz is not None:
@@ -48,7 +48,7 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
                           None if lorentz is None else lorentz[0], dt)
     result = _update_e_local_with_dispersion(
         state, materials, dt, dx, debye=debye, lorentz=lorentz,
-        slab=slab, rank=rank, boundary=boundary, frame=frame, owned=owned)
+        slab=slab, rank=rank, high_wall=high_wall, boundary=boundary, frame=frame, owned=owned)
     return (*result, curl)
 
 

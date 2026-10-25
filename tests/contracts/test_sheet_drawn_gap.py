@@ -3,6 +3,8 @@
 K3's main oracle removes ``drawn`` from every spec: None restores the
 pre-fix union by construction. K6 field stepping is outside this phase.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import replace
 from functools import lru_cache
 
@@ -218,7 +220,7 @@ def test_k7_dc_film(graded, case):
     grid = sim._build_realized_grid()
     root = C.realized_conductors(sim, grid, nonuniform=graded)
     values = [float(e_update_material_at(root.materials, (4, j, 4), 'ey', root.periodic,
-              **electric_grid_kwargs(grid))[1]) for j in (9, 10)]
+              **electric_grid_kwargs(grid), high_wall=unpadded_high_walls(grid))[1]) for j in (9, 10)]
     # Survey's five rows: the first three have a gap at row 10; last two touch. A touching
     # pair is one continuous film: its joint edge carries the film's interior edge value.
     assert values[0] > 0.

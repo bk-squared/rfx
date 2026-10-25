@@ -167,8 +167,8 @@ def test_kerr_reactive_conserves_energy():
     energies = []
     for step in range(200):
         e_prev = (state.ex, state.ey, state.ez)
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=(False, False, False))
+        state = update_e(state, materials, dt, dx, high_wall=(False, False, False))
         state = apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr)
         energies.append(float(jnp.sum(state.ex ** 2 + state.ey ** 2 + state.ez ** 2)))
         assert jnp.all(jnp.isfinite(state.ez)), f"NaN/Inf at step {step}"

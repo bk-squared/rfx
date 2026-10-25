@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from rfx.core.yee import MU_0
 from rfx.core.yee import init_materials
+from rfx.model.materials import with_components
 from rfx.subgridding import jit_runner as runner
 from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
 
@@ -15,7 +16,9 @@ def test_sat_pairs_read_their_own_mu(monkeypatch, half, projection):
                              9, 9, 5, .001, 1e-12, 2, 1.)
     def mats(shape):
         i, j, _ = np.indices(shape)
-        return init_materials(shape)._replace(mu_r=jnp.asarray(1+i+3*j, dtype=jnp.float32))
+        cells = init_materials(shape)._replace(mu_r=jnp.asarray(1+i+3*j, dtype=jnp.float32))
+        # Synthetic SAT interface arrays have no global wall.
+        return with_components(cells, None, periodic=(False,) * 3, high_wall=(False,) * 3)
     coarse, fine = mats((5,5,7)), mats((9,9,5))
     fields_c = (jnp.ones(coarse.mu_r.shape),) * 6
     fields_f = (jnp.ones(fine.mu_r.shape),) * 6

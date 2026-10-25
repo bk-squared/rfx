@@ -6,6 +6,8 @@ carry), and run() reconstructs the returned `state` / point probes back to the
 physical real field Re(P·exp(-j k_t·y)). Normal incidence and every non-TFSF run
 stay on the real float32 path (byte-identical). These gates pin that contract.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -94,11 +96,11 @@ def test_run_oblique_matches_handrolled_and_low_leakage():
     cp, cs = init_cpml(grid, field_dtype=jnp.complex64)
     for step in range(ns):
         t = step * dt
-        st = update_h(st, mat, dt, dx, periodic=per, bloch=bloch)
+        st = update_h(st, mat, dt, dx, periodic=per, bloch=bloch, high_wall=unpadded_high_walls(grid))
         st = apply_tfsf_h(st, cfg, aux, dx, dt)
         st, cs = apply_cpml_h(st, cp, cs, grid, axes="x")
         aux = update_tfsf_2d_h(cfg, aux, dx, dt)
-        st = update_e(st, mat, dt, dx, periodic=per, bloch=bloch)
+        st = update_e(st, mat, dt, dx, periodic=per, bloch=bloch, high_wall=unpadded_high_walls(grid))
         st = apply_tfsf_e(st, cfg, aux, dx, dt)
         st, cs = apply_cpml_e(st, cp, cs, grid, axes="x")
         aux = update_tfsf_2d_e(cfg, aux, dx, dt, t)

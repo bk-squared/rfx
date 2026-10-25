@@ -386,7 +386,7 @@ def apply_methodB_h(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
     the k̂ projection baked into the gather tables). Full-z broadcast ([:, None]).
     """
     from rfx.core.yee import MaterialArrays, component_h_materials
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     ch = dt / (mu_abs * dx)
     e1d = st.e1d
     hx, hy = state.hx, state.hy

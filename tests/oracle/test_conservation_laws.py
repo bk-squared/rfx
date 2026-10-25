@@ -5,6 +5,8 @@ convergence, and causality without comparing against any external solver.
 They depend only on Maxwell's equations and energy-conservation principles.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -277,11 +279,11 @@ def test_causality_no_signal_before_source():
         t = step * dt
 
         # H update
-        state = update_h(state, materials, dt, dx_val, periodic)
+        state = update_h(state, materials, dt, dx_val, periodic, high_wall=unpadded_high_walls(grid))
         state, cp_state = apply_cpml_h(state, cp_cfg, cp_state, grid, axes="x")
 
         # E update
-        state = update_e(state, materials, dt, dx_val, periodic)
+        state = update_e(state, materials, dt, dx_val, periodic, high_wall=unpadded_high_walls(grid))
         state, cp_state = apply_cpml_e(state, cp_cfg, cp_state, grid, axes="x")
 
         # Additive (soft) source injection after E update

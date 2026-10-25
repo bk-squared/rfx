@@ -35,6 +35,8 @@ from rfx.subgridding.sbp_sat_3d import (
 from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0, component_h_materials
 from rfx.probes.probes import _ampere_loop
+from rfx.geometry.rasterize_grid import unpadded_high_walls, fine_high_walls
+from rfx.model.materials import with_components
 
 
 class SubgridResult(NamedTuple):
@@ -856,7 +858,11 @@ def _z_slab_material_coupling_h_3d(
 
     def face_coeffs(materials, sl, site):
         eps = materials.eps_r[sl]
-        mu = tuple(component[sl] for component in component_h_materials(materials)[:2])
+        if materials.components is None:
+            raise ValueError("material SAT requires precomputed wall-aware components")
+        from rfx.model.materials import h_components
+        mu = tuple(component[sl] for component in h_components(
+            materials, None, periodic=(False,) * 3)[:2])
         if _realized.ACTIVE is not None:
             # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
@@ -1281,7 +1287,11 @@ def _z_slab_material_coupling_e_3d(
 
     def face_coeffs(materials, sl, site):
         eps = materials.eps_r[sl]
-        mu = tuple(component[sl] for component in component_h_materials(materials)[:2])
+        if materials.components is None:
+            raise ValueError("material SAT requires precomputed wall-aware components")
+        from rfx.model.materials import h_components
+        mu = tuple(component[sl] for component in h_components(
+            materials, None, periodic=(False,) * 3)[:2])
         if _realized.ACTIVE is not None:
             # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
@@ -1748,6 +1758,8 @@ def _make_step_fn(ctx):
     mask_coarse_shadow_interior = ctx.get("mask_coarse_shadow_interior")
     mats_c = ctx.get("mats_c")
     mats_f = ctx.get("mats_f")
+    high_wall_c = ctx["high_wall_c"]
+    high_wall_f = ctx["high_wall_f"]
     n_lumped_sparams = ctx.get("n_lumped_sparams")
     n_probes = ctx.get("n_probes")
     n_probes_c = ctx.get("n_probes_c")
@@ -1835,7 +1847,7 @@ def _make_step_fn(ctx):
         st_c = FDTDState(ex=ex_c, ey=ey_c, ez=ez_c,
                          hx=hx_c, hy=hy_c, hz=hz_c,
                          step=step_idx)
-        st_c = update_h(st_c, mats_c, dt, dx_c)
+        st_c = update_h(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         if use_cpml:
             # materials= keeps the CPML impedance-matched inside dielectrics
             # (issue #205; free-space coefficients diverge when a dielectric
@@ -1859,7 +1871,7 @@ def _make_step_fn(ctx):
         st_f = FDTDState(ex=ex_f, ey=ey_f, ez=ez_f,
                          hx=hx_f, hy=hy_f, hz=hz_f,
                          step=step_idx)
-        st_f = update_h(st_f, mats_f, dt, dx_f)
+        st_f = update_h(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
 
         # === SAT H-coupling (tangential H on all 6 faces) ===
         if is_full_xy_z_slab:
@@ -1965,7 +1977,7 @@ def _make_step_fn(ctx):
             )
 
         # === Coarse E update + boundary ===
-        st_c = update_e(st_c, mats_c, dt, dx_c)
+        st_c = update_e(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         if use_cpml:
             st_c, cpml_new = apply_cpml_e(st_c, cpml_params, cpml_new,
                                            grid_c, cpml_axes, materials=mats_c)
@@ -1992,7 +2004,7 @@ def _make_step_fn(ctx):
             st_c = st_c._replace(ex=ex_c, ey=ey_c, ez=ez_c)
 
         # === Fine E update + PEC mask ===
-        st_f = update_e(st_f, mats_f, dt, dx_f)
+        st_f = update_e(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
         if use_pec_mask_f:
             # #931: ``apply_pec_mask`` IS the shared realization
             # (realized_pec_edge_masks, volume branch). This lane
@@ -2476,6 +2488,12 @@ def run_subgridded_jit(
     dt = config.dt
     dx_c = config.dx_c
     dx_f = config.dx_f
+
+    high_wall_c = unpadded_high_walls(grid_c)
+    high_wall_f = fine_high_walls(grid_c, config)
+    periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
+    mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=high_wall_c)
+    mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=high_wall_f)
 
     # Override coarse grid dt to match subgrid global timestep
     grid_c.dt = dt

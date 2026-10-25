@@ -12,6 +12,8 @@ terminated in its own impedance in an open (CPML) domain is not exercised in
 this file, so that absorption physics is not asserted.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import functools
 
 import numpy as np
@@ -64,8 +66,8 @@ def _pec_cavity_port_s11():
 
     for n in range(num_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # Both slots, the way the JIT scan uses them: the PRE-injection drive
         # sample into v_ref, the physical V/I AFTER injection
@@ -213,8 +215,8 @@ def test_lumped_port_injects_energy():
     # Run 100 steps with port excitation
     for n in range(100):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_lumped_port(state, grid, port, t, materials)
 

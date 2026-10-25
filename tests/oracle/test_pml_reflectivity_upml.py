@@ -46,6 +46,8 @@ That ~17 dB separation is the "old blind / new catches" proof that the gate is n
 vacuous — a UPML regression that stopped absorbing would land near the dead number
 and fail.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import numpy as np
 import pytest
 
@@ -93,8 +95,8 @@ def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     dt, dx = grid_ref.dt, grid_ref.dx
     ts_ref = np.zeros(n_steps)
     for n in range(n_steps):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid_ref))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid_ref))
         state = apply_pec(state)
         ez = state.ez.at[cx, cy, cz].add(pulse(n * dt))
         state = state._replace(ez=ez)
@@ -166,8 +168,8 @@ def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
             s = apply_upml_h(s, coeffs)
             s = apply_upml_e(s, coeffs)
             return s
-        s = update_h(s, materials, dt, dx)
-        s = update_e(s, materials, dt, dx)
+        s = update_h(s, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        s = update_e(s, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         return apply_pec(s)
 
     for n in range(n_src):

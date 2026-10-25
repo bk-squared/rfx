@@ -30,7 +30,6 @@ ALLOWED_CALLS = {'rfx/adi.py': 3,
  'rfx/sources/tfsf_oblique_open.py': 1,
  'rfx/stepping/waveguide_source.py': 1,
  'rfx/subgridding/disjoint_3d.py': 1,
- 'rfx/subgridding/jit_runner.py': 2,
  'rfx/subgridding/sbp_sat_1d.py': 1,
  'rfx/subgridding/sbp_sat_2d.py': 2}
 

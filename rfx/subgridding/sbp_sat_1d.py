@@ -219,7 +219,7 @@ def init_subgrid_1d(
 def _update_h_1d(e: jnp.ndarray, h: jnp.ndarray,
                  dt: float, dx: float) -> jnp.ndarray:
     """Standard 1D Yee H-update:  H += (dt/mu0) * (E[i+1] - E[i]) / dx."""
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     return h + (dt / mu_abs) * (e[1:] - e[:-1]) / dx
 
 

@@ -52,6 +52,8 @@ loop below runs the lane's own kernels in the lane's own order.
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from unittest import mock
 
 import numpy as np
@@ -196,12 +198,12 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
             def step(carry, n):
                 st, cpml, acc = carry
                 st = update_h_nu(st, m, dt, grid.inv_dx_h, grid.inv_dy_h,
-                                 grid.inv_dz_h)
+                                 grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
                 st, cpml = apply_cpml_h(st, cpml_params, cpml, grid, "xyz",
                                         materials=m)
                 prev = st
                 st = update_e_nu(st, m, dt, grid.inv_dx, grid.inv_dy,
-                                 grid.inv_dz, cell_sizes=cell_sizes)
+                                 grid.inv_dz, cell_sizes=cell_sizes, high_wall=unpadded_high_walls(grid))
                 if split:
                     st = update_e_box(
                         st, prev, box_w, ca, cb, grid.dx,

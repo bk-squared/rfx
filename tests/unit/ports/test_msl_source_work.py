@@ -5,6 +5,8 @@ propagating-mode, full-run, or RF-accuracy certificates. The launch shape and
 resistance are fixed while the electric material coefficient is varied.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -74,7 +76,7 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
             materials = loaded._replace(eps_r=base.eps_r * alpha)
             # H=0: the electric substep has no curl work, and no PEC/PML is
             # present. Source coefficients must retain the material tape.
-            new = update_e(old, materials, grid.dt, grid.dx)
+            new = update_e(old, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
             sources = make_msl_port_sources(grid, port, materials, 1,
                                             mode_profile=profile)
             assert len(sources) == len(cells)

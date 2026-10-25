@@ -9,6 +9,8 @@ claim about S-parameter accuracy.
 """
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import functools
 import sys
 import warnings
@@ -180,7 +182,7 @@ def material_pairs(dump, row, axis):
         else:
             from rfx.model.materials import electric_cell_sizes
             eps, sig = component_e_materials(mats, r["periodic"],
-                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()))
+                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()), high_wall=(False, False, False))
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])
         got = r[quantity][axis]
         if r["region"] is not None:
@@ -222,7 +224,7 @@ def drive_pairs(dump, row):
         if row == "override_drive":
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
         from rfx.model.materials import electric_cell_sizes
-        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid))
+        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
         expected = []
         for i, j, k, component in r["cells"]:
             axis = "xyz".index(component[1])
@@ -430,11 +432,11 @@ def test_kernel_dump_is_consumed(kernel, quantity):
     @jax.jit
     def advance(mats, fields):
         if kernel == "precompute":
-            coeffs = precompute_coeffs(mats, 1e-12, MM)
+            coeffs = precompute_coeffs(mats, 1e-12, MM, high_wall=(False, False, False))
             result = update_he_fast(fields, coeffs)
         else:
             result = update_e_aniso(fields, mats, mats.eps_r, mats.eps_r * 1.1,
-                                    mats.eps_r * 1.2, 1e-12, MM)
+                                    mats.eps_r * 1.2, 1e-12, MM, high_wall=(False, False, False))
         return jnp.stack([getattr(result, component)
                           for component in ("ex", "ey", "ez", "hx", "hy", "hz")])
 

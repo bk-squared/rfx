@@ -132,6 +132,8 @@ class _CompileMixin:
         budget=None,
         grid_kind="Grid",
         periodic=(False, False, False),
+        grid=None,
+        high_wall=None,
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Initialize Debye/Lorentz coefficients for the given materials.
 
@@ -148,7 +150,8 @@ class _CompileMixin:
         if debye_spec is not None:
             debye_poles, debye_masks = debye_spec
             debye = init_debye(debye_poles, materials, dt, mask=debye_masks,
-                               field_dtype=field_dtype, periodic=periodic)
+                               field_dtype=field_dtype, periodic=periodic,
+                               grid=grid, high_wall=high_wall)
 
         lorentz = None
         if lorentz_spec is not None:
@@ -159,7 +162,8 @@ class _CompileMixin:
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
                                    field_dtype=field_dtype, periodic=periodic,
-                                   budget=budget if debye_spec is None else None, grid_kind=grid_kind)
+                                   budget=budget if debye_spec is None else None, grid_kind=grid_kind,
+                                   grid=grid, high_wall=high_wall)
             if debye_spec is not None and budget is not None:
                 from rfx.materials.lorentz import mark_judged
                 lorentz = (mark_judged(lorentz[0]), lorentz[1])
@@ -309,7 +313,7 @@ class _CompileMixin:
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
-            periodic=self._periodic_flags())
+            periodic=self._periodic_flags(), grid=grid)
         return materials, debye, lorentz
 
     @staticmethod

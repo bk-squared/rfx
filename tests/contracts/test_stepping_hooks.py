@@ -111,7 +111,7 @@ def test_fast_uniform_compiled_remaining_hooks(monkeypatch):
     faces = frozenset(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
     ctx = replace(ctx, use_pec_faces=True, pec_faces_frozen=faces,
                   fast_coeffs=precompute_coeffs(ctx.materials, ctx.dt, ctx.dx,
-                                               pec_faces=faces))
+                                               pec_faces=faces, high_wall=(False, False, False)))
     calls = []
     combined = simulation.update_he_fast
     def record(*args, **kwargs):

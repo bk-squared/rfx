@@ -1,4 +1,6 @@
 """#1632 Addendum 1: realized precision, observable cross update and pad refusal."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -49,7 +51,7 @@ def test_one_e_update_observes_cross_coupling():
         eps = build(grid, [(sphere, 4.)])
         materials = with_components(init_materials(grid.shape), grid, periodic=(True,) * 3,
                                     tensor=TensorOperands.of(eps))
-        outputs.append(update_e_aniso(state, materials, *eps, grid.dt, grid.dx, periodic=(True,) * 3))
+        outputs.append(update_e_aniso(state, materials, *eps, grid.dt, grid.dx, periodic=(True,) * 3, high_wall=unpadded_high_walls(grid)))
     diagonal, full = outputs
     for component in ('ey', 'ez'):
         np.testing.assert_array_equal(getattr(diagonal, component), 0.)

@@ -145,10 +145,13 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
     occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
     widths = stage_x_widths(grid, rows, mesh)
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
 
     def local(cells, index, occupancy, widths):
         view = UniformSlabView(index, grid, {'x_widths': widths})
-        components = realize_components(cells, grid, periodic=(False,) * 3, view=view)
+        components = realize_components(cells, grid, periodic=(False,) * 3,
+                                        high_wall=high_wall, view=view)
         cells = cells._replace(components=components)
         cells = with_edge_keep(cells, occupancy, dtype=jnp.float32, view=view)
         inverse, loss = graded_cpml_operands(cells, None, use_cpml=cpml,

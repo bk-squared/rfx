@@ -77,7 +77,9 @@ def design_adjoint_scan(ctx, initial, xs):
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
             local = replace(local, drives=None,
                             use_dft_planes=False, dft_meta=(), prb_meta=())
-            monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic)[1])
+            from rfx.geometry.rasterize_grid import unpadded_high_walls
+            monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic,
+                             high_wall=unpadded_high_walls(ctx.grid))[1])
             monitor_cb = [a.at[sl].set(b) for a, b in zip(monitor_cb, coeffs[1])]
             weights = [_wavelet_coefficients(jnp.asarray(m[3], dtype=dtype), ctx.dt,
                                              wavelet_length, t)

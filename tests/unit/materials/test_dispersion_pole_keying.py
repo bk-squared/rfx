@@ -29,6 +29,8 @@ These tests lock every direction of that contract:
    perturb a field to keep the poles value-distinct.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import pytest
 
@@ -330,7 +332,7 @@ def test_traced_debye_pole_compiles():
         materials, debye_spec, _, *_ = sim._assemble_materials(grid)
         assert debye_spec is not None
         coeffs, _ = init_debye(debye_spec[0], materials, grid.dt,
-                               mask=debye_spec[1])
+                               mask=debye_spec[1], high_wall=unpadded_high_walls(grid))
         return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(3.0))
@@ -378,7 +380,7 @@ def test_traced_lorentz_pole_compiles():
         materials, _, lorentz_spec, *_ = sim._assemble_materials(grid)
         assert lorentz_spec is not None
         coeffs, _ = init_lorentz(lorentz_spec[0], materials, grid.dt,
-                                 mask=lorentz_spec[1])
+                                 mask=lorentz_spec[1], high_wall=unpadded_high_walls(grid))
         return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(np.log((2 * np.pi * 3e9) ** 2)))
@@ -411,7 +413,7 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
         materials, t_debye_spec, _, _, _, _ = rasterize_geometry(
             t_sim._geometry, t_sim._resolve_material, t_coords)
         coeffs, _ = init_debye(t_debye_spec[0], materials, t_grid.dt,
-                               mask=t_debye_spec[1])
+                               mask=t_debye_spec[1], high_wall=unpadded_high_walls(grid))
         return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(3.0))

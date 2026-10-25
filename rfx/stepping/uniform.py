@@ -103,6 +103,8 @@ def make_uniform_step(
     dx = ctx.dx
     periodic = ctx.periodic
     grid = ctx.grid
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
     cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
@@ -151,7 +153,7 @@ def make_uniform_step(
                 frame.st = ctx.apply_upml_h(frame.st, ctx.upml_coeffs, periodic=periodic)
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
-                              stencil_order=ctx.stencil_order, bloch=ctx.bloch)
+                    high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch)
 
     def h_boundary(frame: UniformFrame):
         """Correct incident H, absorb outgoing H, and enforce magnetic walls."""
@@ -250,6 +252,7 @@ def make_uniform_step(
                     debye=(ctx.debye_coeffs, frame.carry["debye"]) if ctx.use_debye else None,
                     lorentz=(ctx.lorentz_coeffs, frame.carry["lorentz"]) if ctx.use_lorentz else None,
                     periodic=periodic,
+                    high_wall=high_wall,
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,

@@ -16,11 +16,11 @@ from rfx.core.yee import (
 )
 
 
-@partial(jax.jit, static_argnums=(4, 5, 6))
+@partial(jax.jit, static_argnames=("periodic", "stencil_order", "bloch", "high_wall"))
 def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
-             bloch: tuple | None = None) -> FDTDState:
+             bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -62,7 +62,7 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
     mu = (materials.components.mu_update if materials.components is not None
-          else component_h_materials(materials, periodic))
+          else component_h_materials(materials, periodic, high_wall=high_wall))
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
@@ -185,11 +185,11 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     )
 
 
-@partial(jax.jit, static_argnames=("periodic", "stencil_order", "bloch", "boundary"))
+@partial(jax.jit, static_argnames=("periodic", "stencil_order", "bloch", "boundary", "high_wall"))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
-             bloch: tuple | None = None, *, boundary=None) -> FDTDState:
+             bloch: tuple | None = None, *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -235,7 +235,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     # #1210: the coefficients are per COMPONENT, from the mean of eps_r and
     # sigma over the four cells incident to that component's edge.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
-        materials, dt, periodic)
+        materials, dt, periodic, high_wall=high_wall)
 
     curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch, boundary=boundary)
 
@@ -252,7 +252,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
 def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx_h: jnp.ndarray, inv_dy_h: jnp.ndarray, inv_dz_h: jnp.ndarray,
                 *, cell_sizes=None, periodic=(False, False, False),
-                ) -> FDTDState:
+                 high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """H update for non-uniform Yee grid.
 
     The H-curl differences two E nodes that straddle a single cell, so
@@ -280,7 +280,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                            for v in (inv_dx_h, inv_dy_h, inv_dz_h))
     mu = (materials.components.mu_update
           if materials.components is not None
-          else component_h_materials(materials, periodic, cell_sizes=cell_sizes))
+          else component_h_materials(materials, periodic, cell_sizes=cell_sizes, high_wall=high_wall))
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic, cell_sizes=cell_sizes)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
@@ -309,7 +309,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
 def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                *, boundary=None, cell_sizes=None) -> FDTDState:
+                *, boundary=None, cell_sizes=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """E update for non-uniform Yee grid.
 
     The E-curl differences two H cell-centres, whose separation is the
@@ -336,7 +336,7 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     # incident to the edge, with periodic flags from the NU boundary.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, boundary.periodic if boundary is not None else (False,) * 3,
-        **_nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes))
+        **_nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes), high_wall=high_wall)
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
@@ -398,12 +398,12 @@ def update_e_fast(
 
 
 @_require_nu_aniso_metrics
-@partial(jax.jit, static_argnames=("boundary",))
+@partial(jax.jit, static_argnames=("boundary", "high_wall",))
 def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
                       eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                       dt: float,
                       inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                      *, boundary=None, cell_sizes=None) -> FDTDState:
+                      *, boundary=None, cell_sizes=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """Non-uniform E update with per-component anisotropic permittivity.
 
     Same backward-difference structure as :func:`update_e_nu` (E-update
@@ -431,7 +431,7 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     # runs keep their bytes. Periodic axes use the boundary's seam average.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, boundary.periodic if boundary is not None else (False,) * 3,
-            **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))[1])
+            **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)), high_wall=high_wall)[1])
 
     # The same arithmetic as update_e's, so one spelling (and its #1357
     # eps_r-unit derivative) serves both.
@@ -458,11 +458,11 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-@partial(jax.jit, static_argnames=("periodic", "boundary"))
+@partial(jax.jit, static_argnames=("periodic", "boundary", "high_wall"))
 def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
                        inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
                        dt: float, dx: float,
-                       periodic: tuple = (False, False, False), *, boundary=None) -> FDTDState:
+                       periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """Electric field update with per-component **inverse** permittivity.
 
     Stage 2 production form: takes the diagonal of the inverse-eps
@@ -519,7 +519,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     # subpixel fixture) the mean of four equal floats is that float, so those
     # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
-        else component_e_materials(materials, periodic)[1])
+        else component_e_materials(materials, periodic, high_wall=high_wall)[1])
 
     # Per-component lossy update coefficients in inv-eps form
     # (:func:`_e_update_coeffs_inv_si`). #1357: those bits, the eps_r-unit
@@ -547,7 +547,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
-                   periodic: tuple = (False, False, False), *, boundary=None) -> FDTDState:
+                   periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """Electric field update with per-component anisotropic permittivity.
 
     Same as :func:`update_e` but uses separate permittivity arrays for
@@ -580,7 +580,7 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     # subpixel fixture) the mean of four equal floats is that float, so those
     # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
-        else component_e_materials(materials, periodic)[1])
+        else component_e_materials(materials, periodic, high_wall=high_wall)[1])
 
     if _realized.ACTIVE is not None:
         (eps_ex, eps_ey, eps_ez), (sigma_ex, sigma_ey, sigma_ez) = _realized.electric(

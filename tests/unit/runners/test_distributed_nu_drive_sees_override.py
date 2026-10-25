@@ -65,6 +65,8 @@ the E update); the mutations patch it there and fail if it is not reached.
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from contextlib import contextmanager, nullcontext
 import functools
 import io
@@ -228,7 +230,7 @@ def _stepper_cb(grid, eps, sigma):
                           jnp.ones(grid.shape, jnp.float32))
     from rfx.model.materials import electric_cell_sizes
     new = update_e_nu(state, mats, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
-                      cell_sizes=electric_cell_sizes(grid))
+                      cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
     curl = curl_h_nu(*h, grid.inv_dx, grid.inv_dy, grid.inv_dz)
     return {c: np.asarray(getattr(new, c), np.float64) / np.asarray(curl[a], np.float64)
             for a, c in enumerate(("ex", "ey", "ez"))}

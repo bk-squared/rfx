@@ -116,7 +116,7 @@ def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
 
 
 def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
-                           n_devices, nx_per, ghost, sharding, *, nx):
+                           n_devices, nx_per, ghost, sharding, *, nx, high_wall):
     """Place pole masks slab by slab, then build only the fixed ADE terms.
 
     E coefficients are deferred to the loop, where they read the same slab
@@ -134,14 +134,14 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
             masks)
         out.append(stage_slab_pole_coeffs(
             poles, masks, dt, kind, sharding.mesh, nx_per, nx,
-            (n_devices * (nx_per + 2 * ghost),) + materials.eps_r.shape[1:]))
+            (n_devices * (nx_per + 2 * ghost),) + materials.eps_r.shape[1:], high_wall=high_wall))
     return tuple(out)
 
 
 from rfx.model.electric_metrics import slab_cell_sizes, slab_metric_kwargs
 
 
-def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, grid=None):
+def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, high_wall, grid=None):
     """Fixed ADE terms and zero carry; E coefficient slots stay ``None``.
 
     The compiled setup contains only pole-mask means and their fixed ADE
@@ -151,7 +151,7 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, g
     def local(local_masks, *, rank):
         shape_local = (nx_per + 2,) + shape[1:]
         fractions = [None] * len(poles) if local_masks is None else [
-            slab_pole_fractions(m, nx_per, nx, rank=rank, cell_sizes=slab_cell_sizes(grid, rank)) for m in
+            slab_pole_fractions(m, nx_per, nx, rank=rank, high_wall=high_wall, cell_sizes=slab_cell_sizes(grid, rank)) for m in
             (local_masks if isinstance(local_masks, (tuple, list)) else [local_masks] * len(poles))]
         if len(fractions) != len(poles):
             raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(fractions)}")
@@ -823,7 +823,7 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
 
 def _update_h_local_nu(state, materials, dt,
                       inv_dx_slab, inv_dy_full, inv_dz_full,
-                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full, *, cell_sizes=None):
+                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full, *, high_wall, cell_sizes=None):
     """H update on a local slab using NU inverse spacings.
 
     Mirrors ``rfx/core/yee.py::update_h_nu`` but accepts pre-sliced
@@ -834,7 +834,7 @@ def _update_h_local_nu(state, materials, dt,
     if cell_sizes is None:
         cell_sizes = tuple(1 / jnp.where(v > 0, v, v[-2])
                            for v in (inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full))
-    mu = component_h_materials(materials, cell_sizes=cell_sizes)
+    mu = component_h_materials(materials, high_wall=high_wall, cell_sizes=cell_sizes)
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "yee.H", cell_sizes=cell_sizes)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
@@ -866,7 +866,7 @@ from rfx.model.electric_metrics import _slab_x_lo_view, _slab_model_rows
 from rfx.model.materials import slab_pole_fractions
 
 
-def slab_e_component_materials(materials, nx_per, nx, rank=None, *, cell_sizes=None):
+def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)`` of one x slab, by the single-device
     rule (#1303).
 
@@ -906,19 +906,24 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, cell_sizes=N
         raise ValueError("slab rank must be supplied as data")
     nx_local = materials.eps_r.shape[0]
 
-    def x_lo_replicated(arr):
-        return _slab_x_lo_view(arr, rank)
-
-    view = MaterialArrays(
-        eps_r=x_lo_replicated(materials.eps_r),
-        sigma=x_lo_replicated(materials.sigma),
-        mu_r=materials.mu_r,
-        sigma_film=map_lumped(materials.sigma_film, x_lo_replicated),
-        sigma_lumped=map_lumped(getattr(materials, "sigma_lumped", None),
-                                x_lo_replicated),
-        eps_r_lumped=map_lumped(getattr(materials, "eps_r_lumped", None),
-                                x_lo_replicated))
-    eps_edge, sig_edge = component_e_materials(view, (False, False, False), **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
+    from rfx.model.electric_metrics import slab_wall_view
+    from rfx.core.yee import permittivity_without_lumped, lumped_total, lumped_components, add_lumped_eps, add_film
+    def read(arr):
+        return slab_wall_view(arr, nx_per, nx, rank, high_wall=high_wall)
+    sigma = materials.sigma
+    stamp = lumped_total(materials.sigma_lumped)
+    if stamp is not None:
+        sigma = sigma - stamp
+    view = MaterialArrays(eps_r=read(permittivity_without_lumped(materials)),
+                          sigma=read(sigma), mu_r=materials.mu_r)
+    if cell_sizes is not None:
+        cell_sizes = (read(cell_sizes[0]), *cell_sizes[1:])
+    eps_edge, sig_edge = component_e_materials(view, (False,) * 3,
+        high_wall=(False, *high_wall[1:]), cell_sizes=cell_sizes)
+    eps_edge = add_lumped_eps(eps_edge, materials.eps_r_lumped)
+    sig_edge = tuple(s if p is None else s + p for s, p in
+                     zip(sig_edge, lumped_components(materials.sigma_lumped)))
+    sig_edge = add_film(sig_edge, materials)
     eps_cell, sig_cell = cell_owned_component_materials(materials)
     model_cell = _slab_model_rows(nx_local, nx_per, nx, rank)
 
@@ -946,15 +951,15 @@ def component_e_coeffs(e_materials, dt):
     return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
 
 
-def slab_e_coeffs(materials, nx_per, nx, dt, rank=None):
+def slab_e_coeffs(materials, nx_per, nx, dt, rank=None, *, high_wall: tuple[bool, bool, bool]):
     """The E coefficients of one x slab (#1303): :func:`component_e_coeffs`
     of :func:`slab_e_component_materials`. With :func:`slab_e_materials_shmap`
     the one path the multi-device E updates take to their coefficients."""
     return component_e_coeffs(
-        slab_e_component_materials(materials, nx_per, nx, rank), dt)
+        slab_e_component_materials(materials, nx_per, nx, rank, high_wall=high_wall), dt)
 
 
-def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
+def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall: tuple[bool, bool, bool], grid=None):
     """:func:`slab_e_component_materials` of every slab, as x-sharded
     arrays, for a runner that averages once, before its time loop, and
     forms the coefficients (:func:`component_e_coeffs`) inside it.
@@ -977,7 +982,7 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
              check_rep=False)
     def _mean(local, *, rank):
         return slab_e_component_materials(local, nx_per, nx, rank=rank,
-                                          **slab_metric_kwargs(grid, rank))
+            high_wall=high_wall, cell_sizes=slab_cell_sizes(grid, rank))
 
     return jax.checkpoint(_mean)(ranks, MaterialArrays(
         eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,
@@ -1050,7 +1055,7 @@ def _update_e_local_nu(state, e_coeffs,
 
 def update_h_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks, cell_sizes=None):
+                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks, nx_per, nx, high_wall, cell_sizes=None):
     """H update on the NU distributed path, via ``shard_map``.
 
     Shared by ``distributed_nu.run_nonuniform_distributed_pec`` and by the
@@ -1098,10 +1103,12 @@ def update_h_nu_shmap(st, mat, mesh, dt,
            invdx, invdy, invdz, invdxh, invdyh, invdzh, widths, *, rank):
         _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
         _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
-                             mu_r=magnetic_low_ghost(mu_r, rank))
+                             mu_r=magnetic_low_ghost(mu_r, rank, nx_per=nx_per, nx=nx, high_wall=high_wall))
+        from rfx.model.electric_metrics import slab_wall_view
+        widths = (slab_wall_view(widths[0], nx_per, nx, rank, high_wall=high_wall), *widths[1:])
         new_st = _update_h_local_nu(
             _st, _mat, dt, invdx, invdy, invdz, invdxh, invdyh, invdzh,
-            cell_sizes=widths)
+            cell_sizes=widths, high_wall=(False, *high_wall[1:]))
         return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
     hx, hy, hz, step = _h(
@@ -1116,7 +1123,7 @@ def update_h_nu_shmap(st, mat, mesh, dt,
 
 def update_e_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
-                      e_materials=None, *, ranks, boundary=None, ghost=1, pad_x=0):
+                      e_materials=None, *, ranks, high_wall, boundary=None, ghost=1, pad_x=0):
     """E update on the NU distributed path, via ``shard_map``.
 
     The E sibling of :func:`update_h_nu_shmap`, shared by the same two
@@ -1160,7 +1167,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
                                   sigma_film=sigma_film,
                                   sigma_lumped=sigma_lumped,
                                   eps_r_lumped=eps_r_lumped)
-            coeffs = slab_e_coeffs(_mat, nx_per, nx, dt, rank=rank)
+            coeffs = slab_e_coeffs(_mat, nx_per, nx, dt, rank=rank, high_wall=high_wall)
         else:
             coeffs = component_e_coeffs(means, dt)
         new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz,
@@ -1199,14 +1206,14 @@ def _split_state(state, n_devices, ghost=1):
                      step=jnp.broadcast_to(state.step, (n_devices,)))
 
 
-def magnetic_low_ghost(mu_r, rank, ghost=1):
+def magnetic_low_ghost(mu_r, rank, ghost=1, *, nx_per, nx, high_wall: tuple[bool, bool, bool]):
     """Replicate the physical low-x cell; preserve inter-rank material ghosts.
 
     Legacy staging pads outside with vacuum. That pad is not a neighbour
     cell of the new face mean. Only rank zero's exterior ghost is replaced.
     """
-    return mu_r.at[:ghost].set(jnp.where(rank == 0, mu_r[ghost:ghost + 1],
-                                       mu_r[:ghost]))
+    from rfx.model.electric_metrics import slab_wall_view
+    return slab_wall_view(mu_r, nx_per, nx, rank, high_wall=high_wall, ghost=ghost)
 
 
 def _split_materials(materials, n_devices, ghost=1):
@@ -1245,14 +1252,14 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
 # Local update functions (operate on per-device slab with ghosts)
 # ---------------------------------------------------------------------------
 
-def _update_h_local(state, materials, dt, dx):
+def _update_h_local(state, materials, dt, dx, *, high_wall: tuple[bool, bool, bool]):
     """H update on a local slab (including ghost cells).
 
     Identical to yee.update_h but without jit decorator and always
     non-periodic (ghost cells handle inter-device coupling).
     """
     ex, ey, ez = state.ex, state.ey, state.ez
-    mu = component_h_materials(materials)
+    mu = component_h_materials(materials, high_wall=high_wall)
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "yee.H")
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
@@ -1381,7 +1388,7 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundar
 
 
 def _update_e_local_with_dispersion(state, materials, dt, dx,
-                                     debye=None, lorentz=None, *, slab=None, e_materials=None, rank=None, boundary=None, frame=None, owned=None):
+                                     debye=None, lorentz=None, *, high_wall, slab=None, e_materials=None, rank=None, boundary=None, frame=None, owned=None):
     """E update on a local slab with optional Debye/Lorentz dispersion.
 
     Every model uses the per-component edge means of
@@ -1394,7 +1401,7 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     """
     if debye is None and lorentz is None:
         return _update_e_local(
-            state, slab_e_coeffs(materials, *slab, dt, rank=rank), dx,
+            state, slab_e_coeffs(materials, *slab, dt, rank=rank, high_wall=high_wall), dx,
             boundary=boundary, frame=frame, owned=owned), None, None
 
     if e_materials is not None:
@@ -1542,14 +1549,14 @@ def init_cpml_slabs(grid, nx_local, n_devices, *, mesh=None, **profile_options):
     return params, CPMLState(**state)
 
 
-def cpml_h_materials(mu_r, rank, ghost):
+def cpml_h_materials(mu_r, rank, ghost, *, nx_per, nx, high_wall: tuple[bool, bool, bool]):
     """Reuse the uniform slab's component means, including its low ghost."""
     from types import SimpleNamespace
     if mu_r is None:
-        means = component_h_materials(MaterialArrays(None, None, 1.0))
+        means = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=high_wall)
     else:
-        mu_r = magnetic_low_ghost(mu_r, rank, ghost)
-        means = component_h_materials(MaterialArrays(None, None, mu_r))
+        mu_r = magnetic_low_ghost(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall)
+        means = component_h_materials(MaterialArrays(None, None, mu_r), high_wall=(False, *high_wall[1:]))
     return SimpleNamespace(mu_r=mu_r, components=SimpleNamespace(mu_update=means))
 
 

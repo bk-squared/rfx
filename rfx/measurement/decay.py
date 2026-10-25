@@ -640,6 +640,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     import warnings
 
     from rfx.core.yee import component_h_materials
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
 
     e_axes, h_axes = field_axes(grid)
     (ix0, ix1), (iy0, iy1), (iz0, iz1) = _interior(grid)
@@ -647,7 +648,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     eps_r = _wide(materials.eps_r[sl])
     state = state._replace(**{n: _wide(getattr(state, n)) for n in ("ex", "ey", "ez", "hx", "hy", "hz")})
     mu_h = component_h_materials(
-        materials, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
+        materials, high_wall=unpadded_high_walls(grid), cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
         if hasattr(grid, "dx_arr") else None)
     mu_h = tuple(_wide(m[sl]) if jnp.ndim(m) else m for m in mu_h)
     e2 = sum(getattr(state, "e" + "xyz"[a])[sl] ** 2 for a in e_axes)

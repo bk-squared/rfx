@@ -5,6 +5,8 @@ Measure in a fresh process so arrays retained by unrelated tests cannot satisfy
 root conftest supplies two virtual CPU devices.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from functools import partial
 import inspect
 import json
@@ -155,7 +157,7 @@ def _measure(case, multi_process):
                          in_specs=(P("x"), P("x")), out_specs=P("x"), check_vma=False)
                 def finish(c, m):
                     rank = jax.lax.axis_index("x")
-                    means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0], rank)
+                    means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0], rank, high_wall=unpadded_high_walls(grid))
                     return common.slab_dispersion_coeffs(c, means, grid.dt, nx_local - 2, grid.shape[0], rank)
 
                 coeffs = jax.jit(finish)(partial_coeffs, bound["materials_arg"])
@@ -456,7 +458,7 @@ def _direct_dispersion_slabs():
         debye = ([DebyePole(1.0, 1e-11), DebyePole(0.5, 3e-11)][:poles], padded_masks)
         lorentz = ([lorentz_pole(1.0, 2 * np.pi * 3e9, 1e9),
                     lorentz_pole(0.5, 2 * np.pi * 5e9, 2e9)][:poles], padded_masks)
-        actual = common.stage_dispersion_slabs(padded, dt, debye, lorentz, n, 4, 1, shd, nx=nx)
+        actual = common.stage_dispersion_slabs(padded, dt, debye, lorentz, n, 4, 1, shd, nx=nx, high_wall=(False, False, False))
         placed = MaterialArrays(*(shard_x_slabs(a, n, 4, 1, v, shd)
                                   for a, v in zip(padded[:3], (1., 0., 1.))))
         for spec, init, split_c, split_s, got in zip(
@@ -507,7 +509,7 @@ def _addressable_dispersion_slabs():
         common.stage_dispersion_slabs(
             materials, np.float64(1e-12), ([DebyePole(1., 1e-11)], [MaskRecorder()]),
             ([lorentz_pole(1., 2 * np.pi * 3e9, 1e9)], [MaskRecorder()]),
-            2, 4, 1, local_only, nx=8)
+            2, 4, 1, local_only, nx=8, high_wall=(False, False, False))
     assert reads == [slice(3, 8), slice(3, 8)]
     assert constructions == ["debye", "lorentz"]
     print("ADDRESSABLE_DISPERSION_OK")

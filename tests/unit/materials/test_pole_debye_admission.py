@@ -1,4 +1,6 @@
 """The admission matrix follows the actual combined ADE kernel (#1934)."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -21,8 +23,8 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
     periodic = (True,) * 3
     dp = [DebyePole(de, tau * dt)]
     lp = [drude_pole(wp / dt, 0.)] if wp else []
-    db = init_debye(dp, materials, dt, periodic=periodic, field_dtype=jnp.complex64)
-    lr = init_lorentz(lp, materials, dt, periodic=periodic, field_dtype=jnp.complex64) if lp else None
+    db = init_debye(dp, materials, dt, periodic=periodic, field_dtype=jnp.complex64, high_wall=(False, False, False))
+    lr = init_lorentz(lp, materials, dt, periodic=periodic, field_dtype=jnp.complex64, high_wall=(False, False, False)) if lp else None
     mode = jnp.asarray((-1.) ** np.arange(8))[:, None, None]
     empty = init_state(shape, field_dtype=jnp.complex64)
     impedance = C0 * 1.25663706212e-6
@@ -45,10 +47,10 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
     @jax.jit
     def step(carry, unused):
         state, dbs, lrs = carry
-        state = update_h(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=(False, False, False))
         state, dbs, lrs = _update_e_with_optional_dispersion(
             state, materials, dt, dx, debye=(db[0], dbs),
-            lorentz=None if lr is None else (lr[0], lrs), periodic=periodic)
+            lorentz=None if lr is None else (lr[0], lrs), periodic=periodic, high_wall=(False, False, False))
         # Full dynamic state norm; P is in eps0 units. Hz is in impedance units.
         values = [state.ey, state.hz * impedance, dbs.py / EPS_0]
         if lrs is not None:
@@ -100,7 +102,7 @@ def test_unstable_combined_medium_reaches_each_judge(route):
     with pytest.raises(ValueError, match="unstable at this model's time step"):
         if route == "compile_budget":
             grid = sim._build_realized_grid()
-            sim._init_dispersion(init_materials(grid.shape), grid.dt, (dp, None), (lp, None), budget=courant_budget(grid))
+            sim._init_dispersion(init_materials(grid.shape), grid.dt, (dp, None), (lp, None), budget=courant_budget(grid), high_wall=unpadded_high_walls(grid))
         elif route == "graded_override":
             grid = sim._build_realized_grid()
             sim.forward(n_steps=5, eps_override=jnp.ones(grid.shape), sigma_override=jnp.zeros(grid.shape),

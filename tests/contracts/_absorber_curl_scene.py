@@ -1,4 +1,6 @@
 """The asymmetric one-cell slab and off-plane pulse/probe for tracker 1589."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax
 import numpy as np
 from rfx import Simulation, Box
@@ -89,8 +91,8 @@ def probe_loop(sim, n_steps, face, scene='a'):
     # Realize the same component operands the public run hands to the step.
     from rfx.model.materials import with_components
     mats = with_components(mats, grid, periodic=(False, False, False), debye_spec=ds, lorentz_spec=ls)
-    db = init_debye(*ds[:1], mats, grid.dt, mask=ds[1]) if ds else None
-    lr = init_lorentz(*ls[:1], mats, grid.dt, mask=ls[1]) if ls else None
+    db = init_debye(*ds[:1], mats, grid.dt, mask=ds[1], high_wall=unpadded_high_walls(grid)) if ds else None
+    lr = init_lorentz(*ls[:1], mats, grid.dt, mask=ls[1], high_wall=unpadded_high_walls(grid)) if ls else None
     params, psi = init_cpml(grid)
     pulse = GaussianPulse(f0=10e9, bandwidth=0.5)
     _, source, probe, _ = geometry(face, scene)

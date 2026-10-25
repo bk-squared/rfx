@@ -36,7 +36,7 @@ from rfx.subgridding.jit_runner import (
 )
 
 # This research topology accepts vacuum fields only, with no material input.
-_VACUUM_MU = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+_VACUUM_MU = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
 C0 = 1.0 / np.sqrt(EPS_0 * _VACUUM_MU)
 Z0 = np.sqrt(_VACUUM_MU / EPS_0)
 
@@ -306,8 +306,8 @@ def _yee_step(
         hx=hx, hy=hy, hz=hz,
         step=jnp.array(0, dtype=jnp.int32),
     )
-    fdtd = update_h(fdtd, mats, dt, dx)
-    fdtd = update_e(fdtd, mats, dt, dx)
+    fdtd = update_h(fdtd, mats, dt, dx, high_wall=(False, False, False))
+    fdtd = update_e(fdtd, mats, dt, dx, high_wall=(False, False, False))
     if apply_outer_pec:
         fdtd = apply_pec(fdtd)
     return fdtd.ex, fdtd.ey, fdtd.ez, fdtd.hx, fdtd.hy, fdtd.hz
@@ -330,7 +330,7 @@ def _yee_h_step(
         hx=hx, hy=hy, hz=hz,
         step=jnp.array(0, dtype=jnp.int32),
     )
-    fdtd = update_h(fdtd, mats, dt, dx)
+    fdtd = update_h(fdtd, mats, dt, dx, high_wall=(False, False, False))
     return fdtd.hx, fdtd.hy, fdtd.hz
 
 
@@ -353,7 +353,7 @@ def _yee_e_step(
         hx=hx, hy=hy, hz=hz,
         step=jnp.array(0, dtype=jnp.int32),
     )
-    fdtd = update_e(fdtd, mats, dt, dx)
+    fdtd = update_e(fdtd, mats, dt, dx, high_wall=(False, False, False))
     if apply_outer_pec:
         fdtd = apply_pec(fdtd)
     return fdtd.ex, fdtd.ey, fdtd.ez

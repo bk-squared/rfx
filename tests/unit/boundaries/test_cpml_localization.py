@@ -1,4 +1,6 @@
 """Eager arithmetic identity and compiled pulse agreement with frozen CPML."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import importlib.util
 import os
 from pathlib import Path
@@ -108,16 +110,16 @@ def runner(name, implementation, dz=None, eps=None, steps=200, history=False,
     def step(carry, i):
         st, ps = carry
         if nu:
-            st = update_h_nu(st, materials, grid.dt, grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h)
+            st = update_h_nu(st, materials, grid.dt, grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
         else:
-            st = update_h(st, materials, grid.dt, grid.dx, periodic=periodic)
+            st = update_h(st, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         st, ps = implementation.apply_cpml_h(st, params, ps, grid, axes, materials)
         st = apply_pmc_faces(st, pmc)
         if nu:
             st = update_e_nu(st, materials, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
-                             cell_sizes=electric_cell_sizes(grid))
+                             cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
         else:
-            st = update_e(st, materials, grid.dt, grid.dx, periodic=periodic)
+            st = update_e(st, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         st, ps = implementation.apply_cpml_e(st, params, ps, grid, axes, materials)
         st = apply_pec(st, axes=axes)
         if zero_mean:

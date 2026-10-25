@@ -119,8 +119,7 @@ def assemble_cells(
         When False, skip the CPML pad extension entirely and return the
         arrays exactly as the geometry rasterized them — vacuum in the
         padding, and vacuum at any boundary node the rasterizer dropped.
-        This also skips the unpadded high-wall repair (#1966), so the
-        batched writer can repair each swept value at the same stage.
+        Unpadded high walls are handled by the component consumers.
 
         Same caller, same reason, one issue later. #637/#643 let the
         batched sweep re-extend already-extended arrays, on the argument
@@ -340,9 +339,8 @@ def assemble_cells(
     # pole occupancy gates hi-face static promotion (#808).
     if include_cpml_pad_extension:
         # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Periodic
-        # faces stay untouched. Unpadded high walls receive only the
-        # #655 boundary-node repair; absorbing faces additionally copy
-        # the pad. The replicate depth matches the actual
+        # faces and unpadded high walls stay untouched. Absorbing faces
+        # continue the material into the pad. The depth matches the actual
         # allocation on that face (``pad_*_lo`` or ``pad_*_hi``).
         plx, phx = grid.pad_x_lo, grid.pad_x_hi
         ply, phy = grid.pad_y_lo, grid.pad_y_hi
@@ -355,7 +353,6 @@ def assemble_cells(
         eps_r, sigma, mu_r = extend_cpml_pad_materials(
             eps_r, sigma, mu_r, plx, phx, ply, phy, plz, phz,
             dispersion_pole_mask=_pole_mask_any,
-            high_wall=unpadded_high_walls(grid),
         )
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
@@ -601,6 +598,8 @@ class EdgePoles(NamedTuple):
             widths = None if widths is None else tuple(
                 None if d is None else d[w] for d, w in zip(widths, window))
             terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape,
+                                   high_wall=tuple(wall and w.stop == n for wall, w, n in
+                                       zip(unpadded_high_walls(self.grid), window, self.grid.shape)),
                                    cell_sizes=widths).coefficients
             out.append(tuple(tuple(v[local] for v in t) if isinstance(t, tuple) else t[local]
                              for t in terms))
@@ -622,7 +621,7 @@ def _ade_cb(eps, sigma, dt, axis, debye_terms, lorentz_terms):
     return (dc if dc is not None else lc).cb[axis]
 
 
-def e_update_material_at(materials, cell, component, periodic=(False, False, False), *, grid=None, cell_sizes=None):
+def e_update_material_at(materials, cell, component, periodic=(False, False, False), *, grid=None, cell_sizes=None, high_wall=None):
     """Relative epsilon and conductivity of the realized E update at one edge.
 
     Stamps are already included in the stored operands. Legacy callers without
@@ -631,9 +630,15 @@ def e_update_material_at(materials, cell, component, periodic=(False, False, Fal
     c = getattr(materials, "components", None)
     if c is None or isinstance(c, EdgePoles):
         from rfx.core.yee import cell_component_e_materials
+        grid = c.grid if isinstance(c, EdgePoles) else grid
+        if high_wall is None:
+            if grid is None:
+                raise TypeError("raw edge material lookup requires grid or high_wall")
+            high_wall = unpadded_high_walls(grid)
         return cell_component_e_materials(materials, cell, component, periodic,
+                                         high_wall=high_wall,
                                          cell_sizes=(cell_sizes if cell_sizes is not None else
-                                             electric_cell_sizes(c.grid if isinstance(c, EdgePoles) else grid)))
+                                             electric_cell_sizes(grid)))
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     cell = tuple(cell)
     return c.eps_update[axis][cell], c.sigma_update[axis][cell]
@@ -686,6 +691,7 @@ def edge_coverage_weights(grid, covered, periodic):
     """Share of each E edge's four cells that ``covered`` marks, by the edge mean."""
     from rfx.core.yee import edge_averaged_materials
     return edge_averaged_materials(jnp.ones_like(covered), covered, periodic,
+                                   high_wall=unpadded_high_walls(grid),
                                    cell_sizes=electric_cell_sizes(grid))[1]
 
 
@@ -712,20 +718,19 @@ def electric_cell_sizes(grid):
 
 
 def electric_grid_kwargs(grid):
-    """Equal-cell readers keep their original call signature and arithmetic."""
-    widths = electric_cell_sizes(grid)
-    return {} if widths is None or all(d is None for d in widths) else dict(grid=grid)
+    """Carry boundary ownership as well as metrics to source readers."""
+    return dict(grid=grid)
 
 
-def pole_component_weights(mask, periodic=(False, False, False), *, cell_sizes=None):
+def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Dual-volume pole occupancy, using the electric material rule."""
     if mask is None:
         return None
     return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic,
-                                cell_sizes=cell_sizes)
+                                high_wall=high_wall, cell_sizes=cell_sizes)
 
 
-def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
+def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None):
     if spec is None:
         return None
     poles, masks = spec
@@ -734,7 +739,8 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
             raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(masks)}")
     else:
         masks = [masks] * len(poles)
-    weights = tuple(pole_component_weights(m, periodic, cell_sizes=cell_sizes) for m in masks)
+    weights = tuple(pole_component_weights(_view_wall_cells(m, grid, view, high_wall), periodic,
+                    high_wall=high_wall, cell_sizes=cell_sizes) for m in masks)
     if grid is None:
         return ComponentDispersion(tuple(poles), None, weights, None)
     if kind == "Debye":
@@ -744,7 +750,17 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
     return ComponentDispersion(tuple(poles), build(poles, grid.dt, shape, weights), None, grid.dt)
 
 
-def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid"):
+def _view_wall_cells(array, grid, view, high_wall):
+    """Uniform slab ghosts can extend past the global wall's local row."""
+    if array is None or view is None or not hasattr(view, "indices") or jnp.ndim(array) == 0:
+        return array
+    rows = jnp.arange(array.shape[0])
+    inside = jnp.clip(grid.nx - 2 - view.indices[0], 0, array.shape[0] - 1)
+    rows = jnp.where(high_wall[0] & (view.indices >= grid.nx - 1), inside, rows)
+    return jnp.take(array, rows, axis=0)
+
+
+def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None):
     """Realize final cells once, using the existing E/pole and H rules.
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
@@ -752,6 +768,14 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
     callers. E materials and pole fractions use the same primal dual-volume
     weights; constant transverse axes retain the original arithmetic.
     """
+    if high_wall is None:
+        if grid is None:
+            raise TypeError("raw material realization requires grid or high_wall")
+        high_wall = unpadded_high_walls(grid)
+    if view is not None:
+        last = (jnp.any(view.indices[view.halo_lo:-view.halo_hi] == grid.nx - 1)
+                if hasattr(view, "indices") else view.last)
+        high_wall = (high_wall[0] & last, *high_wall[1:])
     pole_sets_judged = view is not None and isinstance(cells, ComponentCells) and cells.lorentz_spec is not None
     if isinstance(cells, ComponentCells):
         materials, debye_spec, lorentz_spec = cells
@@ -787,9 +811,11 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
     if view is not None and electric_widths is not None:
         electric_widths = (None if electric_widths[0] is None else
                            view.rows(electric_widths[0]),) + tuple(electric_widths[1:])
+        electric_widths = (_view_wall_cells(electric_widths[0], grid, view, high_wall), *electric_widths[1:])
     eps, sigma = edge_averaged_materials(
-        permittivity_without_lumped(materials), sigma_volume, periodic,
-        cell_sizes=electric_widths)
+        _view_wall_cells(permittivity_without_lumped(materials), grid, view, high_wall),
+        _view_wall_cells(sigma_volume, grid, view, high_wall), periodic,
+        high_wall=high_wall, cell_sizes=electric_widths)
     widths = ((grid.dx_arr, grid.dy_arr, grid.dz)
               if hasattr(grid, "dx_arr") else None)
     if view is not None and widths is not None:
@@ -797,8 +823,10 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         if x.shape[0] == grid.shape[0] - 1:
             x = jnp.concatenate((x, x[-1:]))
         widths = (view.rows(x),) + tuple(widths[1:])
-    mu = component_h_materials(materials._replace(mu_r_wire=None),
-                               periodic, cell_sizes=widths)
+        widths = (_view_wall_cells(widths[0], grid, view, high_wall), *widths[1:])
+    mu = component_h_materials(materials._replace(mu_r_wire=None,
+                               mu_r=_view_wall_cells(materials.mu_r, grid, view, high_wall)),
+                               periodic, high_wall=high_wall, cell_sizes=widths)
     mu_wire = lumped_components(materials.mu_r_wire)
     eps_update = add_lumped_eps(eps, materials.eps_r_lumped)
     sigma_update = tuple(s if p is None else s + p for s, p in zip(sigma, sigma_lumped))
@@ -809,15 +837,15 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
         _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
-                       cell_sizes=electric_widths),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
-                       cell_sizes=electric_widths),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
         materials, tuple(periodic), _component_grid_key(grid, view),
         pole_sets_judged=pole_sets_judged)
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None):
+                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
@@ -831,6 +859,7 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
     else:
         components = realize_components(
             ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
+            high_wall=high_wall,
             **({} if view is None else dict(view=view)),
             **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
         materials = materials._replace(components=components)
@@ -902,7 +931,7 @@ def h_components(materials, grid, *, periodic):
     if components is not None:
         return components.mu_update
     widths = (grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None
-    return component_h_materials(materials, periodic, cell_sizes=widths)
+    return component_h_materials(materials, periodic, high_wall=unpadded_high_walls(grid), cell_sizes=widths)
 
 
 def validate_dispersion(realized, poles, dt):
@@ -980,44 +1009,13 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     win_mats = apply_material_overrides(
         materials, eps_override=eps_r_box, sigma_override=sigma_box,
         window=win, box_local=box_local)
-    # A cropped window repairs only a GLOBAL high wall, after its traced
-    # blend. Lumped records remain edge-owned and must not be promoted.
+    # A cropped window reaches a wall only at the global terminal sample.
     walls = tuple(wall and w.stop == n for wall, w, n in
                   zip(unpadded_high_walls(grid), win, shape))
-    if any(walls):
-        eps = permittivity_without_lumped(win_mats)
-        stamp = lumped_total(win_mats.sigma_lumped)
-        sig = win_mats.sigma if stamp is None else win_mats.sigma - stamp
-        # Use exactly the cell slice written by apply_material_overrides.
-        # A geometry-seeded boundary node may already be non-vacuum, and
-        # an exactly-vacuum design still owns its derivative at the wall.
-        written = jnp.zeros(eps.shape, dtype=bool).at[box_local].set(True)
-        repaired = jnp.zeros_like(written)
-        fixed_e, fixed_s = eps, sig
-        for axis, wall in enumerate(walls):
-            if not wall or eps.shape[axis] < 2:
-                continue
-            outer, source = [slice(None)] * 3, [slice(None)] * 3
-            outer[axis], source[axis] = -1, -2
-            outer, source = tuple(outer), tuple(source)
-            use_inner = written[source]
-            fixed_e = fixed_e.at[outer].set(jnp.where(
-                use_inner, fixed_e[source], fixed_e[outer]))
-            fixed_s = fixed_s.at[outer].set(jnp.where(
-                use_inner, fixed_s[source], fixed_s[outer]))
-            repaired = repaired.at[outer].set(repaired[outer] | use_inner)
-            # A node repaired on this axis is design-owned for the next one,
-            # as the sequential static repair does (two high walls meeting).
-            written = written.at[outer].set(written[outer] | use_inner)
-        win_mats = win_mats._replace(
-            eps_r=jnp.where(repaired, fixed_e + (win_mats.eps_r - eps),
-                            win_mats.eps_r),
-            sigma=jnp.where(repaired, fixed_s + (win_mats.sigma - sig),
-                            win_mats.sigma))
     widths = electric_cell_sizes(grid)
     widths = None if widths is None else tuple(
         None if d is None else d[w] for d, w in zip(widths, win))
-    eps_c, sig_c = component_e_materials(win_mats, (False, False, False), cell_sizes=widths)
+    eps_c, sig_c = component_e_materials(win_mats, (False, False, False), high_wall=walls, cell_sizes=widths)
 
     if per_edge:
         def _put(edge_bg, edge_box):
@@ -1042,7 +1040,7 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
                 getattr(materials, "sigma_lumped", None),
                 lambda a: jnp.asarray(a)[win]))
         bg = [e_update_coeffs(e, s_, dt) for e, s_ in
-              zip(*component_e_materials(bg_mats, (False, False, False), cell_sizes=widths))]
+              zip(*component_e_materials(bg_mats, (False, False, False), high_wall=walls, cell_sizes=widths))]
         masks = held_edge_masks(held, write_bounds)
         ca = tuple(a if m is None else jnp.where(m, b[0][inner], a)
                    for a, b, m in zip(ca, bg, masks))
@@ -1051,20 +1049,24 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     return write_bounds, ca, cb
 
 
-def slab_pole_fractions(mask, nx_per, nx, rank=None, *, cell_sizes=None):
+def slab_pole_fractions(mask, nx_per, nx, rank=None, *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Pole-mask means with slab_e_component_materials' halo/face convention."""
-    from rfx.runners._distributed_common import _slab_x_lo_view, _slab_model_rows
+    from rfx.model.electric_metrics import slab_wall_view, _slab_model_rows
     if mask is None:
         return None
     if rank is None:
         raise ValueError("slab rank must be supplied as data")
     cell = jnp.asarray(mask, dtype=bool).astype(jnp.float32)
-    edge = edge_mean_components(_slab_x_lo_view(cell, rank), cell_sizes=cell_sizes)
+    def read(a):
+        return slab_wall_view(a, nx_per, nx, rank, high_wall=high_wall)
+    if cell_sizes is not None:
+        cell_sizes = (read(cell_sizes[0]), *cell_sizes[1:])
+    edge = edge_mean_components(read(cell), high_wall=(False, *high_wall[1:]), cell_sizes=cell_sizes)
     real = _slab_model_rows(cell.shape[0], nx_per, nx, rank)
     return tuple(jnp.where(real, e, cell) for e in edge)
 
 
-def geometric_interface_components(eps, live, fallback, widths):
+def geometric_interface_components(eps, live, fallback, widths, *, high_wall: tuple[bool, bool, bool]):
     """Geometric cell-centre epsilon with PEC cells excluded by its opt-in rule.
 
     Both its numerator and live volume take the same dual-volume edge rule.
@@ -1072,8 +1074,8 @@ def geometric_interface_components(eps, live, fallback, widths):
     caller casts its final tensor to the existing material dtype.
     """
     import numpy as np
-    numerator = edge_mean_components(eps * live, cell_sizes=widths, array_module=np)
-    denominator = edge_mean_components(live, cell_sizes=widths, array_module=np)
+    numerator = edge_mean_components(eps * live, high_wall=high_wall, cell_sizes=widths, array_module=np)
+    denominator = edge_mean_components(live, high_wall=high_wall, cell_sizes=widths, array_module=np)
     out = []
     for num, den in zip(numerator, denominator):
         value = fallback.copy()

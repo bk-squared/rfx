@@ -572,7 +572,9 @@ def run_uniform(
         sources.append(_make_src(grid, tuple(center), comp, wf, sizing_n))
 
     from rfx.model.materials import with_components
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     materials = with_components(materials, grid,
+        high_wall=unpadded_high_walls(grid),
         periodic=_simulation.resolve_periodic(grid, periodic),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
     from rfx.model.source_coefficients import resolve_run_sources
@@ -590,6 +592,7 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
+        grid=grid,
         field_dtype=field_dtype if field_dtype is not None else jnp.float32,
         # The run's flags after the TFSF override above (#1260: the edge
         # mean wraps on a periodic axis, as the E update's does).

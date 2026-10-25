@@ -46,7 +46,7 @@ def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=No
         raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
 
 
-def assemble_interface_eps_nu(sim, grid, materials):
+def assemble_interface_eps_nu(sim, grid, materials, *, high_wall: tuple[bool, bool, bool]):
     """Cell-centre eps averaged over the four cells sharing each E edge.
 
     Tangential weights are dual-face areas, with PEC cells excluded. Along
@@ -83,7 +83,10 @@ def assemble_interface_eps_nu(sim, grid, materials):
     if any(not grid.is_constant(a) for a in range(3)):
         from rfx.model.materials import geometric_interface_components
         return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
-                     geometric_interface_components(eps, live, volume_eps, widths))
+                     geometric_interface_components(eps, live, volume_eps, widths, high_wall=high_wall))
+    from rfx.core.yee import _material_wall_view
+    eps = _material_wall_view(eps, high_wall, array_module=np)
+    live = _material_wall_view(live, high_wall, array_module=np)
     components = []
     for c in range(3):
         num, den = eps * live, live
@@ -93,6 +96,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
             shape = [1, 1, 1]
             shape[a] = grid.shape[a]
             d = np.asarray(widths[a]).reshape(shape)
+            d = _material_wall_view(d, high_wall, array_module=np)
             num, den = num * d, den * d
             lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
             num = num + np.take(num, lower, axis=a)
@@ -838,7 +842,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     )
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":
-        aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
+        from rfx.geometry.rasterize_grid import unpadded_high_walls
+        aniso_eps = assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
 
     # Fold RLC R/C into materials before other port/source setup
     # (mirrors the uniform path). #1256: into the drive's copy too -- an

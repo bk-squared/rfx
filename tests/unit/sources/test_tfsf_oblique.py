@@ -78,7 +78,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
 
         # H update
         sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic,
-                             bloch=bloch)
+                             bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_h(sim_state, cfg, state, dx, dt)
 
         # Advance aux grid H
@@ -89,7 +89,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
 
         # E update
         sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic,
-                             bloch=bloch)
+                             bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_e(sim_state, cfg, state, dx, dt)
 
         # Advance aux grid E + source

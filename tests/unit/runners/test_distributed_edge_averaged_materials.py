@@ -306,7 +306,7 @@ def _slab_view_mismatches(helper, n_dev, shape=(13, 5, 6)):
     """Cells where the slab view differs from the single-device rule, and
     non-model rows that no longer hold their own cell's value."""
     mats = _random_materials(shape)
-    want = component_e_materials(mats)
+    want = component_e_materials(mats, high_wall=(False, False, False))
     slabs, nx_per = _staged(mats, n_dev)
     bad = {"model": 0, "other": 0}
     for rank, slab in enumerate(slabs):
@@ -340,7 +340,7 @@ def test_the_slab_view_is_the_single_device_rule(n_dev):
 def _mutant(kind):
     """The helper with its defect restored and its calls kept."""
     def helper(materials, nx_per, nx, rank=None):
-        real = slab_e_component_materials(materials, nx_per, nx, rank)
+        real = slab_e_component_materials(materials, nx_per, nx, rank, high_wall=(False, False, False))
         if kind == "cell":
             del real
             return cell_owned_component_materials(materials)
@@ -354,7 +354,7 @@ def _mutant(kind):
                                   eps_r_lumped=map_lumped(materials.eps_r_lumped, own))
         else:
             raise ValueError(kind)
-        eps, sig = component_e_materials(view, (False, False, False))
+        eps, sig = component_e_materials(view, (False, False, False), high_wall=(False, False, False))
         cell_eps, cell_sig = cell_owned_component_materials(materials)
         r = lax.axis_index("x") if rank is None else rank
         local = jnp.arange(materials.eps_r.shape[0])
@@ -588,7 +588,7 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     floors = {lane: _floor("cpml", lane, "vacuum", 2) for lane in ("run", "fwd")}
 
     def cell(materials, nx_per, nx, rank=None):
-        slab_e_component_materials(materials, nx_per, nx, rank)   # the call is kept
+        slab_e_component_materials(materials, nx_per, nx, rank, high_wall=(False, False, False))   # the call is kept
         return cell_owned_component_materials(materials)
 
     # The uniform runner's CPML wrapper calls the name bound in its own module;
@@ -660,7 +660,7 @@ def test_vacuum_and_homogeneous_models_keep_mains_bits(monkeypatch, lane, eps_r,
     new = _filled_record(lane, eps_r, sigma)
 
     def main_rule(materials, nx_per, nx, rank=None, *, cell_sizes=None):
-        slab_e_component_materials(materials, nx_per, nx, rank, cell_sizes=cell_sizes)   # traced, unused
+        slab_e_component_materials(materials, nx_per, nx, rank, cell_sizes=cell_sizes, high_wall=(False, False, False))   # traced, unused
         return cell_owned_component_materials(materials)
 
     with monkeypatch.context() as patch:

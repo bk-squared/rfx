@@ -4,6 +4,8 @@ Fresh subprocesses isolate live-array accounting and the virtual-device count.
 The reference below deliberately keeps main cca8ee5b's init-then-split order.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import inspect
 import json
 import os
@@ -103,8 +105,8 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
         mask = pec_mask_override if mask is None else mask | pec_mask_override
     realized = with_components(materials, grid, periodic=(False, False, False),
                                debye_spec=db_spec, lorentz_spec=lr_spec)
-    debye = None if db_spec is None else init_debye(db_spec[0], realized, grid.dt, mask=db_spec[1])
-    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], realized, grid.dt, mask=lr_spec[1])
+    debye = None if db_spec is None else init_debye(db_spec[0], realized, grid.dt, mask=db_spec[1], high_wall=unpadded_high_walls(grid))
+    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], realized, grid.dt, mask=lr_spec[1], high_wall=unpadded_high_walls(grid))
     sg = nu.build_sharded_nu_grid(grid, len(devices))
     mesh = Mesh(np.array(devices), ("x",))
     shd = NamedSharding(mesh, P("x"))
@@ -253,7 +255,7 @@ def _completed_slabs(staged, materials, sg, dt, mesh):
     def complete(c, m):
         rank = jax.lax.axis_index("x")
         means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank,
-                                                  cell_sizes=slab_cell_sizes(sg, rank))
+                                                  cell_sizes=slab_cell_sizes(sg, rank), high_wall=(False, False, False))
         return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx, rank)
 
     return jax.jit(complete)(coeffs, materials), state
@@ -403,7 +405,7 @@ def _memory(mode, mutation="none", legacy=False):
         if mutation == "whole_init" and kind == "debye":
             # Reintroduce the old whole-domain initialization, process-locally.
             materials, db, _, _ = sim._assemble_materials_nu(grid)
-            retained.append(init_debye(db[0], materials, dt, mask=db[1]))
+            retained.append(init_debye(db[0], materials, dt, mask=db[1], high_wall=unpadded_high_walls(grid)))
         if mutation == "retain" and kind == "debye":
             retained.append(jnp.full(grid.shape, 2., dtype=jnp.float32))
         if mutation == "replicated" and kind == "debye":

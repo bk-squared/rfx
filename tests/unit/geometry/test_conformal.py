@@ -1,5 +1,7 @@
 """Tests for Dey-Mittra conformal PEC boundaries."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import pytest
 import jax.numpy as jnp
@@ -72,8 +74,8 @@ def test_conformal_disabled_matches_original():
     # Run with conformal weights = 1 (should be identity)
     for n in range(20):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_conformal_pec(state, *w_ones)
         state = state._replace(ez=state.ez.at[src].add(pulse(t)))
@@ -84,8 +86,8 @@ def test_conformal_disabled_matches_original():
     state2 = init_state(grid.shape)
     for n in range(20):
         t = n * grid.dt
-        state2 = update_h(state2, materials, grid.dt, grid.dx)
-        state2 = update_e(state2, materials, grid.dt, grid.dx)
+        state2 = update_h(state2, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state2 = update_e(state2, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state2 = apply_pec(state2)
         state2 = state2._replace(ez=state2.ez.at[src].add(pulse(t)))
 
@@ -188,8 +190,8 @@ def test_conformal_pec_box_identical_to_staircase():
     for n in range(30):
         t = n * grid.dt
         state = state._replace(ez=state.ez.at[src].add(pulse(t)))
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_pec_mask(state, pec_mask)
 
@@ -204,9 +206,9 @@ def test_conformal_pec_box_identical_to_staircase():
     for n in range(30):
         t = n * grid.dt
         state2 = state2._replace(ez=state2.ez.at[src].add(pulse(t)))
-        state2 = update_h(state2, materials, grid.dt, grid.dx)
+        state2 = update_h(state2, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state2 = update_e_aniso(state2, materials, eps_ex, eps_ey, eps_ez,
-                                grid.dt, grid.dx)
+                                grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state2 = apply_pec(state2)
         state2 = apply_conformal_pec(state2, w_ex, w_ey, w_ez)
 
@@ -261,9 +263,9 @@ def test_conformal_stability_10k_steps():
         t = n * grid.dt
         if n < 200:
             state = state._replace(ez=state.ez.at[src].add(pulse(t)))
-        state = update_h(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                               grid.dt, grid.dx)
+                               grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_conformal_pec(state, w_ex, w_ey, w_ez)
 

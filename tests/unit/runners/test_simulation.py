@@ -7,6 +7,8 @@ Validates that:
 4. TFSF + periodic-boundary integration matches the manual loop
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -183,8 +185,8 @@ def test_compiled_runner_matches_python_loop():
     pi, pj, pk = grid.position_to_index(prb_pos)
     manual_ts = []
     for step in range(n_steps):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # Soft source
         val = float(pulse(step * grid.dt))
@@ -225,8 +227,8 @@ def test_compiled_runner_dft_plane_matches_manual_loop():
     manual_probe = plane_probe
     si, sj, sk = grid.position_to_index((0.015, 0.015, 0.015))
     for step in range(n_steps):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         val = float(pulse(step * grid.dt))
         state = state._replace(ez=state.ez.at[si, sj, sk].add(val))
@@ -280,12 +282,12 @@ def test_compiled_runner_tfsf_matches_manual_loop():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -343,12 +345,12 @@ def test_compiled_runner_tfsf_ey_matches_manual_loop():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -407,12 +409,12 @@ def test_compiled_runner_tfsf_negative_x_matches_manual_loop():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -492,7 +494,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
     for step in range(n_steps):
         t = step * grid.dt
         state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic,
-                         bloch=_bloch)
+                         bloch=_bloch, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         if _is_2d:
@@ -501,7 +503,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
             tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
         state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic,
-                         bloch=_bloch)
+                         bloch=_bloch, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -594,9 +596,9 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
     manual_cfg = cfg0
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         # Source injection before cpml_e/pec to match the compiled scan-body
         # ordering introduced in 15c6a13 (waveguide-port TFSF-pair / soft-E
         # fallback both run between update_e and apply_cpml_e).

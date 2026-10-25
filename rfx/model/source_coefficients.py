@@ -186,7 +186,7 @@ def slab_drive_table(xs, mesh, device_ids, meta, *, ranks, scales=None,
     return steps, build(ranks, table, scales, weights)
 
 
-def subgrid_source_tables(requests, grid, materials, n_steps, *, native,
+def subgrid_source_tables(requests, grid, materials, n_steps, *, high_wall, native,
                           fine_scale, volume, shadow_entries=None):
     """Resolve fine-grid drives after every load; project completed soft tables.
 
@@ -196,9 +196,10 @@ def subgrid_source_tables(requests, grid, materials, n_steps, *, native,
     import jax
     import jax.numpy as jnp
     import numpy as np
-    from rfx.model.materials import e_update_coefficient_at
+    from rfx.model.materials import e_update_coefficient_at, with_components
     from rfx.sources.port_drive import port_drive_waveform
 
+    materials = with_components(materials, grid, periodic=(False,) * 3, high_wall=high_wall)
     fine, coarse = [], []
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     for pe, cell, drive in requests:

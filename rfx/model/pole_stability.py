@@ -355,7 +355,7 @@ def _prebuilt_cell_error(edges, component, precision):
 
 
 def _check_prebuilt_cells(values, edges, component, periodic, precision, *, positive=False,
-                          invalid_message=None):
+                          invalid_message=None, high_wall: tuple[bool, bool, bool]):
     """Refuse uncertain positivity or a reconstruction that changes an edge."""
     from rfx.core.yee import _edge_mean_component
     error = _prebuilt_cell_error(edges, component, precision)
@@ -365,13 +365,13 @@ def _check_prebuilt_cells(values, edges, component, periodic, precision, *, posi
             + ("finite and positive" if positive else "finite and nonnegative")))
     values = np.maximum(values, 0.)
     axes = [a for a in range(3) if a != component]
-    averaged = _edge_mean_component(values, *axes, periodic, None, array_module=np)
+    averaged = _edge_mean_component(values, *axes, periodic, None, array_module=np, high_wall=high_wall)
     if not np.all(np.isfinite(averaged)) or np.any(abs(averaged - edges) > error):
         raise ValueError(f"cannot judge prebuilt Lorentz coefficients: recovered cells do not reproduce component {component} edges within rounding")
     return values
 
 
-def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False):
+def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False, high_wall: tuple[bool, bool, bool]):
     """Invert clipped means or the odd periodic cyclic system, then check it.
 
     Along a periodic axis, y[i]+y[i-1]=2*edge[i], including the seam.
@@ -404,7 +404,7 @@ def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False
     ambiguity = (f"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis {ambiguous} does not determine unique cells"
                  if ambiguous is not None else None)
     values = _check_prebuilt_cells(values, edges, component, periodic, precision,
-                                  positive=positive, invalid_message=ambiguity)
+                                  positive=positive, invalid_message=ambiguity, high_wall=high_wall)
     if ambiguity is not None:
         raise ValueError(ambiguity)
     return values
@@ -425,6 +425,8 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
         return
     from rfx._traced_check import traced_check
     from rfx.materials.debye import per_component
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
     cells = getattr(grid, "cells", None)
     if not callable(cells) or getattr(grid, "dt", None) is None:
         raise ValueError("prebuilt Lorentz coefficients require cell sizes and dt for pole stability admission")
@@ -445,7 +447,7 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
             c = np.asarray(per_component(coeffs.c, "c")[component])
             shape, n = ca.shape, a.shape[0]
             def unaverage(values, *, positive=False):
-                return _unaverage_prebuilt(values, component, periodic, precision, positive=positive)
+                return _unaverage_prebuilt(values, component, periodic, precision, positive=positive, high_wall=high_wall)
 
             def pole_cells(values):
                 result = unaverage(values)
@@ -465,7 +467,7 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                             scale = np.median(values[quarters == q]) * (4 / q)
                             break
                     result = binary * scale
-                return _check_prebuilt_cells(result, values, component, periodic, precision)
+                return _check_prebuilt_cells(result, values, component, periodic, precision, high_wall=high_wall)
 
             with np.errstate(divide="ignore", invalid="ignore"):
                 eps = unaverage((1. + ca) / (2. * cc * EPS_0), positive=True)

@@ -34,6 +34,8 @@ for R_asymptotic 1e-15 -> 1e-2). Absorber STRENGTH (not front reflection) is
 the separate, loosely-gated axis owned by ``test_cpml_energy_decay``.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import pytest
 
@@ -75,8 +77,8 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     dt, dx = grid_ref.dt, grid_ref.dx
     ts_ref = np.zeros(n_steps)
     for n in range(n_steps):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid_ref))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid_ref))
         state = apply_pec(state)
         ez = state.ez.at[cx, cy, cz].add(pulse(n * dt))
         state = state._replace(ez=ez)
@@ -93,9 +95,9 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     dtc, dxc = grid_c.dt, grid_c.dx
     ts_c = np.zeros(n_steps)
     for n in range(n_steps):
-        state = update_h(state, materials, dtc, dxc)
+        state = update_h(state, materials, dtc, dxc, high_wall=unpadded_high_walls(grid_c))
         state, cpml_state = apply_cpml_h(state, cpml_params, cpml_state, grid_c)
-        state = update_e(state, materials, dtc, dxc)
+        state = update_e(state, materials, dtc, dxc, high_wall=unpadded_high_walls(grid_c))
         state, cpml_state = apply_cpml_e(state, cpml_params, cpml_state, grid_c)
         ez = state.ez.at[cxx, cyy, czz].add(pulse(n * dtc))
         state = state._replace(ez=ez)
@@ -134,9 +136,9 @@ def test_cpml_energy_decay():
     n_src = int(np.ceil((pulse.t0 + 4.5 * pulse.tau) / dt)) + 1
     for n in range(n_src):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_h(state, cpml_params, cpml_state, grid)
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_e(state, cpml_params, cpml_state, grid)
         ez = state.ez.at[cx, cy, cz].add(pulse(t))
         state = state._replace(ez=ez)
@@ -145,9 +147,9 @@ def test_cpml_energy_decay():
 
     # Run 500 more steps — energy should decay as waves are absorbed
     for _ in range(500):
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_h(state, cpml_params, cpml_state, grid)
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_e(state, cpml_params, cpml_state, grid)
 
     energy_final = em_energy(state)

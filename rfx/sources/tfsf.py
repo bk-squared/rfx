@@ -629,7 +629,7 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
             return st
         from rfx.sources.tfsf_discrete_plane_wave import update_line_h
         return update_line_h(cfg, st, dx, dt)
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
     dx_1d = cfg.dx_1d
@@ -860,7 +860,7 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
 
     Dispatches to 2D auxiliary grid version for oblique incidence.
     """
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
     if is_tfsf_methodB(cfg):
         from rfx.sources.tfsf_oblique_open import apply_methodB_h

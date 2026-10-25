@@ -34,6 +34,8 @@ radiated pulse reached a probe 4 cm away.
     not as compiled constants.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import rfx.stepping.uniform_loop as uniform_loop
 import ast
 from pathlib import Path
@@ -150,8 +152,8 @@ def _inline_history(mesh, cap, monkeypatch):
         kw = {} if widths is None else dict(cell_sizes=widths)
         flags = tuple(a in grid.periodic_axes for a in "xyz")
         built.update(grid=grid, widths=widths,
-                     eps=component_e_materials(materials, flags, **kw)[0],
-                     mu=component_h_materials(materials, flags, **kw))
+                     eps=component_e_materials(materials, flags, **kw, high_wall=unpadded_high_walls(grid))[0],
+                     mu=component_h_materials(materials, flags, **kw, high_wall=unpadded_high_walls(grid)))
         ends = []
         for src in kwargs["sources"]:
             table = np.abs(np.asarray(src.waveform if hasattr(src, "waveform") else src[4],

@@ -6,6 +6,8 @@ Validates that:
 3. Oblique TFSF (angle_deg != 0) produces correct Fresnel reflection
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -242,11 +244,11 @@ def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
         Sx = Sy = 0.0
         for step in range(n_steps):
             t = step * dt
-            st = update_h(st, mat, dt, dx, periodic=periodic, bloch=bloch)
+            st = update_h(st, mat, dt, dx, periodic=periodic, bloch=bloch, high_wall=unpadded_high_walls(grid))
             st = apply_tfsf_h(st, cfg, aux, dx, dt)
             st, cs = apply_cpml_h(st, cp, cs, grid, axes="x")
             aux = update_tfsf_2d_h(cfg, aux, dx, dt)
-            st = update_e(st, mat, dt, dx, periodic=periodic, bloch=bloch)
+            st = update_e(st, mat, dt, dx, periodic=periodic, bloch=bloch, high_wall=unpadded_high_walls(grid))
             st = apply_tfsf_e(st, cfg, aux, dx, dt)
             st, cs = apply_cpml_e(st, cp, cs, grid, axes="x")
             aux = update_tfsf_2d_e(cfg, aux, dx, dt, t)

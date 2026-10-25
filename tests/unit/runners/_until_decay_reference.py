@@ -14,6 +14,8 @@ Retained DFT and S-parameter records follow the current runner interface.
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from rfx.simulation import (
     Grid,
     MaterialArrays,
@@ -251,9 +253,9 @@ def run_until_decay_reference(
     # caller's n_end is not read.
     del n_end
     eps = (materials.components.eps_update if materials.components is not None
-           else component_e_materials(materials, _setup.periodic)[0])
+           else component_e_materials(materials, _setup.periodic, high_wall=unpadded_high_walls(grid))[0])
     mu = (materials.components.mu_update if materials.components is not None
-          else component_h_materials(materials, _setup.periodic))
+          else component_h_materials(materials, _setup.periodic, high_wall=unpadded_high_walls(grid)))
     n_end = 0
     for table in (*np.asarray(src_waveforms).T, *np.asarray(mag_src_waveforms).T):
         magnitude = np.abs(table.astype(np.float64))
@@ -267,7 +269,7 @@ def run_until_decay_reference(
     def _interior_energy(state) -> float:
         region = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
         new_h = update_h(state, materials, grid.dt, grid.dx,
-                         _setup.periodic, stencil_order, _step_ctx.bloch)
+                         _setup.periodic, stencil_order, _step_ctx.bloch, high_wall=unpadded_high_walls(grid))
         e_axes, h_axes = {"2d_tmz": ((2,), (0, 1)), "2d_tez": ((0, 1), (2,))}.get(
             getattr(grid, "mode", "3d"), (range(3), range(3)))
         electric = sum(eps[a][region] * getattr(state, "e" + "xyz"[a])[region] ** 2

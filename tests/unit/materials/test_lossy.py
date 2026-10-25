@@ -7,6 +7,8 @@ The update_e() Yee update already handles conductivity via Ca/Cb coefficients:
 These tests validate that the σ path produces correct energy dissipation.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -44,8 +46,8 @@ def test_lossy_cavity_energy_decay():
     energies = []
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
 
         if step < shutoff_step:
@@ -119,8 +121,8 @@ def test_higher_sigma_faster_decay():
         early_energy = None
         tail_energies = []
         for step in range(500):
-            state = update_h(state, materials, dt, dx)
-            state = update_e(state, materials, dt, dx)
+            state = update_h(state, materials, dt, dx, high_wall=(False, False, False))
+            state = update_e(state, materials, dt, dx, high_wall=(False, False, False))
             state = apply_pec(state)
             if step + 1 == _EARLY_STEP:
                 early_energy = _total_energy(state, dx)

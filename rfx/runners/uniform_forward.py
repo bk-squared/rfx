@@ -577,7 +577,7 @@ def _forward_from_materials(
     aniso_eps = finish_tensor_operands(materials, aniso_eps, None)
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        periodic=periodic_bool,
+        periodic=periodic_bool, grid=grid,
     )
 
     ntff_box = None

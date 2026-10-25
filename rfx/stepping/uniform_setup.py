@@ -46,6 +46,7 @@ def _update_e_with_optional_dispersion(
     dt: float,
     dx: float,
     *,
+    high_wall: tuple[bool, bool, bool],
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     periodic: tuple = (False, False, False),
@@ -78,13 +79,13 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic, boundary=boundary), None, None
+                                      dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic, boundary=boundary), None, None
+                                  dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall), None, None
 
     if debye is not None and lorentz is None:
         from rfx.materials.debye import update_e_debye
@@ -299,7 +300,9 @@ def _build_step_setup(
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
     from rfx.model.tensor_operands import TensorOperands
-    materials = with_components(materials, grid, periodic=periodic, tensor=
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    materials = with_components(materials, grid, periodic=periodic,
+        high_wall=unpadded_high_walls(grid), tensor=
         TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)

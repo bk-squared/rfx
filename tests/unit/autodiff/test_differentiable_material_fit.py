@@ -8,6 +8,8 @@ Validates:
 5. Parameter round-trip (log-space <-> physical poles)
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import pytest
 
 import jax
@@ -49,7 +51,7 @@ def test_init_debye_is_differentiable():
 
     def loss_fn(delta_eps, tau):
         pole = DebyePole(delta_eps=delta_eps, tau=tau)
-        coeffs, _ = init_debye([pole], materials, dt)
+        coeffs, _ = init_debye([pole], materials, dt, high_wall=(False, False, False))
         # Loss = sum of squared ADE coefficients (differentiable scalar)
         # ca / cb are per-E-component (x, y, z) tuples since #1260
         return (sum(jnp.sum(c ** 2) for c in coeffs.ca)
@@ -87,7 +89,7 @@ def test_init_lorentz_is_differentiable():
     def loss_ab(omega_0, delta):
         kappa = jnp.float32(1e20)
         pole = LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)
-        coeffs, _ = init_lorentz([pole], materials, dt)
+        coeffs, _ = init_lorentz([pole], materials, dt, high_wall=(False, False, False))
         return jnp.sum(coeffs.a ** 2) + jnp.sum(coeffs.b ** 2)
 
     grad_ab = jax.grad(loss_ab, argnums=(0, 1))
@@ -98,7 +100,7 @@ def test_init_lorentz_is_differentiable():
     # Test kappa via sum(c) which is linear in kappa (avoids underflow)
     def loss_c(kappa):
         pole = LorentzPole(omega_0=w0, delta=d, kappa=kappa)
-        coeffs, _ = init_lorentz([pole], materials, dt)
+        coeffs, _ = init_lorentz([pole], materials, dt, high_wall=(False, False, False))
         return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
 
     g_k = jax.grad(loss_c)(jnp.float32(1e20))
@@ -142,7 +144,7 @@ def test_gradient_through_fdtd():
         mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
         pole = DebyePole(delta_eps=delta_eps, tau=tau)
-        debye = init_debye([pole], mats, grid.dt)
+        debye = init_debye([pole], mats, grid.dt, high_wall=unpadded_high_walls(grid))
 
         result = run(
             grid, mats, n_steps,
@@ -276,7 +278,7 @@ def test_recover_known_debye():
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32) * true_eps_inf
     mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
     true_pole = DebyePole(delta_eps=true_de, tau=true_tau)
-    debye_true = init_debye([true_pole], mats, grid.dt)
+    debye_true = init_debye([true_pole], mats, grid.dt, high_wall=unpadded_high_walls(grid))
 
     result_true = run(
         grid, mats, n_steps,
@@ -293,7 +295,7 @@ def test_recover_known_debye():
         eps_r_inner = jnp.ones(grid.shape, dtype=jnp.float32) * true_eps_inf
         mats_inner = MaterialArrays(eps_r=eps_r_inner, sigma=sigma, mu_r=mu_r)
         pole = DebyePole(delta_eps=de, tau=tau)
-        debye = init_debye([pole], mats_inner, grid.dt)
+        debye = init_debye([pole], mats_inner, grid.dt, high_wall=unpadded_high_walls(grid))
         result = run(
             grid, mats_inner, n_steps,
             sources=[src], probes=[prb],

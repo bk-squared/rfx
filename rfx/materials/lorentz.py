@@ -246,6 +246,7 @@ def init_lorentz(
     grid_kind="Grid",
     grid=None,
     periodic=(False, False, False),
+    high_wall=None,
 ) -> tuple[LorentzCoeffs, LorentzState]:
     """Initialize Lorentz/Drude ADE coefficients and state.
 
@@ -281,7 +282,7 @@ def init_lorentz(
     if grid is not None:
         from rfx.model.pole_stability import courant_budget
         budget, grid_kind = courant_budget(grid), type(grid).__name__
-    components = with_components(materials, None, periodic=periodic,
+    components = with_components(materials, grid, periodic=periodic, high_wall=high_wall,
         lorentz_spec=(poles, mask), dt=dt, budget=budget, grid_kind=grid_kind).components
     eps_c, sig_c = components.eps_update, components.sigma_update
     realized = components.lorentz

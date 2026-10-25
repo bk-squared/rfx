@@ -10,6 +10,7 @@ class SlabElectricMetrics(NamedTuple):
     nx: int
     nx_per_rank: int
     nx_local: int
+    high_wall: tuple[bool, bool, bool]
 
 
 def slab_cell_sizes(grid, rank):
@@ -43,9 +44,11 @@ def slab_cell_sizes(grid, rank):
 
 
 def slab_metric_kwargs(grid, rank):
-    """Keep the historical equal-cell call signature for callback adapters."""
+    """Global boundary ownership and metrics of a cropped slab."""
+    if grid is None:
+        raise TypeError("slab material lookup requires global boundary metadata")
     widths = slab_cell_sizes(grid, rank)
-    return {} if widths is None or all(w is None for w in widths) else dict(cell_sizes=widths)
+    return dict(high_wall=grid.high_wall, cell_sizes=widths)
 
 
 def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
@@ -110,14 +113,22 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
                 axis = ('ex', 'ey', 'ez').index(component)
                 eps_c, sigma_c = eps_local[axis][cell], sigma_local[axis][cell]
             else:
-                view = MaterialArrays(eps_r=eps_local[row0:],
-                                      sigma=sigma_local[row0:], mu_r=None,
+                if grid is None:
+                    raise TypeError("slab material lookup requires global boundary metadata")
+                eps_volume = slab_wall_view(eps_local, grid.nx_per_rank, grid.nx,
+                                            rank, high_wall=grid.high_wall)
+                sigma_volume = slab_wall_view(sigma_local, grid.nx_per_rank, grid.nx,
+                                              rank, high_wall=grid.high_wall)
+                view = MaterialArrays(eps_r=eps_volume[row0:],
+                                      sigma=sigma_volume[row0:], mu_r=None,
                                       sigma_film=map_lumped(film_local, lambda a: a[row0:]))
                 widths = slab_cell_sizes(grid, rank)
                 if widths is not None:
-                    widths = (None if widths[0] is None else widths[0][row0:], *widths[1:])
+                    wx = slab_wall_view(widths[0], grid.nx_per_rank, grid.nx,
+                                        rank, high_wall=grid.high_wall)
+                    widths = (None if wx is None else wx[row0:], *widths[1:])
                 eps_c, sigma_c = e_update_material_at(view, cell, component,
-                                                           cell_sizes=widths)
+                    high_wall=(False, *grid.high_wall[1:]), cell_sizes=widths)
             owner = device == dev_id
             # A non-owner read someone else's cells; keep its masked branch
             # finite so the cotangent through the mask stays zero, not NaN.
@@ -147,7 +158,8 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
         masks = jax.tree.map(lambda mask: cut(mask, Slab.from_grid(sharded_grid),
                                              'pole_mask', mesh=mesh), masks)
         return stage_slab_pole_coeffs(poles, masks, dt, kind, mesh,
-            sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
+            sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape,
+            high_wall=sharded_grid.high_wall, grid=sharded_grid)
     from rfx.stepping.slab_setup import stage_dispersion
     return stage_dispersion(materials, dt, spec, sharded_grid.global_grid,
                             Slab.from_grid(sharded_grid), mesh, kind, debye_spec=debye_spec)
@@ -174,6 +186,19 @@ def stage_forward_materials(materials, layout, mesh, *, uniform=False):
 
 def _slab_x_lo_view(arr, rank):
     return arr.at[0].set(jnp.where(rank == 0, arr[1], arr[0]))
+
+
+def slab_wall_view(arr, nx_per, nx, rank, *, high_wall, ghost=1):
+    """Read the inside cell at the global wall, including alignment ghosts."""
+    if arr is None or jnp.ndim(arr) == 0:
+        return arr
+    local = jnp.arange(arr.shape[0])
+    global_rows = rank * nx_per - ghost + local
+    owns_wall = (rank * nx_per <= nx - 1) & ((rank + 1) * nx_per > nx - 1)
+    inside = jnp.clip(nx - 2 - rank * nx_per + ghost, 0, arr.shape[0] - 1)
+    indices = jnp.where(high_wall[0] & owns_wall & (global_rows >= nx - 1), inside, local)
+    indices = jnp.where((rank == 0) & (local < ghost), ghost, indices)
+    return jnp.take(arr, indices, axis=0)
 
 
 def _slab_model_rows(nx_local, nx_per, nx, rank):

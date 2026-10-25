@@ -99,12 +99,12 @@ def per_component(field, name="coefficient"):
         f"{type(field).__name__}")
 
 
-def pole_edge_fractions(mask, periodic=(False, False, False)):
+def pole_edge_fractions(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool]):
     """Per E component, the fraction of each edge's four cells that carry a
     pole: ``edge_mean_components`` of the pole's cell mask (#1260). ``None``
     (the pole everywhere) stays ``None``."""
     from rfx.model.materials import pole_component_weights
-    return pole_component_weights(mask, periodic)
+    return pole_component_weights(mask, periodic, high_wall=high_wall)
 
 
 def pole_reach(fractions):
@@ -226,6 +226,8 @@ def init_debye(
     *,
     field_dtype=None,
     periodic=(False, False, False),
+    grid=None,
+    high_wall=None,
 ) -> tuple[DebyeCoeffs, DebyeState]:
     """Initialize Debye ADE coefficients and auxiliary state.
 
@@ -271,7 +273,7 @@ def init_debye(
     n_poles = len(poles)
 
     from rfx.model.materials import validate_dispersion, with_components
-    components = with_components(materials, None, periodic=periodic,
+    components = with_components(materials, grid, periodic=periodic, high_wall=high_wall,
         debye_spec=(poles, mask)).components
     eps_c, sig_c = components.eps_update, components.sigma_update
     realized = components.debye

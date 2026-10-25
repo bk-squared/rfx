@@ -10,6 +10,8 @@ Tests:
 7. Unit cell with Floquet port (patch element unit cell)
 8. API integration (add_floquet_port method)
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 import math
@@ -60,8 +62,8 @@ def test_periodic_bc_field_continuity():
 
     # Run a few steps with periodic BC
     for _ in range(50):
-        state = update_h(state, materials, dt, dx, periodic)
-        state = update_e(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
 
     ez = np.array(state.ez)
 
@@ -125,12 +127,12 @@ def test_periodic_bc_no_boundary_reflection():
     periodic_on = (False, True, True)
 
     for _ in range(30):
-        state_pec = update_h(state_pec, materials, dt, dx, periodic_off)
-        state_pec = update_e(state_pec, materials, dt, dx, periodic_off)
+        state_pec = update_h(state_pec, materials, dt, dx, periodic_off, high_wall=unpadded_high_walls(grid))
+        state_pec = update_e(state_pec, materials, dt, dx, periodic_off, high_wall=unpadded_high_walls(grid))
         state_pec = apply_pec(state_pec)  # enforce PEC on all boundaries
 
-        state_per = update_h(state_per, materials, dt, dx, periodic_on)
-        state_per = update_e(state_per, materials, dt, dx, periodic_on)
+        state_per = update_h(state_per, materials, dt, dx, periodic_on, high_wall=unpadded_high_walls(grid))
+        state_per = update_e(state_per, materials, dt, dx, periodic_on, high_wall=unpadded_high_walls(grid))
 
     # With periodic, field at y=0 boundary should be non-zero (wrapped)
     per_y0_energy = np.sum(np.array(state_per.ez[cx, 0, :]) ** 2)
@@ -329,8 +331,8 @@ def test_floquet_port_broadside():
 
     ts = np.zeros(n_steps)
     for step in range(n_steps):
-        state = update_h(state, materials, dt, dx, periodic)
-        state = update_e(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
 
         # Inject uniform plane source
         t = step * dt

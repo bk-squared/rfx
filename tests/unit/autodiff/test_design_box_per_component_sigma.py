@@ -25,6 +25,8 @@ What is pinned here:
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -90,7 +92,7 @@ def _edge_average_of(sim, s_box):
     sl = tuple(slice(lo[d], lo[d] + shape[d]) for d in range(3))
     mats = sim._assemble_materials(grid)[0]
     full = jnp.asarray(mats.sigma).at[sl].set(s_box)
-    _, per_comp = edge_averaged_materials(jnp.asarray(mats.eps_r), full)
+    _, per_comp = edge_averaged_materials(jnp.asarray(mats.eps_r), full, high_wall=unpadded_high_walls(grid))
     return tuple(c[sl] for c in per_comp)
 
 

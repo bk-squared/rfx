@@ -198,7 +198,7 @@ def test_mutation_plain_coefficient_in_sweep_is_detected(monkeypatch):
     from rfx.core.yee import cell_component_e_materials, e_update_coeffs
     def plain(mats, cell, component, dt, *args, **kw):
         # Keep the table-builder call; drop ADE and final realized operands.
-        eps, sigma = cell_component_e_materials(mats, cell, component)
+        eps, sigma = cell_component_e_materials(mats, cell, component, high_wall=(False, False, False))
         return e_update_coeffs(eps, sigma, dt)[1]
     monkeypatch.setattr(materials, 'e_update_coefficient_at', plain)
     with pytest.raises(AssertionError):

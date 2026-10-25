@@ -6,6 +6,8 @@ own negative control, so deleting the assertion path does not turn this test
 silently green. No stored solver response is used as the physics oracle.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import rfx.stepping.uniform_loop as uniform_loop
 import jax
 import jax.numpy as jnp
@@ -194,25 +196,25 @@ def test_shared_h_owner_all_axes_and_x64(axis):
         mats = setup_wire_port(grid, WirePort(tuple(start), tuple(end),
                                ("ex", "ey", "ez")[axis], radius=.0001),
                                background)
-        mu = component_h_materials(mats)
+        mu = component_h_materials(mats, high_wall=unpadded_high_walls(grid))
         assert all(m.dtype == jnp.float64 for m in mu)
         assert np.array_equal(mu[axis], mats.mu_r)
         assert sum(np.count_nonzero(np.asarray(v-mats.mu_r)) for v in mu) == 8
         state = init_state(grid.shape, field_dtype=jnp.float64)
         impulse = jnp.zeros(grid.shape, dtype=jnp.float64).at[4, 4, 4].set(1)
         state = state._replace(**{("ex", "ey", "ez")[axis]: impulse})
-        uniform = update_h(state, mats, grid.dt, grid.dx)
+        uniform = update_h(state, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         inv = jnp.ones(grid.shape[0], dtype=jnp.float64)/grid.dx
-        nu = update_h_nu(state, mats, grid.dt, inv, inv, inv)
+        nu = update_h_nu(state, mats, grid.dt, inv, inv, inv, high_wall=unpadded_high_walls(grid))
         for a, b in zip(uniform[3:6], nu[3:6]):
             assert a.dtype == jnp.float64
             np.testing.assert_allclose(a, b, rtol=1e-14, atol=1e-20)
-        coeffs = precompute_coeffs(mats, grid.dt, grid.dx)
+        coeffs = precompute_coeffs(mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         assert all(c.dtype == jnp.float64 for c in coeffs.ch)
         fast = update_h_fast(state, coeffs.ch)
         for a, b in zip(uniform[3:6], fast[3:6]):
             np.testing.assert_allclose(a, b, rtol=1e-14, atol=1e-20)
-        full = update_e(uniform, mats, grid.dt, grid.dx)
+        full = update_e(uniform, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         baked = update_he_fast(state, coeffs)
         for a, b in zip(full[:6], baked[:6]):
             np.testing.assert_allclose(a, b, rtol=3e-7, atol=1e-12)
@@ -276,8 +278,8 @@ def test_radius_material_records_survive_checkpoint(tmp_path):
     mats = setup_wire_port(grid, port, init_materials(grid.shape))
     save_materials(tmp_path/"radius.h5", mats)
     loaded = load_materials(tmp_path/"radius.h5")
-    before = (*component_h_materials(mats), *component_e_materials(mats)[0])
-    after = (*component_h_materials(loaded), *component_e_materials(loaded)[0])
+    before = (*component_h_materials(mats, high_wall=unpadded_high_walls(grid)), *component_e_materials(mats, high_wall=unpadded_high_walls(grid))[0])
+    after = (*component_h_materials(loaded, high_wall=unpadded_high_walls(grid)), *component_e_materials(loaded, high_wall=unpadded_high_walls(grid))[0])
     for a, b in zip(before, after):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
 

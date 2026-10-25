@@ -19,6 +19,8 @@ stencil-consistency fix, not a repair of a measured wrong |S|.  The value is
 that the two lanes stop disagreeing about a convention.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import pathlib
 import re
 
@@ -238,8 +240,8 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
     st = init_state(grid.shape)
     last, second_last, glob = 0.0, 0.0, 0.0
     for step in range(400):
-        st = update_h(st, mats, grid.dt, grid.dx)
-        st = update_e(st, mats, grid.dt, grid.dx)
+        st = update_h(st, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        st = update_e(st, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         st = apply_pec(st)
         st = apply_lumped_port(st, grid, port, step * grid.dt, mats)
         for name in ("hx", "hy", "hz"):

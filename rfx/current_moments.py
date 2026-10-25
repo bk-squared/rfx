@@ -1047,11 +1047,11 @@ def _slab_interior(monitor, shape):
     return inner
 
 
-def _cells_to_edges(cell_mask, periodic):
+def _cells_to_edges(cell_mask, periodic, *, high_wall):
     """E edges touching a marked cell: the four cells an edge averages over."""
     from rfx.core.yee import edge_averaged_materials
     marked = np.asarray(cell_mask, dtype=np.float64)
-    _eps, sig = edge_averaged_materials(np.ones_like(marked), marked, periodic)
+    _eps, sig = edge_averaged_materials(np.ones_like(marked), marked, periodic, high_wall=high_wall)
     return [np.asarray(v) > 0.0 for v in sig]
 
 
@@ -1206,7 +1206,10 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                         tuple(v[0] for v in np.nonzero(bad)))
 
         from rfx.model.materials import electric_cell_sizes
-        eps_c, sig_c = component_e_materials(materials, periodic, cell_sizes=electric_cell_sizes(grid))
+        from rfx.geometry.rasterize_grid import unpadded_high_walls
+        high_wall = unpadded_high_walls(grid)
+        eps_c, sig_c = component_e_materials(materials, periodic,
+            cell_sizes=electric_cell_sizes(grid), high_wall=high_wall)
         check([(np.asarray(e) != 1.0) | (np.asarray(g) != 0.0)
                for e, g in zip(eps_c, sig_c)],
               "a dielectric or lossy material")
@@ -1230,10 +1233,10 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                   "a surface-impedance sheet")
         for poles in (debye, lorentz):
             for mask in (poles[1] if poles is not None else ()):
-                check(_cells_to_edges(np.asarray(mask) != 0, periodic),
+                check(_cells_to_edges(np.asarray(mask) != 0, periodic, high_wall=high_wall),
                       "a dispersive (Debye/Lorentz) material")
         if kerr is not None and np.any(np.asarray(kerr) != 0):
-            check(_cells_to_edges(np.asarray(kerr) != 0, periodic),
+            check(_cells_to_edges(np.asarray(kerr) != 0, periodic, high_wall=high_wall),
                   "a Kerr material")
         for key, what in (("design_box", "a design region (design_box)"),
                           ("design_occupancy", "a design occupancy box"),
@@ -1243,7 +1246,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                 i0, i1, j0, j1, k0, k1 = (int(v) for v in box.bounds)
                 region = np.zeros(tuple(int(v) for v in grid.shape), bool)
                 region[i0:i1, j0:j1, k0:k1] = True
-                check(_cells_to_edges(region, periodic), what)
+                check(_cells_to_edges(region, periodic, high_wall=high_wall), what)
 
     if nonuniform:
         from rfx.nonuniform import position_to_index as _index

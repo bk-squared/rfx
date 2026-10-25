@@ -134,6 +134,9 @@ def make_graded_step(
 ) -> Callable:
     """Bind graded kernels and measurements, then user hooks at each point."""
     from rfx.stepping.graded_setup import _update_e_nu_dispersive
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = getattr(ctx.grid, "high_wall", unpadded_high_walls(ctx.grid))
+    dy_cells, dz_cells = ctx.grid.dy_arr, ctx.grid.dz
     from rfx.measurement.projector import port_table, project, port_owners
     port_specs = ctx.port_record_specs if ctx.port_record_specs is not None else tuple(
         (m[3], m[13], 'wire', m[:3], i) for i, m in enumerate(ctx.wp_meta))
@@ -190,7 +193,8 @@ def make_graded_step(
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
         frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
-                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz), periodic=ctx.curl_boundary.periodic)
+                         cell_sizes=(frame.invariants["dx_arr"], dy_cells, dz_cells),
+                         high_wall=high_wall, periodic=ctx.curl_boundary.periodic)
 
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
@@ -244,10 +248,11 @@ def make_graded_step(
             frame.st = update_e_nu_aniso(
                 frame.st, frame.materials, _eex, _eey, _eez, ctx.dt,
                 frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary,
+                high_wall=high_wall,
             )
         else:
             frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
-                             boundary=ctx.curl_boundary)
+                             boundary=ctx.curl_boundary, high_wall=high_wall)
 
         # #1183 design box: redo the E update at the design cells from the
         # traced permittivity, on the graded-mesh curl. Same slot as the

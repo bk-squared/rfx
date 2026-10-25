@@ -324,18 +324,18 @@ PRODUCERS = [
     Producer("realize_components", _realized_whole, _realized_slab),
     Producer(
         "edge_averaged_materials",
-        lambda s: edge_averaged_materials(s.eps_r, s.sigma, PERIODIC, cell_sizes=_x_widths(s)),
+        lambda s: edge_averaged_materials(s.eps_r, s.sigma, PERIODIC, cell_sizes=_x_widths(s), high_wall=(False, False, False)),
         lambda s, v: edge_averaged_materials(v.rows(s.eps_r), v.rows(s.sigma), PERIODIC,
-                                             cell_sizes=_cut_widths(_x_widths(s), v))),
+                                             cell_sizes=_cut_widths(_x_widths(s), v), high_wall=(False, False, False))),
     Producer(
         "component_h_materials",
-        lambda s: component_h_materials(_mu(None, s), PERIODIC, cell_sizes=_h_widths(s.grid)),
+        lambda s: component_h_materials(_mu(None, s), PERIODIC, cell_sizes=_h_widths(s.grid), high_wall=(False, False, False)),
         lambda s, v: component_h_materials(_mu(v, s), PERIODIC, cell_sizes=(
-            v.rows(_h_widths(s.grid)[0]),) + _h_widths(s.grid)[1:])),
+            v.rows(_h_widths(s.grid)[0]),) + _h_widths(s.grid)[1:], high_wall=(False, False, False))),
     Producer(
         "pole_component_weights",
-        lambda s: [pole_component_weights(m, PERIODIC, cell_sizes=_x_widths(s)) for m in s.debye[1]],
-        lambda s, v: [pole_component_weights(v.rows(m), PERIODIC, cell_sizes=_cut_widths(_x_widths(s), v))
+        lambda s: [pole_component_weights(m, PERIODIC, cell_sizes=_x_widths(s), high_wall=(False, False, False)) for m in s.debye[1]],
+        lambda s, v: [pole_component_weights(v.rows(m), PERIODIC, cell_sizes=_cut_widths(_x_widths(s), v), high_wall=(False, False, False))
                       for m in s.debye[1]],
         scenes=("poles",)),
     Producer(
@@ -417,7 +417,7 @@ def test_mutation_slab_local_metric_decision_is_caught():
     def slab(s, v):
         x = v.rows(np.asarray(_x_widths(s)[0]))
         local = (None if np.all(x == x[0]) else x,) + tuple(_x_widths(s)[1:])
-        return edge_averaged_materials(v.rows(s.eps_r), v.rows(s.sigma), PERIODIC, cell_sizes=local)
+        return edge_averaged_materials(v.rows(s.eps_r), v.rows(s.sigma), PERIODIC, cell_sizes=local, high_wall=(False, False, False))
     producer = next(p for p in PRODUCERS if p.name == "edge_averaged_materials")._replace(slab=slab)
     with pytest.raises(AssertionError, match="differs at global x rows"):
         assert_slab_view(producer, SCENES["material_seam"], 2)
@@ -759,9 +759,9 @@ def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=
             widths = view.rows(np.asarray(_x_widths(scene)[0]))
             uniform = jnp.all(widths == widths[0])
             graded = edge_averaged_materials(inputs[0], inputs[1], PERIODIC,
-                    cell_sizes=(widths,) + tuple(_x_widths(scene)[1:]))
+                    cell_sizes=(widths,) + tuple(_x_widths(scene)[1:]), high_wall=(False, False, False))
             equal = edge_averaged_materials(inputs[0], inputs[1], PERIODIC,
-                    cell_sizes=(None,) + tuple(_x_widths(scene)[1:]))
+                    cell_sizes=(None,) + tuple(_x_widths(scene)[1:]), high_wall=(False, False, False))
             return jax.tree.map(lambda a, b: jnp.where(uniform, a, b), equal, graded)
         return producer.slab(scene, view)
     apply = (lambda f, *args, **kw: jax.vmap(f)(*args)) if metadata_through else uniform_apply

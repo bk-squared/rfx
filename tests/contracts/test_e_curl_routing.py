@@ -173,13 +173,13 @@ def kernel_inputs():
 def test_kernel_adapters(branch):
     state, mats, boundary = kernel_inputs()
     dt, dx = 1e-12, 1e-3
-    coeffs = yee.precompute_coeffs(mats, dt, dx)
+    coeffs = yee.precompute_coeffs(mats, dt, dx, high_wall=(False, False, False))
     calls = {
-        "plain": lambda: yee.update_e(state, mats, dt, dx, boundary=boundary),
+        "plain": lambda: yee.update_e(state, mats, dt, dx, boundary=boundary, high_wall=(False, False, False)),
         "aniso": lambda: yee.update_e_aniso(state, mats, mats.eps_r, mats.eps_r,
-                                           mats.eps_r, dt, dx, boundary=boundary),
+                                           mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
         "inverse": lambda: yee.update_e_aniso_inv(state, mats, mats.eps_r, mats.eps_r,
-                                                  mats.eps_r, dt, dx, boundary=boundary),
+                                                  mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
         "fast_e": lambda: yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey, coeffs.ca_ez,
                                             coeffs.cb_ex, coeffs.cb_ey, coeffs.cb_ez,
                                             boundary=boundary),

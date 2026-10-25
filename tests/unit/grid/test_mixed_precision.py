@@ -73,7 +73,7 @@ class TestYeeUpdateMixedPrecision:
         materials = init_materials((10, 10, 10))
         # Set a nonzero E field to get nonzero H update
         state = state._replace(ez=state.ez.at[5, 5, 5].set(jnp.float16(1.0)))
-        new_state = update_h(state, materials, 1e-12, 1e-3)
+        new_state = update_h(state, materials, 1e-12, 1e-3, high_wall=(False, False, False))
         assert new_state.hx.dtype == jnp.float16
         assert new_state.hy.dtype == jnp.float16
         assert new_state.hz.dtype == jnp.float16
@@ -83,7 +83,7 @@ class TestYeeUpdateMixedPrecision:
         state = init_state((10, 10, 10), field_dtype=jnp.float16)
         materials = init_materials((10, 10, 10))
         state = state._replace(hz=state.hz.at[5, 5, 5].set(jnp.float16(1.0)))
-        new_state = update_e(state, materials, 1e-12, 1e-3)
+        new_state = update_e(state, materials, 1e-12, 1e-3, high_wall=(False, False, False))
         assert new_state.ex.dtype == jnp.float16
         assert new_state.ey.dtype == jnp.float16
         assert new_state.ez.dtype == jnp.float16
@@ -92,7 +92,7 @@ class TestYeeUpdateMixedPrecision:
         from rfx.core.yee import update_he_fast, precompute_coeffs
         state = init_state((10, 10, 10), field_dtype=jnp.float16)
         materials = init_materials((10, 10, 10))
-        coeffs = precompute_coeffs(materials, 1e-12, 1e-3, pec_axes="xyz")
+        coeffs = precompute_coeffs(materials, 1e-12, 1e-3, pec_axes="xyz", high_wall=(False, False, False))
         state = state._replace(ez=state.ez.at[5, 5, 5].set(jnp.float16(1.0)))
         new_state = update_he_fast(state, coeffs)
         assert new_state.ex.dtype == jnp.float16
