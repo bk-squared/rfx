@@ -16,8 +16,13 @@ field for every consumer of them. This file measures it.
 
 WHAT IS DECLARED, AND WHERE IT IS VALID. The bars below are the MEASURED
 maxima of the shipped absorber at the rig each test runs on, carried through
-the shared ``gate_from_envelope`` policy -- never a number chosen to pass. They
-are per angle because the reflection is per angle: the optimum reflection
+the shared ``gate_from_envelope`` policy -- never a number chosen to pass.
+Two rows are bounds, not envelope locks: the 60-degree fast row and the
+80-degree domain row read the rig's own floor at f0 and move with record length,
+so they are held between 0.5x the smallest and 2x the largest reading over three
+record lengths (rfx-archive rfx/records/20261020-aux-f0-reading/), written here,
+not through gate_from_envelope.
+They are per angle because the reflection is per angle: the optimum reflection
 target inverts between normal and near-grazing incidence, so no single absorber
 setting minimises every angle and the derivation is taken at the WORST DECLARED
 ANGLE. That angle is **82 degrees**, where cv26 declares its three grazing arms,
@@ -111,7 +116,8 @@ FAST_MEASURED = {
     # absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 1.61e-04, 4.7x the bound)
     # and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the largest of the three
     # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
-    60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06)},
+    60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06),
+           "f0_floor": 0.5 * min(1.7095e-05, 1.0833e-05, 8.0564e-06)},
 }
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
@@ -253,6 +259,9 @@ def test_the_declared_absorber_meets_its_bar(theta_deg):
         if not m.get("floor"):
             assert r["max"] == pytest.approx(m["max"], rel=0.05)
         assert r["max"] <= bar(m["max"], m["quantum"])
+    if "f0_floor" in m:
+        assert r["f0_bin"] >= m["f0_floor"], (
+            f"{theta_deg} deg f0-bin reading {r['f0_bin']:.6e} falls below floor {m['f0_floor']:.6e}")
 
 
 # ==========================================================================
@@ -294,17 +303,19 @@ DOMAIN_MEASURED = {
     # 1.2462e-04 -> 4.9831e-05;
     # #1234: the auxiliary H profile at the Yee half cell.
     70.0: {"max": 4.9831e-05, "quantum": 1e6, "inside": True},
-    # 80 deg is an upper bound, not a lock (#1845). At f0 this rig reads its own floor, which sits above
-    # the auxiliary absorber's reflection: the f0-bin |B/A| reads 1.03e-06 / 1.11e-06 / 1.26e-06 at
-    # 40000 / 60000 / 80000 steps, cutting the absorber from 200 to 30 cells moves nothing (1.11e-06), and
-    # a target reflection of 1e-40 instead of 1e-28 moves it 4 %. The row catches the target rising to
-    # 1e-20 (reads 1.08e-04, 43x the bound; review of this change) and anything worse (1e-6 reads
-    # 7.7e-02), not finer; a finer test of the absorber needs another rig. The band maximum (1.35e-04 here)
-    # sits at band-edge bins, where the forward wave is weak. Those bins see the absorber more obliquely and
-    # do respond to it (1e-40 halves the maximum), but the maximum also moves with record length, so it is
-    # not pinned; it still carries the domain check against LEAK_BAR. Bound: 2x the largest of the three
-    # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
-    80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
+    # 80 deg is an upper bound, not a lock (#1845). With the shipped absorber the f0 bin reads the rig's own
+    # floor: the f0-bin |B/A| reads 1.03e-06 / 1.11e-06 / 1.26e-06 at 40000 / 60000 / 80000 steps, cutting
+    # the absorber from 200 to 30 cells moves nothing (1.11e-06), and a target reflection of 1e-40 instead
+    # of 1e-28 moves it 4 %. A uniformly worse absorber (higher target reflection) shows at f0 before the band maximum does. Target
+    # reflection 1e-28 / 1e-26 / 1e-24 / 1e-22 / 1e-20 at 40000 steps reads f0 1.02e-06 / 4.34e-06 /
+    # 1.35e-05 / 3.89e-05 / 1.08e-04 and band maximum 1.35e-04 / 2.37e-04 / 4.63e-04 / 9.31e-04 / 1.86e-03,
+    # so the f0 bound fails from 1e-26 on, while a band-maximum bound of 2x the three-length maximum
+    # (2.70e-04) would fail only from 1e-24. The band maximum sits at band-edge bins where the forward
+    # wave is weak and moves with record length; it is not pinned and carries the domain check against
+    # LEAK_BAR. Bound: 2x the largest, floor 0.5x the smallest f0 reading of the three lengths. Records:
+    # rfx-archive rfx/records/20261020-aux-f0-reading/ and rfx/records/20261024-aux80-rsweep/.
+    80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06),
+           "f0_floor": 0.5 * min(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
     # #1234: the auxiliary H profile at the Yee half cell.
     82.0: {"max": 4.3980e-04, "quantum": 1e5, "inside": True},
@@ -324,6 +335,9 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
     else:
         assert r["max"] == pytest.approx(m["max"], rel=0.10), (theta_deg, r["max"])
         assert r["max"] <= bar(m["max"], m["quantum"])
+    if "f0_floor" in m:
+        assert r["f0_bin"] >= m["f0_floor"], (
+            f"{theta_deg} deg f0-bin reading {r['f0_bin']:.6e} falls below floor {m['f0_floor']:.6e}")
     if m["inside"]:
         assert r["max"] <= LEAK_BAR, f"{theta_deg} deg is declared INSIDE the domain and reads {r['max']:.3e}"
     else:
