@@ -70,7 +70,8 @@ jobs:
   # same tests; pairs in tests/contracts/test_weekly_shard_headroom.py), and stale prices
   # (measured / priced per shard 0.64-1.27 on that run). Replayed with pytest-split on that
   # run's own per-test times, 16 contiguous groups hold at most 76.6 min of tests, 1.78x of
-  # which plus setup fits the 153-min budget; 14 do not. The contract test pins the bound.
+  # which plus setup fits the 153-min budget; 14 do not. The contract test bounds the largest group
+  # on recorded prices (it passes from 12, as it cannot see stale prices); a contract pins 16.
   slow-tests:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow

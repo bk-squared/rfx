@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6, 7, 8]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
       - name: Raise the memory-mapping limit for the test process
@@ -93,7 +93,7 @@ jobs:
       # shards run: no cad extra (tests/unit/geometry/test_mesh_import.py killed slow (3) here on
       # 2026-09-16 and 2026-09-21 and does not run in that lane) and no docs_consistency tests.
       - run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
-      - name: Slow selection, shard ${{ matrix.group }} of 8, store durations
+      - name: Slow selection, shard ${{ matrix.group }} of 16, store durations
         env:
           RFX_WEEKLY_RSS: "1"
           # As in validation.yml: without it the 457 weekly-only cells of the
@@ -105,7 +105,7 @@ jobs:
           cp .test_durations_weekly "$RUNNER_TEMP/weekly-seed" &&
           pytest -v -ra -p no:cacheprovider
           -m "not gpu and not highmem and not docs_consistency"
-          --splits 8 --group ${{ matrix.group }}
+          --splits 16 --group ${{ matrix.group }}
           --store-durations --clean-durations --durations-path .test_durations_weekly
           || true
       # pytest-split writes the file only when the session ends: a killed session leaves the seed,

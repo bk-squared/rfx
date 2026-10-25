@@ -346,6 +346,22 @@ raw runner seconds, without the fast lane's cached-compile normalisation.
 | `weekly_4.json` | 3,964 | 3,964 | 3,964 |
 | `weekly_6.json` | 2,002 | 2,002 | 2,002 |
 
+### Weekly balance: sixteen groups (2026-10-25)
+
+Sixteen groups since 2026-10-25, in both `validation.yml` slow-tests and `regen-durations.yml` slow
+(the regeneration splits as the lane does). Replay: `duration_based_chunks` on run 40083662779's
+measured per-test times, with the f0c70c556 prices. At 8 groups the replay matches that run's
+shards within 4 min.
+
+| groups | largest group, measured | x1.78 + 10 min | largest group, recorded prices only |
+|---|---|---|---|
+| 14 | 86.9 min | 164.7 min | 77.0 min |
+| 16 | 76.6 min | 146.3 min | 59.1 min |
+
+Budget: 85 % of 180 min = 153 min. 1.78 is the largest runner spread measured (pairs in
+`tests/contracts/test_weekly_shard_headroom.py`, which also bounds the largest replayed group).
+The eight-group section below is the earlier state.
+
 ### Weekly balance: eight groups
 
 pytest-split 0.11.0's default `duration_based_chunks` algorithm was applied to the
