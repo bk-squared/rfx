@@ -21,6 +21,7 @@ from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
 from rfx.measurement.oblique import reconstruct_oblique_physical
+from rfx.measurement.decay import drive_steps
 
 
 
@@ -329,7 +330,7 @@ def run_uniform(
             instead=None,
             reason_overrides={"s_param_n_steps":
                 "this lane reads S11 from the main run's port record, "
-                "whose length is n_steps"})
+                "whose length is n_steps, or the decay stop under until_decay"})
 
     from rfx.measurement.port_registration import uniform_run_specs
     record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
@@ -858,9 +859,9 @@ def run_uniform(
             )
         freqs_out = np.array(s_param_freqs)
 
-        # Default to the main simulation's n_steps so the S-param
-        # extraction runs long enough for high-Q cavities to ring down.
-        sp_n_steps = s_param_n_steps if s_param_n_steps is not None else n_steps
+        # Default to the realized main record, including an until_decay stop.
+        sp_n_steps = drive_steps(sim_result, n_steps, s_param_n_steps,
+                                 until_decay=until_decay, decay_max_steps=decay_max_steps)
 
         # item-5 Stage 4 (2026-07-03): lumped AND multi-port wire run() paths go
         # through the production-scan driver (= forward()'s graph). Stage 3

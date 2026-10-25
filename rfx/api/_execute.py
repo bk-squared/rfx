@@ -2176,13 +2176,13 @@ class _ExecuteMixin:
 
         # ---- Non-uniform mesh lane ----
         if plan.lane == "run_nonuniform":
-            # #383: until_decay is supported on the NU lane for absorbing
-            # boundaries (the interior-energy criterion, same class as the
-            # uniform #169 stop). Closed/PEC NU domains refuse it with a
-            # lane-accurate reason: their interior energy does not decay,
-            # and the NU lane has no point-field fallback. The NU lane's
-            # S-parameters come from the main run's port record, so an
-            # s_param_n_steps other than that record's length is refused.
+            # #383: absorbing NU domains support the interior-energy decay
+            # stop; closed/PEC domains refuse it because their energy does
+            # not decay and this lane has no point-field fallback. A single
+            # port reads S from the main record; more ports run their own
+            # drives of that record's length: n_steps, or the decay stop
+            # under until_decay. A different s_param_n_steps is refused;
+            # with until_decay, an explicit length is always refused.
             _nu_refused = {
                 "snapshot": snapshot,
                 "conformal_pec": bool(
@@ -2208,8 +2208,8 @@ class _ExecuteMixin:
                         "non-uniform lane has no point-field fallback "
                         "(issue #383)",
                     "s_param_n_steps":
-                        "this lane reads the S-parameters from the main "
-                        "run's port record, whose length is n_steps",
+                        "this lane matches the S-parameter record to the main "
+                        "run's port record, whose length is n_steps, or the decay stop under until_decay",
                 },
             )
             if until_decay is not None:

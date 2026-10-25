@@ -1278,9 +1278,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     s_settling = None
     if scan:
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+        from rfx.measurement.decay import drive_steps
         # The main record's bins, as a record-read run() reports them.
         s_params, _, s_settling = compute_lumped_wire_s_matrix_via_scan(
-            sim, freqs_out, n_steps=n_steps, conformal_pec=conformal_pec, return_settling=True,
+            sim, freqs_out, n_steps=drive_steps(r, n_steps, until_decay=until_decay, decay_max_steps=decay_max_steps),
+            conformal_pec=conformal_pec, return_settling=True,
             skip_preflight=True, subpixel_smoothing=subpixel_smoothing)
 
     from rfx.measurement import package_declared_measurements
