@@ -1499,7 +1499,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         hx=_unstack_and_gather(final_state_sharded.hx),
         hy=_unstack_and_gather(final_state_sharded.hy),
         hz=_unstack_and_gather(final_state_sharded.hz),
-        step=int(final_state_sharded.step),
+        step=jnp.asarray(final_state_sharded.step, dtype=jnp.int32),
     )
 
     # ------------------------------------------------------------------
