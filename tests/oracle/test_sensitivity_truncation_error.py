@@ -111,3 +111,29 @@ def test_public_exports_and_defaults():
     assert isinstance(sensitivity_truncation_error(2.0), float)
     assert sensitivity_truncation_error(2.0) == pytest.approx(0.4060058497, rel=0, abs=5e-11)
     assert required_t_over_tau() == pytest.approx(6.638352068, rel=0, abs=5e-10)
+
+
+def test_jit_grad_invalid_elements_are_zero():
+    x = jnp.asarray([2, 0, -1, math.nan, math.inf, 2, 2, 3], dtype=jnp.float32)
+    d = jnp.asarray([0, 0, 0, 0, 0, math.nan, math.inf, 1.5], dtype=jnp.float32)
+    valid = np.array([True, False, False, False, False, False, False, True])
+    grad = jax.grad(sensitivity_truncation_error, argnums=(0, 1))
+    scalar_grad = jax.jit(grad)
+    scalar = np.asarray([scalar_grad(a, b) for a, b in zip(x, d)])
+    batched = np.asarray(jax.jit(jax.vmap(grad))(x, d)).T
+    values = np.asarray(jax.jit(sensitivity_truncation_error)(x, d))
+
+    # Independent closed-form derivatives, evaluated in float64 for the oracle.
+    xv, dv = np.asarray(x)[valid].astype(np.float64), np.asarray(d)[valid].astype(np.float64)
+    h = np.sqrt((1 + xv)**2 + (dv * xv)**2)
+    expected = np.stack((np.exp(-xv) * (((1 + xv) + dv**2 * xv) / h - h),
+                         np.exp(-xv) * dv * xv**2 / h), axis=1)
+    # |actual - expected| <= 4 * ULP_float32(max(|expected|, 1e-30)).
+    tolerance = 4 * np.spacing(np.maximum(np.abs(expected), 1e-30).astype(np.float32))
+    assert np.all(np.isnan(values[~valid]))
+    for mode, actual in (("scalar jit", scalar), ("vmapped jit", batched)):
+        np.testing.assert_array_equal(actual[~valid], 0.0,
+                                      err_msg=f"{mode}: invalid gradients must be exactly zero")
+        np.testing.assert_array_less(np.abs(actual[valid] - expected),
+                                     np.nextafter(tolerance.astype(np.float64), np.inf),
+                                     err_msg=f"{mode}: valid gradients exceed 4 float32 ULP")
