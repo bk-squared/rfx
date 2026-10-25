@@ -434,7 +434,7 @@ def test_absorber_realizes_the_declared_ramp_without_gaps_or_overwrites():
     """No solve: all 120 distinct conductivities tile the declared volume.
 
     Check the assembled full array, including zero conductivity outside
-    the absorber and its half-open y/z extents. Checking only Box widths
+    the absorber and the high-wall node layers. Checking only Box widths
     missed the decimal-bound singleton/two-node ambiguity behind #947.
     """
     with warnings.catch_warnings():
@@ -452,6 +452,15 @@ def test_absorber_realizes_the_declared_ramp_without_gaps_or_overwrites():
     expected[start:start + ABSORBER_N,
              grid.pad_y_lo:grid.pad_y_lo + ny,
              grid.pad_z_lo:grid.pad_z_lo + nz] = values[:, None, None]
+    # The ramp ends on the unpadded high x (PEC), y (PMC) and z (PEC) walls.
+    # The high-wall node repair (#1966) gives each wall's node layer its inner
+    # neighbour, one axis after another, so the material keeps full weight on
+    # the wall edges (on the PMC face those edges carry field).
+    i_x, i_y, i_z = start + ABSORBER_N, grid.pad_y_lo + ny, grid.pad_z_lo + nz
+    assert sigma.shape == (i_x + 1, i_y + 1, i_z + 1), sigma.shape
+    expected[i_x] = expected[i_x - 1]
+    expected[:, i_y] = expected[:, i_y - 1]
+    expected[:, :, i_z] = expected[:, :, i_z - 1]
     np.testing.assert_array_equal(sigma, expected)
 
 
