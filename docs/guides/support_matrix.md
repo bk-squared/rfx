@@ -426,12 +426,18 @@ probes downstream of each feed.
   (2.58 mm) as the stem of a T, with one 5.56 mm open stub, on εr 2.2,
   h 0.794 mm: the transmission zero converges with the mesh (7.598, 7.646,
   7.663 GHz at cells h/4, h/8, h/12; steps 0.64 % and 0.22 %) and lies 0.34 %
-  above openEMS (7.637 GHz, its last refinement step 0.20 %). Two equal open
-  stubs fed through two such junctions (the Sheen low-pass filter layout)
-  make a nearly degenerate pair of zeros; the solvers split the pair
-  differently through the coupling between the junctions, so the upper zero
-  of such a board differs by about 2 % between solvers. The depth of a deep
-  null is not judged (rfx about −34 dB, openEMS about −27 dB here).
+  above openEMS (7.637 GHz, its last refinement step 0.20 %). The depth of a
+  deep null is not judged (rfx about −34 dB, openEMS about −27 dB here).
+- **Two open stubs through two such junctions** (the Sheen low-pass filter
+  layout; by-hand comparison with openEMS, 2026-10; not a CI test): **misses
+  the 1 % bar.** The upper stopband zero lies 2.2 % above openEMS converged
+  on its own mesh (rfx 8.236 GHz at cells h/7; openEMS 8.059 GHz, last
+  refinement step 0.06 %). On this board rfx's zero is not shown to converge
+  (8.237, 8.273, 8.236 GHz at h/3, h/5, h/7). The cause is not measured. The
+  estimate is that the two equal stubs make one nearly degenerate pair of
+  zeros, and the two solvers split the pair differently through the coupling
+  between the junctions. This estimate rests on one other solver only; it
+  does not yet separate the junction model from the solver.
 
 Nonuniform `mode="laplace"` and `mode="uniform"` have internal regression
 coverage only and no comparison with another solver on a graded mesh; treat
