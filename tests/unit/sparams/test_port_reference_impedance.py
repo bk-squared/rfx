@@ -287,6 +287,7 @@ def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
             self.dt = dt
 
     def fake_run(grid_, materials, n_steps, *, probes, dft_planes, **_):
+        seen["eps_r"] = materials.eps_r
         return _Run(len(dft_planes), len(probes), grid_.dt)
 
     def fake_assemble(**kwargs):
@@ -312,6 +313,9 @@ def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
     run = lambda scale: sim.compute_coaxial_two_port(  # noqa: E731
         n_steps=10, freqs=np.array([8.0e9]), probe_count=12, eps_scale=scale)
     return run, sim, z_tem
+
+
+seen: dict = {}
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -392,3 +396,18 @@ def test_coax_two_port_gradient_carries_the_line_impedance_term(monkeypatch):
     fd = (route(1.21 + h) - route(1.21 - h)) / (2 * h)
     assert abs(fd) > 1e-2
     assert abs(grad - fd) < 1e-6 * max(1.0, abs(fd))
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_coax_two_port_fill_only_scale_reads_the_stamped_fill(monkeypatch):
+    # A scale on exactly the cells the stamp filled (read from the materials
+    # the run received, not rebuilt here) is one uniform line under each
+    # ladder: no refusal, and z_tem / 1.1 at both ends.
+    from rfx.sources.coaxial_port import PTFE_EPS_R
+    run, _, z_tem = _coax_two_port(monkeypatch)
+    run(None)
+    fill = np.asarray(seen["eps_r"]) == np.float32(PTFE_EPS_R)
+    assert fill.any()
+    res = run(jnp.asarray(np.where(fill, 1.21, 1.0)))
+    z_line = z_tem / 1.1
+    np.testing.assert_allclose(res.line_impedances, [z_line, z_line], rtol=1e-7)

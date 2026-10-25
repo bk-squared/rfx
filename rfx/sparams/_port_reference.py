@@ -34,7 +34,8 @@ def renormalize_power_waves(S, z_from, z_to):
     transformed with NumPy at its own precision. ``z_from`` and ``z_to`` are
     ``(n,)`` real positive impedances; either may be traced (a line impedance
     that depends on a design variable), and then every port is transformed
-    with ``jnp`` and the value checks are left to the caller.
+    with ``jnp`` and the value checks are left to the caller; the NaN-column
+    confinement below then does not apply.
 
     When ``z_to == z_from`` for every port, ``S`` itself is returned (same
     object, nothing computed). Ports whose reference does not change enter
@@ -72,7 +73,7 @@ def renormalize_power_waves(S, z_from, z_to):
 
     out_dtype = xp.result_type(S.dtype, xp.complex64)
     r = (zt - zf) / (zt + zf)
-    c = (zf + zt) / (2.0 * xp.sqrt(zf * zt))
+    c = (zf + zt) / (2.0 * (np if isinstance(zf, np.ndarray) else jnp).sqrt(zf * zt))
     rm, cm = r[m], c[m]
 
     s_f = xp.moveaxis(S if S.ndim == 3 else S[..., None], -1, 0)  # (nf, n, n)
@@ -161,15 +162,21 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
     """
     if eps_scale is None:
         return S, np.full(len(ladders), float(z_tem))
-    dx = float(grid.dx)
-    u = (np.arange(grid.nx) - grid.pad_x_lo + 0.5) * dx - float(center_xy[0])
-    v = (np.arange(grid.ny) - grid.pad_y_lo + 0.5) * dx - float(center_xy[1])
-    annulus = np.hypot(u[:, None], v[None, :])
-    annulus = (annulus > float(pin_radius)) & (annulus < float(outer_radius))
+    # The fill's own cells: stamp_coaxial_line's Cylinder masks (node
+    # coordinates), over the whole z extent.
+    from rfx.geometry.csg import Cylinder
+    span = 2.0 * grid.shape[2] * float(grid.dx)
+    centre = (float(center_xy[0]), float(center_xy[1]), 0.0)
+    annulus = np.asarray(
+        Cylinder(center=centre, radius=float(outer_radius), height=span,
+                 axis="z").mask(grid)
+        & ~Cylinder(center=centre, radius=float(pin_radius), height=span,
+                    axis="z").mask(grid))
     scale = jnp.broadcast_to(jnp.asarray(eps_scale), grid.shape)
     z_line = []
     for i, zs in enumerate(ladders):
-        cells = scale[:, :, np.asarray(zs, dtype=int)][annulus]
+        zs = np.asarray(zs, dtype=int)
+        cells = scale[:, :, zs][annulus[:, :, zs]]
         concrete = _concrete(cells)
         if concrete is None:
             z_line.append(float(z_tem) / jnp.sqrt(jnp.mean(cells)))
