@@ -241,6 +241,10 @@ def admission(what, lane, before):
 GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
                     "(mode='3d') as the remedy (#1340)",
                     raises="Build the 2-D problem as a thin 3-D box")
+# A port with several modes compiles to a list of per-mode configurations,
+# which only compute_waveguide_s_matrix() drives (one run per port and mode).
+WG_MODES = "a waveguide port with several modes (add_waveguide_port(n_modes>1))"
+MODES_BEFORE = "the single-run assembly raised AttributeError on the per-mode list (#2070)"
 
 
 # Lane gates: a cell whose lane admits the row for some declarations only,
@@ -658,6 +662,17 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=refuses("waveguide ports have no slab carrier", raises="waveguide ports"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
+        fwd_distributed_nu=refuses("waveguide ports have no graded slab carrier", raises="waveguide ports"),
+        fwd_adi=ADI_ABSORBER,
+    ), "n_modes": lanes(
+        run_uniform=admission(WG_MODES, RUN_U, MODES_BEFORE),
+        run_nonuniform=admission(WG_MODES, RUN_NU, MODES_BEFORE),
+        run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml",
+                                "a waveguide port needs a CPML face, which production validation refuses"),
+        run_adi=ADI_ABSORBER,
+        run_distributed=refuses("waveguide ports have no slab carrier", raises="waveguide ports"),
+        fwd_uniform=admission(WG_MODES, FWD_U, MODES_BEFORE),
+        fwd_nonuniform=admission(WG_MODES, FWD_NU, MODES_BEFORE),
         fwd_distributed_nu=refuses("waveguide ports have no graded slab carrier", raises="waveguide ports"),
         fwd_adi=ADI_ABSORBER,
     )},
@@ -1359,6 +1374,17 @@ CALCULATOR_CELLS = {
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a waveguide port (add_waveguide_port)'),
         'vmap_sweep_batched': not_reachable("_build_full_scan_fn returns None or the mesh gate selects sequential run() before the batched entry"),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='a waveguide port (add_waveguide_port)'),
+    },
+    ('_waveguide_ports', 'n_modes'): {
+        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans take one configuration per port', raises=WG_MODES),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises=WG_MODES),
+        'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve take one configuration per port', raises=WG_MODES),
+        'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: one drive per port and mode on a uniform mesh; the graded branch refuses n_modes > 1 in its own guard (rfx/api/_preflight.py)'),
+        'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises=WG_MODES),
+        'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises=WG_MODES),
+        'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises=WG_MODES),
+        'vmap_sweep_batched': not_reachable("_build_full_scan_fn returns None or the mesh gate selects sequential run() before the batched entry"),
+        'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises=WG_MODES),
     },
     ('_coaxial_ports', 'coax_port'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a coaxial port (add_coaxial_port)'),

@@ -93,6 +93,7 @@ BUILDERS = {
     ('_ports', 'wire_port'): _add('add_port', point(5, 3, 2), 'ez', impedance=50., extent=2*DX, waveform=waveform),
     ('_msl_ports', 'msl_port'): ({}, _microstrip),
     ('_waveguide_ports', 'waveguide_port'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=FREQS, f0=5e9, bandwidth=0.5, probe_offset=2, ref_offset=1),
+    ('_waveguide_ports', 'n_modes'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=FREQS, f0=5e9, bandwidth=0.5, probe_offset=2, ref_offset=1, n_modes=2),
     ('_coaxial_ports', 'coax_port'): _add('add_coaxial_port', point(5, 3, 0), face='bottom', pin_length=3*DX),
     ('_floquet_ports', 'floquet_port'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9),
     ('_floquet_ports', 'scan_angle'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9, scan_theta=30.),

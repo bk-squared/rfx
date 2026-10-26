@@ -159,6 +159,13 @@ def build_p_waveguide(path):
         .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
 
+def build_p_waveguide_2mode(path):
+    # The P-waveguide port with a second mode; only compute_waveguide_s_matrix()
+    # drives the per-mode list, so run() and forward() refuse it (#2070).
+    return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
+        .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2, n_modes=2)
+
+
 def build_p_floquet(path):
     # Port arguments imitate tests/contracts/boundary_cases.py:28.
     # Replaces boundary with x/y periodic, as required by a z-normal Floquet port.
@@ -269,7 +276,8 @@ BUILDERS = {
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
     'P-coax': build_p_coax, 'P-msl': build_p_msl,
-    'P-waveguide': build_p_waveguide, 'P-floquet': build_p_floquet,
+    'P-waveguide': build_p_waveguide, 'P-waveguide-2mode': build_p_waveguide_2mode,
+    'P-floquet': build_p_floquet,
     'M-diel': build_m_diel, 'M-lossy': build_m_lossy, 'M-mu': build_m_mu,
     'M-debye': build_m_debye, 'M-lorentz': build_m_lorentz,
     'M-drude': build_m_drude, 'C-pecbox': build_c_pecbox,
