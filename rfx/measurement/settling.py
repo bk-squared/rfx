@@ -19,7 +19,8 @@ _LONE_PROBE_NOTE = (
 def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    freq_max=None, source_end_index=None,
                                    record_noun="port records", return_detail=False,
-                                   rounding_groups=None, _warn_stacklevel=2):
+                                   rounding_groups=None, _warn_stacklevel=2,
+                                   known_drives=None, n_record=None):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
@@ -32,6 +33,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
     per_record = {}
     result = tail_share_witness(named, dt, source_end_index, freqs, freq_max=freq_max,
                                 rounding_groups=rounding_groups,
+                                known_drives=known_drives, n_record=n_record,
                                 _record_results=per_record if return_detail else None)
     if not return_detail:
         return result.db
@@ -50,6 +52,7 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.measurement.modal import recorded as _recorded
+    from rfx.model.waveguide_modes import incident_tables_uncut
     from rfx.probes.settling import source_end_step
 
     final_cfgs = tuple(final_cfgs)
@@ -77,6 +80,12 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]
+    n_record = len(named[0][1]) if named else 0
+    try:
+        known_drives = [table for cfg in final_cfgs for table in incident_tables_uncut(cfg)
+                        if len(table) > n_record]
+    except ValueError as exc:   # the witness reads "cannot judge" with this reason
+        known_drives = exc
     bins = freqs if freqs is not None else (
         getattr(final_cfgs[0], "freqs", None) if final_cfgs else None)
     if freq_max is None and bins is not None and not is_tracer(bins):
@@ -85,6 +94,8 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         named, source_end_index=source_end,
         dt=getattr(final_cfgs[0], "dt", None) if final_cfgs else None,
         freqs=bins, freq_max=freq_max, record_noun="port records",
+        known_drives=known_drives if isinstance(known_drives, ValueError) else (known_drives or None),
+        n_record=n_record,
         return_detail=return_detail, _warn_stacklevel=3)
 
 

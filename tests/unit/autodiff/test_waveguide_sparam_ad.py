@@ -160,10 +160,18 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     # the record is now dropped. This 4-period snapshot ends while the pulse is still in the record, so its last
     # sample is large and the snapshot moves: max|d| normalize=False 3.792437e-3, flux 1.130798e-2; normalize=True
     # unchanged (max|d| 0, SHA unchanged).
+    # Re-pinned for #2013 (PR #2022): the port's H source table is built causally on a length set by its own decay, not
+    # circularly over the record. This 4-period record (0.667 ns) is shorter than the pulse, where the old table wrapped
+    # most, so the snapshot moves: max|d| normalize=False 3.086605e-2, flux 1.706986e-1; normalize=True 1.1e-16, file and
+    # SHA unchanged. The settled run of the same guide (num_periods = 40) is the oracle and does not move: max|d|
+    # 3.527e-7 (normalize=False), 2.060e-7 (flux); normalize=False max|S11| 0.009593079 -> 0.009593083,
+    # max ||S21|-1| 0.001657972 -> 0.001657927, max column power 1.001542963 -> 1.00154294; flux max column power
+    # 1.000004464 -> 1.000004471; settling -64.24 / -71.96 -> -65.28 / -72.85 dB (left / right). Regenerated with this
+    # test's own _make_wr90_sim (the diagnostics script's domain no longer matches it).
     _EXPECTED_SHA = {
-        "false": "b818166dfa70d0af82ba6a6a99a3fdd6999696902cde2e6331c628495efe4734",
+        "false": "fefa2c5ba64bccdf71d7a9ec41733bce8c930235b5bb23799790cd6c89ffbb20",
         "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
-        "flux":  "c2e6b69cef05473d26b0dd69748bc1ec6362893244e13689baf3b6cc60d76c2d",
+        "flux":  "39bc5cd5190a5f65780bfaee73a28cde34ae109daa9ecdcfa4a6040b1766270b",
     }
     assert sha == _EXPECTED_SHA[mode_name], (
         f"Golden fixture sha256 mismatch for normalize={normalize}: "

@@ -32,10 +32,19 @@ COMPARATOR=dict(O1='empty_filled_band',O2='empty')
 CASES={'A':('O1',False),'B':('O2',False),'A-shift':('O1',True)}
 
 
-def passivity_excess(row):
-    # B1. derived estimate: float32 rounding of the DFT ratio over N steps; not measured
+def passivity_excess(row,*,record_end=True):
+    """B1 (rfx-lead L:1c3609, form (i)): sum <= 1 + delta + 2s + s^2 per bin, s the record check's per-bin share (pole
+    tail plus the known drive beyond the record): a relative error s per entry moves |S11|^2+|S21|^2 by at most 2s + s^2
+    (derivation: rfx-archive rfx/records/20261026-nu-record-end-drive-tail/DESIGN.md). Checked before adoption at a/45 on
+    16000, 32000 and 64000 steps against the 64000-step sum, every bin inside (record-end-truncation.json there).
+    record_end=False is the settled form (ii): rounding only."""
+    # derived estimate: float32 rounding of the DFT ratio over N steps; not measured
     delta=np.sqrt(row['n_steps'])*2**-24*10
-    return np.array(row['sum'])-1-delta
+    share=np.zeros(len(row['sum']))
+    if record_end:
+        for w in row['settling_witness']:
+            share=np.maximum(share,np.asarray(w['share_per_bin'],dtype=float))
+    return np.array(row['sum'])-1-delta-2*share-share**2
 
 
 def db(x):
@@ -96,14 +105,7 @@ def rows(name,cells=45):
 
 
 ROWS=[('A','case'),('A','comparator'),('B','case'),('B','comparator'),('A-shift','case')]
-# Measured at a/45, 16000 steps, on this branch's port H source table, which wraps its cutoff tail into the record
-# (#2013; record 20261025-nu-settled-wr90/pr2016-code). The #2013 fix removes these marks.
-WRAP={('B','case'):'B1 measured sum-1-delta +9.7e-3 at 7.1 GHz',
-      ('B','comparator'):'B1 measured sum-1-delta +1.2e-2 at 7.1 GHz; the causal-table residual at this record is not measured'}
-
-
-@pytest.mark.parametrize('name,role',[pytest.param(*r,marks=pytest.mark.xfail(strict=True,reason=f'#2013 H table wrap: {WRAP[r]}'))
-                                      if r in WRAP else r for r in ROWS])
+@pytest.mark.parametrize('name,role',ROWS)
 def test_passivity(name,role):
     row=dict(zip(('case','comparator'),rows(name)))[role]
     excess=passivity_excess(row)
@@ -135,14 +137,7 @@ def test_cutoff(name):
         assert np.all(np.abs(errors)<=.01), f'B3 realized cutoff within 1 % ({name} {role}): {errors}'
 
 
-# Same structure and record with the causal table: the empty guide's worst tail share is 2.0e-3, pass (record
-# 20261025-nu-settled-wr90 LEADER-READING, 16000 steps). The table differs, and that run's witness also read the source
-# end from E only, as this branch does; the cause is the table (#2013).
-RECORD_WRAP={('B','comparator'):'B4 undetermined at 7.0 GHz: window term 1.05e-2 and 1.11e-2 over 1e-2'}
-
-
-@pytest.mark.parametrize('name,role',[pytest.param(*r,marks=pytest.mark.xfail(strict=True,reason=f'#2013 H table wrap: {RECORD_WRAP[r]}'))
-                                      if r in RECORD_WRAP else r for r in ROWS])
+@pytest.mark.parametrize('name,role',ROWS)
 def test_record(name,role):
     row=dict(zip(('case','comparator'),rows(name)))[role]
     for w in row['settling_witness']:
@@ -173,3 +168,16 @@ def test_three_mesh_trend_filled():
 def test_three_mesh_trend_step():
     err={cells: np.abs(np.array(row['s11_abs'])-np.abs(row['s11_closed'])) for cells,(row,_) in three_mesh('B').items()}
     assert np.all(err[45]<err[30]) and np.all(err[60]<err[45]), f'B5 case B ||S11|-|Gamma|| falls a/30, a/45, a/60: {[err[c].tolist() for c in (30,45,60)]}'
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('name',['A','B'])
+def test_settled_passivity(name):
+    """B1 form (ii), the weekly run: settled records, 64000*cells/45 steps, rounding margin only."""
+    case,_=CASES[name]
+    for cells in (30,45,60):
+        n=round(64000*cells/45)
+        for role,row in (('case',measured(case,cells,n_steps=n)),('comparator',measured(COMPARATOR[case],cells,n_steps=n))):
+            excess=passivity_excess(row,record_end=False)
+            print(f'B1 settled {name} {role} a/{cells} N={n} sum-1-delta',excess.tolist(),file=sys.stderr)
+            assert np.all(excess<=0), f'B1 settled passivity {name} {role} a/{cells}: {excess.tolist()}'

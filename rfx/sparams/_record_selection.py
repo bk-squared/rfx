@@ -118,7 +118,13 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
         if bins.size:
             shares = np.maximum.reduce([row['share_per_bin'] for row in rows])
             errors = np.maximum.reduce([row['error_per_bin'] for row in rows])
+            winning = np.argmax([row['share_per_bin'] for row in rows], axis=0)
+            drive_shares = np.array([row['drive_share_per_bin']
+                                     if len(row.get('drive_share_per_bin', ())) else np.zeros(bins.size)
+                                     for row in rows])[winning, np.arange(bins.size)]
             detail = {**detail, 'share_per_bin': shares, 'error_per_bin': errors,
+                      'drive_share_per_bin': (drive_shares if any(
+                          len(row.get('drive_share_per_bin', ())) for row in rows) else ()),
                       'worst_freq_hz': (float(bins[np.argmax(shares)])
                                         if np.any(shares) or detail['status'] == 'pass'
                                         else float('nan'))}

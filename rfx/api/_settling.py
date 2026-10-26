@@ -29,9 +29,13 @@ def run_settling_witness(self, result):
         prior_bins = np.asarray(getattr(result, "freqs", None), dtype=float).reshape(-1)
         if len(prior['share_per_bin']) != bins.size:
             aligned = {}
-            for key in ('share_per_bin', 'error_per_bin'):
+            for key in ('share_per_bin', 'error_per_bin', 'drive_share_per_bin'):
+                if key == 'drive_share_per_bin' and not len(prior.get(key, ())):
+                    aligned[key] = ()
+                    continue
                 values = np.zeros(bins.size)
-                np.maximum.at(values, np.searchsorted(bins, prior_bins), prior[key])
+                if len(prior.get(key, ())):
+                    np.maximum.at(values, np.searchsorted(bins, prior_bins), prior[key])
                 aligned[key] = values
             prior = {**prior, **aligned}
         rows.append(prior)

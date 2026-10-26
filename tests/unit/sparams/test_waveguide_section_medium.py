@@ -355,21 +355,17 @@ def test_vacuum_bit_identical_to_hand_written_main(profile,mode,x64):
 
 
 def _assert_vacuum_main(profile,mode,dtype):
-    from rfx.model.waveguide_modes import PortMedium, _compute_beta, _compute_mode_impedance, _incident_tables
-    from tests._waveguide_vacuum_main import main_beta, main_impedance, main_tables
-    fc,dt,dx,n,t0,tau,f0 = 3e9, .5e-12, .5e-3, 1024, 200e-12, 40e-12, 8e9
+    from rfx.model.waveguide_modes import PortMedium, _compute_beta, _compute_mode_impedance
+    from tests._waveguide_vacuum_main import main_beta, main_impedance
+    fc,dt,dx = 3e9, .5e-12, .5e-3
     freqs=jnp.asarray([0.,2e9,3e9,5e9,8e9,11e9])
     modal_dt=dt if profile=='discrete' else 0.
     np.testing.assert_array_equal(_compute_beta(freqs,fc,medium=PortMedium(),dt=modal_dt,dx=dx),
                                   main_beta(freqs,fc,modal_dt,dx))
     np.testing.assert_array_equal(_compute_mode_impedance(freqs,fc,mode,medium=PortMedium(),dt=modal_dt,dx=dx),
                                   main_impedance(freqs,fc,mode,modal_dt,dx))
-    actual=_incident_tables(f_c=fc,medium=PortMedium(),dt=dt,dx=dx,dft_total_steps=n,
-                            t0=t0,tau=tau,f0=f0,waveform='modulated_gaussian',
-                            mode_profile=profile,mode_type=mode,field_dtype=dtype)
-    expected=main_tables(fc,dt,dx,n,t0,tau,f0,profile,mode,dtype)
-    for got,want in zip(actual,expected):
-        np.testing.assert_array_equal(got,want)
+    # The source tables changed on purpose for every medium in #2013 (causal admittance, record-independent build);
+    # tests/unit/ports/test_waveguide_incident_tables.py pins them against an independent build.
 
 
 @pytest.mark.parametrize('budget',[0,2000])

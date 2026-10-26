@@ -495,6 +495,9 @@ matched reference run per port (`2 * n_ports` simulations).
   empty guide the `normalize=False` path reads a column power slightly above 1
   that falls with each mesh halving; it is a stated accuracy of that path, not
   a defect.
+- **Near cutoff, empty WR-90, `normalize=False`, settled record**: |S11|²+|S21|²
+  is 0.05–0.15 % below 1 at f/fc 1.07–1.2, on one mesh; the cause is not
+  measured.
 
 The calculation remains experimental on a graded mesh. What is checked there
 is a dielectric slab in WR-90 with `normalize="flux"` and a graded transverse
