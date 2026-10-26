@@ -38,11 +38,13 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     kwargs = {}
     if mesh == "graded":
         # Exact declared length, genuinely graded, distinct transverse lengths.
-        n = round(domain[0] / 1e-3)
-        length = 12e-3 if wall == "periodic" else domain[0]
+        # A plane wave grades a transverse axis: along x it is refused (#2078).
+        axis = 1 if feature == "tfsf" else 0
+        n = round(domain[axis] / 1e-3)
+        length = 12e-3 if wall == "periodic" else domain[axis]
         interior = np.linspace(.87, 1.13, n - 2)
         interior *= (length - 2e-3) / interior.sum()
-        kwargs["dx_profile"] = np.r_[1e-3, interior, 1e-3]
+        kwargs[f"d{'xy'[axis]}_profile"] = np.r_[1e-3, interior, 1e-3]
     if solved_domain:
         domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)  # solved length; #1887
     sim = Simulation(freq_max=20e9, domain=domain, dx=1e-3, mode=mode,
