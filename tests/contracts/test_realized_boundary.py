@@ -271,3 +271,14 @@ def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
     defaults = [w for w in caught if issubclass(w.category, WaveguideBoundaryWarning)]
     assert len(defaults) == 1
     assert all(face in str(defaults[0].message) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
+
+
+@pytest.mark.parametrize("case", ("pmc-pec", "pmc-cpml"))
+def test_nonuniform_pmc_high_hold(case):
+    """The existing two-step contract, with the declared hold-class entry seed."""
+    sim, grid, _, records = measure(case, "nonuniform")
+    fields, psi, reference = measured_fields(records, grid, "nonuniform")
+    # Whole tangential ghost row, all twelve original seed variants; exact zero.
+    np.testing.assert_array_equal(fields[:, 4:6, -1], np.zeros_like(fields[:, 4:6, -1]))
+    faces = classify(fields, grid, psi, reference)
+    compare_values(sim.boundary_model(), grid, faces, BY_CELL[case, "nonuniform"]["faces"])

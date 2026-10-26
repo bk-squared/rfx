@@ -141,8 +141,23 @@ def write_baseline(baseline, old_markdown, target):
     (target / "MATRIX.md").write_text(markdown)
 
 
+# #2043, contact L:d47ac6 (2026-10-27): graded PMC high face, impose -> hold.
+# Route (b) gives the graded PMC high-face ghost row zero inverse H spacing,
+# so the row HOLDS its entry value instead of being forced to zero each step.
+# The plane is unchanged. The uniform lane still imposes zero each step.
+# The realized-boundary contract retains its interior seed and zeros the high
+# ghost row at entry; its exact zero-plane checks and tolerances stay unchanged.
+# Any future initial-state or resume entry must impose zero or refuse a nonzero ghost row.
+GRADED_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchanged",
+                                    cases=("pmc-pec", "pmc-cpml"), entry="nonuniform", face="x_hi")
+
+
 def validate_class_changes(previous, cells):
-    """Permit the TFSF backing, B2 periods and B3b magnetic image migrations."""
+    """Permit declared migrations, including #2043's graded high hold-class seed.
+
+    #2043 changes the entry seed, not any recorded plane: no value allowance
+    is needed here. The existing comparison still rejects every moved plane.
+    """
     old_lookup = {(r["case"], r["entry"]): r for r in previous["cells"]}
     for row in cells:
         cell = row["case"], row["entry"]

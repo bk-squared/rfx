@@ -32,7 +32,7 @@ def field_nodes(tree):
     return [v for v in jax.tree_util.tree_leaves(tree, is_leaf=is_fields) if is_fields(v)]
 
 
-def seed_fields(state, variant):
+def seed_fields(state, variant, hold_faces=()):
     shape = component(state, 0).shape
     xyz = np.indices(shape, dtype=np.float32)
     pattern = 1 + .01 * xyz[0] + .013 * xyz[1] + .017 * xyz[2]
@@ -59,18 +59,25 @@ def seed_fields(state, variant):
                         value[tuple(index)] += scale
         if variant == 11:
             value = np.full(shape, 1 if ci < 3 else 0, np.float32)
+        # Hold-class entry: preserve every interior sample of the original seed.
+        # The high row is storage outside the declared PMC plane.
+        for face in hold_faces:
+            index = [slice(None)] * 3
+            index["xyz".index(face[0])] = -1
+            value = value.copy()
+            value[tuple(index)] = 0
         values.append(jnp.asarray(value, dtype=component(state, ci).dtype))
     return state._replace(**dict(zip(COMPONENTS, values))) if hasattr(state, "ex") else tuple(values)
 
 
-def seed_carry(carry, variant, physical_shape=None):
+def seed_carry(carry, variant, physical_shape=None, hold_faces=()):
     def seed(value):
         if is_fields(value):
             shape = component(value, 0).shape
             if physical_shape is not None and shape != physical_shape:
                 from rfx.core.yee import FDTDState
                 zeros = jnp.zeros(physical_shape, component(value, 0).dtype)
-                physical = seed_fields(FDTDState(*(zeros for _ in range(6)), jnp.array(0)), variant)
+                physical = seed_fields(FDTDState(*(zeros for _ in range(6)), jnp.array(0)), variant, hold_faces)
                 per_rank = shape[0] // 2 - 2
                 padded_n = per_rank * 2
                 arrays = []
@@ -78,16 +85,27 @@ def seed_carry(carry, variant, physical_shape=None):
                     padded = jnp.pad(component(physical, i), ((1, padded_n - physical_shape[0] + 1), (0, 0), (0, 0)))
                     arrays.append(jnp.concatenate([padded[r * per_rank:r * per_rank + per_rank + 2] for r in range(2)]))
                 return value._replace(**dict(zip(COMPONENTS, arrays)))
-            return seed_fields(value, variant)
+            return seed_fields(value, variant, hold_faces)
         if is_aux(value):
-            return type(value)(*(jnp.full_like(v, 0 if variant in (8, 9, 10, 11) else .01) for v in value))
+            arrays = []
+            for name, v in value._asdict().items():
+                array = jnp.full_like(v, 0 if variant in (8, 9, 10, 11) else .01)
+                # Transverse CPML memory shares the held storage row. Keep
+                # its interior seed, but do not inject auxiliary energy there.
+                for face in hold_faces:
+                    if name[-3] != face[0] and array.size:
+                        index = [slice(None)] * 3
+                        index["xyz".index(face[0])] = -1
+                        array = array.at[tuple(index)].set(0)
+                arrays.append(array)
+            return type(value)(*arrays)
         return value
     return jax.tree_util.tree_map(seed, carry,
                                   is_leaf=lambda v: is_fields(v) or is_aux(v))
 
 
 @contextmanager
-def observe_scans(records, physical_shape=None):
+def observe_scans(records, physical_shape=None, hold_faces=()):
     """Seed scan carries; observe numeric fields independently of wall names."""
     original = jax.lax.scan
     depth = 0
@@ -98,7 +116,7 @@ def observe_scans(records, physical_shape=None):
             return original(function, initial, xs, *args, **kwargs)
         depth += 1
         try:
-            seeded = [seed_carry(initial, v, physical_shape) for v in range(12)]
+            seeded = [seed_carry(initial, v, physical_shape, hold_faces) for v in range(12)]
             batched = jax.tree_util.tree_map(lambda *v: jnp.stack(v), *seeded)
             result, observations = jax.vmap(lambda c: original(function, c, xs, *args, **kwargs))(batched)
             try:
@@ -150,7 +168,8 @@ def measure(case, entry):
     grid = sim._build_nonuniform_grid() if entry == "nonuniform" else sim._build_grid()
     records = []
     fast_calls = []
-    with observe_scans(records, grid.shape if entry == "distributed" else None):
+    hold_faces = tuple(f for f in sim._boundary_spec.pmc_faces() if f.endswith("hi")) if entry == "nonuniform" else ()
+    with observe_scans(records, grid.shape if entry == "distributed" else None, hold_faces):
         if entry == "gpu-query":
             import rfx.simulation as simulation
             original_fast = simulation.update_he_fast
