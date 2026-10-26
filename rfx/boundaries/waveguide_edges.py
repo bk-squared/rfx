@@ -6,20 +6,30 @@ from rfx.boundaries.depths import Kind, grid_face_depths
 from rfx.model.operands import realized_operands
 
 
-def refuse_bare_waveguide_edges(sim, grid, *, lane):
+_DEFAULT = object()
+
+
+def refuse_bare_waveguide_edges(sim, grid, *, lane, conformal_weights=_DEFAULT):
     """Read production PEC operands before dispatch hands off to one device.
 
     An aperture edge is a line of tangential electric edges on the source
-    plane. A PEC domain face at that node plane or realized PEC edges must
-    cover the entire line. Distance names the nearest parallel conductor
-    plane covering that same span, not a conductor touching only its corner.
+    plane. A PEC domain face at that node plane, realized PEC edges, or a
+    Dey-Mittra conformal wall must cover the entire line. A conformal edge
+    with open fraction w < 1 has a PEC surface within half a cell of it, so
+    the wall lies in the cell that holds the snapped edge. Dispatch judges
+    the weights run() forms by default; run_uniform judges the ones it
+    formed. Distance names the nearest parallel conductor plane covering
+    that same span, not a conductor touching only its corner.
     """
     from rfx.model.conductors import realized_conductors
 
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=sim._uses_nonuniform_mesh)
+        if conformal_weights is _DEFAULT:
+            conformal_weights = default_conformal_weights(sim, grid, root)
         operands = realized_operands(grid, None, {
-            "pec_mask": root.pec_cells, "pec_edge_masks": root.pec_edges}, ())
+            "pec_mask": root.pec_cells, "pec_edge_masks": root.pec_edges,
+            "conformal_weights": conformal_weights}, ())
         masks = {}
         for record in operands:
             if isinstance(record.array, jax.core.Tracer):
@@ -27,8 +37,24 @@ def refuse_bare_waveguide_edges(sim, grid, *, lane):
                     f"{lane}: waveguide aperture conductor check cannot judge traced "
                     f"PEC operand {record.name}; provide static PEC walls.")
             if record.name.startswith("pec_edge_masks."):
-                masks[record.component] = np.asarray(record.array, dtype=bool)
+                edges = np.asarray(record.array, dtype=bool)
+            elif record.name.startswith("conformal_weights."):
+                edges = np.asarray(record.array) < 1.0
+            else:
+                continue
+            masks[record.component] = masks.get(record.component, False) | edges
         _check_edges(sim, grid, masks, lane)
+
+
+def default_conformal_weights(sim, grid, root):
+    """Weights run() forms when ``conformal_pec`` follows Boundary(conformal=True)."""
+    if sim._uses_nonuniform_mesh or not sim._boundary_spec.conformal_faces():
+        return None
+    pec_shapes = root.assembly[4]
+    if not pec_shapes:
+        return None
+    from rfx.geometry.conformal import clamp_conformal_weights, compute_conformal_weights_sdf
+    return clamp_conformal_weights(*compute_conformal_weights_sdf(grid, pec_shapes), 0.1)
 
 
 def _check_edges(sim, grid, masks, lane):

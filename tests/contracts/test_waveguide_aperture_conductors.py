@@ -73,6 +73,62 @@ def test_traced_pec_operand_is_refused_by_name(monkeypatch):
         jax.make_jaxpr(check)(jnp.zeros(grid.shape, dtype=bool))
 
 
+def conformal_guide(conformal=True):
+    """A WR-90 aperture (22.86 x 10.16 mm) bounded only by Dey-Mittra walls.
+
+    dx = 1 mm snaps the rims to 23 and 10 mm; the conformal half-spaces
+    start at 22.86 and 10.16 mm, inside the cells holding those rims. The
+    PEC domain faces at 25 and 12 mm are 2 mm away.
+    """
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    walls = Boundary(lo="pec", hi="pec", conformal=conformal)
+    sim = Simulation(10e9, (.06, .025, .012), dx=.001, cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y=walls, z=walls))
+    sim.add_waveguide_port(.02, direction="+x", y_range=(0., .02286),
+                           z_range=(0., .01016), f0=8e9, bandwidth=.5, name="conformal-rim")
+    return sim
+
+
+def _edge_refusal(sim, **kwargs):
+    from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+    with pytest.raises(ValueError) as caught:
+        refuse_bare_waveguide_edges(sim, sim._build_realized_grid(), lane="contract", **kwargs)
+    return str(caught.value)
+
+
+def test_conformal_walls_bound_the_aperture():
+    # The realized conformal weights close both snapped rims, at dispatch and in the runner.
+    admit_waveguide(conformal_guide())
+    message = _edge_refusal(conformal_guide(conformal=False))
+    assert "y_hi node plane 23 mm, nearest conductor distance 2 mm" in message
+    assert "z_hi node plane 10 mm, nearest conductor distance 2 mm" in message
+
+
+def test_mutation_conformal_weights_ignored_refuses():
+    message = _edge_refusal(conformal_guide(), conformal_weights=None)
+    assert "y_hi node plane 23 mm" in message and "z_hi node plane 10 mm" in message
+
+
+def test_mutation_conformal_wall_two_cells_out_refuses():
+    # Production weights from the same half-spaces, the y wall moved 2 cells out.
+    from rfx.geometry.conformal import clamp_conformal_weights, compute_conformal_weights_sdf
+    sim = conformal_guide()
+    big = 10.
+    shapes = [Box((-big, .02486, -big), (big, big, big)),
+              Box((-big, -big, .01016), (big, big, big))]
+    weights = clamp_conformal_weights(
+        *compute_conformal_weights_sdf(sim._build_realized_grid(), shapes), .1)
+    message = _edge_refusal(sim, conformal_weights=weights)
+    assert "y_hi node plane 23 mm" in message
+    assert "z_hi" not in message
+
+
+def test_runner_judges_the_weights_it_formed():
+    # conformal_pec=False runs the binary walls, whose rims are bare.
+    with pytest.raises(ValueError, match="run_uniform: Waveguide port 'conformal-rim' has bare"):
+        conformal_guide().run(n_steps=2, skip_preflight=True, conformal_pec=False)
+
+
 @pytest.mark.docs_consistency
 def test_rule4_support_refusal_row():
     text = (Path(__file__).parents[2] / "docs/guides/support_matrix.md").read_text()
