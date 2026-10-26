@@ -113,7 +113,9 @@ def test_t3_local_material_read():
     sigma = jnp.full_like(eps, .02)
     drives = ((0, 0, (2, 1, 1), 'ez', 1e-9, 0.),
               (1, 0, (1, 1, 1), 'ey', 1e-9, 0.))
-    call = partial(material_drive_scales, mesh=mesh, drives=drives, dt=1e-12, ranks=ranks)
+    grid = SimpleNamespace(nx=8, nx_per_rank=4, nx_local=4,
+                           e_cell_sizes=(None, None, None), high_wall=(False,) * 3)
+    call = partial(material_drive_scales, mesh=mesh, drives=drives, dt=1e-12, ranks=ranks, grid=grid)
     local = jax.jit(partial(call, reduce_devices=False))
     values = np.asarray(local(eps, sigma))
     replicated = np.asarray(jax.jit(call)(eps, sigma))

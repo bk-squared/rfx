@@ -69,7 +69,7 @@ def test_the_coefficient_on_a_dielectric_face_is_the_mean_of_the_four_cells(
         import rfx.core.yee as _yee
         monkeypatch.setattr(
             _yee, "edge_averaged_materials",
-            lambda eps_r, sigma, periodic=(False, False, False): (
+            lambda eps_r, sigma, periodic=(False, False, False), **kw: (
                 (eps_r, eps_r, eps_r), (sigma, sigma, sigma)))
 
     eps = _half_space_eps(1.0, 9.0, axis=2, cut=4)
@@ -365,7 +365,7 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
     if mutate:
         monkeypatch.setattr(
             _materials, "e_update_coefficient_at",
-            lambda m, cell, comp, dt, periodic=(False, False, False):
+            lambda m, cell, comp, dt, periodic=(False, False, False), **kw:
                 e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
@@ -467,7 +467,7 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
         for module in (_yee, _stepping_yee):
             monkeypatch.setattr(
                 module, "component_e_materials",
-                lambda m, periodic=(False, False, False), *, cell_sizes=None: (
+                lambda m, periodic=(False, False, False), *, cell_sizes=None, **kw: (
                     (m.eps_r,) * 3, (m.sigma,) * 3))
 
     idx = np.indices(SHAPE)[2]
@@ -532,7 +532,7 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     if mutate:
         monkeypatch.setattr(
             _src, "e_update_coefficient_at",
-            lambda m, cell, comp, dt, periodic=(False, False, False):
+            lambda m, cell, comp, dt, periodic=(False, False, False), **kw:
                 e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,

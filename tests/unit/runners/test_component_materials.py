@@ -38,7 +38,8 @@ def test_realized_volume_stamps_poles_and_metric(periodic, graded):
     d = DebyePole(1.2, 2e-11)
     lorentz_pole = LorentzPole(2e10, 1e9, 3e20)
     specs = model.ComponentCells(cells, ([d], [a > 20]), ([lorentz_pole], [a < 30]))
-    result = model.realize_components(specs, grid, periodic=periodic)
+    # The raw-array branch has no grid and no wall face.
+    result = model.realize_components(specs, grid, periodic=periodic, high_wall=unpadded_high_walls(grid))
     e_widths = model.electric_cell_sizes(grid)
     assert_tree_equal((result.eps_update, result.sigma_update),
                       yee.component_e_materials(cells, periodic, cell_sizes=e_widths, high_wall=unpadded_high_walls(grid)))

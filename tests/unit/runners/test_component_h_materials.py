@@ -199,11 +199,12 @@ def test_h_builder_inventory_reads_the_shared_owner():
     # Since S1 M2a the raw CPML/UPML entries read μ through the realized-model
     # owner ``rfx.model.materials.h_components``, which itself calls the shared
     # builder; either spelling reaches the one H-face rule.
-    from rfx.model.materials import h_components
+    from rfx.model.materials import h_components, sat_face_mu
     assert "component_h_materials(" in inspect.getsource(h_components)
+    assert "h_components(" in inspect.getsource(sat_face_mu)
     for fn in sites:
         src = inspect.getsource(fn)
-        assert ("component_h_materials(" in src or "h_components(" in src), \
+        assert ("component_h_materials(" in src or "h_components(" in src or "sat_face_mu(" in src), \
             getattr(fn, "__qualname__", fn.__name__)
 
 

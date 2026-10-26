@@ -35,6 +35,8 @@ of EPS_0 is accounted for in the coefficient-builder contract.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -346,8 +348,9 @@ def _builder_cases():
             lambda e: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, mats._replace(eps_r=e), dt), mats.eps_r, 1e24),
         "edge_update_denominator": (
+            # This raw-array fixture has no wall face.
             lambda e: rfx.lumped.edge_update_denominator(
-                mats._replace(eps_r=e), (2, 3, 3), "ez", dt), mats.eps_r, 1e30),
+                mats._replace(eps_r=e), (2, 3, 3), "ez", dt, grid=SimpleNamespace()), mats.eps_r, 1e30),
         "init_upml": (
             lambda e: rfx.boundaries.upml.init_upml(
                 upml_grid, m3._replace(eps_r=e))[:6], m3.eps_r, 1e24),
@@ -572,8 +575,9 @@ def _jvp_cases(dtype):
             lambda e, s: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, m._replace(eps_r=e, sigma=s), dt), m.eps_r, sheet_sigma),
         "edge_update_denominator": (
+            # This raw-array fixture has no wall face.
             lambda e, s: rfx.lumped.edge_update_denominator(
-                m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt),
+                m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt, grid=SimpleNamespace()),
             m.eps_r, m.sigma),
         "init_upml": (
             lambda e, s: rfx.boundaries.upml.init_upml(

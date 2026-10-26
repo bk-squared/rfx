@@ -361,14 +361,14 @@ def test_dump_is_consumed(lane, row):
 @pytest.mark.parametrize("lane", ["run_distributed", "run_distributed_nu", "fwd_distributed_nu"])
 @pytest.mark.parametrize("row", ["eps", "sigma"])
 def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
-    from rfx.runners import _distributed_common as dc
+    from rfx.model import electric_metrics
     from rfx.stepping import slab_setup
 
-    original = dc._slab_x_lo_view
+    original = electric_metrics.slab_wall_view
     original_view_rows = slab_setup.uniform_from_cut
 
-    def broken_ghost(arr, rank):
-        view = original(arr, rank)
+    def broken_ghost(arr, nx_per, nx, rank, **kw):
+        view = original(arr, nx_per, nx, rank, **kw)
         # Keep both material helpers; corrupt rank 1's incoming ghost.
         return view.at[0].set(jnp.where(rank == 1, jnp.ones_like(view[0]), view[0]))
 
@@ -382,7 +382,7 @@ def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
 
     measured.cache_clear()
     try:
-        monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
+        monkeypatch.setattr(electric_metrics, "slab_wall_view", broken_ghost)
         monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
         dump = measured(lane, row)
         for axis in (1, 2):

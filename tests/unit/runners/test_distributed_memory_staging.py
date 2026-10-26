@@ -383,7 +383,7 @@ def test_direct_slabs_bit_identical_on_three_and_four_devices():
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
            "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
-    run = subprocess.run([sys.executable, "-W", "ignore", "-c", _MANY_DEVICE_SLABS],
+    run = subprocess.run([sys.executable, "-W", "ignore", str(Path(__file__).resolve()), "many_device_slabs"],
                          env=env, text=True, capture_output=True, timeout=60)
     assert run.returncode == 0, run.stdout + run.stderr
     assert "MANY_DEVICE_SLABS_OK 30" in run.stdout, run.stdout
@@ -465,7 +465,8 @@ def _direct_dispersion_slabs():
                 (debye, lorentz), (init_debye, init_lorentz),
                 (nu.shard_debye_coeffs_x_slab, nu.shard_lorentz_coeffs_x_slab),
                 (nu.shard_debye_state_x_slab, nu.shard_lorentz_state_x_slab), actual):
-            coeffs, state = init(spec[0], materials, dt, mask=masks)
+            # This raw-array fixture has no wall face.
+            coeffs, state = init(spec[0], materials, dt, mask=masks, high_wall=(False,) * 3)
             expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
             got = _completed_slabs(got, placed, sg, dt, mesh)
             checked += _check_slabs(got, expected, sg)
@@ -495,7 +496,7 @@ def _addressable_dispersion_slabs():
         assert shape == (12, 3, 4) and sharding is local_only
         return jax.device_put(callback((slice(6, 12), slice(None), slice(None))), devices[1])
 
-    def pole_setup(poles, masks, dt, kind, got_mesh, nx_per, nx, shape):
+    def pole_setup(poles, masks, dt, kind, got_mesh, nx_per, nx, shape, **kw):
         assert got_mesh is mesh and (nx_per, nx, shape) == (4, 8, (12, 3, 4))
         assert masks[0].devices() == {devices[1]}
         expected = np.pad(np.asarray(mask[3:8]), ((0, 1), (0, 0), (0, 0)))
@@ -532,7 +533,9 @@ def test_dispersion_slabs_in_subprocess(mode, marker):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "direct_dispersion":
+    if sys.argv[1] == "many_device_slabs":
+        exec(_MANY_DEVICE_SLABS)
+    elif sys.argv[1] == "direct_dispersion":
         _direct_dispersion_slabs()
     elif sys.argv[1] == "addressable_dispersion":
         _addressable_dispersion_slabs()

@@ -250,8 +250,8 @@ def test_plain_distributed_drive_keeps_equal_cell_host_bits():
     raw = MaterialArrays(eps, sigma, jnp.ones(g.shape))
     carried = raw._replace(components=EdgePoles(None, None, g))
     for component in ('ex','ey','ez'):
-        old = e_update_coefficient_at(raw, (1,1,1), component, g.dt, host=True)
-        new = e_update_coefficient_at(carried, (1,1,1), component, g.dt, host=True)
+        old = e_update_coefficient_at(raw, (1,1,1), component, g.dt, host=True, grid=g)
+        new = e_update_coefficient_at(carried, (1,1,1), component, g.dt, host=True, grid=g)
         assert np.asarray(old).tobytes() == np.asarray(new).tobytes()
 
 

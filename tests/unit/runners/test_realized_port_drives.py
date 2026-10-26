@@ -76,9 +76,11 @@ def test_realized_edge_material_gradient_matches_legacy():
         mats = yee.MaterialArrays(eps, jnp.zeros_like(eps), jnp.ones_like(eps))
         if realized:
             mats = with_components(mats, None, periodic=(False,) * 3, high_wall=(False, False, False))
-        wave = port_drive_waveform(SimpleNamespace(dt=1e-12), (2, 2, 2), "ez",
+        grid = SimpleNamespace(dt=1e-12)
+        wave = port_drive_waveform(grid, (2, 2, 2), "ez",
                                   jnp.ones_like, 2, mats, sigma_port=2., unit_field=4.)
-        return jnp.sum(wave) + edge_update_denominator(mats, (2, 2, 2), "ez", 1e-12)
+        # This raw-array fixture has no wall face.
+        return jnp.sum(wave) + edge_update_denominator(mats, (2, 2, 2), "ez", 1e-12, grid=grid)
 
     a = jax.value_and_grad(lambda x: loss(x, False))(jnp.float32(1.))
     b = jax.value_and_grad(lambda x: loss(x, True))(jnp.float32(1.))
