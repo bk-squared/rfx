@@ -192,15 +192,7 @@ def test_w0_holds_and_the_completion_has_the_shape_of_the_run(short_runs):
     assert np.array_equal(np.asarray(rdr.freqs), np.asarray(completed.freqs))
     rep = rdr.report
     n = N_SHORT[lane]
-    # Design Addendum 5: the report names the bounded identification window.
-    sim = _box(lane)
-    grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
-    factors, _ = rd.decimation_plan((n + 1) // 2, float(grid.dt), sim._freq_max)
-    half = 1024
-    for factor in reversed(factors):
-        half = (half + 20) * factor
-    span = min(n, 2 * half)
-    assert rep.window_steps == (n - span + round(0.5 * span), n)
+    assert rep.window_steps == (round(0.5 * n), n)
     assert rep.n_record == n and rep.freq_max_hz == 20.0e9
     assert rep.completed and rep.failure is None
     amp = [p.amplitude for p in rep.poles]

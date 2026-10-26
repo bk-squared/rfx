@@ -110,25 +110,21 @@ def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:
     return tuple(int(q) for q in factors), int(kept)
 
 
-# rfx-archive rfx/plans/nu/20261026-witness-cost-DESIGN.md §2.
+# rfx-archive rfx/plans/nu/20261026-witness-cost-DESIGN.md, Addendum 6.
 IDENTIFICATION_SAMPLE_CAP = 1024
 
 
 def identification_span(n_record: int, dt: float, freq_max: float) -> int:
-    """Use the whole record until its half exceeds the decimated sample cap.
+    """Use the whole record until its half exceeds 256 read-band periods.
 
-    Invert each FIR stage's ceil(length / factor) - 20 kept samples. The
-    resulting even span has the largest half-window that retains the cap;
-    the pencil's column ratio and decimation plan are unchanged.
+    The cap is a duration at the nominal rate 4 * freq_max. The realized
+    decimation stages and retained sample count do not define the span.
     """
     n_record = int(n_record)
-    factors, kept = decimation_plan((n_record + 1) // 2, dt, freq_max)
-    if kept <= IDENTIFICATION_SAMPLE_CAP:
+    t_cap = IDENTIFICATION_SAMPLE_CAP / (4 * freq_max)
+    if ((n_record + 1) // 2) * dt <= t_cap:
         return n_record
-    half = IDENTIFICATION_SAMPLE_CAP
-    for factor in reversed(factors):
-        half = (half + 2 * int(_harminv._FIR_HALF_OUTPUT_SAMPLES)) * factor
-    return 2 * half
+    return 2 * math.floor(t_cap / dt)
 
 
 def _span_start(n_record, start_today, fraction, span):
