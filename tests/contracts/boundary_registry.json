@@ -903,11 +903,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/stepping/uniform_loop.py",
-      "function": "run",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/stepping/uniform_setup.py",
       "function": "_build_step_setup",
       "kind": "boundary"

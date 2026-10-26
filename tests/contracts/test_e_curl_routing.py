@@ -300,9 +300,8 @@ def test_tfsf_forward_uses_shared_curl():
     assert boundary.periodic == (False, True, True)
 
 
-def test_baked_dispatch_passes_realized_boundary_on_cpu():
-    # Exercise the production dispatch predicate and baked implementation on
-    # CPU. This is not a native GPU measurement.
+def test_gpu_query_standard_dispatch_passes_realized_boundary_on_cpu():
+    # An accelerator query keeps the standard lane and its realized boundary.
     sim = model(wall="pec", solved_domain=True)
     invoked = []
     original = uniform.update_he_fast
@@ -313,7 +312,7 @@ def test_baked_dispatch_passes_realized_boundary_on_cpu():
             patch.object(uniform, "update_he_fast", baked):
         boundary = require_shared(lambda: sim.run(
             n_steps=2, skip_preflight=True, compute_s_params=False))
-    assert invoked
+    assert not invoked
     assert boundary.pec_faces == frozenset(
         f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
 

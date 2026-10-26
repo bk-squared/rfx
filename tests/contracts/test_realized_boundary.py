@@ -223,7 +223,7 @@ def test_worse_magnetic_wall_value_is_rejected():
         jax.clear_caches()
 
 
-@pytest.mark.parametrize("case,expected", [("pec", True), ("pmc-pec", False)])
+@pytest.mark.parametrize("case,expected", [("pec", False), ("pmc-pec", False)])
 def test_cpu_gpu_query_dispatch(case, expected):
     jax.clear_caches()
     _, _, _, records = measure(case, "gpu-query")
