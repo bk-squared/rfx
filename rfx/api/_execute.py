@@ -32,7 +32,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_forward_smoothing
+from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
 
@@ -1512,6 +1512,7 @@ class _ExecuteMixin:
                 "Either set distributed=True or omit devices."
             )
 
+        refuse_coaxial_port(self, "forward")
         if port_s11_freqs is not None or ringdown is not None:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
@@ -2086,6 +2087,7 @@ class _ExecuteMixin:
         if conformal_pec is None:
             conformal_pec = bool(self._boundary_spec.conformal_faces())
 
+        refuse_coaxial_port(self, "run")
         compute_s_params = self._validate_run_sparameter_request(
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,

@@ -203,12 +203,10 @@ ADI_GRADED = refuses("ADI requires a uniform mesh", raises="solver='adi' does no
                      declared=True)
 F0 = "surface_impedance_f0) thin conductors are not supported"
 DIST_FWD_PORTS = carries("shared graded load, voltage drive and wrapped in-loop V/I/S; passive ports carry a load only")
-RUN_COAX = refuses("lane admission refuses add_coaxial_port(); the coax calculators solve it",
-                   raises="a coaxial port (add_coaxial_port) is not carried by the")
-FWD_COAX = refuses("lane admission refuses add_coaxial_port(); the coax calculators solve it",
-                   raises="a coaxial port (add_coaxial_port) is not carried by the")
-ADI_COAX = refuses("ADI configuration validation refuses coaxial ports before lane admission",
-                   raises="solver='adi' does not support coaxial ports yet")
+RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve it",
+                   raises="add_coaxial_port() is not wired into Simulation.run()")
+FWD_COAX = refuses("forward() refuses add_coaxial_port()",
+                   raises="add_coaxial_port() is not wired into Simulation.forward()")
 # #1373: the ADI update gives each E component its own cell's eps_r and sigma,
 # where every Yee lane gives each E edge the mean of its four cells, so a
 # material face sits half a cell off (+2.2 % on a slab-loaded cavity's first
@@ -666,16 +664,13 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_coaxial_ports": {"coax_port": lanes(
         run_uniform=RUN_COAX,
         run_nonuniform=RUN_COAX,
-        run_subgridded=refuses("lane admission refuses coaxial ports with research/off refinement; "
-                               "production refinement returns the subgridded production notice first",
-                               raises="a coaxial port (add_coaxial_port) is not carried by the subgridded run() lane"),
-        run_adi=ADI_COAX,
+        run_subgridded=RUN_COAX,
+        run_adi=RUN_COAX,
         run_distributed=RUN_COAX,
-        run_distributed_nu=RUN_COAX,
         fwd_uniform=FWD_COAX,
         fwd_nonuniform=FWD_COAX,
         fwd_distributed_nu=FWD_COAX,
-        fwd_adi=ADI_COAX,
+        fwd_adi=FWD_COAX,
     )},
     "_floquet_ports": {
         "floquet_port": lanes(
@@ -1678,7 +1673,7 @@ LANE_GATES.update({
 # these messages belong to run().
 for _attr, _feature in (
     ("_materials", "kerr"),
-    ("_msl_ports", "msl_port"),
+    ("_msl_ports", "msl_port"), ("_coaxial_ports", "coax_port"),
     ("_floquet_ports", "floquet_port"), ("_floquet_ports", "scan_angle"),
     ("_lumped_rlc", "R"), ("_lumped_rlc", "series_RL"),
     ("_boundary", "upml"), ("_interface_eps", "dual_average"),
