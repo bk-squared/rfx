@@ -196,6 +196,12 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
     _res = self._attach_run_settling_witness(
         _res, n_steps=n_steps, num_periods=num_periods, context=entry)
+    import jax
+    from rfx._diagnostic_transport import result_with_diagnostics
+    from rfx.runners._distributed_common import split_axis_advisory
+    # Like other post-dispatch advisory records, retain this with skip_preflight.
+    n_devices = len(jax.devices() if devices is None else devices)
+    _res = result_with_diagnostics(_res, split_axis_advisory(_res.grid, n_devices, plan.lane))
     _warn_if_nonfinite_result(_res, context=entry)
     from rfx.current_moments import require_accumulated_current_moments
     require_accumulated_current_moments(self, _res, entry)
