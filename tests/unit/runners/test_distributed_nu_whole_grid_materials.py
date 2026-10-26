@@ -11,6 +11,8 @@ import pytest
 from jax.sharding import Mesh
 
 from rfx import Simulation, Box, DebyePole
+from rfx.boundaries.spec import BoundarySpec
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from rfx.materials.lorentz import lorentz_pole
 from rfx.model.electric_metrics import stage_forward_materials
 from rfx.model.materials import realize_components
@@ -166,6 +168,52 @@ def test_owned_components_match_one_device(n):
                     assert np.array_equal(a, e), (name, rank)
                 if name == 'mu_update' and lo < 9 and hi > 4:
                     assert np.any(e != 1), 'owned comparison must read the magnetic box'
+
+
+def wall_scene(n):
+    """A dielectric running into the high-x PMC wall of a graded closed box (#1966)."""
+    devices = jax.devices()[:n]
+    if len(devices) < n:
+        pytest.skip(f'requires {n} devices')
+    nx, ny, nz = 23, 12, 10
+    dx = np.resize(np.array([.89, 1.07, .94, 1.13]), nx) * 1e-3
+    dy = np.resize(np.array([.91, 1.09, 1.03]), ny) * 1e-3
+    dx[[0, -1]] = dy[[0, -1]] = 1e-3
+    xs, ys = np.r_[0., np.cumsum(dx)], np.r_[0., np.cumsum(dy)]
+    sim = Simulation(freq_max=15e9, domain=(float(xs[-1]), float(ys[-1]), nz * 1e-3),
+                     dx=1e-3, dx_profile=dx, dy_profile=dy,
+                     boundary=BoundarySpec(x='pmc', y='pec', z='pec'), cpml_layers=0)
+    sim.add_material('insert', eps_r=2.2)
+    sim.add(Box((xs[15], ys[3], 2e-3), (xs[-1], ys[9], 8e-3)), material='insert')
+    grid = sim._build_nonuniform_grid()
+    materials = sim._assemble_materials_nu(grid)[0]
+    s = SimpleNamespace(grid=grid, materials=materials, layout=Slab(grid.shape[0], n),
+                        mesh=Mesh(np.asarray(devices), ('x',)))
+    s.inputs = stage_forward_materials(materials, s.layout, s.mesh, uniform=True)
+    s.occ = stack_and_place(np.zeros(grid.shape, np.float32), uniform_slab_rows(s.layout), s.mesh, outside=0)
+    return s
+
+
+@pytest.mark.parametrize('n', [2, 3])
+@pytest.mark.parametrize('route', ['whole_grid', 'per_slab'])
+def test_owned_components_take_the_high_wall(n, route, monkeypatch):
+    s = wall_scene(n)
+    assert unpadded_high_walls(s.grid)[0], 'the scene must have an unpadded high-x wall'
+    whole = realize_components(s.materials, s.grid, periodic=(False,) * 3)
+    blind = realize_components(s.materials, s.grid, periodic=(False,) * 3, high_wall=(False,) * 3)
+    # Precondition: the wall rule moves the last x row, so dropping it is visible.
+    assert any(not np.array_equal(np.asarray(a)[-1], np.asarray(b)[-1])
+               for a, b in zip(whole.eps_update, blind.eps_update))
+    if route == 'per_slab':
+        monkeypatch.setattr(setup, '_material_host_device', lambda *args, **kwargs: (None, 'traced inputs'))
+    staged = setup.realize_materials(s.inputs, s.grid, s.layout, s.mesh, s.occ, cpml=False)[0]
+    for actual, expected in zip(staged.components.eps_update, whole.eps_update):
+        actual, expected = np.asarray(actual), np.asarray(expected)
+        for rank in range(n):
+            lo = rank * s.layout.nx_per_rank
+            hi = min(lo + s.layout.nx_per_rank, s.grid.shape[0])
+            start = rank * s.layout.nx_local + s.layout.ghost_width
+            assert np.array_equal(actual[start:start + hi - lo], expected[lo:hi]), (route, rank)
 
 
 @pytest.mark.parametrize('n', [2, 3])
