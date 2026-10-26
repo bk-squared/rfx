@@ -65,26 +65,32 @@ def observe(monkeypatch, shape, devices, axis, anchor, mode):
         return primals[0], tangents[0]
 
     @jax.custom_vjp
-    def cotangent_tap(carry, parameter):
+    def cotangent_tap(carry, inputs):
         return carry
 
-    def forward(carry, parameter):
+    def forward(carry, inputs):
         return carry, None
 
-    def backward(parameter, cotangent):
+    def backward(residual, cotangent):
         sample('cotangent', cotangent)
         return cotangent, None
 
     cotangent_tap.defvjp(forward, backward)
 
-    def scan(function, initial, *args, **kwargs):
+    def scan(function, initial, xs=None, *args, **kwargs):
         if field_nodes(initial):
             sample('primal', initial)
             if mode == 'jvp':
                 initial = tangent_tap(initial, anchor)
             elif mode == 'vjp':
-                initial = cotangent_tap(initial, anchor)
-        return original(function, initial, *args, **kwargs)
+                # Keep even a constant initial carry on the reverse tape via
+                # the scan's own differentiable inputs. The outer scalar must
+                # not become an extra jit input with a device-placed zero VJP.
+                _, constants = jax.closure_convert(
+                    lambda carry, values: original(function, carry, values, *args, **kwargs),
+                    initial, xs)
+                initial = cotangent_tap(initial, (xs, constants))
+        return original(function, initial, xs, *args, **kwargs)
 
     with monkeypatch.context() as patch:
         patch.setattr(jax.lax, 'scan', scan)
