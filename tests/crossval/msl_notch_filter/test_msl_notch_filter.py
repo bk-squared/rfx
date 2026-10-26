@@ -843,14 +843,19 @@ ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
 # so an arm-length dependence that passes it cannot by itself consume the
 # comparison's budget. The witness runs on the first two rungs of the ladder
 # and is JUDGED on the second (h/4); the coarsest rung is reported as the
-# trend. Measured on run 369367263176: at h/2 the realized strip is 508 µm, a
-# 57.8 Ω line (fitted Z0) against the 50 Ω port reference, and that mismatch
-# makes the interference between the port reflections and the stub's depend
-# on the arm length — |S21| moved 1.196 dB and |S11| up to 9.2 dB near its
-# minima between 10 mm and 15.08 mm arms; at h/4 (571.5 µm, 51.6 Ω) |S21|
-# moved 0.471 dB and |S11| 3.8 dB. The effect shrinks with the mismatch; at
-# the judged rung (h/6, 592.7 µm) it is smaller still. |S11| in dB is not
-# judged: near its minima a small mismatch moves it by many dB.
+# trend. Measured on the edge-aware ladder (remi job
+# ports-notch-edge-ladder-x8km9, rfx-archive
+# rfx/records/20261026-msl-notch-edge-ladder/): the trace is solved at its
+# drawn 600 µm on both rungs, a 47.1 Ω line at h/2 and 47.7 Ω at h/4 (fitted
+# Z0) against the 50 Ω port reference. The quasi-static closed form
+# (Hammerstad–Jensen, zero thickness) gives 47.7 Ω for this line, so the
+# mismatch is the line's own and does not shrink with the mesh. It makes the
+# interference between the port reflections and the stub's depend on the arm
+# length: between 10 mm and 15.08 mm arms |S21| moved 0.584 dB at h/2 and
+# 0.476 dB at h/4 (0.024 dB under the bar), |S11| up to 4.9 and 4.7 dB near
+# its minima. On the uniform ladder (run 369367263176: strips 508 and
+# 571.5 µm, 57.8 and 51.6 Ω) |S21| moved 1.196 and 0.471 dB. |S11| in dB is
+# not judged: near its minima a small mismatch moves it by many dB.
 ARM_WITNESS_RUNGS = 2
 
 
