@@ -428,8 +428,22 @@ probes downstream of each feed.
 - **Thru line.** A uniform thru line is held to a mean `|S21|` in
   (0.90, 1.05) and a mean `Re(Z0)` in (40, 65) Ω
   (`tests/unit/sparams/test_msl_port_integration.py`).
-- **Cross-validation.** The open-stub notch filter is compared with frozen data
-  from another solver in `tests/crossval/msl_notch_filter/`.
+- **Open-stub notch filter: the mesh ladder** (`tests/crossval/msl_notch_filter/`,
+  a mesh-ladder case run monthly on a GPU and required before a release). One
+  600 µm line with one 12 mm open stub, on εr 3.66, h 254 µm. The cells are
+  h/2, h/4 and h/6 in z. In the plane of the metal the mesh is graded by
+  `edge_aware_profiles`, so the trace, the stub width and the 12 mm stub are
+  solved at their drawn sizes on every rung. The notch converges: 3.6680,
+  3.6705 and 3.6722 GHz, steps +0.068 % and +0.047 %. The order of convergence
+  is not established: where the notch falls between frequency bins moves the
+  notch estimator's own offset by about 0.1 % over the ladder, more than either
+  step. On a uniform mesh the same board
+  solves the trace 470, 552 and 580 µm wide, and the notch does not converge
+  (steps +0.002 % and −0.380 %). Grade such a board with
+  `edge_aware_profiles`, which places the last node of each conductor edge
+  0.35 of a cell inside the drawn edge, so the sheet is solved at its drawn
+  size. The raw S exceeds unit column power by up to 0.22 % here; see the
+  known limitation on a close, thin absorber above the line.
 - **Open-stub zero at a T junction** (by-hand comparison with openEMS,
   2026-10; not a CI test). One feed line (2.38 mm) meeting a wider line
   (2.58 mm) as the stem of a T, with one 5.56 mm open stub, on εr 2.2,

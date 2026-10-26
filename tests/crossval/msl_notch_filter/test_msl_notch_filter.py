@@ -47,7 +47,16 @@ References (``reference/``, provenance in ``reference/PROVENANCE.md``):
   frequency is printed beside its ``max_energy_sum``.
 
 The ladder is dx = h_sub/n so the substrate top always lands on a node plane
-(issue #723): 127 µm (n = 2), 63.5 µm (n = 4), 42.33 µm (n = 6).  The
+(issue #723): 127 µm (n = 2), 63.5 µm (n = 4), 42.33 µm (n = 6).  In the
+plane of the metal each rung is graded by ``edge_aware_profiles``, the
+preflight's own remedy: a sheet's edge is solved 0.35 of a cell beyond its
+last node, so the profiles put that last node 0.35 of a cell inside every
+drawn edge, and the trace and the stub are solved at their drawn 600 µm on
+every rung.  On the uniform ladder they were not: the trace was solved 470,
+552 and 580 µm wide and the notch did not converge (steps +0.002 %, then
+−0.380 %); the realized geometry predicted −0.378 % of that second step.
+With the edges held the steps are +0.068 % and +0.047 % (rfx-archive
+rfx/records/20261026-msl-notch-stage0/ and 20261026-msl-notch-stage1/).  The
 thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude) and
 the three rules the PI approved with it on 2026-09-22: the mesh statement
 (the last two rungs within 1 %), the deep-null exclusion (a bin where either
@@ -81,6 +90,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -88,6 +98,8 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.grid import cells_spanning
+from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 from tests._realized_geometry import _node_line, realized
 from tests.crossval._v2_judging import (
@@ -173,7 +185,9 @@ LATERAL_CLEARANCE_MIN_M = 2.0 * SUBSTRATE_THICKNESS_M + 8.0 * DX_COARSEST_M  # 1
 # it (measured: rows 5/10/15 against columns 4/9/14 down the ladder).  The
 # clearance is a MINIMUM, so it is rounded up to the next 50 µm; that puts the
 # line's edge inside a cell at every rung and both footprints realize the same
-# width.
+# width.  The edge-aware profiles now place the nodes at every metal edge
+# themselves, so this rounding no longer sets the realized width; the board
+# keeps 1.55 mm so it stays the board every earlier record solved.
 LATERAL_CLEARANCE_M = 1.55e-3
 assert LATERAL_CLEARANCE_M >= LATERAL_CLEARANCE_MIN_M
 TRACE_CENTRE_Y_M = LATERAL_CLEARANCE_M + TRACE_WIDTH_M / 2.0             # 1.850 mm
@@ -222,6 +236,11 @@ REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
 # 0.0022 over the 40-period ladder (remi job ci-1912-ladder-40p-wkcls).
 SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
+# The solved trace width, stub width and stub length, read from the grid, must
+# each be within 1 % of the drawn size on every rung, the tolerance of the
+# preflight's own sheet-size check (rfx-lead 2026-10-26).  Solved = node span
+# plus EDGE_OFFSET of the adjacent cell at each free edge.
+SOLVED_SIZE_TOL = 0.01
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REFERENCE_DIR = Path(__file__).resolve().parent / "reference"
@@ -234,8 +253,46 @@ OPENEMS_COARSE_STAGE = "stage_b_coarse"
 
 
 # ------------------------------------------------------------------ build
-def build(dx: float, arm_length_m: float = ARM_LENGTH_M) -> Simulation:
-    """The reference structure on a uniform ``dx`` mesh.
+def _board(arm_length_m: float = ARM_LENGTH_M) -> tuple[Box, Box, Box]:
+    """``(substrate, trace, stub)`` as drawn, for arms of ``arm_length_m``."""
+    domain_x, stub_centre_x = _x_geometry(arm_length_m)
+    y_lo = TRACE_CENTRE_Y_M - TRACE_WIDTH_M / 2.0
+    y_hi = TRACE_CENTRE_Y_M + TRACE_WIDTH_M / 2.0
+    substrate = Box((0.0, 0.0, 0.0), (domain_x, DOMAIN_Y_M, SUBSTRATE_THICKNESS_M))
+    trace = Box((0.0, y_lo, SUBSTRATE_THICKNESS_M),
+                (domain_x, y_hi, SUBSTRATE_THICKNESS_M))
+    stub = Box((stub_centre_x - TRACE_WIDTH_M / 2.0, y_hi, SUBSTRATE_THICKNESS_M),
+               (stub_centre_x + TRACE_WIDTH_M / 2.0, y_hi + STUB_LENGTH_M,
+                SUBSTRATE_THICKNESS_M))
+    return substrate, trace, stub
+
+
+def _edge_aware(dx: float, arm_length_m: float = ARM_LENGTH_M,
+                edge_offset: float = EDGE_OFFSET) -> dict:
+    """The rung's cell profiles: x and y from ``edge_aware_profiles`` on the
+    drawn trace, stub, substrate and the two port planes; z uniform at ``dx``,
+    so the substrate top stays on a node plane.
+
+    A warning from the profile builder means an edge could not be honoured,
+    and is raised here as an error.  ``edge_offset`` is the builder's own
+    parameter; only the mutation test passes anything but the default.
+    """
+    domain_x, _ = _x_geometry(arm_length_m)
+    substrate, trace, stub = _board(arm_length_m)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        profiles = edge_aware_profiles(
+            (domain_x, DOMAIN_Y_M, DOMAIN_Z_M), dx,
+            sheets=[trace, stub], solids=[substrate],
+            faces={"x": [PORT_MARGIN_M, PORT_MARGIN_M + 2.0 * arm_length_m]},
+            axes="xy", edge_offset=edge_offset)
+    profiles["dz_profile"] = np.full(cells_spanning(DOMAIN_Z_M, dx), dx)
+    return profiles
+
+
+def build(dx: float, arm_length_m: float = ARM_LENGTH_M, *,
+          uniform: bool = False, edge_offset: float = EDGE_OFFSET) -> Simulation:
+    """The reference structure on the rung's edge-aware mesh.
 
     Substrate is a lossless dielectric slab filling the board; the trace and
     the stub are zero-thickness PEC SHEETS on the substrate-top node plane
@@ -244,28 +301,27 @@ def build(dx: float, arm_length_m: float = ARM_LENGTH_M) -> Simulation:
 
     ``arm_length_m`` lengthens the line either side of the stub and the box
     with it; nothing else moves.  Only the arm-length witness passes anything
-    but the default.
+    but the default.  ``uniform=True`` builds the old uniform ``dx`` mesh and
+    ``edge_offset`` moves the profiles' nodes; only the mutation test uses
+    either.
     """
-    domain_x, stub_centre_x = _x_geometry(arm_length_m)
-    # #1138: trace y/stub x solved -21.683% at dx=127 um; this checks external S-parameters.
+    domain_x, _ = _x_geometry(arm_length_m)
+    profiles = {} if uniform else _edge_aware(dx, arm_length_m, edge_offset)
+    # #1138: on the uniform mesh the trace and stub widths were solved -21.683 %
+    # at dx = 127 um; the edge-aware profiles solve them at the drawn width.
     sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
         domain=(domain_x, DOMAIN_Y_M, DOMAIN_Z_M),
         dx=dx,
         cpml_layers=CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+        **profiles,
     )
     sim.add_material("substrate", eps_r=EPS_R_SUBSTRATE)
-    sim.add(Box((0.0, 0.0, 0.0), (domain_x, DOMAIN_Y_M, SUBSTRATE_THICKNESS_M)),
-            material="substrate")
-
-    y_lo = TRACE_CENTRE_Y_M - TRACE_WIDTH_M / 2.0
-    y_hi = TRACE_CENTRE_Y_M + TRACE_WIDTH_M / 2.0
-    sim.add(Box((0.0, y_lo, SUBSTRATE_THICKNESS_M),
-                (domain_x, y_hi, SUBSTRATE_THICKNESS_M)), material="pec")
-    sim.add(Box((stub_centre_x - TRACE_WIDTH_M / 2.0, y_hi, SUBSTRATE_THICKNESS_M),
-                (stub_centre_x + TRACE_WIDTH_M / 2.0, y_hi + STUB_LENGTH_M,
-                 SUBSTRATE_THICKNESS_M)), material="pec")
+    substrate, trace, stub = _board(arm_length_m)
+    sim.add(substrate, material="substrate")
+    sim.add(trace, material="pec")
+    sim.add(stub, material="pec")
 
     sim.add_msl_port(position=(PORT_MARGIN_M, TRACE_CENTRE_Y_M, 0.0),
                      width=TRACE_WIDTH_M, height=SUBSTRATE_THICKNESS_M,
@@ -356,11 +412,13 @@ def realized_geometry(sim: Simulation) -> dict:
     is the solver's, not a rule re-derived in the test.
 
     A zero-thickness sheet IS its set of tangential edges, and *n* footprint
-    node rows carry *n* − 1 edges.  Both spans are therefore reported twice:
-    ``trace_width_node_span_m`` = (n − 1)·dx is the geometric extent between
-    the outermost node rows, ``trace_width_strip_m`` = n·dx is the strip width
-    a quasi-TEM formula takes.  The stub length is measured from the main
-    line's far node row to the open end.
+    node rows carry *n* − 1 edges.  Each span is reported twice:
+    ``*_node_span_m`` is the geometric extent between the outermost node rows,
+    and ``*_solved_m`` adds ``EDGE_OFFSET`` of the adjacent cell at each free
+    edge, where the solver places a sheet's edge — the width the preflight's
+    sheet-size check reads, on any cell profile.  The stub length is measured
+    from the main line's far node row to the open end; its solved length adds
+    the offset at the open end only (the other end is the joint).
     """
     from rfx.boundaries.pec import realized_wall_planes
 
@@ -400,7 +458,8 @@ def realized_geometry(sim: Simulation) -> dict:
         n_trace_rows=int(rows.size),
         trace_y_m=(float(ys[j0]), float(ys[j1])),
         trace_width_node_span_m=float(ys[j1] - ys[j0]),
-        trace_width_strip_m=float(rows.size) * dx,
+        trace_width_solved_m=float(ys[j1] - ys[j0] + EDGE_OFFSET
+                                   * (ys[j0] - ys[j0 - 1] + ys[j1 + 1] - ys[j1])),
     )
 
     stub_cols = np.flatnonzero(my[:, j1:, k].any(axis=1))
@@ -424,7 +483,8 @@ def realized_geometry(sim: Simulation) -> dict:
         n_stub_cols=int(stub_cols.size),
         stub_x_m=(float(xs[i0]), float(xs[i1])),
         stub_width_node_span_m=float(xs[i1] - xs[i0]),
-        stub_width_strip_m=float(stub_cols.size) * dx,
+        stub_width_solved_m=float(xs[i1] - xs[i0] + EDGE_OFFSET
+                                  * (xs[i0] - xs[i0 - 1] + xs[i1 + 1] - xs[i1])),
         stub_first_edge_row=first_j,
         stub_gap_rows=first_j - j1,
         stub_contiguous=contiguous,
@@ -432,6 +492,8 @@ def realized_geometry(sim: Simulation) -> dict:
         stub_open_row=open_j,
         stub_open_y_m=float(ys[open_j]),
         stub_length_m=float(ys[open_j] - ys[j1]),
+        stub_length_solved_m=float(ys[open_j] - ys[j1] + EDGE_OFFSET
+                                   * (ys[open_j + 1] - ys[open_j])),
     )
     return out
 
@@ -461,19 +523,6 @@ def assert_realized(sim: Simulation, dx: float) -> dict:
             f"dx={dx*1e6:.2f}µm: the sheet plane is at z={g['sheet_plane_z_m']*1e6:.3f}µm, "
             f"{dz*1e6:.3f}µm off the declared substrate top "
             f"{SUBSTRATE_THICKNESS_M*1e6:.3f}µm.")
-    if g["n_trace_rows"] != g["n_stub_cols"]:
-        raise AssertionError(
-            f"dx={dx*1e6:.2f}µm: the main line realizes {g['n_trace_rows']} node "
-            f"rows and the stub {g['n_stub_cols']} node columns. Both are "
-            f"declared {TRACE_WIDTH_M*1e6:.0f}µm wide, so a difference means one "
-            "of the two footprints snapped to a different node count.")
-    if abs(g["trace_width_strip_m"] - TRACE_WIDTH_M) > dx:
-        raise AssertionError(
-            f"dx={dx*1e6:.2f}µm: realized strip width "
-            f"{g['trace_width_strip_m']*1e6:.1f}µm is more than one cell "
-            f"({dx*1e6:.2f}µm) from the declared {TRACE_WIDTH_M*1e6:.0f}µm "
-            f"(node span {g['trace_width_node_span_m']*1e6:.1f}µm over "
-            f"{g['n_trace_rows']} rows).")
     if not g["stub_attached"]:
         raise AssertionError(
             f"dx={dx*1e6:.2f}µm: the stub is not joined to the main line: its "
@@ -482,13 +531,21 @@ def assert_realized(sim: Simulation, dx: float) -> dict:
             f"{g['trace_rows'][1]}"
             + ("" if g["stub_contiguous"] else ", and its edges are not contiguous")
             + ". A floating strip beside a through line is not a shunt stub.")
-    if abs(g["stub_length_m"] - STUB_LENGTH_M) > dx:
-        raise AssertionError(
-            f"dx={dx*1e6:.2f}µm: realized stub length "
-            f"{g['stub_length_m']*1e6:.1f}µm is more than one cell "
-            f"({dx*1e6:.2f}µm) from the declared {STUB_LENGTH_M*1e6:.0f}µm "
-            f"(open end at y={g['stub_open_y_m']*1e6:.1f}µm, main line far row "
-            f"at y={g['trace_y_m'][1]*1e6:.1f}µm).")
+    # The solved sizes, each within SOLVED_SIZE_TOL of the drawing: the stub's
+    # length sets the notch frequency, the two widths set the line and stub
+    # impedances.  On the uniform ladder the widths failed this at every rung
+    # (470, 552, 580 µm for 600 µm) and the notch did not converge.
+    for key, declared, what in (
+            ("stub_length_solved_m", STUB_LENGTH_M, "stub length"),
+            ("trace_width_solved_m", TRACE_WIDTH_M, "trace width"),
+            ("stub_width_solved_m", TRACE_WIDTH_M, "stub width")):
+        if abs(g[key] / declared - 1.0) > SOLVED_SIZE_TOL:
+            raise AssertionError(
+                f"dx={dx*1e6:.2f}µm: solved {what} {g[key]*1e6:.1f}µm is "
+                f"{100.0*(g[key]/declared - 1.0):+.2f} % from the drawn "
+                f"{declared*1e6:.0f}µm (bar {SOLVED_SIZE_TOL*100:.0f} %; node span "
+                f"plus {EDGE_OFFSET} of the adjacent cell at each free edge). "
+                "Grade the in-plane mesh with edge_aware_profiles.")
     if g["n_ports"] != 2:
         raise AssertionError(
             f"dx={dx*1e6:.2f}µm: {g['n_ports']} MSL port(s) registered, expected 2.")
@@ -504,15 +561,16 @@ def _print_realized(g: dict, dx: float) -> None:
           f"{g['n_volume_cells']}")
     print(f"    trace rows {g.get('trace_rows')} n={g.get('n_trace_rows')} "
           f"y {g.get('trace_y_m')} node span "
-          f"{g.get('trace_width_node_span_m', float('nan'))*1e6:.1f} µm, strip "
-          f"{g.get('trace_width_strip_m', float('nan'))*1e6:.1f} µm "
+          f"{g.get('trace_width_node_span_m', float('nan'))*1e6:.1f} µm, solved "
+          f"{g.get('trace_width_solved_m', float('nan'))*1e6:.1f} µm "
           f"(declared {TRACE_WIDTH_M*1e6:.0f} µm)")
     print(f"    stub cols {g.get('stub_cols')} n={g.get('n_stub_cols')} "
           f"x {g.get('stub_x_m')} node span "
-          f"{g.get('stub_width_node_span_m', float('nan'))*1e6:.1f} µm, strip "
-          f"{g.get('stub_width_strip_m', float('nan'))*1e6:.1f} µm")
+          f"{g.get('stub_width_node_span_m', float('nan'))*1e6:.1f} µm, solved "
+          f"{g.get('stub_width_solved_m', float('nan'))*1e6:.1f} µm")
     print(f"    stub open end y={g.get('stub_open_y_m', float('nan'))*1e3:.4f} mm, "
-          f"length {g.get('stub_length_m', float('nan'))*1e3:.4f} mm "
+          f"length {g.get('stub_length_m', float('nan'))*1e3:.4f} mm, solved "
+          f"{g.get('stub_length_solved_m', float('nan'))*1e3:.4f} mm "
           f"(declared {STUB_LENGTH_M*1e3:.1f} mm)")
     print(f"    MSL ports {g['n_ports']}")
 
@@ -785,14 +843,19 @@ ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
 # so an arm-length dependence that passes it cannot by itself consume the
 # comparison's budget. The witness runs on the first two rungs of the ladder
 # and is JUDGED on the second (h/4); the coarsest rung is reported as the
-# trend. Measured on run 369367263176: at h/2 the realized strip is 508 µm, a
-# 57.8 Ω line (fitted Z0) against the 50 Ω port reference, and that mismatch
-# makes the interference between the port reflections and the stub's depend
-# on the arm length — |S21| moved 1.196 dB and |S11| up to 9.2 dB near its
-# minima between 10 mm and 15.08 mm arms; at h/4 (571.5 µm, 51.6 Ω) |S21|
-# moved 0.471 dB and |S11| 3.8 dB. The effect shrinks with the mismatch; at
-# the judged rung (h/6, 592.7 µm) it is smaller still. |S11| in dB is not
-# judged: near its minima a small mismatch moves it by many dB.
+# trend. Measured on the edge-aware ladder (remi job
+# ports-notch-edge-ladder-x8km9, rfx-archive
+# rfx/records/20261026-msl-notch-edge-ladder/): the trace is solved at its
+# drawn 600 µm on both rungs, a 47.1 Ω line at h/2 and 47.7 Ω at h/4 (fitted
+# Z0) against the 50 Ω port reference. The quasi-static closed form
+# (Hammerstad–Jensen, zero thickness) gives 47.7 Ω for this line, so the
+# mismatch is the line's own and does not shrink with the mesh. It makes the
+# interference between the port reflections and the stub's depend on the arm
+# length: between 10 mm and 15.08 mm arms |S21| moved 0.584 dB at h/2 and
+# 0.476 dB at h/4 (0.024 dB under the bar), |S11| up to 4.9 and 4.7 dB near
+# its minima. On the uniform ladder (run 369367263176: strips 508 and
+# 571.5 µm, 57.8 and 51.6 Ω) |S21| moved 1.196 and 0.471 dB. |S11| in dB is
+# not judged: near its minima a small mismatch moves it by many dB.
 ARM_WITNESS_RUNGS = 2
 
 
@@ -892,8 +955,8 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
           f"{STUB_CENTRE_X_M*1e3:.3f} mm, lateral clearance "
           f"{LATERAL_CLEARANCE_M*1e3:.3f} mm (the port's minimum 2·h + "
           f"8·{DX_COARSEST_M*1e6:.1f} µm = {LATERAL_CLEARANCE_MIN_M*1e3:.3f} mm, "
-          "rounded up to the next 50 µm so the line's edge does not land on a "
-          "node line)")
+          "rounded up to the next 50 µm); in-plane nodes from "
+          "edge_aware_profiles, z uniform")
 
     results = []
     arm_witnesses: list = []
@@ -1038,8 +1101,8 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         # converged ladder proceeds to the reference comparison below.
         # Ring-down, passivity and arm-length witnesses have already run.
         pytest.xfail(
-            "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
-            f"not shown to converge — {mesh_stmt['reason']}. The finest rung "
+            "known limitation (PI 2026-09-22, 2026-09-24): the edge-aware mesh "
+            f"is not shown to converge — {mesh_stmt['reason']}. The finest rung "
             f"sits {fine['notch_pct']:.3f} % from the openEMS tutorial's "
             f"{fine['ref_notch_ghz']:.4f} GHz and its |S21| differs by up to "
             f"{fine['aligned_max_abs_delta_db']:.3f} dB with the notches "
@@ -1113,7 +1176,7 @@ def _write_figure(results, palace, openems, tmp_path) -> Path:
 
 # -------------------------------------------------------------- fast tests
 def test_the_lattice_builds_the_declared_board():
-    """Build-time only: the board realizes as declared, and the three defects
+    """Build-time only: the board realizes as declared, and the defects
     ``assert_realized`` exists for are refused."""
     print(f"\n  declared board: arms {ARM_LENGTH_M*1e3:.1f} mm each side, port "
           f"margin {PORT_MARGIN_M*1e3:.1f} mm, box {DOMAIN_X_M*1e3:.3f} × "
@@ -1132,12 +1195,20 @@ def test_the_lattice_builds_the_declared_board():
           f"{_x_geometry(WITNESS_ARM_LENGTH_M)[0]*1e3:.2f} mm:")
     _print_realized(g, dx)
 
-    # One cell short is inside the one-cell tolerance BY DESIGN: a 12 mm stub
-    # cannot land on a node at every cell size, so the check must not refuse a
-    # rounding it forces itself.
-    g = assert_realized(_build_short_stub(dx, 1), dx)
-    print(f"  stub drawn one cell short: realized length "
-          f"{g['stub_length_m']*1e3:.4f} mm — accepted")
+    # The ladder this case ran before 2026-10-26: the uniform mesh solves the
+    # 600 µm sheets 470 µm wide at h/2 and 552 µm at h/4 (580 µm at h/6).
+    for dx_u in (SUBSTRATE_THICKNESS_M / 2, SUBSTRATE_THICKNESS_M / 4):
+        with pytest.raises(AssertionError) as uniform:
+            assert_realized(build(dx_u, uniform=True), dx_u)
+        print(f"  uniform mesh at {dx_u*1e6:.2f} µm: {uniform.value}")
+        assert "solved trace width" in str(uniform.value)
+
+    # Nodes ON the drawn edges are not the remedy: each edge is then solved
+    # EDGE_OFFSET of a cell beyond the drawing, about +0.7 cell of width.
+    with pytest.raises(AssertionError) as on_edge:
+        assert_realized(build(dx, edge_offset=0.0), dx)
+    print(f"  profile nodes on the drawn edges: {on_edge.value}")
+    assert "solved" in str(on_edge.value)
 
     with pytest.raises(AssertionError) as two_cells:
         assert_realized(_build_short_stub(dx, 2), dx)
