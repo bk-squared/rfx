@@ -144,7 +144,7 @@ def _update_e_nu_dispersive(
     # (issue #656) — the NU lane runs the same ADE recurrences off the same
     # ``init_debye``/``init_lorentz`` coefficients, which are built from
     # ``grid.dt`` (an np.float64 scalar, strongly typed in JAX). The full
-    # rationale lives on ``rfx.materials.lorentz.update_e_lorentz``.
+    # rationale lives on ``rfx.stepping.poles.update_e_lorentz``.
     _fdtype = state.ex.dtype
 
     # Every coefficient is per E component (#1260): component c takes index c.
@@ -382,7 +382,7 @@ def _build_nu_scan(
     use_pec_edges = pec_edge_masks is not None
     use_pec_occupancy = pec_occupancy is not None or bool(pinned_sheet_layout)
 
-    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+    waveguide_ports = admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
                 ntff=ntff_box if use_ntff else None, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                 pec_faces=pec_faces, pmc_faces=pmc_faces, feature_owned=_feature_tfsf, nonuniform=True,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps, pec_mask=pec_mask,

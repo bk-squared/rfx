@@ -31,6 +31,7 @@ SEAMS = {
     'graded_step': ('rfx.stepping.graded_loop', '_build_nu_scan'),
     'distributed': ('rfx.runners._distributed_nu_execute', 'execute_from_materials'),
     'distributed_step': ('rfx.runners.distributed_nu', 'run_nonuniform_distributed_pec'),
+    'distributed_uniform_jit': ('jax', 'jit'),
 }
 
 PATHS = ('uniform', 'graded', 'multi-device-graded', 'multi-device-uniform')
@@ -545,6 +546,17 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
                     captured['result'] = freeze(build_scan(*args, **kwargs))
                     raise Captured
                 install(stack, 'graded_step', build)
+            elif capture_path == 'multi-device-uniform':
+                # The native slab lane passes its assembled carry, scan inputs
+                # and per-cell invariants into this JIT entry. Capture concrete
+                # arrays before tracing, just as distributed_step does for NU.
+                jit = original('distributed_uniform_jit')
+                def native_jit(fun, *args, **kwargs):
+                    if (getattr(fun, '__module__', None) == 'rfx.runners.distributed_v2'
+                            and fun.__name__ in ('_run_cpml', '_run_pec')):
+                        return stop_at(fun, 'arguments')
+                    return jit(fun, *args, **kwargs)
+                install(stack, 'distributed_uniform_jit', native_jit)
             else:
                 install(stack, 'distributed_step', stop_at(original('distributed_step'), 'arguments'))
             invoke(sim, entry, path, n_steps, entry_options)

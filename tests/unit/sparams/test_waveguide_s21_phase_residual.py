@@ -20,6 +20,7 @@ the run test.
 """
 
 from __future__ import annotations
+from rfx.model.waveguide_modes import PortMedium
 
 import math
 
@@ -50,7 +51,7 @@ L_M = F.REF_RIGHT_DEFAULT_M - F.REF_LEFT_DEFAULT_M
 
 def _beta() -> np.ndarray:
     return np.real(np.asarray(
-        _compute_beta(jnp.asarray(FREQS), F_C_HZ, dt=DT_S, dx=DX_M),
+        _compute_beta(jnp.asarray(FREQS), F_C_HZ, dt=DT_S, dx=DX_M, medium=PortMedium()),
         dtype=complex,
     ))
 
@@ -206,7 +207,7 @@ def test_a_real_two_port_run_carries_the_field_and_prints_the_banner(capsys):
 
 def _fake_cfgs():
     from types import SimpleNamespace
-    return [SimpleNamespace(f_cutoff=F_C_HZ, dt=DT_S, dx=DX_M, normal_axis="x")
+    return [SimpleNamespace(f_cutoff=F_C_HZ, dt=DT_S, dx=DX_M, normal_axis="x", medium=PortMedium())
             for _ in range(2)]
 
 

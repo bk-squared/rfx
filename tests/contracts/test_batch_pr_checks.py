@@ -16,7 +16,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/ci/check_batch.py"
-GOOD_BODY = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+GOOD_BODY = "Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
 # Homebrew git on the development Mac is 2.39; Apple git supports merge-tree's
 # explicit merge base. Child checkers resolve the same binary through PATH.
 GIT = "/usr/bin/git" if sys.platform == "darwin" else shutil.which("git")
@@ -82,6 +82,7 @@ class Batch:
                 "headRepository": {"nameWithOwner": "bk-squared/rfx"}, "isCrossRepository": False,
                 "labels": [{"name": "merge-train"}, {"name": "lane:ci-infra"}],
                 "body": GOOD_BODY, "closingIssuesReferences": [],
+                "createdAt": "2026-10-27T00:00:00Z",
             }
         self.git(self.origin, "checkout", "main")
         if main_changes:
@@ -136,8 +137,11 @@ print(json.dumps({key: payload[key] for key in fields}))
     def write(repo, changes):
         for name, text in changes.items():
             path = repo / name
+            if text is None:
+                path.unlink()
+                continue
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text)
+            path.write_bytes(text if isinstance(text, bytes) else text.encode("utf-8"))
 
     def git(self, repo, *args):
         return subprocess.run(
@@ -183,6 +187,36 @@ def test_two_members_and_faithful_batch_pass(batch):
     for command in ("body", "fragments"):
         result = batch.run(command)
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_member_before_physics_cutover_in_later_batch_passes(batch):
+    batch.env["PR_CREATED_AT"] = "2026-10-28T00:00:00Z"
+    batch.prs["11"]["createdAt"] = "2026-10-26T14:59:59Z"
+    batch.prs["11"]["body"] = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    result = batch.run()
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_member_after_physics_cutover_in_later_batch_requires_physics(batch):
+    batch.env["PR_CREATED_AT"] = "2026-10-28T00:00:00Z"
+    batch.prs["11"]["createdAt"] = "2026-10-27T00:00:00Z"
+    batch.prs["11"]["body"] = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    assert_rejected(batch.run(), "#11: no well-formed `Physics:` first line")
+
+
+@pytest.mark.parametrize("creation_fields", [{}, {"createdAt": ""}, {"createdAt": None}],
+                         ids=["missing", "empty", "null"])
+def test_member_missing_creation_time_does_not_inherit_batch_exemption(monkeypatch, creation_fields):
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    import check_batch
+
+    pr = {"labels": [], "closingIssuesReferences": [], **creation_fields}
+    env = check_batch.member_env(ROOT, pr, {"PR_CREATED_AT": "2026-10-26T14:59:59Z"})
+    assert env["PR_CREATED_AT"] == ""
+    text = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    problems = check_batch.check_pr_body.check(text, env)
+    assert len(problems) == 1
+    assert "no well-formed `Physics:` first line" in problems[0]
 
 
 def test_review_text_after_verdict_is_rejected(batch):
@@ -235,6 +269,88 @@ def test_commit_order_differing_from_body_is_rejected(tmp_path):
 def test_one_line_change_is_rejected(tmp_path):
     batch = Batch(tmp_path, batch_changes={11: {"rfx/first.py": "value = 12\n"}})
     assert_rejected(batch.run(), "#11: batch commit differs from the PR's own change")
+
+
+TOPIC_PATH = "changelog.d/correct-value.fixed.md"
+TOPIC_CONTENT = "### Fixed — member change (#PR)\r\n\r\n- Preserve (#PR) in the body.\r\n".encode("utf-8")
+LANDED_CONTENT = "### Fixed — member change (#11)\r\n\r\n- Preserve (#PR) in the body.\r\n".encode("utf-8")
+
+
+def topic_batch(tmp_path, landed=LANDED_CONTENT, *, initial_files=None, main_changes=None):
+    return Batch(
+        tmp_path,
+        member_changes={11: {"rfx/first.py": "value = 11\n", TOPIC_PATH: TOPIC_CONTENT}},
+        batch_changes={11: {TOPIC_PATH: None, "changelog.d/11.fixed.md": landed}},
+        initial_files=initial_files, main_changes=main_changes,
+    )
+
+
+def test_renamed_topic_member_is_faithful(tmp_path):
+    batch = topic_batch(tmp_path)
+    index = Path(batch.git(batch.repo, "rev-parse", "--absolute-git-dir")) / "index"
+    index_before = index.read_bytes()
+    # An unrelated checkout edit must survive use of the temporary index.
+    (batch.repo / "rfx/first.py").write_text("uncommitted = True\n")
+    for command in ("body", "fragments"):
+        result = batch.run(command)
+        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    assert index.read_bytes() == index_before
+    assert (batch.repo / "rfx/first.py").read_text() == "uncommitted = True\n"
+    assert (batch.repo / "changelog.d/11.fixed.md").read_bytes() == LANDED_CONTENT
+
+
+@pytest.mark.parametrize("landed", [
+    "### Fixed — member change (#11)\r\n\r\n- Changed the body.\r\n".encode("utf-8"),
+    "### Fixed — member change (#11)\r\n\r\n- Preserve (#11) in the body.\r\n".encode("utf-8"),
+    "### Fixed — member change (#11)\n\n- Preserve (#PR) in the body.\n".encode("utf-8"),
+    TOPIC_CONTENT,
+])
+def test_topic_landing_with_other_fragment_changes_is_unfaithful(tmp_path, landed):
+    batch = topic_batch(tmp_path, landed)
+    assert_rejected(batch.run(), "#11: batch commit differs from the PR's own change in: changelog.d/11.fixed.md")
+
+
+def test_unrenamed_topic_member_fails_fragments(tmp_path):
+    batch = Batch(tmp_path, member_changes={11: {"rfx/first.py": "value = 11\n", TOPIC_PATH: TOPIC_CONTENT}})
+    assert_rejected(batch.run("fragments"), "only the train may land it")
+    assert_rejected(batch.run(), "#11: batch commit differs from the PR's own change")
+
+
+def test_topic_member_behind_main_is_faithful(tmp_path):
+    batch = topic_batch(tmp_path, main_changes={"unrelated.txt": "main advanced\n"})
+    result = batch.run()
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_topic_destination_collision_is_rejected(tmp_path):
+    batch = topic_batch(tmp_path, initial_files={"changelog.d/11.fixed.md": Batch.fragment(11)})
+    assert_rejected(batch.run(), "changelog target already exists: changelog.d/11.fixed.md")
+
+
+def test_topic_missing_from_merge_tree_is_a_validation_error(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    import check_batch
+
+    batch = topic_batch(tmp_path)
+    # The base tree predates the member's added topic fragment.
+    with pytest.raises(ValueError, match=f"topic fragment missing from merge tree: {TOPIC_PATH}"):
+        check_batch.transform_topic_tree(
+            batch.repo, batch.base, batch.base, batch.shas[11], 11,
+        )
+
+
+def test_two_topics_of_one_type_are_rejected(tmp_path):
+    batch = Batch(tmp_path, member_changes={11: {
+        TOPIC_PATH: TOPIC_CONTENT, "changelog.d/another-fix.fixed.md": TOPIC_CONTENT,
+    }})
+    assert_rejected(batch.run(), "two topic fragments of one type target changelog.d/11.fixed.md")
+
+
+def test_topic_without_heading_placeholder_is_rejected(tmp_path):
+    batch = Batch(tmp_path, member_changes={11: {
+        TOPIC_PATH: "### Fixed — member change (#11)\n\n- Body (#PR).\n",
+    }})
+    assert_rejected(batch.run(), "topic fragment heading is missing (#PR)")
 
 
 def test_added_file_is_rejected(tmp_path):

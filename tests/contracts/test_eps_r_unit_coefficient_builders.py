@@ -161,9 +161,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
     ("rfx/sources/tfsf_oblique_open.py", "apply_methodB_e"): _VACUUM,
     ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
-        "a modal impedance beta/(omega*EPS_0): EPS_0 divides no permittivity",
-    ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"): _VACUUM,
-    ("rfx/model/waveguide_modes.py", "init_waveguide_port"): _HOST,
+        "port medium is a concrete resolved scalar; traced section permittivity is refused",
+    ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"):
+        "port medium is a concrete resolved scalar; traced section permittivity is refused",
     ("rfx/sparams/_common.py", "_resolve_msl_auto_offsets"): _C0,
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
     ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,
@@ -183,7 +183,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 51  # 50 -> 51: rfx/core/node_tensor.py add_node_increment (eps_r units, #1632); 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant); 48 -> 49: rfx/api/_gradient_witness.py conductivity_gradient_record (advisory record: record time over eps/sigma on concrete values only); 49 -> 50: rfx/model/pole_stability.py largest_growth (host-only stability predicate)
+ALLOWLIST_CEILING = 50  # Shared modal formulas removed the initializer EPS_0 reader (#1994).
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {

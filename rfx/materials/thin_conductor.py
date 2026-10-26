@@ -533,7 +533,8 @@ class SheetImpedanceCtx:
     one edge set by construction (the #677 G4 identity), and the
     sheet-normal component is never loaded (#690: two films on adjacent
     planes keep the gap edge between them live). Edges the run's realized
-    PEC edge masks already own are excluded (PEC wins on overlap).
+    PEC edge masks already own are excluded. Domain PEC faces are zeroed
+    after the sheet update (PEC wins on overlap, including domain faces).
     """
     mask_ex: object
     mask_ey: object

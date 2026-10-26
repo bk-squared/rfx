@@ -15,6 +15,7 @@ from rfx.measurement import (
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
 from rfx.model.graded_grid import NonUniformGrid
 from rfx.stepping import segmented_scan
+from rfx.stepping.remat import active_levels, checkpoint_lengths
 from rfx.stepping.graded_setup import _build_nu_scan
 
 
@@ -50,7 +51,7 @@ def run_nonuniform(
     flux_monitors: list | None = None,
     checkpoint: bool = False,
     emit_time_series: bool = True,
-    checkpoint_every: int | None = None,
+    checkpoint_every: int | tuple[int, ...] | None = None,
     n_warmup: int = 0,
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
@@ -206,13 +207,15 @@ def run_nonuniform(
         warmup_ys = None
         n_steps_opt = n_steps
 
+    chunk = (checkpoint_lengths(checkpoint_every) if isinstance(checkpoint_every, tuple)
+             else int(checkpoint_every) if checkpoint_every is not None else None)
     use_segmented = (
-        checkpoint_every is not None
-        and 0 < int(checkpoint_every) < n_steps_opt
+        bool(active_levels(n_steps_opt, chunk)) if isinstance(chunk, tuple)
+        else chunk is not None and 0 < chunk < n_steps_opt
     )
     if use_segmented:
         final, opt_ys = segmented_scan(
-            step_fn, carry_init, xs, int(checkpoint_every), scan=recorded_scan
+            step_fn, carry_init, xs, chunk, scan=recorded_scan
         )
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn

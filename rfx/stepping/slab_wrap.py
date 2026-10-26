@@ -313,8 +313,10 @@ def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, ch
     return run_fn(carry, invariants, waves, ranks)
 
 
-def validate_scan_controls(n_steps, n_warmup, checkpoint_every):
+def validate_scan_controls(n_steps, n_warmup, checkpoint_every, *, path="slab_wrap"):
     """Validate warmup and checkpoint controls before selecting a runner."""
+    if isinstance(checkpoint_every, tuple):
+        raise NotImplementedError(f"{path}: checkpoint_every tuples are not supported")
     if n_warmup < 0:
         raise ValueError(f"n_warmup must be >= 0; got {n_warmup}")
     if n_warmup >= n_steps:

@@ -375,9 +375,9 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
 def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
 
-    The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
-    and the opposite ghosts are dead: local ghost updates are overwritten
-    by the next live exchange before a real cell can consume them.
+    The H curl reads only these two x-neighbours; NTFF y/z faces also read the RIGHT Hx
+    ghost, valid as every admitted H writer updates it like the owner row, except closed-box
+    TF/SF, whose module sends it (another owner-only H writer needs a ghost-invariant test).
 
     Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
 
@@ -1279,7 +1279,7 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=
 def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
 
-    Per E component (#1260), as ``rfx.materials.lorentz.update_e_lorentz``
+    Per E component (#1260), as ``rfx.stepping.poles.update_e_lorentz``
     without its dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz

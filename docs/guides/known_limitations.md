@@ -139,6 +139,18 @@ open structures and for any structure with a material interface; ADI runs only a
 closed (`boundary="pec"`), homogeneously filled cavity. Both refusals are rows in
 the support matrix's **Refused inputs** table.
 
+### The AD memory estimate reads low with checkpoint levels and with several outputs at once
+
+Tracker: #1739
+
+`estimate_ad_memory` and `plan_ad_memory` can plan a gradient that runs out of device memory. On one graded scene
+(737,009 nodes, float32, RTX A6000, 16 runs) the measured device peak was 1.00 to 1.14 times the estimate with one
+output pulled back (worst: three checkpoint levels), and 1.04 to 2.17 times the estimate with 2 or 8 outputs pulled
+back at once by `jax.jacrev` or `vmap` (worst: 8 outputs with two checkpoint levels). An extra output holds about 7
+carries on the device; `cotangents=` counts 1. Leave 15 % above the estimate for one output with checkpoint levels.
+With several outputs at once, budget 2.2 times the estimate, measure one short run, or pull back one output at a time.
+An estimate read from the compiled whole gradient (within 3 % of every peak measured) is the planned replacement.
+
 ### A finite flux box closes only when it is centred on its source
 
 Tracker: #1628
@@ -175,6 +187,7 @@ backscatter errors were larger than the staircase's at each of three meshes, and
 edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut H-face areas)
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
+`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field near 1e-2 of the peak that does not decay (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
 ## Ports and extraction
@@ -327,54 +340,15 @@ the guide's walls, and both meshes warn or refuse unless they are declared PEC.
 Until this is fixed, solve a partial-aperture port that radiates on a graded
 mesh (a constant `dz_profile` is enough).
 
-### A waveguide port assumes an empty (vacuum) guide: a filled or loaded port section is refused, and a dielectric-filled port is not available.
+### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
 
-Tracker: #1994
+Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)
 
-A rectangular-waveguide port models an empty guide: its cutoff, propagation
-constant and modal impedance use vacuum values, and so does the de-embedding to
-a `reference_plane`. Measured before the refusal existed: on a straight WR-90
-filled end to end (two TE10 ports 80 mm apart, matched line, so |S11| should be
-0 and |S21| 1), |S11| came out 0.53 to 0.33 at relative permittivity 2.2
-(7.0–8.6 GHz) and 0.74 to 0.60 at 4 (6.8–7.3 GHz), exactly the mismatch between
-the vacuum and the filled modal impedance, while |S21| stayed 1.00, so
-|S11|² + |S21|² exceeded 1 on a lossless line. The S21 phase was off by 2–3 %,
-and by up to 14 % with the reference planes moved 30 mm. The same guide empty
-gave |S11| ≤ 0.004 and the phase within 0.06 %.
-
-Every run now refuses, at setup, a port whose section holds anything but
-vacuum. The section runs from the cell of the port's H correction through its
-source and reference planes, and on to a user `reference_plane`, over the port
-aperture. Refused there: realized relative permittivity or permeability other
-than 1, material conductivity, Debye or Lorentz poles, a Kerr coefficient, a PEC
-volume, a concrete `eps_override` or `sigma_override` that is not vacuum, and a
-`forward(design_box=...)` whose update window reaches the section. This holds on
-the uniform and graded meshes, for `run()`, `forward()` and
-`compute_waveguide_s_matrix()`. Material between the reference plane and the
-probe plane is the device, not the port, and is admitted: the S-matrix reads
-the waves at the reference planes only.
-
-Not checked:
-
-- A single-port `run()` reads its S21 at the probe plane. When the probe plane's
-  own cells, or the stretch to a declared `probe_plane`, are not vacuum, that
-  S21 uses vacuum modal impedance and propagation constant there.
-- A fill whose permittivity differs per component (anisotropic), drawn inside
-  the section. The check reads the per-cell value; smoothing at metal walls and
-  at material faces is part of the realized guide and is not judged.
-- A zero-thickness metal sheet or thin conductor, a sheet impedance, a thin
-  conductive film or a lumped RLC element inside the section. The check judges
-  metal by volume only; a sheet drawn across the guide between the source and
-  the reference plane is refused by the port's preflight (face check), which
-  `skip_preflight=True` turns off.
-- A traced override over the section cannot be judged before the run.
-
-A guide that must be filled at the port (a dielectric-loaded line, a taper
-ending in a filled section) has no port model yet: start the fill, override or
-design box beyond the port's reference plane, or wait for the filled-port
-model tracked in #1994.
-
----
+Below f/fc = 1.2 the guide's slow group velocity rings long after the source
+ends. At a/45 cells such a band needs about 32 000 steps before |S11|²+|S21|²
+stops moving with record length; on 8 000 steps it moves by up to 1e-2 per bin,
+and the run's settling check reports that record (−39 dB against −40 dB).
+Give `n_steps` explicitly when the band starts below 1.2 fc.
 
 ## Ring-down completion and the early stop
 

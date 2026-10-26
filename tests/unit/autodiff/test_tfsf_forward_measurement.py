@@ -60,12 +60,10 @@ def test_graded_plane_wave_refusals_match_run(angle, direction, body):
         assert message[len(prefix):] == expected_body
 
 
-def test_distributed_graded_plane_wave_falls_back():
+def test_distributed_graded_plane_wave_refused_by_name():
     from tests._multi_device_scene import host_devices
-    expected = _scene().forward(n_steps=2)
-    with pytest.warns(UserWarning, match="Falling back to single-device"):
-        actual = _scene().forward(n_steps=2, distributed=True, devices=host_devices(2))
-    assert np.array_equal(actual.time_series, expected.time_series)
+    with pytest.raises(NotImplementedError, match="TFSF.*graded multi-device"):
+        _scene().forward(n_steps=2, distributed=True, devices=host_devices(2))
 
 
 def test_graded_plane_wave_gradient_matches_fd():

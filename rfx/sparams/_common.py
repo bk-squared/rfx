@@ -36,6 +36,7 @@ except ImportError:
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import complex_solve, is_tracer
+from rfx.measurement.phasors import exp_j
 from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
 from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
@@ -1402,7 +1403,7 @@ def s21_phase_residual_deg_rms(
     dt: float,
     dx: float,
     length_m: float,
-    mag_floor: float = WAVEGUIDE_PHASE_MAG_FLOOR,
+    mag_floor: float = WAVEGUIDE_PHASE_MAG_FLOOR, medium=None,
 ):
     """RMS of ``wrap(angle(S21) + beta(f) * L)`` over the measured bins, degrees.
 
@@ -1468,12 +1469,11 @@ def s21_phase_residual_deg_rms(
         meta["reason"] = "reference-plane separation is not a positive length"
         return None, meta
 
-    from rfx.model.waveguide_modes import _compute_beta
+    from rfx.model.waveguide_modes import _compute_beta, PortMedium
 
-    beta = np.real(np.asarray(
-        _compute_beta(jnp.asarray(f), f_c, dt=float(dt), dx=float(dx)),
-        dtype=complex,
-    ))
+    beta = np.real(np.asarray(_compute_beta(
+        jnp.asarray(f), f_c, dt=float(dt), dx=float(dx), medium=medium or PortMedium()),
+        dtype=complex))
     keep = np.isfinite(np.abs(s21)) & (np.abs(s21) >= float(mag_floor))
     keep &= np.isfinite(beta)
     meta["masked_bins"] = int((~keep).sum())
@@ -1548,7 +1548,7 @@ def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
         return None, meta
     rms, meta = s21_phase_residual_deg_rms(
         s_params, freqs,
-        f_cutoff_hz=fc[0], dt=float(cfgs[0].dt), dx=float(cfgs[0].dx),
+        f_cutoff_hz=fc[0], dt=float(cfgs[0].dt), dx=float(cfgs[0].dx), medium=cfgs[0].medium,
         length_m=abs(float(planes[1]) - float(planes[0])),
     )
     # The helper builds its own meta; carry the lane over so the record says
@@ -1953,9 +1953,8 @@ def _mixed_flux_magnitude_override(
             # measurement".
             neg_power[i, :] |= p_arr < 0.0
             mag = np.sqrt(np.clip(p_arr, 0.0, None) / safe_pinc)
-            ph = jnp.exp(1j * jnp.angle(S_wave[i, col, :]))
             S_out = S_out.at[i, col, :].set(
-                (jnp.asarray(mag) * ph).astype(S_wave.dtype)
+                (jnp.asarray(mag) * exp_j(jnp.angle(S_wave[i, col, :]), xp=jnp)).astype(S_wave.dtype)
             )
     return S_out, ill_cond, neg_power
 
@@ -2033,7 +2032,8 @@ def _warn_thin_absorber_vs_guide_wavelength(
         if not faces:
             continue
 
-        lambda_g = (_C0_SPARAMS / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
+        from rfx.model.waveguide_modes import port_light_speed
+        lambda_g = (port_light_speed(c) / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
         required_m = _FAR_PORT_LAMBDA_G_FRACTION * lambda_g
         depths = [(side, n, absorber_depth(grid, axis, side, n)) for side, n in faces]
         thin = [(side, n, depth) for side, n, depth in depths if depth < required_m]

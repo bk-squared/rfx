@@ -264,6 +264,13 @@ def test_graded_plane_wave_keeps_absorbers(skip, distributed, monkeypatch):
     # A laterally invariant slab; a finite one is refused on both meshes (#1794,
     # test_finite_scatterer_refuses_every_dispatch_path).
     sim = plane(finite=False, dz_profile=np.full(10, .001))
+    if distributed:
+        import jax
+        assert len(jax.devices()) >= 2
+        with pytest.raises(NotImplementedError) as caught:
+            sim.run(n_steps=1, skip_preflight=skip, devices=jax.devices()[:2])
+        assert 'TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane (run_distributed_nu)' in str(caught.value)
+        return
     assert_graded_admitted(sim, skip, distributed, monkeypatch)
 
 

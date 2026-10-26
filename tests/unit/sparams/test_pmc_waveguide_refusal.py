@@ -42,6 +42,8 @@ def test_waveguide_smoothing_guard_independent_of_mode_refusal(monkeypatch, smoo
     monkeypatch.setattr(admission, 'admit', lambda *args, **kwargs: None)
     sim = model(two_ports=True)
     sim.add_material('dielectric', eps_r=3.)
-    sim.add(Box((.004, .005, .001), (.030, .020, .003)), material='dielectric')
+    # Touch the PMC face between the launch sections so this pin reaches
+    # the smoothing fence without first refusing a partially filled port.
+    sim.add(Box((.018, .005, .001), (.022, .020, .003)), material='dielectric')
     with pytest.raises(NotImplementedError, match='subpixel smoothing.*y_hi.*half a cell'):
         sim.compute_waveguide_s_matrix(num_periods=1, subpixel_smoothing=smoothing)

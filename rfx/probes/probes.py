@@ -1643,23 +1643,14 @@ def extract_s_matrix(
         debye_state = debye[1] if debye is not None else None
         lorentz_state = lorentz[1] if lorentz is not None else None
 
-        from rfx.stepping.probe_loop import make_probe_step
-        core, source_values = make_probe_step(
-            grid, mats, ports, j, use_cpml=use_cpml,
+        from rfx.stepping.probe_loop import run_probe_loop
+        carry, sprobes = run_probe_loop(
+            grid, mats, ports, j, n_steps=n_steps, dt=dt, state=state,
+            sprobes=sprobes, cpml_state=cpml_state, debye_state=debye_state,
+            lorentz_state=lorentz_state, use_cpml=use_cpml,
             cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
             debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
             curl_boundary=curl_boundary, wire=False)
-        carry = {"fdtd": state, "sprobes": tuple(sprobes)}
-        if use_cpml:
-            carry["cpml"] = cpml_state
-        if debye is not None:
-            carry["debye"] = debye_state
-        if lorentz is not None:
-            carry["lorentz"] = lorentz_state
-        for step in range(n_steps):
-            carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
-            sprobes = extras["sprobes"]
-            carry["sprobes"] = sprobes
 
         # Collect per-(drive j, receive i) V/I DFT phasors for the shared
         # wave decomposer (``decompose_lumped_s_matrix``) — single source of
@@ -1963,23 +1954,14 @@ def extract_s_matrix_wire(
         debye_state = debye[1] if debye is not None else None
         lorentz_state = lorentz[1] if lorentz is not None else None
 
-        from rfx.stepping.probe_loop import make_probe_step
-        core, source_values = make_probe_step(
-            grid, mats, ports, j, use_cpml=use_cpml,
+        from rfx.stepping.probe_loop import run_probe_loop
+        carry, sprobes = run_probe_loop(
+            grid, mats, ports, j, n_steps=n_steps, dt=dt, state=state,
+            sprobes=sprobes, cpml_state=cpml_state, debye_state=debye_state,
+            lorentz_state=lorentz_state, use_cpml=use_cpml,
             cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
             debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
             curl_boundary=curl_boundary, wire=True)
-        carry = {"fdtd": state, "sprobes": tuple(sprobes)}
-        if use_cpml:
-            carry["cpml"] = cpml_state
-        if debye is not None:
-            carry["debye"] = debye_state
-        if lorentz is not None:
-            carry["lorentz"] = lorentz_state
-        for step in range(n_steps):
-            carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
-            sprobes = extras["sprobes"]
-            carry["sprobes"] = sprobes
 
         # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
         # shared wire wave decomposer (``decompose_wire_s_matrix``) — single

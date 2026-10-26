@@ -14,6 +14,7 @@ import pytest
 
 from rfx.core import yee
 import rfx.stepping.yee as stepping_yee  # the moved E kernels read curl_h here
+import rfx.stepping.poles as poles  # the moved pole E updates read curl_h here
 from rfx.materials import debye, lorentz
 from rfx.boundaries import upml
 import rfx.simulation as uniform
@@ -56,7 +57,7 @@ def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
 
     jax.clear_caches()
     with ExitStack() as stack:
-        for module in (yee, stepping_yee, uniform_setup, debye, lorentz, upml):
+        for module in (yee, stepping_yee, uniform_setup, poles, debye, lorentz, upml):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, witness))
         call()
@@ -144,7 +145,7 @@ def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
     jax.clear_caches()
     with ExitStack() as stack:
         stack.enter_context(patch.object(projector, "port_table", table_spy))
-        for module in (yee, stepping_yee, uniform_setup, debye, lorentz, upml):
+        for module in (yee, stepping_yee, uniform_setup, poles, debye, lorentz, upml):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, curl_spy))
         if mesh == "graded":
@@ -300,9 +301,8 @@ def test_tfsf_forward_uses_shared_curl():
     assert boundary.periodic == (False, True, True)
 
 
-def test_baked_dispatch_passes_realized_boundary_on_cpu():
-    # Exercise the production dispatch predicate and baked implementation on
-    # CPU. This is not a native GPU measurement.
+def test_gpu_query_standard_dispatch_passes_realized_boundary_on_cpu():
+    # An accelerator query keeps the standard lane and its realized boundary.
     sim = model(wall="pec", solved_domain=True)
     invoked = []
     original = uniform.update_he_fast
@@ -313,7 +313,7 @@ def test_baked_dispatch_passes_realized_boundary_on_cpu():
             patch.object(uniform, "update_he_fast", baked):
         boundary = require_shared(lambda: sim.run(
             n_steps=2, skip_preflight=True, compute_s_params=False))
-    assert invoked
+    assert not invoked
     assert boundary.pec_faces == frozenset(
         f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
 

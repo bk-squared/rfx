@@ -26,28 +26,19 @@ def refuse_distributed_options(self, *, entry="run", subpixel_smoothing=False, *
     }, instead=_dist_instead, entry=f"Simulation.{entry}()")
 
 
-def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args,
+def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
                         n_steps, num_periods, devices, exchange_interval=1,
                         skip_preflight=False, compute_s_params=False,
                         s_param_freqs=None, s_param_n_steps=None,
                         conformal_pec=False, subpixel_smoothing=False,
                         checkpoint=False, snapshot=None, until_decay=None,
                         report_every=None, _forward_port_s11=False):
-    """Use the run entry's admission, fallback, execution and S-matrix path."""
+    """Use the run entry's admission, execution and S-matrix path."""
     entry = "forward" if _forward_port_s11 else "run"
     lane = f"distributed multi-device {entry}()"
     # ---- Distributed multi-device lane ----
     if self._interface_eps == "dual_average":
         raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-    from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
-    if reason := one_device_reason(self):
-        del _solve_assembly  # the fallback performs its own solve assembly
-        return run_on_one_device(self, {**_call_args, "compute_s_params": compute_s_params,
-                                 "devices": None,
-                                 "exchange_interval": 1, "skip_preflight": True},
-                                 reason=reason, requested_devices=len(devices),
-                                 diagnostics=_diagnostics,
-                                 path=plan.lane if _forward_port_s11 else None)
     from rfx.model.distributed_ports import (
         refuse_unsupported_distributed_features,
     )
@@ -261,7 +252,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     try:
         result = execute_distributed(
             sim, plan=plan, _solve_assembly=assembly,
-            _diagnostics=assembly.diagnostics, _call_args=call_args,
+            _diagnostics=assembly.diagnostics,
             devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
             conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:

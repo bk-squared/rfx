@@ -4,6 +4,7 @@ The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
 """
 import json
+import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
 
@@ -111,12 +112,11 @@ ASSEMBLY_ROWS = (
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
-    ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'uniform'),
     ('PW-A', 'graded'),
-    ('PW-A', 'multi-device-graded'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
+    ('PW-closed', 'multi-device-uniform'),
     ('PW-closed', 'uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
@@ -232,14 +232,11 @@ FIELD_ROWS = (
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
-    ('P-waveguide', 'multi-device-uniform'),
     ('P-waveguide', 'uniform'),
-    ('PW-A', 'multi-device-uniform'),
     ('PW-A', 'uniform'),
-    ('PW-B', 'multi-device-uniform'),
     ('PW-B', 'uniform'),
+    ('PW-closed', 'multi-device-uniform'),
     ('PW-closed', 'uniform'),
-    ('PW-oblique', 'multi-device-uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
     ('R-rlc', 'uniform'),
@@ -284,16 +281,10 @@ ADMISSION_ROWS = (
     ('O-ntff', 'multi-device-uniform'),
     ('O-vector', 'multi-device-uniform'),
     ('P-lumped', 'multi-device-uniform'),
-    ('P-waveguide', 'multi-device-graded'),
-    ('P-waveguide', 'multi-device-uniform'),
     ('P-wire', 'graded'),
     ('P-wire', 'multi-device-uniform'),
     ('P-wire', 'uniform'),
     ('PW-A', 'graded'),
-    ('PW-A', 'multi-device-graded'),
-    ('PW-A', 'multi-device-uniform'),
-    ('PW-B', 'multi-device-uniform'),
-    ('PW-oblique', 'multi-device-uniform'),
     ('S-field', 'multi-device-uniform'),
     ('S-polarized', 'multi-device-uniform'),
     ('P-wire', 'multi-device-graded'),
@@ -316,13 +307,18 @@ BOTH_REFUSE_ROWS = (
     ('P-lumped2', 'multi-device-uniform'),
     ('P-msl', 'multi-device-graded'),
     ('P-msl', 'multi-device-uniform'),
+    ('P-waveguide', 'multi-device-graded'),
+    ('P-waveguide', 'multi-device-uniform'),
+    ('PW-A', 'multi-device-graded'),
+    ('PW-A', 'multi-device-uniform'),
     ('PW-B', 'graded'),
     ('PW-B', 'multi-device-graded'),
+    ('PW-B', 'multi-device-uniform'),
     ('PW-closed', 'graded'),
     ('PW-closed', 'multi-device-graded'),
-    ('PW-closed', 'multi-device-uniform'),
     ('PW-oblique', 'graded'),
     ('PW-oblique', 'multi-device-graded'),
+    ('PW-oblique', 'multi-device-uniform'),
     ('R-rlc', 'multi-device-graded'),
     ('R-rlc', 'multi-device-uniform'),
 )
@@ -514,6 +510,7 @@ def check_fields(declaration, path, direction=None):
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
+    ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
@@ -585,6 +582,20 @@ def test_both_refuse(declaration, path, direction):
                               entry_options=entry_options(declaration))
                 for entry in ('run', 'forward')}
     assert both_refused(declaration, path, pair), pair
+    if path.startswith('multi-device') and declaration in ('P-waveguide', 'PW-A', 'PW-B', 'PW-oblique'):
+        expected = ('waveguide ports (add_waveguide_port) are not supported on'
+                    if declaration == 'P-waveguide' else
+                    'TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane'
+                    if path == 'multi-device-graded' else {
+                        'PW-A': 'open-slab normal-incidence TFSF (periodic y/z is not on slabs)',
+                        'PW-B': 'TFSF Method B oblique (is_tfsf_methodB)',
+                        'PW-oblique': 'TFSF 2-D Bloch line (is_tfsf_2d)',
+                    }[declaration])
+        for record in pair.values():
+            assert record['type'] == 'NotImplementedError', record
+            assert expected in record['message'], record
+        print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
+                              dispositions=pair)), file=sys.stderr)
 
 
 @pytest.mark.parametrize('error', (TypeError, ValueError, NotImplementedError))

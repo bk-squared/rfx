@@ -65,7 +65,6 @@ def _reference(ctx, carry, source, sheet_coeffs):
     old = carry['fdtd']
     st = update_h(old, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic, high_wall=(False, False, False))
     st = update_e(st, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic, high_wall=(False, False, False))
-    st = apply_pec_faces(st, ctx.pec_faces_frozen)
     if ctx.use_pec_occupancy:
         # Independent of the published array: the cell occupancy through the
         # in-place 1 - M operator (0.5 is dyadic, so the two forms agree bit for bit).
@@ -74,6 +73,8 @@ def _reference(ctx, carry, source, sheet_coeffs):
         curls = curl_h(st.hx, st.hy, st.hz, ctx.dx, ctx.periodic, 2, None)
         st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,
                                     ctx.sheet_impedance, sheet_coeffs)
+    # Domain PEC faces win where a sheet ends on the wall.
+    st = apply_pec_faces(st, ctx.pec_faces_frozen)
     rlc = ()
     if ctx.use_lumped_rlc:
         meta = ctx.rlc_meta[0]
@@ -176,7 +177,6 @@ def _graded_reference(ctx, carry, source, invariants):
                      grid.inv_dz_h, cell_sizes=(invariants['dx_arr'], grid.dy_arr, grid.dz), high_wall=unpadded_high_walls(grid))
     st = update_e_nu(st, materials, ctx.dt, invariants['inv_dx'], grid.inv_dy,
                      grid.inv_dz, boundary=ctx.curl_boundary, high_wall=unpadded_high_walls(grid))
-    st = apply_pec_faces(st, ctx._pec_faces_frozen)
     if ctx.use_pec_occupancy:
         st = apply_pec_occupancy(st, _occupancy(st.ex.shape), (False, False, False))
     if ctx.use_sheet_impedance:
@@ -184,6 +184,8 @@ def _graded_reference(ctx, carry, source, invariants):
                           grid.inv_dz, boundary=ctx.curl_boundary)
         st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,
                                     invariants['sheet_impedance'], invariants['sheet_coeffs'])
+    # Domain PEC faces win where a sheet ends on the wall.
+    st = apply_pec_faces(st, ctx._pec_faces_frozen)
     rlc = ()
     if ctx.use_lumped_rlc:
         meta = ctx.rlc_metas[0]

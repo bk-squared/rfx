@@ -136,8 +136,9 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
     assert len(entries) == 1
     entries[0].assert_called_once()
     # carry, xs, materials, Debye, Lorentz, [CPML parameters], PEC mask,
-    # and an explicit sharded rank argument. Uniform PEC needs no NU spacings.
-    assert len(entries[0].call_args.args) == (7 if boundary == "cpml" else 6)
+    # TF/SF tables (an empty pair without a plane wave), and an explicit
+    # sharded rank argument. Uniform PEC needs no NU spacings.
+    assert len(entries[0].call_args.args) == (8 if boundary == "cpml" else 7)
     assert set(entries[0].call_args.kwargs) == {"ranks"}
     np.testing.assert_array_equal(entries[0].call_args.kwargs["ranks"], [0, 1])
 

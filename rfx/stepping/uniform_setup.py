@@ -88,7 +88,7 @@ def _update_e_with_optional_dispersion(
                         stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall), None, None
 
     if debye is not None and lorentz is None:
-        from rfx.materials.debye import update_e_debye
+        from rfx.stepping.poles import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
@@ -96,7 +96,7 @@ def _update_e_with_optional_dispersion(
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
-        from rfx.materials.lorentz import update_e_lorentz
+        from rfx.stepping.poles import update_e_lorentz
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
@@ -416,7 +416,7 @@ def _build_step_setup(
     # when the Huygens box encloses the whole injected region. Plain ints,
     # evaluated here at trace time.
     from rfx.boundaries.tfsf import admit_setup
-    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+    waveguide_ports = admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
                 ntff=ntff if use_ntff else None, periodic=periodic, feature_owned=_feature_tfsf,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps,
                              aniso_inv_eps=aniso_inv_eps, pec_mask=pec_mask, pec_edge_masks=pec_edge_masks,
@@ -663,7 +663,7 @@ def _build_step_setup(
         rlc_meta = tuple(lumped_rlc)
 
     if use_kerr:
-        from rfx.materials.nonlinear import apply_kerr_ade
+        from rfx.stepping.kerr import apply_kerr_ade
 
     # ---- metadata tuples ----
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]

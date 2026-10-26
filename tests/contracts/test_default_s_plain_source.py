@@ -123,17 +123,16 @@ def test_distributed_default_validation_retains_resolved_true(monkeypatch):
     assert calls == [(None, None), (True, True)]
 
 
-def test_distributed_fallback_keeps_resolved_false(monkeypatch):
-    from rfx.runners import distributed_v2
-
-    expected = model(wire=True).run(n_steps=12, skip_preflight=True, compute_s_params=False)
-    # Exercise the full-domain fallback's argument transport without adding
-    # unrelated waveguide/TFSF geometry to this synthetic port experiment.
-    monkeypatch.setattr(distributed_v2, "one_device_reason", lambda sim: "test full-domain feature")
+def test_distributed_resolved_false_does_not_reenter_native_run(monkeypatch):
+    devices = jax.devices("cpu")[:2]
+    expected = model(wire=True).run(n_steps=12, skip_preflight=True,
+                                    compute_s_params=False, devices=devices)
+    sim = model(wire=True)
+    public_run = sim.run
+    monkeypatch.setattr(sim, "run", lambda **kwargs: pytest.fail("reentered native run"))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        actual = model(wire=True).run(n_steps=12, skip_preflight=True,
-                                      devices=jax.devices("cpu")[:2])
+        actual = public_run(n_steps=12, skip_preflight=True, devices=devices)
     mixed = [w for w in caught if "plain sources" in str(w.message)]
     assert len(mixed) == 1
     assert actual.s_params is None

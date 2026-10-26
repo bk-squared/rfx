@@ -71,23 +71,22 @@ def fallback_scene(kind):
 
 
 @pytest.mark.parametrize('kind', ['waveguide', 'tfsf'])
-def test_uniform_fallback_user_jit_and_path(kind):
+def test_uniform_former_fallback_refused_eager_and_under_user_jit(kind):
+    """Waveguide ports and the open TF/SF slab no longer move to one device: both entries name them."""
     sim = fallback_scene(kind)
     options = dict(n_steps=40, devices=jax.devices('cpu')[:2], skip_preflight=True)
-    for entry, path in [('forward', 'fwd_distributed'), ('run', 'run_distributed')]:
+    match = ('waveguide ports (add_waveguide_port) are not supported on' if kind == 'waveguide'
+             else 'open-slab normal-incidence TFSF (periodic y/z is not on slabs) is not supported on')
+    for entry in ('forward', 'run'):
         def call():
             result = (sim.forward(distributed=True, **options) if entry == 'forward'
                       else sim.run(compute_s_params=False, **options))
-            fallback = [d for d in result.diagnostics if d.code == 'distributed.one_device_fallback']
-            assert len(fallback) == 1
-            assert fallback[0].path == path
             return result.time_series
 
-        eager = np.asarray(call())
-        assert_probe_records(jax.jit(call)(), eager)
-        native = np.asarray(sim.forward(n_steps=40, skip_preflight=True).time_series)
-        assert eager.shape == native.shape and eager.dtype == native.dtype
-        assert eager.tobytes() == native.tobytes()
+        for attempt in (call, jax.jit(call)):
+            with pytest.raises(NotImplementedError) as caught:
+                attempt()
+            assert match in str(caught.value), str(caught.value)
 
 
 def test_record_tracer_error_without_port_s_is_named_with_its_cause(monkeypatch):

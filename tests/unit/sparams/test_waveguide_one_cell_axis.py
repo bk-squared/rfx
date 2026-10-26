@@ -1,4 +1,5 @@
 """Discrete TE10 on a 22 mm guide with one transverse height cell."""
+from rfx.model.waveguide_modes import PortMedium
 import jax.numpy as jnp
 import numpy as np
 
@@ -38,12 +39,12 @@ def test_te10_cutoff_impedance_and_height_witnesses():
             np.testing.assert_allclose(cfg.f_cutoff, fc, rtol=1e-6)
             # Continuum longitudinal limit, using the discrete transverse cutoff.
             expected = np.sqrt(MU_0/EPS_0) / np.sqrt(1-(fc/np.asarray(FREQS))**2)
-            z = _compute_mode_impedance(FREQS, cfg.f_cutoff, 'TE')
+            z = _compute_mode_impedance(FREQS, cfg.f_cutoff, 'TE', medium=PortMedium())
             np.testing.assert_allclose(z, expected, rtol=1e-6)
             # Actual Yee time/longitudinal stencil: replace omega by its sine symbol.
             omega_d = 2*np.sin(np.pi*np.asarray(FREQS)*cfg.dt)/cfg.dt
             expected_yee = MU_0*omega_d / np.sqrt((omega_d/C0_LOCAL)**2-(2*np.pi*fc/C0_LOCAL)**2)
-            z_yee = _compute_mode_impedance(FREQS, cfg.f_cutoff, 'TE', dt=cfg.dt, dx=cfg.dx)
+            z_yee = _compute_mode_impedance(FREQS, cfg.f_cutoff, 'TE', dt=cfg.dt, dx=cfg.dx, medium=PortMedium())
             np.testing.assert_allclose(z_yee, expected_yee, rtol=1e-6)
             cutoffs.append(cfg.f_cutoff)
             impedances.append(z_yee)

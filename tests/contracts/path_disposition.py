@@ -660,12 +660,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml",
                                 "a waveguide port needs a CPML face, which production validation refuses"),
         run_adi=ADI_ABSORBER,
-        run_distributed=falls_back("run_uniform", "one device, with a warning and every "
-                                   "argument the caller gave (#1305)"),
+        run_distributed=refuses("waveguide ports have no slab carrier", raises="waveguide ports"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=falls_back("fwd_nonuniform", "one device, with a warning, a memory "
-                                     "Diagnostic and every argument the caller gave (A5)"),
+        fwd_distributed_nu=refuses("waveguide ports have no graded slab carrier", raises="waveguide ports"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_coaxial_ports": {"coax_port": lanes(
@@ -732,12 +730,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                 "a plane wave needs CPML, which production validation refuses"),
         run_adi=ADI_ABSORBER,
-        run_distributed=falls_back("run_uniform", "one device, with a warning and every "
-                                   "argument the caller gave (#1305)"),
+        run_distributed=carries("closed boxes only; open slab, Method B, Bloch and face_record refuse before stepping"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=falls_back("fwd_nonuniform", "one device, with a warning, a memory "
-                                     "Diagnostic and every argument the caller gave (A5)"),
+        fwd_distributed_nu=refuses("no graded TF/SF slab carrier", raises="TFSF plane-wave sources"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_refinement": {
@@ -1690,10 +1686,10 @@ for _attr, _feature in (
     TABLE[_attr][_feature]["run_distributed_nu"] = TABLE[_attr][_feature]["run_distributed"]
 TABLE["_cpml_kappa_max"]["kappa"]["run_distributed_nu"] = admission(
     "cpml_kappa_max != 1", "graded multi-device run(devices=...)", "the NU runner has no kappa carrier")
-TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = falls_back(
-    "run_nonuniform", "single-device graded run with the same arguments and memory Diagnostic")
-TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = falls_back(
-    "run_nonuniform", "single-device graded run with the same arguments")
+TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = refuses(
+    "no graded TF/SF slab carrier", raises="TFSF plane-wave sources")
+TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = refuses(
+    "no graded waveguide slab carrier", raises="waveguide ports")
 
 
 # The uniform forward entry shares every distributed run disposition.

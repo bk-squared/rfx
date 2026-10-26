@@ -383,86 +383,74 @@ def test_default_pec_model_matches_native(source):
         assert relative < 1e-4, f"{entry}: relative Ez difference {relative:.9e}"
 
 
-def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
-    """TFSF or waveguide excitation with surface monitors uses the native fallback.
-
-    Through ``run(devices=...)`` the one-device run gets every argument the
-    caller gave (#1305: the runner's own fallback passed n_steps alone, so an
-    explicit conformal_pec=False came back as the declared conformal walls, and
-    conformal_min_weight and compute_s_params were dropped the same way). The
-    runner entry called directly has no other arguments to pass.
-    """
-    for kind in ("tfsf", "waveguide"):
-        for entry in ENTRIES:
-            sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
-                             dx=1e-3, boundary="cpml")
-            sim.add_flux_monitor(axis="x", coordinate=12e-3, n_freqs=3)
-            if kind == "tfsf":
-                sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 8e-3, 8e-3), n_freqs=3)
-                sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
-            else:
-                sim.add_waveguide_port(
-                    x_position=6e-3, y_range=(2e-3, 10e-3),
-                    z_range=(2e-3, 10e-3), mode=(1, 0), mode_type="TE",
-                    direction="+x", f0=7.5e9, bandwidth=0.5,
-                )
-            public_run = sim.run
-            calls = []
-            payload = object()
-
-            def native_run(**kwargs):
-                calls.append(kwargs)
-                return Result(None, payload, None, None, None, diagnostics=())
-
-            monkeypatch.setattr(sim, "run", native_run)
-            explicit = {"conformal_pec": False, "conformal_min_weight": 0.3,
-                        "compute_s_params": False}
-            with pytest.warns(UserWarning, match="Falling back to single-device"):
-                result = (public_run(n_steps=N_STEPS, devices=_devices(),
-                                     skip_preflight=True, **explicit)
-                          if entry == "api" else _run(sim, entry))
-            assert result.time_series is payload
-            assert len(result.diagnostics) == 1
-            diagnostic = result.diagnostics[0]
-            assert diagnostic.code == "distributed.one_device_fallback"
-            assert diagnostic.severity == "warning"
-            assert diagnostic.subject == (
-                "TFSF plane-wave sources" if kind == "tfsf" else "waveguide ports"
-            )
-            assert diagnostic.values == {"requested_devices": len(_devices()), "devices_used": 1, "memory": "the whole domain is held on one device; peak memory is that of a one-device run, not divided over the requested devices"}
-            assert len(calls) == 1
-            if entry == "api":
-                # Every run() parameter arrives: the caller's values, the
-                # defaults for the rest, and one device.
-                import inspect
-                expected = {name: p.default for name, p in
-                            inspect.signature(Simulation.run).parameters.items()
-                            if name != "self"}
-                expected.update(n_steps=N_STEPS, **explicit, devices=None,
-                                exchange_interval=1, skip_preflight=True)
-                assert calls[0] == expected
-            else:
-                assert calls == [{"n_steps": N_STEPS}]
+@pytest.mark.parametrize("entry", ["api", "v2", "forward"])
+@pytest.mark.parametrize("kind,match", [
+    ("open", "open-slab.*periodic y/z"),
+    ("methodB", "Method B oblique"),
+    ("bloch", "2-D Bloch"),
+    ("waveguide", "waveguide ports"),
+])
+def test_distributed_source_refusals(entry, kind, match, monkeypatch):
+    sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001,
+                     boundary="cpml", cpml_layers=4)
+    if kind == "waveguide":
+        sim.add_waveguide_port(x_position=.006, y_range=(.002, .010),
+            z_range=(.002, .010), mode=(1, 0), mode_type="TE", direction="+x", f0=7.5e9)
+    else:
+        sim.add_tfsf_source(f0=7.5e9, angle_deg=20 if kind in ("methodB", "bloch") else 0,
+                            method=kind if kind in ("methodB", "bloch") else "bloch")
+    # Refusal precedes any compiled scan, never a nested native solve.
+    monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped refused source"))
+    with pytest.raises(NotImplementedError, match=match):
+        if entry == "forward":
+            sim.forward(n_steps=4, distributed=True, devices=_devices(), checkpoint=False)
+        else:
+            _run(sim, entry)
 
 
-def test_waveguide_fallback_refuses_private_record_probes():
-    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
-                     dx=1e-3, boundary="cpml")
-    sim.add_waveguide_port(
-        x_position=6e-3, y_range=(2e-3, 10e-3),
-        z_range=(2e-3, 10e-3), mode=(1, 0), mode_type="TE",
-        direction="+x", f0=7.5e9, bandwidth=0.5,
-    )
-    with pytest.raises(NotImplementedError, match="waveguide ports.*one-device run cannot honour"):
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("kind", ["tfsf", "waveguide"])
+def test_graded_sources_refused(entry, kind):
+    from tests.unit.runners.test_distributed_forward_one_device_fallback import scene
+    sim, _ = scene(kind)
+    options = {"devices": _devices()}
+    if entry == "forward":
+        options.update(distributed=True, checkpoint=False)
+    with pytest.raises(NotImplementedError, match="waveguide ports" if kind == "waveguide" else "TFSF.*graded multi-device"):
+        getattr(sim, entry)(n_steps=4, **options)
+
+
+def test_face_record_refused_before_split(monkeypatch):
+    from dataclasses import replace
+    from jax.sharding import Mesh
+    from rfx.sources.tfsf import tfsf_from_declaration
+    from rfx.stepping import slab_tfsf
+    from rfx.stepping.slab import Slab
+    sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001, cpml_layers=4)
+    sim.add_tfsf_source(f0=7.5e9, closed_box=True)
+    grid = sim._build_grid()
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4)
+    cfg = replace(cfg, face_record=(np.zeros((4, 1)), np.zeros((4, 1))))
+    monkeypatch.setattr("rfx.sources.tfsf.tfsf_from_declaration", lambda *a, **k: (cfg, line))
+    monkeypatch.setattr(slab_tfsf, "split_tables", lambda *a: pytest.fail("split a replay"))
+    with pytest.raises(NotImplementedError, match="face_record replay"):
+        slab_tfsf.prepare(sim, grid, 4, Slab(grid.nx, 2), Mesh(np.array(_devices()[:2]), ("x",)))
+
+
+def test_waveguide_refuses_private_record_probes():
+    sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001, boundary="cpml")
+    sim.add_waveguide_port(x_position=.006, y_range=(.002, .010), z_range=(.002, .010),
+        mode=(1, 0), mode_type="TE", direction="+x", f0=7.5e9)
+    with pytest.raises(NotImplementedError, match="waveguide ports"):
         _run(sim, "v2", _record_probes=())
 
 
-def test_tfsf_fallback_refuses_conformal_pec_override():
-    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
-                     dx=1e-3, boundary="cpml")
-    sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
-    with pytest.raises(NotImplementedError, match="TFSF plane-wave sources.*one-device run cannot honour"):
-        _run(sim, "v2", conformal_pec=False)
+def test_closed_tfsf_accepts_inactive_conformal_pec_override():
+    sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001, cpml_layers=4)
+    sim.add_tfsf_source(f0=7.5e9, closed_box=True)
+    result = _run(sim, "v2", conformal_pec=False)
+    assert np.any(np.asarray(result.state.ez) != 0)
+    assert all(d.code != "distributed.one_device_fallback" for d in result.diagnostics)
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
@@ -494,6 +482,77 @@ def test_uniform_user_jit_refuses_port_s(request_s):
     if not request_s:
         # The refusal is for the staged request only: the same call made directly still measures S.
         assert call() is not None
+
+
+def _closed_box_scene(**angles):
+    sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001,
+                     boundary="cpml", cpml_layers=4, snap="declared")
+    sim.add_tfsf_source(f0=7.5e9, closed_box=True, margin=3, **angles)
+    sim.add_probe((.015, .009, .008), "ez")
+    return sim
+
+
+def _closed_box_execute(sim, entry, count):
+    options = dict(n_steps=4)
+    if count > 1:
+        options["devices"] = _devices()[:count]
+    if entry == "forward":
+        options.update(distributed=count > 1, checkpoint=False)
+    return getattr(sim, entry)(**options)
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_closed_box_late_sheet_face_refusal_matches_one_device(entry):
+    """A declaration-time cell check cannot see a later realized PEC sheet."""
+    errors = []
+    for count in (1, 2):
+        sim = _closed_box_scene()
+        # x=3 mm is the low TF face (CPML padding is outside physical coords).
+        sim.add_thin_conductor(Box((.003, .006, .006), (.003, .010, .010)))
+        with pytest.raises(ValueError, match="closed_box TFSF requires vacuum on and adjacent to all six faces") as exc:
+            _closed_box_execute(sim, entry, count)
+        errors.append(exc.value)
+    assert type(errors[0]) is type(errors[1])
+    assert str(errors[0]) == str(errors[1])
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("count", [1, 2])
+def test_closed_box_late_sheet_inside_runs(entry, count):
+    sim = _closed_box_scene()
+    sim.add_thin_conductor(Box((.012, .006, .006), (.012, .010, .010)))
+    result = _closed_box_execute(sim, entry, count)
+    assert result.time_series.shape == (4, 1)
+    assert np.isfinite(result.time_series).all()
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("angles", [dict(theta_deg=30.), dict(phi_deg=30.)])
+def test_oblique_closed_box_refused_only_on_slabs(entry, angles):
+    sim = _closed_box_scene(polarization="s", **angles)
+    one = _closed_box_execute(sim, entry, 1)
+    assert one.time_series.shape == (4, 1)
+    with pytest.raises(NotImplementedError, match="oblique closed-box TFSF.*theta_deg or phi_deg"):
+        _closed_box_execute(sim, entry, 2)
+
+
+@pytest.mark.parametrize("angles", [dict(theta_deg=30.), dict(phi_deg=30.)])
+def test_realized_oblique_closed_box_refused(angles):
+    from rfx.runners._admission import refuse_slab_tfsf
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim = _closed_box_scene(polarization="s", **angles)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4)
+    with pytest.raises(NotImplementedError, match="oblique closed-box TFSF"):
+        refuse_slab_tfsf(cfg)
+
+
+def test_closed_box_device_limit_without_mesh():
+    from types import SimpleNamespace
+    from rfx.runners._admission import refuse_slab_tfsf_devices
+    declaration = SimpleNamespace(closed_box=True)
+    refuse_slab_tfsf_devices(declaration, 2)
+    with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
+        refuse_slab_tfsf_devices(declaration, 3)
 
 
 def test_uniform_forward_user_jit_refuses_port_s():

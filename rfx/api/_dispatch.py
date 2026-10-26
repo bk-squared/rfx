@@ -113,17 +113,21 @@ def _dispatch_plan(
     self._require_no_half_node_split()
     is_nonuniform = self._uses_nonuniform_mesh
 
+    if distributed or (devices is not None and len(devices) > 1):
+        from rfx.runners._admission import refuse_distributed_sources
+        refuse_distributed_sources(self, f"{mode}_distributed" + ("_nu" if is_nonuniform else ""))
+
     if self._tfsf is not None:
         from rfx.sources.sources import CustomWaveform
         extended_tfsf = (self._tfsf.closed_box
                          or isinstance(self._tfsf.waveform, CustomWaveform))
         if extended_tfsf and (
-            is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+            is_nonuniform
             or self._refinement is not None or self._mode != "3d"
             or self._solver != "yee" or self._stencil_order != 2
         ):
             raise NotImplementedError(
-                "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+                "CustomWaveform and closed_box TFSF require a uniform, "
                 "3D second-order Yee run/forward with no subgrids")
         if self._tfsf.closed_box and any(
             getattr(getattr(self._boundary_spec, axis), side) != "cpml"
@@ -158,6 +162,8 @@ def _dispatch_plan(
             )
 
     if mode == "forward":
+        if isinstance(checkpoint_segments, tuple):
+            raise ValueError("forward checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
         def _fwd_nu_n_steps() -> int:
             return self._nu_n_steps(num_periods)
 
@@ -246,10 +252,7 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     # Distributed graded meshes share forward's NU runner and staging.
-    # Features solved on one device (one_device_reason) skip the sharded
-    # grading admission, as forward() does; the rest is checked here.
-    from rfx.runners.distributed_v2 import one_device_reason
-    if distributed_run and is_nonuniform and not one_device_reason(self):
+    if distributed_run and is_nonuniform:
         import warnings as _wmod
         # Grading ratio check (shared single dt) across provided profiles.
         _max_ratio = 1.0

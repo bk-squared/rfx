@@ -681,32 +681,14 @@ def _forward_from_materials(
     # and PEC clearing. A passive load can reach the source shell even
     # when all of its conductor geometry is clear of that shell.
     if self._tfsf is not None and self._tfsf.closed_box:
-        nonvacuum = list(pec_edge_masks_local or ())
-        for spec in (debye_spec, lorentz_spec):
-            if spec is not None:
-                nonvacuum.extend(spec[1])
-        if kerr_chi3 is not None:
-            nonvacuum.append(kerr_chi3)
-        if pec_occupancy_local is not None:
-            nonvacuum.append(pec_occupancy_local)
-        if aniso_inv_eps_run is not None:
-            nonvacuum.extend(a != 1.0 for a in aniso_inv_eps_run)
-        if sheet_impedance is not None:
-            nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
-                              sheet_impedance.mask_ez))
-        if self._lumped_rlc:
-            mask = jnp.zeros(grid.shape, dtype=bool)
-            for spec in self._lumped_rlc:
-                mask = mask.at[_grid_metric.field_index(grid, spec.position, spec.component)].set(True)
-            nonvacuum.append(mask)
-        for spec in (design_box, design_occupancy):
-            if spec is not None:
-                b = spec.bounds
-                window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
-                               for d in range(3))
-                nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
-        self._validate_tfsf_vacuum_boundary(
-            materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
+        from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
+        validate_realized_vacuum_boundary(
+            self, grid, materials, tfsf_run[0], pec_edge_masks=pec_edge_masks_local,
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3,
+            aniso_inv_eps=aniso_inv_eps_run, sheet_ctx=sheet_impedance,
+            extra_masks=(pec_occupancy_local,), design_regions=(design_box, design_occupancy),
+            rlc_indices=(_grid_metric.field_index(grid, spec.position, spec.component)
+                         for spec in self._lumped_rlc))
     elif self._tfsf is not None:
         nonvacuum = []
         for spec in (design_box, design_occupancy):

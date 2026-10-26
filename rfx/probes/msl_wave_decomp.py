@@ -34,7 +34,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
+from rfx.measurement.msl_waves import _lstsq_alpha_gamma
+from rfx.measurement.phasors import exp_j
 
 
 @dataclass(frozen=True)
@@ -501,41 +502,6 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
 # it is JIT- and grad-safe.
 
 
-def _lstsq_alpha_gamma(
-    v: jnp.ndarray, x: jnp.ndarray, beta: jnp.ndarray
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Solve ``V_n = α e^{−jβx_n} + γ e^{+jβx_n}`` for one β by SVD lstsq.
-
-    Parameters
-    ----------
-    v : (N,) complex
-        Voltage phasors at the N probe positions.
-    x : (N,) real
-        Probe positions (metres), measured along the propagation axis.
-    beta : scalar complex
-        Trial propagation constant (rad/m).  Complex β allows a small
-        imaginary (loss) part.
-
-    Returns
-    -------
-    alpha, gamma : scalar complex
-        Forward / backward wave amplitudes at ``x = 0``.
-    residual : scalar real
-        L2 norm of ``V − (α e^{−jβx} + γ e^{+jβx})`` — the fit quality.
-    """
-    x_c = x.astype(jnp.complex64)
-    col_fwd = jnp.exp(-1j * beta * x_c)
-    col_bwd = jnp.exp(+1j * beta * x_c)
-    a_mat = jnp.stack([col_fwd, col_bwd], axis=-1)        # (N, 2)
-    # SVD-based least squares; rcond=None uses the JAX default cutoff.
-    sol, _, _, _ = jnp.linalg.lstsq(a_mat, v, rcond=None)
-    alpha = sol[0]
-    gamma = sol[1]
-    pred = jnp.matmul(a_mat, sol, precision=HIGHEST)
-    residual = jnp.sqrt(jnp.sum(jnp.abs(v - pred) ** 2))
-    return alpha, gamma, residual
-
-
 # Module-level β-scan grid resolution.  Static (Python int) so the scan
 # stays JIT-shape-stable and grad-safe.
 _BETA_SCAN_NODES = 41
@@ -728,7 +694,7 @@ def extract_msl_nprobe(
     z0 = (alpha - gamma) / (i1 + eps)
     s11 = gamma / (alpha + eps)
     delta = x[1] - x[0]
-    q = jnp.exp(-1j * beta * delta.astype(jnp.complex64))
+    q = exp_j(beta, delta.astype(jnp.complex64), unit=-1j, xp=jnp)
 
     return dict(
         s11=s11,

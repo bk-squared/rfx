@@ -257,17 +257,11 @@ def test_explicit_staircase_s_matrix_is_allowed(ports):
 
 
 @pytest.mark.parametrize("conformal", [False, True])
-def test_device_fallback_preserves_explicit_conformal(conformal, two_devices):
-    # Both routes solve the same explicitly declared periodic cell.
+def test_open_tfsf_refuses_distributed_conformal_request(conformal, two_devices):
     sim = _sim(True, tfsf=True, periodic_tfsf=True)
-    expected = sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=conformal)
-    got = sim.run(
-        n_steps=N_STEPS,
-        skip_preflight=True,
-        conformal_pec=conformal,
-        devices=two_devices,
-    )
-    _identical(expected, got)
+    with pytest.raises(NotImplementedError, match="open-slab.*periodic y/z"):
+        sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=conformal,
+                devices=two_devices)
 
 
 @pytest.mark.parametrize("ports", ["lumped", "wire"])
@@ -279,7 +273,7 @@ def test_conformal_probe_fields_without_s_matrix_are_allowed(ports):
     assert got.s_params is None
 
 
-def test_waveguide_device_fallback_preserves_staircase(two_devices):
+def test_waveguide_distributed_refuses_staircase(two_devices):
     sim = Simulation(
         freq_max=20e9,
         domain=(0.0243, 0.0121, 0.0067),
@@ -299,11 +293,9 @@ def test_waveguide_device_fallback_preserves_staircase(two_devices):
         ref_offset=1,
     )
     sim.add_probe((0.016, 0.006, 0.003), "ez")
-    expected = sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=False)
-    got = sim.run(
-        n_steps=N_STEPS, skip_preflight=True, conformal_pec=False, devices=two_devices
-    )
-    _identical(expected, got)
+    with pytest.raises(NotImplementedError, match="waveguide ports"):
+        sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=False,
+                devices=two_devices)
 
 
 @pytest.mark.parametrize(

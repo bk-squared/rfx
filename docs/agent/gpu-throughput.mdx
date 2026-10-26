@@ -11,26 +11,43 @@ size is the signature of that mistake.
 ## The boundary condition is part of the number
 
 A CPML absorber updates auxiliary fields in its pad shells and enlarges
-the padded grid, so it costs more than a PEC wall — by 3.5x on the same
-200³ problem:
+the padded grid, so an open-boundary step costs more than a closed box.
+Measured 2026-10-26 on an RTX 4090 (float32, a cube with one soft source,
+this harness's method), ms per step:
 
-| 200³, RTX 4090 | Mcells/s | padded cells |
-|---|---|---|
-| PEC walls | 7,266 (repeat 7,240) | 8.12 M |
-| CPML, 8 layers | 2,087 | 10.22 M |
+| interior cells | boundary | uniform | graded (4:1 dz) | padded cells |
+|---|---|---|---|---|
+| 13.1 M | PEC walls | 1.578 | 1.529 | 13.1 M |
+| 13.1 M | CPML, 4 layers | 2.128 | 2.133 | 14.5 M |
+| 13.1 M | CPML, 8 layers | 2.395 | 2.427 | 16.0 M |
+| 13.1 M | CPML, 16 layers | 3.124 | 3.171 | 19.2 M |
+| 27.3 M | PEC walls | 3.195 | 3.186 | 27.3 M |
+| 27.3 M | CPML, 4 layers | 3.905 | 3.944 | 29.5 M |
+| 27.3 M | CPML, 8 layers | 4.467 | 4.495 | 31.9 M |
+| 27.3 M | CPML, 16 layers | 5.667 | 5.677 | 36.9 M |
+
+Step time with CPML divided by step time of the PEC box of the same
+interior (t_CPML / t_PEC from the table): 4 layers 1.22-1.40x and
+8 layers 1.40-1.59x over 13.1 M and 27.3 M cells, uniform and graded.
+Most of that is the extra padded cells; an
+absorbing cell costs about one more bare cell, plus a few percent per
+padded cell. The PEC rows are the standard GPU lane: a closed box today
+takes the GPU fast lane, which measured 1.988 ms (13.1 M) and 3.871 ms
+(27.3 M) on this card, slower than the standard lane.
 
 Quote the PEC figure only for closed-cavity work. Antenna, scattering
-and any open-boundary problem pays the absorber, so the CPML row is the
+and any open-boundary problem pays the absorber, so the CPML rows are the
 honest number for those.
 
-(The PEC figure reproduces the 7,309 recorded on this card in April 2026
-to 0.6%, from a different harness — the two agree, but the original entry
-did not say which boundary it used, and readers took it for the
-open-boundary rate.)
+(Before the absorber update was confined to each face's layers and its
+GPU write-back fused into the field update, 2026-10-08/09, the same card
+measured 7,266 Mcells/s with PEC walls against 2,087 with 8 CPML layers on
+a 200³ cube, 3.5x. That figure no longer describes the code.)
 
 ## Cards, CPML lane
 
-Measured 2026-08-25 on the same harness, `bare` = uniform mesh,
+Measured 2026-08-25 on the same harness, before the absorber changes of
+2026-10-08/09 (so these CPML rates are lower than today's); `bare` = uniform mesh,
 `nu-z` = 4:1 graded z. Blank = out of memory at that size.
 
 | Mcells/s | 300³ bare | 400³ bare | 512³ bare | 300³ nu-z | 400³ nu-z | 512³ nu-z |

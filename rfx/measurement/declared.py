@@ -5,7 +5,7 @@ import numpy as np
 from rfx.core.jax_utils import is_tracer
 
 
-def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs):
+def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs, waveguide_reference_only=False):
     """Return named declared monitors, port records and reported-plane S."""
     from rfx.api import WaveguideSParamResult
     from rfx.sources.waveguide_port import (
@@ -25,7 +25,7 @@ def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs):
         if sim._waveguide_ports else None
     )
     sparams_result = None
-    if sim._waveguide_ports:
+    if sim._waveguide_ports and not waveguide_reference_only:
         sparams_result = {}
         for entry, cfg in zip(sim._waveguide_ports, waveguide_cfgs):
             plane_positions = waveguide_plane_positions(cfg)

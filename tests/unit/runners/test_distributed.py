@@ -674,113 +674,72 @@ class TestDistributedLorentz:
 
 
 @requires_multidevice
-class TestDistributedFallback:
-    """Tests for graceful fallback when distributed runner encounters
-    unsupported features (TFSF, waveguide ports)."""
+class TestDistributedSources:
+    def scene(self, closed_box):
+        sim = Simulation(freq_max=5e9, domain=(.13, .04, .04), boundary="cpml")
+        sim.add_tfsf_source(f0=2.5e9, bandwidth=.5, closed_box=closed_box)
+        sim.add_probe(position=(.065, .02, .02), component="ez")
+        return sim
 
-    def test_tfsf_falls_back_with_warning(self):
-        """TFSF source should trigger fallback to single-device with a warning."""
-        import warnings as _warnings
+    def test_open_tfsf_refused_by_name(self):
+        with pytest.raises(NotImplementedError, match="open-slab.*periodic y/z"):
+            self.scene(False).run(n_steps=50, devices=jax.devices()[:_N_MULTI])
 
-        sim = Simulation(
-            freq_max=5e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        with _warnings.catch_warnings(record=True) as w:
-            _warnings.simplefilter("always")
-            result = sim.run(n_steps=50, devices=jax.devices()[:_N_MULTI])
-
-        # Should have issued a TFSF fallback warning
-        tfsf_warnings = [x for x in w if "TFSF" in str(x.message)]
-        assert len(tfsf_warnings) >= 1, (
-            f"Expected TFSF fallback warning, got: {[str(x.message) for x in w]}"
-        )
-        # Result should be valid (non-None, correct shape)
-        assert result is not None
+    def test_closed_tfsf_slab_produces_valid_signal(self):
+        result = self.scene(True).run(n_steps=50, devices=jax.devices()[:2])
         assert result.time_series.shape[0] == 50
+        assert np.max(np.abs(result.time_series)) > 0
+        assert all(d.code != "distributed.one_device_fallback" for d in result.diagnostics)
 
-    def test_tfsf_fallback_produces_valid_signal(self):
-        """TFSF fallback should produce a non-zero probe signal."""
-        import warnings as _warnings
+    def _closed_tfsf_probe_parity(self, entry):
+        import sys
+        sim = self.scene(True)
+        # Cover the incident pulse, including its peak at the central probe.
+        steps = 600
+        options = {"checkpoint": False} if entry == "forward" else {}
+        one = getattr(sim, entry)(n_steps=steps, **options)
+        options.update(devices=jax.devices()[:2])
+        if entry == "forward":
+            options["distributed"] = True
+        multi = getattr(sim, entry)(n_steps=steps, **options)
+        reference = np.asarray(one.time_series)
+        actual = np.asarray(multi.time_series)
+        assert actual.shape == reference.shape == (steps, 1)
+        assert np.isfinite(reference).all() and np.isfinite(actual).all()
+        peak = float(np.max(np.abs(reference)))
+        peak_step = int(np.argmax(np.abs(reference[:, 0]))) + 1
+        difference = float(np.max(np.abs(actual - reference)))
+        assert peak > 0
+        ratio = difference / peak
+        print(f"TF/SF {entry}: steps={steps}, peak_step={peak_step}, peak={peak:.12g}, "
+              f"first_50_peak={np.max(np.abs(reference[:50])):.12g}, "
+              f"max_abs={difference:.12g}, ratio={ratio:.12g}, bar=1e-5", file=sys.stderr)
+        assert 50 < peak_step < steps
+        assert difference <= 1e-5 * peak, f"TF/SF {entry} probe ratio {ratio} > 1e-5"
 
-        sim = Simulation(
-            freq_max=5e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
+    def test_closed_tfsf_slab_matches_single_device(self):
+        self._closed_tfsf_probe_parity("run")
 
-        with _warnings.catch_warnings(record=True):
-            _warnings.simplefilter("always")
-            result = sim.run(n_steps=50, devices=jax.devices()[:_N_MULTI])
+    def test_closed_tfsf_slab_forward_matches_single_device(self):
+        self._closed_tfsf_probe_parity("forward")
 
-        ts = np.array(result.time_series).ravel()
-        assert np.max(np.abs(ts)) > 0, "TFSF fallback produced zero signal"
+    @pytest.mark.parametrize("entry", ["run", "forward"])
+    def test_closed_tfsf_on_three_devices_refused_by_name(self, entry):
+        if len(jax.devices()) < 3:
+            pytest.skip("requires 3 devices")
+        kw = dict(n_steps=50, devices=jax.devices()[:3])
+        if entry == "forward":
+            kw["distributed"] = True
+        with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
+            getattr(self.scene(True), entry)(**kw)
 
-    def test_tfsf_fallback_matches_single_device(self):
-        """TFSF fallback result should match explicit single-device result."""
-        import warnings as _warnings
-
-        sim = Simulation(
-            freq_max=5e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_tfsf_source(f0=2.5e9, bandwidth=0.5)
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        n_steps = 50
-
-        # Single-device (no devices argument)
-        result_single = sim.run(n_steps=n_steps)
-
-        # Multi-device request -> should fall back
-        with _warnings.catch_warnings(record=True):
-            _warnings.simplefilter("always")
-            result_multi = sim.run(n_steps=n_steps, devices=jax.devices()[:_N_MULTI])
-
-        ts_s = np.array(result_single.time_series)
-        ts_m = np.array(result_multi.time_series)
-        np.testing.assert_allclose(ts_m, ts_s, atol=1e-6,
-                                   err_msg="TFSF fallback differs from single-device")
-
-    def test_waveguide_port_falls_back_with_warning(self):
-        """Waveguide port should trigger fallback to single-device with a warning."""
-        import warnings as _warnings
-
-        sim = Simulation(
-            freq_max=10e9,
-            domain=(0.13, 0.04, 0.04),
-            boundary="cpml",
-        )
-        sim.add_waveguide_port(
-            x_position=0.01,
-            y_range=(0.005, 0.035),
-            z_range=(0.005, 0.035),
-            mode=(1, 0),
-            mode_type="TE",
-            direction="+x",
-            f0=5e9,
-            bandwidth=0.5,
-        )
-        sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-
-        with _warnings.catch_warnings(record=True) as w:
-            _warnings.simplefilter("always")
-            result = sim.run(n_steps=50, devices=jax.devices()[:_N_MULTI])
-
-        # Should have issued a waveguide port fallback warning
-        wg_warnings = [x for x in w if "waveguide" in str(x.message).lower()]
-        assert len(wg_warnings) >= 1, (
-            f"Expected waveguide port fallback warning, got: {[str(x.message) for x in w]}"
-        )
-        assert result is not None
-        assert result.time_series.shape[0] == 50
+    def test_waveguide_port_refused_by_name(self):
+        sim = Simulation(freq_max=10e9, domain=(.13, .04, .04), boundary="cpml")
+        sim.add_waveguide_port(x_position=.01, y_range=(.005, .035),
+            z_range=(.005, .035), mode=(1, 0), mode_type="TE", direction="+x",
+            f0=5e9, bandwidth=.5)
+        with pytest.raises(NotImplementedError, match="waveguide ports"):
+            sim.run(n_steps=50, devices=jax.devices()[:_N_MULTI])
 
 
 class TestExchangeInterval:

@@ -23,8 +23,8 @@ its cell kinds and ``ADMITS`` disagree.
 Each lane calls :func:`admit` at the last point before its kernel, after its
 own specific refusals (#1240, #1241, #1297 and the rest), so those keep their
 messages and admission answers only for what they do not name. The lane
-checked is the lane that runs: a multi-device ``run()`` that falls back to one
-device is judged on the uniform lane it falls back to.
+checked is the lane that runs; unsupported multi-device sources are refused
+before any step.
 """
 
 from __future__ import annotations
@@ -81,6 +81,12 @@ LANE_WORDS = {
 }
 
 _PEC_SIGMA = 1e6   # Simulation._PEC_SIGMA_THRESHOLD
+
+# An owner-only H writer must supply the right Hx ghost consumed by NTFF.
+# Extend this inventory when admitting one (including a magnetic source or
+# lumped element); the adjacent admission tests require a collected invariant
+# witness for every name. Curl/CPML-H already update the ghost like its owner.
+SLAB_OWNER_ONLY_H_WRITERS = ("closed_box_tfsf",)
 
 
 # ----------------------------------------------------------------- helpers
@@ -464,13 +470,13 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "passive_port"): _OTHER_RUNNERS - _ADI - {"run_distributed"},
     ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
-    ("_waveguide_ports", "waveguide_port"): _NO_SHEETS,
+    ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS,
     ("_lumped_rlc", "series_RL"): _NO_SHEETS,
-    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
+    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform", "run_distributed", "fwd_distributed"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
     ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
@@ -1051,12 +1057,62 @@ def refuse_undriven_drives(sim) -> None:
     check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
 
 
+def refuse_distributed_sources(sim, lane):
+    """Name sources that cannot be stepped on the requested slab lane."""
+    if getattr(sim, "_waveguide_ports", ()):
+        raise NotImplementedError(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
+    entry = getattr(sim, "_tfsf", None)
+    if entry is None:
+        return
+    if getattr(sim, "_uses_nonuniform_mesh", False) or lane.endswith("_nu"):
+        raise NotImplementedError(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
+    refuse_slab_tfsf(entry, lane)
+
+
+def refuse_slab_tfsf(entry, lane="uniform multi-device"):
+    """Accept declarations or realized configs; face replays never enter a slab scan."""
+    from rfx.sources.tfsf import is_tfsf_2d, is_tfsf_methodB
+    if getattr(entry, "face_record", None) is not None:
+        kind = "TFSF face_record replay"
+    elif is_tfsf_methodB(entry) or (abs(getattr(entry, "angle_deg", 0.)) > .01
+                                    and getattr(entry, "method", None) == "methodB"):
+        kind = "TFSF Method B oblique (is_tfsf_methodB)"
+    elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
+        kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
+    elif getattr(entry, "closed_box", False) and (
+        getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
+    ):
+        kind = "oblique closed-box TFSF (theta_deg or phi_deg != 0)"
+    elif not getattr(entry, "closed_box", False):
+        kind = "open-slab normal-incidence TFSF (periodic y/z is not on slabs)"
+    else:
+        return
+    raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
+
+
+#: Device counts a closed-box TF/SF has been validated on (rfx-lead L:5446b5): one seam is measured
+#: (PEC sphere backscatter vs Mie, far field vs one device, the right-Hx ghost invariant); two seams
+#: and a box face on a seam are not.
+SLAB_TFSF_MAX_DEVICES = 2
+
+
+def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
+    """Refuse a closed-box TF/SF on more devices than its multi-seam validation covers."""
+    if entry is not None and getattr(entry, "closed_box", False) and n_devices > SLAB_TFSF_MAX_DEVICES:
+        raise NotImplementedError(
+            f"closed-box TFSF (add_tfsf_source(closed_box=True)) on {n_devices} devices is not supported on "
+            f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (one seam); 3 or more wait for "
+            f"the multi-seam validation (two seams, a box face on a seam). Use devices=jax.devices()[:2] or one device")
+
+
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
+        refuse_distributed_sources(sim, lane)
     refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)

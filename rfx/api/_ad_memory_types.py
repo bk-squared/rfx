@@ -16,6 +16,8 @@ class AD_MemoryEstimate(NamedTuple):
     plus a live segment, independently of the per-step checkpoint flag.
     The fixed AD working set is calibrated by
     formulation; it is distinct from the forward-only working set.
+    ``cotangents`` outputs pulled back at once add one carry each beyond the
+    first; the device holds more (docs/guides/known_limitations.md).
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -24,7 +26,7 @@ class AD_MemoryEstimate(NamedTuple):
     available_gb: float | None
     warning: str | None
     ad_segmented_gb: float | None = None
-    checkpoint_every: int | None = None
+    checkpoint_every: int | tuple[int, ...] | None = None
     checkpoint_segments: int | None = None
     ad_active_steps: int | None = None
     ad_segmented_active_segments: int | None = None
@@ -59,6 +61,7 @@ class AD_MemoryEstimate(NamedTuple):
     tape_is_bound: bool = False
     calibration: str = "calibrated (GPU, jax 0.10.2)"
     carry_warnings: tuple[str, ...] = ()
+    cotangents: int = 1
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -81,6 +84,7 @@ class AD_MemoryEstimate(NamedTuple):
             "ad_fixed_gb": self.ad_fixed_gb,
             "tape_is_bound": self.tape_is_bound,
             "calibration": self.calibration,
+            "cotangents": self.cotangents,
             "evidence_class": self.evidence_class,
             "forward_gb": float(self.forward_gb),
             "ad_checkpointed_gb": float(self.ad_checkpointed_gb),

@@ -57,11 +57,11 @@
       "function": "update_he_fast"
     },
     {
-      "file": "rfx/materials/debye.py",
+      "file": "rfx/stepping/poles.py",
       "function": "update_e_debye"
     },
     {
-      "file": "rfx/materials/lorentz.py",
+      "file": "rfx/stepping/poles.py",
       "function": "update_e_lorentz"
     },
     {
@@ -849,6 +849,11 @@
     },
     {
       "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.constitutive",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
       "function": "make_graded_step.e_boundary",
       "kind": "boundary"
     },
@@ -863,6 +868,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/stepping/slab_tfsf.py",
+      "function": "_apply.local",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/stepping/slab_wrap.py",
       "function": "cut_probe_table",
       "kind": "roll/diff"
@@ -870,6 +880,11 @@
     {
       "file": "rfx/stepping/uniform.py",
       "function": "apply_pec_faces",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.constitutive",
       "kind": "boundary"
     },
     {
@@ -895,11 +910,6 @@
     {
       "file": "rfx/stepping/uniform.py",
       "function": "make_uniform_step.pec",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/uniform_loop.py",
-      "function": "run",
       "kind": "boundary"
     },
     {

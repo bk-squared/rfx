@@ -295,11 +295,14 @@ def extract_waveguide_sparams_overlap(
     (s11, s21) : tuple of jnp.ndarray
         S-parameters at the (optionally shifted) planes.
     """
-    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+    from rfx.measurement.waveguide_s import require_probe_medium
+    require_probe_medium(cfg)
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
     z_mode = _compute_mode_impedance(
         cfg.freqs,
         cfg.f_cutoff,
         cfg.mode_type,
+        medium=cfg.medium,
         dt=cfg.dt,
         dx=cfg.dx,
     )

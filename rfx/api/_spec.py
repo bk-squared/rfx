@@ -108,7 +108,7 @@ class ADMemoryActionHint(NamedTuple):
     message: str
     action: str
     checkpoint_mode: str | None = None
-    checkpoint_every: int | None = None
+    checkpoint_every: int | tuple[int, ...] | None = None
     checkpoint_segments: int | None = None
     blocking: bool = False
 
@@ -203,7 +203,7 @@ class ADMemoryPlan(NamedTuple):
     available_memory_gb: float
     target_fraction: float
     target_memory_gb: float
-    checkpoint_every: int | None
+    checkpoint_every: int | tuple[int, ...] | None
     selected_estimate: AD_MemoryEstimate
     full_ad_fits: bool
     segmented_fits: bool
@@ -306,7 +306,7 @@ class ADMemoryPreflightReport(NamedTuple):
     fit_safety_factor: float
     status: str
     supported_checkpoint_mode: str | None
-    checkpoint_every: int | None
+    checkpoint_every: int | tuple[int, ...] | None
     checkpoint_segments: int | None
     full_ad_fits: bool
     checkpointing_fits: bool

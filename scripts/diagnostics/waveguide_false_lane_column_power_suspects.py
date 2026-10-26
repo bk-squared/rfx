@@ -253,16 +253,16 @@ def analyse() -> dict:
         fc_fit = float(fit["fc_fit_hz"])
 
         beta_g = np.real(
-            np.asarray(_compute_beta(jnp.asarray(freqs), fc_guide, dt=dt, dx=dx))
+            np.asarray(_compute_beta(jnp.asarray(freqs), fc_guide, dt=dt, dx=dx, medium=cfg.medium))
         )
         z_guide = np.real(
             np.asarray(
-                _compute_mode_impedance(jnp.asarray(freqs), fc_guide, "TE", dt=dt, dx=dx)
+                _compute_mode_impedance(jnp.asarray(freqs), fc_guide, "TE", dt=dt, dx=dx, medium=cfg.medium)
             )
         )
         z_port = np.real(
             np.asarray(
-                _compute_mode_impedance(jnp.asarray(freqs), fc_port, "TE", dt=dt, dx=dx)
+                _compute_mode_impedance(jnp.asarray(freqs), fc_port, "TE", dt=dt, dx=dx, medium=cfg.medium)
             )
         )
 

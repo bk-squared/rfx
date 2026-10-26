@@ -48,6 +48,97 @@ def body(*lines: str) -> str:
     return "\n".join(lines)
 
 
+@pytest.mark.parametrize("text", [
+    "Physics: S11 error falls from 3% to 1%\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: NONE – CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: None - CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: nonetheless improves accuracy\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "\n \t\n<!-- hint -->\n```text\nexample\n```\n<pre>example</pre>\nPhysics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "\r\nPhysics: none — CI process\r\nLane: lane:ci-infra\rReview: reader (separate instance) - ACCEPT\r\n",
+])
+def test_physics_accepted_literal_bodies(text: str) -> None:
+    assert cpb.check(text, ENV) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics:\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics:   \nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: <user number that changes, or none — reason>\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: error < 1%\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: gain > 1\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: none —\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: NONE –  \nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: none -\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "Physics: none because CI\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    " Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "> Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "- Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "**Physics: none — CI process**\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "<!-- Physics: none — CI process -->\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "```\nPhysics: none — CI process\n```\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+    "<pre>Physics: none — CI process</pre>\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+])
+def test_physics_invalid_literal_bodies(text: str) -> None:
+    problems = cpb.check(text, ENV)
+    assert len(problems) == 1
+    assert "no well-formed `Physics:` first line" in problems[0]
+    assert "first non-blank body line" in problems[0]
+    assert "flush left" in problems[0]
+    assert "Physics: <what changes for a user>" in problems[0]
+    assert "Physics: none — <reason>" in problems[0]
+
+
+def test_physics_on_second_line_is_rejected() -> None:
+    text = "Summary\nPhysics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    problems = cpb.check(text, ENV)
+    assert len(problems) == 1
+    assert "`Physics:` first line" in problems[0]
+
+
+def test_physics_bare_none_is_rejected() -> None:
+    text = "Physics: none\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    problems = cpb.check(text, ENV)
+    assert len(problems) == 1
+    assert "`none` requires a non-empty reason" in problems[0]
+
+
+@pytest.mark.parametrize("created", [
+    "2026-10-26T23:59:59+09:00", "2026-10-26T14:59:59Z",
+])
+def test_physics_before_cutover_is_exempt(created: str) -> None:
+    text = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    assert cpb.check(text, {**ENV, "PR_CREATED_AT": created}) == []
+
+
+@pytest.mark.parametrize("created", [
+    "2026-10-27T00:00:00+09:00", "2026-10-26T15:00:00Z",
+    "2026-10-27T00:00:01+09:00", "2026-10-28T00:00:00Z",
+    "bad timestamp", "", "2026-10-26T14:59:59", "2026-10-26",
+])
+def test_physics_at_after_cutover_or_bad_timestamp_is_required(created: str) -> None:
+    text = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    problems = cpb.check(text, {**ENV, "PR_CREATED_AT": created})
+    assert len(problems) == 1
+    assert "`Physics:` first line" in problems[0]
+
+
+def test_physics_no_created_at_applies_locally() -> None:
+    text = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    problems = cpb.check(text, {})
+    assert len(problems) == 1
+    assert "`Physics:` first line" in problems[0]
+
+
+def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
+    problems = cpb.check("", {**ENV, "PR_CREATED_AT": "2026-10-26T14:59:59Z"})
+    assert len(problems) == 2
+    assert "no `Lane:` line" in problems[0]
+    assert "`Review:` line" in problems[1]
+
+
 # --------------------------------------------------------------------------
 # Bodies that must pass
 # --------------------------------------------------------------------------
@@ -79,11 +170,12 @@ def body(*lines: str) -> str:
     ],
 )
 def test_accepted_review_forms(review: str) -> None:
-    assert cpb.check(body("Lane: lane:ci-infra", review), ENV) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", review), ENV) == []
 
 
-def test_lines_may_sit_anywhere_in_a_longer_body() -> None:
+def test_lane_and_review_may_sit_anywhere_in_a_longer_body() -> None:
     text = body(
+        "Physics: none — CI process",
         "## What",
         "Moved the decay peak tracker to the first check.",
         "",
@@ -97,7 +189,7 @@ def test_lines_may_sit_anywhere_in_a_longer_body() -> None:
 
 def test_fallback_lane_list_is_used_when_the_env_is_absent() -> None:
     """A local run with no LANE_LABELS still checks against a real lane set."""
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), {}) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), {}) == []
     lanes, source = cpb.allowed_lanes({})
     assert lanes == cpb.FALLBACK_LANE_LABELS
     assert "fallback" in source
@@ -106,7 +198,7 @@ def test_fallback_lane_list_is_used_when_the_env_is_absent() -> None:
 
 def test_an_empty_lane_labels_env_falls_back_rather_than_rejecting_everything() -> None:
     """`gh label list` failing must not make every lane label unknown."""
-    assert cpb.check(body("Lane: lane:absorber", ACCEPT), {"LANE_LABELS": "\n\n"}) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:absorber", ACCEPT), {"LANE_LABELS": "\n\n"}) == []
 
 
 # --------------------------------------------------------------------------
@@ -116,7 +208,7 @@ def test_an_empty_lane_labels_env_falls_back_rather_than_rejecting_everything() 
 
 def test_reject_never_passes() -> None:
     problems = cpb.check(
-        body("Lane: lane:ci-infra", "Review: opus (separate instance) — REJECT"),
+        body("Physics: none — CI process", "Lane: lane:ci-infra", "Review: opus (separate instance) — REJECT"),
         ENV,
     )
     assert len(problems) == 1
@@ -126,7 +218,7 @@ def test_reject_never_passes() -> None:
 def test_an_unaccepted_separator_says_which_ones_are_accepted() -> None:
     """The en dash is accepted now; a fourth glyph must still explain itself."""
     problems = cpb.check(
-        body("Lane: lane:ci-infra", "Review: opus (separate instance) : ACCEPT"), ENV
+        body("Physics: none — CI process", "Lane: lane:ci-infra", "Review: opus (separate instance) : ACCEPT"), ENV
     )
     assert len(problems) == 1
     assert "em dash" in problems[0] and "en dash" in problems[0]
@@ -146,25 +238,25 @@ def test_a_literal_null_body_fails_cleanly() -> None:
     failure, not a crash and not a pass.
     """
     problems = cpb.check("null", ENV)
-    assert len(problems) == 2
+    assert len(problems) == 3
     assert "no `Lane:` line" in problems[0]
     assert "`Review:` line" in problems[1]
 
 
 def test_missing_lane_fails() -> None:
-    problems = cpb.check(body("Some description.", ACCEPT), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Some description.", ACCEPT), ENV)
     assert len(problems) == 1
     assert "no `Lane:` line" in problems[0]
 
 
 def test_missing_review_fails() -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", "Reviewed by a friend."), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", "Reviewed by a friend."), ENV)
     assert len(problems) == 1
     assert "`Review:` line" in problems[0]
 
 
 def test_unknown_lane_fails_and_lists_the_allowed_set() -> None:
-    problems = cpb.check(body("Lane: lane:not-a-lane", ACCEPT), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:not-a-lane", ACCEPT), ENV)
     assert len(problems) == 1
     assert "lane:not-a-lane" in problems[0]
     assert "lane:crossval" in problems[0]
@@ -185,7 +277,7 @@ def test_unknown_lane_fails_and_lists_the_allowed_set() -> None:
          "two-malformed", "three-lines"],
 )
 def test_multiple_lane_lines_fail_and_name_every_line(lane_lines: tuple[str, ...]) -> None:
-    problems = cpb.check(body(*lane_lines, ACCEPT), ENV)
+    problems = cpb.check(body("Physics: none — CI process", *lane_lines, ACCEPT), ENV)
     found = ", ".join(repr(line) for line in lane_lines)
     assert problems == [
         f"{len(lane_lines)} `Lane:` lines ({found}). A PR names exactly one "
@@ -213,7 +305,7 @@ def test_multiple_lane_lines_fail_and_name_every_line(lane_lines: tuple[str, ...
          "two-malformed", "three-lines"],
 )
 def test_multiple_review_lines_fail_and_name_every_line(review_lines: tuple[str, ...]) -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", *review_lines), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", *review_lines), ENV)
     found = ", ".join(repr(line) for line in review_lines)
     assert problems == [
         f"{len(review_lines)} `Review:` lines — a PR body carries exactly one: "
@@ -228,6 +320,7 @@ def test_multiple_review_lines_fail_and_name_every_line(review_lines: tuple[str,
 )
 def test_invisible_extra_keyword_lines_do_not_count(opening: str, closing: str) -> None:
     text = body(
+        "Physics: none — CI process",
         "Lane: lane:ci-infra",
         ACCEPT,
         opening,
@@ -242,12 +335,12 @@ def test_invisible_extra_keyword_lines_do_not_count(opening: str, closing: str) 
 
 
 def test_an_empty_body_fails() -> None:
-    assert len(cpb.check("", ENV)) == 2
+    assert len(cpb.check("", ENV)) == 3
 
 
 def test_crlf_bodies_are_handled() -> None:
     """GitHub delivers bodies with CRLF; a stray \\r must not break the anchors."""
-    assert cpb.check("Lane: lane:ci-infra\r\n" + ACCEPT + "\r\n", ENV) == []
+    assert cpb.check("Physics: none — CI process\r\nLane: lane:ci-infra\r\n" + ACCEPT + "\r\n", ENV) == []
 
 
 # --------------------------------------------------------------------------
@@ -264,7 +357,7 @@ def test_crlf_bodies_are_handled() -> None:
     ],
 )
 def test_angle_bracket_placeholders_do_not_pass(review: str) -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", review), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", review), ENV)
     assert len(problems) == 1
     assert "placeholder" in problems[0]
 
@@ -286,7 +379,7 @@ def test_a_name_that_merely_contains_angle_brackets_is_not_a_placeholder(
     Rejecting every angle bracket turned the repo's own commit-trailer spelling
     of a reviewer into a failure.
     """
-    assert cpb.check(body("Lane: lane:ci-infra", review), ENV) == [], review
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", review), ENV) == [], review
 
 
 @pytest.mark.parametrize(
@@ -305,6 +398,7 @@ def test_an_unterminated_marker_inside_a_fence_does_not_swallow_the_body(
     the marker inside the fence swallowed everything after it.
     """
     text = body(
+        "Physics: none — CI process",
         "For example:",
         "```",
         shown,
@@ -317,13 +411,13 @@ def test_an_unterminated_marker_inside_a_fence_does_not_swallow_the_body(
 
 
 def test_a_tilde_fence_hides_markers_too() -> None:
-    text = body("~~~", "<!-- note", "~~~", "", "Lane: lane:ci-infra", ACCEPT)
+    text = body("Physics: none — CI process", "~~~", "<!-- note", "~~~", "", "Lane: lane:ci-infra", ACCEPT)
     assert cpb.check(text, ENV) == []
 
 
 def test_a_real_unterminated_comment_outside_a_fence_still_swallows() -> None:
     """The fence masking must not disarm the rule it was narrowing."""
-    text = body("<!-- note to self", "", "Lane: lane:ci-infra", ACCEPT)
+    text = body("Physics: none — CI process", "<!-- note to self", "", "Lane: lane:ci-infra", ACCEPT)
     assert len(cpb.check(text, ENV)) == 2
 
 
@@ -336,7 +430,7 @@ def test_the_remediation_text_is_not_itself_a_passing_body() -> None:
     """
     report = cpb.failure_report(cpb.check("", ENV), ENV)
     problems = cpb.check(report, ENV)
-    assert len(problems) == 2, f"the remediation text passes its own gate: {problems}"
+    assert len(problems) == 3, f"the remediation text passes its own gate: {problems}"
     # The examples must be counted, not swallowed by earlier prose. The first
     # cut wrote a literal "<pre>" in the report, hiding the rest of the body.
     # The plain example and four indented alternatives now fail the count rule.
@@ -374,13 +468,13 @@ def test_failure_report_names_the_contract_and_the_fields() -> None:
     ],
 )
 def test_skipped_without_a_named_exception_fails(review: str) -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", review), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", review), ENV)
     assert len(problems) == 1
     assert "`Review:` line" in problems[0]
 
 
 def test_a_bare_skip_is_told_which_exceptions_exist() -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", "Review: skipped - x"), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", "Review: skipped - x"), ENV)
     assert "(a)" in problems[0] and "(b)" in problems[0]
 
 
@@ -391,6 +485,7 @@ def test_a_bare_skip_is_told_which_exceptions_exist() -> None:
 
 def test_lines_inside_a_code_fence_do_not_count() -> None:
     text = body(
+        "Physics: none — CI process",
         "Paste this into your body:",
         "```",
         "Lane: lane:ci-infra",
@@ -401,28 +496,28 @@ def test_lines_inside_a_code_fence_do_not_count() -> None:
 
 
 def test_lines_inside_an_html_comment_do_not_count() -> None:
-    text = body("<!--", "Lane: lane:ci-infra", ACCEPT, "-->")
+    text = body("Physics: none — CI process", "<!--", "Lane: lane:ci-infra", ACCEPT, "-->")
     assert len(cpb.check(text, ENV)) == 2
 
 
 def test_an_unterminated_comment_swallows_the_rest_of_the_body() -> None:
     """GitHub renders nothing after an unclosed `<!--`, so neither do we."""
-    text = body("<!-- note to self", "Lane: lane:ci-infra", ACCEPT)
+    text = body("Physics: none — CI process", "<!-- note to self", "Lane: lane:ci-infra", ACCEPT)
     assert len(cpb.check(text, ENV)) == 2
 
 
 def test_a_comment_before_real_lines_does_not_swallow_them() -> None:
-    text = body("<!-- hint -->", "Lane: lane:ci-infra", ACCEPT)
+    text = body("Physics: none — CI process", "<!-- hint -->", "Lane: lane:ci-infra", ACCEPT)
     assert cpb.check(text, ENV) == []
 
 
 def test_lines_inside_a_pre_block_do_not_count() -> None:
-    text = body("<pre>", "Lane: lane:ci-infra", ACCEPT, "</pre>")
+    text = body("Physics: none — CI process", "<pre>", "Lane: lane:ci-infra", ACCEPT, "</pre>")
     assert len(cpb.check(text, ENV)) == 2
 
 
 def test_an_unterminated_pre_block_swallows_the_rest_of_the_body() -> None:
-    text = body('<pre lang="text">', "Lane: lane:ci-infra", ACCEPT)
+    text = body("Physics: none — CI process", '<pre lang="text">', "Lane: lane:ci-infra", ACCEPT)
     assert len(cpb.check(text, ENV)) == 2
 
 
@@ -442,13 +537,14 @@ def test_a_backticked_tag_in_prose_does_not_eat_the_body(prose: str) -> None:
     swallowed the Lane and Review lines forty lines further down, and the job
     reported "no Lane: line" on a body that plainly had one.
     """
-    text = body("## What", prose, "", "Lane: lane:ci-infra", ACCEPT)
+    text = body("Physics: none — CI process", "## What", prose, "", "Lane: lane:ci-infra", ACCEPT)
     assert cpb.check(text, ENV) == [], prose
 
 
 def test_the_prs_own_body_style_passes() -> None:
     """A body that documents the contract in prose still satisfies it."""
     text = body(
+        "Physics: none — CI process",
         "Exactly one `Lane: lane:<label>` line and one `Review: ...` line.",
         "Lines inside `<pre>` blocks and unterminated `<!--` comments do not count.",
         "",
@@ -465,6 +561,7 @@ def test_the_prs_own_body_style_passes() -> None:
 def test_a_fenced_copy_does_not_satisfy_a_body_that_also_has_a_real_lane_line() -> None:
     """The fence is skipped, so one real line plus a quoted copy is still one."""
     text = body(
+        "Physics: none — CI process",
         "Lane: lane:ci-infra",
         ACCEPT,
         "The gate wants:",
@@ -478,7 +575,7 @@ def test_a_fenced_copy_does_not_satisfy_a_body_that_also_has_a_real_lane_line() 
 def test_the_pr_template_alone_does_not_pass() -> None:
     assert _TEMPLATE.is_file(), f"missing {_TEMPLATE}"
     problems = cpb.check(_TEMPLATE.read_text(encoding="utf-8"), ENV)
-    assert len(problems) == 2, (
+    assert len(problems) == 3, (
         "the PR template must not satisfy its own gate -- an author who submits "
         f"it unedited has to be told. Got: {problems}"
     )
@@ -495,19 +592,19 @@ def test_the_pr_template_alone_does_not_pass() -> None:
      "  Lane: lane:ci-infra", "* Lane: lane:ci-infra"],
 )
 def test_an_adorned_lane_line_fails_and_says_so(adorned: str) -> None:
-    problems = cpb.check(body(adorned, ACCEPT), ENV)
+    problems = cpb.check(body("Physics: none — CI process", adorned, ACCEPT), ENV)
     assert len(problems) == 1
     assert "must start the line" in problems[0], problems[0]
 
 
 def test_an_adorned_review_line_fails_and_says_so() -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", "- " + ACCEPT), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", "- " + ACCEPT), ENV)
     assert len(problems) == 1
     assert "must start the line" in problems[0], problems[0]
 
 
 def test_a_plain_missing_line_does_not_get_the_adornment_hint() -> None:
-    problems = cpb.check(body("Nothing relevant here.", ACCEPT), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Nothing relevant here.", ACCEPT), ENV)
     assert "must start the line" not in problems[0]
 
 
@@ -545,7 +642,7 @@ _IN_PROSE = (
     ],
 )
 def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, line), ENV) == []
 
 
 @pytest.mark.parametrize(
@@ -563,7 +660,7 @@ def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
     ],
 )
 def test_a_closing_reference_inside_a_sentence_fails_and_quotes_the_line(line: str) -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, line), ENV)
     assert len(problems) == 1
     assert problems[0].startswith(cpb.CLOSING_PREFIX)
     assert repr(line) in problems[0]
@@ -575,7 +672,7 @@ def test_a_closing_reference_inside_a_sentence_fails_and_quotes_the_line(line: s
     ["Closes #12, #13", "Closes #12 and #13", "- Fixes #12, bk-squared/rfx#13.", "Fixes #12, fixes #13, #14"],
 )
 def test_a_list_with_one_keyword_is_told_that_only_the_first_issue_closes(line: str) -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, line), ENV)
     assert len(problems) == 1
     assert repr(line) in problems[0]
     assert "closes only the first issue" in problems[0]
@@ -584,7 +681,7 @@ def test_a_list_with_one_keyword_is_told_that_only_the_first_issue_closes(line: 
 
 def test_text_after_an_accepted_close_is_still_scanned() -> None:
     line = "Closes #12. It does not fix #13 though."
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, line), ENV)
     assert len(problems) == 1 and problems[0].endswith(_IN_PROSE)
 
 
@@ -603,7 +700,7 @@ def test_text_after_an_accepted_close_is_still_scanned() -> None:
     ],
 )
 def test_prose_without_a_closing_reference_passes(line: str) -> None:
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, line), ENV) == []
 
 
 @pytest.mark.parametrize(
@@ -617,7 +714,7 @@ def test_prose_without_a_closing_reference_passes(line: str) -> None:
 )
 def test_closing_references_in_markup_still_fail(wrapped: str) -> None:
     """The #752 keyword sat in inline code and GitHub closed the issue anyway."""
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, wrapped), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, wrapped), ENV)
     assert len(problems) == 1
     assert "Fixes #752 is withdrawn from the PR body" in problems[0]
 
@@ -625,7 +722,7 @@ def test_closing_references_in_markup_still_fail(wrapped: str) -> None:
 def test_two_offending_closing_lines_report_problems_in_line_order() -> None:
     first = "Rejected: Close #726 was considered and dropped"
     second = "Fixes #752 is withdrawn from the PR body"
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, first, second), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, first, second), ENV)
     assert len(problems) == 2
     assert repr(first) in problems[0]
     assert repr(second) in problems[1]
@@ -633,7 +730,7 @@ def test_two_offending_closing_lines_report_problems_in_line_order() -> None:
 
 def test_each_closing_reference_in_prose_is_a_problem() -> None:
     line = "Rejected: Fixes #12 and resolves #13 were considered"
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, line), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, line), ENV)
     assert len(problems) == 2
     assert all(repr(line) in problem for problem in problems)
 
@@ -641,15 +738,15 @@ def test_each_closing_reference_in_prose_is_a_problem() -> None:
 def test_closing_problem_reports_the_body_line_number_and_trims_the_quote() -> None:
     line = "   Fixes #752 is withdrawn " + "x" * 140 + "   "
     # CRLF and a lone CR must count as one line break each, as body_lines() counts them.
-    text = "Lane: lane:ci-infra\r\n" + ACCEPT + "\r<!--\ncontext\n-->\n\n" + line
+    text = "Physics: none — CI process\r\nLane: lane:ci-infra\r\n" + ACCEPT + "\r<!--\ncontext\n-->\n\n" + line
     problems = cpb.check(text, ENV)
     assert len(problems) == 1
-    assert problems[0].startswith(f"{cpb.CLOSING_PREFIX}line 7: {line.strip()[:120]!r}: ")
+    assert problems[0].startswith(f"{cpb.CLOSING_PREFIX}line 8: {line.strip()[:120]!r}: ")
     assert line.strip()[:121] not in problems[0]
 
 
 def test_a_body_that_fails_only_on_a_closing_keyword_is_not_told_to_fill_in_lane_and_review() -> None:
-    problems = cpb.check(body("Lane: lane:ci-infra", ACCEPT, "It does not close #737."), ENV)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT, "It does not close #737."), ENV)
     report = cpb.failure_report(problems, ENV)
     assert "It does not close #737." in report
     assert "Fill these two lines in" not in report
@@ -662,7 +759,7 @@ def test_a_body_that_fails_only_on_a_closing_keyword_is_not_told_to_fill_in_lane
 # --------------------------------------------------------------------------
 
 
-PASSING_BODY = body("Lane: lane:ci-infra", ACCEPT)
+PASSING_BODY = body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT)
 
 
 def _run(args: list[str], extra_env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -685,6 +782,23 @@ def test_cli_reads_pr_body_from_the_environment() -> None:
     bad = _run([], {"PR_BODY": "nothing here"})
     assert bad.returncode == 1
     assert "PR body contract FAILED" in bad.stderr
+
+
+@pytest.mark.parametrize("created,expected", [
+    ("2026-10-26T14:59:59Z", 0),
+    ("2026-10-26T15:00:00Z", 1),
+    ("invalid", 1),
+])
+def test_cli_applies_the_creation_time_cutover(created: str, expected: int) -> None:
+    result = _run([], {
+        "PR_BODY": "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n",
+        "PR_CREATED_AT": created,
+    })
+    assert result.returncode == expected, result.stderr
+    if expected:
+        assert "no well-formed `Physics:` first line" in result.stderr
+    else:
+        assert result.stdout == "" and result.stderr == ""
 
 
 def test_cli_reads_a_file(tmp_path: Path) -> None:
@@ -774,6 +888,12 @@ def test_workflow_passes_the_body_through_env() -> None:
     assert "${{ github.event.pull_request.body }}" in env_values
 
 
+def test_workflow_passes_created_at_to_the_body_checker() -> None:
+    steps = _workflow()["jobs"]["pr-body-contract"]["steps"]
+    step = next(step for step in steps if step["name"] == "Check the PR body")
+    assert step["env"]["PR_CREATED_AT"] == "${{ github.event.pull_request.created_at }}"
+
+
 def test_workflow_reads_the_labels_live_not_from_the_event_payload() -> None:
     """The payload's label list is wrong in both directions.
 
@@ -811,28 +931,28 @@ def test_a_lane_label_does_not_replace_the_line() -> None:
     For 38 of 60 the labels cannot say which lane OWNS the change, so the line
     is the claim and the labels only cross-check it.
     """
-    problems = cpb.check(body(ACCEPT), env=ONE_LABEL)
+    problems = cpb.check(body("Physics: none — CI process", ACCEPT), env=ONE_LABEL)
     assert len(problems) == 1 and "no `Lane:` line" in problems[0]
 
 
 def test_the_missing_line_message_suggests_a_label_the_pr_carries() -> None:
-    problems = cpb.check(body(ACCEPT), env=TWO_LABELS)
+    problems = cpb.check(body("Physics: none — CI process", ACCEPT), env=TWO_LABELS)
     assert "Lane: lane:ci-infra" in problems[0]
     assert "lane:crossval" in problems[0]
 
 
 def test_no_line_and_no_label_fails() -> None:
-    problems = cpb.check(body(ACCEPT), env=ENV)
+    problems = cpb.check(body("Physics: none — CI process", ACCEPT), env=ENV)
     assert len(problems) == 1 and "no `Lane:` line" in problems[0]
 
 
 def test_a_line_naming_one_of_two_labels_passes() -> None:
-    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=TWO_LABELS) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:crossval", ACCEPT), env=TWO_LABELS) == []
 
 
 def test_a_line_that_contradicts_the_labels_fails() -> None:
     """Either the line is wrong or labeler.yml is missing a path. Both matter."""
-    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
     assert len(problems) == 1
     assert "not among the lane labels" in problems[0]
     assert "labeler.yml" in problems[0]
@@ -840,25 +960,25 @@ def test_a_line_that_contradicts_the_labels_fails() -> None:
 
 def test_an_unearned_line_names_the_line_to_write() -> None:
     """Labels follow paths, the line does not: say which line fixes it."""
-    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
     assert problems[0].endswith("Use `Lane: lane:ci-infra`.")
-    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=TWO_LABELS)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:msl-port", ACCEPT), env=TWO_LABELS)
     assert "Use `Lane: lane:crossval`: it is the only earned lane other than lane:ci-infra" in problems[0]
     three = {"LANE_LABELS": ENV["LANE_LABELS"] + "lane:absorber\n",
              "PR_LABELS_JSON": '["lane:ci-infra", "lane:crossval", "lane:absorber"]'}
-    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=three)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:msl-port", ACCEPT), env=three)
     assert problems[0].endswith("Pick the owner lane among the earned ones.")
 
 
 def test_a_line_naming_a_closing_issue_lane_passes() -> None:
     env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:crossval"]')
-    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=env) == []
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:crossval", ACCEPT), env=env) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), env=env) == []
 
 
 def test_a_line_matching_neither_pr_nor_issue_lanes_fails() -> None:
     env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:crossval"]')
-    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=env)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:msl-port", ACCEPT), env=env)
     assert len(problems) == 1
     assert "paths earned this PR (lane:ci-infra)" in problems[0]
     assert "issues this PR closes (lane:crossval)" in problems[0]
@@ -870,37 +990,37 @@ def test_no_issue_lanes_preserves_the_pr_label_rule(issue_lanes: str | None) -> 
     if issue_lanes is not None:
         env["ISSUE_LANES_JSON"] = issue_lanes
     assert cpb.issue_lane_labels(env) == ()
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
-    problems = cpb.check(body("Lane: lane:crossval", ACCEPT), env=env)
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), env=env) == []
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:crossval", ACCEPT), env=env)
     assert len(problems) == 1
     assert "issues this PR closes (none)" in problems[0]
 
 
 def test_an_issue_label_cannot_authorize_a_nonexistent_lane() -> None:
     env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:invented"]')
-    problems = cpb.check(body("Lane: lane:invented", ACCEPT), env=env)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:invented", ACCEPT), env=env)
     assert len(problems) == 1
     assert "is not a lane label on this repository" in problems[0]
 
 
 def test_a_line_that_agrees_with_the_single_label_passes() -> None:
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ONE_LABEL) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), env=ONE_LABEL) == []
 
 
 def test_a_line_still_works_with_no_labels_at_all() -> None:
     """A PR confined to unowned paths carries no label, and is not cross-checked."""
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ENV) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), env=ENV) == []
 
 
 def test_two_lane_lines_fail_even_when_a_label_agrees() -> None:
     problems = cpb.check(
-        body("Lane: lane:ci-infra", "Lane: lane:crossval", ACCEPT), env=ONE_LABEL
+        body("Physics: none — CI process", "Lane: lane:ci-infra", "Lane: lane:crossval", ACCEPT), env=ONE_LABEL
     )
     assert len(problems) == 1 and "2 `Lane:` lines" in problems[0]
 
 
 def test_an_unknown_lane_in_the_line_fails_before_the_labels_are_consulted() -> None:
-    problems = cpb.check(body("Lane: lane:invented", ACCEPT), env=ONE_LABEL)
+    problems = cpb.check(body("Physics: none — CI process", "Lane: lane:invented", ACCEPT), env=ONE_LABEL)
     assert len(problems) == 1 and "is not a lane label on this repository" in problems[0]
 
 
@@ -923,7 +1043,7 @@ def test_a_payload_carrying_no_lane_label_switches_the_cross_check_off(raw: str)
     """
     env = dict(ENV, PR_LABELS_JSON=raw)
     assert cpb.pr_lane_labels(env) == ()
-    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=env) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:crossval", ACCEPT), env=env) == []
 
 
 def test_a_label_containing_a_comma_survives_the_json() -> None:
@@ -941,7 +1061,7 @@ def test_a_lane_label_the_repository_no_longer_has_is_only_a_warning() -> None:
     env = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "lane:retired"]')
     warnings = cpb.lane_label_warnings(env)
     assert len(warnings) == 1 and "lane:retired" in warnings[0]
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), env=env) == []
 
 
 def test_a_stale_label_is_warned_and_then_IGNORED() -> None:
@@ -956,13 +1076,13 @@ def test_a_stale_label_is_warned_and_then_IGNORED() -> None:
     env = dict(ENV, PR_LABELS_JSON='["lane:retired"]')
     warnings = cpb.lane_label_warnings(env)
     assert len(warnings) == 1 and "lane:retired" in warnings[0]
-    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+    assert cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT), env=env) == []
 
 
 def test_a_stale_label_is_not_suggested_when_the_line_is_missing() -> None:
     """The suggestion has to be a lane the author can actually write."""
     env = dict(ENV, PR_LABELS_JSON='["lane:retired", "lane:crossval"]')
-    problems = cpb.check(body(ACCEPT), env=env)
+    problems = cpb.check(body("Physics: none — CI process", ACCEPT), env=env)
     assert len(problems) == 1
     assert "Lane: lane:crossval" in problems[0]
     assert "lane:retired" not in problems[0]
@@ -971,7 +1091,7 @@ def test_a_stale_label_is_not_suggested_when_the_line_is_missing() -> None:
 def test_a_pr_whose_only_lane_label_is_stale_is_not_cross_checked_at_all() -> None:
     env = dict(ENV, PR_LABELS_JSON='["lane:retired"]')
     for lane in ("lane:ci-infra", "lane:crossval", "lane:msl-port"):
-        assert cpb.check(body(f"Lane: {lane}", ACCEPT), env=env) == [], lane
+        assert cpb.check(body("Physics: none — CI process", f"Lane: {lane}", ACCEPT), env=env) == [], lane
 
 
 def test_a_current_label_set_warns_about_nothing() -> None:
@@ -980,7 +1100,7 @@ def test_a_current_label_set_warns_about_nothing() -> None:
 
 
 def test_the_remediation_text_says_the_label_is_not_a_substitute() -> None:
-    report = cpb.failure_report(cpb.check(body(ACCEPT), env=ENV), env=ENV)
+    report = cpb.failure_report(cpb.check(body("Physics: none — CI process", ACCEPT), env=ENV), env=ENV)
     assert "do not replace the line" in report
 
 

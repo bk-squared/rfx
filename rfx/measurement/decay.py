@@ -90,8 +90,8 @@ def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
         drives.append(("TF/SF source", *tfsf_source_drive(tfsf[0], grid)))
     for index, cfg in enumerate(waveguide_ports or ()):
         if cfg.src_amp:
-            # e_inc_table only: the paired h_inc_table carries an FFT tail near 1.4e-6
-            # of its peak that never falls below the end rule's 1e-6 of the peak.
+            # Read E: the companion H table rings physically at the mode cutoff.
+            # That ringing is assessed by the per-bin tail witness, not drive end.
             table = cfg.e_inc_table
             if is_tracer(table) or table.shape[0] <= 1:
                 raise ValueError(
@@ -115,6 +115,50 @@ def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
             f"until_decay: the drive end of {name} cannot be computed before the "
             "loop (its samples are missing, traced, nonfinite or of the wrong length)")
     return None if end > max_steps else end
+
+
+def known_drive_ready_step(waveguide_ports, interval):
+    """First check-grid step with known drive share <= 1e-2 at all read bins.
+
+    Prefix DFTs evaluate the same ratio as ``drive_tail_share`` at every grid
+    point in one host pass. Check all points: the ratio need not be monotone.
+    The tables end at their converged causal half, so a finite step exists.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.model.waveguide_modes import incident_tables_uncut
+    from rfx.measurement.ringdown_tail import plain_dft
+
+    ports = tuple(waveguide_ports or ())
+    if any(is_tracer(x) for cfg in ports for x in jax.tree_util.tree_leaves(
+            cfg._asdict() if hasattr(cfg, '_asdict') else vars(cfg))):
+        raise ValueError("until_decay: known waveguide drives are traced; use fixed n_steps")
+    bins = np.unique(np.concatenate([np.asarray(cfg.freqs, dtype=np.float64)
+                                    for cfg in ports])) if ports else np.array([])
+    drives = [(table, cfg.dt) for cfg in ports for table in incident_tables_uncut(cfg)]
+    if not drives or not bins.size:
+        return 0
+    length = max(len(table) for table, _ in drives)
+    checks = np.arange(interval, length + interval, interval)
+    ready = np.ones(len(checks), dtype=bool)
+    for table, dt in drives:
+        total = plain_dft(table, dt, bins)
+        prefix = np.zeros(len(bins), dtype=np.complex128)
+        # Bound temporary memory independently of K (at least one interval).
+        block = max(1, 4096 // interval)
+        for k in range(0, len(checks), block):
+            ends = checks[k:k + block]
+            lo, hi = k * interval, min(int(ends[-1]), len(table))
+            if lo >= len(table):
+                break
+            nn = np.arange(lo, hi, dtype=np.float64)
+            terms = np.exp(-2j * np.pi * bins[:, None] * dt * nn) * table[lo:hi] * dt
+            cumulative = np.cumsum(terms, axis=1)
+            inside = prefix[:, None] + cumulative[:, np.minimum(ends, hi) - lo - 1]
+            tail = np.abs(total[:, None] - inside)
+            tail[:, ends >= len(table)] = 0.
+            ready[k:k + len(ends)] &= np.all(tail <= 1e-2 * np.abs(inside), axis=0)
+            prefix += cumulative[:, -1]
+    return int(checks[np.flatnonzero(ready)[0]])
 
 
 def refuse_windowed_flux(sim, path):
@@ -273,7 +317,7 @@ class DecayStop:
     when ``W < KAPPA * wmax`` and ``W >= FLOOR_FLAT ** (interval / FLOOR_SPAN) *
     W_previous`` (on the floor: less than 5 % decay per 50 steps); ``below`` counts consecutive ones and resets
     otherwise. ``stop`` is the
-    first boundary with ``below >= consecutive`` and ``count >= min_steps``;
+    first boundary with ``below >= consecutive`` and ``count >= max(min_steps, n_d)``;
     ``criterion`` is then "threshold" when every boundary of that final
     consecutive run had ``W < thr * ref``, else "float32_floor". Not enabled (a forced-length run that still
     writes rows), W is formed only where a ``decay_checks`` row is written.
@@ -296,6 +340,7 @@ class DecayStop:
     criterion: str | None = None
     last: tuple | None = None   # (count, W, ref, wmax) at the last boundary >= n_end
     decay_checks: list = field(default_factory=list)
+    n_d: int = 0
 
     def __post_init__(self):
         if self.enabled and self.consecutive < 2:
@@ -327,7 +372,7 @@ class DecayStop:
         self.last = (count, w, self.ref, self.wmax)
         if count >= self.min_steps:
             self.decay_checks.append((count, w, self.ref))
-            if self.stop is None and self.below >= self.consecutive:
+            if self.stop is None and self.below >= self.consecutive and count >= self.n_d:
                 self.stop = count
                 self.criterion = ("threshold" if self.below_thr >= self.below
                                   else "float32_floor")
@@ -359,6 +404,8 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
                 raise
             n_end = None   # rows only: a forced-length run is never refused
     rule = DecayStop(thr, min_steps, interval, consecutive, n_end, enabled)
+    if enabled:
+        rule.n_d = known_drive_ready_step(waveguide_ports, interval)
     measure = (boundary_energy(grid, materials, side_step, dx=dx, periodic=periodic)
                if n_end is not None else None)
     return rule, measure
@@ -432,6 +479,9 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
     else:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    f"last level reached {reached:.3g}")
+    if criterion == "cap" and rule.n_d > steps:
+        message += (f"; the drive's known tail exceeded 1e-2 of the in-record drive "
+                    f"until step {rule.n_d}")
     if criterion == "cap" and quantity == "conserved_energy" and state is not None:
         if advisory is None:
             advisory = dict(drives=table_dc(sources), lossy=None)
@@ -445,6 +495,7 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
          "reached": float(reached), "floor_ratio": float(floor_ratio),
          "stop_step": int(steps),
          "drive_end_step": nan if rule.n_end is None else int(rule.n_end),
+         "known_drive_ready_step": int(rule.n_d),
          "quantity": quantity})
 
 

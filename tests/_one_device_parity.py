@@ -6,6 +6,7 @@ negative controls. No solver helper supplies an expected field or derivative.
 import itertools
 import json
 import os
+import sys
 from pathlib import Path
 
 import jax.numpy as jnp
@@ -22,7 +23,7 @@ PROFILE = np.array([1.] * 4 + [.9, 1.1, .9, 1.1] + [1.] * 4) * 1e-3
 
 def record(metadata, mutation, measurements):
     row = dict(metadata, mutation=mutation, **measurements)
-    print("UNVERIFIED " + json.dumps(row), flush=True)
+    print("UNVERIFIED " + json.dumps(row), file=sys.stderr, flush=True)
     target = os.environ.get("RFX_PARITY_REPORT")
     if target:
         with Path(target).open("a") as stream:
@@ -153,15 +154,11 @@ def derivative_metrics(one, multi):
 
 
 def assert_multi_device(sim, result=None):
-    """The multi-device side really ran on several devices: no one-device fallback.
+    """These parity scenes contain neither TF/SF nor waveguide-port sources.
 
-    A waveguide port or a TFSF source makes every multi-device entry fall back to
-    one device (rfx.runners.distributed_v2.one_device_reason); the comparison would
-    then pass trivially. None of these models has one, and no result carries the
-    fallback record.
+    Check the declarations directly and reject any legacy fallback diagnostic.
     """
-    from rfx.runners.distributed_v2 import one_device_reason
-    assert one_device_reason(sim) is None, one_device_reason(sim)
+    assert sim._tfsf is None and not sim._waveguide_ports
     if result is not None:
         codes = [d.code for d in getattr(result, "diagnostics", ())]
         assert "distributed.one_device_fallback" not in codes, codes
