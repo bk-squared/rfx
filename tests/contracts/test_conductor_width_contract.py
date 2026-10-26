@@ -321,6 +321,12 @@ def _extractor_context_cell(monkeypatch, lane, model):
                 sim._thin_conductors = [replace(
                     tc, shape=Box((0.02, 0, 0.006), (0.04, 0.024, 0.006)))
                     for tc in sim._thin_conductors]
+            else:
+                # A film edge on port 'r''s reference-plane node (x = 42 mm) is a
+                # thin element in its section, refused since #2054; end it a cell short.
+                sim._thin_conductors = [replace(
+                    tc, shape=Box((0.02, 0.0, 0.005), (0.036, 0.02286, 0.005)))
+                    for tc in sim._thin_conductors]
             patch.setattr(waveguide, 'extract_waveguide_s_matrix', handoff)
             with pytest.raises(HandoffReached):
                 sim.compute_waveguide_s_matrix(n_steps=4)

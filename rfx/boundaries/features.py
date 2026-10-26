@@ -374,7 +374,7 @@ OPERAND_RULES["waveguide_port_section"] = {
 }
 
 
-def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks):
+def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, grid):
     """Judge thin update operands, exempting only the guide's pinned walls."""
     import numpy as np
     from rfx._traced_check import traced_check
@@ -382,23 +382,44 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks):
 
     rule = OPERAND_RULES["waveguide_port_section"]
     spatial = tuple(slice(lo, hi) for lo, hi in bounds)
+    normal = "xyz".index(cfg.normal_axis)
+    # H corrects cell x_index - 1 (+) or x_index (-). Its front node,
+    # shared with the source plane, is x_index in either direction.
+    nodes = [cfg.x_index, cfg.ref_x]
+    nodes.extend(grid.index_of(cfg.normal_axis, p) for p in cfg.segment_planes)
+    edge_spatial = list(spatial)
+    edge_spatial[normal] = slice(min(nodes), max(nodes) + 1)
+    edge_spatial = tuple(edge_spatial)
+    behind = cfg.x_index - 1 if cfg.direction.startswith("+") else cfg.x_index + 1
+
+    def cut_for(record):
+        if record.name.startswith("pec_edge_masks.") and record.component != cfg.normal_axis:
+            return edge_spatial
+        return spatial
 
     def select(record):
         decisions = {rule[kind] for kind in record.kinds}
         if "refuse" in decisions and (
                 "medium" not in decisions or record.name.startswith("pec_edge_masks.")):
-            return spatial
+            return cut_for(record)
         return None
 
     portions = operands_at(records, select)
 
     def check(*values):
         for (record, _), value in zip(portions, values):
+            cut = cut_for(record)
             bad = np.asarray(value) != record.vacuum
             start = bad.ndim - 3 - record.trailing
             if record.name.startswith("pec_edge_masks."):
                 component = "xyz".index(record.component)
-                bad &= ~np.asarray(wall_masks[component][spatial])
+                bad &= ~np.asarray(wall_masks[component][cut])
+                if component != normal:
+                    local = behind - cut[normal].start
+                    if 0 <= local < bad.shape[start + normal]:
+                        plane = [slice(None)] * bad.ndim
+                        plane[start + normal] = local
+                        bad[tuple(plane)] = False
                 # A tangential E edge on either transverse bounding node is
                 # an aperture wall, including a wall built from PEC volumes.
                 for axis in range(3):
@@ -412,7 +433,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks):
                             bad[tuple(plane)] = False
             if np.any(bad):
                 first = tuple(np.argwhere(bad)[0])
-                index = (tuple(int(first[start + a] + bounds[a][0]) for a in range(3))
+                index = (tuple(int(first[start + a] + cut[a].start) for a in range(3))
                          if start >= 0 else tuple(lo for lo, _ in bounds))
                 raise ValueError(
                     f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
@@ -501,7 +522,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
         prefix = f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
         # Lumped stamps also appear in scalar conductivity. Name the stamp
         # first; PEC edges follow the existing PEC-volume medium judgement.
-        _refuse_waveguide_section_thin_elements(cfg, bounds, other_records, wall_masks)
+        _refuse_waveguide_section_thin_elements(cfg, bounds, other_records, wall_masks, grid)
         for field in ("eps_r", "mu_r"):
             if isinstance(getattr(materials, field), (tuple, list)):
                 raise ValueError(prefix + f"per-component {field} is unsupported; " + reason)
@@ -588,10 +609,10 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                     raise ValueError(prefix + "traced override puts another medium at the probe plane ("
                                      + description + "); its S21 cannot be split; " + reason)
             traced_check("waveguide port", "section medium", judge_traced, *arrays, *probe_arrays, ordered=True)
-            _refuse_waveguide_section_thin_elements(cfg, bounds, edge_records, wall_masks)
+            _refuse_waveguide_section_thin_elements(cfg, bounds, edge_records, wall_masks, grid)
             return cfg
         medium = judge(*arrays)
-        _refuse_waveguide_section_thin_elements(cfg, bounds, edge_records, wall_masks)
+        _refuse_waveguide_section_thin_elements(cfg, bounds, edge_records, wall_masks, grid)
         cfg = with_port_medium(cfg, medium)
         matches, description = probe_medium(medium, *probe_arrays)
         return cfg._replace(probe_medium_matches=matches, probe_medium_description=description)

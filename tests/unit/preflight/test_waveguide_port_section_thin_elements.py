@@ -1,4 +1,5 @@
 """#2047: thin elements in a modal section are refused by their realized operand."""
+import re
 import warnings
 
 import numpy as np
@@ -98,12 +99,56 @@ def test_other_entries_refuse(graded, entry):
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_beyond_sheet_preflight_and_calculator_admitted(graded):
     """A sheet past the reference plane must survive both material collectors."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with warnings.catch_warnings(record=True) as recorded:
+        warnings.simplefilter("always")
         sim = _guide("thin_conductor", inside=False, graded=graded, two_ports=True)
         report = sim.preflight()
         assert report.ok, str(report)
+        collector_error = "pec_sheets/pec_wires collector"
+        assert not [str(w.message) for w in recorded if collector_error in str(w.message)]
+        assert not [str(issue) for issue in report if collector_error in str(issue)]
+        if not graded:
+            report = sim.preflight_sparameters(calculator="waveguide")
+            assert report.ok, str(report)
+            assert not [str(w.message) for w in recorded if collector_error in str(w.message)]
+            assert not [str(issue) for issue in report if collector_error in str(issue)]
         _execute(sim, "compute_waveguide_s_matrix")
+        assert not [str(w.message) for w in recorded if collector_error in str(w.message)]
+
+
+@pytest.mark.parametrize("direction", ["+x", "-x"])
+@pytest.mark.parametrize("scene", ["a", "b", "c", "d"])
+def test_b4_section_boundary_nodes(direction, scene):
+    """Reference faces refuse; faces one cell behind the source admit (B4)."""
+    a, b = 0.042, 0.021
+    positions = {
+        "+x": {"a": (0.045, 0.045), "b": (0.045, 0.054),
+               "c": (0.015, 0.027), "d": (0.027, 0.027)},
+        "-x": {"a": (0.075, 0.075), "b": (0.066, 0.075),
+               "c": (0.093, 0.105), "d": (0.093, 0.093)},
+    }
+    source, reference, name = ((0.030, 0.045, "left") if direction == "+x"
+                               else (0.090, 0.075, "right"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = Simulation(freq_max=10e9, domain=(0.12, a, b), dx=0.003,
+                         boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                         cpml_layers=10, snap="declared")
+        sim.add_waveguide_port(source, direction=direction, name=name, mode=(1, 0),
+                              mode_type="TE", freqs=np.array([5e9, 6.5e9]),
+                              f0=6e9, bandwidth=0.5, reference_plane=reference)
+        lo, hi = positions[direction][scene]
+        sim.add(Box((lo, 0, 0), (hi, a, b)), material="pec")
+        if scene in ("a", "b"):
+            with pytest.raises(ValueError, match=re.escape(
+                    "PEC edge (volume, sheet, wire or pinned sheet) (pec_edge_masks.1)")) as exc:
+                sim.forward(n_steps=2, skip_preflight=True)
+            assert re.search(re.escape(f"Waveguide port '{name}': section cells "), str(exc.value))
+            assert re.search(re.escape(
+                "the port has no model for a thin element in its section (rfx#2047); "
+                "draw it beyond the reference plane."), str(exc.value))
+        else:
+            sim.forward(n_steps=2, skip_preflight=True)
 
 
 def test_pec_box_aperture_walls_admitted():
