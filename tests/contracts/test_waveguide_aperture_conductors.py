@@ -30,9 +30,15 @@ def one_bare_edge(graded, boundary="cpml"):
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("multiple_devices", [False, True])
 def test_f3_one_bare_absorbing_edge_refuses_before_solve(graded, multiple_devices):
-    devices = {"devices": [jax.devices()[0]] * 2} if multiple_devices else {}
+    if multiple_devices:
+        # No multi-device lane steps a waveguide port, so that refusal comes
+        # first on every entry, before the aperture is judged.
+        with pytest.raises(NotImplementedError, match="waveguide ports .* not supported on"):
+            one_bare_edge(graded).run(n_steps=2, skip_preflight=True,
+                                      devices=[jax.devices()[0]] * 2)
+        return
     with pytest.raises(ValueError) as caught:
-        one_bare_edge(graded).run(n_steps=2, skip_preflight=True, **devices)
+        one_bare_edge(graded).run(n_steps=2, skip_preflight=True)
     message = str(caught.value)
     for part in ("bare-rim", "bare aperture edges", "y_hi", "node plane 14 mm",
                  "nearest conductor distance 8 mm", "Draw a PEC wall", "domain cross-section",
