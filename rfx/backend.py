@@ -28,3 +28,8 @@ def backend_class(platform: str | None = None) -> BackendClass:
     if name == "mps":
         return BackendClass(name, True, "slab", "memory_stats_if_available", False)
     return BackendClass(name, False, "slab", "none" if name == "cpu" else "unknown", name == "cpu")
+
+
+def host_cpu_device():
+    """This process's CPU device; RuntimeError when JAX has no CPU backend."""
+    return jax.local_devices(backend="cpu")[0]

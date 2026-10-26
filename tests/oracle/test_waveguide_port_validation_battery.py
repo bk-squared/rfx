@@ -25,6 +25,7 @@ marks a physics regression.
 """
 
 from __future__ import annotations
+from rfx.model.waveguide_modes import PortMedium
 
 import numpy as np
 import jax.numpy as jnp
@@ -813,14 +814,14 @@ def test_below_cutoff_z_mode_no_nan():
     f_cutoff = 13.12e9
     dx, dt = 1.0e-3, 1.5e-12
 
-    z = np.asarray(_compute_mode_impedance(freqs, f_cutoff, "TE", dt=dt, dx=dx))
+    z = np.asarray(_compute_mode_impedance(freqs, f_cutoff, "TE", dt=dt, dx=dx, medium=PortMedium()))
     assert not np.any(np.isnan(z)), f"NaN in Z_mode below cutoff: {z}"
     assert not np.any(np.isinf(z)), (
         "inf in Z_mode below cutoff regresses the nan-cascade fix (2026-04-22)."
     )
 
     # TM likewise should give a finite (zero) value below cutoff.
-    z_tm = np.asarray(_compute_mode_impedance(freqs, f_cutoff, "TM", dt=dt, dx=dx))
+    z_tm = np.asarray(_compute_mode_impedance(freqs, f_cutoff, "TM", dt=dt, dx=dx, medium=PortMedium()))
     assert not np.any(np.isnan(z_tm)), f"NaN in TM Z_mode below cutoff: {z_tm}"
 
     # Cascade check: the original failure mode was NaN S-parameters in
@@ -834,6 +835,7 @@ def test_below_cutoff_z_mode_no_nan():
             self.mode_type = str(mode_type)
             self.dt = 1.5e-12
             self.dx = 1.0e-3
+            self.medium = PortMedium()
     cfg = _MinCfg(freqs, f_cutoff, "TE")
     V = jnp.asarray([1.0 + 0j, 1.0 + 0j, 1.0 + 0j], dtype=jnp.complex64)
     I = jnp.asarray([0.01 + 0j, 0.01 + 0j, 0.01 + 0j], dtype=jnp.complex64)

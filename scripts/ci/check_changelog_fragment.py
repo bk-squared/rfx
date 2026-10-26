@@ -128,7 +128,7 @@ def _file_at(rev: str, path: str, repo: Path) -> str:
 
 
 def check(base: str, head: str, labels: Sequence[str], repo: Path,
-          pr_number: str = "") -> List[str]:
+          pr_number: str = "", *, allow_topic: bool = False) -> List[str]:
     """Return the failure messages; empty means the PR passes."""
     assemble = _load_assembler()
     try:
@@ -182,7 +182,10 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
             failures.append(f"{path}: cannot read the file at {head}")
             continue
         try:
-            assemble.validate_fragment_text(name, text)
+            if allow_topic and assemble.TOPIC_NAME_RE.fullmatch(name):
+                assemble.validate_topic_fragment_text(name, text)
+            else:
+                assemble.validate_fragment_text(name, text)
         except assemble.FragmentError as exc:
             failures.append(f"{exc}\n  See {FRAGMENT_DIR}/README.md for the shape.")
         # Every path this loop reaches is in the diff and present at head: added,
@@ -213,7 +216,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"changelog fragment check failed: {exc}", file=sys.stderr)
         return 1
     failures = check(args.base, args.head, labels, args.repo,
-                     os.environ.get("PR_NUMBER", "").strip())
+                     os.environ.get("PR_NUMBER", "").strip(),
+                     allow_topic="merge-train-batch" not in labels)
     if failures:
         print("changelog fragment check failed:", file=sys.stderr)
         for failure in failures:

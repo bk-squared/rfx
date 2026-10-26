@@ -12,7 +12,23 @@ from rfx.probes.probes import flux_spectrum
 
 STEPS = 60
 CHUNKS = (7, 40, 30)
+NESTED_CHUNKS = ((24, 5), (30, 7, 3))
 QUANTITIES = ('probe', 's11', 'dft', 'flux', 'flux_dfts', 'E', 'H')
+
+
+@pytest.mark.parametrize('lengths', CHUNKS + NESTED_CHUNKS)
+@pytest.mark.parametrize('n', [1, 23, 60, 97, 118])
+def test_nested_record_has_exactly_the_requested_steps(lengths, n):
+    from rfx.stepping.remat import segmented_scan
+    xs = jnp.arange(n, dtype=jnp.float32) + 1
+    # A clock and cumulative measurement expose even zero-valued padding.
+    def step(carry, x):
+        clock, total = carry
+        return (clock + 1, total + x), (clock, total)
+    reference = jax.lax.scan(step, (0, 0.), xs)
+    actual = segmented_scan(step, (0, 0.), xs, lengths)
+    for a, b in zip(jax.tree_util.tree_leaves(actual), jax.tree_util.tree_leaves(reference)):
+        np.testing.assert_array_equal(a, b)
 
 
 def _scene(*, distributed=False):
@@ -64,7 +80,7 @@ def records(request):
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(runner, name, capture)
         sim = _scene(distributed=distributed)
-        for chunk in (None, *CHUNKS):
+        for chunk in (None, *CHUNKS, *(NESTED_CHUNKS if not distributed else ())):
             public = _forward(sim, chunk, distributed=distributed)
             raw = captured.pop()
             state = raw['final_state_sharded' if distributed else 'state']
@@ -82,10 +98,12 @@ def records(request):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize('chunk', CHUNKS)
+@pytest.mark.parametrize('chunk', CHUNKS + NESTED_CHUNKS)
 @pytest.mark.parametrize('quantity', QUANTITIES)
 def test_forward_record_length(records, chunk, quantity, record_property):
     lane, values = records
+    if lane == 'distributed' and isinstance(chunk, tuple):
+        pytest.skip('graded multi-device explicitly refuses checkpoint_every tuples')
     if quantity not in values[None]:
         pytest.skip('distributed NU forward refuses DFT planes and flux monitors')
     reference, actual = values[None][quantity], values[chunk][quantity]

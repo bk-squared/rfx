@@ -641,6 +641,8 @@ def run(
         #     different results from an unsegmented run with the same
         #     n_steps. Picking K as a divisor of n_steps preserves
         #     bit-exact equivalence for forward and gradient.
+        if isinstance(checkpoint_segments, tuple):
+            raise ValueError("uniform_loop checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
         K = int(checkpoint_segments)
         if K < 1:
             raise ValueError(

@@ -323,6 +323,7 @@ def test_public_imports_and_json_roundtrip():
         "checkpoint", "design", "carry_bytes", "tape_step_bytes",
         "tape_window_cells", "design_box_bounds", "ad_fixed_gb",
         "tape_is_bound", "calibration", "carry_warnings",
+        "cotangents",
         "evidence_class",
         "forward_gb",
         "ad_checkpointed_gb",

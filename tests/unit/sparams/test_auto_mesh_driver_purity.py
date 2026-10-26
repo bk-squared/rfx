@@ -39,17 +39,25 @@ def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, 
     assert sim._uses_nonuniform_mesh
     assert sim.__dict__["_dz_profile"] is None
 
+    reached=[]
     def stop(*args, **kwargs):
+        reached.append(True)
         assert sim.__dict__["_dz_profile"] is None
         assert sim._resolve_mesh() == resolved
         raise _StopBeforeSolve("runner reached")
 
     monkeypatch.setattr("rfx.runners.nonuniform.run_nonuniform_path", stop)
-    with pytest.raises(_StopBeforeSolve, match="runner reached"):
+    # The board is a partial fill: section admission now refuses it before
+    # the runner. Both that failure and the injected solve failure must leave
+    # the declared mesh and cached resolution untouched.
+    error=ValueError if auto_mesh else _StopBeforeSolve
+    match="section cells.*homogeneous" if auto_mesh else "runner reached"
+    with pytest.raises(error, match=match):
         sim._compute_waveguide_s_matrix_nu(
             n_steps=1, num_periods=1, normalize=True)
     assert sim.__dict__["_dz_profile"] is None
     assert sim._resolve_mesh() == resolved
+    assert bool(reached) is not auto_mesh
 
 
 def test_msl_driver_preserves_auto_mesh_on_solve_failure(monkeypatch):

@@ -147,12 +147,12 @@ def compute_waveguide_s_matrix(
         The non-uniform lane's result follows the ``freqs`` precision:
         complex64 by default, complex128 under ``JAX_ENABLE_X64``.
 
-        **Reference impedance.**  On ``False`` and ``True`` each
-        S_ij is the modal voltage-wave ratio ``b_i / a_j``, where
-        the waves at a port are decomposed with that port's OWN
-        discrete modal impedance (Yee-discrete Z_TE or Z_TM from
-        the port's cutoff and cell size); no ``sqrt(Z_i / Z_j)``
-        renormalization is applied.  ``"flux"`` takes |S_ij| from
+        **Reference impedance.** Each port decomposes waves with its own
+        medium's Yee-discrete modal impedance. On ``False``, unequal
+        media use the power-wave ratio ``(b_i / a_j) * sqrt(Z_j / Z_i)``.
+        Equal media retain the voltage-wave ratio exactly. ``True`` and
+        ``"flux"`` require equal port media and use a homogeneous reference
+        filled with that medium. ``"flux"`` takes |S_ij| from
         the power ratio and its phase from the same modal waves.
         The returned matrix therefore equals a power-wave S only
         when every port shares one cross-section and mode — the
@@ -361,7 +361,8 @@ def compute_waveguide_s_matrix(
 
     if not skip_preflight:
         report_diagnostics(self._auto_preflight(
-            context="compute_waveguide_s_matrix", check_ntff="advisory"))
+            context="compute_waveguide_s_matrix", check_ntff="advisory",
+            tfsf_material_overrides=(eps_override, sigma_override, None)))
 
     if (
         self._dz_profile is not None
@@ -436,6 +437,9 @@ def compute_waveguide_s_matrix(
                     int(n_steps) if n_steps else 1)
                 for _e in entries
             ]
+            from rfx.preflight.waveguide import resolve_preflight_port_configs
+            _nu_cfgs = resolve_preflight_port_configs(self, _nu_grid, _nu_cfgs,
+                eps_override=eps_override, sigma_override=sigma_override)
         except Exception as _exc:  # noqa: BLE001 - reported, not swallowed
             import warnings as _w
             _w.warn(
@@ -670,6 +674,11 @@ def compute_waveguide_s_matrix(
     # Build configs — may be a single config or a list of configs per port
     has_multimode = any(entry.n_modes > 1 for entry in entries)
     raw_cfgs = [self._build_waveguide_port_config(entry, grid, freqs, n_steps) for entry in entries]
+    from rfx.boundaries.features import resolve_waveguide_section_medium
+    raw_cfgs = resolve_waveguide_section_medium(
+        raw_cfgs, grid, materials, dict(debye=debye, lorentz=lorentz, pec_mask=pec_mask_wg), ())
+    reference_medium = _reference_medium(raw_cfgs, normalize)
+
 
     # Unify source waveform across all ports so that the S-matrix
     # extraction uses identical excitation.  Different source spectra
@@ -769,7 +778,7 @@ def compute_waveguide_s_matrix(
         mm_pec_axes = None
         if normalize == "flux":
             from rfx.core.yee import init_materials as _init_vacuum_materials
-            ref_materials = _init_vacuum_materials(grid.shape)
+            ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
             s_params, mode_map = extract_multimode_s_matrix_flux(
                 grid,
                 materials,
@@ -923,7 +932,7 @@ def compute_waveguide_s_matrix(
     settling_details = []
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _init_vacuum_materials(grid.shape)
+        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
         s_params = extract_waveguide_s_matrix_flux(
             grid,
             materials,
@@ -954,7 +963,7 @@ def compute_waveguide_s_matrix(
         s_params, settling_db = s_params
     elif normalize:
         from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _init_vacuum_materials(grid.shape)
+        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
         s_params = extract_waveguide_s_params_normalized(
             grid,
             materials,
@@ -1042,14 +1051,32 @@ def compute_waveguide_s_matrix(
     )
 
 
-def _empty_waveguide_reference(self):
-    """Build vacuum physics from mesh/boundary configuration only."""
-    # Construct an empty guide from configuration, never from device physics.
-    # Its empty geometry rasterizes vacuum exactly as init_materials does on
-    # the uniform calculator. Only the mesh, boundary walls and modal ports
+def _reference_medium(cfgs, normalize):
+    from rfx.model.waveguide_modes import PortMedium
+    media = [c.medium for group in cfgs for c in (group if isinstance(group, list) else [group])]
+    if normalize and any(m != media[0] for m in media[1:]):
+        raise ValueError("Waveguide normalize=True/'flux' requires all ports to share one medium (rfx#1994).")
+    return media[0] if media else PortMedium()
+
+
+def _homogeneous_reference_materials(shape, medium):
+    from rfx.core.yee import init_materials
+    from rfx.model.waveguide_modes import PortMedium
+    materials = init_materials(shape)
+    if medium == PortMedium():
+        return materials
+    return materials._replace(eps_r=jnp.full(shape, medium.eps_r, dtype=materials.eps_r.dtype),
+                              mu_r=jnp.full(shape, medium.mu_r, dtype=materials.mu_r.dtype))
+
+
+def _empty_waveguide_reference(self, medium=None):
+    """Build a straight guide at the resolved port medium."""
+    # Construct from mesh/boundary configuration, never from device geometry.
+    # Vacuum retains empty geometry; a fill extends through both CPML pads.
+    # Only the mesh, boundary walls and modal ports
     # are shared; material poles, sheets and lumped elements cannot leak in.
     from rfx.boundaries.serialization import constructor_boundary
-    return type(self)(
+    reference = type(self)(
         freq_max=self._freq_max, domain=self._domain,
         boundary=constructor_boundary(self), cpml_layers=self._cpml_layers,
         cpml_kappa_max=self._cpml_kappa_max, dx=self._dx,
@@ -1058,6 +1085,14 @@ def _empty_waveguide_reference(self):
         dt_min_cell=self._dt_min_cell, precision=self._precision,
         snap=self._snap, nominal_profiles=self._nominal_profiles,
     )
+
+    from rfx.model.waveguide_modes import PortMedium
+    if medium is not None and medium != PortMedium():
+        from rfx import Box
+        reference.add_material("waveguide_reference_fill", eps_r=medium.eps_r, mu_r=medium.mu_r)
+        extent = max(self._domain) + 1.0
+        reference.add(Box((-extent,) * 3, (extent,) * 3), material="waveguide_reference_fill")
+    return reference
 
 
 def _compute_waveguide_s_matrix_nu(
@@ -1072,14 +1107,13 @@ def _compute_waveguide_s_matrix_nu(
 ) -> WaveguideSMatrixResult:
     """Non-uniform-mesh two-run S-matrix extraction.
 
-    Drives each port in turn, running device + vacuum-reference
+    Drives each port in turn, running device + homogeneous-reference
     scans through ``run_nonuniform_path`` so ``dx_profile`` /
     ``dy_profile`` / ``dz_profile`` actually flow into the Yee update. The per-port
     drive is implemented by temporarily zeroing ``amplitude`` on
     non-driven entries; the original port list is restored in a
-    ``finally`` block. Reference run uses ``eps_override`` /
-    ``sigma_override`` to replace the assembled materials with
-    vacuum before the scan launches.
+    ``finally`` block. The reference's whole domain has the shared port
+    medium. Unequal port media are refused before launching either scan.
 
     Current scope (matches the uniform path minus a few niceties):
       - ``normalize=True`` or ``normalize='flux'``.
@@ -1088,7 +1122,7 @@ def _compute_waveguide_s_matrix_nu(
         design variable) are wired only for ``normalize='flux'``: they
         are threaded into the *device* run so the traced eps flows
         through the jnp-native flux extraction and back to the
-        S-matrix gradient. The *reference* run stays vacuum. They are
+        S-matrix gradient. The reference keeps the fixed section medium. They are
         rejected for ``normalize=True`` (its diagonal a_inc_ref
         denominator carries the #88 band-edge fragility).
 
@@ -1164,7 +1198,14 @@ def _compute_waveguide_s_matrix_nu(
     if n_steps is None:
         n_steps = steps_for_periods(grid.dt, self._freq_max, num_periods)
 
-    reference = _empty_waveguide_reference(self)
+    from rfx.preflight.waveguide import resolve_preflight_port_configs
+    from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+    from rfx.preflight.waveguide import resolve_waveguide_port_freqs
+    medium_cfgs = [_build_waveguide_port_config_nu(
+        self, e, grid, resolve_waveguide_port_freqs(self, e), n_steps) for e in entries]
+    medium_cfgs = resolve_preflight_port_configs(
+        self, grid, medium_cfgs, eps_override=eps_override, sigma_override=sigma_override)
+    reference = _empty_waveguide_reference(self, _reference_medium(medium_cfgs, normalize))
 
     # Frequency grid must match across ports.
     port_freqs = entries[0].freqs
@@ -1232,13 +1273,13 @@ def _compute_waveguide_s_matrix_nu(
                 device, n_steps=n_steps,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
-                attach_waveguide_flux=_flux_mode,
+                attach_waveguide_flux=_flux_mode, waveguide_reference_only=True,
                 checkpoint_every=_ckpt_every,
             )
             # Same active modal port and guide walls, independent vacuum physics.
             reference._waveguide_ports = list(self._waveguide_ports)
             ref_result = run_nonuniform_path(
-                reference, n_steps=n_steps, attach_waveguide_flux=_flux_mode,
+                reference, n_steps=n_steps, attach_waveguide_flux=_flux_mode, waveguide_reference_only=True,
             )
 
             dev_wg = dev_result.waveguide_ports or {}

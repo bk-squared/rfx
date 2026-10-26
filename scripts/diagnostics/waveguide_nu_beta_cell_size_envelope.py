@@ -81,7 +81,7 @@ from rfx.api._sparams import _assert_nu_shift_span_in_one_grading_zone  # noqa: 
 from rfx.nonuniform import interior_cells  # noqa: E402
 from rfx.runners.nonuniform import _build_waveguide_port_config_nu  # noqa: E402
 from rfx.sources.waveguide_port import C0_LOCAL, waveguide_plane_positions
-from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
+from rfx.model.waveguide_modes import PortMedium, _compute_beta, _compute_mode_impedance
 
 OUT_PATH = REPO / "tests" / "fixtures" / "waveguide_nu_beta_cell_size_envelope.json"
 FIXTURE_MODULE = "tests/unit/autodiff/test_waveguide_nu_flux_ad.py"
@@ -111,13 +111,13 @@ def closed_form_terms(f_hz: float, f_cutoff_hz: float, dt_s: float,
 
 
 def _beta_real(f_hz: float, f_cutoff: float, dt: float, dx: float, dtype) -> float:
-    b = _compute_beta(jnp.asarray([f_hz], dtype=dtype), f_cutoff, dt=dt, dx=dx)
+    b = _compute_beta(jnp.asarray([f_hz], dtype=dtype), f_cutoff, dt=dt, dx=dx, medium=PortMedium())
     return float(np.real(np.asarray(b))[0])
 
 
 def _z_te(f_hz: float, f_cutoff: float, dt: float, dx: float, dtype) -> float:
     z = _compute_mode_impedance(jnp.asarray([f_hz], dtype=dtype), f_cutoff, "TE",
-                                dt=dt, dx=dx)
+                                dt=dt, dx=dx, medium=PortMedium())
     return float(np.real(np.asarray(z))[0])
 
 

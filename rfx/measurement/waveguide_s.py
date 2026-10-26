@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.model.waveguide_modes import (
-    C0_LOCAL,
+    port_light_speed,
     WaveguidePortConfig,
     _compute_beta,
     _compute_mode_impedance,
@@ -31,6 +31,7 @@ def _extract_global_waves(
         cfg.freqs,
         cfg.f_cutoff,
         cfg.mode_type,
+        medium=cfg.medium,
         dt=cfg.dt,
         dx=cfg.dx,
     )
@@ -118,7 +119,7 @@ def _mode_indices_from_config(cfg: WaveguidePortConfig) -> tuple[int, int]:
         return cfg.mode_indices
     a, b = cfg.a, cfg.b
     fc = cfg.f_cutoff
-    kc = 2 * np.pi * fc / C0_LOCAL
+    kc = 2 * np.pi * fc / port_light_speed(cfg)
     kc_sq = kc ** 2
 
     best_err = float('inf')
@@ -168,6 +169,15 @@ def _shift_modal_waves(
     return forward_shifted, backward_shifted
 
 
+def require_probe_medium(cfg):
+    """A probe wave can only be split with the medium at its own plane."""
+    if not cfg.probe_medium_matches:
+        raise ValueError(
+            f"Waveguide port {cfg.port_name!r}: probe plane {cfg.probe_x_m} m "
+            f"has {cfg.probe_medium_description}; port medium is {cfg.medium}. "
+            "S21 requires a matching probe medium (rfx#1994).")
+
+
 def extract_waveguide_sparams(
     cfg: WaveguidePortConfig,
     *,
@@ -208,7 +218,8 @@ def extract_waveguide_sparams(
         them directly; otherwise the recorded time-series on ``cfg`` is
         used.
     """
-    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+    require_probe_medium(cfg)
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
     step_sign = 1 if cfg.direction.startswith("+") else -1
     explicit = (
         v_ref_dft is not None and i_ref_dft is not None
@@ -250,8 +261,8 @@ def extract_waveguide_s11(cfg: WaveguidePortConfig,
                           *,
                           ref_shift: float = 0.0) -> jnp.ndarray:
     """Extract S11 from backward/forward modal amplitudes with optional de-embedding."""
-    s11, _ = extract_waveguide_sparams(cfg, ref_shift=ref_shift)
-    return s11
+    a_ref, b_ref = extract_waveguide_port_waves(cfg, ref_shift=ref_shift)
+    return b_ref / jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
 
 
 def extract_waveguide_port_waves(
@@ -268,7 +279,7 @@ def extract_waveguide_port_waves(
     (2026-04-25): they integrated partially-decayed standing waves
     and produced ``|S11|`` that grew without bound as the gate widened.
     """
-    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+    beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
     step_sign = 1 if cfg.direction.startswith("+") else -1
     a_ref, b_ref = _extract_port_waves_from_time_series(
         cfg, cfg.v_ref_t, cfg.i_ref_t,
@@ -439,7 +450,18 @@ def extract_waveguide_s_matrix(
                 ref_shift=ref_shifts[recv_idx],
             )
             # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
-            col_slices.append(b_recv / safe_a)
+            ratio = b_recv / safe_a
+            drive_cfg = final_cfgs[drive_idx]
+            if cfg.medium != drive_cfg.medium:
+                zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
+                                             medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
+                zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
+                                             medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
+                # A power wave needs both ports propagating: where either is at or below its own
+                # cutoff (its Z is the evanescent sentinel) the entry has no power meaning.
+                below = (cfg.freqs <= cfg.f_cutoff) | (drive_cfg.freqs <= drive_cfg.f_cutoff)
+                ratio = jnp.where(below, jnp.nan, ratio * jnp.sqrt(zj / zi))
+            col_slices.append(ratio)
         # Stack recv slices into column (n_ports, n_freqs).
         s_cols.append(jnp.stack(col_slices, axis=0))
 
@@ -691,6 +713,13 @@ def extract_waveguide_s_matrix_flux(
         dev_final_mons = dev_result.flux_monitors or ()
         if len(dev_final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+        for idx, (ref_cfg, dev_cfg) in enumerate(zip(ref_final_cfgs, dev_final_cfgs)):
+            if ref_cfg.medium != dev_cfg.medium:
+                # P_inc and a_inc from a guide with another modal impedance would scale |S| silently.
+                raise ValueError(
+                    f"waveguide S-matrix: port {idx}'s reference guide resolved medium {ref_cfg.medium} but the "
+                    f"device port resolved {dev_cfg.medium}; a reference run must share its port's medium "
+                    "(fill the reference guide like the device's port section)")
         if return_settling:
             # worst over BOTH runs of the pair: the reference run's records
             # feed P_inc/a_inc, so its truncation corrupts the same S values

@@ -50,6 +50,16 @@ def module_name(path: str) -> str | None:
     return ".".join(parts)
 
 
+def test_module_name(path: str) -> str | None:
+    name = PurePosixPath(path)
+    if not path.startswith("tests/") or name.suffix != ".py" or name.name == "conftest.py":
+        return None
+    parts = list(name.with_suffix("").parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
 def directly_imports(source: str, modules: set[str], filename: str = "<test>") -> bool:
     for node in ast.walk(ast.parse(source, filename=filename)):
         if isinstance(node, ast.Import):
@@ -78,6 +88,8 @@ class Selection:
     package_directory_seconds: float
     always_on_files: int
     always_on_seconds: float
+    test_module_files: int
+    test_module_seconds: float
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
@@ -94,6 +106,8 @@ class Selection:
             f"recorded {self.package_directory_seconds:.6f} s",
             f"oracle and lock tests added: {self.always_on_files} files, "
             f"recorded {self.always_on_seconds:.6f} s",
+            f"test-module importers added: {self.test_module_files} files, "
+            f"recorded {self.test_module_seconds:.6f} s",
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"source-scan tests that run: {self.source_scan_run_count} tests, "
@@ -132,6 +146,8 @@ def select_tests(
     tests = {path for path in test_sources if is_test_file(path)}
     edited = changed & tests
     modules = {name for path in changed if (name := module_name(path)) is not None}
+    test_modules = {name for path in changed if (name := test_module_name(path)) is not None}
+    test_importers = set()
     candidates = set(edited)
     invalid = set()
     for path in tests:
@@ -139,6 +155,8 @@ def select_tests(
             continue
         try:
             imports_changed = directly_imports(test_sources[path], modules, path)
+            if test_modules and directly_imports(test_sources[path], test_modules, path):
+                test_importers.add(path)
         except SyntaxError:
             # Let pytest report the broken file, even without an import match.
             invalid.add(path)
@@ -165,6 +183,8 @@ def select_tests(
         path for path in tests if source_changed and path.startswith(ALWAYS_ON_TEST_DIRS)
     } - candidates
     candidates.update(always_on_added)
+    test_module_added = test_importers - candidates
+    candidates.update(test_module_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
     totals: dict[str, float] = defaultdict(float)
     for nodeid, seconds in durations.items():
@@ -176,6 +196,7 @@ def select_tests(
     selected = candidates - excluded.keys()
     package_added &= selected
     always_on_added &= selected
+    test_module_added &= selected
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
@@ -223,6 +244,7 @@ def select_tests(
         sum(totals[path] for path in sorted(central_tests)),
         len(package_added), sum(totals[path] for path in sorted(package_added)),
         len(always_on_added), sum(totals[path] for path in sorted(always_on_added)),
+        len(test_module_added), sum(totals[path] for path in sorted(test_module_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),

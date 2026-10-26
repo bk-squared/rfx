@@ -622,7 +622,7 @@ class _ExecuteMixin:
         port_s11_freqs: object | None = None,
         checkpoint: bool = True,
         emit_time_series: bool = True,
-        checkpoint_every: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
         n_warmup: int = 0,
     ) -> ForwardResult:
         """Differentiable forward on the non-uniform mesh path.
@@ -1064,7 +1064,7 @@ class _ExecuteMixin:
         gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
-        checkpoint_every: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
         n_warmup: int = 0,
         skip_preflight: bool = False,
         distributed: bool = False,
@@ -1270,7 +1270,7 @@ class _ExecuteMixin:
             forward path; on the uniform path it raises
             ``NotImplementedError`` (frequency-domain objectives such as NTFF
             and S-params still emit the series there).
-        checkpoint_every : int or None
+        checkpoint_every : int, tuple of decreasing lengths, or None
             Non-uniform-mesh counterpart of *checkpoint_segments* (a chunk
             size, not a segment count).  When set to a positive
             integer ``K``, the non-uniform scan is run as a scan-of-scan that

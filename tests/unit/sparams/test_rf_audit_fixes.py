@@ -6,6 +6,7 @@ Each test pins one confirmed extractor defect so a revert re-reds:
   #1 (Codex) evanescent waveguide β carried a spurious ×c, making |β| ~c× too large (s⁻¹).
   ⑤⑥ floquet extract/port silently ignored n_modes>1 and TM (TE/(0,0)-hardwired) → fail-loud.
 """
+from rfx.model.waveguide_modes import PortMedium
 import types
 
 import numpy as np
@@ -54,7 +55,7 @@ def test_evanescent_beta_has_inverse_metre_units():
     a = 22.86e-3
     f_cutoff = C0_LOCAL / (2 * a)            # WR-90 TE10 cutoff ≈ 6.56 GHz
     freqs = jnp.asarray([3e9])                # below cutoff → evanescent
-    beta = np.asarray(_compute_beta(freqs, f_cutoff, dt=1e-12, dx=1e-3))
+    beta = np.asarray(_compute_beta(freqs, f_cutoff, dt=1e-12, dx=1e-3, medium=PortMedium()))
     b = complex(beta[0])
     assert abs(b.real) < 1e-3, f"evanescent β should be ~pure imaginary, got {b}"
     assert 10.0 < abs(b.imag) < 1.0e4, (

@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Enforce the two provenance lines every rfx pull request body must carry.
+"""Enforce the Physics first line and the Lane/Review provenance lines.
+
+The reader's first question is what changed for a user (rfx-core-desk,
+2026-10-26). The first non-blank body line must start flush left with
+``Physics:`` and describe that change, or say ``Physics: none — reason``.
+The text must be non-empty and contain no angle brackets; ``none`` requires
+a dash and a non-empty reason. Comments, fences and preformatted blocks are
+handled by the same ``body_lines`` reader as Lane/Review. This rule applies
+to PRs created at or after 2026-10-27T00:00:00+09:00, so existing PRs do not
+turn red on an update-branch. Missing or invalid ``PR_CREATED_AT`` applies
+the rule, including local runs. Lane and Review remain required as before.
 
 Agents from several pods (Claude and Codex) push under one GitHub account, so
 the PR body is the only place a reader can learn WHO reviewed a change and
@@ -100,6 +110,7 @@ fill in. Standard library only, Python 3.11.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
 import os
 import re
@@ -138,6 +149,39 @@ FALLBACK_LANE_LABELS = (
 # rather than a silent "no Review: line".
 _DASH = r"[—–-]"
 DASH_NAMES = "an em dash (—), an en dash (–) or a plain hyphen (-)"
+
+PHYSICS_LINE_CUTOVER = datetime.fromisoformat("2026-10-27T00:00:00+09:00")
+
+
+def _physics_required(env: dict[str, str] | None = None) -> bool:
+    env = os.environ if env is None else env
+    try:
+        created = datetime.fromisoformat(env.get("PR_CREATED_AT", ""))
+        return created >= PHYSICS_LINE_CUTOVER
+    except (ValueError, TypeError):
+        # Missing, malformed or timezone-free timestamps cannot grant an exemption.
+        return True
+
+
+def _check_physics(lines: list[str], env: dict[str, str] | None) -> list[str]:
+    if not _physics_required(env):
+        return []
+    first = next((line for line in lines if line.strip()), "")
+    if first.startswith("Physics:"):
+        text = first[len("Physics:"):].strip()
+        if text and "<" not in text and ">" not in text:
+            if not re.match(r"none\b", text, re.IGNORECASE):
+                return []
+            if re.fullmatch(r"none\s*" + _DASH + r"\s*\S.*", text, re.IGNORECASE):
+                return []
+    return [
+        "no well-formed `Physics:` first line. The first non-blank body line must "
+        "start flush left with `Physics: <what changes for a user>` or "
+        "`Physics: none — <reason>`. Replace the placeholders with non-empty text "
+        "containing no `<` or `>`; `none` requires a non-empty reason after "
+        + DASH_NAMES + "."
+    ]
+
 
 LANE_RE = re.compile(r"^Lane: (lane:[a-z0-9-]+)$")
 REVIEW_ACCEPT_RE = re.compile(
@@ -574,6 +618,7 @@ def check(body: str, env: dict[str, str] | None = None) -> list[str]:
         _check_lane(lines, lanes, lane_source, labels, issue_lane_labels(env))
         + _check_review(lines)
         + _check_closing_keywords(body)
+        + _check_physics(lines, env)
     )
 
 

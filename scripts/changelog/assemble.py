@@ -19,6 +19,7 @@ Usage::
     python scripts/changelog/assemble.py                  # move fragments into Unreleased
     python scripts/changelog/assemble.py --dry-run        # print the diff, touch nothing
     python scripts/changelog/assemble.py --check          # validate names/headings only
+    python scripts/changelog/assemble.py --check --allow-topic  # pre-landing validation
     python scripts/changelog/assemble.py --release 2.0.0 [--date 2026-09-18]
 """
 
@@ -49,6 +50,7 @@ TYPE_HEADINGS = {
 }
 
 FRAGMENT_NAME_RE = re.compile(r"^(?P<number>[1-9][0-9]*)\.(?P<type>[a-z]+)\.md$")
+TOPIC_NAME_RE = re.compile(r"^(?P<topic>[a-z][a-z0-9-]{2,59})\.(?P<type>[a-z]+)\.md$")
 UNRELEASED_HEADING_RE = re.compile(r"^## \[Unreleased[^\]]*\]\s*$")
 SECTION_HEADING_RE = re.compile(r"^## ")
 #: A fragment body may only carry ``###`` and deeper. A ``#`` or ``##`` line
@@ -95,6 +97,11 @@ def parse_fragment_name(name: str) -> Tuple[int, str]:
     """Return ``(number, type)`` for a fragment filename, or raise."""
     match = FRAGMENT_NAME_RE.match(name)
     if match is None:
+        if TOPIC_NAME_RE.fullmatch(name):
+            raise FragmentError(
+                f"{name}: topic form changelog.d/<topic>.<type>.md is only for PRs; "
+                "only the train may land it, renamed to <number>.<type>.md"
+            )
         raise FragmentError(
             f"{name}: expected changelog.d/<number>.<type>.md, "
             f"<type> one of {', '.join(sorted(TYPE_HEADINGS))}"
@@ -117,6 +124,27 @@ def validate_fragment_text(name: str, text: str) -> None:
     the heading the body may only use ``###`` and deeper.
     """
     number, kind = parse_fragment_name(name)
+    _validate_fragment_text(name, text, kind, number)
+
+
+def validate_topic_fragment_text(name: str, text: str) -> None:
+    """Validate a pre-landing fragment with a literal ``(#PR)`` on its first line."""
+    match = TOPIC_NAME_RE.fullmatch(name)
+    if match is None:
+        raise FragmentError(
+            f"{name}: expected changelog.d/<topic>.<type>.md, "
+            "with <topic> matching [a-z][a-z0-9-]{2,59}"
+        )
+    kind = match.group("type")
+    if kind not in TYPE_HEADINGS:
+        raise FragmentError(
+            f"{name}: unknown type {kind!r}; expected one of "
+            f"{', '.join(sorted(TYPE_HEADINGS))}"
+        )
+    _validate_fragment_text(name, text, kind, None)
+
+
+def _validate_fragment_text(name: str, text: str, kind: str, number: int | None) -> None:
     body = text.replace("\r\n", "\n").strip("\n")
     if not body:
         raise FragmentError(f"{name}: fragment is empty")
@@ -131,9 +159,14 @@ def validate_fragment_text(name: str, text: str) -> None:
     headline = first[len(expected):].strip()
     if not headline:
         raise FragmentError(f"{name}: heading has no headline after the em dash")
-    if number not in {int(ref) for ref in ISSUE_REF_RE.findall(first)}:
+    reference = "(#PR)" if number is None else f"(#{number})"
+    has_reference = (
+        reference in text.partition("\n")[0] if number is None
+        else number in {int(ref) for ref in ISSUE_REF_RE.findall(first)}
+    )
+    if not has_reference:
         raise FragmentError(
-            f"{name}: heading must reference (#{number}); got {first!r}"
+            f"{name}: heading must reference {reference}; got {first!r}"
         )
     for lineno, line in enumerate(lines[1:], start=2):
         if FORBIDDEN_BODY_HEADING_RE.match(line):
@@ -169,7 +202,7 @@ def iter_fragments(fragment_dir: Path) -> List[Path]:
     return sorted(paths, key=sort_key)
 
 
-def validate_all(fragment_dir: Path) -> List[str]:
+def validate_all(fragment_dir: Path, *, allow_topic: bool = False) -> List[str]:
     """Return every fragment problem in *fragment_dir* as a message list."""
     problems: List[str] = []
     if not fragment_dir.is_dir():
@@ -181,7 +214,12 @@ def validate_all(fragment_dir: Path) -> List[str]:
             problems.append(f"{path.name}: fragments must be .md files")
             continue
         try:
-            validate_fragment_text(path.name, read_text(path)[0])
+            validate = (
+                validate_topic_fragment_text
+                if allow_topic and TOPIC_NAME_RE.fullmatch(path.name)
+                else validate_fragment_text
+            )
+            validate(path.name, read_text(path)[0])
         except FragmentError as exc:
             problems.append(str(exc))
     return problems
@@ -308,12 +346,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--check", action="store_true",
         help="validate fragment names and headings; exit 1 if any is malformed",
     )
+    parser.add_argument(
+        "--allow-topic", action="store_true",
+        help="accept topic fragments with --check only; releases and assembly remain numeric-only",
+    )
     args = parser.parse_args(argv)
 
     if args.date and not args.release:
         parser.error("--date only means something with --release")
 
-    problems = validate_all(args.fragments)
+    problems = validate_all(
+        args.fragments, allow_topic=args.check and args.allow_topic and not args.release,
+    )
     if args.check:
         try:
             find_unreleased_index(read_text(args.changelog)[0].split("\n"))
@@ -323,7 +367,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             for problem in problems:
                 print(f"changelog fragment: {problem}", file=sys.stderr)
             return 1
-        count = len(iter_fragments(args.fragments))
+        count = sum(
+            path.is_file() and path.name != "README.md"
+            for path in args.fragments.glob("*.md")
+        )
         print(f"changelog fragments OK ({count} pending)")
         return 0
     if problems:

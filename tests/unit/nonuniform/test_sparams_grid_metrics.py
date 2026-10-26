@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from rfx.boundaries.spec import BoundarySpec
+from rfx.model.waveguide_modes import PortMedium
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.preflight._common import local_cell
 from rfx.probes.flux_region import resolve_flux_region
@@ -26,7 +27,7 @@ def test_absorber_reads_propagation_face_cells():
     grid = _grid()
     assert grid.boundary_cell("z", "lo") == 2 * grid.dx
     assert local_cell(grid, "z", .012) == grid.dx
-    cfg = SimpleNamespace(normal_axis="z", f_cutoff=1e9)
+    cfg = SimpleNamespace(normal_axis="z", f_cutoff=1e9, medium=PortMedium())
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _warn_thin_absorber_vs_guide_wavelength(
@@ -39,7 +40,7 @@ def test_absorber_reports_only_thin_face_and_its_layer_count():
     grid = make_nonuniform_grid((.020, .020),
                                np.array([.002] * 4 + [.001] * 12 + [.004] * 4),
                                .001, cpml_layers=8)
-    cfg = SimpleNamespace(normal_axis="z", f_cutoff=1e9)
+    cfg = SimpleNamespace(normal_axis="z", f_cutoff=1e9, medium=PortMedium())
     with pytest.warns(UserWarning) as caught:
         _warn_thin_absorber_vs_guide_wavelength(
             grid, [cfg], [5e9], 8, BoundarySpec(x="pec", y="pec", z="cpml"))

@@ -269,11 +269,19 @@ def test_identical_port_references_have_no_junction_clearance_advisory(
         "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
         stop_before_solve,
     )
+    device = _tj_ref_horizontal(freqs, 5.5e9)
+    # As a device, the straight guide has only its two horizontal ports.
+    # Its reference-carrier declaration also has a top port inside PEC; setup
+    # now checks section operands before the mocked extractor is reached.
+    device._waveguide_ports = device._waveguide_ports[:2]
+    references = [_tj_ref_horizontal(freqs, 5.5e9) for _ in range(2)]
+    for reference in references:
+        reference._waveguide_ports = reference._waveguide_ports[:2]
     with warnings.catch_warnings(record=True) as record, pytest.raises(ReachedExtractor):
         warnings.simplefilter("always")
-        _tj_ref_horizontal(freqs, 5.5e9).compute_waveguide_s_matrix(
+        device.compute_waveguide_s_matrix(
             num_periods=8, normalize="flux", subpixel_smoothing=subpixel_smoothing,
-            port_reference_sims=[_tj_ref_horizontal(freqs, 5.5e9) for _ in range(3)],
+            port_reference_sims=references,
         )
     assert not any(getattr(w.message, "code", None) == "port_junction_probe_clearance"
                    for w in record)

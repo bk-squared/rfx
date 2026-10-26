@@ -35,6 +35,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Exported, so the scripts this file calls use the same interpreter. Without it
 # scripts/ci/lint.sh fell back to a bare `ruff` that is usually only in the venv.
 export PYTHON="${PYTHON:-python3}"
+export RFX_CHANGELOG_CONTEXT=pre-landing
 BODY_PATH="${1:-}"
 
 # What the changelog, data-budget and file-size gates diff against. CI uses the PR's base
@@ -88,7 +89,7 @@ echo "fragment required? $CHANGELOG_BASE...$CHANGELOG_HEAD"
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
 echo "  ok — a fragment exists for every rfx/ change, and CHANGELOG.md is untouched"
 # Fragment names and headings, which the workflow leaves to the release run.
-"$PYTHON" scripts/changelog/assemble.py --check || fail
+"$PYTHON" scripts/changelog/assemble.py --check --allow-topic || fail
 ) || step_failed
 
 begin 3

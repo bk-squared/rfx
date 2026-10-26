@@ -64,6 +64,125 @@ def test_debye_selects_only_direct_imports(sources, durations):
     }
 
 
+def test_test_module_parent_import_matches_alias():
+    assert selector.directly_imports(
+        "from tests.crossval.msl_notch_filter import test_msl_notch_filter as case",
+        {"tests.crossval.msl_notch_filter.test_msl_notch_filter"},
+    ) is True
+
+
+def test_edited_test_module_selects_three_replay_importers():
+    source = "from tests.crossval.msl_notch_filter import test_msl_notch_filter as case"
+    result = selector.select_tests(["tests/crossval/msl_notch_filter/test_msl_notch_filter.py"], {
+        "tests/crossval/msl_notch_filter/test_msl_notch_filter.py": "",
+        "tests/unit/nonuniform/test_msl_notch_fz_replay.py": source,
+        "tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py": source,
+        "tests/unit/nonuniform/test_msl_notch_graded_replay.py": source,
+        "tests/unit/nonuniform/test_unrelated.py": "",
+    }, {
+        "tests/unit/nonuniform/test_msl_notch_fz_replay.py::test_x": 2,
+        "tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py::test_x": 3,
+        "tests/unit/nonuniform/test_msl_notch_graded_replay.py::test_x": 4,
+    })
+    assert result.files == (
+        "tests/crossval/msl_notch_filter/test_msl_notch_filter.py",
+        "tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py",
+        "tests/unit/nonuniform/test_msl_notch_fz_replay.py",
+        "tests/unit/nonuniform/test_msl_notch_graded_replay.py",
+    )
+    assert "test-module importers added: 3 files, recorded 9.000000 s" in result.summary()
+
+
+def test_test_helper_selects_direct_importer_only():
+    result = selector.select_tests(["tests/_fixture.py"], {
+        "tests/_fixture.py": "def build(): pass",
+        "tests/_other.py": "from tests._fixture import build",
+        "tests/unit/x/test_a.py": "from tests._fixture import build",
+        "tests/unit/x/test_b.py": "import tests._other",
+    }, {})
+    assert result.files == ("tests/unit/x/test_a.py",)
+
+
+def test_test_module_import_alias_is_selected():
+    result = selector.select_tests(["tests/_fixture.py"], {
+        "tests/unit/x/test_a.py": "import tests._fixture as f",
+    }, {})
+    assert result.files == ("tests/unit/x/test_a.py",)
+
+
+def test_test_module_heavy_importer_is_excluded():
+    result = selector.select_tests(["tests/_fixture.py"], {
+        "tests/unit/x/test_a.py": "from tests._fixture import build",
+    }, {"tests/unit/x/test_a.py::test_x": 401})
+    assert result.files == ()
+    assert result.excluded == {"tests/unit/x/test_a.py": 401}
+    assert "excluded by >400 s rule: 1 files" in result.summary()
+    assert "test-module importers added: 0 files, recorded 0.000000 s" in result.summary()
+
+
+def test_test_module_importer_never_adds_contracts():
+    result = selector.select_tests(["tests/_fixture.py"], {
+        "tests/contracts/test_a.py": "from tests._fixture import build",
+    }, {})
+    assert result.files == ()
+    assert "test-module importers added: 0 files, recorded 0.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("changed", ["tests/conftest.py", "tests/x/conftest.py", "tests/_fixture.txt"])
+def test_test_module_ignored_paths_add_no_importers(changed):
+    result = selector.select_tests([changed], {
+        "tests/unit/x/test_a.py": "import tests.conftest\nimport tests.x.conftest\nimport tests._fixture",
+    }, {})
+    assert result.files == ()
+
+
+def test_test_package_init_selects_importer():
+    result = selector.select_tests(["tests/x/__init__.py"], {
+        "tests/unit/test_a.py": "from tests.x import build",
+    }, {})
+    assert result.files == ("tests/unit/test_a.py",)
+    assert selector.test_module_name("tests/x/__init__.py") == "tests.x"
+    assert selector.test_module_name("tests/a/b.py") == "tests.a.b"
+    assert selector.test_module_name("rfx/a.py") is None
+    assert selector.module_name("tests/a/b.py") is None
+    assert selector.module_name("rfx/a/__init__.py") == "rfx.a"
+
+
+def test_test_module_summary_counts_only_new_candidates():
+    source = "import tests._fixture"
+    result = selector.select_tests([
+        "tests/_fixture.py", "tests/unit/test_edited.py", "rfx/geometry/x.py",
+        "rfx/core/x.py",
+    ], {
+        "tests/unit/test_edited.py": source,
+        "tests/unit/test_direct.py": source + "\nimport rfx.core.x",
+        "tests/unit/runners/test_central.py": source,
+        "tests/unit/geometry/test_package.py": source,
+        "tests/oracle/test_oracle.py": source,
+        "tests/locks/test_lock.py": source,
+        "tests/unit/test_added.py": source,
+    }, {"tests/unit/test_added.py::test_x": 7}, central_paths=True)
+    assert result.files == (
+        "tests/locks/test_lock.py", "tests/oracle/test_oracle.py",
+        "tests/unit/geometry/test_package.py", "tests/unit/runners/test_central.py",
+        "tests/unit/test_added.py", "tests/unit/test_direct.py", "tests/unit/test_edited.py",
+    )
+    assert "test-module importers added: 1 files, recorded 7.000000 s" in result.summary()
+
+
+def test_test_module_keeps_edited_heavy_and_invalid_files():
+    result = selector.select_tests(["tests/_fixture.py", "tests/unit/test_edited.py"], {
+        "tests/unit/test_edited.py": "import tests._fixture",
+        "tests/unit/test_invalid.py": "def broken(",
+    }, {
+        "tests/unit/test_edited.py::test_x": 401,
+        "tests/unit/test_invalid.py::test_x": 402,
+    })
+    assert result.files == ("tests/unit/test_edited.py", "tests/unit/test_invalid.py")
+    assert result.excluded == {}
+    assert "test-module importers added: 0 files, recorded 0.000000 s" in result.summary()
+
+
 def test_package_directory_selects_geometry_through_top_level_helper():
     sources = {
         "tests/unit/geometry/test_x.py": "from tests._fixture import build",
@@ -429,6 +548,7 @@ def test_cli_stdout_and_summary(monkeypatch, tmp_path, capsys, summary_file):
     assert output.out == "tests/unit/test_new.py\n"
     summary = summary_path.read_text() if summary_file else output.err
     assert "1 files, recorded 9.000000 s" in summary
+    assert "test-module importers added: 0 files, recorded 0.000000 s" in summary
     assert "0 recorded tests, 0.000000 s" in summary
     if summary_file:
         assert output.err == ""

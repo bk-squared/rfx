@@ -11,6 +11,7 @@ from .graded import (
     make_graded_step,
 )
 from .remat import (
+    plan_checkpoint_lengths,
     segmented_scan,
 )
 from .scan import (
@@ -59,6 +60,7 @@ __all__ = [
     "Kernel",
     "make_core_step",
     "make_graded_step",
+    "plan_checkpoint_lengths",
     "recorded_scan",
     "run_nonuniform",
     "run_nonuniform_until_decay",

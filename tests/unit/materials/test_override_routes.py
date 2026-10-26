@@ -234,8 +234,13 @@ def test_waveguide_direct_override_writer_uses_cell_stage(keyword, operand):
     grid = sim._build_grid()
     values = (np.indices(grid.shape).sum(axis=0) % 3 + 8).astype(np.float32) / 4
     point = tuple(grid.position_to_index((.03, .015, .009)))
+    # Exercise the writer in the device interior; launch sections must remain
+    # homogeneous and lossless. The sampled edge and its stencil stay inside.
+    window = np.zeros(grid.shape, dtype=bool)
+    window[point[0]-1:point[0]+2, :, :] = True
     original = materials.with_components
     def consume(a):
+        a = jnp.where(window, a, 1. if keyword == "eps_override" else 0.)
         def stop(*args, **kw):
             raise _Captured(getattr(original(*args, **kw).components, operand)[2][point])
         with patch.object(materials, "with_components", stop):
