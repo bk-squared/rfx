@@ -261,9 +261,13 @@ def test_other_operands(graded, kind):
             execute(sim)
 
 
+def _scan_must_not_run(*args, **kwargs):
+    pytest.fail("refused multi-device waveguide port reached stepping")
+
+
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("route", ["run", "forward"])
-def test_two_device_routes(graded, route, record_property):
+def test_two_device_routes(graded, route, record_property, monkeypatch):
     sim = guide(graded)
     fill(sim, 0, L)
     devices = jax.devices("cpu")
@@ -271,8 +275,12 @@ def test_two_device_routes(graded, route, record_property):
     kwargs = dict(devices=devices[:2])
     if route == "forward":
         kwargs["distributed"] = True
-    result = execute(sim, route, **kwargs)
-    assert result.waveguide_ports["launch"].medium.eps_r == pytest.approx(2.2)
+    # Multi-device lanes refuse waveguide ports by name before any step
+    # instead of running the whole domain on one device (#2053).
+    monkeypatch.setattr(jax.lax, "scan", _scan_must_not_run)
+    with pytest.raises(NotImplementedError,
+                       match=r"waveguide ports \(add_waveguide_port\) are not supported on"):
+        execute(sim, route, **kwargs)
 
 
 @pytest.mark.parametrize("validation", ["production", "research"])
