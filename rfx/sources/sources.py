@@ -220,6 +220,54 @@ def port_d_parallel(grid, position_ijk: tuple[int, int, int],
     return _axis_cell_sizes(grid, position_ijk)[axis]
 
 
+def _validate_dg_cutoff(cutoff):
+    try:
+        cutoff = float(cutoff)
+    except TypeError:  # traced: checked where it was concrete
+        return
+    if not cutoff >= 2.5:
+        raise ValueError(
+            f"GaussianPulse cutoff={cutoff!r} is below 2.5: the start would "
+            "jump by 2c*exp(-c^2) of the amplitude and making it charge-free "
+            "changes the pulse by more than 2 % (1.84e-2 at c = 2.5). Use "
+            "cutoff >= 2.5 (default 3).")
+
+
+def charge_free_dg(t, tau, cutoff, *, _arg_timing=None):
+    """Unit-amplitude differentiated Gaussian with a charge-free onset.
+
+    The onset and near-start series are shared by GaussianPulse and TF/SF.
+    Values and slopes start continuously at zero; the time integral is zero.
+    """
+    _validate_dg_cutoff(cutoff)
+    u = t / tau
+    c = cutoff
+    # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
+    # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
+    # the value and its gradient, e.g. for a tau of 1e-20 s), and change
+    # nothing, value or gradient, for u < 50.
+    uc = jnp.clip(u, -50.0, 50.0)
+    # Preserve GaussianPulse's independent width evaluations in its reverse
+    # f0 derivative. Sharing their value would change the rounding of that sum.
+    t0, arg_tau = (cutoff * tau, tau) if _arg_timing is None else _arg_timing
+    arg = jnp.clip((t - t0) / arg_tau, -50.0, 50.0)
+    onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
+    value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
+    # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
+    # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
+    # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
+    # so every evaluation path keeps float32's relative accuracy.
+    z = jnp.clip(2*c*u, 0.0, 3.0)
+    term, r1, r2 = z**2 / 2, 0.0, 0.0
+    for k in range(2, 22):
+        r1 = r1 + term
+        r2 = r2 + (term if k >= 3 else 0.0)
+        term = term * z / (k + 1)
+    near = jnp.exp(-c**2 - uc**2) * (2*c*r1 - 2*uc*r2)
+    value = jnp.where(2*c*u < 3.0, near, value)
+    return jnp.where(t >= 0, value, 0.0)
+
+
 @dataclass(frozen=True)
 class GaussianPulse:
     """Differentiated Gaussian pulse with center frequency f0, starting at t=0.
@@ -257,16 +305,7 @@ class GaussianPulse:
     cutoff: float = 3.0
 
     def __post_init__(self):
-        try:
-            cutoff = float(self.cutoff)
-        except TypeError:  # traced: checked where it was concrete
-            return
-        if not cutoff >= 2.5:
-            raise ValueError(
-                f"GaussianPulse cutoff={cutoff!r} is below 2.5: the start would "
-                "jump by 2c*exp(-c^2) of the amplitude and making it charge-free "
-                "changes the pulse by more than 2 % (1.84e-2 at c = 2.5). Use "
-                "cutoff >= 2.5 (default 3).")
+        _validate_dg_cutoff(self.cutoff)
 
     @property
     def tau(self) -> float:
@@ -280,29 +319,8 @@ class GaussianPulse:
 
     def __call__(self, t: float) -> float:
         """Evaluate pulse at time t (zero before t=0)."""
-        u = t / self.tau
-        c = self.cutoff
-        # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
-        # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
-        # the value and its gradient, e.g. for a tau of 1e-20 s), and change
-        # nothing, value or gradient, for u < 50.
-        uc = jnp.clip(u, -50.0, 50.0)
-        arg = jnp.clip((t - self.t0) / self.tau, -50.0, 50.0)
-        onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
-        value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
-        # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
-        # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
-        # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
-        # so every evaluation path keeps float32's relative accuracy.
-        z = jnp.clip(2*c*u, 0.0, 3.0)
-        term, r1, r2 = z**2 / 2, 0.0, 0.0
-        for k in range(2, 22):
-            r1 = r1 + term
-            r2 = r2 + (term if k >= 3 else 0.0)
-            term = term * z / (k + 1)
-        near = jnp.exp(-c**2 - uc**2) * (2*c*r1 - 2*uc*r2)
-        value = jnp.where(2*c*u < 3.0, near, value)
-        return self.amplitude * jnp.where(t >= 0, value, 0.0)
+        return self.amplitude * charge_free_dg(
+            t, self.tau, self.cutoff, _arg_timing=(self.t0, self.tau))
 
 
 @dataclass(frozen=True)
