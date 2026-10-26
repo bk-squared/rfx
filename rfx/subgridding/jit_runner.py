@@ -1969,7 +1969,6 @@ def _make_step_fn(ctx):
         if use_cpml:
             st_c, cpml_new = apply_cpml_e(st_c, cpml_params, cpml_new,
                                            grid_c, cpml_axes, materials=mats_c)
-        st_c = apply_pec(st_c)
         if use_pec_mask_c:
             # #931: ``apply_pec_mask`` IS the shared realization
             # (realized_pec_edge_masks, volume branch). This lane
@@ -1978,6 +1977,7 @@ def _make_step_fn(ctx):
             # has no periodic branch, so the default #689 flags are
             # the run's own.
             st_c = apply_pec_mask(st_c, pec_mask_c)
+        st_c = apply_pec(st_c)
         if use_exterior_owned_z_slab and is_full_xy_z_slab:
             ex_c, ey_c, ez_c = _mask_z_slab_coarse_shadow_all(
                 (st_c.ex, st_c.ey, st_c.ez),

@@ -27,9 +27,10 @@ def apply_conformal_pec(state, w_ex, w_ey, w_ez):
 def apply_sheet_impedance_e(state, e_prev, curls, ctx, coeffs):
     """Apply the node-thin resistive-sheet E update at tangential edges.
 
-    Runs AFTER ``apply_pec_mask``/``apply_pec_occupancy`` and BEFORE
-    S-parameter DFT sampling and source injection (same contract slot the
-    PEC mask owns; see rfx/simulation.py make_core_step). At every masked
+    Runs AFTER ``apply_pec_mask``/``apply_pec_occupancy`` and BEFORE domain
+    PEC face writes, lumped updates, S-parameter DFT sampling and source
+    injection. The following face writes enforce PEC wins on overlap at
+    domain walls too. At every masked
     tangential edge the standard E-update result is REPLACED by::
 
         E^{n+1} = A * E^n + B * curlH^{n+1/2}
