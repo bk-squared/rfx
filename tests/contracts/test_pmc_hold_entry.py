@@ -152,6 +152,33 @@ def test_builder_scan_entry(monkeypatch, two_devices, axis, cells, count, entry,
     jax.clear_caches()
 
 
+def upml_scene(axis):
+    # Uniform grid; UPML on the two transverse axes, PEC/PMC on the PMC axis.
+    boundaries = {a: 'upml' for a in 'xyz'}
+    boundaries[axis] = Boundary('pec', 'pmc')
+    sim = Simulation(freq_max=12e9, domain=(.010, .008, .008), dx=.001,
+                     boundary=BoundarySpec(**boundaries), cpml_layers=2)
+    sim.add_source((.004, .003, .003), 'ez', amplitude_kind='field')
+    sim.add_probe((.004, .003, .003), 'ez')
+    return sim
+
+
+@pytest.mark.parametrize('axis', tuple('xyz'))
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+def test_upml_builder_scan_entry(monkeypatch, axis, entry):
+    """Uniform UPML holds its PMC ghost (db_h folded to zero), so its entry must be zero too."""
+    sim = upml_scene(axis)
+    shape = sim._build_grid().shape
+    options = dict(n_steps=2, skip_preflight=True)
+    options.update(checkpoint=False) if entry == 'forward' else options.update(compute_s_params=False)
+    with observe(monkeypatch, shape, 1, axis, jnp.array(1.), 'primal') as records:
+        result = getattr(sim, entry)(**options)
+        jax.block_until_ready(result.time_series)
+        jax.effects_barrier()
+    assert_records(records, 'primal')
+    jax.clear_caches()
+
+
 @pytest.mark.parametrize('count', (1, 2, 3))
 @pytest.mark.parametrize('mode', ('jvp', 'vjp'))
 @pytest.mark.parametrize('chunk', (None, 2))
