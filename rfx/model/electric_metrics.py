@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from typing import NamedTuple
 
 from rfx import _realized
-from rfx.core.yee import MaterialArrays, cell_owned_component_materials, component_e_materials
+from rfx.core.yee import MaterialArrays, cell_owned_component_materials, component_e_materials, map_lumped
 from rfx.model.graded_admission import concrete_distributed_x_cells
 
 
@@ -282,8 +282,18 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: t
         # full-grid reference.
         site = ("distributed_nu.E" if _realized.ACTIVE.lane == "fwd_distributed_nu"
                 else "distributed.E")
+        def cells(arr):
+            return slab_wall_view(arr, nx_per, nx, rank, high_wall=(False,) * 3)
+        # The record holds the stored cells with their lumped and film
+        # records, as the one-device site records them; ``view`` is the
+        # volume-only temporary of the mean.
+        recorded = MaterialArrays(
+            eps_r=cells(materials.eps_r), sigma=cells(materials.sigma), mu_r=materials.mu_r,
+            sigma_film=map_lumped(materials.sigma_film, cells),
+            sigma_lumped=map_lumped(materials.sigma_lumped, cells),
+            eps_r_lumped=map_lumped(materials.eps_r_lumped, cells))
         eps, sigma = _realized.electric(
-            view, eps, sigma, site, owned_start=rank * nx_per,
+            recorded, eps, sigma, site, owned_start=rank * nx_per,
             owned_count=jnp.minimum(nx_per, nx - rank * nx_per))
     return eps, sigma
 

@@ -1,6 +1,8 @@
 """The coax termination loads radial edges at one node plane (#1373)."""
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 import pytest
 
@@ -9,6 +11,7 @@ from rfx.core.yee import (
     component_e_materials,
     init_materials,
 )
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from rfx.grid import Grid
 from rfx.sources.coaxial_port import (
     SMA_OUTER_RADIUS,
@@ -42,6 +45,8 @@ def test_annular_resistor_loads_only_ex_and_ey_on_its_node_plane(reader):
     assert shell_inner == SMA_OUTER_RADIUS
     sigma_load = np.log(shell_inner / SMA_PIN_RADIUS) / (
         2 * np.pi * grid.dx * resistance)
+    if reader is component_e_materials:
+        reader = functools.partial(reader, high_wall=unpadded_high_walls(grid))
     _, before = reader(base)
     _, after = reader(loaded)
     for axis in range(3):

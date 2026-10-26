@@ -220,6 +220,7 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
     """
     from rfx.grid import Grid
     from rfx.core.yee import init_state, init_materials, update_e, update_h
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
     from rfx.sources.tfsf import (
         init_tfsf,
@@ -268,6 +269,7 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
     )
     dt = grid.dt
     periodic = (False, True, True)
+    high_wall = unpadded_high_walls(grid)
 
     tfsf_cfg, tfsf_st = init_tfsf(
         grid.nx,
@@ -317,12 +319,12 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
 
     for step in range(n_steps):
         t = step * dt
-        state = update_h(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=high_wall)
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
         tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
 
-        state = update_e(state, materials, dt, dx, periodic)
+        state = update_e(state, materials, dt, dx, periodic, high_wall=high_wall)
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx, dt, t)

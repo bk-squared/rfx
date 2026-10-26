@@ -1693,10 +1693,8 @@ def fine_high_walls(grid, config):
     starts = (config.fi_lo, config.fj_lo, config.fk_lo)
     ends = (config.fi_hi, config.fj_hi, config.fk_hi)
     counts = (config.nx_f, config.ny_f, config.nz_f)
-    spacings = (float(grid.dx), float(getattr(grid, "dy", grid.dx)),
-                float(getattr(grid, "dz", grid.dx)))
-    offsets = tuple((start - getattr(grid, f"pad_{a}_lo")) * spacing
-                    for a, start, spacing in zip("xyz", starts, spacings))
+    # The fine region starts on the coarse node at its first index.
+    offsets = tuple(float(nodes[start]) for nodes, start in zip(coarse[:3], starts))
     fine = coords_from_fine_grid(*counts, float(config.dx_f), *offsets)
     return tuple(wall and end == grid.shape[a]
                  and float(fine[a][-1]) > float(coarse[a][-1])

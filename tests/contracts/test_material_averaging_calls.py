@@ -20,9 +20,12 @@ ALLOWED_CALLS = {'rfx/adi.py': 3,
  'rfx/current_moments.py': 2,
  # static_remnant_advisory's H average moved here from rfx/simulation.py (decay stop PR).
  'rfx/measurement/decay.py': 1,
- # slab_e_component_materials (3 calls) moved here from rfx/runners/_distributed_common.py.
+ # slab_e_component_materials moved here from rfx/runners/_distributed_common.py
+ # (#1966). It has 3 calls, one more than on main: the slab takes the edge-owned
+ # lumped stamp out of the cells before the high-wall view (the view replicates
+ # cells, not edges). jit_runner.py's 2 calls moved into rfx/model/materials.py.
  'rfx/model/electric_metrics.py': 3,
- 'rfx/runners/_distributed_common.py': 3,
+ 'rfx/runners/_distributed_common.py': 4,
  'rfx/runners/distributed_nu.py': 1,
  'rfx/runners/nonuniform.py': 1,
  'rfx/sources/coaxial_port.py': 1,
