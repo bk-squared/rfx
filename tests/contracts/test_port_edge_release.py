@@ -291,7 +291,7 @@ def test_c6_coax_refusal(monkeypatch):
     sim.add_coaxial_port((.008,.008,0.),face='bottom',pin_length=.005)
     import rfx.simulation as kernel
     monkeypatch.setattr(kernel,'run',lambda *a,**k:pytest.fail('stepped'))
-    with pytest.raises(NotImplementedError,match=r'add_coaxial_port\(\) is not wired into Simulation.forward\(\)'):
+    with pytest.raises(NotImplementedError,match=r'a coaxial port \(add_coaxial_port\) is not carried by the'):
         sim.forward(pec_occupancy_override=jnp.zeros(sim._build_grid().shape),n_steps=2,skip_preflight=True)
 
 

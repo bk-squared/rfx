@@ -191,8 +191,10 @@ def test_port_bins(kind, path, ringdown):
             assert message in str(actual[1])
             print(f'ConcretizationTypeError: {message}', file=sys.stderr)
     elif kind == 'coax':
-        _same_refusal(eager, actual, NotImplementedError,
-                      'add_coaxial_port() is not wired into Simulation.forward().')
+        _same_refusal(eager, actual, ValueError,
+                      'forward(port_s11_freqs=...) computes S11 only for add_port(...)')
+        assert 'coaxial ports are not wired into forward(port_s11_freqs=...)' in str(eager[1])
+        assert 'coaxial ports are not wired into forward(port_s11_freqs=...)' in str(actual[1])
     elif kind in ('waveguide', 'msl'):
         _same_refusal(eager, actual, ValueError,
                       'forward(port_s11_freqs=...) computes S11 only for add_port(...)')

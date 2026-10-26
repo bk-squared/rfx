@@ -111,7 +111,7 @@ def test_run_calculator_owner_availability(mesh, forward, row, kind):
     lane = ('fwd_' if forward else 'run_')+('uniform' if mesh == 'uniform' else 'nonuniform')
     sim = build(row, lane, graded=mesh == 'graded')
     if kind == 'coax':
-        with pytest.raises(NotImplementedError, match='is not wired into Simulation'):
+        with pytest.raises(NotImplementedError, match=r'a coaxial port \(add_coaxial_port\) is not carried by the'):
             setup(sim, forward)
         actual = {}
     else:
