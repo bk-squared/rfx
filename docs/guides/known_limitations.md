@@ -347,58 +347,22 @@ the guide's walls, and both meshes warn or refuse unless they are declared PEC.
 Until this is fixed, solve a partial-aperture port that radiates on a graded
 mesh (a constant `dz_profile` is enough).
 
-### A waveguide port runs in vacuum or in one lossless fill that spans the whole guide; any other loaded port section is refused.
+### A thin film, sheet or lumped element inside a waveguide port's section is not judged by the port's medium check.
 
-Tracker: #1994
+Tracker: #2047
 
-A rectangular-waveguide port models an empty guide: its cutoff, propagation
-constant and modal impedance use vacuum values, and so does the de-embedding to
-a `reference_plane`. Measured before the refusal existed: on a straight WR-90
-filled end to end (two TE10 ports 80 mm apart, matched line, so |S11| should be
-0 and |S21| 1), |S11| came out 0.53 to 0.33 at relative permittivity 2.2
-(7.0–8.6 GHz) and 0.74 to 0.60 at 4 (6.8–7.3 GHz), exactly the mismatch between
-the vacuum and the filled modal impedance, while |S21| stayed 1.00, so
-|S11|² + |S21|² exceeded 1 on a lossless line. The S21 phase was off by 2–3 %,
-and by up to 14 % with the reference planes moved 30 mm. The same guide empty
-gave |S11| ≤ 0.004 and the phase within 0.06 %.
-
-A port whose section is filled wall to wall with one lossless, isotropic,
-non-dispersive medium now runs with that medium's cutoff, propagation constant,
-modal impedance and source. Ports in different media give S21 and S12 as
-power-wave ratios; below either port's cutoff those entries are NaN.
-
-Every run refuses, at setup, a port whose section holds anything else. The
-section runs from the cell of the port's H correction through its source and
-reference planes, and on to a user `reference_plane`, over the port aperture.
-Refused there: realized relative permittivity or permeability that differs from
-cell to cell, material conductivity, Debye or Lorentz poles, a Kerr coefficient,
-a PEC volume, a concrete `eps_override` or `sigma_override` that changes the
-section's medium, and a `forward(design_box=...)` whose update window reaches
-the section. This holds on the uniform and graded meshes, for `run()`,
-`forward()` and `compute_waveguide_s_matrix()`. Material between the reference
-plane and the probe plane is the device, not the port, and is admitted: the
-S-matrix reads the waves at the reference planes only.
-
-Not checked:
-
-- A single-port `run()` reads its S21 at the probe plane. When the probe plane's
-  medium differs from the port's, that S21 raises; a traced override that puts
-  another medium there refuses the whole traced run.
-- A fill whose permittivity differs per component (anisotropic), drawn inside
-  the section. The check reads the per-cell value; smoothing at metal walls and
-  at material faces is part of the realized guide and is not judged.
-- A zero-thickness metal sheet or thin conductor, a sheet impedance, a thin
-  conductive film or a lumped RLC element inside the section. The check judges
-  metal by volume only; a sheet drawn across the guide between the source and
-  the reference plane is refused by the port's preflight (face check), which
-  `skip_preflight=True` turns off.
-- A traced override over the section cannot be judged before the run.
-
-A partial, lossy, dispersive or anisotropic fill at the port, a multimode port
-in a fill, and `normalize=True` or `"flux"` with ports in different media have
-no port model: start such material beyond the port's reference plane.
-
----
+A waveguide port takes its cutoff, propagation constant, modal impedance and
+source from the one lossless, isotropic, non-dispersive medium that fills its
+section wall to wall; every other loaded section is refused at setup (support
+matrix, refused combinations, `admission:waveguide-section-*`). That check reads
+cell media and metal by volume only. A zero-thickness metal sheet or thin
+conductor, a sheet impedance, a thin conductive film or a lumped RLC element
+inside the section is not judged, so the port model ignores it. A sheet drawn
+across the guide between the source and the reference plane is refused by the
+port's preflight face check, which `skip_preflight=True` turns off. The error
+such an element leaves is not measured. Draw it beyond the port's reference
+plane. Smoothing at metal walls and at material faces is part of the realized
+guide and is not judged.
 
 ## Ring-down completion and the early stop
 
