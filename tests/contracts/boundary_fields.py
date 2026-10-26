@@ -59,11 +59,14 @@ def seed_fields(state, variant, hold_faces=()):
                         value[tuple(index)] += scale
         if variant == 11:
             value = np.full(shape, 1 if ci < 3 else 0, np.float32)
-        # Hold-class entry: preserve every interior sample of the original seed.
-        # The high row is storage outside the declared PMC plane.
+        # Hold entry: zero exterior normal E and tangential H ghosts only.
+        # Tangential E and normal H on the physical plane retain their seed.
         for face in hold_faces:
+            axis = "xyz".index(face[0])
+            if not (ci == axis or (ci >= 3 and ci % 3 != axis)):
+                continue
             index = [slice(None)] * 3
-            index["xyz".index(face[0])] = -1
+            index[axis] = -1
             value = value.copy()
             value[tuple(index)] = 0
         values.append(jnp.asarray(value, dtype=component(state, ci).dtype))
@@ -148,13 +151,13 @@ def observe_scans(records, physical_shape=None, hold_faces=()):
         yield
 
 
-def execute(sim, entry):
+def execute(sim, entry, n_steps=2):
     if entry == "forward":
-        return sim.forward(n_steps=2, checkpoint=False)
+        return sim.forward(n_steps=n_steps, checkpoint=False)
     if entry == "sweep":
         from rfx.vmap_sweep import vmap_material_sweep
-        return vmap_material_sweep(sim, "eps_r", [1.0], n_steps=2)
-    kwargs = dict(n_steps=2, compute_s_params=False)
+        return vmap_material_sweep(sim, "eps_r", [1.0], n_steps=n_steps)
+    kwargs = dict(n_steps=n_steps, compute_s_params=False)
     if entry == "wire-fast":
         kwargs.update(compute_s_params=True, s_param_freqs=np.array([10e9]), s_param_n_steps=2)
     if entry == "distributed":
@@ -163,7 +166,7 @@ def execute(sim, entry):
     return sim.run(**kwargs)
 
 
-def measure(case, entry):
+def measure(case, entry, n_steps=2):
     sim, declared = build(case, "run" if entry == "gpu-query" else entry)
     grid = sim._build_nonuniform_grid() if entry == "nonuniform" else sim._build_grid()
     records = []
@@ -194,7 +197,7 @@ def measure(case, entry):
             with patch.object(adi, "run_adi_3d", observed_adi):
                 result = execute(sim, entry)
         else:
-            result = execute(sim, entry)
+            result = execute(sim, entry, n_steps)
         jax.block_until_ready(result.time_series)
         jax.effects_barrier()
     for item in records:

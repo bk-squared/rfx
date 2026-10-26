@@ -168,12 +168,14 @@ def _validate_cfg_source_on_reflector_plane(
                             f"({_fmt_len(_face_cell)}) off the plane."
                         )
                     elif comp_field == "h" and is_tangential:
+                        mechanism = ("zero inverse spacing" if ctx.lane == "nonuniform"
+                                     else "zero update factor")
                         msg = (
                             f"Source/port at {pos} (component={pe.component}) "
                             f"sits on the PMC {face} plane and drives a "
                             f"tangential H. The magnetic image imposes zero "
-                            f"tangential H at the plane; a zero update "
-                            f"coefficient holds the high ghost row at zero."
+                            f"tangential H at the plane; a {mechanism} "
+                            f"keeps the high ghost row at zero."
                         )
                     else:
                         msg = None      # normal H on PMC plane is legit

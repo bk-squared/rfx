@@ -9,26 +9,30 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from tests.contracts.boundary_fields import component, field_nodes
+from tests.contracts.boundary_fields import component, field_nodes, is_aux
 
 
-def scene(axis, cells):
+def scene(axis, cells, cpml=False):
     widths = np.full(cells, .001)
     widths[3:5] = (.0009, .0011)
     boundaries = dict.fromkeys('xyz', 'pec')
+    if cpml:
+        # Keep x unpadded so cells=10 still pins the short last slab.
+        boundaries.update({a: 'cpml' for a in 'yz' if a != axis})
     boundaries[axis] = Boundary('pec', 'pmc')
     sim = Simulation(freq_max=12e9, domain=(cells * .001, .006, .006), dx=.001,
-                     dx_profile=widths, boundary=BoundarySpec(**boundaries))
+                     dx_profile=widths, boundary=BoundarySpec(**boundaries), cpml_layers=2 if cpml else 0)
     sim.add_source((.004, .003, .003), 'ez', amplitude_kind='field')
     sim.add_probe((.004, .003, .003), 'ez')
     return sim
 
 
-def ghost_rows(state, shape, devices, axis):
-    """Independent global-to-packed-row arithmetic, including a short last slab."""
+def ghost_rows(carry, shape, devices, axis):
+    """Whole held subsystem, with independent physical/packed row arithmetic."""
     a = 'xyz'.index(axis)
     indices = [slice(None)] * 3
-    if a == 0 and component(state, 0).shape != shape:
+    states = field_nodes(carry)
+    if a == 0 and component(states[0], 0).shape != shape:
         per_rank = (shape[0] + devices - 1) // devices
         stride = per_rank + 2
         # Check every stored copy of the physical high ghost, including halos.
@@ -38,7 +42,15 @@ def ghost_rows(state, shape, devices, axis):
         indices[0] = np.array(rows)
     else:
         indices[a] = -1
-    return tuple(component(state, c + 3)[tuple(indices)] for c in range(3) if c != a)
+    rows = [component(state, c)[tuple(indices)] for state in states
+            for c in (a, *(c + 3 for c in range(3) if c != a))]
+    for auxiliary in jax.tree_util.tree_leaves(carry, is_leaf=is_aux):
+        if is_aux(auxiliary):
+            for name, value in auxiliary._asdict().items():
+                if (name.startswith('psi_h') and name[5] != axis
+                        and name[-3] != axis and value.size):
+                    rows.append(value[tuple(indices)])
+    return tuple(rows)
 
 
 @contextmanager
@@ -51,9 +63,8 @@ def observe(monkeypatch, shape, devices, axis, anchor, mode):
         records.append((label, tuple(np.asarray(a) for a in arrays)))
 
     def sample(label, carry):
-        for state in field_nodes(carry):
-            jax.debug.callback(lambda *a: record(label, a),
-                               *ghost_rows(state, shape, devices, axis))
+        jax.debug.callback(lambda *a: record(label, a),
+                           *ghost_rows(carry, shape, devices, axis))
 
     @jax.custom_jvp
     def tangent_tap(carry, parameter):
@@ -120,9 +131,10 @@ def devices_for(count, two_devices):
 @pytest.mark.parametrize('cells', (10, 11))
 @pytest.mark.parametrize('count', (1, 2, 3))
 @pytest.mark.parametrize('entry', ('run', 'forward'))
-def test_builder_scan_entry(monkeypatch, two_devices, axis, cells, count, entry):
+@pytest.mark.parametrize('cpml', (False, True), ids=('pec', 'cpml'))
+def test_builder_scan_entry(monkeypatch, two_devices, axis, cells, count, entry, cpml):
     devices = devices_for(count, two_devices)
-    sim = scene(axis, cells)
+    sim = scene(axis, cells, cpml)
     shape = sim._build_nonuniform_grid().shape
     assert shape[0] == cells + 1
     if cells == 10 and count > 1:
@@ -143,9 +155,10 @@ def test_builder_scan_entry(monkeypatch, two_devices, axis, cells, count, entry)
 @pytest.mark.parametrize('count', (1, 2, 3))
 @pytest.mark.parametrize('mode', ('jvp', 'vjp'))
 @pytest.mark.parametrize('chunk', (None, 2))
-def test_ad_scan_entry(monkeypatch, two_devices, count, mode, chunk):
+@pytest.mark.parametrize('cpml', (False, True), ids=('pec', 'cpml'))
+def test_ad_scan_entry(monkeypatch, two_devices, count, mode, chunk, cpml):
     devices = devices_for(count, two_devices)
-    sim = scene('x', 10)
+    sim = scene('x', 10, cpml)
     shape = sim._build_nonuniform_grid().shape
     records = []
 

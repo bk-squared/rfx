@@ -274,11 +274,26 @@ def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
 
 
 @pytest.mark.parametrize("case", ("pmc-pec", "pmc-cpml"))
-def test_nonuniform_pmc_high_hold(case):
-    """The existing two-step contract, with the declared hold-class entry seed."""
-    sim, grid, _, records = measure(case, "nonuniform")
+@pytest.mark.parametrize("steps", (1, 2))
+def test_nonuniform_pmc_high_hold(case, steps):
+    """Hold from the first step, with physical face fields still seeded."""
+    from tests.contracts.boundary_fields import seed_fields
+
+    # Independent seed witness: the three physical components on x_hi must
+    # retain the original variant-0 pattern, not silently become zero.
+    seed_shape = (5, 4, 3)
+    seed = seed_fields(tuple(np.zeros(seed_shape, np.float32) for _ in range(6)), 0, ('x_hi',))
+    xyz = np.indices(seed_shape, dtype=np.float32)
+    pattern = 1 + .01 * xyz[0] + .013 * xyz[1] + .017 * xyz[2]
+    for ci in (1, 2, 3):
+        expected = pattern * (1.0 if ci < 3 else 1 / 376.730313668) * (ci + 1)
+        np.testing.assert_array_equal(np.asarray(seed[ci])[-1], expected[-1])
+    for ci in (0, 4, 5):
+        np.testing.assert_array_equal(np.asarray(seed[ci])[-1], np.zeros(seed_shape[1:], np.float32))
+    sim, grid, _, records = measure(case, "nonuniform", n_steps=steps)
     fields, psi, reference = measured_fields(records, grid, "nonuniform")
     # Whole tangential ghost row, all twelve original seed variants; exact zero.
     np.testing.assert_array_equal(fields[:, 4:6, -1], np.zeros_like(fields[:, 4:6, -1]))
-    faces = classify(fields, grid, psi, reference)
-    compare_values(sim.boundary_model(), grid, faces, BY_CELL[case, "nonuniform"]["faces"])
+    if steps == 2:
+        faces = classify(fields, grid, psi, reference)
+        compare_values(sim.boundary_model(), grid, faces, BY_CELL[case, "nonuniform"]["faces"])

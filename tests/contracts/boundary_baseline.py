@@ -146,10 +146,11 @@ def write_baseline(baseline, old_markdown, target):
 # so the row HOLDS its entry value instead of being forced to zero each step.
 # The plane is unchanged. The uniform lane still imposes zero each step.
 # The realized-boundary contract retains its interior seed and zeros the high
-# ghost row at entry; its exact zero-plane checks and tolerances stay unchanged.
-# Any future initial-state or resume entry must impose zero or refuse a nonzero ghost row.
+# ghost subsystem at entry; its exact zero-plane checks and tolerances stay unchanged.
+# Any future initial-state or resume entry must impose zero on the whole ghost subsystem of a held PMC face (tangential H ghost row, exterior normal E row, transverse CPML H psi on that row) or refuse a nonzero one
 GRADED_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchanged",
-                                    cases=("pmc-pec", "pmc-cpml"), entry="nonuniform", face="x_hi")
+    cases=("pmc-pec", "pmc-cpml"), entry="nonuniform", face="x_hi",
+    precondition="Zero tangential H ghost row, exterior normal E row, and transverse CPML H psi on that row at entry; no in-scan writer may seed them.")
 
 
 def validate_class_changes(previous, cells):
