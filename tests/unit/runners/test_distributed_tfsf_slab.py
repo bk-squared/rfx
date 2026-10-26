@@ -10,7 +10,6 @@ import jax
 import numpy as np
 import pytest
 
-import rfx
 from rfx import Simulation, Sphere
 from rfx.farfield import compute_far_field
 from rfx.grid import C0
@@ -19,7 +18,6 @@ from rfx.sources.tfsf import measure_normal_incident_spectrum, tfsf_from_declara
 
 def test_f4_one_device_mie_anchor():
     """Simulation's declared PEC sphere must independently meet the 1 dB bar."""
-    print(f"rfx.__file__={rfx.__file__}", file=sys.stderr)
     fixture_dir = Path(__file__).resolve().parents[2] / "fixtures" / "rcs_sphere_mie"
     geo = json.loads((fixture_dir / "fixture.json").read_text())["geometry"]
     spec = importlib.util.spec_from_file_location(

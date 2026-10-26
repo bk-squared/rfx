@@ -111,9 +111,10 @@ def test_explicit_graded_dispatch_reaches_distributed_nu(method, boundary, monke
             "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
         assert reached == []
         return
-    with pytest.raises(Admitted):
+    with pytest.raises(NotImplementedError) as caught:
         getattr(sim, method)(n_steps=1, skip_preflight=True, **kwargs)
-    assert reached == ["run_distributed_nu" if method == "run" else "fwd_distributed_nu"]
+    assert 'waveguide ports (add_waveguide_port) are not supported on' in str(caught.value)
+    assert reached == []
 
 
 @pytest.mark.parametrize("provenance", [None, "document"])
@@ -195,6 +196,10 @@ def test_explicit_aperture_ranges_on_graded_mesh(full, distributed, skip, monkey
     if full:
         with pytest.raises(ValueError, match=r"y_lo.*z_hi.*graded mesh keeps absorbers.*boundary="):
             sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+    elif distributed:
+        with pytest.raises(NotImplementedError) as caught:
+            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+        assert 'waveguide ports (add_waveguide_port) are not supported on run_distributed_nu' in str(caught.value)
     else:
         with pytest.raises(Admitted):
             sim.run(n_steps=1, skip_preflight=skip, **kwargs)

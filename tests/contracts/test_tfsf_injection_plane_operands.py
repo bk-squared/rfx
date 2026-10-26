@@ -67,14 +67,19 @@ def scene(obj=None, *, graded=False, interior=False, kind='slab'):
     elif obj == 'pec_sheet':
         sim.add(sheet, material='pec')
     elif obj == 'pec_wire':
-        sim.add(PolylineWire((mm(x, 6, 0), mm(x, 6, 12)), radius=0.), material='pec')
+        points = (mm(x, 10, 8), mm(x, 10, 16)) if kind == 'box' else (mm(x, 6, 0), mm(x, 6, 12))
+        sim.add(PolylineWire(points, radius=0.), material='pec')
     elif obj == 'pinned_sheet':
-        sim.add_pinned_sheet(plane_index=x, i_range=(0, 12), j_range=(0, 12), normal_axis=0)
+        # This API takes unpadded interior node indices.
+        span = (8, 16) if kind == 'box' else (0, 12)
+        sim.add_pinned_sheet(plane_index=x,
+                             i_range=span, j_range=span, normal_axis=0)
     elif obj in ('thin_pec_sheet', 'surface_impedance'):
         sim.add_thin_conductor(sheet, **({} if obj == 'thin_pec_sheet' else
                               dict(sigma_bulk=1e3, thickness=1e-4, surface_impedance_f0=5e9)))
     elif obj in ('series_RL', 'R_only'):
-        sim.add_lumped_rlc(mm(x, 6, 6), 'ez', R=10., L=1e-9 if obj == 'series_RL' else 0.)
+        position = mm(x, 10, 10) if kind == 'box' else mm(x, 6, 6)
+        sim.add_lumped_rlc(position, 'ez', R=10., L=1e-9 if obj == 'series_RL' else 0.)
     return sim
 
 
@@ -109,6 +114,12 @@ def test_refusal_matrix(obj, lane, monkeypatch):
             return original(*args, **kwargs)
 
         monkeypatch.setattr(jax.lax, 'scan', scan)
+        if lane.endswith('distributed'):
+            with pytest.raises(NotImplementedError) as caught:
+                execute(sim, lane)
+            assert 'open-slab normal-incidence TFSF (periodic y/z is not on slabs)' in str(caught.value)
+            assert not started
+            return
         with pytest.raises((ValueError, NotImplementedError)) as caught:
             execute(sim, lane)
         assert not started
@@ -124,6 +135,86 @@ def test_refusal_matrix(obj, lane, monkeypatch):
         print(json.dumps(dict(object=obj, lane=lane,
                               outcome='refused-by-new-rule' if new else 'refused-earlier',
                               message=message)), file=sys.stderr)
+
+
+@pytest.fixture(scope='module', params=['run_distributed', 'fwd_distributed'])
+def closed_box_controls(request):
+    lane, controls = request.param, {}
+    with warnings.catch_warnings(), pytest.MonkeyPatch.context() as patch:
+        warnings.simplefilter('ignore')
+        started = []
+        original = jax.lax.scan
+
+        def scan(*args, **kwargs):
+            caller = sys._getframe(1).f_code.co_filename
+            if '/rfx/stepping/' in caller or '/rfx/runners/' in caller:
+                started.append(True)
+            return original(*args, **kwargs)
+
+        patch.setattr(jax.lax, 'scan', scan)
+        for obj in INVENTORY:  # INVENTORY already includes pec_volume.
+            sim = scene(obj, interior=True, kind='box')
+            grid = sim._build_grid()
+            cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+            # Volume cells 18,19 (edge endpoints 18..20); sheets/wires/RL
+            # at x=19. All transverse extents are within nodes 16..24.
+            lo, hi = grid.interval_to_indices(mm(10, 8, 8), mm(12, 16, 16))
+            assert lo == (18, 16, 16) and hi == (20, 24, 24)
+            assert (cfg.x_lo, cfg.x_hi) == (14, 26)
+            assert cfg.x_lo < lo[0] <= hi[0] < cfg.x_hi
+            assert cfg.y_lo < lo[1] <= hi[1] < cfg.y_hi
+            assert cfg.z_lo < lo[2] <= hi[2] < cfg.z_hi
+            assert grid.position_to_index(mm(11, 10, 10))[0] == 19
+            started.clear()
+            try:
+                execute(sim, lane)
+            except (ValueError, NotImplementedError) as exc:
+                assert not started
+                assert 'non-vacuum material found at' not in str(exc)
+                controls[obj] = (type(exc), str(exc))
+            else:
+                controls[obj] = None
+            print(json.dumps(dict(object=obj, lane=lane,
+                                  branch='admitted' if controls[obj] is None else 'refused-earlier',
+                                  control=controls[obj][1] if controls[obj] else None,
+                                  x_cells=[18, 19] if obj in ('drude', 'kerr', 'pec_volume') else [19],
+                                  x_planes=[cfg.x_lo, cfg.x_hi])),
+                  file=sys.stderr)
+    assert any(outcome is None for outcome in controls.values()), controls
+    return lane, controls
+
+
+@pytest.mark.parametrize('obj', INVENTORY)
+def test_closed_box_distributed_injection_plane(obj, closed_box_controls, monkeypatch):
+    lane, controls = closed_box_controls
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = scene(obj, kind='box')
+        grid = sim._build_grid()
+        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+        # x=6 mm maps to node 14; volumes span cells 13,14.
+        assert grid.position_to_index(mm(6, 10, 10))[0] == cfg.x_lo == 14
+        assert cfg.x_hi == 26
+        started = []
+        original = jax.lax.scan
+
+        def scan(*args, **kwargs):
+            caller = sys._getframe(1).f_code.co_filename
+            if '/rfx/stepping/' in caller or '/rfx/runners/' in caller:
+                started.append(True)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(jax.lax, 'scan', scan)
+        control = controls[obj]
+        if control is None:
+            with pytest.raises(ValueError, match='non-vacuum material found at'):
+                execute(sim, lane)
+        else:
+            with pytest.raises(control[0]) as caught:
+                execute(sim, lane)
+            assert type(caught.value) is control[0]
+            assert str(caught.value) == control[1]
+        assert not started
 
 
 @pytest.mark.parametrize('obj', INVENTORY)

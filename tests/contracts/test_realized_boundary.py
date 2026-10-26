@@ -59,7 +59,19 @@ def periodic_graded(cell):
     return cell
 
 
-CELLS = [backed(magnetic_distributed(periodic_graded(c))) for c in CELLS]
+def tfsf_slab_20261026(cell):
+    """the TF/SF slab change supersedes B1's measured multi-device tfsf and waveguide-pec cells: the one-device fallback that produced them is removed and the request is refused by name; keep B1 immutable"""
+    messages = {
+        "tfsf": "open-slab normal-incidence TFSF (periodic y/z is not on slabs) is not supported on run_distributed; use one device",
+        "waveguide-pec": "waveguide ports (add_waveguide_port) are not supported on run_distributed; use one device",
+    }
+    if cell["entry"] == "distributed" and cell["case"] in messages:
+        return dict(cell, status="REFUSED", exception="NotImplementedError",
+                    message_prefix=messages[cell["case"]], departures=[])
+    return cell
+
+
+CELLS = [tfsf_slab_20261026(backed(magnetic_distributed(periodic_graded(c)))) for c in CELLS]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
@@ -251,6 +263,10 @@ def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
             if entry == "subgridded":
                 with pytest.raises(NotImplementedError, match="subgridded lane is unstable and unverified"):
                     execute(sim, entry)
+            elif entry == "distributed":
+                with pytest.raises(NotImplementedError) as exc:
+                    execute(sim, entry)
+                assert str(exc.value).startswith(BY_CELL["waveguide-pec", entry]["message_prefix"])
             else:
                 with pytest.raises(Admitted):
                     execute(sim, "run" if entry == "gpu-query" else entry)

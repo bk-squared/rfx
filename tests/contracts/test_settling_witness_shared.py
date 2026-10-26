@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from tests.contracts.run_forward_census import BUILDERS, invoke, port_drive_witness_leaves, port_s_pair
-from tests.contracts.test_run_forward_one_pipeline import check_fields
+from tests.contracts.test_run_forward_one_pipeline import check_fields, test_both_refuse as check_refusal
 
 
 @pytest.mark.parametrize('freqs', [None, np.array([2e9, 7e9, 20e9])], ids=['default', 'explicit'])
@@ -34,6 +34,12 @@ def test_single_lumped_s_uses_only_main_scan(monkeypatch, freqs):
 
 @pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-uniform'])
 def test_forward_keeps_waveguide_witness_rows(path):
+    if path == 'multi-device-uniform':
+        for entry in ('run', 'forward'):
+            with pytest.raises(NotImplementedError) as caught:
+                invoke(BUILDERS['P-waveguide'](path), entry, path, 150)
+            assert 'waveguide ports (add_waveguide_port) are not supported on' in str(caught.value)
+        return
     run = invoke(BUILDERS['P-waveguide'](path), 'run', path, 150)
     forward = invoke(BUILDERS['P-waveguide'](path), 'forward', path, 150)
     actual, expected = run.settling_witness, forward.settling_witness
@@ -50,6 +56,9 @@ def test_forward_keeps_waveguide_witness_rows(path):
 ])
 @pytest.mark.parametrize('direction', ('a', 'b'))  # equal S requests (#1373)
 def test_d5_census_disposition(declaration, path, direction):
+    if (declaration, path) == ('P-waveguide', 'multi-device-uniform'):
+        check_refusal(declaration, path, direction)
+        return
     check_fields(declaration, path, direction)
 
 
