@@ -104,7 +104,7 @@ _KERNELS = {
     "_run_nonuniform", "_run_subgridded", "run_uniform", "run_nonuniform_path",
     "run_subgridded_path", "run_disjoint_stage2_path", "run_distributed",
     "run_nonuniform_distributed_pec", "run_subgridded_jit", "run_adi_2d",
-    "run_adi_3d", "run_nonuniform",
+    "run_adi_3d", "run_nonuniform", "run_uniform_loop",
 }
 _SIMULATION_KERNELS = {"run", "run_until_decay"}  # rfx.simulation, under any alias
 _FIELD_UPDATES = {
