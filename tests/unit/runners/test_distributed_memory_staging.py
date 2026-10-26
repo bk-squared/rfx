@@ -383,7 +383,7 @@ def test_direct_slabs_bit_identical_on_three_and_four_devices():
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
            "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
            "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
-    run = subprocess.run([sys.executable, "-W", "ignore", str(Path(__file__).resolve()), "many_device_slabs"],
+    run = subprocess.run([sys.executable, "-W", "ignore", "-c", _MANY_DEVICE_SLABS],
                          env=env, text=True, capture_output=True, timeout=60)
     assert run.returncode == 0, run.stdout + run.stderr
     assert "MANY_DEVICE_SLABS_OK 30" in run.stdout, run.stdout
@@ -533,9 +533,7 @@ def test_dispersion_slabs_in_subprocess(mode, marker):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "many_device_slabs":
-        exec(_MANY_DEVICE_SLABS)
-    elif sys.argv[1] == "direct_dispersion":
+    if sys.argv[1] == "direct_dispersion":
         _direct_dispersion_slabs()
     elif sys.argv[1] == "addressable_dispersion":
         _addressable_dispersion_slabs()

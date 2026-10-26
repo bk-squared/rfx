@@ -4,7 +4,6 @@ from rfx.geometry.rasterize_grid import unpadded_high_walls
 import importlib.util
 import os
 from pathlib import Path
-from unittest import mock
 
 import jax
 import jax.numpy as jnp
@@ -14,7 +13,6 @@ import pytest
 from rfx.boundaries import cpml
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.pmc import apply_pmc_faces
-from rfx.core import yee
 from rfx.core.yee import init_state, init_materials, update_h, update_e, update_h_nu, update_e_nu
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
@@ -115,15 +113,7 @@ def runner(name, implementation, dz=None, eps=None, steps=200, history=False,
             st = update_h_nu(st, materials, grid.dt, grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
         else:
             st = update_h(st, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
-        if implementation is old:
-            original = yee.component_h_materials
-            def with_wall_flags(materials, **kw):
-                kw.setdefault("high_wall", unpadded_high_walls(grid))
-                return original(materials, **kw)
-            with mock.patch.object(yee, "component_h_materials", with_wall_flags):
-                st, ps = implementation.apply_cpml_h(st, params, ps, grid, axes, materials)
-        else:
-            st, ps = implementation.apply_cpml_h(st, params, ps, grid, axes, materials)
+        st, ps = implementation.apply_cpml_h(st, params, ps, grid, axes, materials)
         st = apply_pmc_faces(st, pmc)
         if nu:
             st = update_e_nu(st, materials, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
