@@ -11,7 +11,7 @@ from rfx.grid import C0
 from rfx.grid import Grid
 from rfx.rcs import RCSResult
 from rfx.rcs import ScatteringResponse
-from rfx.simulation import run
+from rfx.stepping import run_uniform_loop as run
 from rfx.sources.tfsf import init_tfsf
 from rfx.measurement.incident import measure_normal_incident_spectrum
 import jax.numpy as jnp
