@@ -26,8 +26,10 @@ this harness's method), ms per step:
 | 27.3 M | CPML, 8 layers | 4.467 | 4.495 | 31.9 M |
 | 27.3 M | CPML, 16 layers | 5.667 | 5.677 | 36.9 M |
 
-So 4-8 absorbing layers make a step 1.2-1.5x a closed box of the same
-interior, on both meshes. Most of that is the extra padded cells; an
+Step time with CPML divided by step time of the PEC box of the same
+interior (t_CPML / t_PEC from the table): 4 layers 1.22-1.40x and
+8 layers 1.40-1.59x over 13.1 M and 27.3 M cells, uniform and graded.
+Most of that is the extra padded cells; an
 absorbing cell costs about one more bare cell, plus a few percent per
 padded cell. The PEC rows are the standard GPU lane: a closed box today
 takes the GPU fast lane, which measured 1.988 ms (13.1 M) and 3.871 ms
