@@ -200,6 +200,12 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
             use_earlier = start // 2 >= source_end
             check_start = start // 2 if use_earlier else start
             check_stop = n if use_earlier else start + round(.9 * (n - start))
+            from rfx._ringdown_pencil import identification_span
+            span = identification_span(n, dt, max(freq_max, float(np.max(bins))))
+            if span != n:
+                start = max(start, n - span + round(.5 * span))
+                check_start = max(check_start, n - span + round(.25 * span)) if use_earlier else start
+                check_stop = n if use_earlier else start + round(.9 * (n - start))
             if min(n - start, check_stop - check_start) < 10:
                 raise ValueError("post-source window too short for the identification check")
             group = [(name, array[:, np.any(array[int(source_end):] != array[int(source_end)], axis=0)])

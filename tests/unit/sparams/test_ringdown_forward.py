@@ -871,7 +871,14 @@ def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     jax.eval_shape(lambda p: sim.forward(
         n_steps=140000, skip_preflight=True, eps_override=eps * p,
         ringdown=RingdownSpec(), **_kw("graded")).ringdown, jnp.float32(1.0))
-    assert [m for m, _k in seen] == [70000, 105000]
+    # Design Addendum 4: only the geometry changes; keep the pole budget bar.
+    dt = float(sim._build_nonuniform_grid().dt)
+    factors, _ = rd.decimation_plan(70000, dt, sim._freq_max)
+    half = 1024
+    for factor in reversed(factors):
+        half = (half + 20) * factor
+    span = 2 * half
+    assert [m for m, _k in seen] == [half, span - round(.25 * span)]
     assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
 
 

@@ -98,7 +98,9 @@ if TYPE_CHECKING:
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
+from rfx._ringdown_arrays import _as_2d, _given_spectra, _cmul
 from rfx._ringdown_pencil import (
+    identification_span, _span_start, _run_identification_windows,
     IdentificationMemoryRefused,
     _check_run_identification_memory,
     _witness_identification,
@@ -474,45 +476,6 @@ class RingdownResult(NamedTuple):
 # DFTs
 # ---------------------------------------------------------------------------
 
-def _as_2d(series) -> tuple[np.ndarray, bool]:
-    y = np.asarray(series)
-    if y.ndim == 1:
-        return y[:, None], True
-    if y.ndim != 2:
-        raise ValueError(f"series must be (n,) or (n, C), got shape {y.shape}")
-    return y, False
-
-
-def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
-    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
-    a = np.asarray(arr)
-    if a.ndim == 1:
-        a = a[:, None]
-    if a.shape != (nf, n_ch):
-        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
-                         f"or ({nf},) for a single channel")
-    return a
-
-
-def _cmul(a, b) -> np.ndarray:
-    """``a * b`` for complex arrays (numpy broadcasting), the same bits at any address.
-
-    numpy 1.26 on arm64 multiplies complex arrays in two loops that round
-    differently (one fuses a multiply and an add), and which loop an element
-    takes depends on where the arrays sit in memory: the same product came out
-    two ways in one process (2 distinct results over 200 allocations; numpy
-    2.4 gave 1), so a completion computed twice from one model could differ in
-    its last digit. Built from real products, each rounded once, the result
-    does not depend on the address.
-    """
-    a = np.asarray(a, dtype=np.complex128)
-    b = np.asarray(b, dtype=np.complex128)
-    out = np.empty(np.broadcast_shapes(a.shape, b.shape), dtype=np.complex128)
-    out.real = a.real * b.real - a.imag * b.imag
-    out.imag = a.real * b.imag + a.imag * b.real
-    return out
-
-
 def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> np.ndarray:
     """Plain DFT of samples ``0 .. n_record - 1`` plus the closed-form tail after them."""
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
@@ -593,7 +556,7 @@ class TwoWindowWitness(NamedTuple):
 
 def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
                        split=0.9, guard=0.9, sv_rel=1.0e-6, unit_tol=1.0e-6,
-                       observable=None, plain=None) -> TwoWindowWitness:
+                       observable=None, plain=None, window_start=None) -> TwoWindowWitness:
     """Complete ``series[:n_record]`` from ``[n_start, n_record)`` and from ``[n_start, split*n_record)``.
 
     Both completions add their tail after the SAME last sample
@@ -602,10 +565,16 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
     (default: the spectra themselves); ``value`` is the largest absolute
     difference of the two observables. ``plain`` may carry the plain DFT of
     ``series[:n_record]`` at ``freqs`` when the caller already has it.
+    ``window_start`` supplies the original fraction when a run has already
+    bounded ``n_start``; standalone callers use ``n_start / n_record``.
     """
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
     n_record, n_start = int(n_record), int(n_start)
     n_split = int(round(float(split) * n_record))
+    span = identification_span(n_record, dt, freq_max)
+    fraction = n_start / n_record if window_start is None else window_start
+    n_start = _span_start(n_record, n_start, fraction, span)
+    n_split = _span_start(n_record, n_split, split, span)
     if not (n_start < n_split < n_record):
         raise ValueError(
             f"the short window [{n_start}, {n_split}) must end inside the record "
@@ -659,6 +628,9 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     n_record = int(n_record)
     n_start = int(round(float(window_start) * n_record))
     n_long = _long_window_start(n_record, window_start)
+    span = identification_span(n_record, dt, freq_max)
+    n_start = _span_start(n_record, n_start, window_start, span)
+    n_long = _span_start(n_record, n_long, .5 * float(window_start), span)
     if not (0 <= n_long < n_start < n_record):
         raise ValueError(
             f"a record of {n_record} samples is too short for the windows "
@@ -1181,6 +1153,7 @@ class RingdownRun:
                 f"[{self.n_start}, {self.n_steps}) and [{self.n_start}, {self.n_split})")
         self.freq_max = float(spec.freq_max if spec.freq_max is not None
                               else sim._freq_max)
+        _run_identification_windows(self)
         self.wire_port_ids = tuple(i for i, pe in enumerate(sim._ports)
                                    if float(pe.impedance) > 0.0 and pe.extent is not None)
         self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
@@ -1577,7 +1550,7 @@ class RingdownRun:
         try:
             w2 = two_window_witness(
                 Y, dt, f_bins, self.n_steps, self.n_start, freq_max=ref_hz,
-                split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
+                split=spec.split, window_start=spec.window_start, guard=spec.guard, sv_rel=spec.sv_rel,
                 unit_tol=spec.unit_tol, observable=to_s.measured, plain=plain)
         except IdentificationMemoryRefused:
             raise
@@ -1843,6 +1816,8 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
     fields; the floor's own-check reading is ``tau_own_s`` / ``own_pole``.
     """
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+    n_start = _span_start(n_record, n_start, spec.window_start,
+                          identification_span(n_record, dt, ref_hz))
     kw = dict(freq_max=ref_hz, guard=spec.guard, sv_rel=spec.sv_rel,
               unit_tol=spec.unit_tol)
     try:

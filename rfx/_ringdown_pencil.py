@@ -110,6 +110,46 @@ def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:
     return tuple(int(q) for q in factors), int(kept)
 
 
+# rfx-archive rfx/plans/nu/20261026-witness-cost-DESIGN.md §2.
+IDENTIFICATION_SAMPLE_CAP = 1024
+
+
+def identification_span(n_record: int, dt: float, freq_max: float) -> int:
+    """Use the whole record until its half exceeds the decimated sample cap.
+
+    Invert each FIR stage's ceil(length / factor) - 20 kept samples. The
+    resulting even span has the largest half-window that retains the cap;
+    the pencil's column ratio and decimation plan are unchanged.
+    """
+    n_record = int(n_record)
+    factors, kept = decimation_plan((n_record + 1) // 2, dt, freq_max)
+    if kept <= IDENTIFICATION_SAMPLE_CAP:
+        return n_record
+    half = IDENTIFICATION_SAMPLE_CAP
+    for factor in reversed(factors):
+        half = (half + 2 * int(_harminv._FIR_HALF_OUTPUT_SAMPLES)) * factor
+    return 2 * half
+
+
+def _span_start(n_record, start_today, fraction, span):
+    """Preserve today's integer start verbatim below the cap, and as a floor."""
+    if span == n_record:
+        return start_today
+    return max(start_today, n_record - span + int(round(float(fraction) * span)))
+
+
+def _run_identification_windows(plan):
+    """Apply the span to a run's windows using its identification read band."""
+    bins = plan.bins
+    peak = (float(np.float32(plan.sim._freq_max)) if bins is None else
+            float(np.max(np.asarray(bins, dtype=np.float32 if plan.lane == "graded" else np.float64))))
+    n = plan.n_steps
+    span = identification_span(n, float(plan.dt), max(plan.freq_max, peak))
+    plan.n_start = _span_start(n, plan.n_start, plan.spec.window_start, span)
+    plan.n_split = _span_start(n, plan.n_split, plan.spec.split, span)
+    plan.n_long = _span_start(n, plan.n_long, .5 * float(plan.spec.window_start), span)
+
+
 def _decimate(Y: np.ndarray, factors) -> np.ndarray:
     """harminv's FIR stage, per channel and per factor. ``Y (n, C)`` -> ``(Nd, C)``."""
     half = int(_harminv._FIR_HALF_OUTPUT_SAMPLES)
