@@ -19,13 +19,30 @@ def test_waveguide_preflight_matches_its_grid_pads(nonuniform):
     grid = sim._build_realized_grid()
     expected = {face: getattr(grid, f"pad_{face}")
                 for face in (f"{a}_{s}" for a in "xyz" for s in ("lo", "hi"))}
-    # §7 Addendum 3: diagnostics describe realized waveguide pads, not declared absorbers.
+    # The explicit declaration now allocates its pads; the undeclared
+    # wall default is pinned below.
     assert sim._preflight_face_layers() == expected
     assert {face.name: face.realized for face in simulation_face_depths(sim)} == expected
     assert expected["y_lo"] == 4
     from rfx.boundaries.features import admit_waveguide
     with pytest.raises(ValueError, match="full-aperture waveguide requires PEC"):
         admit_waveguide(sim)
+
+
+def test_undeclared_full_guide_diagnostics_read_its_wall_default():
+    # The one case where declared and realized still differ: an undeclared
+    # boundary around a full-aperture guide is built as PEC walls (0 pads)
+    # while the declared default is a 4-layer absorber.
+    sim = Simulation(freq_max=20e9, domain=(0.032, 0.016, 0.016), dx=1e-3, cpml_layers=4)
+    sim.add_waveguide_port(0.008, direction="+x", f0=12e9, n_freqs=3,
+                           probe_offset=2, ref_offset=1)
+    grid = sim._build_realized_grid()
+    expected = {face: getattr(grid, f"pad_{face}")
+                for face in (f"{a}_{s}" for a in "xyz" for s in ("lo", "hi"))}
+    assert sim._preflight_face_layers() == expected
+    assert {face.name: face.realized for face in simulation_face_depths(sim)} == expected
+    assert expected["y_lo"] == expected["z_hi"] == 0
+    assert expected["x_lo"] == 4
 
 
 def test_distributed_sizing_uses_nonabsorbing_axis_and_asymmetric_record():

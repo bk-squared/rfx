@@ -135,3 +135,30 @@ def test_rule4_support_refusal_row():
     row, = [line for line in text.splitlines() if "waveguide_aperture_conductors" in line]
     for part in ("refused", "both meshes", "before", "PEC", "aperture"):
         assert part in row
+
+
+@pytest.mark.parametrize("absorbing", ["lo", "hi"])
+def test_omitted_range_spans_the_domain_with_unequal_pads(absorbing):
+    # z_range omitted, z faces PEC on one side and CPML on the other: the
+    # guide must span the 16 mm domain height, neither reaching into the
+    # absorber pad nor stopping one pad short of the PEC face. A drawn wall
+    # closes the rim on the absorbing side; y is a partial, walled aperture.
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    faces = {"lo": "pec", "hi": "pec", absorbing: "cpml"}
+    sim = Simulation(30e9, (.032, .020, .016), dx=.002, cpml_layers=4,
+                     boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(**faces)))
+    rim = (0., .002) if absorbing == "lo" else (.014, .016)
+    for lo, hi in (((0, .004, 0), (.032, .006, .016)),
+                   ((0, .014, 0), (.032, .016, .016)),
+                   ((0, .004, rim[0]), (.032, .016, rim[1]))):
+        sim.add(Box(lo, hi), material="pec")
+    sim.add_waveguide_port(.008, direction="+x", y_range=(.006, .014),
+                           f0=25e9, freqs=[24e9, 26e9], ref_offset=1, probe_offset=2)
+    admit_waveguide(sim)
+    grid = sim._build_grid()
+    assert getattr(grid, f"pad_z_{absorbing}") == 4
+    cfg = sim._build_waveguide_port_config(
+        sim._waveguide_ports[0], grid, jnp.asarray([24e9, 26e9]), 8)
+    assert (cfg.v_lo, cfg.v_hi) == (grid.pad_z_lo, grid.nz - 1 - grid.pad_z_hi)
+    assert cfg.b == pytest.approx(.016, rel=1e-9)
+    assert cfg.a == pytest.approx(.008, rel=1e-9)

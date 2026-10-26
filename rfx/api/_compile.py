@@ -319,14 +319,21 @@ class _CompileMixin:
         dx: float,
         grid_size: int,
         axis_pad: int,
+        axis_pad_hi: int | None = None,
     ) -> tuple[tuple[int, int], float]:
-        """Convert a physical range to a grid slice and actual physical span."""
+        """Convert a physical range to a grid slice and actual physical span.
+
+        ``axis_pad`` is the low-side pad; ``axis_pad_hi`` the high-side pad,
+        which differs when one transverse face is an absorber and the other
+        is not (default: equal to ``axis_pad``).
+        """
+        pad_hi = axis_pad if axis_pad_hi is None else axis_pad_hi
         if value_range is None:
-            return (axis_pad, grid_size - axis_pad), domain_max
+            return (axis_pad, grid_size - pad_hi), domain_max
         lo, hi = value_range
         lo_idx = nearest_uniform_index(lo / dx) + axis_pad
         hi_idx = nearest_uniform_index(hi / dx) + axis_pad + 1
-        if lo_idx < axis_pad or hi_idx > grid_size - axis_pad or hi_idx - lo_idx < 2:
+        if lo_idx < axis_pad or hi_idx > grid_size - pad_hi or hi_idx - lo_idx < 2:
             raise ValueError(
                 f"range {value_range!r} does not resolve to a valid aperture on the current grid"
             )
@@ -391,14 +398,14 @@ class _CompileMixin:
                 "flip direction, or move x_position inward"
             )
         if normal_axis == "x":
-            u_slice, a_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1])
-            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2])
+            u_slice, a_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1], grid.pad_y_hi)
+            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2], grid.pad_z_hi)
         elif normal_axis == "y":
-            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0])
-            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2])
+            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0], grid.pad_x_hi)
+            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2], grid.pad_z_hi)
         else:
-            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0])
-            v_slice, b_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1])
+            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0], grid.pad_x_hi)
+            v_slice, b_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1], grid.pad_y_hi)
         u_slice, v_slice = _node_span_to_cell_span(u_slice), _node_span_to_cell_span(v_slice)
         port = WaveguidePort(
             x_index=x_index,

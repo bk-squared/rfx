@@ -226,7 +226,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         try:
             slc, aperture = self._range_to_slice(
                 value_range, self._domain[axis_idx], float(grid.cells("x")[0]), n_axis,
-                grid.axis_pads[axis_idx],
+                grid.axis_pads[axis_idx], getattr(grid, f"pad_{'xyz'[axis_idx]}_hi"),
             )
         except ValueError as exc:
             # _range_to_slice raises at COMPILE time on an
