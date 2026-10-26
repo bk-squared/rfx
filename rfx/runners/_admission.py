@@ -1027,6 +1027,17 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if ("_boundary_spec", "conformal_s_matrix") in rows:
         where += (" Use compute_s_params=False for conformal probe fields, or "
                   "conformal_pec=False for a staircase S-matrix.")
+    if ("_coaxial_ports", "coax_port") in rows:
+        where += (" A coaxial port's S-parameters come from "
+                  "compute_coaxial_line_reflection(...) (one-port reflection) "
+                  "or compute_coaxial_two_port(...) (through line); ")
+        if lane.startswith("run_"):
+            where += ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
+                      "dispatches to either. Use add_port(..., extent=...) for "
+                      "probe-feed S-parameters.")
+        elif lane.startswith("fwd_"):
+            where += ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
+                      "for differentiable probe-feed S11 objectives.")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
