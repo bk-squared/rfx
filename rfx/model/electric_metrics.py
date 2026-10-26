@@ -255,7 +255,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: t
     from rfx.core.yee import permittivity_without_lumped, lumped_total, lumped_components, add_lumped_eps, add_film
     def read(arr):
         return slab_wall_view(arr, nx_per, nx, rank, high_wall=high_wall)
-    sigma = materials.sigma
+    stored_sigma = sigma = materials.sigma
     stamp = lumped_total(materials.sigma_lumped)
     if stamp is not None:
         sigma = sigma - stamp
@@ -288,7 +288,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: t
         # records, as the one-device site records them; ``view`` is the
         # volume-only temporary of the mean.
         recorded = MaterialArrays(
-            eps_r=cells(materials.eps_r), sigma=cells(materials.sigma), mu_r=materials.mu_r,
+            eps_r=cells(materials.eps_r), sigma=cells(stored_sigma), mu_r=materials.mu_r,
             sigma_film=map_lumped(materials.sigma_film, cells),
             sigma_lumped=map_lumped(materials.sigma_lumped, cells),
             eps_r_lumped=map_lumped(materials.eps_r_lumped, cells))
