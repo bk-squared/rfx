@@ -118,10 +118,12 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
 
 
 def face_windows(shape, depths, frame, periodic, grid):
-    """Field/psi windows restricted to each face's realized absorbing depth.
+    """Field/psi windows: only faces declared CPML are windowed.
 
-    Psi retains the single-device axis depth. Its identity padding is outside
-    the face's window and must not be read or written.
+    A face whose realized pad is zero (PEC, PMC, periodic, 2-D z) gets depth 0
+    on every frame. Full frames keep the axis depth on CPML faces; framed faces
+    use their realized depth. Psi retains the single-device axis depth; rows
+    outside a face's window must not be read or written.
     """
     frame = tuple((frame or {}).get(axis, (0, size)) for axis, size in zip("xyz", shape))
     windows, psi_windows, face_depths = {}, {}, {}
@@ -134,6 +136,10 @@ def face_windows(shape, depths, frame, periodic, grid):
         for side in ("lo", "hi"):
             face = f"{'xyz'[axis]}_{side}"
             d = min(depth, realized[face])
+            if full and d:
+                # A CPML face keeps its axis-depth window (identity rows beyond
+                # its own layers); only a face not declared CPML drops out.
+                d = depth
             sl = [slice(None)] * 3
             psi_sl = [slice(None)] * 3
             if full and d == depth:

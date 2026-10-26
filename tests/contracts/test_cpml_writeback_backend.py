@@ -34,7 +34,8 @@ def test_padded_eager_equals_pinned_oracle(monkeypatch, wall, varying_mu, magnet
         for enabled in itertools.product((False, True), repeat=6):
             faces = tuple(f for f, active in zip(FACES, enabled) if active)
             actual = apply(state, params, psi, grid, materials=materials, faces=faces)
-            expected = _whole_array(state, params, psi, grid, materials, faces, magnetic)
+            expected = _whole_array(state, params, psi, grid, materials, faces, magnetic,
+                                    walls=(wall,))
             assert all(v.dtype == jnp.float32 for v in actual[0])
             _assert_equal(actual, expected)
 
