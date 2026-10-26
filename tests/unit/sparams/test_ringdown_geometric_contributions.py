@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import ringdown as rd
-from rfx.sparams._tail_witness import _geometric_term_dft
+from rfx.measurement.ringdown_tail import geometric_term_dft
 
 
 def compare(s, coefficient, count, dt, bins, end_referenced):
@@ -13,7 +13,7 @@ def compare(s, coefficient, count, dt, bins, end_referenced):
     time = np.arange(count) * dt
     samples = np.exp(s * (time - reference * dt))[:, None] * coefficient
     summed = rd.plain_dft(samples, dt, bins)
-    closed = _geometric_term_dft(s, coefficient, count, dt, bins,
+    closed = geometric_term_dft(s, coefficient, count, dt, bins,
                                  end_referenced=end_referenced)
     # Independent magnitude sum, from lambda and the reference sample.
     lam = abs(np.exp(s * dt))

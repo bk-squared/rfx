@@ -62,27 +62,9 @@ _POLE_RULE = (
 )
 
 
-def _geometric_term_dft(s, coefficient, count, dt, bins, *, end_referenced=False):
-    """A fitted term's window DFT, summed from its coefficient's reference.
-
-    expm1 retains near-bin terms. Growing discarded poles run backwards
-    from the last sample so all their real exponents are non-positive
-    (witness-cost design Addendum 3).
-    """
-    phase = -2.0 * np.pi * np.asarray(bins, dtype=np.float64) * float(dt)
-    u = s * float(dt) + 1j * phase
-    if end_referenced:
-        u = -u
-    with np.errstate(over='ignore', divide='ignore', invalid='ignore'):
-        geometric = np.expm1(count * u) / np.expm1(u)
-    geometric = np.where(u == 0, count, geometric)
-    if end_referenced:
-        geometric *= np.exp(1j * phase * (count - 1))
-    return float(dt) * geometric[:, None] * coefficient
-
-
 def _pole_contributions(model, series, bins, denominator, record_s):
     """Return per-bin maxima over fitted pole terms and channels by rule."""
+    from rfx.measurement.ringdown_tail import geometric_term_dft
     from rfx.ringdown import RingdownPole, _fit_residues, _static_pole
 
     window = series[model.n_ref:model.n_ref + model.n_window]
@@ -110,10 +92,10 @@ def _pole_contributions(model, series, bins, denominator, record_s):
         value = np.zeros(len(bins))
         for k in selected:
             if rule == 'discarded growing':
-                term = _geometric_term_dft(model.s_growing[k], joint[k], len(window),
+                term = geometric_term_dft(model.s_growing[k], joint[k], len(window),
                                            model.dt, bins, end_referenced=True)
             else:
-                term = _geometric_term_dft(model.s[k], model.c[k], len(window), model.dt, bins)
+                term = geometric_term_dft(model.s[k], model.c[k], len(window), model.dt, bins)
             with np.errstate(divide='ignore', invalid='ignore'):
                 ratio = np.abs(term) / denominator
             value = np.maximum(value, np.max(ratio, axis=1))

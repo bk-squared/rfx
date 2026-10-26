@@ -24,6 +24,25 @@ def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:
     return out[:, 0] if one_d else out
 
 
+def geometric_term_dft(s, coefficient, count, dt, bins, *, end_referenced=False):
+    """A fitted term's window DFT, summed from its coefficient's reference.
+
+    expm1 retains near-bin terms. Growing discarded poles run backwards
+    from the last sample so all their real exponents are non-positive
+    (witness-cost design Addendum 3).
+    """
+    phase = -2.0 * np.pi * np.asarray(bins, dtype=np.float64) * float(dt)
+    u = s * float(dt) + 1j * phase
+    if end_referenced:
+        u = -u
+    with np.errstate(over='ignore', divide='ignore', invalid='ignore'):
+        geometric = np.expm1(count * u) / np.expm1(u)
+    geometric = np.where(u == 0, count, geometric)
+    if end_referenced:
+        geometric *= np.exp(1j * phase * (count - 1))
+    return float(dt) * geometric[:, None] * coefficient
+
+
 def tail_dft(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     """The unrecorded part of each spectrum: samples ``n_last + 1 .. inf``.
 
