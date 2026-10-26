@@ -90,6 +90,12 @@ def _dispatch_plan(
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=distributed, devices=devices)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
+    if self._waveguide_ports and (distributed or (devices is not None and len(devices) > 1)):
+        # A multi-device lane steps no waveguide port, so its refusal comes
+        # before the port's aperture is judged, as on the runner entries.
+        from rfx.runners._admission import refuse_distributed_sources
+        refuse_distributed_sources(
+            self, f"{mode}_distributed" + ("_nu" if self._uses_nonuniform_mesh else ""))
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(self)
     admit_waveguide(self, lane=f"{mode} dispatch")
