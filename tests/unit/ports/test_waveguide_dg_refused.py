@@ -60,6 +60,10 @@ def _enter(sim, route):
 
 ROUTES = ["run", "run_distributed", "forward", "forward_distributed",
           "compute_waveguide_s_matrix", "compute_s_matrix"]
+# Multi-device lanes refuse every waveguide port before any config is built,
+# so a DG declaration there meets that refusal first (#2053).
+MULTI_DEVICE = {"run_distributed", "forward_distributed"}
+PORT_REFUSAL = r"waveguide ports \(add_waveguide_port\) are not supported on"
 
 
 def _no_steps(*args, **kwargs):
@@ -84,6 +88,10 @@ def test_internal_dg_refused_before_step(graded, route, monkeypatch):
         replace(e, waveform="differentiated_gaussian")
         for e in sim._waveguide_ports]
     monkeypatch.setattr(jax.lax, "scan", _no_steps)
+    if route in MULTI_DEVICE:
+        with pytest.raises(NotImplementedError, match=PORT_REFUSAL):
+            _enter(sim, route)
+        return
     with pytest.raises(ValueError) as caught:
         _enter(sim, route)
     assert DG_REFUSAL in str(caught.value)
@@ -117,6 +125,11 @@ def test_default_reaches_modulated_config(graded, internal, route, monkeypatch):
         # preflight retains its declared-geometry path in this case.
         assert seen == []
         assert all(e.waveform == "modulated_gaussian" for e in sim._waveguide_ports)
+        return
+    if route in MULTI_DEVICE:
+        with pytest.raises(NotImplementedError, match=PORT_REFUSAL):
+            _enter(sim, route)
+        assert seen == []
         return
     with pytest.raises(Built):
         _enter(sim, route)
