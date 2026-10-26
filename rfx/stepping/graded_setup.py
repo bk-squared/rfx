@@ -561,7 +561,10 @@ def _build_nu_scan(
     # Spacing vectors are not grid-sized and stay compile-time constants
     # on one device; CPML profiles stay in the closure (_NUScanSetup).
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
+    from rfx.boundaries.pmc import magnetic_update_factors
+    magnetic_factors = magnetic_update_factors(_pmc_faces_frozen, grid.shape, curl_boundary.periodic)
     invariants = {
+        "magnetic_factors": magnetic_factors,
         "inv_dx": inv_dx,
         "inv_dx_h": inv_dx_h,
         "dx_arr": grid.dx_arr,

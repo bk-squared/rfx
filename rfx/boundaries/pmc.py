@@ -94,6 +94,28 @@ def magnetic_update_coefficients(coefficients, factors):
     return tuple(result)
 
 
+def magnetic_update_fields(fields, factors):
+    """Factor the whole H update; select positive zero on high ghost rows.
+
+    Multiplication alone retains the bracket's sign on zero. The select
+    preserves the old ghost write's +0.0 without a scatter or changing any
+    non-ghost bits. Absent factors add no operations to the traced program.
+    """
+    import jax.numpy as jnp
+
+    result = list(fields)
+    for axis, factor in enumerate(factors):
+        if factor is not None:
+            shape = [1, 1, 1]
+            shape[axis] = -1
+            factor = factor.reshape(shape)
+            for component in range(3):
+                if component != axis:
+                    value = result[component] * factor.astype(result[component].dtype)
+                    result[component] = jnp.where(factor == 0, jnp.zeros((), value.dtype), value)
+    return tuple(result)
+
+
 def apply_pmc_faces(state, faces: set[str]) -> object:
     """Legacy half-cell zeros for explicit low-level absorber witnesses only.
 

@@ -64,8 +64,8 @@ def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
         cpml_axes_eff = padded_axes(grid, cpml_axes)
 
     # PMC faces select odd tangential-H images in the NU curl.
-    # Zero-padded inverse H spacings hold the stored high ghost at zero,
-    # so no post-update magnetic face write is needed. Frozen face sets
+    # Assembly-time factors zero the whole high-ghost H update; zero-padded
+    # inverse spacings alone would preserve its old value. Frozen face sets
     # give the JIT cache a stable hash; an empty magnetic set leaves the
     # ordinary backward-curl operand in place.
     # The electric walls, per face, by the one rule the uniform scan uses

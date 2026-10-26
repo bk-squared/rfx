@@ -110,3 +110,53 @@ def test_closed_box_tfsf_refuses_pmc(graded):
 def test_pmc_high_ghost_with_transverse_upml(axis):
     check_ghosts(record(scene(axis=axis, cpml=True, absorber='upml'), 1), axis, 'upml')
     jax.clear_caches()
+
+
+@pytest.mark.parametrize('graded,devices', ((False, 1), (False, 2), (True, 1), (True, 2)))
+def test_nonzero_initial_pmc_high_ghost_is_positive_zero(monkeypatch, graded, devices):
+    """The realized row must clear any carry, including a negative ghost."""
+    import jax.numpy as jnp
+
+    original_scan = jax.lax.scan
+    seeded = []
+
+    def scan(function, initial, *args, **kwargs):
+        def is_state(value):
+            return all(hasattr(value, c) for c in FIELDS)
+
+        def seed(value):
+            if is_state(value):
+                seeded.append(value.hy.shape)
+                # Seed whole H arrays so this covers physical ghosts even in
+                # packed slabs, without using production slab/index helpers.
+                return value._replace(hy=jnp.full_like(value.hy, 7.),
+                                      hz=jnp.full_like(value.hz, -7.))
+            return value
+
+        initial = jax.tree_util.tree_map(seed, initial, is_leaf=is_state)
+        return original_scan(function, initial, *args, **kwargs)
+
+    monkeypatch.setattr(jax.lax, 'scan', scan)
+    result = scene(graded=graded).run(n_steps=1, devices=jax.devices('cpu')[:devices],
+                                    compute_s_params=False, skip_preflight=True)
+    assert seeded, 'initial H carry was not injected'
+    for component in ('hy', 'hz'):
+        ghost = np.asarray(getattr(result.state, component))[-1]
+        assert np.count_nonzero(ghost.view(np.uint32)) == 0, (
+            f'{component}: nonzero initial high ghost must become exactly +0.0')
+    jax.clear_caches()
+
+
+def test_pmc_high_factors_match_independent_reference():
+    from rfx.boundaries.pmc import magnetic_update_factors
+
+    shape = (5, 4, 3)
+    for axis, letter in enumerate('xyz'):
+        factors = magnetic_update_factors({f'{letter}_hi'}, shape)
+        for index, factor in enumerate(factors):
+            if index == axis:
+                expected = np.array([1.] * (shape[axis] - 1) + [0.], np.float32)
+                np.testing.assert_array_equal(factor.view(np.uint32), expected.view(np.uint32))
+            else:
+                assert factor is None
+    assert magnetic_update_factors({'x_lo', 'y_lo', 'z_lo'}, shape) == (None, None, None)

@@ -784,7 +784,8 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
 
 def _update_h_local_nu(state, materials, dt,
                       inv_dx_slab, inv_dy_full, inv_dz_full,
-                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full, *, cell_sizes=None):
+                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full, *, cell_sizes=None,
+                      magnetic_factors=(None, None, None)):
     """H update on a local slab using NU inverse spacings.
 
     Mirrors ``rfx/core/yee.py::update_h_nu`` but accepts pre-sliced
@@ -817,6 +818,9 @@ def _update_h_local_nu(state, materials, dt,
     hx = state.hx - ch_x * curl_x
     hy = state.hy - ch_y * curl_y
     hz = state.hz - ch_z * curl_z
+
+    from rfx.boundaries.pmc import magnetic_update_fields
+    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -1011,7 +1015,8 @@ def _update_e_local_nu(state, e_coeffs,
 
 def update_h_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks, cell_sizes=None):
+                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks, cell_sizes=None,
+                      magnetic_factors=(None, None, None)):
     """H update on the NU distributed path, via ``shard_map``.
 
     Shared by ``distributed_nu.run_nonuniform_distributed_pec`` and by the
@@ -1051,18 +1056,19 @@ def update_h_nu_shmap(st, mat, mesh, dt,
             P("x"), P(None), P(None),  # inv_dx, inv_dy, inv_dz
             P("x"), P(None), P(None),  # inv_dx_h, inv_dy_h, inv_dz_h
             (P("x"), P(None), P(None)),  # original primal cell lengths
+            (P("x"), P(), P()),  # optional PMC axis factors
         ),
         out_specs=(P("x"), P("x"), P("x"), P()),
         check_rep=False,
     )
     def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-           invdx, invdy, invdz, invdxh, invdyh, invdzh, widths, *, rank):
+           invdx, invdy, invdz, invdxh, invdyh, invdzh, widths, factors, *, rank):
         _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
         _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
                              mu_r=magnetic_low_ghost(mu_r, rank))
         new_st = _update_h_local_nu(
             _st, _mat, dt, invdx, invdy, invdz, invdxh, invdyh, invdzh,
-            cell_sizes=widths)
+            cell_sizes=widths, magnetic_factors=factors)
         return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
     hx, hy, hz, step = _h(
@@ -1070,7 +1076,7 @@ def update_h_nu_shmap(st, mat, mesh, dt,
         mat.eps_r, mat.sigma, mat.mu_r,
         inv_dx_sharded, inv_dy_rep, inv_dz_rep,
         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
-        cell_sizes,
+        cell_sizes, magnetic_factors,
     )
     return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
@@ -1218,9 +1224,6 @@ def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None
         mu = _realized.magnetic(materials, mu, "yee.H")
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
     ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
-    from rfx.boundaries.pmc import magnetic_update_coefficients
-    ch_x, ch_y, ch_z = magnetic_update_coefficients(
-        (ch_x, ch_y, ch_z), magnetic_factors)
 
     curl_x = (
         (_shift_fwd(ez, 1) - ez) / dx
@@ -1238,6 +1241,9 @@ def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None
     hx = state.hx - ch_x * curl_x
     hy = state.hy - ch_y * curl_y
     hz = state.hz - ch_z * curl_z
+
+    from rfx.boundaries.pmc import magnetic_update_fields
+    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 

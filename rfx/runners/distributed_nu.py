@@ -924,6 +924,11 @@ def run_nonuniform_distributed_pec(
     # Sharded inverse-spacing arrays (1-D)
     # ------------------------------------------------------------------
     layout = Slab.from_grid(sharded_grid)
+    from rfx.boundaries.pmc import magnetic_update_factors
+    magnetic_factors = magnetic_update_factors(pmc_faces, sharded_grid.global_grid.shape)
+    magnetic_factors = tuple(
+        cut(factor, layout, "pmc_h_factor", mesh=mesh) if axis == 0 and factor is not None
+        else factor for axis, factor in enumerate(magnetic_factors))
     inv_dx_sharded = cut(sharded_grid.inv_dx_global, layout, "inv_dx", mesh=mesh)
     inv_dx_h_sharded = cut(sharded_grid.inv_dx_h_global, layout, "inv_dx_h", mesh=mesh)
     inv_dy_rep = _concrete_on_mesh(sharded_grid.inv_dy, rep)
@@ -1023,7 +1028,7 @@ def run_nonuniform_distributed_pec(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
-            ranks=ranks, cell_sizes=spacings[6:])
+            ranks=ranks, cell_sizes=spacings[6:], magnetic_factors=magnetic_factors)
 
     def _update_e_shmap(st, mat, spacings, e_materials, *, ranks):
         inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
