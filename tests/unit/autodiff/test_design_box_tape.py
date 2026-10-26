@@ -367,13 +367,8 @@ def test_fence_still_catches_the_one_absorbing_face():
 def test_design_box_survives_the_gpu_baked_coefficient_path():
     """On a GPU backend the design variable must still reach the fields.
 
-    ``run()`` swaps in ``update_he_fast`` when the step body is only H + E +
-    PEC and the backend is not CPU. That path bakes its coefficients from
-    ``materials`` and has no slot for the box redo, so the design
-    permittivity would reach nothing and ``jax.grad`` would return zeros
-    with no error — measured: exactly 0.0 with the eligibility term
-    removed, against 1.35e-06 with it. CI runs on CPU, where the fast path
-    is never eligible, so the backend is faked rather than left to chance.
+    A forced accelerator query must retain the standard lane and the design
+    permittivity gradient, bit-equal to the plain CPU run.
     """
     sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="pec")
     sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
