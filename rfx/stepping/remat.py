@@ -253,8 +253,8 @@ def plan_checkpoint_lengths(n, *, boundary_bytes, step_bytes, static_bytes,
     so the model describes the scan that runs. When no k fits, ``fits`` is
     False and the plan with the smallest modelled peak is returned. The plan
     depends only on its arguments.
-    Supply the scene's compiled one-step c and w as ``static_bytes`` and
-    ``working_bytes``; ``cotangents`` counts simultaneous pullbacks.
+    ``cotangents`` counts simultaneous pullbacks; each extra one adds
+    ``working_bytes + boundary_bytes``.
     """
     cotangents = validate_cotangents(cotangents)
     n = int(n)

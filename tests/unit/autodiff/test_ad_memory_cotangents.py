@@ -63,6 +63,33 @@ def test_extra_cotangent_adds_one_carry_on_the_calibrated_term(graded, options):
     assert component.memory_gb * 1e9 == pytest.approx(2 * one.carry_bytes)
 
 
+@pytest.mark.parametrize("max_levels", [None, 2])
+def test_plan_and_explain_carry_the_cotangent_count(monkeypatch, max_levels):
+    """A budget nothing fits forces the candidate search; its pick must equal a direct B=3 estimate."""
+    import rfx.api._ad_memory as api
+    sim = scene()
+    calls = []
+    original = api.plan_checkpoint_lengths
+    def capture(*args, **kwargs):
+        calls.append(kwargs)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(api, "plan_checkpoint_lengths", capture)
+    plan = sim.plan_ad_memory(99, 1e-9, max_levels=max_levels, cotangents=3)
+    selected = plan.selected_estimate
+    assert selected.cotangents == 3 and not plan.segmented_fits
+    direct = sim.estimate_ad_memory(99, checkpoint=True, cotangents=3,
+                                    checkpoint_every=selected.checkpoint_every)
+    single = sim.estimate_ad_memory(99, checkpoint=True, cotangents=1,
+                                    checkpoint_every=selected.checkpoint_every)
+    assert selected.ad_segmented_gb == pytest.approx(direct.ad_segmented_gb)
+    assert (direct.ad_segmented_gb - single.ad_segmented_gb) * 1e9 == pytest.approx(2 * single.carry_bytes)
+    if max_levels is not None:
+        assert calls and calls[0]["cotangents"] == 3
+    one = sim.explain_ad_memory(99, checkpoint_every=(30, 7, 3), cotangents=1)
+    three = sim.explain_ad_memory(99, checkpoint_every=(30, 7, 3), cotangents=3)
+    assert (three.selected_memory_gb - one.selected_memory_gb) * 1e9 == pytest.approx(2 * single.carry_bytes)
+
+
 @pytest.mark.parametrize("cotangents", [True, False, 0, -1, 1.5])
 def test_cotangents_requires_positive_integer(cotangents):
     sim = scene()
