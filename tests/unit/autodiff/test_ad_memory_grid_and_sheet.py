@@ -39,7 +39,6 @@ import pytest
 from rfx import Box, Simulation
 from rfx.auto_config import SimConfig
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from tests.unit.autodiff.test_ad_memory_pullback import reference_step_memory
 
 DX = 0.2e-3
 CPML = 8
@@ -159,12 +158,8 @@ def test_f0_sheet_operator_is_counted():
     assert e_plain.sheet_gb == 0.0
     assert e_sheet.sheet_gb > 0.0
     expected_sheet_gb = math.prod(sheet._build_nonuniform_grid().shape) * 7 * 1e-9
-    plain_step, _ = reference_step_memory(plain, 1000, checkpoint=True)
-    sheet_step, _ = reference_step_memory(sheet, 1000, checkpoint=True)
-    compiled_delta = (sheet_step.argument_size_in_bytes + sheet_step.temp_size_in_bytes
-                      - plain_step.argument_size_in_bytes - plain_step.temp_size_in_bytes) * 1e-9
-    assert e_sheet.ad_full_gb - e_plain.ad_full_gb == pytest.approx(expected_sheet_gb + compiled_delta)
-    assert e_sheet.ad_fixed_gb - e_plain.ad_fixed_gb == pytest.approx(expected_sheet_gb + compiled_delta)
+    assert e_sheet.ad_full_gb - e_plain.ad_full_gb == pytest.approx(expected_sheet_gb)
+    assert e_sheet.ad_fixed_gb - e_plain.ad_fixed_gb == pytest.approx(expected_sheet_gb)
     assert e_sheet.sheet_gb == expected_sheet_gb
     assert e_sheet.forward_gb == pytest.approx(0.054151, rel=1e-4)
     assert e_plain.forward_gb == pytest.approx(0.048689, rel=1e-4)

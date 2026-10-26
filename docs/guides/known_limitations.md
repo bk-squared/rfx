@@ -159,17 +159,17 @@ open structures and for any structure with a material interface; ADI runs only a
 closed (`boundary="pec"`), homogeneously filled cavity. Both refusals are rows in
 the support matrix's **Refused inputs** table.
 
-### The AD memory estimate reads low on three checkpoint levels and on batched gradients
+### The AD memory estimate reads low with checkpoint levels and with several outputs at once
 
 Tracker: #1739
 
-With its earlier per-cell fixed term, `estimate_ad_memory` read 11.9 % below the measured device peak
-for a graded run with three checkpoint levels (one GPU measurement, 737,009 nodes, 6,007 steps). A
-gradient that pulls back several outputs at once (`jax.jacrev` or `vmap` over cotangents) holds about 7
-carries of working arrays per extra output; on the same run, 8 outputs at once peaked 63 % above the
-planned memory. The estimate now reads its fixed term and the per-output working set from the compiled
-one-step pullback and takes the output count as `cotangents=`. Until a device measurement confirms the
-corrected estimate, budget batched gradients by measuring one short run, or pull back one output at a time.
+`estimate_ad_memory` and `plan_ad_memory` can plan a gradient that runs out of device memory. On one graded scene
+(737,009 nodes, float32, RTX A6000, 16 runs) the measured device peak was 1.00 to 1.14 times the estimate with one
+output pulled back (worst: three checkpoint levels), and 1.04 to 2.17 times the estimate with 2 or 8 outputs pulled
+back at once by `jax.jacrev` or `vmap` (worst: 8 outputs with two checkpoint levels). An extra output holds about 7
+carries on the device; `cotangents=` counts 1. Leave 15 % above the estimate for one output with checkpoint levels.
+With several outputs at once, budget 2.2 times the estimate, measure one short run, or pull back one output at a time.
+An estimate read from the compiled whole gradient (within 3 % of every peak measured) is the planned replacement.
 
 ### A finite flux box closes only when it is centred on its source
 

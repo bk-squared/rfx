@@ -52,14 +52,15 @@ def _scans(jaxpr):
     jaxpr = getattr(jaxpr, "jaxpr", jaxpr)
     for eqn in jaxpr.eqns:
         if eqn.primitive.name == "scan":
-            yield eqn
+            start = eqn.params["num_consts"]
+            yield [v.aval for v in eqn.invars[start:start + eqn.params["num_carry"]]]
         for value in eqn.params.values():
             if hasattr(value, "jaxpr") or hasattr(value, "eqns"):
                 yield from _scans(value)
 
 
 def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
-               checkpoint_every, checkpoint_segments, n_warmup, step_programs=None):
+               checkpoint_every, checkpoint_segments, n_warmup):
     """Trace the requested forward with abstract overrides, without executing it."""
     try:
         if grid is None:
@@ -79,17 +80,9 @@ def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
 
         traced = jax.make_jaxpr(forward)(*inputs)
         # Auxiliary waveform scans do not own six full-grid E/H arrays.
-        candidates = []
-        for eqn in _scans(traced):
-            start = eqn.params["num_consts"]
-            leaves = [v.aval for v in eqn.invars[start:start + eqn.params["num_carry"]]]
-            if sum(tuple(a.shape) == tuple(grid.shape) for a in leaves) >= 6:
-                candidates.append((eqn, leaves))
-        carry = max((leaves for _, leaves in candidates), key=len)
-        if step_programs is not None:
-            # Depth-first traversal ends at the active record's innermost
-            # time-step scan, including when its enclosing unit is a tail.
-            step_programs.append(candidates[-1][0].params["jaxpr"])
+        candidates = [leaves for leaves in _scans(traced)
+                      if sum(tuple(a.shape) == tuple(grid.shape) for a in leaves) >= 6]
+        carry = max(candidates, key=lambda leaves: len(leaves))
         declared = defaultdict(deque)
         accumulators, warnings = linear_accumulators(sim, grid, n_steps)
         for record in accumulators:
