@@ -269,12 +269,14 @@ def refuse_ntff_reflecting_faces(faces, *, lane):
             "with NTFF yet.")
 
 
-def admit_waveguide(sim, *, lane="dispatch"):
-    """Refuse undeclared guide models without changing a realized grid."""
+def admit_waveguide(sim, *, lane="dispatch", edges=True):
+    """Refuse undeclared guide models without changing a realized grid.
+    ``edges=False`` skips the aperture-edge rule, for a request a later
+    multi-device refusal ends anyway."""
     if not sim._waveguide_ports:
         return
     if sim._uses_nonuniform_mesh:
-        _admit_graded_guide(sim, lane)
+        _admit_graded_guide(sim, lane, edges)
         return
     grid = sim._build_realized_grid()
     faces = grid._waveguide_admission[0]
@@ -294,11 +296,12 @@ def admit_waveguide(sim, *, lane="dispatch"):
         _warn_caller("Waveguide boundary default: " + ", ".join(incompatible)
                      + " are solved as PEC electric walls.")
         state[0] = True
-    from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
-    refuse_bare_waveguide_edges(sim, grid, lane=lane)
+    if edges:
+        from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+        refuse_bare_waveguide_edges(sim, grid, lane=lane)
 
 
-def _admit_graded_guide(sim, lane):
+def _admit_graded_guide(sim, lane, edges=True):
     # Addendum 5f: full guides require explicitly declared transverse PEC.
     grid = sim._build_realized_grid()
     faces = sorted({f"{axis}_{side}"
@@ -318,8 +321,9 @@ def _admit_graded_guide(sim, lane):
             f"{lane}: full-aperture waveguide boundary was not declared on {', '.join(faces)}; "
             "the graded mesh keeps absorbers there, so the port would not be in a guide; "
             f"declare boundary={_guide_declaration(sim, faces)!r} (absorber on the port axis).")
-    from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
-    refuse_bare_waveguide_edges(sim, grid, lane=lane)
+    if edges:
+        from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+        refuse_bare_waveguide_edges(sim, grid, lane=lane)
 
 
 def _refuse_periodic_guide(sim, faces):
