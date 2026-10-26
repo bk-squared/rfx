@@ -13,6 +13,7 @@ import warnings
 import weakref
 
 from rfx.boundaries.depths import Kind, grid_face_depths, resolve_face_depths, simulation_face_depths
+from rfx.model.operands import OPERAND_RULES, OperandKind
 
 
 _WALL_AXIS_WARNED = weakref.WeakKeyDictionary()
@@ -354,6 +355,75 @@ def waveguide_segment_cells(cfg, grid):
     return tuple(bounds)
 
 
+OPERAND_RULES["waveguide_port_section"] = {
+    OperandKind.EPS: "medium",
+    OperandKind.SIGMA: "medium",
+    OperandKind.MU: "medium",
+    OperandKind.DEBYE: "medium",
+    OperandKind.LORENTZ: "medium",
+    OperandKind.DRUDE: "medium",
+    OperandKind.CHI3: "medium",
+    OperandKind.PEC_VOLUME: "medium",
+    OperandKind.PEC_SHEET: "refuse",
+    OperandKind.PEC_WIRE: "refuse",
+    OperandKind.IMPEDANCE_SHEET: "refuse",
+    OperandKind.THIN_FILM: "refuse",
+    OperandKind.RLC: "refuse",
+    OperandKind.PORT_STAMP: "refuse",
+    OperandKind.SOURCE_STAMP: "accept",
+}
+
+
+def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks):
+    """Judge thin update operands, exempting only the guide's pinned walls."""
+    import numpy as np
+    from rfx._traced_check import traced_check
+    from rfx.model.operands import operands_at
+
+    rule = OPERAND_RULES["waveguide_port_section"]
+    spatial = tuple(slice(lo, hi) for lo, hi in bounds)
+
+    def select(record):
+        decisions = {rule[kind] for kind in record.kinds}
+        if "refuse" in decisions and (
+                "medium" not in decisions or record.name.startswith("pec_edge_masks.")):
+            return spatial
+        return None
+
+    portions = operands_at(records, select)
+
+    def check(*values):
+        for (record, _), value in zip(portions, values):
+            bad = np.asarray(value) != record.vacuum
+            start = bad.ndim - 3 - record.trailing
+            if record.name.startswith("pec_edge_masks."):
+                component = "xyz".index(record.component)
+                bad &= ~np.asarray(wall_masks[component][spatial])
+                # A tangential E edge on either transverse bounding node is
+                # an aperture wall, including a wall built from PEC volumes.
+                for axis in range(3):
+                    if axis == "xyz".index(cfg.normal_axis) or axis == component:
+                        continue
+                    for node in bounds[axis]:
+                        local = node - bounds[axis][0]
+                        if 0 <= local < bad.shape[start + axis]:
+                            plane = [slice(None)] * bad.ndim
+                            plane[start + axis] = local
+                            bad[tuple(plane)] = False
+            if np.any(bad):
+                first = tuple(np.argwhere(bad)[0])
+                index = (tuple(int(first[start + a] + bounds[a][0]) for a in range(3))
+                         if start >= 0 else tuple(lo for lo, _ in bounds))
+                raise ValueError(
+                    f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
+                    f"{record.label} ({record.name}) at cell {index}; "
+                    "the port has no model for a thin element in its section (rfx#2047); "
+                    "draw it beyond the reference plane.")
+
+    traced_check("waveguide port", "section thin elements", check,
+                 *(cut for _, cut in portions), ordered=True)
+
+
 def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                                      localized, design_box=None):
     """Resolve one scalar lossless medium over each corrected/reference section.
@@ -377,7 +447,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
         grid, tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0])
 
     # Scalar cell media and PEC volume from the one realized operand list (#1961):
-    # sheets, films, lumped elements and wall-derived tensors are not judged here.
+    # Thin elements are judged separately from the scalar medium below.
     scalar = ("materials.eps_r", "materials.sigma", "materials.mu_r")
     updates_scalar = ("debye", "lorentz", "kerr_chi3", "pec_mask", "pec_occupancy")
     # The shared list does not classify per-component material leaves: enumerate a
@@ -385,8 +455,11 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     split = tuple(f for f in ("eps_r", "sigma", "mu_r")
                   if isinstance(getattr(materials, f), (tuple, list)))
     view = materials._replace(**{f: jnp.zeros(()) for f in split})
+    records = realized_operands(grid, view, updates, localized)
+    edge_records = tuple(r for r in records if r.name.startswith("pec_edge_masks."))
+    other_records = tuple(r for r in records if not r.name.startswith("pec_edge_masks."))
     operands = [(r.name, r.array, r.vacuum, r.label)
-                for r in realized_operands(grid, view, updates, localized)
+                for r in records
                 if (r.name in scalar and r.name.split(".", 1)[1] not in split)
                 or (r.source is not None and r.name.split(".", 1)[0] in updates_scalar)]
     if isinstance(materials.sigma, (tuple, list)):
@@ -426,6 +499,9 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     def resolve(cfg, multimode):
         bounds = waveguide_segment_cells(cfg, grid)
         prefix = f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
+        # Lumped stamps also appear in scalar conductivity. Name the stamp
+        # first; PEC edges follow the existing PEC-volume medium judgement.
+        _refuse_waveguide_section_thin_elements(cfg, bounds, other_records, wall_masks)
         for field in ("eps_r", "mu_r"):
             if isinstance(getattr(materials, field), (tuple, list)):
                 raise ValueError(prefix + f"per-component {field} is unsupported; " + reason)
@@ -512,8 +588,10 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                     raise ValueError(prefix + "traced override puts another medium at the probe plane ("
                                      + description + "); its S21 cannot be split; " + reason)
             traced_check("waveguide port", "section medium", judge_traced, *arrays, *probe_arrays, ordered=True)
+            _refuse_waveguide_section_thin_elements(cfg, bounds, edge_records, wall_masks)
             return cfg
         medium = judge(*arrays)
+        _refuse_waveguide_section_thin_elements(cfg, bounds, edge_records, wall_masks)
         cfg = with_port_medium(cfg, medium)
         matches, description = probe_medium(medium, *probe_arrays)
         return cfg._replace(probe_medium_matches=matches, probe_medium_description=description)

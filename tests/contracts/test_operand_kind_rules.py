@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 # Import each rule owner so its table is registered even in an isolated run.
-from rfx.boundaries import tfsf
+from rfx.boundaries import features, tfsf
 from rfx.model.operands import (
     COMPONENTS, OPERANDS, OPERAND_RULES, OperandKind, OperandRecord,
     material_rule, operands_at, realized_operands,
@@ -16,9 +16,11 @@ from rfx.model.operands import (
 
 def test_every_rule_names_every_kind():
     assert "tfsf_injection_planes" in OPERAND_RULES
+    assert "waveguide_port_section" in OPERAND_RULES
     for name, table in OPERAND_RULES.items():
         assert set(table) == set(OperandKind), name
-        assert set(table.values()) <= {"accept", "refuse"}, name
+        allowed = {"accept", "refuse", "medium"} if name == "waveguide_port_section" else {"accept", "refuse"}
+        assert set(table.values()) <= allowed, name
 
 
 def test_every_operand_row_has_kinds():
