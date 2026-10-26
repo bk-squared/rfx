@@ -423,11 +423,12 @@ probes downstream of each feed.
   a mesh-ladder case run monthly on a GPU and required before a release). One
   600 µm line with one 12 mm open stub, on εr 3.66, h 254 µm. The cells are
   h/2, h/4 and h/6 in z. In the plane of the metal the mesh is graded by
-  `edge_aware_profiles`, so the trace is solved at 600 µm and the stub at
-  12.037, 12.022 and 12.014 mm. The notch converges: 3.6680, 3.6705 and
-  3.6722 GHz, steps +0.068 % and +0.047 %. The order of convergence is not
-  established: over the ladder the solved stub shortens 0.19 %, and the notch
-  estimator's own offset moves about 0.1 %. On a uniform mesh the same board
+  `edge_aware_profiles`, so the trace, the stub width and the 12 mm stub are
+  solved at their drawn sizes on every rung. The notch converges: 3.6680,
+  3.6705 and 3.6722 GHz, steps +0.068 % and +0.047 %. The order of convergence
+  is not established: where the notch falls between frequency bins moves the
+  notch estimator's own offset by about 0.1 % over the ladder, more than either
+  step. On a uniform mesh the same board
   solves the trace 470, 552 and 580 µm wide, and the notch does not converge
   (steps +0.002 % and −0.380 %). Grade such a board with
   `edge_aware_profiles`, which places the last node of each conductor edge
