@@ -261,6 +261,15 @@ jobs:
           pytest -v -ra -p no:cacheprovider -o addopts=""
           tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
 
+      - name: Run three-device high-wall producer contract (wall row on the last rank)
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_high_wall_producer_contract.py
+
       - name: Run three-device graded wrapped-step cases (2 vs 3 devices, slab views, slab cut)
         if: ${{ !cancelled() }}
         env:

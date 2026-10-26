@@ -117,6 +117,7 @@ def component_h_materials(materials, periodic=(False, False, False), *, high_wal
     if jnp.ndim(mu) == 0:
         volume = (mu,) * 3
     else:
+        high_wall = _walls_off_periodic(high_wall, periodic)
         mu = _material_wall_view(mu, high_wall)
         volume = []
         for axis in range(3):
@@ -558,6 +559,11 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, 
                      inv_dz[None, None, :]))
 
 
+def _walls_off_periodic(high_wall, periodic):
+    """A run-level periodic axis has no wall, even where the grid lists none (#1966)."""
+    return tuple(False if p else w for w, p in zip(high_wall, periodic))
+
+
 def _material_wall_view(arr, high_wall, *, array_module=jnp):
     """Read the last inside cell at global high walls, without changing cells."""
     for axis, wall in enumerate(high_wall):
@@ -587,7 +593,7 @@ def _material_bwd_neighbour(arr, ax, periodic, *, high_wall: tuple[bool, bool, b
     outside take the boundary cell's own value, so a boundary edge averages
     over the cells that exist.
     """
-    arr = _material_wall_view(arr, high_wall, array_module=array_module)
+    arr = _material_wall_view(arr, _walls_off_periodic(high_wall, periodic), array_module=array_module)
     if arr.shape[ax] == 1 or periodic[ax]:
         return array_module.roll(arr, 1, axis=ax)
     first = [slice(None)] * arr.ndim
@@ -719,6 +725,7 @@ def _width_fraction(lo, d, array_module=jnp):
 
 
 def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp, *, high_wall: tuple[bool, bool, bool]):
+    high_wall = _walls_off_periodic(high_wall, periodic)
     arr = _material_wall_view(arr, high_wall, array_module=array_module)
     if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
         result = arr

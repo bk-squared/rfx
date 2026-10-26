@@ -8,6 +8,7 @@ from rfx import Box, DebyePole, Simulation, _realized
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import component_e_materials, component_h_materials
 from rfx.geometry.rasterize_grid import unpadded_high_walls
+from tests._multi_device_scene import host_devices
 
 
 def numpy_wall_cells(array, walls):
@@ -59,10 +60,10 @@ def assert_components(actual, expected):
         np.testing.assert_array_equal(got, want)
 
 
-@pytest.mark.parametrize('devices', [1, 3], ids=['uniform', 'distributed'])
+@pytest.mark.parametrize('devices', [1, 2, 3], ids=['uniform', 'distributed-2', 'distributed-3'])
 @pytest.mark.parametrize('debye', [False, True], ids=['static', 'debye'])
 def test_lane_uses_wall_materials(monkeypatch, devices, debye):
-    assert jax.local_device_count() >= 3, 'requires XLA_FLAGS=--xla_force_host_platform_device_count=3'
+    run_devices = host_devices(devices)
     import rfx.model.materials as model
     import rfx.materials.debye as ade
     import rfx.runners._distributed_common as common
@@ -102,7 +103,7 @@ def test_lane_uses_wall_materials(monkeypatch, devices, debye):
     monkeypatch.setattr(common, 'debye_pole_coeffs', observe_poles)
 
     with _realized.capture() as captured:
-        sim.run(n_steps=4, devices=jax.devices()[:devices], compute_s_params=False,
+        sim.run(n_steps=4, devices=run_devices, compute_s_params=False,
                 skip_preflight=True)
     electric = [r for r in captured.records if 'eps_e' in r]
     magnetic = [r for r in captured.records if 'mu_h' in r]
@@ -132,7 +133,7 @@ def test_lane_uses_wall_materials(monkeypatch, devices, debye):
     for record in magnetic:
         magnetic_starts.update(compare_record(record['mu_h'], mu, record, magnetic=True))
     assert electric_starts == magnetic_starts == set(range(0, nx, per))
-    if devices == 3:
+    if devices > 1:
         assert any('owned_start' in r and int(r['owned_start']) <= nx-1
                    < int(r['owned_start']) + int(r['owned_count']) for r in electric)
     if debye:
@@ -140,3 +141,45 @@ def test_lane_uses_wall_materials(monkeypatch, devices, debye):
         for record in pole_records:
             pole_starts.update(compare_record(record['fractions'], fractions, record))
         assert pole_starts == set(range(0, nx, per))
+
+
+def test_periodic_axis_is_never_a_wall():
+    """A run-level periodic axis wraps even when the caller's flag says wall.
+
+    ``unpadded_high_walls`` sees only ``grid.periodic_axes``; ``run(...,
+    periodic=...)`` can make an unpadded axis periodic. There the edge mean
+    must wrap row 0 onto row nx-1 as stored, not onto a replicated row.
+    The expectation is numpy: roll on x, last-inside replication on y. It is
+    compared at rtol 1e-6: random cells expose float32 summation order (one
+    ULP), while a wall read on the periodic axis moves edges by order one.
+    """
+    rng = np.random.default_rng(1966)
+    eps = rng.uniform(1., 5., (5, 4, 3)).astype(np.float32)
+    sigma = rng.uniform(0., .5, (5, 4, 3)).astype(np.float32)
+    mu = rng.uniform(1., 3., (5, 4, 3)).astype(np.float32)
+    from rfx.core.yee import MaterialArrays
+    cells = MaterialArrays(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sigma), mu_r=jnp.asarray(mu))
+    periodic = (True, False, False)
+
+    def close(actual, expected):
+        for got, want in zip(actual, expected):
+            np.testing.assert_allclose(np.asarray(got), want, rtol=1e-6, atol=0)
+
+    def back(array, axis):
+        return np.roll(array, 1, axis=axis) if periodic[axis] else numpy_back(array, axis)
+
+    def expected_e(array):
+        cell = numpy_wall_cells(array, (False, True, False))
+        out = []
+        for a, b in ((1, 2), (0, 2), (0, 1)):
+            low_a, low_b = back(cell, a), back(cell, b)
+            out.append((cell + low_a + low_b + back(low_a, b)) * np.float32(.25))
+        return tuple(out)
+
+    cell = numpy_wall_cells(mu, (False, True, False))
+    expected_h = tuple(np.where(cell == back(cell, a), cell,
+        np.float32(2) / (np.float32(1) / cell + np.float32(1) / back(cell, a))) for a in range(3))
+    actual_eps, actual_sigma = component_e_materials(cells, periodic, high_wall=(True, True, False))
+    close(actual_eps, expected_e(eps))
+    close(actual_sigma, expected_e(sigma))
+    close(component_h_materials(cells, periodic, high_wall=(True, True, False)), expected_h)
