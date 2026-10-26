@@ -82,7 +82,7 @@ def _check_edges(sim, grid, masks, lane):
                 spans[a], _ = _range_to_slice_nu(grid, axis, requested)
             else:
                 spans[a], _ = sim._range_to_slice(
-                    requested, sim._domain[a], grid.dx, grid.shape[a],
+                    requested, sim._domain[a], float(grid.cells(axis)[0]), grid.shape[a],
                     getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi"))
         bare = []
         for a in transverse:
