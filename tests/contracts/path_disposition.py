@@ -378,8 +378,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=refuses("solver='adi' does not support distributed execution"),
         fwd_uniform=not_reachable("solver='adi' sends forward() to the fwd_adi route"),
         fwd_nonuniform=refuses("solver='adi' requires a uniform mesh (_dispatch_plan)"),
-        fwd_distributed_nu=refuses("solver='adi' does not support distributed execution (one check for "
-                                   "both entries, _dispatch_plan)"),
+        fwd_distributed_nu=refuses("solver='adi' requires a uniform mesh (_dispatch_plan)"),
         fwd_adi=carries("the route solver='adi' selects (same probe as run())"),
     )},
     "_adi_cfl_factor": {"": lanes(
