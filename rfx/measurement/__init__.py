@@ -57,6 +57,9 @@ from rfx.measurement.settling import (
     settling_db_from_port_records,
     warn_postrun_energy_witness,
 )
+from rfx.measurement.setup import (
+    register_plane,
+)
 from rfx.measurement.time_records import (
     init_graded_records,
     init_uniform_records,
@@ -138,6 +141,7 @@ __all__ = [
     "radiated_power",
     "reconstruct_oblique_physical",
     "register_lumped",
+    "register_plane",
     "register_wire",
     "settling_db_from_named_records",
     "settling_db_from_port_records",

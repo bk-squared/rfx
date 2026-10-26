@@ -1,13 +1,7 @@
 {
   "files": {
     "rfx/api/__init__.py": {
-      "I": [
-        "rfx.boundaries.depths:adi_uniform_faces",
-        "rfx.boundaries.model:resolve_kinds",
-        "rfx.boundaries.serialization:legacy_spec",
-        "rfx.boundaries.spec:normalize_boundary",
-        "rfx.measurement.setup:register_plane"
-      ],
+      "I": [],
       "S": [],
       "M": [],
       "A": [],

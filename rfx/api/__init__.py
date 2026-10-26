@@ -345,7 +345,7 @@ class Simulation(
             raise TypeError(
                 f"Simulation() got unexpected keyword arguments: {sorted(_removed_kwargs)}"
             )
-        from rfx.boundaries.spec import normalize_boundary
+        from rfx.boundaries import normalize_boundary
         from rfx.runners.nonuniform import INTERFACE_EPS_RULES
 
         if snap not in ("strict", "declared"):
@@ -513,7 +513,7 @@ class Simulation(
         else:
             self._boundary_spec = self._build_spec_from_legacy()
 
-        from rfx.boundaries.model import Features, resolve_kinds
+        from rfx.boundaries import Features, resolve_kinds
         self._boundary_model = resolve_kinds(
             self._boundary_spec, mode=mode,
             features=Features(layers=cpml_layers,
@@ -539,7 +539,7 @@ class Simulation(
                     getattr(getattr(self._boundary_spec, ax), side)
                 for ax in "xyz" for side in ("lo", "hi")
             }
-            from rfx.boundaries.depths import adi_uniform_faces
+            from rfx.boundaries import adi_uniform_faces
             if not adi_uniform_faces(self._boundary_spec, cpml_layers):
                 _layout = ", ".join(
                     f"{face}={tok!r}"
@@ -1935,7 +1935,7 @@ class Simulation(
         ))
         return self
 
-    from rfx.boundaries.serialization import legacy_spec as _build_spec_from_legacy
+    from rfx.boundaries import legacy_spec as _build_spec_from_legacy
 
     def __getattr__(self, name):
         if name == "set_periodic_axes":
@@ -2131,7 +2131,7 @@ class Simulation(
         name : str or None
             Optional result key.
         """
-        from rfx.measurement.setup import register_plane
+        from rfx.measurement import register_plane
         return register_plane(self, axis, coordinate, component, freqs, n_freqs, name, region)
 
     def add_flux_monitor(
