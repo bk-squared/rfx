@@ -198,7 +198,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         _res, n_steps=n_steps, num_periods=num_periods, context=entry)
     import jax
     from rfx._diagnostic_transport import result_with_diagnostics
-    from rfx.runners._distributed_common import split_axis_advisory
+    from rfx.runners._distributed_advisory import split_axis_advisory
     # Like other post-dispatch advisory records, retain this with skip_preflight.
     n_devices = len(jax.devices() if devices is None else devices)
     _res = result_with_diagnostics(_res, split_axis_advisory(_res.grid, n_devices, plan.lane))
