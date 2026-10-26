@@ -53,7 +53,7 @@ preflight output moved.
 ## What runs on a PR, and how to run it locally
 
 One standing instruction: run `scripts/ci/local.sh` before every push. It is every
-short gate a PR must pass, in the order CI runs them, stopping at the first failure.
+short gate a PR must pass, in the order CI runs them; every short gate runs and reports even after an earlier one fails, and the selected tests run only when all of them passed.
 Measure it rather than trusting this sentence: on 2026-09-18 `tests/contracts` alone
 was 5 min 16 s of it, and everything else together was under ten seconds.
 

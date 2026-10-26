@@ -232,3 +232,19 @@ def _replay(records, spectrum, dt, limit, *, traced, offset, window, alpha):
 
     total = jax.lax.scan(body, initial, (steps, flat.reshape(blocks, _BLOCK, -1)))[0]
     return total.reshape(spectrum.shape[-1], *records.shape[1:])
+
+
+def half_step_current_phase(freqs: jnp.ndarray, dt: float) -> jnp.ndarray:
+    """exp(+j pi f dt): turns an E-stamped current spectrum into an H-stamped one.
+
+    For spectra supplied already stamped at E's time (legacy callers, the
+    ring-down's slot-relative completion). Scan records never need it: the
+    kernel stamps H itself.
+    """
+    return jnp.exp(1j * jnp.pi * jnp.asarray(freqs) * dt)
+
+
+# Preserve the postponed annotations of its original core.dft_utils module.
+half_step_current_phase.__annotations__ = {
+    "freqs": "jnp.ndarray", "dt": "float", "return": "jnp.ndarray",
+}

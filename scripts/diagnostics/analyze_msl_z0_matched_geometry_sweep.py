@@ -360,10 +360,13 @@ def validate_evidence(
             metadata.get("production_smatrix_assembly") == diagnostics.get("assembly"),
             "assembly_metadata_mismatch",
         )
+        # The dump records the line Z0 the waves were formed at. Since #2014
+        # that is result line_impedances (reference_impedances is the declared
+        # impedance=); records written before #2014 carry no line_impedances,
+        # and their reference_impedances was the line Z0.
+        line_impedances = result.get("line_impedances", result["reference_impedances"])
         require(
-            np.array_equal(
-                metadata["s_reference_impedances_ohm"], result["reference_impedances"]
-            ),
+            np.array_equal(metadata["s_reference_impedances_ohm"], line_impedances),
             "reference_impedance_mismatch",
         )
         dx, dt = float(plan["dx_m"]), float(plan["dt_s"])

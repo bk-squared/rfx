@@ -24,7 +24,7 @@ from types import MethodType, SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from rfx.api import Simulation
@@ -160,6 +160,29 @@ def _sigma_max(S) -> np.ndarray:
                      for k in range(S.shape[2])])
 
 
+def _at_declared_reference(S, z_from: float, z_to: float = 50.0) -> np.ndarray:
+    """S (power waves, real references) moved from ``z_from`` to ``z_to`` on
+    every port through the impedance matrix, written out here so the product's
+    ``renormalize_power_waves`` is not its own oracle (#2014: the returned S is
+    at the declared ``impedance=``, the planted S at the line Z0)."""
+    S = np.asarray(S, dtype=np.complex128)
+    eye = np.eye(S.shape[0])
+    out = np.empty_like(S)
+    for k in range(S.shape[2]):
+        z = z_from * (eye + S[:, :, k]) @ np.linalg.inv(eye - S[:, :, k])
+        out[:, :, k] = (z - z_to * eye) @ np.linalg.inv(z + z_to * eye)
+    return out
+
+
+def _planted_at_declared(planted, result) -> np.ndarray:
+    """The planted (probe-0) S at the feed planes, then at the declared 50 ohm:
+    the plane shift is a line-referenced operation, so it comes first, as in
+    the product."""
+    feed = np.asarray(planted) / np.asarray(probe0_s(result, np.ones_like(planted)))
+    return _at_declared_reference(
+        feed, float(hammerstad_jensen_z0_eps_eff(4 * U, 2 * U, 2.0)[0]))
+
+
 def _compute(sim, **kwargs):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -232,7 +255,7 @@ def test_the_returned_s_is_the_planted_one_on_both_channels():
     )
     for label, result in (("plain", plain), ("eps_override", override)):
         np.testing.assert_allclose(
-            np.asarray(probe0_s(result)), planted, rtol=0.0, atol=1e-5,
+            np.asarray(probe0_s(result, line_s(result))), planted, rtol=0.0, atol=1e-5,
             err_msg=f"{label} channel did not return the planted S")
 
 
@@ -244,9 +267,10 @@ def test_sigma_max_excess_measures_the_returned_matrix_on_both_channels():
     not re-run the extractor's helper against itself.
     """
     sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
-    expected = np.maximum(_sigma_max(planted) - 1.0, 0.0)
     for kwargs in ({}, {"eps_override": _noop_eps_override(sim)}):
         result = _compute(_build_planted_sim(_NONPASSIVE_SCALE)[0], **kwargs)
+        expected = np.maximum(
+            _sigma_max(_planted_at_declared(planted, result)) - 1.0, 0.0)
         assert result.sigma_max_excess is not None
         np.testing.assert_allclose(np.asarray(result.sigma_max_excess),
                                    expected, rtol=1e-4, atol=1e-6)
@@ -270,7 +294,7 @@ def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning():
     sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim.compute_msl_s_matrix(n_steps=1, freqs=FREQS, num_periods=1.0)
+        result = sim.compute_msl_s_matrix(n_steps=1, freqs=FREQS, num_periods=1.0)
     messages = [str(w.message) for w in caught if "is not passive" in str(w.message)]
     assert len(messages) == 1, "one aggregate warning, not one per bin"
     message = messages[0]
@@ -279,7 +303,7 @@ def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning():
     # so the printed value is read back and compared to its third decimal.
     worst = printed_after(message, "worst sigma_max = ")
     assert len(worst) == 1 and len(worst[0].split(".")[1]) == 3, worst
-    assert agrees(worst[0], float(_sigma_max(planted).max())), worst
+    assert agrees(worst[0], float(_sigma_max(_planted_at_declared(planted, result)).max())), worst
     assert "returned exactly as extracted" in message
     assert "enforce_passivity=True" in message
     # The projection warning is the other branch's; it must not also fire.
@@ -299,10 +323,10 @@ def test_enforce_passivity_true_still_projects_and_keeps_the_raw():
                                           enforce_passivity=True)
     assert np.all(_sigma_max(result.S) <= 1.0)
     assert result.S_raw is not None
-    np.testing.assert_allclose(np.asarray(probe0_s(result, result.S_raw)), planted,
+    np.testing.assert_allclose(np.asarray(probe0_s(result, line_s(result, result.S_raw))), planted,
                                rtol=0.0, atol=1e-5)
     np.testing.assert_allclose(np.asarray(result.passivity_correction),
-                               np.maximum(_sigma_max(planted) - 1.0, 0.0),
+                               np.maximum(_sigma_max(_planted_at_declared(planted, result)) - 1.0, 0.0),
                                rtol=1e-4, atol=1e-6)
     assert any("projected onto the passive set" in str(w.message)
                for w in caught)
@@ -321,7 +345,7 @@ def test_enforce_passivity_true_is_still_skipped_under_eps_override():
                       enforce_passivity=True)
     assert result.S_raw is None and result.passivity_correction is None
     assert float(_sigma_max(result.S).max()) > 1.05
-    np.testing.assert_allclose(np.asarray(probe0_s(result)), planted,
+    np.testing.assert_allclose(np.asarray(probe0_s(result, line_s(result))), planted,
                                rtol=0.0, atol=1e-5)
 
 

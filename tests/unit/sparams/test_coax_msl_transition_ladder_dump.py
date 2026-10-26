@@ -51,6 +51,7 @@ from tests._coax_msl_instrument_fixture import (  # noqa: E402
 from rfx.api._sparams import (  # noqa: E402
     _assemble_coax_msl_transition_from_voltages,
 )
+from rfx.sparams._port_reference import renormalize_power_waves  # noqa: E402
 
 N_STEPS = 200
 
@@ -60,7 +61,7 @@ N_STEPS = 200
 _NUMERIC_FIELDS = (
     "s_params", "freqs", "reference_planes", "z0_ref", "cond_a",
     "cond_a_equilibrated", "recurrence_residual", "fit_residual", "gamma",
-    "a_inc", "b_out", "settling_db",
+    "a_inc", "b_out", "settling_db", "line_impedances",
 )
 
 # Issue #823 ladder self-consistency witness: OPT-IN PAYLOADS carried by the
@@ -221,7 +222,9 @@ def test_ladder_dump_schema_matches_the_documented_contract(_abc):
     # wave-role question turns on): coax ref ABOVE, MSL ref BELOW.
     assert d["ref_coax_m"] == float(on.reference_planes[0])
     assert d["ref_msl_m"] == float(on.reference_planes[1])
-    assert np.array_equal(d["z0_ref"], np.asarray(on.z0_ref))
+    # The dump's z0_ref is the line impedances the assembler formed the waves
+    # at; since #2014 the result's z0_ref is the declared S reference.
+    assert np.array_equal(d["z0_ref"], np.asarray(on.line_impedances))
     assert d["ref_coax_m"] > d["coax_ladder_z_m"].max()
     assert d["ref_msl_m"] < d["msl_ladder_x_m"].min()
 
@@ -250,6 +253,9 @@ def test_ladder_dump_round_trips_through_the_assembler(_abc):
         z0_msl=float(d["z0_ref"][1]),
         cond_warn=float(instrument_kwargs(N_STEPS).get("cond_warn", 1.0e3)),
     )
+    # The assembler's S is at the line impedances; the producer then refers
+    # it to the declared z0_ref (#2014) with this same call.
+    s_params = renormalize_power_waves(s_params, on.line_impedances, on.z0_ref)
     for name, got in (
         ("s_params", s_params), ("cond_a", cond_a),
         ("cond_a_equilibrated", cond_a_eq),
@@ -283,6 +289,7 @@ def test_round_trip_assertion_is_sensitive_to_a_corrupted_dump(_abc):
         v_coax_by_drive=v_coax, v_msl_by_drive=d["msl_ladder_v"],
         z0_coax=float(d["z0_ref"][0]), z0_msl=float(d["z0_ref"][1]),
     )[0]
+    s_bad = renormalize_power_waves(s_bad, on.line_impedances, on.z0_ref)
     assert not np.array_equal(np.asarray(on.s_params), np.asarray(s_bad))
 
 

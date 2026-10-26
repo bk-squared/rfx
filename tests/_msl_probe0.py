@@ -14,6 +14,26 @@ import jax.numpy as jnp
 import numpy as np
 
 
+def line_s(result, S=None):
+    """``S`` referred back from the declared references to ``line_impedances``.
+
+    Since #2014 a line port's S is referenced to its declared ``impedance=``;
+    the waves are still formed at the analytic line Z0. Tests whose subject is
+    that line-Z0 internal (wave split, solve, dump replay, plane shift)
+    compare against this. ``S`` defaults to ``result.S`` (``s_params`` on coax
+    results); the declared references are ``reference_impedances`` or
+    ``z0_ref``.
+    """
+    from rfx.sparams._port_reference import renormalize_power_waves
+
+    if S is None:
+        S = result.S if hasattr(result, "S") else result.s_params
+    declared = getattr(result, "reference_impedances", None)
+    if declared is None:
+        declared = result.z0_ref
+    return renormalize_power_waves(S, declared, result.line_impedances)
+
+
 def probe0_s(result, S=None):
     """``S * exp(+j beta_i L_i) * exp(+j beta_j L_j)``; ``S`` defaults to result.S."""
     S = result.S if S is None else S

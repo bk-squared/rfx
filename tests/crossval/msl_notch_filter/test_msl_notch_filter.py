@@ -517,6 +517,26 @@ def _print_realized(g: dict, dx: float) -> None:
     print(f"    MSL ports {g['n_ports']}")
 
 
+# ------------------------------------------------- reference impedance (#2014)
+def _to_reference(S, z_from, z_to) -> np.ndarray:
+    """Power-wave S (real references) from z_from to z_to through the impedance
+    matrix, written out here on purpose: the product's
+    ``renormalize_power_waves`` must not sit on both sides of a comparison.
+    Z = F (I + S)(I - S)^-1 F with F = diag(sqrt z_from), then
+    S' = G^-1 (Z - Zt)(Z + Zt)^-1 G with G = diag(sqrt z_to), per bin."""
+    S = np.asarray(S, dtype=complex)
+    n = S.shape[0]
+    eye = np.eye(n)
+    f = np.diag(np.sqrt(np.asarray(z_from, dtype=float)))
+    g = np.diag(np.sqrt(np.asarray(z_to, dtype=float)))
+    zt = np.diag(np.asarray(z_to, dtype=float))
+    out = np.empty_like(S)
+    for k in range(S.shape[-1]):
+        z = f @ (eye + S[:, :, k]) @ np.linalg.inv(eye - S[:, :, k]) @ f
+        out[:, :, k] = np.linalg.inv(g) @ (z - zt) @ np.linalg.inv(z + zt) @ g
+    return out
+
+
 # ------------------------------------------------------------------- solve
 def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
     """Preflight, solve, and hand back the curve with its two witnesses."""
@@ -539,6 +559,10 @@ def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
 
     freqs = np.asarray(res.freqs, dtype=float)
     s = np.asarray(res.S)
+    # The port's S is at its declared impedance (50 ohm, as Palace's lumped
+    # ports); the openEMS tutorial's CalcPort passes no ref_impedance and so
+    # references its line impedance: that comparison reads S at the line Z0.
+    s_line = _to_reference(s, res.reference_impedances, res.line_impedances)
     settling = (np.asarray(res.settling_db, dtype=float)
                 if res.settling_db is not None else None)
     excess = (np.asarray(res.sigma_max_excess, dtype=float)
@@ -547,6 +571,9 @@ def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
     out = dict(
         dx_m=dx, arm_length_m=arm_length_m,
         freqs_hz=freqs, s11=s[0, 0, :], s21=s[1, 0, :],
+        s11_line=s_line[0, 0, :], s21_line=s_line[1, 0, :],
+        reference_impedances=np.asarray(res.reference_impedances, float),
+        line_impedances=np.asarray(res.line_impedances, float),
         z0=np.asarray(res.Z0), settling_db=settling,
         sigma_max_excess=excess, wall_s=wall_s,
         n_cells=g["n_cells"], grid_shape=g["grid_shape"], realized=g,
@@ -658,7 +685,7 @@ def _db(mag) -> np.ndarray:
     return 20.0 * np.log10(np.maximum(np.asarray(mag, dtype=float), 1e-300))
 
 
-def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
+def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag, key: str = "s21") -> dict:
     """ΔdB of rfx − reference at every reference frequency inside the band
     both curves cover where BOTH are above the deep-null level, plus the
     notch-frequency distance.
@@ -678,8 +705,8 @@ def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
     ref_db = _db(ref_s21_mag)
     lo, hi = REFERENCE_BAND_HZ
     ref_notch = notch_frequency(ref_f_hz, ref_s21_mag, lo, hi)
-    our_notch = notch_frequency(rung["freqs_hz"], np.abs(rung["s21"]), lo, hi)
-    m = aligned_magnitude(ref_f_hz, ref_db, rung["freqs_hz"], _db(np.abs(rung["s21"])),
+    our_notch = notch_frequency(rung["freqs_hz"], np.abs(rung[key]), lo, hi)
+    m = aligned_magnitude(ref_f_hz, ref_db, rung["freqs_hz"], _db(np.abs(rung[key])),
                           ref_notch["f"], our_notch["f"], REFERENCE_BAND_HZ,
                           floor_db=DEEP_NULL_DB)
     solved, aligned = m["unaligned"], m["aligned"]
@@ -946,13 +973,13 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         f"openEMS tutorial, {OPENEMS_JUDGED_STAGE} "
         f"({openems['meta']['stages'][OPENEMS_JUDGED_STAGE]['resolution_um']:.1f} µm)"
         " — JUDGED",
-        finest, judged_stage["freqs_ghz"], judged_stage["s21_mag"])
+        finest, judged_stage["freqs_ghz"], judged_stage["s21_mag"], key="s21_line")
     _print_comparison(fine)
     ref_coarse = _compare(
         f"openEMS tutorial, {OPENEMS_COARSE_STAGE} = stage_a, the tutorial's own "
         f"mesh ({openems['meta']['stages'][OPENEMS_COARSE_STAGE]['resolution_um']:.1f} µm)"
         " — the reference's mesh statement, reported",
-        finest, coarse_stage["freqs_ghz"], coarse_stage["s21_mag"])
+        finest, coarse_stage["freqs_ghz"], coarse_stage["s21_mag"], key="s21_line")
     _print_comparison(ref_coarse)
 
     # ---- (d) Palace: reported, never judged -------------------------------
@@ -1230,3 +1257,15 @@ def test_the_reference_files_are_what_the_provenance_says():
         assert got["f"] / 1e9 == pytest.approx(
             rec["notch"]["parabolic_f_ghz"], abs=1e-6)
         assert got["depth_db"] == pytest.approx(rec["notch"]["depth_db"], abs=1e-6)
+
+
+def test_local_reference_change_agrees_with_the_product_helper():
+    """The crossval's own reference change and rfx.renormalize_power_waves
+    agree on a random 2x2 S with unequal real references, to rounding."""
+    from rfx import renormalize_power_waves
+    rng = np.random.default_rng(2014)
+    S = 0.4 * (rng.standard_normal((2, 2, 5)) + 1j * rng.standard_normal((2, 2, 5)))
+    z_from, z_to = np.array([47.86, 61.2]), np.array([50.0, 35.0])
+    np.testing.assert_allclose(
+        np.asarray(renormalize_power_waves(S, z_from, z_to)),
+        _to_reference(S, z_from, z_to), rtol=0, atol=1e-12)

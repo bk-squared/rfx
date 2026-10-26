@@ -783,48 +783,6 @@ def _sheet_coeffs_eps_r(eps_r, sigma, sigma_sheet, dt):
                                    dt_eps0 / eps_r)
 
 
-def apply_sheet_impedance_e(state, e_prev, curls, ctx, coeffs):
-    """Apply the node-thin resistive-sheet E update at tangential edges.
-
-    Runs AFTER ``apply_pec_mask``/``apply_pec_occupancy`` and BEFORE
-    S-parameter DFT sampling and source injection (same contract slot the
-    PEC mask owns; see rfx/simulation.py make_core_step). At every masked
-    tangential edge the standard E-update result is REPLACED by::
-
-        E^{n+1} = A * E^n + B * curlH^{n+1/2}
-
-    with ``curls`` computed by the SAME stencil helpers the kernels use
-    (``rfx.core.yee.curl_h`` / ``curl_h_nu``) from the same H the E-update
-    consumed. Everywhere off-mask the state passes through untouched; the
-    sheet-normal edge is never touched (its mask is all-False for a
-    one-layer sheet).
-
-    Parameters
-    ----------
-    state : FDTDState after the standard E update + boundary operators.
-    e_prev : (ex, ey, ez) tuple — the E fields BEFORE the E update (E^n).
-    curls : (curl_x, curl_y, curl_z) from the shared curl helper.
-    ctx : SheetImpedanceCtx
-    coeffs : (A, B) from :func:`sheet_update_coeffs`.
-    """
-    a, b = coeffs
-    end = getattr(coeffs, "end", None)
-    _fdtype = state.ex.dtype
-    _cdtype = jnp.promote_types(_fdtype, jnp.float32)
-
-    def _component(c, mask, end_mask, field):
-        new = a * e_prev[c].astype(_cdtype) + b * curls[c]
-        if end is not None and end_mask is not None:
-            new = jnp.where(
-                end_mask, end[0] * e_prev[c].astype(_cdtype) + end[1] * curls[c], new)
-        return jnp.where(mask, new.astype(_fdtype), field)
-
-    ex = _component(0, ctx.mask_ex, getattr(ctx, "end_ex", None), state.ex)
-    ey = _component(1, ctx.mask_ey, getattr(ctx, "end_ey", None), state.ey)
-    ez = _component(2, ctx.mask_ez, getattr(ctx, "end_ez", None), state.ez)
-    return state._replace(ex=ex, ey=ey, ez=ez)
-
-
 def has_f0_sheets(thin_conductors) -> bool:
     """True when any registered thin conductor is in surface-impedance mode.
 

@@ -193,7 +193,7 @@ import warnings
 
 import jax.numpy as jnp
 import numpy as np
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -458,7 +458,7 @@ def test_patch_edgefed_s11_passive_and_match():
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     # Pins are probe-0-plane quantities (module docstring): undo the shift.
-    s = np.asarray(probe0_s(res))[0, 0, :]
+    s = np.asarray(probe0_s(res, line_s(res)))[0, 0, :]
     z0 = np.asarray(res.Z0)[0, :]
     g = _gate_readings(fr, s, z0)
 

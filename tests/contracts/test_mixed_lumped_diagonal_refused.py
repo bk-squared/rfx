@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_msl, _H_SUB, _DX
 
 
@@ -63,7 +63,9 @@ def test_returned_entries_and_witnesses(measured):
     kind, channel, result, raw, _, _ = measured
     # The oracle is the documented b/a of the raw probe-0 phasors, so S is read
     # at the MSL port's probe-0 plane (#1694 refers it to the feed plane).
-    s = np.asarray(probe0_s(result))
+    # The oracle forms the MSL waves at the line Z0; S is referred to the
+    # declared impedance (#2014), so it is brought back to line_impedances.
+    s = np.asarray(probe0_s(result, line_s(result, np.asarray(result.S))))
     assert np.isnan(s[:, 0]).all()
     assert np.isnan(result.s21_power_witness[:, 0]).all()
     expected = _independent_msl_column(raw, 3 if kind == 'wire3' else 1)
@@ -75,7 +77,7 @@ def test_returned_entries_and_witnesses(measured):
             np.testing.assert_allclose(s[0, 1], expected[0], rtol=1e-6, atol=1e-7)
         assert result.S_wave is None
     else:
-        s_wave = np.asarray(probe0_s(result, np.asarray(result.S_wave)))
+        s_wave = np.asarray(probe0_s(result, line_s(result, np.asarray(result.S_wave))))
         assert np.isnan(s_wave[:, 0]).all()
         np.testing.assert_allclose(s_wave[1, 1], expected[1], rtol=1e-6, atol=1e-7)
         if kind == 'wire3':

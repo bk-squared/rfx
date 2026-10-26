@@ -174,7 +174,7 @@ def test_the_plan_lists_the_sums_that_are_not_on_the_kernel():
     plan = measurement_plan(build(('_dft_planes', 'dft_plane'), 'run_uniform'), n_steps=12,
                             path='run_uniform')
     listed = ' | '.join(plan.known_differences)
-    for name in ('rfx/floquet.py', 'subgridded runner', 'rfx/adjoint.py', 'traced dt or frequencies'):
+    for name in ('rfx/floquet.py', 'subgridded runner', 'rfx/stepping/adjoint_scan.py', 'traced dt or frequencies'):
         assert name in listed, name
 
 

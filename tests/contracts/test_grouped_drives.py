@@ -38,7 +38,7 @@ def use_per_cell_reference(monkeypatch):
     from tests.unit.runners._until_decay_reference import _reference_drives
     def layout(meta, dtype, **_kwargs):
         return _reference_drives(meta, np.empty(0, dtype=dtype))
-    for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop', 'rfx.stepping.graded_setup', 'rfx.vmap_sweep',
+    for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop', 'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
                  'rfx.subgridding.jit_runner', 'rfx.runners.distributed_v2',
                  'rfx.runners.distributed_nu', 'rfx.runners._distributed_common'):
         module = importlib.import_module(name)
@@ -118,6 +118,9 @@ def test_production_step_scatter_count(lane, monkeypatch):
         seen.append(True)
         return inject(state, drives, values)
     monkeypatch.setattr(module, 'inject_drives', checked_inject)
+    if lane == 'vmap':
+        import rfx.stepping.vmap_scan as vmap_scan
+        monkeypatch.setattr(vmap_scan, 'inject_drives', checked_inject)
     original = jax.lax.scan
     counts = []
 
@@ -425,6 +428,8 @@ def test_vmap_casts_mixed_sources_before_concatenation(monkeypatch):
         assert drives.waves is None
         return original(state, drives, values)
     monkeypatch.setattr(sweep, 'inject_drives', checked)
+    import rfx.stepping.vmap_scan as vmap_scan
+    monkeypatch.setattr(vmap_scan, 'inject_drives', checked)
     with enable_x64():
         fn, args = vmap_case(1, mixed=True)
         jax.jit(jax.vmap(fn))(*args)

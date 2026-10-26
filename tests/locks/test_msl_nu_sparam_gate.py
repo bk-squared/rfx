@@ -51,7 +51,7 @@ import warnings
 
 import jax.numpy as jnp
 import numpy as np
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -269,7 +269,7 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     # Pins are probe-0-plane quantities (see the uniform twin): undo the shift.
-    s = np.asarray(probe0_s(res))[0, 0, :]
+    s = np.asarray(probe0_s(res, line_s(res)))[0, 0, :]
     z0 = np.asarray(res.Z0)[0, :]
     zin = z0 * (1.0 + s) / (1.0 - s)
     s11 = np.abs(s)

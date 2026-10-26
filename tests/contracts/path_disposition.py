@@ -1021,7 +1021,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
         'coaxial_two_port': carries('rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_domain', ''): {
@@ -1032,7 +1032,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
         'coaxial_two_port': carries('rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_dx', ''): {
@@ -1043,7 +1043,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
         'coaxial_two_port': carries('rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', wrong="#1293"),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', wrong="#1293"),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_dt_pin', ''): {
@@ -1054,7 +1054,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a pinned time step (dt=)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a pinned time step (dt=)'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a pinned time step (dt=)'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='a pinned time step (dt=)'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='a pinned time step (dt=)'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='a pinned time step (dt=)'),
     },
     ('_dt_min_cell', ''): {
@@ -1065,7 +1065,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='dt_min_cell='),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='dt_min_cell='),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='dt_min_cell='),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='dt_min_cell='),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='dt_min_cell='),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='dt_min_cell='),
     },
     ('_nominal_profiles', ''): {
@@ -1076,7 +1076,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='nominal_profiles='),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='nominal_profiles='),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='nominal_profiles='),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='nominal_profiles='),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='nominal_profiles='),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='nominal_profiles='),
     },
     ('_precision', ''): {
@@ -1087,7 +1087,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a precision other than 'float32'"),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises="a precision other than 'float32'"),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises="a precision other than 'float32'"),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises="a precision other than 'float32'"),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises="a precision other than 'float32'"),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises="a precision other than 'float32'"),
     },
     ('_solver', ''): {
@@ -1098,7 +1098,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="solver='adi'"),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises="solver='adi'"),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises="solver='adi'"),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises="solver='adi'"),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises="solver='adi'"),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises="solver='adi'"),
     },
     ('_adi_cfl_factor', ''): {
@@ -1120,7 +1120,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='stencil_order=4'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='stencil_order=4'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='stencil_order=4'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='stencil_order=4'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='stencil_order=4'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='stencil_order=4'),
     },
     ('_mode', ''): {
@@ -1131,7 +1131,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a 2-D mode (mode='2d_tmz' or '2d_tez')"),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises="a 2-D mode (mode='2d_tmz' or '2d_tez')"),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises="a 2-D mode (mode='2d_tmz' or '2d_tez')"),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_materials', 'eps'): {
@@ -1142,7 +1142,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a dielectric (eps_r != 1)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a dielectric (eps_r != 1)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_materials', 'sigma'): {
@@ -1153,7 +1153,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a conductive material (sigma > 0)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a conductive material (sigma > 0)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_materials', 'mu'): {
@@ -1164,7 +1164,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a magnetic material (mu_r != 1)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a magnetic material (mu_r != 1)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_materials', 'debye'): {
@@ -1208,7 +1208,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Kerr χ³ material (chi3 != 0)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a Kerr χ³ material (chi3 != 0)'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a Kerr χ³ material (chi3 != 0)'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='a Kerr χ³ material (chi3 != 0)'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='a Kerr χ³ material (chi3 != 0)'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='a Kerr χ³ material (chi3 != 0)'),
     },
     ('_geometry', 'pec_volume'): {
@@ -1219,7 +1219,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PEC volume'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a PEC volume'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_geometry', 'pec_sheet'): {
@@ -1230,7 +1230,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PEC sheet (a zero-thickness PEC Box)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a PEC sheet (a zero-thickness PEC Box)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_geometry', 'pec_wire'): {
@@ -1241,7 +1241,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a sub-cell PEC wire (PolylineWire)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a sub-cell PEC wire (PolylineWire)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_thin_conductors', 'lossy_sheet'): {
@@ -1252,7 +1252,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a lossy thin conductor (add_thin_conductor)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a lossy thin conductor (add_thin_conductor)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_thin_conductors', 'pec_sheet'): {
@@ -1263,7 +1263,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PEC thin conductor (add_thin_conductor)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a PEC thin conductor (add_thin_conductor)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_thin_conductors', 'surface_impedance'): {
@@ -1285,7 +1285,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a pinned sheet (add_pinned_sheet)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a pinned sheet (add_pinned_sheet)'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_ports', 'source'): {
@@ -1296,7 +1296,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a soft source (add_source)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a soft source (add_source)'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a soft source (add_source)'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='a soft source (add_source)'),
     },
     ('_ports', 'amplitude_kind'): {
@@ -1307,7 +1307,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a soft source with amplitude_kind='current'"),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises="a soft source with amplitude_kind='current'"),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises="a soft source with amplitude_kind='current'"),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises="a soft source with amplitude_kind='current'"),
     },
     ('_ports', 'lumped_port'): {
@@ -1439,7 +1439,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a subgrid refinement (add_refinement)'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a subgrid refinement (add_refinement)'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a subgrid refinement (add_refinement)'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='a subgrid refinement (add_refinement)'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='a subgrid refinement (add_refinement)'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='a subgrid refinement (add_refinement)'),
     },
     ('_refinement', 'relaxed_validation'): {
@@ -1450,7 +1450,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
     },
     ('_boundary', 'cpml'): {
@@ -1461,7 +1461,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
         'coaxial_two_port': carries('rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_boundary', 'upml'): {
@@ -1483,7 +1483,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='PEC faces on an absorbing box'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='PEC faces on an absorbing box'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='PEC faces on an absorbing box'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('sim_run resolves the PEC faces from the grid through resolve_wall_faces'),
     },
     ('_boundary_spec', 'pmc_face'): {
@@ -1494,7 +1494,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PMC (magnetic wall) face'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a PMC (magnetic wall) face'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a PMC (magnetic wall) face'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='a PMC (magnetic wall) face'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='a PMC (magnetic wall) face'),
         'material_fit': carries('sim_run resolves the PMC faces from the grid through resolve_wall_faces'),
     },
     ('_boundary_spec', 'conformal'): {
@@ -1505,7 +1505,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='Boundary(conformal=True) or conformal_pec=True'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='Boundary(conformal=True) or conformal_pec=True'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='Boundary(conformal=True) or conformal_pec=True'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='Boundary(conformal=True) or conformal_pec=True'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='Boundary(conformal=True) or conformal_pec=True'),
     },
     ('_boundary_spec', 'conformal_s_matrix'): {
@@ -1516,7 +1516,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
     },
     ('_boundary_spec', 'absorbing_lid'): {
@@ -1527,7 +1527,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='an absorbing z lid on a closed PEC box'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='an absorbing z lid on a closed PEC box'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='an absorbing z lid on a closed PEC box'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('the grid provides per-face pads and walls to sim_run for the absorbing lid'),
     },
     ('_periodic_axes', 'periodic'): {
@@ -1538,7 +1538,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a periodic axis'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a periodic axis'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a periodic axis'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_cpml_layers', 'layers'): {
@@ -1549,7 +1549,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
         'coaxial_two_port': carries('rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_cpml_kappa_max', 'kappa'): {
@@ -1560,7 +1560,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
         'coaxial_two_port': carries('rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs'),
         'coax_msl_transition': carries('rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_interface_eps', 'dual_average'): {
@@ -1571,7 +1571,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="interface_eps='dual_average'"),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises="interface_eps='dual_average'"),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises="interface_eps='dual_average'"),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises="interface_eps='dual_average'"),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises="interface_eps='dual_average'"),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises="interface_eps='dual_average'"),
     },
     ('_dx_profile', 'graded'): {
@@ -1615,7 +1615,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a point probe'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a point probe'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a point probe'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_dft_planes', 'dft_plane'): {
@@ -1626,7 +1626,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a DFT plane probe'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a DFT plane probe'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a DFT plane probe'),
-        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn'),
+        'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': ignorable('observer: existing calculator handling retained; no observer field returned'),
     },
     ('_flux_monitors', 'flux'): {
@@ -1659,7 +1659,7 @@ CALCULATOR_CELLS = {
         'coaxial_line_reflection': ignorable('observer: existing calculator handling retained; no observer field returned'),
         'coaxial_two_port': ignorable('observer: existing calculator handling retained; no observer field returned'),
         'coax_msl_transition': ignorable('observer: existing calculator handling retained; no observer field returned'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='a current-moment monitor'),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn', raises='a current-moment monitor'),
         'material_fit': ignorable('observer: existing calculator handling retained; no observer field returned'),
     },
 }

@@ -47,6 +47,7 @@ from rfx.sources.sources import GaussianPulse
 from rfx.api._spec import MixedSMatrixResult
 
 from rfx.sparams._mixed_checks import _mixed_refusal_masks, _warn_refused_mixed_entries
+from rfx.sparams._port_reference import renormalize_power_waves
 
 from rfx.sparams._common import (
     _msl_cell_profile,
@@ -97,6 +98,10 @@ def compute_mixed_s_matrix(
     impedances across families a pseudo-wave ratio would be off by
     ``sqrt(Z_j/Z_i)``; reciprocity of a reciprocal
     structure is the committed internal falsifier for this choice.
+    The returned ``S`` and ``S_wave`` are referenced to every port's
+    declared ``impedance=`` (``z0_ref``, #2014): MSL waves are formed at
+    the analytic line Z0 (``line_impedances``) and the matrix is then
+    referred to ``z0_ref`` by ``renormalize_power_waves``.
 
     MAGNITUDE CHANNEL (``magnitude_channel``, default ``"flux"``):
     the mixed-family falsifier battery + an independent Poynting-flux referee
@@ -1068,10 +1073,22 @@ def compute_mixed_s_matrix(
             [("wire" if wire_mode else "lumped")] * n_lw
             + ["msl"] * n_msl
         )
-        z0_ref = np.asarray(
+        # #2014: S is referenced to every port's declared impedance=. The
+        # MSL waves were formed at the analytic line Z0 (line_impedances);
+        # lumped/wire ports already use their declared impedance, so only
+        # the MSL rows and columns move, once, before the projection.
+        line_impedances = np.asarray(
             [float(pe.impedance) for pe in lw_entries]
             + z0_hj_per_port
         )
+        z0_ref = np.asarray(
+            [float(pe.impedance) for pe in lw_entries]
+            + [float(pe.impedance) for pe in entries]
+        )
+        S = renormalize_power_waves(S, line_impedances, z0_ref)
+        if s_wave_full is not None:
+            s_wave_full = renormalize_power_waves(
+                s_wave_full, line_impedances, z0_ref)
 
         S = jnp.where(refused_positions[..., None], jnp.nan, S)
         s_raw = None
@@ -1091,6 +1108,7 @@ def compute_mixed_s_matrix(
             port_names=port_names,
             port_families=port_families,
             z0_ref=z0_ref,
+            line_impedances=line_impedances,
             settling_db=settling_db_runs,
             settling_witness=tuple(settling_details),
             s21_power_witness=s21_power,

@@ -64,6 +64,7 @@ __all__ = [
     "run_nonuniform_until_decay",
     "run_uniform_loop",
     "run_uniform_until_decay",
+    "scan_with_progress",
     "segmented_scan",
     "Slab",
     "STEP_SEQUENCE",
@@ -91,6 +92,7 @@ _LAZY_EXPORTS = {
     "run_nonuniform_until_decay": "rfx.stepping.graded_loop",
     "run_uniform_loop": "rfx.stepping.uniform_loop",
     "run_uniform_until_decay": "rfx.stepping.uniform_loop",
+    "scan_with_progress": "rfx.stepping.progress_scan",
 }
 
 

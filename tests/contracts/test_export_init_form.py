@@ -168,6 +168,7 @@ def test_export_init_form(path):
         assert not (imports & mapping.keys()), "Lazy/eager names overlap"
         if path == "rfx/stepping/__init__.py":
             assert mapping == {
+                "scan_with_progress": "rfx.stepping.progress_scan",
                 "core_step_invariants": "rfx.stepping.uniform_setup",
                 "make_core_step": "rfx.stepping.uniform_setup",
                 "run_nonuniform": "rfx.stepping.graded_loop",

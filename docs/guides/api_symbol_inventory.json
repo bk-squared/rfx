@@ -1859,6 +1859,14 @@
         "report"
       ]
     },
+    "renormalize_power_waves": {
+      "kind": "function",
+      "params": [
+        "S",
+        "z_from",
+        "z_to"
+      ]
+    },
     "replay_smatrix_from_port_vi_dump": {
       "kind": "function",
       "params": [

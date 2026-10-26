@@ -205,7 +205,7 @@ def test_port_bins(kind, path, ringdown):
     elif path == 'multi-uniform' and actual[2]:
         _success(eager)
         _refusal(actual, NotImplementedError,
-                 'forward(distributed=True) on a uniform mesh cannot run inside jax.jit')
+                 'forward(distributed=True) on a uniform mesh cannot compute port S-parameters')
     else:
         _equal(eager, actual)
         if kind == 'wire' and path == 'graded':

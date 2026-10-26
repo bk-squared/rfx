@@ -316,6 +316,7 @@ def run_case(label, out, *, dry_run=False):
                 "cond_a",
                 "beta_railed",
                 "reference_impedances",
+                "line_impedances",
             )
             if getattr(result, n) is not None
         }

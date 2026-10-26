@@ -553,3 +553,21 @@ def test_closed_box_device_limit_without_mesh():
     refuse_slab_tfsf_devices(declaration, 2)
     with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
         refuse_slab_tfsf_devices(declaration, 3)
+
+
+def test_uniform_forward_user_jit_refuses_port_s():
+    from tests.unit.runners.test_distributed_uniform_user_jit import scene
+
+    if len(jax.devices('cpu')) < 2:
+        pytest.skip('requires two CPU devices')
+    sim = scene('pec', port=True)
+    with pytest.raises(NotImplementedError, match=(
+            r"forward\(distributed=True\) on a uniform mesh cannot compute port S-parameters")) as failure:
+        jax.jit(lambda: sim.forward(
+            n_steps=60, devices=jax.devices('cpu')[:2], distributed=True,
+            skip_preflight=True, port_s11_freqs=np.array([3e9, 5e9, 7e9])).s_params)()
+    assert str(failure.value) == (
+        "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "
+        "(or another JAX trace that stages it): the S-parameters are measured from a second "
+        "multi-device run outside the trace. Omit port_s11_freqs for the fields and probe records, "
+        "call forward() directly, or run on one device (omit distributed=True).")
