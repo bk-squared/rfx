@@ -101,7 +101,7 @@ def test_tfsf_refuses_mixed_transverse_pmc_pair(axis, graded):
 @pytest.mark.parametrize('graded', (False, True))
 def test_closed_box_tfsf_refuses_pmc(graded):
     sim = tfsf_scene(graded=graded)
-    reason = 'require a uniform, single-device' if graded else 'requires CPML on all six domain faces'
+    reason = 'require a uniform, 3D second-order Yee' if graded else 'requires CPML on all six domain faces'
     with pytest.raises(NotImplementedError, match=reason):
         sim.add_tfsf_source(f0=5e9, bandwidth=.8, closed_box=True, margin=2)
 
