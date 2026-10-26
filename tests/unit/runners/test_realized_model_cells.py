@@ -21,7 +21,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx import _realized
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.core.yee import component_e_materials, component_h_materials, e_update_coeffs
+from rfx.core.yee import component_e_materials, e_update_coeffs
 from tests.contracts import realized_model as T
 
 MM = 1e-3
@@ -380,6 +380,9 @@ def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
 
     measured.cache_clear()
     try:
+        # Concrete whole-grid realization reads owned rows, never these halos.
+        # This mutation continues to gate the retained per-slab producer.
+        monkeypatch.setattr(slab_setup, "_material_host_device", lambda *args, **kwargs: (None, "traced inputs"))
         monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
         monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
         dump = measured(lane, row)

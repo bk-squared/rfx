@@ -916,9 +916,9 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
     def actual(eps):
         material = stage_forward_materials(cells.materials._replace(eps_r=eps), layout, mesh, uniform=True)
         d = stage_dispersion(material, grid.dt, db, grid, layout, mesh, 'debye')
-        l = stage_dispersion(material, grid.dt, lr, grid, layout, mesh, 'lorentz')
+        lorentz = stage_dispersion(material, grid.dt, lr, grid, layout, mesh, 'lorentz')
         setup = build_setup(grid, material, layout, mesh, 3, sources, probes,
-            debye=d, lorentz=l, occupancy=cut(occ, layout, 'pec_occupancy', mesh=mesh),
+            debye=d, lorentz=lorentz, occupancy=cut(occ, layout, 'pec_occupancy', mesh=mesh),
             pec_mask=stage_pec(mask, sheets, wires, grid, layout, mesh))
         result = finish(setup.invariants, setup.carry_init, layout, mesh,
                         waveforms=setup.src_waveforms, dt=grid.dt)
@@ -953,6 +953,9 @@ def test_item6_owned_ulp_mutation_is_caught():
 
 def test_item6_missing_extra_runtime_row_is_caught(monkeypatch):
     from rfx.stepping import slab_setup
+    # Whole-grid host reconstruction ignores the extra input row; this gate
+    # checks the retained per-slab producer's stencil halo.
+    monkeypatch.setattr(slab_setup, '_material_host_device', lambda *args, **kwargs: (None, 'traced inputs'))
     original = slab_setup.uniform_from_cut
     def missing(*args, **kwargs):
         a = original(*args, **kwargs)
