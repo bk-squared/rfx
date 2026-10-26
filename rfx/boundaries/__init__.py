@@ -13,10 +13,15 @@ from rfx.boundaries.model import (  # noqa: F401
 )
 from rfx.boundaries.pec import (  # noqa: F401
     apply_pec,
+    apply_pec_edges,
+    apply_pec_faces,
 )
 
 # The layer entries the five large files may call (scripts/ci/check_layer_structure.py rule I).
 __all__ = [
+    "apply_pec",
+    "apply_pec_edges",
+    "apply_pec_faces",
     "refresh_boundary_model",
     "require_floquet_lateral_faces",
 ]

@@ -52,14 +52,14 @@ def test_kottke_smoothing_changes_the_field_and_agrees_with_stage_one():
 def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
     """A forced accelerator keeps the standard lane for all three materials."""
     import jax
-    import rfx.simulation as simulation
+    import rfx.stepping.uniform as stepping_uniform
     built = []
-    original = simulation.update_he_fast
+    original = stepping_uniform.update_he_fast
 
     def spy(*args, **kwargs):
         built.append(True)
         return original(*args, **kwargs)
-    monkeypatch.setattr(simulation, "update_he_fast", spy)
+    monkeypatch.setattr(stepping_uniform, "update_he_fast", spy)
     monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
     plain = _trace(False)
     assert not built, "the plain run must also take the standard lane"
@@ -74,14 +74,14 @@ def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
 
 def _told_it_is_on_a_gpu(monkeypatch):
     import jax
-    import rfx.simulation as simulation
+    import rfx.stepping.uniform as stepping_uniform
     built = []
-    original = simulation.update_he_fast
+    original = stepping_uniform.update_he_fast
 
     def spy(*args, **kwargs):
         built.append(True)
         return original(*args, **kwargs)
-    monkeypatch.setattr(simulation, "update_he_fast", spy)
+    monkeypatch.setattr(stepping_uniform, "update_he_fast", spy)
     monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
     return built
 

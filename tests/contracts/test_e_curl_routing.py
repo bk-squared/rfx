@@ -18,6 +18,7 @@ import rfx.stepping.poles as poles  # the moved pole E updates read curl_h here
 from rfx.materials import debye, lorentz
 from rfx.boundaries import upml
 import rfx.simulation as uniform
+import rfx.stepping.uniform as stepping_uniform
 import rfx.stepping.uniform_setup as uniform_setup
 import rfx.nonuniform as nu
 import rfx.measurement.graded_wire as graded_wire
@@ -306,12 +307,12 @@ def test_gpu_query_standard_dispatch_passes_realized_boundary_on_cpu():
     # An accelerator query keeps the standard lane and its realized boundary.
     sim = model(wall="pec", solved_domain=True)
     invoked = []
-    original = uniform.update_he_fast
+    original = stepping_uniform.update_he_fast
     def baked(*args, **kwargs):
         invoked.append(True)
         return original(*args, **kwargs)
     with patch.object(jax, "default_backend", lambda: "gpu"), \
-            patch.object(uniform, "update_he_fast", baked):
+            patch.object(stepping_uniform, "update_he_fast", baked):
         boundary = require_shared(lambda: sim.run(
             n_steps=2, skip_preflight=True, compute_s_params=False))
     assert not invoked

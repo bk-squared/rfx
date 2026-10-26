@@ -49,6 +49,7 @@ from rfx.model.graded_profile import (
 )
 from rfx.model.materials import (
     e_update_coefficient_at,
+    electric_grid_kwargs,
     electric_materials_traced,
 )
 from rfx.model.occupancy import (
@@ -60,6 +61,7 @@ from rfx.model.occupancy import (
 from rfx.model.source_coefficients import (
     current_source_samples,
     source_table,
+    uniform_source_table,
 )
 from rfx.model.thin_conductors import (
     admit_thin_conductor,
@@ -94,6 +96,7 @@ __all__ = [
     "drawn_launch_eps",
     "e_node_dual_spacing_at",
     "e_update_coefficient_at",
+    "electric_grid_kwargs",
     "electric_materials_traced",
     "forward_kernel_inputs",
     "forward_lumped_port_stage",
@@ -122,6 +125,7 @@ __all__ = [
     "stage_distributed_occupancy",
     "traced_cell_mask",
     "uniform_solve_inputs",
+    "uniform_source_table",
     "waveguide_waveform_error",
     "WaveguidePort",
     "WaveguidePortConfig",

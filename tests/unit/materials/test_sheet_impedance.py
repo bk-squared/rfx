@@ -577,7 +577,7 @@ def _sheet_sim(**sim_kw):
 def test_g9_fast_path_excludes_sheets(monkeypatch):
     """A forced GPU query uses the standard lane with and without sheets."""
     import jax
-    import rfx.simulation as sim_mod
+    import rfx.stepping.uniform as stepping_uniform
 
     class _Boom(RuntimeError):
         pass
@@ -586,7 +586,7 @@ def test_g9_fast_path_excludes_sheets(monkeypatch):
         raise _Boom("update_he_fast called")
 
     monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
-    monkeypatch.setattr(sim_mod, "update_he_fast", boom)
+    monkeypatch.setattr(stepping_uniform, "update_he_fast", boom)
 
     # A sheet-free control also stays on the standard lane.
     ctrl = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,

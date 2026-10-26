@@ -104,7 +104,6 @@ def test_fast_uniform_rejects_builtin_internal_attachments():
 def test_fast_uniform_compiled_remaining_hooks(monkeypatch):
     from rfx.core.yee import precompute_coeffs
     import rfx.stepping.uniform as uniform
-    import rfx.simulation as simulation
 
     ctx = _context()
     ctx = replace(ctx, use_fast_he=True)
@@ -113,13 +112,13 @@ def test_fast_uniform_compiled_remaining_hooks(monkeypatch):
                   fast_coeffs=precompute_coeffs(ctx.materials, ctx.dt, ctx.dx,
                                                pec_faces=faces))
     calls = []
-    combined = simulation.update_he_fast
+    combined = uniform.update_he_fast
     def record(*args, **kwargs):
         calls.append("combined")
         return combined(*args, **kwargs)
     def no_pec(*args, **kwargs):
         raise AssertionError("fast path must not add a PEC pass")
-    monkeypatch.setattr(simulation, "update_he_fast", record)
+    monkeypatch.setattr(uniform, "update_he_fast", record)
     monkeypatch.setattr(uniform, "apply_pec_faces", no_pec)
     def attach(digit):
         def observe(frame):
