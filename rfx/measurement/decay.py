@@ -126,7 +126,7 @@ def known_drive_ready_step(waveguide_ports, interval):
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.model.waveguide_modes import incident_tables_uncut
-    from rfx.ringdown import plain_dft
+    from rfx.measurement.ringdown_tail import plain_dft
 
     ports = tuple(waveguide_ports or ())
     if any(is_tracer(x) for cfg in ports for x in jax.tree_util.tree_leaves(

@@ -27,7 +27,7 @@ def drive_tail_share(drives, dt, n_record, freqs) -> np.ndarray:
     Host-only float64 plain DFTs; the tail's time-origin phase cancels in abs.
     A drive ending at the record contributes zero, including an all-zero drive.
     """
-    from rfx.ringdown import plain_dft
+    from rfx.measurement.ringdown_tail import plain_dft
 
     bins = np.asarray(freqs, dtype=np.float64).reshape(-1)
     if int(n_record) != n_record or n_record < 0:
