@@ -557,6 +557,32 @@ def init_tfsf(
 from rfx.stepping.incident_line import prepare_tfsf_for_scan
 
 
+def refuse_graded_propagation_axis(entry, grid):
+    """Refuse a plane wave whose propagation axis is graded (#2078).
+
+    The incident line is one cell size, the boundary cell, while the 3-D grid
+    carries the wave through the graded cells; the planes then inject a wave
+    that does not match the one arriving. Measured with no scatterer on 60 x
+    cells graded 1 / 0.5 / 1 mm: 0.72 of the total-field peak in the
+    scattered-field region, against 1e-5 on uniform cells. A graded
+    transverse axis is the supported case.
+    """
+    from rfx._grid_metric import is_one_cell_size
+    from rfx.core.jax_utils import is_tracer
+    axis = entry.direction[-1]
+    cells = grid.cells(axis)
+    if is_tracer(cells) or is_one_cell_size(cells):
+        return
+    sizes = np.asarray(cells, dtype=float)
+    raise ValueError(
+        f"a TF/SF plane wave along {axis} needs uniform {axis} cells; this mesh "
+        f"grades {axis} from {sizes.min() * 1e3:.4g} to {sizes.max() * 1e3:.4g} mm. "
+        f"The incident line is built on one cell size, so the injected wave "
+        f"does not match the arriving one and leaks into the scattered-field "
+        f"region (0.72 of the peak measured on a 1 / 0.5 / 1 mm line, rfx#2078). "
+        f"Keep the {axis} cells uniform and grade a transverse axis instead.")
+
+
 def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=None,
                           bounds_only=False, record_faces=False):
     """The TF/SF configuration a plane-wave declaration realizes on ``grid``.
@@ -575,6 +601,8 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
     if bounds_only and entry.closed_box:
         from rfx.sources.tfsf_discrete_plane_wave import box_bounds
         return box_bounds(grid.shape, grid.cpml_layers, entry.margin), None
+    if not bounds_only:
+        refuse_graded_propagation_axis(entry, grid)
     pair = init_tfsf(
         grid.nx, float(grid.cells("x")[0]), grid.dt, cpml_layers=grid.cpml_layers,
         tfsf_margin=entry.margin,
