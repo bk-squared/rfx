@@ -1,4 +1,6 @@
-"""One predeclared multi-seam attempt; no production admission changes.
+"""Second predeclared multi-seam attempt; no production admission changes.
+
+Design: rfx-archive 4b8992b7e, 20261027-tfsf-multiseam-attempt2-PREDECLARE.md.
 
 CPU only. The scratch driver imports these builders and measurements. Steps
 are completed steps (1-based); all observer output goes to stderr.
@@ -16,7 +18,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation, SnapshotSpec, Sphere
-from rfx.farfield import compute_far_field
+from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.farfield import compute_far_field, make_ntff_box
 from rfx.grid import C0
 from rfx.sources.tfsf import measure_normal_incident_spectrum, tfsf_from_declaration
 from rfx.stepping.slab import Slab
@@ -42,19 +45,31 @@ def describe(sim, name, count, steps, expected_nx, expected_box, expected_seams,
     cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=steps)
     layout = Slab(grid.nx, count)
     seams = [r * layout.nx_per_rank for r in range(1, count)]
+    box_rows = [[getattr(cfg, f"{axis}_lo"), getattr(cfg, f"{axis}_hi")] for axis in "xyz"]
+    ntff = make_ntff_box(grid, *sim._ntff)
+    ntff_rows = [[ntff.i_lo, ntff.i_hi], [ntff.j_lo, ntff.j_hi], [ntff.k_lo, ntff.k_hi]]
+    pads = [[getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")] for axis in "xyz"]
     meta = dict(scene=name, devices=count, nx=grid.nx, box_rows=[cfg.x_lo, cfg.x_hi],
+                shape=list(grid.shape), box_rows_xyz=box_rows, ntff_rows=ntff_rows,
+                cpml_layers=grid.cpml_layers, cpml_face_depths=pads,
+                slab_width=layout.nx_per_rank, pad_x=layout.pad_x,
+                rank_padding=[0] * (count - 1) + [layout.pad_x],
+                physical_rows_per_rank=[hi - lo for lo, hi in layout.owned],
                 seams=seams, dx_m=grid.dx, steps=steps,
                 box_x_m=[(v - grid.pad_x_lo) * grid.dx for v in (cfg.x_lo, cfg.x_hi)])
-    print(json.dumps(meta), file=sys.stderr)
     assert grid.nx == expected_nx, meta
     assert (cfg.x_lo, cfg.x_hi) == expected_box, meta
     assert seams == expected_seams, meta
+    assert layout.pad_x == (-grid.nx) % count, meta
+    for a, ((lo, hi), (tf_lo, tf_hi), (pad_lo, pad_hi)) in enumerate(zip(ntff_rows, box_rows, pads)):
+        assert pad_lo < lo < tf_lo < tf_hi < hi < grid.shape[a] - pad_hi - 1, meta
     for probe in sim._probes:
         node = grid.position_to_index(probe.position)
         assert node[0] not in seams
         assert all(2 * node[a] != grid.shape[a] - 1 and node[a] != grid.shape[a] // 2
                    for a in range(3)), (probe, node)
     meta["probe_nodes"] = [list(grid.position_to_index(p.position)) for p in sim._probes]
+    meta["probe_components"] = [p.component for p in sim._probes]
     return Scene(sim, cfg, line, grid, steps, meta, np.asarray(freqs))
 
 
@@ -106,7 +121,7 @@ def build_box(name="B2", count=3, *, scale=1, steps=None):
     sim.add_ntff_box(corner("ntff.lo", (.003,) * 3), corner("ntff.hi", (.036,) * 3), freqs=freqs)
     nx = {1: 48, 1.5: 72, 2: 95}[scale]
     lo = layers + margin
-    seams = { (1, 3): [16, 32], (1, 4): [12, 24, 36],
+    seams = { (1, 2): [24], (1, 3): [16, 32], (1, 4): [12, 24, 36],
               (1.5, 3): [24, 48], (1.5, 4): [18, 36, 54],
               (2, 3): [32, 64], (2, 4): [24, 48, 72]}[scale, count]
     scene = describe(sim, name, count, steps, nx, (lo, nx - lo - 1), seams, freqs)
@@ -127,7 +142,58 @@ def build_box(name="B2", count=3, *, scale=1, steps=None):
     return scene
 
 
-def build_sphere(count):
+def build_s1(count, *, steps=400):
+    """Unequal face depths and a short padded last slab, fixed predeclared geometry."""
+    depths = ((6, 4), (4, 6), (5, 4))
+    boundary = BoundarySpec(**{
+        axis: Boundary(lo="cpml", hi="cpml", lo_thickness=lo, hi_thickness=hi)
+        for axis, (lo, hi) in zip("xyz", depths)})
+    sim = Simulation(freq_max=15e9, domain=(.039, .035, .033), dx=.001,
+                     boundary=boundary, cpml_layers=6)
+    sim.add_material("plate", eps_r=1., sigma=1e7)
+    sim.add_material("sheet", eps_r=1., sigma=2.65)
+    corners = {"plate": ((.007, .009, .016), (.019, .014, .022)),
+               "sheet": ((.016, .022, .008), (.029, .023, .020))}
+    for material, (lo, hi) in corners.items():
+        sim.add(Box(lo, hi), material=material)
+    sim.add_tfsf_source(f0=7.5e9, bandwidth=.8, polarization="ez",
+                        direction="+x", closed_box=True, margin=4)
+    for position in ((.013, .017, .011), (.024, .012, .019), (.001, .030, .025)):
+        sim.add_vector_probe(position)
+    freqs = np.linspace(5e9, 10e9, 9)
+    sim.add_ntff_box((.002, .003, .002), (.035, .033, .030), freqs=freqs)
+    scene = describe(sim, "S1", count, steps, 50, (10, 39),
+                     {2: [25], 3: [17, 34], 4: [13, 26, 39]}[count], freqs)
+    meta = scene.metadata
+    assert scene.grid.shape == (50, 46, 43), meta
+    assert scene.grid.cpml_layers == 6, meta
+    assert meta["cpml_face_depths"] == [list(v) for v in depths], meta
+    assert meta["box_rows_xyz"] == [[10, 39], [10, 35], [10, 32]], meta
+    assert meta["ntff_rows"] == [[8, 41], [7, 37], [7, 35]], meta
+    assert meta["pad_x"] == {2: 0, 3: 1, 4: 2}[count], meta
+    assert meta["physical_rows_per_rank"][-1] == {2: 25, 3: 16, 4: 11}[count], meta
+    # These are corner rows; volume occupancy is half-open at the high corner.
+    scatterer_rows = {name: [list(scene.grid.position_to_index(p)) for p in pair]
+                      for name, pair in corners.items()}
+    assert [p[0] for p in scatterer_rows["plate"]] == [13, 25], scatterer_rows
+    assert [p[0] for p in scatterer_rows["sheet"]] == [22, 35], scatterer_rows
+    for lo, hi in scatterer_rows.values():
+        for a, (tf_lo, tf_hi) in enumerate(meta["box_rows_xyz"]):
+            assert tf_lo + 1 < lo[a] and hi[a] <= tf_hi - 1, scatterer_rows
+    assert len(sim._probes) == 18
+    meta.update(domain_m=[.039, .035, .033], scatterer_corner_rows=scatterer_rows,
+                scatterer_x_rows={name: [p[0] for p in pair] for name, pair in scatterer_rows.items()},
+                source_f0_hz=7.5e9, source_bandwidth=.8, source_polarization="ez",
+                source_direction="+x", margin=4, sheet_sigma=2.65,
+                sheet_declared_thickness_m=.001,
+                ntff_corners_m=[list(p) for p in sim._ntff[:2]],
+                face_on_seam=[v in meta["seams"] for v in meta["box_rows"]])
+    emit(meta)
+    return scene
+
+
+def build_sphere(count, x_extra_cells=0):
+    assert x_extra_cells in (0, 6)
     directory = Path(__file__).resolve().parents[2] / "fixtures" / "rcs_sphere_mie"
     geo = json.loads((directory / "fixture.json").read_text())["geometry"]
     spec = importlib.util.spec_from_file_location("multiseam_mie_oracle", directory / "mie_oracle.py")
@@ -136,18 +202,28 @@ def build_sphere(count):
     oracle.validate_oracle()
     f0, radius = geo["f0_hz"], geo["radius_m"]
     dx = C0 / f0 / geo["resolution_cells_per_lambda"]
-    sim = Simulation(freq_max=f0 * 1.5, domain=tuple(geo["domain_m"]), dx=dx,
+    domain = list(geo["domain_m"])
+    domain[0] += x_extra_cells * dx
+    sim = Simulation(freq_max=f0 * 1.5, domain=tuple(domain), dx=dx,
                      boundary="cpml", cpml_layers=geo["cpml_layers"])
     sim.add_material("PEC", eps_r=1., sigma=geo["pec_sigma_s_per_m"])
-    sim.add(Sphere(center=tuple(d / 2 for d in geo["domain_m"]), radius=radius), material="PEC")
+    sim.add(Sphere(center=tuple(d / 2 for d in domain), radius=radius), material="PEC")
     sim.add_tfsf_source(f0=f0, bandwidth=geo["bandwidth"], polarization=geo["polarization"],
                         direction="+x", closed_box=True, margin=3)
-    sim.add_ntff_box((2 * dx,) * 3, (40 * dx,) * 3, freqs=[f0])
-    scene = describe(sim, "F4", count, geo["n_steps"], 90, (27, 62),
-                     {3: [30, 60], 4: [23, 46, 69]}[count], [f0])
+    sim.add_ntff_box((2 * dx,) * 3, ((40 + x_extra_cells) * dx, 40 * dx, 40 * dx), freqs=[f0])
+    scene = describe(sim, "S4" if x_extra_cells else "F4", count, geo["n_steps"],
+                     90 + x_extra_cells, (27, 62 + x_extra_cells),
+                     {(0, 3): [30, 60], (6, 4): [24, 48, 72]}[x_extra_cells, count], [f0])
+    assert scene.grid.shape == (90 + x_extra_cells, 90, 90), scene.metadata
+    assert scene.metadata["box_rows_xyz"] == [[27, 62 + x_extra_cells], [27, 62], [27, 62]]
+    assert scene.metadata["ntff_rows"] == [[26, 64 + x_extra_cells], [26, 64], [26, 64]]
+    scene.metadata.update(domain_m=domain, sphere_center_m=[d / 2 for d in domain],
+                          sphere_radius_m=radius, x_extra_cells=x_extra_cells,
+                          ntff_corners_m=[list(p) for p in sim._ntff[:2]])
     ka = 2 * np.pi * radius * f0 / C0
     s1, _ = oracle.mie_S1_S2(ka, np.pi, n_max=20)
     scene.mie_dbsm = float(10 * np.log10(4 * np.pi * radius ** 2 * abs(s1) ** 2 / ka ** 2))
+    emit(scene.metadata)
     return scene
 
 
@@ -233,7 +309,7 @@ def measure_box(scene, count):
     lines = [{}, {}]
     one = run_scene(scene, 1, line_records=lines[0])
     many = run_scene(scene, count, line_records=lines[1])
-    report = dict(scene.metadata, frequencies_hz=scene.freqs.tolist(), F1={}, probes={})
+    report = dict(scene.metadata, frequencies_hz=scene.freqs.tolist(), grid_diagnostics={}, probes={})
     first = []
     for c in COMPONENTS:
         a, b = np.asarray(one.snapshots[c]), np.asarray(many.snapshots[c])
@@ -242,27 +318,28 @@ def measure_box(scene, count):
         np.testing.assert_array_equal(many.snapshot_axes[c].steps, one.snapshot_axes[c].steps)
         delta = difference(a, b).reshape(scene.steps, -1).max(axis=1)
         peak = np.abs(a).reshape(scene.steps, -1).max(axis=1)
-        bar = 9 * np.spacing(peak.astype(np.float32)).astype(np.float64)
         at = first_difference(a, b)
         if at is not None:
             first.append(dict(step=at[0] + 1, component=c, node=at[1:], stage="completed grid step"))
-        report["F1"][c] = dict(delta=delta.tolist(), peak=peak.tolist(), bar=bar.tolist(),
-                                passes=bool(np.all(delta <= bar)), first_difference=at)
+        report["grid_diagnostics"][c] = dict(delta=delta.tolist(), peak=peak.tolist(), first_difference=at)
     a, b = np.asarray(one.time_series), np.asarray(many.time_series)
     assert a.shape == b.shape == (scene.steps, len(scene.sim._probes))
+    delta = difference(a, b)
+    peak_by_step = np.abs(a).max(axis=1)
+    peak_step = int(np.argmax(peak_by_step)) + 1
+    peak = float(peak_by_step.max())
+    max_abs = float(delta.max())
+    precondition = bool(peak > 0 and 50 < peak_step < scene.steps)
+    report["P"] = dict(max_abs=max_abs, peak=peak, peak_step=peak_step,
+                       peak_by_step=peak_by_step.tolist(), bar=1e-5 * peak,
+                       relative_difference=max_abs / peak if peak else None,
+                       precondition=precondition,
+                       passes=bool(precondition and max_abs <= 1e-5 * peak))
     for p, probe in enumerate(scene.sim._probes):
-        delta = difference(a[:, p], b[:, p])
-        # Predeclared F1: 9 float32 ULP of that component's one-device grid peak per step.
-        peak = np.asarray(report["F1"][probe.component]["peak"])
-        bar = 9 * np.spacing(peak.astype(np.float32)).astype(np.float64)
-        at = first_difference(a[:, p].copy(), b[:, p].copy())
-        if at is not None:
-            first.append(dict(step=at[0] + 1, component=probe.component,
-                              node=report["probe_nodes"][p], probe=p, stage="probe sample"))
-        report["probes"][str(p)] = dict(component=probe.component, delta=delta.tolist(),
-                                         bar=bar.tolist(), passes=bool(np.all(delta <= bar)))
+        report["probes"][str(p)] = dict(component=probe.component,
+                                         delta=delta[:, p].tolist())
     report["first_difference"] = min(first, key=lambda v: v["step"]) if first else None
-    report["F2"] = compare_far_field(one, many)
+    report["FF"] = compare_far_field(one, many)
     # Read both real line advances. A mismatch here is evidence of its stage;
     # no automatic claim that it caused a later mismatch in the grid.
     line_first = None
@@ -280,8 +357,8 @@ def measure_box(scene, count):
     h_line = np.array([max(np.abs(v).max() for v in lines[0]["E", n][3:])
                        for n in range(1, scene.steps + 1)], dtype=np.float64)
     for family, comps in (("E", COMPONENTS[:3]), ("H", COMPONENTS[3:])):
-        d = np.max([report["F1"][c]["delta"] for c in comps], axis=0)
-        p = np.max([report["F1"][c]["peak"] for c in comps], axis=0)
+        d = np.max([report["grid_diagnostics"][c]["delta"] for c in comps], axis=0)
+        p = np.max([report["grid_diagnostics"][c]["peak"] for c in comps], axis=0)
         scale = np.maximum.reduce([p, e_line if family == "E" else e_line / Z0,
                                    Z0 * h_line if family == "E" else h_line])
         bound = 1.2e-7 * np.cumsum(scale)
@@ -299,18 +376,28 @@ def emit(report):
     print(json.dumps(report, allow_nan=False), file=sys.stderr)
 
 
-def assert_box_bars(report, *, f2):
-    assert all(v["passes"] for v in report["F1"].values()), report
-    assert all(v["passes"] for v in report["probes"].values()), report
-    if f2:
-        assert report["F2"]["passes"], report
+def assert_box_bars(report):
+    assert report["P"]["precondition"], report
+    assert report["P"]["passes"], report
+    assert all(v["max_ratio"] <= 1 for v in report["law"].values()), report
+    assert report["FF"]["passes"], report
+
+
+def measure_box_record(builder, count):
+    """The predeclare permits exactly one 1.5x extension if the peak is missing."""
+    report = measure_box(builder(steps=400), count)
+    if not report["P"]["precondition"]:
+        initial = report
+        report = measure_box(builder(steps=600), count)
+        report["record_extension"] = dict(reason="P peak precondition failed", initial=initial)
+    return report
 
 
 def measure_sphere(scene, count):
     one, many = (run_scene(scene, n, snapshots=False) for n in (1, count))
     for result in (one, many):
         box = result.ntff_box
-        assert (box.i_lo, box.i_hi, box.j_lo, box.j_hi, box.k_lo, box.k_hi) == (26, 64, 26, 64, 26, 64)
+        assert (box.i_lo, box.i_hi, box.j_lo, box.j_hi, box.k_lo, box.k_hi) == tuple(v for pair in scene.metadata["ntff_rows"] for v in pair)
     incident = measure_normal_incident_spectrum(scene.cfg, scene.line, scene.steps,
                                                 scene.freqs, scene.grid.dt)
     levels = []
@@ -365,19 +452,26 @@ def require_devices(count):
     assert not jax.config.jax_enable_x64, "predeclare requires float32"
 
 
-@pytest.mark.parametrize("name,count", [("B1", 3), ("B2", 3), ("B4", 4)])
-def test_box_multiseam(monkeypatch, name, count):
-    require_devices(count)
+@pytest.mark.parametrize("name", ["B2", "S1"])
+def test_comparator_two_devices(monkeypatch, name):
+    require_devices(2)
     monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
-    report = measure_box(build_box(name, count), count)
-    assert_box_bars(report, f2=name != "B1")
+    builder = (lambda **kw: build_box("B2", 2, **kw)) if name == "B2" else (lambda **kw: build_s1(2, **kw))
+    assert_box_bars(measure_box_record(builder, 2))
 
 
 @pytest.mark.parametrize("count", [3, 4])
-def test_f4_multiseam(monkeypatch, count):
+def test_s1_multiseam(monkeypatch, count):
     require_devices(count)
     monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
-    report = measure_sphere(build_sphere(count), count)
+    assert_box_bars(measure_box_record(lambda **kw: build_s1(count, **kw), count))
+
+
+@pytest.mark.parametrize("count,x_extra_cells", [(3, 0), (4, 6)], ids=["F4-3", "S4-4"])
+def test_sphere_multiseam(monkeypatch, count, x_extra_cells):
+    require_devices(count)
+    monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
+    report = measure_sphere(build_sphere(count, x_extra_cells=x_extra_cells), count)
     assert report["one_error_db"] <= 1.0, report
     assert report["multi_error_db"] <= 1.0, report
     assert report["far_field"]["passes"], report
