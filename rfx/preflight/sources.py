@@ -171,9 +171,9 @@ def _validate_cfg_source_on_reflector_plane(
                         msg = (
                             f"Source/port at {pos} (component={pe.component}) "
                             f"sits on the PMC {face} plane and drives a "
-                            f"tangential H. apply_pmc_faces zeros this "
-                            f"component at the plane every step, so the "
-                            f"source has no effect."
+                            f"tangential H. The magnetic image imposes zero "
+                            f"tangential H at the plane; a zero update "
+                            f"coefficient holds the high ghost row at zero."
                         )
                     else:
                         msg = None      # normal H on PMC plane is legit

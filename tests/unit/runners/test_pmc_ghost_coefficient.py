@@ -13,10 +13,11 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 
 
-def scene(*, axis='x', cpml=False, tfsf=False, graded=False):
-    boundary = dict.fromkeys('xyz', 'cpml' if cpml else 'pec')
+def scene(*, axis='x', cpml=False, graded=False, absorber='cpml'):
+    boundary = dict.fromkeys('xyz', absorber if cpml else 'pec')
     boundary[axis] = Boundary('pec', 'pmc')
-    profiles = {'dx_profile': np.array([.001] * 16 + [.0013])} if graded else {}
+    # Boundary cells retain dx; the extra declared length belongs inside.
+    profiles = {'dx_profile': np.array([.001] * 8 + [.0013] + [.001] * 8)} if graded else {}
     sim = Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001,
                      boundary=BoundarySpec(**boundary), snap="declared", cpml_layers=2 if cpml else 0,
                      **profiles)
@@ -26,8 +27,6 @@ def scene(*, axis='x', cpml=False, tfsf=False, graded=False):
     position['xyz'.index(axis)] = {'x': .016, 'y': .007, 'z': .006}[axis]
     sim.add_source(tuple(position), 'ey' if axis == 'z' else 'ez', amplitude_kind='current',
                    waveform=GaussianPulse(f0=5e9, bandwidth=.8))
-    if tfsf:
-        sim.add_tfsf_source(f0=5e9, bandwidth=.8, polarization='ez', direction='+x')
     sim.add_probe((.014, .005, .003), 'ez')
     return sim
 
@@ -72,7 +71,42 @@ def test_pmc_high_ghost_with_transverse_cpml(axis, graded, devices):
     jax.clear_caches()
 
 
+def tfsf_scene(*, axis='x', graded=False):
+    boundary = dict.fromkeys('xyz', 'cpml')
+    boundary[axis] = Boundary('pec', 'pmc')
+    profiles = {'dx_profile': np.array([.001] * 8 + [.0013] + [.001] * 8)} if graded else {}
+    # A vacuum scene meets TF/SF's transverse and injection-plane conditions.
+    return Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001,
+                      boundary=BoundarySpec(**boundary), snap='declared', cpml_layers=2,
+                      **profiles)
+
+
+@pytest.mark.parametrize('graded', (False, True))
+def test_pmc_high_ghost_with_tfsf(graded):
+    sim = tfsf_scene(graded=graded)
+    sim.add_tfsf_source(f0=5e9, bandwidth=.8, polarization='ez', direction='+x', margin=2)
+    check_ghosts(record(sim, 1), 'x', f'tfsf graded={graded}')
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('graded', (False, True))
+@pytest.mark.parametrize('axis', ('y', 'z'))
+def test_tfsf_refuses_mixed_transverse_pmc_pair(axis, graded):
+    sim = tfsf_scene(axis=axis, graded=graded)
+    sim.add_tfsf_source(f0=5e9, bandwidth=.8, polarization='ez', margin=2)
+    with pytest.raises(ValueError, match=f'TF/SF {axis}_lo, {axis}_hi must be a pair'):
+        record(sim, 1)
+
+
+@pytest.mark.parametrize('graded', (False, True))
+def test_closed_box_tfsf_refuses_pmc(graded):
+    sim = tfsf_scene(graded=graded)
+    reason = 'require a uniform, single-device' if graded else 'requires CPML on all six domain faces'
+    with pytest.raises(NotImplementedError, match=reason):
+        sim.add_tfsf_source(f0=5e9, bandwidth=.8, closed_box=True, margin=2)
+
+
 @pytest.mark.parametrize('axis', tuple('xyz'))
-def test_pmc_high_ghost_with_tfsf(axis):
-    check_ghosts(record(scene(axis=axis, cpml=True, tfsf=True), 1), axis, 'tfsf')
+def test_pmc_high_ghost_with_transverse_upml(axis):
+    check_ghosts(record(scene(axis=axis, cpml=True, absorber='upml'), 1), axis, 'upml')
     jax.clear_caches()

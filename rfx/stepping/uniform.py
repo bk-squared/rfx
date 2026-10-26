@@ -155,7 +155,7 @@ def make_uniform_step(
                               magnetic_factors=invariants["magnetic_factors"])
 
     def h_boundary(frame: UniformFrame):
-        """Correct incident H, absorb outgoing H, and enforce magnetic walls."""
+        """Correct incident H, absorb outgoing H, and damp conductor cells."""
         if not ctx.use_fast_he:
             if ctx.use_tfsf:
                 frame.st = ctx.apply_tfsf_h(frame.st, ctx.tfsf_cfg, frame.carry["tfsf"], dx, dt)

@@ -1437,10 +1437,10 @@ def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
                                  pmc_faces=None, cpml_layers=None):
     """Keep absorbers and walls on owned rows, including boxes without CPML.
 
-    PEC writes the end E row: one owned row. PMC-hi writes H one row
-    inside it: two owned rows, otherwise the next H exchange replaces it.
-    Two rows also keep PMC-lo away from the H row sent before the uniform
-    runner applies the wall. An L-layer absorber needs L owned rows and
+    PEC writes the end E row: one owned row. The PMC image reads the
+    adjacent interior H row and holds the high ghost with a zero update
+    coefficient. Two owned rows retain the image stencil on its owner.
+    An L-layer absorber needs L owned rows and
     the exchanged curl neighbour. Return the active depths for sizing.
     """
     pec_faces = set(getattr(grid, "pec_faces", None) or ()) if pec_faces is None else set(pec_faces)
