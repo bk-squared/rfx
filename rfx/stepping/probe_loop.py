@@ -85,3 +85,27 @@ def resolve_extractor_axes(grid, cpml_axes):
     if getattr(grid, "periodic_axes", ""):
         raise NotImplementedError("the S-parameter extractors do not wrap periodic axes")
     return resolve_cpml_axes(grid, cpml_axes)
+
+
+def run_probe_loop(grid, materials, ports, driven, *, n_steps, dt, state, sprobes,
+                   cpml_state, debye_state, lorentz_state, use_cpml,
+                   cpml_params, cpml_axes, debye, lorentz, pec_edge_masks,
+                   curl_boundary, wire=False):
+    """Build and run the legacy eager loop, preserving its source schedule."""
+    core, source_values = make_probe_step(
+        grid, materials, ports, driven, use_cpml=use_cpml,
+        cpml_params=cpml_params, cpml_axes=cpml_axes,
+        debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+        curl_boundary=curl_boundary, wire=wire)
+    carry = {"fdtd": state, "sprobes": tuple(sprobes)}
+    if use_cpml:
+        carry["cpml"] = cpml_state
+    if debye is not None:
+        carry["debye"] = debye_state
+    if lorentz is not None:
+        carry["lorentz"] = lorentz_state
+    for step in range(n_steps):
+        carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
+        sprobes = extras["sprobes"]
+        carry["sprobes"] = sprobes
+    return carry, sprobes

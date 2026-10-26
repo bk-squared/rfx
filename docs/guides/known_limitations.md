@@ -376,6 +376,16 @@ such an element leaves is not measured. Draw it beyond the port's reference
 plane. Smoothing at metal walls and at material faces is part of the realized
 guide and is not judged.
 
+### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
+
+Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)
+
+Below f/fc = 1.2 the guide's slow group velocity rings long after the source
+ends. At a/45 cells such a band needs about 32 000 steps before |S11|²+|S21|²
+stops moving with record length; on 8 000 steps it moves by up to 1e-2 per bin,
+and the run's settling check reports that record (−39 dB against −40 dB).
+Give `n_steps` explicitly when the band starts below 1.2 fc.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).

@@ -36,6 +36,7 @@ except ImportError:
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import complex_solve, is_tracer
+from rfx.measurement.phasors import exp_j
 from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
 from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
@@ -1952,9 +1953,8 @@ def _mixed_flux_magnitude_override(
             # measurement".
             neg_power[i, :] |= p_arr < 0.0
             mag = np.sqrt(np.clip(p_arr, 0.0, None) / safe_pinc)
-            ph = jnp.exp(1j * jnp.angle(S_wave[i, col, :]))
             S_out = S_out.at[i, col, :].set(
-                (jnp.asarray(mag) * ph).astype(S_wave.dtype)
+                (jnp.asarray(mag) * exp_j(jnp.angle(S_wave[i, col, :]), xp=jnp)).astype(S_wave.dtype)
             )
     return S_out, ill_cond, neg_power
 

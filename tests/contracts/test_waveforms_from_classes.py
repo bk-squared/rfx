@@ -71,7 +71,7 @@ KNOWN = (
     ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e",
      "lane:waveguide-port", "issue 1668"),
     # Same legacy waveform, moved with the shared incident-table builder.
-    ("rfx/model/waveguide_modes.py", "_incident_tables",
+    ("rfx/model/waveguide_modes.py", "_incident_table_build",
      "lane:waveguide-port", "issue 1668"),
     ("rfx/stepping/waveguide_source.py", "inject_waveguide_port",
      "lane:waveguide-port", "issue 1668"),

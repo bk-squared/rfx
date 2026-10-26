@@ -39,6 +39,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.measurement.phasors import exp_j
 from rfx.sources.waveguide_port import (
     extract_waveguide_s_matrix,
     extract_waveguide_s_matrix_flux,
@@ -1392,7 +1393,7 @@ def _compute_waveguide_s_matrix_nu(
                         ),
                         0.0,
                     )
-                    recv_col.append(mag * jnp.exp(1j * phase))
+                    recv_col.append(mag * exp_j(phase, xp=jnp))
                 s_columns.append(recv_col)
                 continue
 

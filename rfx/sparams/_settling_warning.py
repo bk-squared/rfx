@@ -54,6 +54,14 @@ def _warn_if_ringdown_truncated(
         for i in np.flatnonzero(hot))
     advice = ("Check identification before quoting " if memory_refused else
               f"Increase {knob} and check identification before quoting ")
+    # The share is one budget: pole tail plus a port's known drive beyond the record (#2030).
+    drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())
+                 if i < len(hot) and hot[i] and len(row.get('drive_share_per_bin', ()))), default=0.)
+    if drive > 0:
+        advice = (f"Up to {drive:.3g} of that share is the port's known drive beyond the record (a waveguide "
+                  "port's H near cutoff decays as t^-3/2). Run a longer fixed record: until_decay stops on field "
+                  "energy and does not judge this per-bin budget, and until_identified does not yet admit "
+                  "waveguide ports (#2030). " + advice)
     warnings.warn(
         "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "

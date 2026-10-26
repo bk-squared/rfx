@@ -165,12 +165,9 @@ class WaveguidePortConfig(NamedTuple):
     v_inc_t: jnp.ndarray       # (n_steps,) float32 — source amplitude record
     n_steps_recorded: jnp.ndarray  # scalar int32 — fill count
 
-    # Precomputed TFSF-style injection waveforms. Both are the source
-    # pulse bandpass-filtered to the propagating band |ω| ≥ ω_c — the
-    # raw differentiated Gaussian has large sub-cutoff DC content that
-    # would only excite evanescent modes, so the filter is essential.
-    #
-    # e_inc_table[n] is the filtered E-amplitude scalar at (x_src, n·dt);
+    # Precomputed TFSF-style injection waveforms, built independently of
+    # record length with the causal admittance, including below cutoff.
+    # e_inc_table[n] is the E-amplitude scalar at (x_src, n·dt);
     # h_inc_table[n] is the companion H-amplitude scalar at (x_src − 0.5·dx,
     # (n+0.5)·dt). Used by ``apply_waveguide_port_h`` and
     # ``apply_waveguide_port_e`` to inject a unidirectional mode wave.
@@ -906,86 +903,117 @@ def init_waveguide_port(
     )
 
 
+def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
+                          f0, waveform, mode_profile, mode_type):
+    """One periodic host build, including its negative-time (discarded) half."""
+    tt = np.arange(length, dtype=np.float64) * float(dt) - t0
+    arg = tt / tau
+    if waveform == "modulated_gaussian":
+        e_raw = np.cos(2.0 * np.pi * f0 * tt) * np.exp(-arg ** 2)
+        e_raw = np.where(np.abs(tt) > t0, 0.0, e_raw)
+    else:
+        e_raw = -2.0 * arg * np.exp(-arg ** 2)
+    e_spec = np.fft.rfft(e_raw)
+    freqs = np.fft.rfftfreq(length, d=float(dt))
+    if waveform != "modulated_gaussian":
+        # Unreachable for waveguide ports since the #1942 refusal.
+        ratio = np.clip((freqs - f_c) / (0.2 * f_c), 0.0, 1.0)
+        e_spec *= 0.5 * (1.0 - np.cos(np.pi * ratio))
+    kw = dict(dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
+    beta = _compute_beta(freqs, f_c, medium=medium, **kw)
+    impedance = _compute_mode_impedance(freqs, f_c, mode_type, medium=medium, **kw)
+    if np.any(impedance == 0):
+        # A TM bin exactly on cutoff has infinite admittance; e/Z would turn the whole table into NaN.
+        raise ValueError(
+            f"waveguide incident table: a bin of the length-{length} build falls exactly on the "
+            f"{mode_type} cutoff (f0={f0}, f_c={f_c}), where the admittance is infinite; "
+            "move f0 so the source spectrum at f_c is below about 1e-3 of its peak (#2013)")
+    # exp(j(omega*t - beta*x)): H is upstream by dx/2 and later by dt/2.
+    # The evanescent continuation is essential to a causal response at cutoff.
+    phase = np.exp(0.5j * beta * float(dx) + 1j * np.pi * freqs * float(dt))
+    h_spec = e_spec / impedance * phase
+    h_spec[0] = 0.0
+    return np.fft.irfft(e_spec, length), np.fft.irfft(h_spec, length)
+
+
 def _incident_tables(*, f_c, medium, dt, dx, dft_total_steps, t0, tau,
                      f0, waveform, mode_profile, mode_type, field_dtype):
-    # Precompute companion H waveform for TFSF-style E correction.
-    # For a forward-only wave whose E-amplitude at x_src matches the source
-    # pulse, we need h_inc(t + dt/2) at (x_src − 0.5·dx). Computed in the
-    # frequency domain: h_spec(ω) = e_spec(ω) · e^{−jβ(ω)·dx/2 − jω·dt/2} /
-    # Z_mode(ω), filtered to propagating frequencies |ω| ≥ ω_c.
-    n_steps_aux = int(dft_total_steps) if dft_total_steps > 0 else 0
-    if n_steps_aux > 1 and dt > 0.0:
-        t_arr = np.arange(n_steps_aux, dtype=np.float64) * float(dt)
-        arg_arr = (t_arr - t0) / tau
-        # Compute tables with unit amplitude; ``apply_waveguide_port_h/e``
-        # scale by ``cfg.src_amp`` at runtime so ``_reset_cfg(drive=False)``
-        # zeros both corrections together.
-        if waveform == "modulated_gaussian":
-            # Meep-style carrier-centered shape. Its low-frequency content is
-            # negligible for this configured source, so no sub-cutoff filter is
-            # applied; this eliminates the raised-cosine filter tail
-            # that drives directional leakage in the differentiated-Gaussian
-            # path. The hard ±5·width cutoff (= ±t0) matches Meep's
-            # gaussian_src_time::dipole and kills any residual early/late
-            # envelope numerics.
-            tt = t_arr - t0
-            e_inc_raw = np.cos(2.0 * np.pi * f0 * tt) * np.exp(-(arg_arr ** 2))
-            e_inc_raw = np.where(np.abs(tt) > t0, 0.0, e_inc_raw)
-        else:
-            e_inc_raw = (-2.0 * arg_arr) * np.exp(-(arg_arr ** 2))
-        e_spec_raw = np.fft.rfft(e_inc_raw)
-        freqs_spec = np.fft.rfftfreq(n_steps_aux, d=float(dt))
-        omega = 2.0 * np.pi * freqs_spec
-        propagating = omega > (2.0 * np.pi * f_c)
-        beta_arr = _compute_beta(
-            freqs_spec, f_c, medium=medium,
-            dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
-        z_mode_arr = _compute_mode_impedance(
-            freqs_spec, f_c, mode_type, medium=medium,
-            dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
-        # Bandpass-filter the source to propagating-mode content only.
-        # The raw differentiated-Gaussian spectrum spans DC → ~3·f0; in a
-        # guided structure, sub-cutoff content cannot propagate and just
-        # excites evanescent near-field if injected. A smooth raised-
-        # cosine taper across [f_c, 1.2·f_c] avoids Gibbs ringing that a
-        # hard cutoff would leave in e_inc_time.
-        #
-        # The modulated-Gaussian pulse has effectively zero DC content and
-        # its spectrum is naturally bandpassed around f₀, so the taper is
-        # skipped — the raised-cosine tail is the dominant directional
-        # leakage driver for the differentiated source.
-        if waveform == "modulated_gaussian":
-            e_spec_filt = e_spec_raw
-        else:
-            # Unreachable for waveguide ports since the #1942 refusal; kept for the causal table (#1942).
-            f_c_arr = np.full_like(freqs_spec, f_c)
-            f_taper_hi = 1.2 * f_c
-            taper_ratio = np.clip(
-                (freqs_spec - f_c_arr) / (f_taper_hi - f_c), 0.0, 1.0,
-            )
-            filt_weight = 0.5 * (1.0 - np.cos(np.pi * taper_ratio))
-            e_spec_filt = e_spec_raw * filt_weight
-        e_inc_time = np.fft.irfft(e_spec_filt, n_steps_aux)
-        # Forward wave in rfx's engineering convention exp(j(ωt − βx)):
-        # shifting from (x_src, t) to (x_src − dx/2, t + dt/2) multiplies
-        # the spectrum by exp(+jβ·dx/2 + jω·dt/2).
-        phase_shift = np.exp(+1j * beta_arr * 0.5 * float(dx)
-                             + 1j * omega * 0.5 * float(dt))
-        h_spec = np.where(
-            propagating,
-            e_spec_filt / z_mode_arr * phase_shift,
-            0.0,
-        )
-        h_inc_time = np.fft.irfft(h_spec, n_steps_aux)
-        e_inc_table = jnp.asarray(e_inc_time, dtype=field_dtype)
-        h_inc_table = jnp.asarray(h_inc_time, dtype=field_dtype)
-    else:
-        # Tables unavailable (dt=0 at init). Size-1 sentinel triggers the
-        # legacy soft-E source fallback inside apply_waveguide_port_e.
-        e_inc_table = jnp.zeros((1,), dtype=field_dtype)
-        h_inc_table = jnp.zeros((1,), dtype=field_dtype)
+    """Build a causal pulse independently of the requested recorder length."""
+    n = int(dft_total_steps)
+    if n <= 1 or dt <= 0.0:
+        # Size-1 sentinel selects the legacy source when tables are unavailable.
+        return (jnp.zeros((1,), dtype=field_dtype),
+                jnp.zeros((1,), dtype=field_dtype))
+    e, h = _converged_incident_tables(
+        f_c=f_c, medium=medium, dt=dt, dx=dx, t0=t0, tau=tau,
+        f0=f0, waveform=waveform, mode_profile=mode_profile, mode_type=mode_type)
 
-    return e_inc_table, h_inc_table
+    def table(values):
+        result = np.zeros(n, dtype=np.float64)
+        count = min(n, len(values))
+        result[:count] = values[:count]
+        return jnp.asarray(result, dtype=field_dtype)
+    return table(e), table(h)
+
+
+def incident_tables_uncut(cfg):
+    """Host E/H samples through the converged build's causal half, or no tables.
+
+    Traced configurations and the size-1 legacy sentinel are left untouched.
+    The rebuild must reproduce the tables the port applies: a config whose
+    timing fields were changed without rebuilding its tables (rfx/sparams/
+    waveguide.py copies port 0's t0 and tau to every port) raises ValueError,
+    so the record check reads "cannot judge" rather than a drive never applied.
+    """
+    import jax
+    from rfx.core.jax_utils import is_tracer
+
+    values = cfg._asdict() if hasattr(cfg, '_asdict') else vars(cfg)
+    if any(is_tracer(x) for x in jax.tree_util.tree_leaves(values)):
+        return ()
+    if (getattr(cfg, 'e_inc_table', np.zeros(1)).size <= 1
+            or getattr(cfg, 'h_inc_table', np.zeros(1)).size <= 1 or not cfg.src_amp):
+        return ()
+    tables = _converged_incident_tables(
+        f_c=cfg.f_cutoff, medium=cfg.medium, dt=cfg.dt, dx=cfg.dx,
+        t0=cfg.src_t0, tau=cfg.src_tau, f0=cfg.src_fcen,
+        waveform=cfg.waveform, mode_profile=cfg.mode_profile, mode_type=cfg.mode_type)
+    for name, uncut in zip(("e_inc_table", "h_inc_table"), tables):
+        applied = np.asarray(getattr(cfg, name))
+        count = min(len(applied), len(uncut))
+        if (not np.array_equal(np.asarray(uncut[:count], dtype=applied.dtype), applied[:count])
+                or np.any(applied[count:])):
+            raise ValueError(f"waveguide port {getattr(cfg, 'port_name', '')!r}: its {name} is not the table its "
+                             "configuration rebuilds, so its known drive beyond the record cannot be judged")
+    return tables
+
+
+def _converged_incident_tables(*, f_c, medium, dt, dx, t0, tau,
+                               f0, waveform, mode_profile, mode_type):
+    """The shared float64 build and stop rule, independent of record length."""
+    previous = None
+    for exponent in range(14, 25):
+        length = 1 << exponent
+        e, h = _incident_table_build(
+            length=length, f_c=f_c, medium=medium, dt=dt, dx=dx,
+            t0=t0, tau=tau, f0=f0, waveform=waveform,
+            mode_profile=mode_profile, mode_type=mode_type)
+        keep = length // 2
+        peak = np.max(np.abs(h))
+        tail = np.max(np.abs(h[keep - keep // 16:keep]))
+        change = (0.0 if previous is None else
+                  np.max(np.abs(h[:len(previous)] - previous)))
+        discarded = np.max(np.abs(h[keep:]))
+        if tail <= 1e-5 * peak and change <= 1e-5 * peak and discarded <= 2e-5 * peak:
+            return e[:keep].copy(), h[:keep].copy()
+        previous = h[:keep].copy()
+    bandwidth = np.sqrt(2.0) / (tau * f0)
+    raise ValueError(
+        f"waveguide incident table did not converge by L=2^24: "
+        f"f0={f0}, bandwidth={bandwidth}, f_c={f_c}. The source spectrum reaches the "
+        f"{mode_type} cutoff, where the forward wave's H decays too slowly to tabulate (a TM "
+        "admittance diverges at cutoff; a TE one at DC); raise f0 or narrow the bandwidth so "
+        "the source spectrum at f_c is below about 1e-3 of its peak (#2013)")
 
 
 def with_port_medium(cfg, medium):
@@ -1040,7 +1068,10 @@ def _compute_beta(freqs, f_cutoff, *, medium, dt=0.0, dx=0.0, _table=False):
         s_x_sq = (omega / speed) ** 2 - kc ** 2
         prop = xp.sqrt(xp.maximum(s_x_sq, 0.0))
     if _table:
-        return xp.where(freqs > f_cutoff, prop, 0.0)
+        alpha = xp.sqrt(xp.maximum(-s_x_sq, 0.0))
+        if dt > 0.0 and dx > 0.0:
+            alpha = (2.0 / dx) * xp.arcsinh(alpha * dx * 0.5)
+        return xp.where(s_x_sq >= 0, prop, -1j * alpha)
     return xp.where(s_x_sq >= 0, prop, 1j * xp.sqrt(xp.maximum(-s_x_sq, 0.0)))
 
 
@@ -1051,6 +1082,23 @@ def _compute_mode_impedance(freqs, f_cutoff, mode_type, *, medium,
     omega = 2 * xp.pi * freqs
     beta = _compute_beta(freqs, f_cutoff, medium=medium, dt=dt, dx=dx, _table=_table)
     mu, eps = MU_0 * medium.mu_r, EPS_0 * medium.eps_r
+    if _table:
+        # Continue the same impedance through cutoff, preserving complex beta.
+        if dt > 0.0 and dx > 0.0:
+            w = 2.0 / dt * np.sin(omega * dt * 0.5)
+            b = 2.0 / dx * np.sin(beta * dx * 0.5)
+        else:
+            w, b = omega, beta
+        if mode_type == "TE":
+            numerator, denominator = mu * w, b
+        elif mode_type == "TM":
+            numerator, denominator = b, eps * w
+        else:
+            raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
+        z = np.full(beta.shape, complex(np.inf), dtype=np.complex128)
+        np.divide(numerator, denominator, out=z, where=denominator != 0)
+        # Y(0) = 0: do not inject the truncated pulse's residual DC.
+        return np.where(omega == 0, complex(np.inf), z)
     safe_beta = xp.where(xp.abs(beta) > 1e-30, beta, 1e-30 * xp.ones_like(beta))
     safe_omega = xp.where(xp.abs(omega) > 1e-30, omega, 1e-30 * xp.ones_like(omega))
     if dt > 0.0 and dx > 0.0:
@@ -1061,15 +1109,15 @@ def _compute_mode_impedance(freqs, f_cutoff, mode_type, *, medium,
             z = dt * s_b / xp.maximum(eps * dx * s_w, 1e-30)
         else:
             raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
-        sentinel = (np.inf if _table else jnp.asarray(1e30, dtype=jnp.float32)) if mode_type == "TE" else 0.0
+        sentinel = jnp.asarray(1e30, dtype=jnp.float32) if mode_type == "TE" else 0.0
         return xp.where(freqs > f_cutoff, z, sentinel)
     if mode_type == "TE":
         z = omega * mu / safe_beta
     elif mode_type == "TM":
-        z = beta / (xp.maximum(omega * eps, 1e-30) if _table else safe_omega * eps)
+        z = beta / (safe_omega * eps)
     else:
         raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
-    return xp.where(freqs > f_cutoff, z, np.inf if mode_type == "TE" else 0.0) if _table else z
+    return z
 
 
 def solve_rectangular_modes(

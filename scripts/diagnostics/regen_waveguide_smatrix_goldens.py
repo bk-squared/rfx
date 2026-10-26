@@ -11,7 +11,7 @@ flux by ~5.7e-4) while leaving the ratio-normalized normalize=True invariant.
 Run from the repo root with the SAME conditions the test uses (x64 context,
 num_periods=4, the _make_wr90_sim geometry):
 
-    python scripts/diagnostics/regen_waveguide_smatrix_goldens.py
+    PYTHONPATH=$PWD python scripts/diagnostics/regen_waveguide_smatrix_goldens.py
 
 It writes the three .npy fixtures and prints the new sha256 to paste into
 _EXPECTED_SHA in tests/unit/autodiff/test_waveguide_sparam_ad.py. Only run this when the
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import argparse
 
 import numpy as np
 
@@ -30,39 +31,10 @@ try:
 except ImportError:  # older JAX
     from tests._x64_compat import enable_x64 as _enable_x64
 
-import jax.numpy as jnp
-from rfx import Simulation
-from rfx.boundaries.spec import BoundarySpec, Boundary
-
-_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "tests", "fixtures")
-_FREQS = jnp.linspace(5e9, 6.5e9, 4)
+from tests.unit.autodiff.test_waveguide_sparam_ad import _FIXTURE_DIR, _make_wr90_sim
 
 
-def _make_wr90_sim():
-    """Must stay byte-identical to tests/unit/autodiff/test_waveguide_sparam_ad.py::_make_wr90_sim."""
-    sim = Simulation(
-        freq_max=10e9,
-        domain=(0.12, 0.04, 0.02),
-        dx=0.003,
-        boundary=BoundarySpec(
-            x="cpml",
-            y=Boundary(lo="pec", hi="pec"),
-            z=Boundary(lo="pec", hi="pec"),
-        ),
-        cpml_layers=8,
-    )
-    sim.add_waveguide_port(
-        0.010, direction="+x", mode=(1, 0), mode_type="TE",
-        freqs=_FREQS, f0=6e9, bandwidth=0.5, name="left",
-    )
-    sim.add_waveguide_port(
-        0.090, direction="-x", mode=(1, 0), mode_type="TE",
-        freqs=_FREQS, f0=6e9, bandwidth=0.5, name="right",
-    )
-    return sim
-
-
-def main() -> None:
+def main(*, check=False) -> None:
     modes = [("false", False), ("true", True), ("flux", "flux")]
     with _enable_x64(True):
         for name, normalize in modes:
@@ -75,12 +47,20 @@ def main() -> None:
             s = np.array(res.s_params, dtype=np.complex128)
             path = os.path.abspath(os.path.join(_FIXTURE_DIR,
                                    f"golden_wg_smatrix_normalize_{name}.npy"))
-            np.save(path, s)
+            if check:
+                expected = np.load(path)
+                np.testing.assert_allclose(s, expected, rtol=0., atol=1e-15)
+                print(f"{name}: max absolute difference {np.max(np.abs(s - expected)):.17g}")
+            else:
+                np.save(path, s)
             sha = hashlib.sha256(s.tobytes()).hexdigest()
             print(f'        "{name}": "{sha}",   # shape {s.shape}')
-    print("\nPaste the above into _EXPECTED_SHA in "
-          "tests/unit/autodiff/test_waveguide_sparam_ad.py")
+    if not check:
+        print("\nPaste the above into _EXPECTED_SHA in "
+              "tests/unit/autodiff/test_waveguide_sparam_ad.py")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='compare to 1e-15 without writing fixtures')
+    main(check=parser.parse_args().check)

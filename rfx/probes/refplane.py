@@ -66,6 +66,8 @@ import numpy as np
 
 import jax.numpy as jnp
 
+from rfx.measurement.phasors import exp_j
+
 _COMP_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _H_OF_AXIS = {0: "hx", 1: "hy", 2: "hz"}
 _AXIS_OF_NAME = {"x": 0, "y": 1, "z": 2}
@@ -611,7 +613,7 @@ def decompose_wire_s_matrix_with_reference_planes(
             ij = refplane_centered_current(
                 plane_im[j, j, 0], plane_ip[j, j, 0], freqs, dt)
             out_j, _ = refplane_split(vj, ij, zc[j], outboard_signs[j])
-            a_port = (out_j * np.exp(+1j * beta[j] * d_j)
+            a_port = (out_j * exp_j(beta[j], d_j)
                       / np.sqrt(zc[j].real))
             safe_a = np.where(np.abs(a_port) > 0.0, a_port,
                               np.ones_like(a_port))
@@ -625,7 +627,7 @@ def decompose_wire_s_matrix_with_reference_planes(
                 out_i, in_i = refplane_split(vi_, ii, zc[i],
                                              outboard_signs[i])
                 diagnostics["plane_waves"][(j, i, 0)] = (out_i, in_i)
-                b_port = (in_i * np.exp(-1j * beta[i] * d_i)
+                b_port = (in_i * exp_j(beta[i], d_i, unit=-1j)
                           / np.sqrt(zc[i].real))
                 S[i, j, :] = (b_port / safe_a).astype(S.dtype)
     if return_line_diagnostics:

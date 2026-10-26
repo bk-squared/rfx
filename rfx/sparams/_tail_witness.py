@@ -112,9 +112,11 @@ class TailShareWitness(NamedTuple):
     pole_contributions: dict | None = None
     pole_rule: str = _POLE_RULE
     skipped_records: tuple = ()
+    drive_share_per_bin: tuple | np.ndarray = ()
 
 
-def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None, _record_results=None):
+def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
+                       _record_results=None, known_drives=None, n_record=None):
     """Judge per-bin pole tails by agreement between two source-free windows.
 
     ``rounding_groups`` names co-located same-kind records whose peaks share
@@ -139,20 +141,35 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
     share = np.zeros(bins.size)
     error = np.zeros(bins.size)
     contributions = {}
+    drive_share = np.zeros(bins.size)
 
     def unavailable(status, reason):
-        return TailShareWitness(float('nan'), share, float(bins[np.argmax(share)]) if bins.size and np.any(share) else float('nan'), status, reason, error, contributions, skipped_records=skipped)
+        return TailShareWitness(float('nan'), share + drive_share, float(bins[np.argmax(share + drive_share)]) if bins.size and np.any(share + drive_share) else float('nan'), status, reason, error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share)
 
     if records and len(skipped) == len(records):
         return unavailable('undetermined', 'every record is rounding only: ' + ', '.join(row['name'] for row in skipped))
     if not records or not bins.size:
         return unavailable('absent', 'no records or no read bins')
-    if source_end is None or is_tracer(source_end):
-        return unavailable('undetermined', 'source end is unavailable')
     if dt is None or freq_max is None or is_tracer(dt) or is_tracer(freq_max):
         return unavailable('undetermined', 'dt or identification freq_max is unavailable')
     if not np.isfinite(dt) or dt <= 0 or not np.isfinite(freq_max) or freq_max <= 0 or not np.isfinite(bins).all():
         return unavailable('undetermined', 'invalid time step, read bins, or identification freq_max')
+    if isinstance(known_drives, ValueError):
+        reason, known_drives = str(known_drives), ()
+        return unavailable('undetermined', reason)
+    if known_drives is not None:
+        from rfx.measurement.record_end import drive_tail_share
+        known_drives = tuple(known_drives)
+        if n_record is None or is_tracer(n_record) or any(is_tracer(d) for d in known_drives):
+            return unavailable('undetermined', 'known drives or record length are unavailable or traced')
+        try:
+            drive_share = drive_tail_share(known_drives, dt, n_record, bins)
+        except (ValueError, FloatingPointError) as exc:
+            return unavailable('undetermined', str(exc))
+        if not np.isfinite(drive_share).all():
+            return unavailable('undetermined', 'non-finite known drive tail or zero in-record DFT')
+    if source_end is None or is_tracer(source_end):
+        return unavailable('undetermined', 'source end is unavailable')
     reasons = []
     zero_reasons = []
     groups = {}
@@ -259,10 +276,11 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
             reasons.append(f"{label}: {exc}")
     if reasons:
         return unavailable('undetermined', '; '.join(reasons))
+    share = share + drive_share
     worst = int(np.argmax(share))
     db = float(20 * np.log10(max(share[worst], np.finfo(float).tiny)))
     return TailShareWitness(db, share, float(bins[worst]),
-                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped)
+                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share)
 
 
 def result_read_bins(result):
