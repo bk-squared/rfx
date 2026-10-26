@@ -6,7 +6,7 @@ Two gaps this closes:
 1. ``test_nonlinear.py`` validates the single-cell ADE update formula
    (E^{n+1}=E^n/(1+factor)) and energy-boundedness via the MANUAL update loop, but nothing
    asserted that the public ``Simulation.run()`` API actually threads χ³ through to
-   ``apply_kerr_ade`` (simulation.py). If run() silently dropped Kerr (as forward() did),
+   ``apply_kerr_ade`` (rfx/stepping/kerr.py). If run() silently dropped Kerr (as forward() did),
    every existing test would still pass. This gates that wiring.
 
 2. ``forward()`` (the differentiable path) once discarded ``kerr_chi3`` from

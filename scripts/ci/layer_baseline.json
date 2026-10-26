@@ -152,24 +152,6 @@
         "update_floquet_dft"
       ]
     },
-    "rfx/materials/debye.py": {
-      "S": [
-        "update_e_debye"
-      ],
-      "M": []
-    },
-    "rfx/materials/lorentz.py": {
-      "S": [
-        "update_e_lorentz"
-      ],
-      "M": []
-    },
-    "rfx/materials/nonlinear.py": {
-      "S": [
-        "apply_kerr_ade"
-      ],
-      "M": []
-    },
     "rfx/probes/fresnel.py": {
       "S": [],
       "M": [
