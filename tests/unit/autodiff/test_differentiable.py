@@ -20,11 +20,6 @@ from rfx.simulation import make_source, make_probe, run
 pytestmark = pytest.mark.gpu
 
 
-@pytest.mark.xfail(
-    jax.default_backend() == "gpu", strict=True, raises=AssertionError,
-    reason=("#2071 on GPU cell (cx+1, cy, cz) AD differs from the float32 central "
-            "difference by 6.8 % since closed boxes take the standard update "
-            "(RTX 4090, ci-gpu-suite-2610261420-db17dfab); cause undetermined"))
 def test_gradient_matches_finite_diff():
     """AD gradient w.r.t. eps_r matches central finite difference."""
     grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
@@ -47,8 +42,11 @@ def test_gradient_matches_finite_diff():
     # AD gradient
     ad_grad = jax.grad(objective)(eps_r)
 
-    # Central FD at cells between source and probe
-    h = 1e-4
+    # Central FD at cells between source and probe. Its float32 rounding error is about
+    # eps*|J|/h (eps = 2**-24, J ~ 8.7e-4): 0.54 % of the smallest tested gradient
+    # (~9.5e-6) at h = 1e-3, 5.4 % at h = 1e-4, i.e. on the 5 % bar (#2071; rfx-archive
+    # records/20261027-gpu-fd-comparator-2071).
+    h = 1e-3
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     test_cells = [
         (cx, cy, cz),
