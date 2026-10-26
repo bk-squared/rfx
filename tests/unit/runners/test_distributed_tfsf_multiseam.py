@@ -1,4 +1,4 @@
-"""Second predeclared multi-seam attempt; no production admission changes.
+"""Closed-box TF/SF multi-seam validation on up to four devices.
 
 Design: rfx-archive 4b8992b7e, 20261027-tfsf-multiseam-attempt2-PREDECLARE.md.
 
@@ -305,6 +305,24 @@ def compare_far_field(one, many):
                 passes=bool(np.all(delta <= 1e-4 * peak)))
 
 
+def measure_probes(scene, one, many):
+    """P: probe difference relative to the one-device record peak."""
+    a, b = np.asarray(one.time_series), np.asarray(many.time_series)
+    assert a.shape == b.shape == (scene.steps, len(scene.sim._probes))
+    delta = difference(a, b)
+    peak_by_step = np.abs(a).max(axis=1)
+    peak_step = int(np.argmax(peak_by_step)) + 1
+    peak = float(peak_by_step.max())
+    max_abs = float(delta.max())
+    precondition = bool(peak > 0 and 50 < peak_step < scene.steps)
+    report = dict(max_abs=max_abs, peak=peak, peak_step=peak_step,
+                  peak_by_step=peak_by_step.tolist(), bar=1e-5 * peak,
+                  relative_difference=max_abs / peak if peak else None,
+                  precondition=precondition,
+                  passes=bool(precondition and max_abs <= 1e-5 * peak))
+    return report, delta
+
+
 def measure_box(scene, count):
     lines = [{}, {}]
     one = run_scene(scene, 1, line_records=lines[0])
@@ -322,19 +340,7 @@ def measure_box(scene, count):
         if at is not None:
             first.append(dict(step=at[0] + 1, component=c, node=at[1:], stage="completed grid step"))
         report["grid_diagnostics"][c] = dict(delta=delta.tolist(), peak=peak.tolist(), first_difference=at)
-    a, b = np.asarray(one.time_series), np.asarray(many.time_series)
-    assert a.shape == b.shape == (scene.steps, len(scene.sim._probes))
-    delta = difference(a, b)
-    peak_by_step = np.abs(a).max(axis=1)
-    peak_step = int(np.argmax(peak_by_step)) + 1
-    peak = float(peak_by_step.max())
-    max_abs = float(delta.max())
-    precondition = bool(peak > 0 and 50 < peak_step < scene.steps)
-    report["P"] = dict(max_abs=max_abs, peak=peak, peak_step=peak_step,
-                       peak_by_step=peak_by_step.tolist(), bar=1e-5 * peak,
-                       relative_difference=max_abs / peak if peak else None,
-                       precondition=precondition,
-                       passes=bool(precondition and max_abs <= 1e-5 * peak))
+    report["P"], delta = measure_probes(scene, one, many)
     for p, probe in enumerate(scene.sim._probes):
         report["probes"][str(p)] = dict(component=probe.component,
                                          delta=delta[:, p].tolist())
@@ -453,32 +459,45 @@ def require_devices(count):
 
 
 @pytest.mark.parametrize("name", ["B2", "S1"])
-def test_comparator_two_devices(monkeypatch, name):
+def test_comparator_two_devices(name):
     require_devices(2)
-    monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
     builder = (lambda **kw: build_box("B2", 2, **kw)) if name == "B2" else (lambda **kw: build_s1(2, **kw))
     assert_box_bars(measure_box_record(builder, 2))
 
 
 @pytest.mark.parametrize("count", [3, 4])
-def test_s1_multiseam(monkeypatch, count):
+def test_s1_multiseam(count):
     require_devices(count)
-    monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
     assert_box_bars(measure_box_record(lambda **kw: build_s1(count, **kw), count))
 
 
-@pytest.mark.parametrize("count,x_extra_cells", [(3, 0), (4, 6)], ids=["F4-3", "S4-4"])
-def test_sphere_multiseam(monkeypatch, count, x_extra_cells):
+@pytest.mark.parametrize("count", [3, 4])
+def test_s1_forward_parity(count):
     require_devices(count)
-    monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
+    scene = build_s1(count)
+    with redirect_stdout(sys.stderr):
+        one = scene.sim.forward(n_steps=scene.steps, checkpoint=False)
+        many = scene.sim.forward(n_steps=scene.steps, checkpoint=False,
+                                 distributed=True, devices=jax.devices("cpu")[:count])
+        jax.block_until_ready(many.time_series)
+        jax.effects_barrier()
+    report, _ = measure_probes(scene, one, many)
+    emit(dict(scene="S1", entry="forward", devices=count, steps=scene.steps,
+              P={k: v for k, v in report.items() if k != "peak_by_step"}))
+    assert report["precondition"], report
+    assert report["passes"], report
+
+
+@pytest.mark.parametrize("count,x_extra_cells", [(3, 0), (4, 6)], ids=["F4-3", "S4-4"])
+def test_sphere_multiseam(count, x_extra_cells):
+    require_devices(count)
     report = measure_sphere(build_sphere(count, x_extra_cells=x_extra_cells), count)
     assert report["one_error_db"] <= 1.0, report
     assert report["multi_error_db"] <= 1.0, report
     assert report["far_field"]["passes"], report
 
 
-def test_b2_right_hx_ghost(monkeypatch):
+def test_b2_right_hx_ghost():
     require_devices(3)
-    monkeypatch.setattr("rfx.runners._admission.SLAB_TFSF_MAX_DEVICES", 4)
     report = measure_ghost(build_box("B2", 3))
     assert report["passes"], report

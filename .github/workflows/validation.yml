@@ -291,7 +291,25 @@ jobs:
           tests/unit/runners/test_distributed_graded_derivatives_parity.py
           tests/unit/runners/test_distributed_uniform_directivity_parity.py
           tests/unit/runners/test_distributed_tfsf_slab.py
-          tests/unit/runners/test_distributed.py::TestDistributedSources::test_closed_tfsf_on_three_devices_refused_by_name
+
+      - name: Run four-device closed-box TF/SF cases
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=4"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_tfsf_multiseam.py
+
+      - name: Run five-device closed-box TF/SF refusal cases
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=5"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed.py::TestDistributedSources::test_closed_tfsf_on_five_devices_refused_by_name
+          tests/unit/runners/test_distributed_admission_refusals.py::test_closed_box_device_limit_without_mesh
 
       - name: Run three-device graded record cases
         if: ${{ !cancelled() }}
