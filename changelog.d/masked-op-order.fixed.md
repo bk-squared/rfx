@@ -2,4 +2,4 @@
 
 - The domain-face PEC write now runs after the conductor masks and the resistive-sheet update on every solver path, so a sheet ending on a PEC wall no longer overwrites the wall's zero. In a closed PEC box with a sheet touching two walls the strongest mode's Q moves by 2×10⁻⁵; resonance shifts stay below the estimator's resolution.
 - On one RTX 3090 at 100 M cells a step costs 18.3 ms instead of 38.0 ms on a CPML board with a PEC trace, 15.3 ms instead of 47.0 ms in a closed PEC box with a PEC-sheet trace, and 19.3 ms instead of 35.3 ms with a resistive-sheet trace. Boards with `conformal_pec=True` or `subpixel_smoothing="kottke_pec"` are about twice as fast.
-- Everything else is bit-identical: fields, S-parameters and gradients on CPU and GPU, uniform, graded, multi-device and subgridded paths.
+- Everything else is bit-identical on CPU and GPU (fields, S-parameters and gradients on uniform, graded, multi-device and subgridded paths), except a `vmap` design gradient on CPU, which moves by about 1×10⁻⁶ of its peak.
