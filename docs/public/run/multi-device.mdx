@@ -1,6 +1,6 @@
 ---
 title: Multi-device runs
-description: Splitting one model over several devices with run(devices=) and forward(distributed=True), what falls back to one device, and the outer-jit rule.
+description: Splitting one model over several devices with run(devices=) and forward(distributed=True), what is refused, and the outer-jit rule.
 sidebar:
   order: 3
 ---
@@ -75,10 +75,11 @@ What to know:
   step.
 - Splitting is along x only. A domain whose x size does not divide evenly is
   padded.
-- A plane wave or a waveguide port makes both calls run on one device, on
-  either mesh, with the warning "Falling back to single-device execution with
-  the same arguments". The result is the one you asked for; its peak memory is
-  that of a one-device run.
+- A plane wave runs split over the devices only as a closed box
+  (`closed_box=True`) at normal incidence, on a uniform mesh and on exactly 2
+  devices; its memory is then divided like any other model. Every other plane
+  wave and every waveguide port is refused by name (table below); nothing runs
+  on one device in place of the request.
 
 ### The outer-jit rule
 
@@ -110,7 +111,7 @@ host devices, in every pull request:
 ## Inputs rfx refuses
 
 Every input a multi-device path does not implement is refused before the first
-step, or runs on one device with the warning above. These are refused:
+step. These are refused:
 
 | Input | Path | Instead |
 |---|---|---|
@@ -119,7 +120,10 @@ step, or runs on one device with the warning above. These are refused:
 | a passive port (`excite=False`) | uniform mesh | a graded mesh, or one device |
 | a wire port with `reference_plane_cells` or an explicit radius | all multi-device | one device |
 | a PMC face with a wire port or lumped-port S, or, on a graded mesh, with any port or frequency-domain record | all multi-device | one device |
-| a plane wave with `closed_box` or a `CustomWaveform` | all multi-device | one device |
+| a plane wave that is not a closed box: an open slab, oblique incidence (Bloch line or Method B), a `face_record` replay | uniform mesh | one device |
+| a closed-box plane wave at oblique incidence (`theta_deg` or `phi_deg` not 0), or on 3 or more devices | uniform mesh | normal incidence on 2 devices, or one device |
+| any plane wave | graded mesh | one device |
+| a waveguide port | all multi-device | one device |
 | a Kerr material, a surface-impedance sheet, `add_refinement` | all multi-device | one device |
 | `precision` other than float32, `stencil_order=4`, UPML | all multi-device | float32, second order, CPML |
 | `until_decay`, `checkpoint`, `subpixel_smoothing`, `conformal_pec`, `ringdown` | `run(devices=...)` | a fixed `n_steps`; one device for the rest |
