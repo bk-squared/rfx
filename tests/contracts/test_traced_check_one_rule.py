@@ -1,6 +1,7 @@
 """#1830: the eleven real check closures obey one concrete/traced rule."""
 
 import ast
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -540,3 +541,67 @@ def test_faked_mps_forward_requires_the_concrete_branch(no_callbacks, feature):
     )
     jax.block_until_ready(result.time_series)
     assert np.isfinite(result.time_series).all()
+
+
+@pytest.fixture
+def gpu_without_cpu(monkeypatch):
+    # JAX_PLATFORMS=cuda: the GPU backend runs callbacks, but this process has no CPU device.
+    monkeypatch.setattr(_traced_check, "backend_class", lambda: backend_class("gpu"))
+
+    def no_cpu_device():
+        raise RuntimeError("Unknown backend cpu")
+
+    monkeypatch.setattr(_traced_check, "host_cpu_device", no_cpu_device)
+
+
+def _no_cpu_message(feature, check):
+    return (
+        f"{feature}: {check}: a host check inside compiled code runs on this "
+        "process's CPU device, and JAX has none (JAX_PLATFORMS="
+        f"{os.environ.get('JAX_PLATFORMS', '')!r}); add cpu, e.g. JAX_PLATFORMS=cuda,cpu"
+    )
+
+
+@pytest.mark.parametrize("site", INPUTS)
+def test_each_owner_refuses_traced_operands_without_a_cpu_device(gpu_without_cpu, site):
+    with pytest.raises(RuntimeError) as caught:
+        jax.make_jaxpr(lambda x: invoke(site, x))(INPUTS[site])
+    assert str(caught.value) == _no_cpu_message(*NAMES[site])
+
+
+def test_traced_forward_without_a_cpu_device_refuses_before_the_time_loop(
+    monkeypatch, gpu_without_cpu
+):
+    # rf-heating lost a 524,501-step GPU pass to this: the callback failed only after the loop.
+    sim = _forward_scene("Debye")
+    eps = jnp.ones(sim._build_grid().shape, jnp.float32)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("the time loop was traced before the refusal")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    with pytest.raises(RuntimeError) as caught:
+        jax.grad(
+            lambda e: jnp.sum(
+                sim.forward(
+                    n_steps=4, eps_override=e, skip_preflight=True, checkpoint=False
+                ).time_series
+            )
+        )(eps)
+    assert str(caught.value) == _no_cpu_message("closed_box TFSF", "vacuum faces")
+
+
+def test_ringdown_refused_at_forward_admission_without_a_cpu_device(
+    monkeypatch, gpu_without_cpu
+):
+    from rfx.ringdown import RingdownSpec
+
+    sim = Simulation(freq_max=15e9, domain=(0.008,) * 3, dx=0.001, boundary="pec")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("ringdown admission started a solve")
+
+    monkeypatch.setattr(sim, "_build_grid", forbidden)
+    with pytest.raises(RuntimeError) as caught:
+        sim.forward(n_steps=4, ringdown=RingdownSpec())
+    assert str(caught.value) == _no_cpu_message("forward(ringdown=)", "pole identification")

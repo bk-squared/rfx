@@ -857,10 +857,11 @@ def refuse_run_lane(lane: str, n_wire_ports: int) -> None:
 def refuse_forward_request(sim, spec, *, distributed, emit_time_series) -> None:
     """Raise for every ``forward(ringdown=...)`` not covered: :func:`refuse_run_request`'s checks,
     ``distributed=True``, ``emit_time_series=False``, and a backend without host callbacks."""
-    from rfx._traced_check import backend_class
+    from rfx._traced_check import backend_class, require_host_callbacks
     if not (backend := backend_class()).host_callbacks:
         raise NotImplementedError(
             f"forward(ringdown=): pole identification: this backend ({backend.name}) cannot run host code inside compiled code")
+    require_host_callbacks("forward(ringdown=)", "pole identification")
     if not isinstance(spec, RingdownSpec):
         raise TypeError(
             f"ringdown= takes a rfx.ringdown.RingdownSpec, got {type(spec).__name__}")
