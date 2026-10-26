@@ -287,7 +287,7 @@ reported, not gated.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
-Tracker: #1976
+Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
 
 On a passive microstrip, `compute_msl_s_matrix(...)` can return S whose column
 power is above 1 on nearly every bin. On a synthetic board with a 0.3 mm
@@ -308,7 +308,11 @@ every face the returned power falls to the noise level (+1.1×10⁻⁴), at 1.26
 times the cells of the 8-layer run. Sampling E and H from one absorber profile
 at their own Yee positions lowers the 8-layer excess to 0.72 of its size and
 does not remove it. The absorber depth matters more than the E/H profile
-offset. Which mechanism the depth acts on is not measured. Not measured either:
+offset. The returned power follows the strip, not the domain: moving the side
+absorbers 6 mm farther from the strip ends changes it by at most 1.3 %, and its
+swing over frequency has the strip's one-way transit time (within 3 %). Whether
+the thin top absorber reflects the line's near field or is not passive for it
+is not measured. Not measured either:
 16 layers on the top face alone, other substrates and air heights, and how the
 balance moves with the mesh.
 
