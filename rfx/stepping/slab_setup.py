@@ -447,9 +447,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         cells = uniform_from_cut(pec_mask, layout, mesh, outside=False)
         masks = uniform_apply(lambda a: realized_pec_edge_masks(a), cells, mesh=mesh, row_count=layout.nx_local + 1)
         pec_mask = jax.tree.map(lambda a: product_rows(a, layout, mesh, 'pec_edge'), masks)
-    # select_step routes any PMC face to the legacy step, so the wrapped H
-    # update carries no magnetic ghost factors.
-    inv = dict(magnetic_factors=(None, None, None), inv_dx=cut(grid.inv_dx, layout, 'inv_dx', mesh=mesh),
+    inv = dict(inv_dx=cut(grid.inv_dx, layout, 'inv_dx', mesh=mesh),
         inv_dx_h=cut(grid.inv_dx_h, layout, 'inv_dx_h', mesh=mesh), dx_arr=cut(grid.dx_arr, layout, 'width', mesh=mesh),
         drives=drive_layout([(s.i, s.j, s.k, s.component) for s in sources], waves.dtype),
         probe_table=graded_probe_table([(p.i, p.j, p.k, p.component) for p in probes], grid.shape, dtype=zeros.dtype),

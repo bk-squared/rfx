@@ -112,9 +112,8 @@ def test_pmc_high_ghost_with_transverse_upml(axis):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize('graded,devices', ((False, 1), (False, 2), (True, 1), (True, 2)))
-def test_nonzero_initial_pmc_high_ghost_is_positive_zero(monkeypatch, graded, devices):
-    """The realized row must clear any carry, including a negative ghost."""
+def seeded_run(monkeypatch, graded, devices):
+    """One step from whole arrays seeded to hy = +7, hz = -7 and ez = 1."""
     import jax.numpy as jnp
 
     original_scan = jax.lax.scan
@@ -129,22 +128,47 @@ def test_nonzero_initial_pmc_high_ghost_is_positive_zero(monkeypatch, graded, de
                 seeded.append(value.hy.shape)
                 # Seed whole H arrays so this covers physical ghosts even in
                 # packed slabs, without using production slab/index helpers.
+                # Ez = 1 gives the high ghost Hy a nonzero x curl, so only its
+                # update coefficient or inverse spacing can hold it.
                 return value._replace(hy=jnp.full_like(value.hy, 7.),
-                                      hz=jnp.full_like(value.hz, -7.))
+                                      hz=jnp.full_like(value.hz, -7.),
+                                      ez=jnp.ones_like(value.ez))
             return value
 
         initial = jax.tree_util.tree_map(seed, initial, is_leaf=is_state)
         return original_scan(function, initial, *args, **kwargs)
 
-    monkeypatch.setattr(jax.lax, 'scan', scan)
-    result = scene(graded=graded).run(n_steps=1, devices=jax.devices('cpu')[:devices],
-                                    compute_s_params=False, skip_preflight=True)
+    with monkeypatch.context() as patched:
+        patched.setattr(jax.lax, 'scan', scan)
+        result = scene(graded=graded).run(n_steps=1, devices=jax.devices('cpu')[:devices],
+                                        compute_s_params=False, skip_preflight=True)
     assert seeded, 'initial H carry was not injected'
+    jax.clear_caches()
+    return {c: np.asarray(getattr(result.state, c)) for c in FIELDS}
+
+
+@pytest.mark.parametrize('devices', (1, 2))
+def test_nonzero_initial_pmc_high_ghost_is_positive_zero(monkeypatch, devices):
+    """Uniform: the realized row must clear any carry, including a negative ghost."""
+    state = seeded_run(monkeypatch, False, devices)
     for component in ('hy', 'hz'):
-        ghost = np.asarray(getattr(result.state, component))[-1]
+        ghost = state[component][-1]
         assert np.count_nonzero(ghost.view(np.uint32)) == 0, (
             f'{component}: nonzero initial high ghost must become exactly +0.0')
-    jax.clear_caches()
+
+
+@pytest.mark.parametrize('devices', (1, 2))
+def test_graded_pmc_high_ghost_is_held(monkeypatch, devices):
+    """Graded: the zero high inverse H spacing holds the ghost at its value.
+
+    Physical runs start it at zero and keep it there (check_ghosts above); the
+    image read cancels a zero ghost exactly.
+    """
+    state = seeded_run(monkeypatch, True, devices)
+    for component, value in (('hy', 7.), ('hz', -7.)):
+        ghost = state[component][-1]
+        assert np.array_equal(ghost.view(np.uint32), np.full_like(ghost, value).view(np.uint32)), (
+            f'{component}: graded high ghost must keep its initial value exactly')
 
 
 def test_pmc_high_factors_match_independent_reference():

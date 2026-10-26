@@ -256,7 +256,6 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
 def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx_h: jnp.ndarray, inv_dy_h: jnp.ndarray, inv_dz_h: jnp.ndarray,
                 *, cell_sizes=None, periodic=(False, False, False),
-                magnetic_factors=(None, None, None),
                 ) -> FDTDState:
     """H update for non-uniform Yee grid.
 
@@ -308,9 +307,6 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
     hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
     hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
-
-    from rfx.boundaries.pmc import magnetic_update_fields
-    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
