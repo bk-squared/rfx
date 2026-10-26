@@ -624,3 +624,13 @@ def _conductor_view(record, conductors):
     # object includes assembly bookkeeping and lane-specific grid types.
     object.__setattr__(record, '_conductors', conductors)
     return record
+
+
+def early_run_record(sim, root, lane):
+    """ADI/subgrid record timing remains at assembly, as before this move."""
+    if lane == "run_uniform":
+        return None
+    from rfx.realized_geometry import record_from_assembly
+    return record_from_assembly(sim, root.grid, root.materials, root.pec_cells,
+        root.sheets, root.wires, list(root.geometry_masks.items()),
+        list(root.assembly_entries), lane=lane, conductors=root)

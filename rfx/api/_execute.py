@@ -18,15 +18,14 @@ from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
 from rfx.api._gradient_witness import with_conductivity_record
-from rfx.preflight._impl import run_preflight_gate
+from rfx.preflight._impl import auto_preflight, run_preflight_gate
 from rfx._diagnostic_transport import merge_diagnostics
 
 import functools
 import math
 
 from rfx import _realized, _grid_metric
-from rfx.model import conductors as _conductors, design_box_window
-from rfx.model.overrides import apply_material_overrides
+from rfx.model import apply_material_overrides, conductors as _conductors, design_box_window
 
 import jax
 import jax.numpy as jnp
@@ -34,6 +33,7 @@ import numpy as np
 
 from rfx.runners._admission import admit_traced_run, refuse_forward_smoothing
 from rfx.runners._exchange_interval import validate_exchange_interval
+from rfx.runners.nonuniform import bind_solve_call
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
 
 
@@ -103,7 +103,7 @@ class _ExecuteMixin:
         can never reach an unsupported runner even if a per-path fence is
         missed. Magnetic images require a second-order kernel.
         """
-        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        from rfx.boundaries import refuse_waveguide_pmc
         refuse_waveguide_pmc(self)
         magnetic_faces = sorted(self._boundary_spec.pmc_faces())
         if getattr(self, "_stencil_order", 2) != 4:
@@ -593,7 +593,7 @@ class _ExecuteMixin:
         prepare=False, distributed=False, tfsf_material_overrides=(),
     ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
+        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
@@ -749,7 +749,7 @@ class _ExecuteMixin:
         if host.shape != expected:
             raise ValueError(f"local override must have grid shape {expected}; got {host.shape}")
 
-        from rfx.stepping.slab import Slab, Fill, cut
+        from rfx.stepping import Slab, Fill, cut
         return cut(host, Slab(expected[0], sharding.mesh.size, 0),
                    Fill(pad_value, pad_value), mesh=sharding.mesh)
 
@@ -1699,7 +1699,7 @@ class _ExecuteMixin:
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
             )
-            _nu_fwd_call, _nu_grid = _conductors.bind_solve_call(_solve_assembly, _nu_fwd_call)
+            _nu_fwd_call, _nu_grid = bind_solve_call(_solve_assembly, _nu_fwd_call)
             if ringdown is None:
                 result = _nu_fwd_call()
             else:
@@ -2232,7 +2232,7 @@ class _ExecuteMixin:
                 radiated_flux_box=radiated_flux_box,
                 flux_env_checks=flux_env_checks,
             )
-            _nu_call, _nu_grid = _conductors.bind_solve_call(_solve_assembly, _nu_call)
+            _nu_call, _nu_grid = bind_solve_call(_solve_assembly, _nu_call)
             if ringdown is None:
                 _res = _nu_call()
             elif until_identified:
@@ -2261,8 +2261,8 @@ class _ExecuteMixin:
 
         conductors, grid, assembly_inputs, _run_sheet_specs, _run_pec_sheets, _run_pec_wires = _conductors.uniform_solve_inputs(_solve_assembly)
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembly_inputs
-        from rfx.realized_geometry import attach_record
-        geometry_record = _conductors.early_run_record(self, conductors, plan.lane)
+        from rfx.realized_geometry import attach_record, early_run_record
+        geometry_record = early_run_record(self, conductors, plan.lane)
 
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets

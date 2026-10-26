@@ -6,8 +6,9 @@ realized-model object follow (plan: rfx-archive rfx/plans/20261004-s1-realized-m
 
 # The conductor layer's interface to the five large callers (2.0 layer rule): the
 # assembly and stage entry points they call. Preflight reporting, run-record timing and
-# solve binding (auto_preflight, early_run_record, bind_solve_call) are not model assembly
-# and stay out until they move to their own layer.
+# solve binding are not model assembly and live outside it: auto_preflight in
+# rfx.preflight._impl, early_run_record in rfx.realized_geometry, bind_solve_call in
+# rfx.runners.nonuniform.
 from rfx.model.conductors import (
     admit_adi_sources,
     distributed_kernel_inputs,
@@ -58,6 +59,9 @@ from rfx.model.occupancy import (
     with_edge_keep,
     with_graded_edge_keep,
 )
+from rfx.model.overrides import (
+    apply_material_overrides,
+)
 from rfx.model.source_coefficients import (
     current_source_samples,
     source_table,
@@ -85,6 +89,7 @@ __all__ = [
     "admit_adi_sources",
     "admit_graded_profiles",
     "admit_thin_conductor",
+    "apply_material_overrides",
     "C0_LOCAL",
     "current_source_samples",
     "cutoff_frequency",

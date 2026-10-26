@@ -16,14 +16,7 @@
       "D2": []
     },
     "rfx/api/_execute.py": {
-      "I": [
-        "rfx.boundaries.pmc:refuse_waveguide_pmc",
-        "rfx.model.conductors:auto_preflight",
-        "rfx.model.conductors:bind_solve_call",
-        "rfx.model.conductors:early_run_record",
-        "rfx.model.overrides:apply_material_overrides",
-        "rfx.stepping.slab:cut"
-      ],
+      "I": [],
       "S": [],
       "M": [],
       "A": [],

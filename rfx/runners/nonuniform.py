@@ -1392,3 +1392,14 @@ def build_flux_monitor_cfgs_nu(sim, grid, sizing_n):
             )
 
     return flux_monitor_objs
+
+
+def bind_solve_call(assembly, call):
+    """Consume a graded solve before ring-down adds internal probes."""
+    from functools import partial
+    root = assembly.take()
+    return partial(
+        call,
+        conductors=root,
+        diagnostics=assembly.diagnostics,
+    ), root.grid
