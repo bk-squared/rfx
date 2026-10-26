@@ -446,6 +446,19 @@ def test_per_component_conductivity_refused():
         resolve_waveguide_section_medium([cfg],grid,materials,{},())
 
 
+
+@pytest.mark.parametrize('field',['eps_r','mu_r'])
+def test_per_component_permittivity_refused_by_name(field):
+    """The shared operand list does not classify per-component leaves; the port names the field instead."""
+    from rfx.boundaries.features import resolve_waveguide_section_medium
+    from rfx.core.yee import MaterialArrays
+    sim=guide();grid=sim._build_realized_grid();entry=sim._waveguide_ports[0]
+    cfg=sim._build_waveguide_port_config(entry,grid,entry.freqs,2)
+    one=jnp.ones(grid.shape)
+    fields=dict(eps_r=one,sigma=jnp.zeros(grid.shape),mu_r=one);fields[field]=(one,one,one)
+    with pytest.raises(ValueError,match=f'per-component {field} is unsupported'):
+        resolve_waveguide_section_medium([cfg],grid,MaterialArrays(**fields),{},())
+
 @pytest.mark.parametrize('graded,normalize,explicit_reference',[
     (False,True,False),(False,'flux',False),(True,True,False),
     (True,'flux',False),(False,'flux',True)])

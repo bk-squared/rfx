@@ -380,9 +380,14 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     # sheets, films, lumped elements and wall-derived tensors are not judged here.
     scalar = ("materials.eps_r", "materials.sigma", "materials.mu_r")
     updates_scalar = ("debye", "lorentz", "kerr_chi3", "pec_mask", "pec_occupancy")
+    # The shared list does not classify per-component material leaves: enumerate a
+    # scalar view and judge those components below (sigma) or refuse them (eps_r, mu_r).
+    split = tuple(f for f in ("eps_r", "sigma", "mu_r")
+                  if isinstance(getattr(materials, f), (tuple, list)))
+    view = materials._replace(**{f: jnp.zeros(()) for f in split})
     operands = [(r.name, r.array, r.vacuum, r.label)
-                for r in realized_operands(grid, materials, updates, localized)
-                if r.name in scalar
+                for r in realized_operands(grid, view, updates, localized)
+                if (r.name in scalar and r.name.split(".", 1)[1] not in split)
                 or (r.source is not None and r.name.split(".", 1)[0] in updates_scalar)]
     if isinstance(materials.sigma, (tuple, list)):
         operands.extend((name, array, 0, "conductivity")
