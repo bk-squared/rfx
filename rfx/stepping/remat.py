@@ -133,7 +133,8 @@ class CheckpointMemory(NamedTuple):
     """The memory model of a checkpointed reverse pass, in bytes.
 
     ``peak_bytes = static_bytes + boundary_bytes * held_boundaries
-    + step_bytes * live_steps``. ``held_boundaries`` is the number of
+    + step_bytes * live_steps + (cotangents - 1) * (working_bytes + boundary_bytes)``.
+    ``held_boundaries`` is the number of
     boundary carries held at once: the units of the outermost level plus,
     for every inner level, the units per enclosing unit (tail units
     included). ``live_steps`` is the innermost length, the per-step record
@@ -154,12 +155,24 @@ class CheckpointMemory(NamedTuple):
     forward_passes: int
 
 
-def checkpoint_memory(n, lengths, *, boundary_bytes, step_bytes, static_bytes):
+def validate_cotangents(cotangents):
+    """Require a positive integer cotangent count, excluding bools."""
+    if (isinstance(cotangents, bool) or not isinstance(cotangents, numbers.Integral)
+            or cotangents <= 0):
+        raise ValueError(f"cotangents must be a positive int, got {cotangents!r}")
+    return int(cotangents)
+
+
+def checkpoint_memory(n, lengths, *, boundary_bytes, step_bytes, static_bytes,
+                      cotangents: int = 1, working_bytes=0):
     """Evaluate the memory model for ``n`` steps and ``lengths``.
 
     ``lengths`` is None, an int or a tuple as for :func:`segmented_scan`;
     each level is clamped exactly as the scan clamps its full units.
+    Each extra cotangent adds ``working_bytes + boundary_bytes``. The
+    caller supplies c (static_bytes) and w (working_bytes) from its scene.
     """
+    cotangents = validate_cotangents(cotangents)
     if lengths is None:
         requested = ()
     elif isinstance(lengths, tuple):
@@ -178,7 +191,8 @@ def checkpoint_memory(n, lengths, *, boundary_bytes, step_bytes, static_bytes):
         held += math.ceil(enclosing / used)
         enclosing = used
     live = active[-1] if active else n
-    peak = static_bytes + boundary_bytes * held + step_bytes * live
+    peak = (static_bytes + boundary_bytes * held + step_bytes * live
+            + (cotangents - 1) * (working_bytes + boundary_bytes))
     return CheckpointMemory(
         n=int(n), lengths=tuple(active) if active else None, levels=len(active),
         held_boundaries=held, live_steps=live, static_bytes=static_bytes,
@@ -217,7 +231,7 @@ def _candidates(n, k):
 
 
 def plan_checkpoint_lengths(n, *, boundary_bytes, step_bytes, static_bytes,
-                            budget_bytes, max_levels=3):
+                            budget_bytes, max_levels=3, cotangents: int = 1, working_bytes=0):
     """Choose checkpoint lengths for ``n`` steps under ``budget_bytes``.
 
     For k = 1, 2, ..., ``max_levels`` the lengths minimising the model of
@@ -229,7 +243,10 @@ def plan_checkpoint_lengths(n, *, boundary_bytes, step_bytes, static_bytes,
     so the model describes the scan that runs. When no k fits, ``fits`` is
     False and the plan with the smallest modelled peak is returned. The plan
     depends only on its arguments.
+    Supply the scene's compiled one-step c and w as ``static_bytes`` and
+    ``working_bytes``; ``cotangents`` counts simultaneous pullbacks.
     """
+    cotangents = validate_cotangents(cotangents)
     n = int(n)
     max_levels = int(max_levels)
     if n <= 0:
@@ -237,7 +254,7 @@ def plan_checkpoint_lengths(n, *, boundary_bytes, step_bytes, static_bytes,
     if max_levels < 1:
         raise ValueError(f"max_levels must be >= 1, got {max_levels}")
     bytes_ = dict(boundary_bytes=boundary_bytes, step_bytes=step_bytes,
-                  static_bytes=static_bytes)
+                  static_bytes=static_bytes, cotangents=cotangents, working_bytes=working_bytes)
     best_overall = None
     for k in range(1, max_levels + 1):
         best = None

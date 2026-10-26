@@ -8,7 +8,7 @@ from typing import Any
 
 import jax
 
-from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory, plan_checkpoint_lengths
+from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory, plan_checkpoint_lengths, validate_cotangents
 
 from rfx.api._ad_memory_model import (
     tape_accounting, segment_counts, tape_warning, validate_counts, face_record_resident_bytes,
@@ -53,7 +53,7 @@ AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES = (
     "static memory planning only",
     "trace-time JAX saved-residual explainability only when residual_diagnostic is present",
     "not a runtime peak-memory guarantee",
-    "not XLA memory analysis",
+    "not whole-record XLA memory analysis",
     "not profiler evidence",
     "not a certificate",
     "not RF validation",
@@ -199,15 +199,20 @@ class _AdMemoryMixin:
         design: str = "permittivity",
         checkpoint: bool = True,
         distributed: bool = False,
+        cotangents: int = 1,
     ) -> "AD_MemoryEstimate":
-        """Estimate saved carry, per-step tape, and calibrated AD working set.
+        """Estimate saved carry, per-step tape, and the AD working set.
 
         ``design_box`` accepts forward's corners/region forms. The window
         comes from the same realized-grid resolver. Whole-grid tape saves
         the real scan carry except declared linear accumulators; box tape
         saves six permittivity or three occupancy window arrays. A rematted, unsegmented box uses a labelled
-        carry-plus-window bound. The fixed term is calibrated on GPU with
-        JAX 0.10.2, rather than a bound for CPU compiler temporaries.
+        carry-plus-window bound. The fixed term is argument + temp bytes
+        of the requested scan's compiled one-step pullback, on the default
+        device with abstract inputs. Its temp bytes plus one carry are
+        added per extra cotangent. These are estimates of the full-record
+        fixed and batched costs, not measured full-record requirements.
+        A compile failure uses the labelled GPU per-cell fallback and w=0.
 
         Segments save one carry per active boundary and one live segment,
         independently of the per-step checkpoint flag.
@@ -216,6 +221,7 @@ class _AdMemoryMixin:
         heuristic remains for compatibility; use ad_full_gb or the requested
         ad_segmented_gb for planning. These are estimates, not certificates.
         """
+        cotangents = validate_cotangents(cotangents)
         n_steps_i = _require_integral_param("n_steps", n_steps)
         n_warmup_i = _require_integral_param("n_warmup", n_warmup)
         checkpoint_every_i = (
@@ -248,17 +254,18 @@ class _AdMemoryMixin:
             segmented=segmented)
         forward_bytes = accounting["forward_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
-        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes  # legacy heuristic
+        batched_bytes = (cotangents - 1) * (model["pullback_working_bytes"] + model["carry_bytes"])
+        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes + batched_bytes  # legacy heuristic
         active_steps = n_steps_i - n_warmup_i
         fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"] + model["resident_bytes"]
-        ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes
+        ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes + batched_bytes
         segmented_active_segments, segmented_live_tape_steps = segment_counts(
             n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         ad_seg_bytes = None
         if segmented_active_segments is not None:
             saved = segmented_active_segments * model["carry_bytes"]
             ad_seg_bytes = (fixed_bytes + saved
-                            + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes)
+                            + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes + batched_bytes)
 
         # Device memory detection (best effort). CPU has no device budget.
         memory_limit_unknown = False
@@ -301,7 +308,8 @@ class _AdMemoryMixin:
             memory = checkpoint_memory(active_steps,
                 checkpoint_every_i if checkpoint_every_i[0] < active_steps else None,
                 boundary_bytes=model["carry_bytes"], step_bytes=model["tape_step_bytes"],
-                static_bytes=model["c0_bytes"])
+                static_bytes=model["c0_bytes"], cotangents=cotangents,
+                working_bytes=model["pullback_working_bytes"])
             warning = " ".join(filter(None, (warning,
                 f"Checkpoint lengths {memory.lengths}: {memory.levels} levels, "
                 f"{memory.forward_passes} forward passes (estimate).")))
@@ -321,6 +329,8 @@ class _AdMemoryMixin:
             carry_warnings=tuple(model["carry_warnings"]),
             modelled=model["modelled"], unmodelled_features=tuple(model["unmodelled_features"]),
             checkpoint=checkpoint, design=design,
+            cotangents=cotangents, pullback_working_bytes=model["pullback_working_bytes"],
+            calibration=model["calibration"],
             carry_bytes=model["carry_bytes"],
             tape_step_bytes=model["tape_step_bytes"], tape_window_cells=model["tape_window_cells"],
             design_box_bounds=model["design_box_bounds"], tape_is_bound=model["tape_is_bound"],
@@ -347,13 +357,14 @@ class _AdMemoryMixin:
         checkpoint_every: int | tuple[int, ...] | None = None, checkpoint_segments: int | None = None,
         n_warmup: int = 0, design_box: object | None = None,
         design: str = "permittivity", checkpoint: bool = True, distributed: bool = False,
+        cotangents: int = 1,
     ) -> ADMemoryExplainabilityReport:
-        """Decompose the same calibrated working set and saved tape as the estimate."""
+        """Decompose the same estimated working set and saved tape as the estimate."""
         estimate = self.estimate_ad_memory(
             n_steps, available_memory_gb=available_memory_gb,
             checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments,
             n_warmup=n_warmup, design_box=design_box, design=design,
-            checkpoint=checkpoint, distributed=distributed)
+            checkpoint=checkpoint, distributed=distributed, cotangents=cotangents)
         accounting = self._ad_memory_static_accounting()
         segmented = estimate.ad_segmented_gb is not None
         selected = estimate.ad_segmented_gb if segmented else estimate.ad_full_gb
@@ -377,7 +388,7 @@ class _AdMemoryMixin:
                 ("surface_impedance_sheet_state", "sheet_bytes", None)):
             component(name, accounting[key], "forward_working_set", count=count,
                       per=array if count else None,
-                      explanation="Forward working-set component within the calibrated fixed AD term.")
+                      explanation="Forward working-set component within the estimated fixed AD term.")
         resident = face_record_resident_bytes(self, accounting["grid"], int(n_steps),
             checkpoint=checkpoint, checkpoint_segments=checkpoint_segments,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup)
@@ -387,7 +398,12 @@ class _AdMemoryMixin:
         component("calibrated_ad_workspace",
                   round(estimate.ad_fixed_gb * 1e9) - accounting["forward_bytes"] - resident,
                   "calibrated_working_set",
-                  explanation="GPU, jax 0.10.2 calibrated fixed term minus the listed forward working set.")
+                  explanation=f"{estimate.calibration}: fixed term minus the listed forward working set.")
+        if cotangents > 1:
+            per = estimate.pullback_working_bytes + estimate.carry_bytes
+            component("additional_cotangent_working_set", (cotangents - 1) * per,
+                      "reverse_ad_working_set", count=cotangents - 1, per=per,
+                      explanation="One-step pullback temp bytes plus one carry per extra cotangent (estimate).")
         count, live = segment_counts(int(n_steps), int(n_warmup), checkpoint_every, checkpoint_segments)
         if segmented:
             component("segmented_boundary_field_tape", count * estimate.carry_bytes,
@@ -430,6 +446,7 @@ class _AdMemoryMixin:
         distributed: bool = False,
         max_levels: int | None = None,
         checkpoint_every: int | tuple[int, ...] | None = None,
+        cotangents: int = 1,
     ) -> ADMemoryPlan:
         """Compare full AD with segmented candidates using checkpoint=True.
 
@@ -443,20 +460,22 @@ class _AdMemoryMixin:
         levels and forward passes without changing result fields.
         A box also tries the window-only, unsegmented checkpoint=False lane.
         A non-fitting result is diagnostic, never permission to launch.
-        plan_ad_memory promises XLA's requirement (memory_analysis:
-        argument + output + temp − alias) times SF, within
-        target_fraction × budget. Allocator overhead and rounding are what
+        plan_ad_memory compares the estimated program requirement times SF
+        with target_fraction × budget. The one-step c and w are not proof
+        of a full-record memory bound. Allocator overhead and rounding are what
         target_fraction (0.85) is for. Under a non-default growth-mode setup
         the allocator was seen to round the temp buffer to the next power
         of two (G2: 3 of 6 rows, pool_bytes non-zero although the platform
         allocator was requested). SF is not inflated to cover rounding.
         Reading the real carry costs about 90 bytes of host memory per cell
         and a few seconds, measured on 4.3e7 cells.
-        The fixed term is GPU-calibrated, so a CPU plan is not a fit guarantee;
+        The fixed term comes from a compiled one-step pullback (or labelled
+        per-cell fallback); its relation to full-record memory is an estimate.
         plan_ad_memory traces twice and ad_memory_preflight up to four times;
         closed-box plans additionally trace each candidate's representation.
         Nested planning also traces the segmented carry and selected lengths.
         """
+        cotangents = validate_cotangents(cotangents)
         available = _require_positive_finite_scalar("available_memory_gb", available_memory_gb)
         graded = any(p is not None for p in (self._dx_profile, self._dy_profile, self._dz_profile))
         if max_levels is not None:
@@ -471,7 +490,7 @@ class _AdMemoryMixin:
             raise ValueError("target_fraction must be in the interval (0, 1]")
         if safety < 1:
             raise ValueError("safety_factor must be >= 1")
-        options = dict(design_box=design_box, design=design, distributed=distributed)
+        options = dict(design_box=design_box, design=design, distributed=distributed, cotangents=cotangents)
         full = self.estimate_ad_memory(n_steps, available_memory_gb=available,
                                       n_warmup=n_warmup, checkpoint=checkpoint, **options)
         window_full = self.estimate_ad_memory(n_steps, available_memory_gb=available,
@@ -523,6 +542,7 @@ class _AdMemoryMixin:
             extra = accounting["sheet_bytes"] + accounting["ntff_bytes"] + model["resident_bytes"]
             plan = plan_checkpoint_lengths(n - warmup, boundary_bytes=model["carry_bytes"],
                 step_bytes=model["tape_step_bytes"], static_bytes=model["c0_bytes"],
+                cotangents=cotangents, working_bytes=model["pullback_working_bytes"],
                 budget_bytes=target * 1e9 / safety - extra, max_levels=max_levels)
             estimate = self.estimate_ad_memory(n, available_memory_gb=available,
                 n_warmup=warmup, checkpoint=True, checkpoint_every=plan.lengths, **options)
@@ -534,7 +554,8 @@ class _AdMemoryMixin:
             every, segments = (knob, None) if graded else (None, knob)
             count, live = segment_counts(n, warmup, every, segments)
             memory = (window_full.ad_fixed_gb + window_full.ntff_dft_gb
-                      + (count * window_full.carry_bytes + live * window_full.tape_step_bytes) / 1e9)
+                      + (count * window_full.carry_bytes + live * window_full.tape_step_bytes
+                         + (cotangents - 1) * (window_full.pullback_working_bytes + window_full.carry_bytes)) / 1e9)
             estimate = window_full._replace(
                 checkpoint=True, checkpoint_every=every, checkpoint_segments=segments,
                 ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=estimate_warning)
@@ -561,6 +582,7 @@ class _AdMemoryMixin:
         design: str = "permittivity",
         checkpoint: bool = True,
         distributed: bool = False,
+        cotangents: int = 1,
         safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
         include_mesh_report: bool = True,
         check_ntff: bool = True,
@@ -580,7 +602,7 @@ class _AdMemoryMixin:
         static planning evidence into runtime memory proof.
         """
         options = dict(design_box=design_box, design=design, checkpoint=checkpoint,
-                       distributed=distributed)
+                       distributed=distributed, cotangents=cotangents)
         plan = self.plan_ad_memory(
             n_steps,
             available_memory_gb,

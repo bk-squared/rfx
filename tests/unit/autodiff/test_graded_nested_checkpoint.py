@@ -140,10 +140,12 @@ def test_planner_uses_main_tape_terms(box, monkeypatch):
         calls.append(kwargs)
         return original(*args, **kwargs)
     monkeypatch.setattr(api, "plan_checkpoint_lengths", capture)
-    plan = sim.plan_ad_memory(97, 1e-9, max_levels=2)
+    plan = sim.plan_ad_memory(97, 1e-9, max_levels=2, cotangents=2)
     assert calls[0]["boundary_bytes"] == model["carry_bytes"]
     assert calls[0]["step_bytes"] == model["tape_step_bytes"]
     assert calls[0]["static_bytes"] == model["c0_bytes"]
+    assert calls[0]["working_bytes"] == model["pullback_working_bytes"]
+    assert calls[0]["cotangents"] == plan.selected_estimate.cotangents == 2
     assert isinstance(plan.checkpoint_every, tuple)
     assert "forward passes" in plan.recommendation
 

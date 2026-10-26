@@ -35,6 +35,7 @@ Observed evidence (2.4 GHz FR4 patch, dx=0.5mm NU, RTX 4090):
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +56,33 @@ from rfx.api import (
     AD_MEMORY_FIT_SAFETY_FACTOR,
     AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES,
 )
+from tests.unit.autodiff.test_ad_memory_pullback import reference_step_memory
+
+
+def _compiled_fixed(sim, n, **options):
+    memory, _ = reference_step_memory(sim, n, **options)
+    return memory.argument_size_in_bytes + memory.temp_size_in_bytes
+
+
+def _independent_whole_grid_plan(sim, n, budget, *, graded=False, warmup=0):
+    """Direct compiler c and hand-counted boundaries/live steps; no planner helpers."""
+    memory, carry = reference_step_memory(sim, n, checkpoint=False, n_warmup=warmup)
+    fixed = memory.argument_size_in_bytes + memory.temp_size_in_bytes
+    active = n - warmup
+    candidates = []
+    for knob in range(1, n + 1):
+        if graded:
+            length = min(knob, max(1, active // 2)) if knob < active else knob
+            count, live = math.ceil(active / length), min(length, active)
+        else:
+            if n % knob:
+                continue
+            count, live = knob, n // knob
+        peak = fixed + (count + live) * carry
+        candidates.append((knob, peak))
+    fitting = [(knob, peak) for knob, peak in candidates if peak * 1.15 <= budget * .85 * 1e9]
+    knob, peak = fitting[0] if fitting else min(candidates, key=lambda row: row[1])
+    return knob, peak, bool(fitting)
 
 _FORBIDDEN_CURRENT_EVIDENCE_FIELDS = {
     "compiler_memory_gb",
@@ -323,6 +351,7 @@ def test_public_imports_and_json_roundtrip():
         "checkpoint", "design", "carry_bytes", "tape_step_bytes",
         "tape_window_cells", "design_box_bounds", "ad_fixed_gb",
         "tape_is_bound", "calibration", "carry_warnings",
+        "cotangents", "pullback_working_bytes",
         "evidence_class",
         "forward_gb",
         "ad_checkpointed_gb",
@@ -1129,8 +1158,7 @@ def test_ad_memory_preflight_nonuniform_checkpoint_branch():
 def test_ad_memory_preflight_uniform_checkpoint_branch():
     sim = _uniform_sim()
 
-    # Keep the original 0.003 GB budget as an unfit case; 0.004 GB fits
-    # the new saved-carry and calibrated-workspace terms.
+    # Keep both budgets. The compiled fixed term determines whether .004 GB fits.
     unfit = sim.ad_memory_preflight(n_steps=120, available_memory_gb=0.003,
                                     include_mesh_report=False)
     assert unfit.status == "does_not_fit"
@@ -1139,20 +1167,20 @@ def test_ad_memory_preflight_uniform_checkpoint_branch():
         available_memory_gb=0.004,
         include_mesh_report=False,
     )
-    hint = next(
-        hint for hint in report.action_hints if hint.code == "use_checkpoint_segments"
-    )
-
-    assert report.status == "checkpointing_fits"
-    assert report.checkpointing_fits is True
+    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .004)
+    assert report.status == ("checkpointing_fits" if fits else "does_not_fit")
+    assert report.checkpointing_fits is fits
     assert report.supported_checkpoint_mode == "checkpoint_segments"
     assert report.checkpoint_every is None
-    assert report.checkpoint_segments == report.memory_plan.checkpoint_segments == 8
+    assert report.checkpoint_segments == report.memory_plan.checkpoint_segments == knob
+    assert report.memory_plan.selected_estimate.ad_segmented_gb * 1e9 == pytest.approx(peak)
     assert report.explainability.selected_memory_field == "ad_segmented_gb"
     assert report.explainability.strategy == "segmented_checkpoint_segments"
-    assert hint.checkpoint_mode == "checkpoint_segments"
-    assert hint.checkpoint_every is None
-    assert hint.checkpoint_segments == 8
+    if fits:
+        hint = next(hint for hint in report.action_hints if hint.code == "use_checkpoint_segments")
+        assert hint.checkpoint_mode == "checkpoint_segments"
+        assert hint.checkpoint_every is None
+        assert hint.checkpoint_segments == knob
     _assert_validate_physics_hint(report)
 
 
@@ -1289,7 +1317,8 @@ def test_live_segment_term_invariance_witness_277():
     sim = _uniform_sim()
     # 15*15*10 fields + step + the realized 24 two-cell CPML slabs.
     carry_bytes = 87_604
-    overhead = 720_000  # 2250 cells * calibrated 320 B/cell
+    overhead = _compiled_fixed(sim, 100, checkpoint=True, checkpoint_segments=2)
+    assert overhead == _compiled_fixed(sim, 100, checkpoint=True, checkpoint_segments=10)
     to_gb = 1.0 / 1e9
 
     est_2 = sim.estimate_ad_memory(n_steps=100, checkpoint_segments=2)
@@ -1309,9 +1338,11 @@ def test_live_segment_term_invariance_witness_277():
     assert (10 * carry_bytes) / (10 * carry_bytes) == 1.0
     assert est_2.ad_segmented_gb > est_10.ad_segmented_gb
 
-    # Chunking is admitted on the graded lane; the dimensions match.
-    est_chunk = _graded_uniform_sim().estimate_ad_memory(n_steps=100, checkpoint_every=50)
-    assert est_chunk.ad_segmented_gb == est_2.ad_segmented_gb
+    # The dimensions and tape match; each path has its own compiled fixed term.
+    graded = _graded_uniform_sim()
+    est_chunk = graded.estimate_ad_memory(n_steps=100, checkpoint_every=50)
+    graded_fixed = _compiled_fixed(graded, 100, checkpoint=True, checkpoint_every=50)
+    assert est_chunk.ad_segmented_gb == ((2 + 50) * carry_bytes + graded_fixed) * to_gb
 
 
 def test_plan_ad_memory_returns_none_when_full_ad_fits():
@@ -1360,8 +1391,7 @@ def test_plan_ad_memory_recommends_checkpoint_every_for_budget():
 def test_plan_ad_memory_checkpoint_every_handles_unaligned_warmup():
     sim = _patch_like_sim()
 
-    # Keep the former 0.7 GB budget as an unfit case; the calibrated carry
-    # model first fits chunk 6 at 0.8 GB.
+    # Keep both budgets; independently read c before counting the candidates.
     old_budget = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.7, n_warmup=49)
     assert not old_budget.full_ad_fits and not old_budget.segmented_fits
     plan = sim.plan_ad_memory(
@@ -1370,19 +1400,14 @@ def test_plan_ad_memory_checkpoint_every_handles_unaligned_warmup():
         n_warmup=49,
     )
 
-    assert plan.segmented_fits is True
+    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .8, graded=True, warmup=49)
+    assert plan.segmented_fits is fits
     assert plan.checkpoint is True
     assert "checkpoint=True" in plan.recommendation
     assert plan.checkpoint_mode == "checkpoint_every"
-    assert plan.checkpoint_every == 6
-    previous = sim.estimate_ad_memory(
-        n_steps=120,
-        available_memory_gb=0.8,
-        checkpoint_every=5,
-        n_warmup=49,
-    )
-    assert previous.ad_segmented_gb * plan.fit_safety_factor > plan.target_memory_gb
-    assert plan.selected_estimate.ad_segmented_gb * plan.fit_safety_factor <= plan.target_memory_gb
+    assert plan.checkpoint_every == knob
+    assert plan.selected_estimate.ad_segmented_gb * 1e9 == pytest.approx(peak)
+    assert (plan.selected_estimate.ad_segmented_gb * plan.fit_safety_factor <= plan.target_memory_gb) is fits
 
 
 def test_plan_ad_memory_reports_unfit_budget():
@@ -1478,11 +1503,16 @@ def test_checkpoint_segments_accounting_matches_uniform_segment_count():
     sim = _uniform_sim()
 
     by_segments = sim.estimate_ad_memory(n_steps=120, checkpoint_segments=10)
-    by_chunk = _graded_uniform_sim().estimate_ad_memory(n_steps=120, checkpoint_every=12)
+    graded = _graded_uniform_sim()
+    by_chunk = graded.estimate_ad_memory(n_steps=120, checkpoint_every=12)
 
     assert by_segments.checkpoint_segments == 10
     assert by_segments.checkpoint_every is None
-    assert by_segments.ad_segmented_gb == by_chunk.ad_segmented_gb
+    # Both save ten boundaries and twelve live steps, with path-specific c.
+    assert by_segments.ad_segmented_gb == ((10 + 12) * 87_604
+        + _compiled_fixed(sim, 120, checkpoint=True, checkpoint_segments=10)) * 1e-9
+    assert by_chunk.ad_segmented_gb == ((10 + 12) * 87_604
+        + _compiled_fixed(graded, 120, checkpoint=True, checkpoint_every=12)) * 1e-9
     assert by_segments.ad_segmented_active_segments == 10
     assert by_chunk.ad_segmented_active_segments == 10
     assert by_segments.to_dict()["checkpoint_segments"] == 10
@@ -1539,45 +1569,45 @@ def test_checkpoint_every_active_count_honors_unaligned_warmup():
     # active-segment counts, because the live rematerialization tapes
     # differ — a 50-step chunk replays 50 steps, while a 120/3=40-step
     # (or 120/2=60-step) segment replays its own length. Assert the exact
-    # (active_segments + live_tape_steps)·carry + calibrated workspace
+    # (active_segments + live_tape_steps)·carry + independently compiled workspace
     # composition for each instead.
     carry_bytes = 87_604
-    overhead = 720_000
     # #1683: a 50-step chunk is above half of the 71 (70) optimized steps,
     # so the runner uses n_opt // 2 = 35 and replays 35 steps (at least two
     # full segments; one segment plus a tail kept the whole tape).
     assert unaligned.ad_segmented_gb * 1e9 == pytest.approx(
-        (3 + 35) * carry_bytes + overhead
+        (3 + 35) * carry_bytes + _compiled_fixed(sim, 120, checkpoint=True, checkpoint_every=50, n_warmup=49)
     )
     assert three_active_segments.ad_segmented_gb * 1e9 == pytest.approx(
-        (3 + 40) * carry_bytes + overhead
+        (3 + 40) * carry_bytes + _compiled_fixed(_uniform_sim(), 120, checkpoint=True, checkpoint_segments=3)
     )
     assert boundary.ad_segmented_gb * 1e9 == pytest.approx(
-        (2 + 35) * carry_bytes + overhead
+        (2 + 35) * carry_bytes + _compiled_fixed(sim, 120, checkpoint=True, checkpoint_every=50, n_warmup=50)
     )
     assert two_active_segments.ad_segmented_gb * 1e9 == pytest.approx(
-        (2 + 60) * carry_bytes + overhead
+        (2 + 60) * carry_bytes + _compiled_fixed(_uniform_sim(), 120, checkpoint=True, checkpoint_segments=2)
     )
 
 
 def test_plan_ad_memory_recommends_checkpoint_segments_for_uniform_budget():
     sim = _uniform_sim()
 
-    # The former 0.003 GB budget is unfit; at 0.004 GB, K=8 is the first
-    # fitting divisor under the calibrated carry model.
+    # Keep the original budgets and judge them with an independent compiler c.
     old_budget = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.003)
     assert not old_budget.full_ad_fits and not old_budget.segmented_fits
     plan = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.004)
 
     assert plan.full_ad_fits is False
-    assert plan.segmented_fits is True
+    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .004)
+    assert plan.segmented_fits is fits
     assert plan.checkpoint is True
     assert "checkpoint=True" in plan.recommendation
     assert plan.checkpoint_every is None
-    assert plan.checkpoint_segments == 8
+    assert plan.checkpoint_segments == knob
     assert plan.checkpoint_mode == "checkpoint_segments"
     assert plan.selected_estimate.checkpoint_segments == plan.checkpoint_segments
-    assert plan.selected_estimate.ad_segmented_gb * plan.fit_safety_factor <= plan.target_memory_gb
+    assert plan.selected_estimate.ad_segmented_gb * 1e9 == pytest.approx(peak)
+    assert (plan.selected_estimate.ad_segmented_gb * plan.fit_safety_factor <= plan.target_memory_gb) is fits
     assert "0.00 GB" not in plan.recommendation
     assert "MB" in plan.recommendation
 

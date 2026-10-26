@@ -10,12 +10,13 @@ class ADMemoryUnavailable(ValueError):
 
 
 class AD_MemoryEstimate(NamedTuple):
-    """Reverse-mode tape estimate, calibrated on GPU with JAX 0.10.2.
+    """Reverse-mode tape estimate with a compiled one-step fixed working set.
 
     Sizes are decimal GB. Segments save one scan carry per active boundary
     plus a live segment, independently of the per-step checkpoint flag.
-    The fixed AD working set is calibrated by
-    formulation; it is distinct from the forward-only working set.
+    The fixed AD working set uses argument + temp bytes of one step's
+    pullback. If compilation fails, calibration labels the per-cell fallback.
+    These terms estimate full-record costs; they are not a peak measurement.
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -59,6 +60,8 @@ class AD_MemoryEstimate(NamedTuple):
     tape_is_bound: bool = False
     calibration: str = "calibrated (GPU, jax 0.10.2)"
     carry_warnings: tuple[str, ...] = ()
+    cotangents: int = 1
+    pullback_working_bytes: int = 0
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -81,6 +84,8 @@ class AD_MemoryEstimate(NamedTuple):
             "ad_fixed_gb": self.ad_fixed_gb,
             "tape_is_bound": self.tape_is_bound,
             "calibration": self.calibration,
+            "cotangents": self.cotangents,
+            "pullback_working_bytes": self.pullback_working_bytes,
             "evidence_class": self.evidence_class,
             "forward_gb": float(self.forward_gb),
             "ad_checkpointed_gb": float(self.ad_checkpointed_gb),

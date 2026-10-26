@@ -41,9 +41,14 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     else:
         shape = tuple(grid.shape) if grid is not None else ()
     from rfx.api._ad_carry import read_carry
+    from rfx.api._ad_pullback import pullback_terms
+    step_programs = []
     saved, excluded, carry_warnings = read_carry(sim, grid, n_steps, design_box=design_box, design=design,
         shape=shape, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
-        checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
+        checkpoint_segments=checkpoint_segments, n_warmup=n_warmup, step_programs=step_programs)
+    fixed, working, calibration, compile_warnings = pullback_terms(step_programs[0],
+        AD_MEMORY_C0_PER_CELL["box" if window is not None else "whole-grid"] * accounting["cells"])
+    carry_warnings.extend(compile_warnings)
     carry = sum(x["bytes"] for x in saved)
     resident = face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
         checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
@@ -64,7 +69,7 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
                 resident_bytes=resident,
                 tape_step_bytes=tape, tape_window_cells=window,
                 design_box_bounds=bounds, tape_is_bound=bounded,
-                c0_bytes=AD_MEMORY_C0_PER_CELL["box" if window is not None else "whole-grid"] * accounting["cells"])
+                c0_bytes=fixed, pullback_working_bytes=working, calibration=calibration)
 
 
 def carried_closed_box_line_bytes(sim, grid, n_steps, saved):
