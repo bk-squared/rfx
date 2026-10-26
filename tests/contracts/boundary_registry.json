@@ -863,6 +863,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/stepping/slab_tfsf.py",
+      "function": "_apply.local",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/stepping/slab_wrap.py",
       "function": "cut_probe_table",
       "kind": "roll/diff"
