@@ -342,6 +342,37 @@ def test_deembed_two_port_recovers_a_planted_mismatched_load(ref):
     np.testing.assert_allclose(got["s22"], g2, atol=1e-12)
 
 
+def _line_junction_waves(z1, z2):
+    """openEMS's waves at a lossless junction of a z1 line (port 1) and a z2
+    line (port 2), each port split at its own Z_ref: driving port 1, the
+    reflected voltage wave is (z2 - z1)/(z2 + z1) and the transmitted one 1 + that."""
+    gamma = (z2 - z1) / (z2 + z1)
+    one = np.ones_like(gamma, dtype=complex)
+    return {
+        "lumped": {"inc": one, "lumped_ref": gamma * one, "msl_ref": (1 + gamma) * one,
+                   "z_ref_lumped": z1, "z_ref_msl": z2},
+        "msl": {"inc": one, "msl_ref": -gamma * one, "lumped_ref": (1 - gamma) * one,
+                "z_ref_lumped": z1, "z_ref_msl": z2},
+    }
+
+
+def test_stage2_s_is_power_waves_on_a_lossless_line_junction(ref):
+    """Physical anchor: a lossless junction of a 50 ohm line and a ~61 ohm line
+    (the Stage-2 feed and the MSL port's measured ZL) conserves power and is
+    reciprocal. Bare uf_ref/uf_inc ratios across the two ports give
+    |S11|^2 + |S21|^2 = 1.218 and S21/S12 = Z2/Z1 (#1059)."""
+    z1 = 50.0
+    z2 = np.asarray([60.66, 61.0, 61.30])
+    waves = _line_junction_waves(z1, z2)
+    s11, s21, s22, s12 = ref.assemble_stage2_s(waves)
+    np.testing.assert_allclose(np.abs(s11) ** 2 + np.abs(s21) ** 2, 1.0, atol=1e-12)
+    np.testing.assert_allclose(np.abs(s22) ** 2 + np.abs(s12) ** 2, 1.0, atol=1e-12)
+    np.testing.assert_allclose(s21, s12, atol=1e-12)
+    np.testing.assert_allclose(s21, 2 * np.sqrt(z1 * z2) / (z1 + z2), atol=1e-12)
+    bare = np.abs(waves["lumped"]["msl_ref"]) ** 2 + np.abs(waves["lumped"]["lumped_ref"]) ** 2
+    assert np.all(bare > 1.2), bare
+
+
 def test_snap_shift_to_mesh_on_grid_is_exact_and_off_grid_rounds(ref):
     # the fixture's own 0.80 mm shift at the 50 um comparator mesh: 16
     # cells exactly -> a measured no-op, reported not skipped
