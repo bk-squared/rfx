@@ -695,12 +695,8 @@ def test_pec_occupancy_override_is_the_grid_sized_counterexample():
 def test_design_occupancy_survives_the_gpu_baked_coefficient_path():
     """On a GPU backend the design occupancy must still reach the fields.
 
-    ``run()`` swaps in ``update_he_fast`` when the step body is only H + E +
-    PEC and the backend is not CPU. That path has no occupancy slot at all,
-    and a run whose ONLY occupancy is the design box would otherwise be
-    eligible — the design variable would reach nothing and ``jax.grad``
-    would return zeros with no error. CI runs on CPU, where the fast path is
-    never eligible, so the backend is faked rather than left to chance.
+    A forced accelerator query must retain the standard lane and the design
+    occupancy gradient, bit-equal to the plain CPU run.
     """
     sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="pec")
     sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
