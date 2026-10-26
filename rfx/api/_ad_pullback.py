@@ -31,12 +31,28 @@ def compile_pullback(program):
     return jax.jit(pullback).lower(primals, cotangents).compile().memory_analysis()
 
 
+# Compiled (argument, temp) bytes by step-program text. Equal text is the
+# same program on the same shapes, so its memory analysis is the same; the
+# closed-box planner asks once per candidate length for one or two programs.
+_COMPILED_STEP_BYTES = {}
+_COMPILED_STEP_LIMIT = 32
+
+
+def _step_bytes(program):
+    key = (jax.default_backend(), str(program))
+    if key not in _COMPILED_STEP_BYTES:
+        memory = compile_pullback(program)
+        if len(_COMPILED_STEP_BYTES) >= _COMPILED_STEP_LIMIT:
+            _COMPILED_STEP_BYTES.pop(next(iter(_COMPILED_STEP_BYTES)))
+        _COMPILED_STEP_BYTES[key] = (memory.argument_size_in_bytes, memory.temp_size_in_bytes)
+    return _COMPILED_STEP_BYTES[key]
+
+
 def pullback_terms(program, fallback_bytes):
     """Read c and w; a failed compile keeps the labelled per-cell fallback."""
     try:
-        memory = compile_pullback(program)
-        fixed = memory.argument_size_in_bytes + memory.temp_size_in_bytes
-        working = memory.temp_size_in_bytes
+        argument, working = _step_bytes(program)
+        fixed = argument + working
     except Exception as error:
         warning = ("One-step pullback compile unavailable "
                    f"({type(error).__name__}: {error}); AD_MEMORY_C0_PER_CELL fallback "

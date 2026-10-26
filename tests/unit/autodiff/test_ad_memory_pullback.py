@@ -150,6 +150,7 @@ def test_compile_failure_is_labelled_per_cell_fallback(monkeypatch, window):
     def unavailable(_):
         raise RuntimeError("forced compiler failure")
     monkeypatch.setattr(pullback, "compile_pullback", unavailable)
+    monkeypatch.setattr(pullback, "_COMPILED_STEP_BYTES", {})
     sim = scene()
     options = dict(checkpoint=False, checkpoint_every=(30, 7, 3))
     if window:
@@ -166,6 +167,27 @@ def test_compile_failure_is_labelled_per_cell_fallback(monkeypatch, window):
     assert "w=0" in one.warning
     assert (two.ad_segmented_gb - one.ad_segmented_gb) * 1e9 == pytest.approx(one.carry_bytes)
     assert (two.ad_full_gb - one.ad_full_gb) * 1e9 == pytest.approx(one.carry_bytes)
+
+
+def test_equal_step_programs_compile_once(monkeypatch):
+    """Lengths change the scan around the step, never the step: one compile serves them all."""
+    import rfx.api._ad_pullback as pullback
+    calls = []
+    original = pullback.compile_pullback
+    def counted(program):
+        calls.append(program)
+        return original(program)
+    monkeypatch.setattr(pullback, "compile_pullback", counted)
+    monkeypatch.setattr(pullback, "_COMPILED_STEP_BYTES", {})
+    sim = scene()
+    estimates = [sim.estimate_ad_memory(99, checkpoint=False, checkpoint_every=every)
+                 for every in (5, 9, 12, (30, 7, 3))]
+    assert len(calls) == 1
+    reference, _ = reference_step_memory(sim, 99, checkpoint=False, checkpoint_every=9)
+    for estimate in estimates:
+        assert estimate.ad_fixed_gb * 1e9 == pytest.approx(
+            reference.argument_size_in_bytes + reference.temp_size_in_bytes)
+        assert estimate.pullback_working_bytes == reference.temp_size_in_bytes
 
 
 @pytest.mark.parametrize("cotangents", [True, False, 0, -1, 1.5])

@@ -1158,29 +1158,30 @@ def test_ad_memory_preflight_nonuniform_checkpoint_branch():
 def test_ad_memory_preflight_uniform_checkpoint_branch():
     sim = _uniform_sim()
 
-    # Keep both budgets. The compiled fixed term determines whether .004 GB fits.
+    # 0.003 GB fits nothing. With the compiled fixed term, 0.008 GB fits the
+    # smallest segmented peak with about 2x margin and not full AD (CPU 2026-10-26).
     unfit = sim.ad_memory_preflight(n_steps=120, available_memory_gb=0.003,
                                     include_mesh_report=False)
     assert unfit.status == "does_not_fit"
     report = sim.ad_memory_preflight(
         n_steps=120,
-        available_memory_gb=0.004,
+        available_memory_gb=0.008,
         include_mesh_report=False,
     )
-    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .004)
-    assert report.status == ("checkpointing_fits" if fits else "does_not_fit")
-    assert report.checkpointing_fits is fits
+    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .008)
+    assert fits is True
+    assert report.status == "checkpointing_fits"
+    assert report.checkpointing_fits is True
     assert report.supported_checkpoint_mode == "checkpoint_segments"
     assert report.checkpoint_every is None
     assert report.checkpoint_segments == report.memory_plan.checkpoint_segments == knob
     assert report.memory_plan.selected_estimate.ad_segmented_gb * 1e9 == pytest.approx(peak)
     assert report.explainability.selected_memory_field == "ad_segmented_gb"
     assert report.explainability.strategy == "segmented_checkpoint_segments"
-    if fits:
-        hint = next(hint for hint in report.action_hints if hint.code == "use_checkpoint_segments")
-        assert hint.checkpoint_mode == "checkpoint_segments"
-        assert hint.checkpoint_every is None
-        assert hint.checkpoint_segments == knob
+    hint = next(hint for hint in report.action_hints if hint.code == "use_checkpoint_segments")
+    assert hint.checkpoint_mode == "checkpoint_segments"
+    assert hint.checkpoint_every is None
+    assert hint.checkpoint_segments == knob
     _assert_validate_physics_hint(report)
 
 
@@ -1391,17 +1392,20 @@ def test_plan_ad_memory_recommends_checkpoint_every_for_budget():
 def test_plan_ad_memory_checkpoint_every_handles_unaligned_warmup():
     sim = _patch_like_sim()
 
-    # Keep both budgets; independently read c before counting the candidates.
+    # 0.7 GB fits nothing. With the compiled fixed term, 1.2 GB fits the smallest
+    # segmented peak with about 30 % margin and not full AD (CPU 2026-10-26).
     old_budget = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.7, n_warmup=49)
     assert not old_budget.full_ad_fits and not old_budget.segmented_fits
     plan = sim.plan_ad_memory(
         n_steps=120,
-        available_memory_gb=0.8,
+        available_memory_gb=1.2,
         n_warmup=49,
     )
 
-    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .8, graded=True, warmup=49)
-    assert plan.segmented_fits is fits
+    knob, peak, fits = _independent_whole_grid_plan(sim, 120, 1.2, graded=True, warmup=49)
+    assert fits is True
+    assert plan.full_ad_fits is False
+    assert plan.segmented_fits is True
     assert plan.checkpoint is True
     assert "checkpoint=True" in plan.recommendation
     assert plan.checkpoint_mode == "checkpoint_every"
@@ -1592,14 +1596,15 @@ def test_checkpoint_every_active_count_honors_unaligned_warmup():
 def test_plan_ad_memory_recommends_checkpoint_segments_for_uniform_budget():
     sim = _uniform_sim()
 
-    # Keep the original budgets and judge them with an independent compiler c.
+    # 0.003 GB fits nothing; 0.008 GB fits a segmented plan and not full AD.
     old_budget = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.003)
     assert not old_budget.full_ad_fits and not old_budget.segmented_fits
-    plan = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.004)
+    plan = sim.plan_ad_memory(n_steps=120, available_memory_gb=0.008)
 
     assert plan.full_ad_fits is False
-    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .004)
-    assert plan.segmented_fits is fits
+    knob, peak, fits = _independent_whole_grid_plan(sim, 120, .008)
+    assert fits is True
+    assert plan.segmented_fits is True
     assert plan.checkpoint is True
     assert "checkpoint=True" in plan.recommendation
     assert plan.checkpoint_every is None
