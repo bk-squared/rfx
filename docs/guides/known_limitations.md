@@ -359,23 +359,6 @@ the guide's walls, and both meshes warn or refuse unless they are declared PEC.
 Until this is fixed, solve a partial-aperture port that radiates on a graded
 mesh (a constant `dz_profile` is enough).
 
-### A thin film, sheet or lumped element inside a waveguide port's section is not judged by the port's medium check.
-
-Tracker: #2047
-
-A waveguide port takes its cutoff, propagation constant, modal impedance and
-source from the one lossless, isotropic, non-dispersive medium that fills its
-section wall to wall; every other loaded section is refused at setup (support
-matrix, refused combinations, `admission:waveguide-section-*`). That check reads
-cell media and metal by volume only. A zero-thickness metal sheet or thin
-conductor, a sheet impedance, a thin conductive film or a lumped RLC element
-inside the section is not judged, so the port model ignores it. A sheet drawn
-across the guide between the source and the reference plane is refused by the
-port's preflight face check, which `skip_preflight=True` turns off. The error
-such an element leaves is not measured. Draw it beyond the port's reference
-plane. Smoothing at metal walls and at material faces is part of the realized
-guide and is not judged.
-
 ### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)

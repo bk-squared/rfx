@@ -368,12 +368,22 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
     from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.model.overrides import apply_material_overrides
     from rfx.model.pole_stability import courant_budget
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.nonuniform import NonUniformGrid
     call_values = getattr(sim, "_waveguide_call_overrides", (None, None, None))
     eps_override = call_values[0] if eps_override is None else eps_override
     sigma_override = call_values[1] if sigma_override is None else sigma_override
     mu_r_override = call_values[2] if mu_r_override is None else mu_r_override
     with jax.ensure_compile_time_eval():
-        materials, ds, ls, pec, _, _, _ = sim._assemble_materials(grid)
+        pec_sheets, pec_wires = [], []
+        collectors = dict(sheet_specs=[], pec_sheets=pec_sheets, pec_wires=pec_wires)
+        if isinstance(grid, NonUniformGrid):
+            materials, ds, ls, pec = sim._assemble_materials_nu(grid, **collectors)
+        else:
+            materials, ds, ls, pec, _, _, _ = sim._assemble_materials(grid, **collectors)
+        edges = (realized_pec_edge_masks(pec, sheets=pec_sheets, wires=pec_wires,
+                                       periodic=sim._periodic_flags())
+                 if pec is not None or pec_sheets or pec_wires else None)
         _, debye, lorentz = sim._init_dispersion(
             materials, grid.dt, ds, ls, budget=courant_budget(grid),
             periodic=sim._periodic_flags())
@@ -387,7 +397,8 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
                 overrides[name] = value
         materials = apply_material_overrides(materials, **overrides)
         return resolve_waveguide_section_medium(cfgs, grid, materials,
-                                                dict(debye=debye, lorentz=lorentz, pec_mask=pec), ())
+                                                dict(debye=debye, lorentz=lorentz, pec_mask=pec,
+                                                     pec_edge_masks=edges), ())
 
 
 def _preflight_entry_config(sim, entry):
