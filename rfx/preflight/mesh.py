@@ -548,7 +548,7 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
     # as single-sample arrays because only the z profile is needed here;
     # the mask admits the box's own midpoint, so the combined mask's z
     # profile is the z-axis mask.
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
     z_nodes = np.asarray(node_positions_from_profile(dz), dtype=np.float64)
 
     z_centres = z_nodes[:-1] + 0.5 * np.diff(z_nodes)
@@ -769,7 +769,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
     model, unchanged), so mirroring its mask here IS reading what the
     run realizes, not a re-derivation.
     """
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
     from rfx.materials.thin_conductor import sheet_bounds
 
     tcs = [tc for tc in getattr(self, "_thin_conductors", ())
@@ -880,7 +880,7 @@ def _graded_node_report(self, axis: int, coord: float):
     construction and never report.
     """
     from rfx._grid_metric import nearest_node_index
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
     if prof is None or is_tracer(prof):

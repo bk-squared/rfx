@@ -920,7 +920,7 @@ def _band_smooth_post_thirds(
     smooth free runs and left a seam between two adjacent blocks
     untouched.
     """
-    from rfx.nonuniform import _BandSeg, _build_band_profile
+    from rfx.model.graded_profile import _BandSeg, _build_band_profile
 
     cells = np.asarray(cells, dtype=float)
     edges = np.concatenate([[0.0], np.cumsum(cells)])

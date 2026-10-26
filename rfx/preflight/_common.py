@@ -734,7 +734,7 @@ def _profile_node_index(cells, nodes, coord_m: float) -> int:
     profile). ``nodes`` is the caller's line of the same length, whose entry
     at the answer the caller reads."""
     from rfx.geometry.rasterize_grid import _local_cell
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
     line = np.asarray(node_positions_from_profile(cells), dtype=np.float64)
     k = nearest_node_index(line, coord_m, _local_cell(line, cells, coord_m))
     return min(max(k, 0), len(nodes) - 1)

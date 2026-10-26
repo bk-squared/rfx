@@ -83,7 +83,7 @@ _DZ = jnp.array([1., 1., 3., 1., 1., 3., 1., 1.], dtype=jnp.float32) * 1.0e-3
 def test_corec2_h_update_uses_local_cell_width():
     """update_h_nu, fed the production inv_d_h, recovers the exact
     derivative of a z-linear E field on a 3:1-graded mesh."""
-    from rfx.nonuniform import _profile_to_inv_arrays
+    from rfx.model.graded_grid import _profile_to_inv_arrays
 
     dz = _DZ
     nz = int(dz.shape[0])
@@ -114,7 +114,7 @@ def test_corec2_h_update_uses_local_cell_width():
 def test_corec2_e_update_uses_mean_spacing():
     """update_e_nu, fed the production inv_d_e, recovers the exact
     derivative of a z-linear H field on a 3:1-graded mesh."""
-    from rfx.nonuniform import _profile_to_inv_arrays
+    from rfx.model.graded_grid import _profile_to_inv_arrays
 
     dz = _DZ
     nz = int(dz.shape[0])

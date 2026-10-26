@@ -394,7 +394,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
-    from rfx.nonuniform import resolve_cpml_axes
+    from rfx.boundaries.axes import resolve_cpml_axes
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout

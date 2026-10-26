@@ -68,7 +68,7 @@ def _msl_axis_spacing(grid, axis: int):
     is perfectly well defined and the solve simply never ran.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.nonuniform import NonUniformGrid, interior_cells
+    from rfx.model.graded_grid import NonUniformGrid, interior_cells
 
     if not isinstance(grid, NonUniformGrid):
         return float(grid.boundary_cell(axis, "lo")), False, True

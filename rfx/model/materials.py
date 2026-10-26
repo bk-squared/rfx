@@ -37,7 +37,7 @@ from rfx.materials.lorentz import LorentzPole
 from rfx.materials.thin_conductor import (
     apply_thin_conductor, check_sheet_occupancy, sheet_bounds,
 )
-from rfx.nonuniform import NonUniformGrid, e_node_dual_spacings
+from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacings
 
 
 def assemble_cells(

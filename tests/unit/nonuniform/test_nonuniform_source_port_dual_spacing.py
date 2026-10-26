@@ -65,12 +65,12 @@ from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
 from rfx.core.yee import MaterialArrays, EPS_0
 from rfx.nonuniform import (
-    e_node_dual_spacings,
     e_node_dual_spacing_at,
     make_current_source,
     make_nonuniform_grid,
-    wire_port_current,
 )
+from rfx.model.graded_grid import e_node_dual_spacings
+from rfx.measurement.graded_wire import wire_port_current
 
 D = 0.5e-3
 # 0.5 -> 1.0 -> 0.5 mm; index 5 is the 2:1 transition node.

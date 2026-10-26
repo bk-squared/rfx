@@ -14,7 +14,7 @@ analytic cavity tests would notice a wrong metric only through a frequency).
 import numpy as np
 import pytest
 
-from rfx.nonuniform import _append_bounding_node, _profile_to_inv_arrays
+from rfx.model.graded_grid import _append_bounding_node, _profile_to_inv_arrays
 from tests import _nu_cavity_gates as G
 
 

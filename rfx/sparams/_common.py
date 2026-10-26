@@ -40,7 +40,7 @@ from rfx.measurement.phasors import exp_j
 from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
 from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
-from rfx.nonuniform import NonUniformGrid, interior_cells
+from rfx.model.graded_grid import NonUniformGrid, interior_cells
 
 
 def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
@@ -625,7 +625,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 )
                 resolved.append(pe)
                 continue
-            from rfx.nonuniform import interior_cells as _interior_cells
+            from rfx.model.graded_grid import interior_cells as _interior_cells
             _pads = ((grid.pad_x_lo, grid.pad_x_hi),
                      (grid.pad_y_lo, grid.pad_y_hi),
                      (grid.pad_z_lo, grid.pad_z_hi))[_ip]

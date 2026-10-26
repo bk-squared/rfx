@@ -76,7 +76,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx.core.yee import _shift_bwd
-from rfx.nonuniform import wire_port_current
+from rfx.measurement.graded_wire import wire_port_current
 
 N = 8
 DUAL = (1.0e-3, 1.0e-3, 1.0e-3)

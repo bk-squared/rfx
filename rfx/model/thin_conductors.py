@@ -17,7 +17,7 @@ from rfx.materials.thin_conductor import (
     SheetImpedanceSpec, check_sheet_occupancy, leontovich_rs, sheet_bounds,
     sheet_normal_axis,
 )
-from rfx.nonuniform import e_node_dual_spacings
+from rfx.model.graded_grid import e_node_dual_spacings
 
 
 def admit_thin_conductor(

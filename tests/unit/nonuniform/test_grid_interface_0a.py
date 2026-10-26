@@ -44,16 +44,18 @@ from rfx.geometry.rasterize_grid import (
 )
 from rfx.nonuniform import (
     NonUniformGrid,
+    e_node_dual_spacing_at,
+    make_band_profile,
+    make_nonuniform_grid,
+    position_to_index,
+)
+from rfx.model.graded_grid import (
     _append_bounding_node,
     _pad_profile,
     _profile_to_inv_arrays,
     assert_cells_span_declared_profile,
-    e_node_dual_spacing_at,
     e_node_dual_spacings,
     interior_cells,
-    make_band_profile,
-    make_nonuniform_grid,
-    position_to_index,
 )
 
 AXES = ("x", "y", "z")
