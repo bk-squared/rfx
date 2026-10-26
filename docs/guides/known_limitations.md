@@ -159,6 +159,17 @@ open structures and for any structure with a material interface; ADI runs only a
 closed (`boundary="pec"`), homogeneously filled cavity. Both refusals are rows in
 the support matrix's **Refused inputs** table.
 
+### The AD memory estimate reads low on three checkpoint levels and on batched gradients
+
+Tracker: #1739
+
+`estimate_ad_memory` read 11.9 % below the measured device peak for a graded run with three checkpoint
+levels (one GPU measurement, 737,009 nodes, 6,007 steps). A gradient that pulls back several outputs at
+once (`jax.jacrev` or `vmap` over cotangents) holds about 7 carries of working arrays per extra output,
+where the estimate counts 1: on the same run, 8 outputs at once peaked 63 % above the planned memory.
+Until a device measurement confirms the corrected estimate, budget batched gradients by measuring one
+short run, or pull back one output at a time.
+
 ### A finite flux box closes only when it is centred on its source
 
 Tracker: #1628
