@@ -59,7 +59,7 @@ def default_conformal_weights(sim, grid, root):
 
 def _check_edges(sim, grid, masks, lane):
     from rfx.geometry.rasterize_grid import _axis_node_positions
-    from rfx.nonuniform import position_to_index
+    from rfx.model.graded_grid import position_to_index
     from rfx.runners.nonuniform import _range_to_slice_nu
 
     # Uniform grids retain the face record; graded grids thread its canonical
