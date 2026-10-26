@@ -16,7 +16,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/ci/check_batch.py"
-GOOD_BODY = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+GOOD_BODY = "Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
 # Homebrew git on the development Mac is 2.39; Apple git supports merge-tree's
 # explicit merge base. Child checkers resolve the same binary through PATH.
 GIT = "/usr/bin/git" if sys.platform == "darwin" else shutil.which("git")
@@ -82,6 +82,7 @@ class Batch:
                 "headRepository": {"nameWithOwner": "bk-squared/rfx"}, "isCrossRepository": False,
                 "labels": [{"name": "merge-train"}, {"name": "lane:ci-infra"}],
                 "body": GOOD_BODY, "closingIssuesReferences": [],
+                "createdAt": "2026-10-27T00:00:00Z",
             }
         self.git(self.origin, "checkout", "main")
         if main_changes:
@@ -183,6 +184,36 @@ def test_two_members_and_faithful_batch_pass(batch):
     for command in ("body", "fragments"):
         result = batch.run(command)
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_member_before_physics_cutover_in_later_batch_passes(batch):
+    batch.env["PR_CREATED_AT"] = "2026-10-28T00:00:00Z"
+    batch.prs["11"]["createdAt"] = "2026-10-26T14:59:59Z"
+    batch.prs["11"]["body"] = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    result = batch.run()
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_member_after_physics_cutover_in_later_batch_requires_physics(batch):
+    batch.env["PR_CREATED_AT"] = "2026-10-28T00:00:00Z"
+    batch.prs["11"]["createdAt"] = "2026-10-27T00:00:00Z"
+    batch.prs["11"]["body"] = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    assert_rejected(batch.run(), "#11: no well-formed `Physics:` first line")
+
+
+@pytest.mark.parametrize("creation_fields", [{}, {"createdAt": ""}, {"createdAt": None}],
+                         ids=["missing", "empty", "null"])
+def test_member_missing_creation_time_does_not_inherit_batch_exemption(monkeypatch, creation_fields):
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+    import check_batch
+
+    pr = {"labels": [], "closingIssuesReferences": [], **creation_fields}
+    env = check_batch.member_env(ROOT, pr, {"PR_CREATED_AT": "2026-10-26T14:59:59Z"})
+    assert env["PR_CREATED_AT"] == ""
+    text = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+    problems = check_batch.check_pr_body.check(text, env)
+    assert len(problems) == 1
+    assert "no well-formed `Physics:` first line" in problems[0]
 
 
 def test_review_text_after_verdict_is_rejected(batch):

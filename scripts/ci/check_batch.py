@@ -21,7 +21,7 @@ import check_pr_body
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MEMBER_LINE = re.compile(r"Merge-train-member: #([1-9][0-9]*) ([0-9a-fA-F]{40})")
-PR_FIELDS = "state,baseRefName,headRefOid,headRepository,isCrossRepository,labels,body,closingIssuesReferences"
+PR_FIELDS = "state,baseRefName,headRefOid,headRepository,isCrossRepository,labels,body,closingIssuesReferences,createdAt"
 
 
 def subprocess_error(exc: subprocess.CalledProcessError) -> str:
@@ -118,6 +118,7 @@ def member_env(repo: Path, pr: dict, env: dict[str, str]) -> dict[str, str]:
         issue_lanes.update(label for label in labels(payload) if label.startswith("lane:"))
     return {
         **env,
+        "PR_CREATED_AT": pr.get("createdAt") or "",
         "PR_LABELS_JSON": json.dumps(labels(pr)),
         "ISSUE_LANES_JSON": json.dumps(sorted(issue_lanes)),
     }
