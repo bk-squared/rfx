@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import jax
+import numpy as np
 import pytest
 
 from tests.contracts.boundary_compare import BoundaryDeparture, classify, compare_values, departures
@@ -192,28 +193,25 @@ def test_wrapped_wall_keeps_field_classification():
 
 def test_worse_magnetic_wall_value_is_rejected():
     import rfx.boundaries.pmc as pmc
-    original = pmc.apply_pmc_faces
+    original = pmc.magnetic_update_factors
     calls = []
 
-    def worse(state, faces, **kwargs):
+    def worse(faces, shape, periodic=(False, False, False)):
         calls.append(1)
-        state = original(state, faces, **kwargs)
-        values = {name: getattr(state, name) for name in ("hx", "hy", "hz")}
+        factors = list(original(faces, shape, periodic))
         for face in faces:
             axis = "xyz".index(face[0])
-            selection = [slice(None)] * 3
-            selection[axis] = 1 if face.endswith("lo") else -3
-            for component, name in enumerate(values):
-                if component != axis:
-                    values[name] = values[name].at[tuple(selection)].set(0.0)
-        return state._replace(**values)
+            if factors[axis] is None:
+                factors[axis] = np.ones(shape[axis], dtype=np.float32)
+            factors[axis][1 if face.endswith("lo") else -3] = 0.
+        return tuple(factors)
 
     jax.clear_caches()
     try:
-        with patch.object(pmc, "apply_pmc_faces", worse):
+        with patch.object(pmc, "magnetic_update_factors", worse):
             sim, grid, _, records = measure("pmc-pec", "run")
         fields, psi, reference = measured_fields(records, grid, "run")
-        assert calls, "the original magnetic wall helper must still run"
+        assert calls, "the magnetic coefficient builder must run"
         faces = classify(fields, grid, psi, reference)
         baseline = BY_CELL["pmc-pec", "run"]
         with pytest.raises(AssertionError, match="away from the declared plane") as exc:
