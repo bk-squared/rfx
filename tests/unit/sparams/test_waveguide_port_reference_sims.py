@@ -450,6 +450,23 @@ def test_a_dispersive_reference_is_refused_not_run_without_its_poles(monkeypatch
                 num_periods=30, normalize="flux", port_reference_sims=refs)
 
 
+def test_a_reference_impedance_sheet_is_refused_not_run_without_it(monkeypatch):
+    """A surface-impedance sheet reaches assembly only through its collector,
+    and the reference run carries no sheet context (#677); a reference that
+    declares one is refused instead of run without it (#2058)."""
+    _stub_the_solve(monkeypatch)
+    freqs = jnp.linspace(4.5e9, 8.0e9, 6)
+    refs = _tj_refs(freqs, 6e9)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        refs[0].add_thin_conductor(Box((0.05, 0.06, 0.0), (0.07, 0.06, 0.02)),
+                                   sigma_bulk=1e4, surface_impedance_f0=6e9)
+        with pytest.raises(NotImplementedError,
+                           match=r"port_reference_sims\[0\] declares a surface-impedance sheet"):
+            _tj_device(freqs, 6e9).compute_waveguide_s_matrix(
+                num_periods=30, normalize="flux", port_reference_sims=refs)
+
+
 def test_tj_walls_are_realized_where_they_are_drawn():
     """Build-time witness (no solve) for the T-junction's guide width.
 

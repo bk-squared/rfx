@@ -653,9 +653,17 @@ def compute_waveguide_s_matrix(
                 )
             _ref_pec_sheets: list = []
             _ref_pec_wires: list = []
+            _ref_sheet_specs: list = []
             _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(
                 _ref_grid, pec_sheets=_ref_pec_sheets,
-                pec_wires=_ref_pec_wires)
+                pec_wires=_ref_pec_wires, sheet_specs=_ref_sheet_specs)
+            # The reference run carries no sheet context (#677): refuse, never drop.
+            if _ref_sheet_specs:
+                raise NotImplementedError(
+                    f"port_reference_sims[{_i}] declares a surface-impedance sheet "
+                    "(add_thin_conductor(..., surface_impedance_f0=...)); the reference "
+                    "run does not model sheet impedance and would run without it. "
+                    "Remove it from the reference simulation.")
             # The reference run carries no poles (#2058): refuse, never drop.
             if _ref_debye is not None or _ref_lorentz is not None:
                 raise NotImplementedError(
