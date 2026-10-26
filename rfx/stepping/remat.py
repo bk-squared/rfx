@@ -22,6 +22,22 @@ def effective_chunk(n, chunk):
     return min(int(chunk), max(1, n // 2))
 
 
+def active_levels(n, lengths):
+    """The lengths of the levels a nested scan over ``n`` steps runs.
+
+    Each level is clamped by :func:`effective_chunk` on the span of the level
+    above it; a level the clamp turns off is skipped and the inner levels
+    still run, exactly as :func:`segmented_scan` does.
+    """
+    active, span = [], n
+    for length in lengths:
+        used = effective_chunk(span, length)
+        if used is not None:
+            active.append(used)
+            span = used
+    return tuple(active)
+
+
 def checkpoint_lengths(chunk):
     """Validate a tuple of checkpoint lengths, outermost first.
 
@@ -179,13 +195,7 @@ def checkpoint_memory(n, lengths, *, boundary_bytes, step_bytes, static_bytes,
         requested = checkpoint_lengths(lengths)
     else:
         requested = (lengths,)
-    active = []
-    span = n
-    for length in requested:
-        used = effective_chunk(span, length)
-        if used is not None:
-            active.append(used)
-            span = used
+    active = active_levels(n, requested)
     held, enclosing = 0, n
     for used in active:
         held += math.ceil(enclosing / used)

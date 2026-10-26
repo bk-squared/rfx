@@ -15,7 +15,7 @@ from rfx.measurement import (
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
 from rfx.model.graded_grid import NonUniformGrid
 from rfx.stepping import segmented_scan
-from rfx.stepping.remat import checkpoint_lengths
+from rfx.stepping.remat import active_levels, checkpoint_lengths
 from rfx.stepping.graded_setup import _build_nu_scan
 
 
@@ -210,8 +210,8 @@ def run_nonuniform(
     chunk = (checkpoint_lengths(checkpoint_every) if isinstance(checkpoint_every, tuple)
              else int(checkpoint_every) if checkpoint_every is not None else None)
     use_segmented = (
-        checkpoint_every is not None
-        and 0 < (chunk[0] if isinstance(chunk, tuple) else chunk) < n_steps_opt
+        bool(active_levels(n_steps_opt, chunk)) if isinstance(chunk, tuple)
+        else chunk is not None and 0 < chunk < n_steps_opt
     )
     if use_segmented:
         final, opt_ys = segmented_scan(

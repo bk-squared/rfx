@@ -1,7 +1,7 @@
 """Graded CPML levels, main's AD-memory terms, and BASE 1d5712706 traces."""
 import json
-import subprocess
 import types
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -13,6 +13,10 @@ from rfx.api._ad_memory_model import tape_accounting
 from rfx.geometry.csg import Box
 from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 from rfx.stepping.remat import checkpoint_memory
+
+# Sources of rfx/stepping/{graded_loop,remat}.py at BASE 1d5712706, frozen because
+# CI checks out depth 1 (no history to `git show`).
+BASE = Path(__file__).resolve().parents[2] / "data" / "base_1d5712706"
 
 
 def scene():
@@ -78,10 +82,10 @@ def test_integer_jaxpr_equals_base(box, monkeypatch, gradient):
         return str(jax.make_jaxpr(jax.grad(fun, argnums=(0, 1)) if gradient else fun)(eps, sigma))
     actual = trace()
     reference = types.ModuleType("base_graded_loop")
-    source = subprocess.check_output(["git", "show", "1d5712706:rfx/stepping/graded_loop.py"], text=True)
+    source = (BASE / "graded_loop.py.txt").read_text()
     exec(compile(source, "BASE/graded_loop.py", "exec"), reference.__dict__)
     remat = types.ModuleType("base_remat")
-    source = subprocess.check_output(["git", "show", "1d5712706:rfx/stepping/remat.py"], text=True)
+    source = (BASE / "remat.py.txt").read_text()
     exec(compile(source, "BASE/remat.py", "exec"), remat.__dict__)
     reference.segmented_scan = remat.segmented_scan
     monkeypatch.setattr(loop, "run_nonuniform", reference.run_nonuniform)
@@ -162,14 +166,25 @@ def test_estimate_tuple_matches_checkpoint_memory(box):
 
 
 @pytest.mark.parametrize("design_box", [None, ((.007, .008, .004), (.010, .011, .007))])
-def test_tuple_activation_uses_first_length(box, design_box):
+def test_clamped_outer_level_keeps_inner_levels(box, design_box):
+    """(120, 5) over 97 steps: the clamp turns off 120 and the level of 5 still runs."""
     sim, _, _ = box
     estimate = sim.estimate_ad_memory(97, checkpoint_every=(120, 5), design_box=design_box)
-    plain = sim.estimate_ad_memory(97, design_box=design_box)
-    assert estimate.ad_segmented_active_segments == 0
-    assert estimate.ad_segmented_gb == plain.ad_full_gb
-    assert estimate.tape_is_bound == plain.tape_is_bound
-    assert "0 levels" in estimate.warning
+    inner = sim.estimate_ad_memory(97, checkpoint_every=(5,), design_box=design_box)
+    assert estimate.ad_segmented_active_segments == inner.ad_segmented_active_segments == 20
+    assert estimate.ad_segmented_gb == inner.ad_segmented_gb
+    assert "1 levels" in estimate.warning
+
+
+@pytest.mark.parametrize("gradient", [False, True])
+def test_runner_clamped_outer_level_traces_inner_levels(box, gradient):
+    sim, eps, sigma = box
+    def trace(chunk):
+        fun = lambda e, s: jnp.sum(outputs(sim, e, s, chunk)[1])
+        return str(jax.make_jaxpr(jax.grad(fun, argnums=(0, 1)) if gradient else fun)(eps, sigma))
+    clamped = trace((120, 5))
+    assert "checkpoint" in clamped or "remat" in clamped
+    assert clamped == trace((5,))
 
 
 def test_uniform_planner_refuses_levels():

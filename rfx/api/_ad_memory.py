@@ -8,7 +8,7 @@ from typing import Any
 
 import jax
 
-from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory, plan_checkpoint_lengths, validate_cotangents
+from rfx.stepping.remat import active_levels, checkpoint_lengths, checkpoint_memory, plan_checkpoint_lengths, validate_cotangents
 
 from rfx.api._ad_memory_model import (
     tape_accounting, segment_counts, tape_warning, validate_counts, face_record_resident_bytes,
@@ -246,7 +246,7 @@ class _AdMemoryMixin:
         accounting = self._ad_memory_static_accounting()
         segmented = checkpoint_segments_i is not None or checkpoint_every_i is not None
         if isinstance(checkpoint_every_i, tuple):
-            segmented = checkpoint_every_i[0] < n_steps_i - n_warmup_i
+            segmented = bool(active_levels(n_steps_i - n_warmup_i, checkpoint_every_i))
         model = tape_accounting(
             self, accounting, design_box=design_box, design=design,
             checkpoint=checkpoint, distributed=distributed, n_steps=n_steps_i,
@@ -305,8 +305,7 @@ class _AdMemoryMixin:
                                segments=segmented_active_segments,
                                live=segmented_live_tape_steps, active=active_steps)
         if isinstance(checkpoint_every_i, tuple):
-            memory = checkpoint_memory(active_steps,
-                checkpoint_every_i if checkpoint_every_i[0] < active_steps else None,
+            memory = checkpoint_memory(active_steps, checkpoint_every_i,
                 boundary_bytes=model["carry_bytes"], step_bytes=model["tape_step_bytes"],
                 static_bytes=model["c0_bytes"], cotangents=cotangents,
                 working_bytes=model["pullback_working_bytes"])

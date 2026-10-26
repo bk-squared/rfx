@@ -102,8 +102,8 @@ def segment_counts(n, warmup, every, segments):
     if isinstance(every, tuple):
         from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory
         lengths = checkpoint_lengths(every)
-        # The graded runner activates tuples only when the first level fits.
-        memory = checkpoint_memory(active, lengths if lengths[0] < active else None,
+        # Levels the clamp turns off are skipped, as the graded runner does.
+        memory = checkpoint_memory(active, lengths,
                                    boundary_bytes=0, step_bytes=0, static_bytes=0)
         return memory.held_boundaries, memory.live_steps
     if segments is not None:
