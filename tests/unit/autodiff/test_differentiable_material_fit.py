@@ -366,7 +366,9 @@ def _i580_factory():
     from rfx.sources.sources import GaussianPulse as _GP
 
     def factory(eps_inf, debye_poles, lorentz_poles):
-        sim = Simulation(freq_max=5e9, domain=(0.024, 0.009, 0.009))
+        # dx 1.5 mm: the coarser of the two meshes the xfail reason measured;
+        # whole cells on every axis (16 x 6 x 6)
+        sim = Simulation(freq_max=5e9, domain=(0.024, 0.009, 0.009), dx=1.5e-3)
         sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles)
         sim.add(Box((0.010, 0.0, 0.0), (0.016, 0.009, 0.009)), material="dut")
         sim.add_port((0.003, 0.0045, 0.0045), "ez",
