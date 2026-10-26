@@ -2029,16 +2029,18 @@ def test_refuses_a_pmc_face_and_accepts_absorbing_faces():
 def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     from rfx import Simulation
 
-    def bare():
+    def bare(*, waveguide=False):
         sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
-                         cpml_layers=6, boundary="cpml")
+                         cpml_layers=6, boundary=(
+                             {"x": "cpml", "y": "pec", "z": "pec"}
+                             if waveguide else "cpml"))
         sim.add_current_moment_monitor(
             corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3, block_size=6e-3,
             freqs=GUARD_FREQS)
         return sim
 
-    sim = bare()
-    sim.add_waveguide_port(4e-3, y_range=(4e-3, 20e-3), z_range=(8e-3, 16e-3),
+    sim = bare(waveguide=True)
+    sim.add_waveguide_port(4e-3,
                            freqs=GUARD_FREQS)
     with pytest.raises(NotImplementedError, match="waveguide port"):
         _guard_runs(sim)

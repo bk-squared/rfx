@@ -441,14 +441,19 @@ def test_removed_native_fallback_refuses_before_scan(kind, entry, monkeypatch):
     from rfx import Simulation
     from rfx.runners.distributed_v2 import run_distributed
 
-    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
-                     dx=1e-3, boundary="cpml")
+    sim = Simulation(
+        freq_max=15e9,
+        domain=(24e-3, 12e-3, 12e-3),
+        dx=1e-3,
+        boundary=({"x": "cpml", "y": "pec", "z": "pec"}
+                  if kind == 'waveguide' else "cpml"),
+    )
     if kind == 'tfsf':
         sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
         expected = 'open-slab normal-incidence TFSF (periodic y/z is not on slabs)'
     else:
-        sim.add_waveguide_port(x_position=6e-3, y_range=(2e-3, 10e-3),
-                              z_range=(2e-3, 10e-3), mode=(1, 0), mode_type="TE",
+        sim.add_waveguide_port(x_position=6e-3, y_range=(0., 12e-3),
+                              z_range=(0., 12e-3), mode=(1, 0), mode_type="TE",
                               direction="+x", f0=7.5e9, bandwidth=0.5)
         expected = 'waveguide ports (add_waveguide_port) are not supported on'
     public_run = sim.run
