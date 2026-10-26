@@ -178,8 +178,6 @@ def _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None,
     if mats is None:
         mats = _make_mats(shape)
     state = update_e(state, mats, dt, dx)
-    if boundary_pec:
-        state = apply_pec(state)
     if pec_mask is not None:
         # #931: ``apply_pec_mask`` IS the shared realization
         # (realized_pec_edge_masks, volume branch). This lane
@@ -188,6 +186,8 @@ def _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None,
         # has no periodic branch, so the default #689 flags are
         # the run's own.
         state = apply_pec_mask(state, pec_mask)
+    if boundary_pec:
+        state = apply_pec(state)
     return state.ex, state.ey, state.ez
 
 

@@ -295,18 +295,18 @@ def make_graded_step(
                                          boundary=ctx.curl_boundary, debye=frame.debye_coeffs, lorentz=frame.lorentz_coeffs)
 
     def pec(frame: GradedFrame):
-        # PEC, per face (#1164)
-        frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
-                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
+        """Enforce realized conductor edges and occupancy before sheets."""
         if ctx.use_pec_edges:
             frame.st = apply_pec_edges(frame.st, frame.pec_edge_masks)
         if ctx.use_pec_occupancy:
             frame.st = apply_edge_keep(frame.st, frame.materials.edge_keep)
 
     def constitutive(frame: GradedFrame):
+        """Apply sheets, then domain faces, then lumped constitutive laws."""
         # #677 node-thin surface-impedance sheet operator. Contract slot:
-        # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap),
-        # BEFORE sources and the port DFT sampling below. curlH comes from
+        # AFTER apply_pec_mask/apply_pec_occupancy, BEFORE domain faces
+        # (PEC wins on overlap), lumped updates, sources and port sampling.
+        # curlH comes from
         # the SAME shared stencil helper update_e_nu uses, on the same
         # H^{n+1/2} the E update consumed.
         if ctx.use_sheet_impedance:
@@ -319,6 +319,10 @@ def make_graded_step(
                 frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary)
             frame.st = _apply_sheet_e(frame.st, frame.e_prev_sheet, _curls,
                                 frame.sheet_impedance, frame.sheet_coeffs)
+
+        # PEC, per face (#1164)
+        frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         frame.new_rlc_states = None

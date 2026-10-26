@@ -1173,18 +1173,13 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # Every electric face: the declared walls and the conducting plane behind each absorbing face.
-        st = _apply_pec_shmap(
-            st, mesh, n_devices, nx_local, pad_x=pad_x,
-            pec_faces=e_wall_faces, ranks=ranks)
-
         # 6b. Realized conductor edges, distinct from domain walls. The
         #     global object already applied the shared PEC rule. Each rank
         #     zeros only owned rows; the kernel excludes ghosts so a seam
         #     edge is zeroed once and exchanged from its owner.
         #
-        #     POSITION IS LOAD-BEARING: after injection, immediately BEFORE
-        #     the E ghost exchange. The exchange then hands the neighbour a
+        #     POSITION IS LOAD-BEARING: after injection, BEFORE the domain
+        #     faces and E ghost exchange. The exchange hands the neighbour a
         #     FINISHED row. Exchanging first leaves rank 0's right ghost
         #     carrying the un-zeroed Ey/Ez of the seam plane rank 1 zeroes a
         #     stage later, and rank 0's next H update at its last real cell
@@ -1194,6 +1189,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
                 st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
+
+        # Every electric face: the declared walls and the conducting plane behind each absorbing face.
+        st = _apply_pec_shmap(
+            st, mesh, n_devices, nx_local, pad_x=pad_x,
+            pec_faces=e_wall_faces, ranks=ranks)
 
         # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,
@@ -1281,7 +1281,19 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # 5. PEC boundaries (domain faces only; conductor edges follow).
+        # 5b. Realized-PEC cell mask (#1053), BEFORE the domain faces and
+        #     E ghost exchange -- distributed_nu's stage 8, in its position.
+        #     See the long note on step_fn_cpml stage 6b: getting this one
+        #     stage later, after the exchange, cost 2.107e-01 against a 5e-5
+        #     gate when the nu lane had it there. Moving domain faces across
+        #     the exchange was measured inert (#1041 fixture P,
+        #     bit-identical); that measurement does not transfer to a body
+        #     mask, which must stay before the exchange.
+        if pec_mask_arg is not None:
+            st = apply_pec_mask_shmap(
+                st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
+
+        # 5. PEC boundaries (domain faces only; conductor edges precede).
         #    Injection runs BEFORE the face, matching distributed_nu stage 7.
         #    The two lanes therefore both differ from the single-device lane,
         #    which applies the faces before its soft-source loop; the
@@ -1291,20 +1303,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         #    it -- a source on a PEC face is its own question.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
-
-        # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
-        #     immediately before the E ghost exchange -- distributed_nu's
-        #     stage 8, in distributed_nu's position. See the long note on
-        #     step_fn_cpml stage 6b: getting this one stage later, after the
-        #     exchange, cost 2.107e-01 against a 5e-5 gate when the nu lane
-        #     had it there. The domain-face PEC above did NOT move; its
-        #     position relative to the exchange was measured inert (#1041
-        #     fixture P, bit-identical), and that measurement does not
-        #     transfer to a body mask, which is the whole reason this stage
-        #     goes here and not next to it.
-        if pec_mask_arg is not None:
-            st = apply_pec_mask_shmap(
-                st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
 
         # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,

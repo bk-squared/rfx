@@ -304,7 +304,7 @@ def make_uniform_step(
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
 
     def pec(frame: UniformFrame):
-        """Enforce conductor faces, realized edges and occupancy after drives."""
+        """Enforce frozen cells, realized edges and occupancy before sheets."""
         if not ctx.use_fast_he:
             # CPML adds a psi-driven correction that can thaw cells
             # where inv_eps==0; re-zero them here so the frozen
@@ -317,9 +317,6 @@ def make_uniform_step(
                     ey=jnp.where(_inv_yy_r < _PEC_INV_THRESHOLD, 0.0, frame.st.ey),
                     ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, frame.st.ez),
                 )
-
-            if ctx.use_pec_faces:
-                frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen)
 
             if ctx.use_conformal and not ctx.use_aniso_inv:
                 # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
@@ -362,7 +359,7 @@ def make_uniform_step(
                     ctx.design_occupancy.keep)
 
     def constitutive(frame: UniformFrame):
-        """Apply sheet and lumped constitutive laws using retained E at n."""
+        """Apply sheets, then domain faces, then lumped constitutive laws."""
         if not ctx.use_fast_he:
             # curlH comes from the SAME shared stencil helper update_e uses,
             # on the same H^{n+1/2} the E update consumed (H is unchanged
@@ -377,6 +374,9 @@ def make_uniform_step(
                 frame.st = _apply_sheet_e(
                     frame.st, frame.e_prev_sheet, _curls, ctx.sheet_impedance,
                     _sheet_coeffs)
+
+            if ctx.use_pec_faces:
+                frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen)
 
         if ctx.use_lumped_rlc:
             frame.st, frame.new_rlc_states = ctx.update_rlc_elements(

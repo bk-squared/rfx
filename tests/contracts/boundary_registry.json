@@ -849,6 +849,11 @@
     },
     {
       "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.constitutive",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
       "function": "make_graded_step.e_boundary",
       "kind": "boundary"
     },
@@ -875,6 +880,11 @@
     {
       "file": "rfx/stepping/uniform.py",
       "function": "apply_pec_faces",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.constitutive",
       "kind": "boundary"
     },
     {

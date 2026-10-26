@@ -1567,14 +1567,14 @@ def run_nonuniform_distributed_pec(
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # 7. PEC on physical domain faces (X-faces are rank-conditional).
-        st = _apply_pec_face_nu_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
-
         # 8. PEC mask zeroing (geometry + override union).  No-op when
         #    sharded_pec_mask is None.
         if sharded_pec_mask is not None:
             st = _apply_pec_mask_nu_shmap(
                 st, sharded_pec_mask, mesh, n_devices, nx_local, ranks=ranks)
+
+        # 7. PEC on physical domain faces (X-faces are rank-conditional).
+        st = _apply_pec_face_nu_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
         # 9. Ghost exchange of E so the next step's H update sees the
         #    neighbour rank's E at the seam.  LAST in the E half-step, after
