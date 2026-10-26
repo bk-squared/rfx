@@ -4,6 +4,6 @@
   `AttributeError: 'list' object has no attribute 'v_probe_t'`, on the uniform and the graded mesh. They now raise
   `NotImplementedError` before the first time step. The message says that `run()` and `forward()` drive and record one
   mode per port, and that `compute_waveguide_s_matrix()` on a uniform mesh measures several modes per port.
-- `topology_optimize` and the other calculators that take one configuration per port refuse the same input with the
-  same words. `compute_waveguide_s_matrix()` is unchanged: on a uniform mesh two ports with two modes each still give
-  a 4 × 4 S-matrix per frequency.
+- `topology_optimize` and `compute_lumped_wire_s_matrix_via_scan`, which stopped with the same AttributeError, now
+  refuse the input before their first time step. `compute_waveguide_s_matrix()` is unchanged: on a uniform mesh two
+  ports with two modes each still give a 4 × 4 S-matrix per frequency.
