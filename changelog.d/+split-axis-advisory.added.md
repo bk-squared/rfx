@@ -1,2 +1,0 @@
-Multi-device `run()` and uniform distributed `forward()` results now carry an advisory when x is shorter than y or z.
-It reports realized grid counts and the measured 1.51–1.69x slowdown on three RTX A6000 GPUs, suggesting rotation when the structure allows; the run is unchanged.
