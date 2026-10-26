@@ -887,7 +887,7 @@ def run_nonuniform_distributed_pec(
             "rebuild the grid with a non-zero CPML layer count."
         )
 
-    validate_scan_controls(n_steps, n_warmup, checkpoint_every)
+    validate_scan_controls(n_steps, n_warmup, checkpoint_every, path="graded multi-device distributed_nu")
 
     sources = list(sources) if sources is not None else []
     for source in sources:

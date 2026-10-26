@@ -2520,6 +2520,7 @@
       "design",
       "checkpoint",
       "distributed",
+      "cotangents",
       "safety_factor",
       "include_mesh_report",
       "check_ntff",
@@ -2839,7 +2840,8 @@
       "design_box",
       "design",
       "checkpoint",
-      "distributed"
+      "distributed",
+      "cotangents"
     ],
     "explain_ad_memory": [
       "n_steps",
@@ -2850,7 +2852,8 @@
       "design_box",
       "design",
       "checkpoint",
-      "distributed"
+      "distributed",
+      "cotangents"
     ],
     "export_artifact_bundle": [
       "path",
@@ -2913,7 +2916,10 @@
       "design_box",
       "design",
       "checkpoint",
-      "distributed"
+      "distributed",
+      "max_levels",
+      "checkpoint_every",
+      "cotangents"
     ],
     "plan_mesh": [
       "n_steps",

@@ -94,6 +94,13 @@ def carried_closed_box_line_bytes(sim, grid, n_steps, saved):
 def segment_counts(n, warmup, every, segments):
     """Return active boundary count and live tape length for either runner."""
     active = n - warmup
+    if isinstance(every, tuple):
+        from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory
+        lengths = checkpoint_lengths(every)
+        # Levels the clamp turns off are skipped, as the graded runner does.
+        memory = checkpoint_memory(active, lengths,
+                                   boundary_bytes=0, step_bytes=0, static_bytes=0)
+        return memory.held_boundaries, memory.live_steps
     if segments is not None:
         length = n // segments
         return segments - warmup // length, min(length, active)
@@ -196,11 +203,16 @@ def validate_counts(n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segmen
         raise ValueError(
             "checkpoint_every and checkpoint_segments are mutually exclusive"
         )
-    if checkpoint_every_i is not None and checkpoint_every_i <= 0:
+    if isinstance(checkpoint_every_i, tuple):
+        from rfx.stepping.remat import checkpoint_lengths
+        checkpoint_lengths(checkpoint_every_i)
+    elif checkpoint_every_i is not None and checkpoint_every_i <= 0:
         raise ValueError(
             f"checkpoint_every must be positive when provided, got {checkpoint_every_i}"
         )
     if checkpoint_segments_i is not None:
+        if isinstance(checkpoint_segments_i, tuple):
+            raise ValueError("AD memory checkpoint_segments must be an int; use checkpoint_every for levels")
         if checkpoint_segments_i < 1:
             raise ValueError(
                 f"checkpoint_segments must be ≥ 1, got {checkpoint_segments_i}"
