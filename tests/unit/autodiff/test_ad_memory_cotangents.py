@@ -156,8 +156,4 @@ def test_scene_s_measured_per_cotangent_anchor():
     assert one.carry_bytes / 1e6 == pytest.approx(25.4, rel=.01)
     eight = sim.estimate_ad_memory(6007, cotangents=8, **options)
     per_extra_mb = (eight.ad_segmented_gb - one.ad_segmented_gb) * 1e3 / 7
-    sixteen = sim.estimate_ad_memory(6007, cotangents=16, **options)
-    print(f"scene S: carry_bytes={one.carry_bytes}, per_extra_mb={per_extra_mb}, "
-          f"B16_estimate_MB={sixteen.ad_segmented_gb * 1e3}, "
-          f"B16_estimate_to_measured={sixteen.ad_segmented_gb * 1e3 / 4559.5}")
     assert per_extra_mb == pytest.approx(191.2, rel=.10)
