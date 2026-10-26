@@ -13,7 +13,17 @@ def apply_conformal_pec(state, pec_mask_ex, pec_mask_ey, pec_mask_ez):
 
     The boolean w == 0 masks are formed by core_step_invariants in
     uniform_setup before the compiled loop. Call AFTER update_e each timestep.
+    Non-boolean masks raise TypeError: float weights given here would zero
+    every open edge and leave the PEC interior; the weight-taking form is
+    ``rfx.geometry.conformal.apply_conformal_pec``.
     """
+    for name, mask in (("pec_mask_ex", pec_mask_ex), ("pec_mask_ey", pec_mask_ey),
+                       ("pec_mask_ez", pec_mask_ez)):
+        dtype = getattr(mask, "dtype", None)
+        if dtype is None or not jnp.issubdtype(dtype, jnp.bool_):
+            raise TypeError(
+                f"{name} must be a boolean w == 0 mask, got dtype {dtype}; "
+                "rfx.geometry.conformal.apply_conformal_pec takes the weights")
     return state._replace(
         ex=jnp.where(pec_mask_ex, 0.0, state.ex),
         ey=jnp.where(pec_mask_ey, 0.0, state.ey),

@@ -1,11 +1,14 @@
 """Stage 1 reads boolean zero masks in the scan and enforces E = 0 in PEC."""
+from collections import namedtuple
 from unittest.mock import patch
 
 import jax
 import numpy as np
+import pytest
 
 from rfx import Box, Simulation
 from rfx.stepping import uniform_setup
+from rfx.stepping.conductors import apply_conformal_pec
 from tests.unit.boundaries.test_pec_face_write_after_masks import (
     _called, _equations, _step_jaxpr,
 )
@@ -67,3 +70,12 @@ def test_conformal_zero_edges_are_exactly_zero_after_steps():
         np.testing.assert_array_equal(np.asarray(mask), expected)
         assert np.all(np.asarray(getattr(final[0], component))[expected] == 0.0), \
             'electric field on every fully covered PEC edge must be exactly zero'
+
+
+def test_conformal_zero_refuses_float_weights():
+    # w = 0 inside PEC and 1 in free space: as a condition the weights would
+    # zero the open edge and keep the field inside the conductor.
+    weight = np.array([0.0, 1.0], np.float32)
+    state = namedtuple('E', 'ex ey ez')(*(np.ones(2, np.float32),) * 3)
+    with pytest.raises(TypeError, match='boolean w == 0 mask'):
+        apply_conformal_pec(state, weight, weight, weight)
