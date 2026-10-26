@@ -835,8 +835,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
 def core_step_invariants(ctx: _StepContext) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
 
-    ``ctx`` itself plus the two arrays derived from it once, eagerly: the
-    CPML permittivity and the surface-impedance sheet coefficients. A jitted
+    ``ctx`` itself plus arrays derived from it once, before the loop: the
+    CPML permittivity, sheet coefficients and boolean conformal zero masks. A jitted
     caller passes the per-cell arrays in this dict as an argument
     (:func:`rfx.core.jax_utils.split_loop_invariants`) and hands the rebuilt
     dict to ``make_core_step(ctx, invariants=...)`` inside the trace, so they
@@ -847,6 +847,11 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     materials = ctx.materials
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
+    # Stage 1's zero set is loop-invariant, like the update coefficients.
+    # Keep it separate from pec_edge_masks: sheets use those for PEC ownership.
+    conformal_zero_masks = None
+    if ctx.use_conformal and not ctx.use_aniso_inv:
+        conformal_zero_masks = tuple(w == 0.0 for w in tensor.conformal_weights)
 
     # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the
@@ -881,4 +886,5 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     from rfx.stepping.absorber import cpml_context
     ctx, e_loss = cpml_context(ctx)
     return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
-            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss}
+            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
+            "conformal_zero_masks": conformal_zero_masks}

@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 
 
-def apply_conformal_pec(state, w_ex, w_ey, w_ez):
+def apply_conformal_pec(state, pec_mask_ex, pec_mask_ey, pec_mask_ez):
     """Apply conformal PEC: zero E inside PEC, leave partial cells to update coefficients.
 
     For cells with w=0 (fully inside PEC): force E=0.
@@ -11,12 +11,19 @@ def apply_conformal_pec(state, w_ex, w_ey, w_ez):
     The Dey-Mittra correction for partial cells should be applied by modifying
     the material eps_r via `conformal_eps_correction()` once at setup time.
 
-    Call AFTER update_e each timestep.
+    The boolean w == 0 masks are formed by core_step_invariants in
+    uniform_setup before the compiled loop. Call AFTER update_e each timestep.
+    Non-boolean masks raise TypeError: float weights given here would zero
+    every open edge and leave the PEC interior; the weight-taking form is
+    ``rfx.geometry.conformal.apply_conformal_pec``.
     """
-    # Only zero out fully-PEC cells (w == 0), not partial cells
-    pec_mask_ex = (w_ex == 0.0)
-    pec_mask_ey = (w_ey == 0.0)
-    pec_mask_ez = (w_ez == 0.0)
+    for name, mask in (("pec_mask_ex", pec_mask_ex), ("pec_mask_ey", pec_mask_ey),
+                       ("pec_mask_ez", pec_mask_ez)):
+        dtype = getattr(mask, "dtype", None)
+        if dtype is None or not jnp.issubdtype(dtype, jnp.bool_):
+            raise TypeError(
+                f"{name} must be a boolean w == 0 mask, got dtype {dtype}; "
+                "rfx.geometry.conformal.apply_conformal_pec takes the weights")
     return state._replace(
         ex=jnp.where(pec_mask_ex, 0.0, state.ex),
         ey=jnp.where(pec_mask_ey, 0.0, state.ey),

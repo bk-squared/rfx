@@ -323,7 +323,7 @@ def make_uniform_step(
                 # the inv-eps tensor encodes the fully-PEC-cell zero
                 # already, so this would be redundant double-zeroing.
                 from rfx.stepping.conductors import apply_conformal_pec
-                frame.st = apply_conformal_pec(frame.st, tensor.conformal_weights[0], tensor.conformal_weights[1], tensor.conformal_weights[2])
+                frame.st = apply_conformal_pec(frame.st, *invariants["conformal_zero_masks"])
             if ctx.use_pec_edges:
                 # #931 §1.7: the (Mx, My, Mz) realized once at setup.
                 #
