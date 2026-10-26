@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 
 import check_changelog_fragment
 import check_pr_body
@@ -25,14 +26,18 @@ PR_FIELDS = "state,baseRefName,headRefOid,headRepository,isCrossRepository,label
 
 
 def subprocess_error(exc: subprocess.CalledProcessError) -> str:
-    tail = "\n".join((exc.stderr or "").splitlines()[-20:])
+    stderr = exc.stderr or ""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    tail = "\n".join(stderr.splitlines()[-20:])
     return f"{exc}\nstderr (last 20 lines):\n{tail or '(empty)'}"
 
 
-def run(repo: Path, *args: str, input: str | None = None) -> str:
+def run(repo: Path, *args: str, input: str | bytes | None = None,
+        binary: bool = False, env: dict[str, str] | None = None) -> str | bytes:
     try:
         return subprocess.run(
-            args, cwd=repo, input=input, text=True, capture_output=True, check=True,
+            args, cwd=repo, input=input, text=not binary, env=env, capture_output=True, check=True,
         ).stdout
     except subprocess.CalledProcessError as exc:
         raise ValueError(subprocess_error(exc)) from exc
@@ -124,6 +129,55 @@ def member_env(repo: Path, pr: dict, env: dict[str, str]) -> dict[str, str]:
     }
 
 
+def transform_topic_tree(repo: Path, tree: str, merge_base: str, sha: str, number: int) -> str:
+    """Apply only the train's topic renames, without changing the checkout/index."""
+    assemble = check_changelog_fragment._load_assembler()
+    added = run(
+        repo, "git", "diff-tree", "--no-commit-id", "-r", "--no-renames",
+        "--diff-filter=A", "--name-only", "-z", merge_base, sha, "--", "changelog.d",
+    ).split("\0")
+    topics = []
+    for source in added:
+        path = Path(source)
+        match = assemble.TOPIC_NAME_RE.fullmatch(path.name)
+        if path.parent == Path("changelog.d") and match and match["type"] in assemble.TYPE_HEADINGS:
+            topics.append((source, f"changelog.d/{number}.{match['type']}.md"))
+    if not topics:
+        return tree
+    entries = {}
+    for entry in run(repo, "git", "ls-tree", "-r", "-z", tree, "--", "changelog.d").split("\0"):
+        if entry:
+            metadata, path = entry.split("\t", 1)
+            entries[path] = metadata.split()
+    plan, targets = [], set()
+    for source, target in topics:
+        if target in targets:
+            raise ValueError(f"two topic fragments of one type target {target}")
+        targets.add(target)
+        if target in entries:
+            raise ValueError(f"changelog target already exists: {target}")
+        if source not in entries:
+            raise ValueError(f"topic fragment missing from merge tree: {source}")
+        mode, kind, oid = entries[source]
+        if kind != "blob" or mode not in {"100644", "100755"}:
+            raise ValueError(f"topic fragment is not a regular file: {source}")
+        content = run(repo, "git", "cat-file", "blob", oid, binary=True)
+        heading, newline, body = content.partition(b"\n")
+        if b"(#PR)" not in heading:
+            raise ValueError(f"topic fragment heading is missing (#PR): {source}")
+        content = heading.replace(b"(#PR)", f"(#{number})".encode()) + newline + body
+        plan.append((source, target, mode, content))
+    with tempfile.TemporaryDirectory(prefix="changelog-index-") as directory:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(directory) / "index")}
+        run(repo, "git", "read-tree", tree, env=env)
+        for source, target, mode, content in plan:
+            oid = run(repo, "git", "hash-object", "-w", "--stdin", input=content, binary=True).decode().strip()
+            # --force-remove also removes it when the checkout still has the topic.
+            run(repo, "git", "update-index", "--remove", "--force-remove", "--", source, env=env)
+            run(repo, "git", "update-index", "--add", "--cacheinfo", mode, oid, target, env=env)
+        return run(repo, "git", "write-tree", env=env).strip()
+
+
 def faithfulness(repo: Path, base: str, sha: str, commit: str) -> list[str]:
     # BASE_SHA pins main as it was when the batch was built, even after a fetch.
     merge_base = run(repo, "git", "merge-base", base, sha).strip()
@@ -137,6 +191,8 @@ def faithfulness(repo: Path, base: str, sha: str, commit: str) -> list[str]:
             return [f"does not apply cleanly onto the batch\n{subprocess_error(exc)}"]
         raise ValueError(subprocess_error(exc))
     recomputed = result.stdout.splitlines()[0]
+    number, _ = trailers(repo, commit)
+    recomputed = transform_topic_tree(repo, recomputed, merge_base, sha, number)
     actual = run(repo, "git", "rev-parse", f"{commit}^{{tree}}").strip()
     if recomputed != actual:
         paths = run(repo, "git", "diff-tree", "-r", "--name-only", recomputed, actual).splitlines()
@@ -225,6 +281,7 @@ def member_fragments(repo: Path, base: str, head: str) -> list[str]:
                 f"#{number}: {failure}"
                 for failure in check_changelog_fragment.check(
                     f"{commit}^", commit, member_labels, repo, pr_number=str(number),
+                    allow_topic=False,
                 )
             )
         except subprocess.CalledProcessError as exc:

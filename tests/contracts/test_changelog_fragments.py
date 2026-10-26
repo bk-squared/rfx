@@ -15,12 +15,14 @@ a git repository this file builds. No network, no package import.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from tests._git_tracked import git_available
+from tests._changelog_context import allow_topic_fragments
 
 REPO = Path(__file__).resolve().parents[2]
 ASSEMBLER_PATH = REPO / "scripts" / "changelog" / "assemble.py"
@@ -37,6 +39,101 @@ def _load(name: str, path: Path):
 
 assemble = _load("_test_changelog_assemble", ASSEMBLER_PATH)
 checker = _load("_test_changelog_checker", CHECKER_PATH)
+
+TOPIC_TEXT = "### Fixed — correct the value (#PR)\n\n- Keep the result finite.\n"
+
+
+@pytest.mark.parametrize("topic", ["abc", "fix-123", "a" * 60])
+def test_topic_fragment_validates(topic):
+    assemble.validate_topic_fragment_text(f"{topic}.fixed.md", TOPIC_TEXT)
+
+
+@pytest.mark.parametrize("name", [
+    "ab.fixed.md", "a" * 61 + ".fixed.md", "123.fixed.md", "Abc.fixed.md",
+    "abc_def.fixed.md", "abc.unknown.md",
+])
+def test_invalid_topic_name_fails(name):
+    with pytest.raises(assemble.FragmentError):
+        assemble.validate_topic_fragment_text(name, TOPIC_TEXT)
+
+
+@pytest.mark.parametrize("text", [
+    "### Fixed — correct the value\n\n- (#PR) belongs in the heading.\n",
+    "### Fixed — correct the value (#77)\n",
+    "### Fixed - correct the value (#PR)\n",
+    "### Added — correct the value (#PR)\n",
+    "### Fixed — correct the value (#PR)\n\n## Forged section\n",
+    "\n### Fixed — correct the value (#PR)\n",
+    "",
+])
+def test_invalid_topic_text_fails(text):
+    with pytest.raises(assemble.FragmentError):
+        assemble.validate_topic_fragment_text("correct-value.fixed.md", text)
+
+
+def test_iter_fragments_and_validate_all_refuse_topics(workspace):
+    directory = workspace / "changelog.d"
+    (directory / "correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    with pytest.raises(assemble.FragmentError, match="only the train may land it"):
+        assemble.iter_fragments(directory)
+    problems = assemble.validate_all(directory)
+    assert len(problems) == 1
+    assert "changelog.d/<topic>.<type>.md" in problems[0]
+    assert "only the train may land it" in problems[0]
+    assert assemble.main(["--changelog", str(workspace / "CHANGELOG.md"),
+                          "--fragments", str(directory), "--release", "2.0.0"]) == 1
+    assert (directory / "correct-value.fixed.md").read_text(encoding="utf-8") == TOPIC_TEXT
+    assert (workspace / "CHANGELOG.md").read_text(encoding="utf-8") == SYNTHETIC
+
+
+@pytest.mark.parametrize("event,base,context,accepted", [
+    (None, None, None, False), ("", None, None, False),
+    (None, None, "pre-landing", True), ("", None, "pre-landing", True),
+    (None, None, "other", False),
+    ("push", "main", "pre-landing", False),
+    ("merge_group", "main", "pre-landing", False),
+    ("workflow_dispatch", "main", "pre-landing", False),
+    ("pull_request", "main", None, True), ("pull_request", "feature/base", None, True),
+    ("pull_request", "release", "pre-landing", False),
+    ("pull_request", "release/2.0", "pre-landing", False),
+    ("pull_request", "release-next", "pre-landing", False),
+])
+def test_checkout_topic_policy(workspace, monkeypatch, event, base, context, accepted):
+    for name, value in (("GITHUB_EVENT_NAME", event), ("GITHUB_BASE_REF", base),
+                        ("RFX_CHANGELOG_CONTEXT", context)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+    (workspace / "changelog.d" / "correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    assert (validate_checkout_fragments(workspace / "changelog.d") == []) is accepted
+
+
+@pytest.mark.parametrize("labels,accepted", [([], True), (["merge-train"], True),
+                                            (["merge-train-batch"], False)])
+def test_topic_fragment_pr_policy(git_repo, monkeypatch, capsys, labels, accepted):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "rfx/simulation.py").write_text("x = 2\n", encoding="utf-8")
+    (git_repo / "changelog.d/correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    head = _commit(git_repo, "Add a topic fragment")
+    failures = _run_check(git_repo, base, head, labels=labels)
+    assert (failures == []) is accepted
+    if not accepted:
+        assert "only the train may land it" in failures[0]
+    monkeypatch.setenv("PR_LABELS_JSON", json.dumps(labels))
+    assert checker.main(["--repo", str(git_repo), "--base", base, "--head", head]) == int(not accepted)
+    assert (capsys.readouterr().err == "") is accepted
+
+
+@pytest.mark.parametrize("reference", ["", "(#77)"])
+def test_pr_topic_requires_literal_placeholder(git_repo, reference):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "changelog.d/correct-value.fixed.md").write_text(
+        f"### Fixed — correct the value {reference}\n", encoding="utf-8")
+    head = _commit(git_repo, "Add an invalid topic fragment")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1
+    assert "heading must reference (#PR)" in failures[0]
 
 SYNTHETIC = """# Changelog
 
@@ -164,6 +261,54 @@ def test_check_accepts_valid_fragments(workspace: Path):
     assert rc == 0
 
 
+@pytest.mark.parametrize("flags,accepted", [
+    (["--check", "--allow-topic"], True),
+    (["--check"], False),
+    ([], False),
+    (["--allow-topic"], False),
+    (["--dry-run", "--allow-topic"], False),
+    (["--release", "2.0.0"], False),
+    (["--release", "2.0.0", "--allow-topic"], False),
+    (["--release", "2.0.0", "--check", "--allow-topic"], False),
+])
+def test_cli_topic_validation_is_check_only(workspace, capsys, flags, accepted):
+    directory = workspace / "changelog.d"
+    _write_fragments(workspace, [(3, "fixed", "Fixed")])
+    (directory / "correct-value.fixed.md").write_text(TOPIC_TEXT, encoding="utf-8")
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    assert assemble.main([
+        "--changelog", str(workspace / "CHANGELOG.md"), "--fragments", str(directory), *flags,
+    ]) == int(not accepted)
+    output = capsys.readouterr()
+    if accepted:
+        assert output.out == "changelog fragments OK (2 pending)\n"
+        assert output.err == ""
+    else:
+        assert "only the train may land it" in output.err
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    assert (workspace / "CHANGELOG.md").read_text(encoding="utf-8") == SYNTHETIC
+
+
+@pytest.mark.parametrize("name,text", [
+    ("correct-value.fixed.md", "### Fixed — value (#77)\n"),
+    ("correct-value.fixed.md", "### Fixed — value\n\n- Body (#PR).\n"),
+    ("correct-value.fixed.md", "### Added — value (#PR)\n"),
+    ("correct-value.fixed.md", "### Fixed - value (#PR)\n"),
+    ("correct-value.fixed.md", "### Fixed — value (#PR)\n\n## Forged section\n"),
+    ("ab.fixed.md", TOPIC_TEXT),
+    ("correct-value.unknown.md", TOPIC_TEXT),
+    ("correct-value.fixed.txt", TOPIC_TEXT),
+    ("12.fixed.md", TOPIC_TEXT),
+])
+def test_check_allow_topic_still_validates_fragments(workspace, name, text):
+    directory = workspace / "changelog.d"
+    (directory / name).write_text(text, encoding="utf-8")
+    assert assemble.main([
+        "--changelog", str(workspace / "CHANGELOG.md"), "--fragments", str(directory),
+        "--check", "--allow-topic",
+    ]) == 1
+
+
 @pytest.mark.parametrize("name", [
     "abc.fixed.md",          # no number
     "12.wrong.md",           # unknown type
@@ -220,9 +365,14 @@ def test_refuses_a_changelog_without_an_unreleased_heading(workspace: Path):
     assert (workspace / "changelog.d" / "8.fixed.md").exists()
 
 
+def validate_checkout_fragments(fragment_dir: Path) -> list[str]:
+    """Validate topic fragments only in an explicit pre-landing context."""
+    return assemble.validate_all(fragment_dir, allow_topic=allow_topic_fragments())
+
+
 def test_the_repo_changelog_and_fragments_are_currently_valid():
     """The live directory passes its own gate."""
-    assert assemble.validate_all(REPO / "changelog.d") == []
+    assert validate_checkout_fragments(REPO / "changelog.d") == []
     lines = (REPO / "CHANGELOG.md").read_text(encoding="utf-8").split("\n")
     assert assemble.find_unreleased_index(lines) >= 0
 
@@ -344,7 +494,8 @@ def _commit(repo: Path, message: str) -> str:
 
 
 def _run_check(repo: Path, base: str, head: str, labels=(), pr_number="77"):
-    return checker.check(base, head, list(labels), repo, pr_number)
+    return checker.check(base, head, list(labels), repo, pr_number,
+                         allow_topic="merge-train-batch" not in labels)
 
 
 def test_package_change_without_a_fragment_fails(git_repo: Path):
