@@ -289,8 +289,10 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
 #: or ``hx[i, j, k - 1]``.  Subscripts containing a ``:`` are excluded so the
 #: slice-based stencils in adi.py / sbp_sat_2d.py / tfsf_2d.py do not match —
 #: those are whole-array differences with their own pad conventions, not
-#: single-cell Ampere loops.
-_RAW_BACKWARD_H = re.compile(r"\bh[xyz]\s*\[[^]:]*-\s*1\s*[,\]]")
+#: single-cell Ampere loops.  The ``-1`` must follow an index (``i-1``,
+#: ``k - 1``): a bare ``hx[-1]`` or ``hz[i, j, -1]`` is the last row, not a
+#: read one cell back.
+_RAW_BACKWARD_H = re.compile(r"\bh[xyz]\s*\[[^]:]*[\w)]\s*-\s*1\s*[,\]]")
 
 #: Files allowed to spell a scalar backward H read directly: the two places
 #: that DEFINE the convention.
