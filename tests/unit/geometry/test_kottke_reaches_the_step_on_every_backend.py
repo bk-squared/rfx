@@ -1,11 +1,7 @@
 """`subpixel_smoothing='kottke_pec'` must reach the E update on every backend.
 
-In a PEC-walled box with no absorber, no periodic axis and no PEC shape, the
-GPU step may take the baked H+E fast path, whose coefficients are built from
-the scalar realized permittivity. Its eligibility test looked at the Stage-1
-tensor (``aniso_eps``) but not at the inverse tensor ``kottke_pec`` builds, so
-the smoothing could be dropped there with no message. The invariant below
-holds on any backend: the smoothed run differs from the unsmoothed one, and
+The standard lane retains both permittivity tensors even when the backend
+reports an accelerator. The invariant below holds on any backend: the smoothed run differs from the unsmoothed one, and
 the two smoothing stages agree with each other far better than either agrees
 with the staircase.
 """
@@ -54,25 +50,19 @@ def test_kottke_smoothing_changes_the_field_and_agrees_with_stage_one():
 
 
 def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
-    """The same judge with the step told it is on a GPU: runs in the CPU lane.
-
-    Only the backend QUERY is replaced, so the fast-path eligibility takes its
-    GPU branch while the arithmetic stays on this machine. Before the fix the
-    kottke run built the baked scalar coefficients and returned the unsmoothed
-    trace bit for bit.
-    """
+    """A forced accelerator keeps the standard lane for all three materials."""
     import jax
-    import rfx.stepping.uniform_loop as simulation
+    import rfx.simulation as simulation
     built = []
-    original = simulation.precompute_coeffs
+    original = simulation.update_he_fast
 
     def spy(*args, **kwargs):
         built.append(True)
         return original(*args, **kwargs)
-    monkeypatch.setattr(simulation, "precompute_coeffs", spy)
+    monkeypatch.setattr(simulation, "update_he_fast", spy)
     monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
     plain = _trace(False)
-    assert built, "control: the plain run takes the baked fast path here"
+    assert not built, "the plain run must also take the standard lane"
     built.clear()
     kottke = _trace("kottke_pec")
     assert not built, "kottke_pec took the baked scalar-coefficient path"
@@ -84,14 +74,14 @@ def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
 
 def _told_it_is_on_a_gpu(monkeypatch):
     import jax
-    import rfx.stepping.uniform_loop as simulation
+    import rfx.simulation as simulation
     built = []
-    original = simulation.precompute_coeffs
+    original = simulation.update_he_fast
 
     def spy(*args, **kwargs):
         built.append(True)
         return original(*args, **kwargs)
-    monkeypatch.setattr(simulation, "precompute_coeffs", spy)
+    monkeypatch.setattr(simulation, "update_he_fast", spy)
     monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
     return built
 
@@ -130,8 +120,8 @@ def test_the_occupancy_tensor_of_forward_is_not_dropped_either(monkeypatch):
 
 def test_a_waveguide_port_is_not_dropped_by_the_baked_path(monkeypatch):
     """Reachable only through rfx.simulation.run (the public port requires an
-    absorber), but the same hand-kept exclusion list: the port's E and H
-    corrections sit outside the baked step, so the port radiated nothing."""
+    absorber), and the standard lane retains the port: the port's E and H
+    corrections must still radiate with an accelerator query."""
     import jax.numpy as jnp
     import rfx.simulation as simulation
     from rfx.core.yee import init_materials

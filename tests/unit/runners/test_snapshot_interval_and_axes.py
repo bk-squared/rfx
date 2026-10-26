@@ -42,9 +42,8 @@ def _loaded_sim(boundary="cpml"):
 
     The wire port takes the single-port path whose S-parameters come from the
     SAME scan as the snapshot (not from a separate extraction run), so S is a
-    real witness here. ``boundary="pec"`` is the model a GPU runs through the
-    fused H+E kernel (``update_he_fast``; checked by forcing run()'s backend
-    flag and counting its traces); ``"cpml"`` takes the absorber path.
+    real witness here. ``boundary="pec"`` uses the standard lane on every
+    backend; ``"cpml"`` takes the absorber path.
     """
     sim = Simulation(freq_max=10e9, domain=_DOM, dx=_DX, boundary=boundary,
                      cpml_layers=6)
@@ -78,8 +77,8 @@ def _slice_index(sim):
 @pytest.fixture(scope="module")
 def runs():
     """``{(boundary, n_steps, interval or None): Result}`` for the loaded
-    model, with CPML (absorber path) and with PEC walls (the model a GPU runs
-    through the fused H+E kernel). ``runs[(n, m)]`` is the CPML entry."""
+    model, with CPML (absorber path) and with PEC walls (the standard lane
+    on every backend). ``runs[(n, m)]`` is the CPML entry."""
     out = {}
     for boundary in ("cpml", "pec"):
         sim = _loaded_sim(boundary)

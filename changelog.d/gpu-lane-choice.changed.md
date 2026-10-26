@@ -1,0 +1,6 @@
+### Changed — closed boxes on a GPU run on the standard update (#PR)
+
+`run()` no longer selects the GPU fast H+E lane (PEC baked into the coefficients). Closed PEC boxes on a GPU now take
+the standard update, which measured 1.25–1.90 × faster on an RTX 3090 at 4.6–100 M cells. CPU runs do not change.
+Fields across the switch differ only by accumulated rounding (at most 6.4e-8 of the running sum of the peak field over
+4500 steps).

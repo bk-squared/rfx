@@ -13,7 +13,6 @@ from rfx._uniform_specs import (
     resolve_periodic,
 )
 
-from rfx.backend import backend_class
 from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
@@ -28,7 +27,7 @@ import numpy as np
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
 from rfx.stepping.scan import recorded_scan
-from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary, precompute_coeffs
+from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary
 from rfx.stepping.yee import update_e, update_e_aniso, update_e_aniso_inv
 from rfx.boundaries.pec import resolve_wall_faces, kottke_fenced_edge_masks, realized_pec_edge_masks
 from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, scan_with_progress, validate_report_every
@@ -302,7 +301,6 @@ def run(
             for plane in dft_planes)
     init_uniform_records(carry_init, n_steps, wire_port_sparams, lumped_port_sparams, wire_refplane_sparams, field_dtype, port_record_specs)
     dt = _setup.dt
-    dx = _setup.dx
     periodic = _setup.periodic
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -316,74 +314,11 @@ def run(
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
 
-    # ---- run()-specific: fast-path pre-baked coefficients ----
-    # Eligible when the scan body only needs H update + E update + PEC —
-    # no CPML, no TFSF, no dispersion, no anisotropic eps, no PEC mask,
-    # no conformal, no lumped RLC, no Kerr, and no periodic axes.
-    #
-    # The fast path bakes PEC boundary enforcement into the update
-    # coefficients (zero ca/cb at boundary cells), eliminating 12
-    # per-step scatter operations.  This is always beneficial on GPU
-    # (scatter ops launch separate kernels) and beneficial on CPU for
-    # grids above ~500K cells where the scatter ops cause cache eviction.
-    _on_gpu = backend_class().accelerator
+    # The GPU H+E fast lane measured slower for closed boxes; use the
+    # standard lane (rfx-archive rfx/records/20261026-fast-lane-sweep/).
     _ctx = _setup.ctx_kwargs
-    _fast_eligible = (
-        not _ctx["use_cpml"]
-        and not _ctx["use_upml"]
-        # the baked step applies no per-face masks after its H update, so a
-        # magnetic wall would be neither electric nor magnetic there (#1164)
-        and not _ctx["use_pmc_faces"]
-        # the baked step has no slot for a TFSF or a waveguide-port correction
-        and not (_ctx["use_tfsf"] or _ctx["use_waveguide_ports"])
-        and not _ctx["use_debye"]
-        and not _ctx["use_lorentz"]
-        and not _ctx["use_pec_edges"]
-        and not _ctx["use_pec_occupancy"]
-        and not _ctx["use_conformal"]
-        and not _ctx["use_lumped_rlc"]
-        and not _ctx["use_kerr"]
-        and not mag_sources
-        # #677: the GPU baked fast path has an inline H+E update with no
-        # sheet-operator slot, so a surface-impedance sheet is DELIBERATELY
-        # unsupported here: an f0 sheet takes the standard path, which costs
-        # performance only -- no accuracy loss, nothing silently wrong.
-        # Per-plane baking is a parked capability, not a promised follow-up;
-        # it waits on the thin-sheet plane-BC architecture decision (#701),
-        # and the parking itself is backlog #787.
-        and not _ctx["use_sheet_impedance"]
-        # #1179: same reason as the sheet operator above -- the inline H+E
-        # update has no slot for the design-box redo, and its coefficients
-        # are baked from ``materials``, which is exactly the array a design
-        # box stops carrying. A design box takes the standard path; that
-        # costs GPU scatter kernels, nothing else.
-        and not _ctx["use_design_box"]
-        # #1183: and the same for the design occupancy. The fast path has
-        # no occupancy slot at all -- it would drop the design variable and
-        # return an all-zero gradient, which reads like a converged design.
-        and not _ctx["use_design_occupancy"]
-        # Either permittivity tensor (Stage 1, or the inverse one that
-        # ``subpixel_smoothing="kottke_pec"`` and the occupancy tensor build):
-        # the baked coefficients come from the scalar realized permittivity,
-        # so a tensor would be dropped (kottke_pec returned the unsmoothed
-        # field bit for bit on this path).
-        and not _ctx["use_aniso_inv"]
-        and (_ctx["materials"].components.tensor is None or _ctx["materials"].components.tensor.eps is None)
-        and periodic == (False, False, False)
-    )
-    # On GPU the baked-PEC path eliminates expensive scatter-update
-    # kernel launches — always beneficial.  On CPU, XLA fuses scatter
-    # ops efficiently so the extra coefficient arrays hurt at small-to-
-    # medium grids; enable only when explicitly requested via GPU backend.
-    # The GPU fast path has an INLINE 2nd-order stencil (update_he_fast),
-    # so it must never be used for stencil_order=4 — that would silently
-    # produce a 2nd-order result. Gate it on order==2.
-    use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
-    _fast_coeffs = (
-        precompute_coeffs(_setup.ctx_kwargs["materials"], dt, dx, pec_faces=_setup.pec_faces,
-                          periodic=periodic)
-        if use_fast_he else None
-    )
+    use_fast_he = False
+    _fast_coeffs = None
 
     # ---- run()-specific: snapshot setup ----
     # #1258: ``interval`` is honoured. interval == 1 keeps the pre-#1258 path
