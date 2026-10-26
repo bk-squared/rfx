@@ -391,6 +391,49 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
     edge_spatial[normal] = slice(min(nodes), max(nodes) + 1)
     edge_spatial = tuple(edge_spatial)
     behind = cfg.x_index - 1 if cfg.direction.startswith("+") else cfg.x_index + 1
+    # An E edge whose four neighbouring cells are each closed by PEC edges on
+    # all twelve sides lies inside a conductor: that is the PEC-volume medium,
+    # not a thin element. A face edge (any neighbour open) is still judged.
+    # Read from the realized edges alone, on every path; a traced run reads
+    # the same concrete masks through the host callback.
+    edges = {r.component: r.array for r in records
+             if r.name.startswith("pec_edge_masks.") and r.array.ndim == 3}
+    full_edges = tuple(edges[c] for c in "xyz") if len(edges) == 3 else ()
+
+    def interior_edges(ex, ey, ez):
+        masks = [np.asarray(m, dtype=bool) for m in (ex, ey, ez)]
+
+        def at(mask, shift):
+            out = np.zeros_like(mask)
+            src = tuple(slice(d, None) for d in shift)
+            dst = tuple(slice(0, n - d) for n, d in zip(mask.shape, shift))
+            out[dst] = mask[src]
+            return out
+
+        closed = np.ones_like(masks[0])
+        for component, mask in enumerate(masks):
+            others = [a for a in range(3) if a != component]
+            for u in (0, 1):
+                for v in (0, 1):
+                    shift = [0, 0, 0]
+                    shift[others[0]], shift[others[1]] = u, v
+                    closed &= at(mask, shift)
+        interior = []
+        for component in range(3):
+            others = [a for a in range(3) if a != component]
+            inside = np.ones_like(closed)
+            for u in (0, 1):
+                for v in (0, 1):
+                    lead = [slice(None)] * 3
+                    tail = [slice(None)] * 3
+                    for axis, d in ((others[0], u), (others[1], v)):
+                        if d:
+                            lead[axis], tail[axis] = slice(1, None), slice(None, -1)
+                    neighbour = np.zeros_like(closed)
+                    neighbour[tuple(lead)] = closed[tuple(tail)]
+                    inside &= neighbour
+            interior.append(inside)
+        return interior
 
     def cut_for(record):
         if record.name.startswith("pec_edge_masks.") and record.component != cfg.normal_axis:
@@ -407,6 +450,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
     portions = operands_at(records, select)
 
     def check(*values):
+        interior = interior_edges(*values[len(portions):]) if full_edges else None
         for (record, _), value in zip(portions, values):
             cut = cut_for(record)
             bad = np.asarray(value) != record.vacuum
@@ -414,6 +458,8 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
             if record.name.startswith("pec_edge_masks."):
                 component = "xyz".index(record.component)
                 bad &= ~np.asarray(wall_masks[component][cut])
+                if interior is not None:
+                    bad &= ~interior[component][cut]
                 if component != normal:
                     local = behind - cut[normal].start
                     if 0 <= local < bad.shape[start + normal]:
@@ -442,7 +488,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                     "draw it beyond the reference plane.")
 
     traced_check("waveguide port", "section thin elements", check,
-                 *(cut for _, cut in portions), ordered=True)
+                 *(cut for _, cut in portions), *full_edges, ordered=True)
 
 
 def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,

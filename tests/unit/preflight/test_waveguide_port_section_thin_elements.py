@@ -162,3 +162,54 @@ def test_pec_box_aperture_walls_admitted():
         sim.add_waveguide_port(0.090, direction="-x", name="right", y_range=(0.006, 0.048),
                               f0=6e9, freqs=np.array([5e9, 6.5e9]), reference_plane=0.075)
         _execute(sim)
+
+
+
+def _buried_port_guide(graded):
+    """A straight guide whose third port lies inside a solid PEC block.
+
+    The compact T-junction's horizontal reference sim has this shape: its top
+    port's section and reference node are interior to the block."""
+    profile = np.array([0.002] * 20 + [0.0018, 0.0022] * 10 + [0.002] * 20)
+    sim = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02), boundary="cpml",
+                     cpml_layers=10, dx=0.002, **({"dx_profile": profile} if graded else {}))
+    sim.add(Box((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)), material="pec")
+    sim.add(Box((0.0, 0.08, 0.0), (0.12, 0.12, 0.02)), material="pec")
+    common = dict(mode=(1, 0), mode_type="TE", freqs=np.array([5e9, 6.5e9]), f0=6e9,
+                  ref_offset=3, probe_offset=15, z_range=(0.0, 0.02))
+    sim.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x", name="left", **common)
+    sim.add_waveguide_port(0.11, y_range=(0.04, 0.08), direction="-x", name="right", **common)
+    sim.add_waveguide_port(0.11, x_range=(0.04, 0.08), direction="-y", name="top", **common)
+    return sim
+
+
+@pytest.mark.parametrize("traced", [False, True], ids=["plain", "traced"])
+def test_interior_conductor_edges_admitted_on_the_reference_path(traced):
+    """An edge closed by PEC on every neighbouring cell is the conductor, not a
+    sheet (m5, m6). The reference-sim path carries realized PEC edges and no
+    cell mask (rfx/sparams/waveguide.py port_reference_sims); the section check
+    reads the same edges plain or traced (rfx-core-desk L:0bbcf4) and admits a
+    port section inside the block. A block face on the reference plane stays
+    refused (B4 scene b). Direct entries refuse this scene earlier (#1994)."""
+    import jax
+    import jax.numpy as jnp
+    from rfx.boundaries.features import resolve_waveguide_section_medium
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _buried_port_guide(False)
+        grid = sim._build_grid()
+        materials, _, _, pec, _, _, _ = sim._assemble_materials(grid)
+        edges = tuple(jnp.asarray(m) for m in realized_pec_edge_masks(pec, periodic=sim._periodic_flags()))
+        freqs = jnp.asarray([5e9, 6.5e9])
+        cfgs = [sim._build_waveguide_port_config(entry, grid, freqs, 20)
+                for entry in sim._waveguide_ports]
+
+        def resolve(masks):
+            resolve_waveguide_section_medium(cfgs, grid, materials, dict(pec_edge_masks=masks), ())
+            return jnp.zeros(())
+
+        if traced:
+            jax.jit(resolve)(edges).block_until_ready()
+        else:
+            resolve(edges)
