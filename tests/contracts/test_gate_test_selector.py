@@ -155,6 +155,80 @@ def test_package_directory_summary_counts_only_new_candidates():
     assert "package directory tests added: 0 files, recorded 0.000000 s" in result.summary()
 
 
+def test_geometry_change_selects_oracle_that_imports_no_geometry():
+    # #2005 shape: rfx/geometry changed, the oracle reaches it only through rfx.Simulation.
+    sources = {
+        "tests/oracle/test_leontovich.py": "from rfx import Simulation",
+        "tests/oracle/test_other_oracle.py": "",
+        "tests/locks/test_lock.py": "import numpy",
+        "tests/unit/sparams/test_unrelated.py": "",
+    }
+    result = selector.select_tests(["rfx/geometry/rasterize_grid.py"], sources, {
+        "tests/oracle/test_leontovich.py::test_x": 27.5,
+        "tests/oracle/test_other_oracle.py::test_x[a]": 1,
+        "tests/locks/test_lock.py::test_x": 2,
+    })
+    assert result.files == (
+        "tests/locks/test_lock.py", "tests/oracle/test_leontovich.py",
+        "tests/oracle/test_other_oracle.py",
+    )
+    assert result.selected_seconds == 30.5
+    assert "oracle and lock tests added: 3 files, recorded 30.500000 s" in result.summary()
+
+
+@pytest.mark.parametrize("changed", [
+    "rfx/vmap_sweep.py", "rfx/__init__.py", "rfx/sources/ports/data.json",
+])
+def test_any_rfx_change_selects_oracle_and_locks(changed):
+    result = selector.select_tests([changed], {
+        "tests/oracle/test_o.py": "", "tests/locks/nested/test_l.py": "",
+        "tests/oracles/test_not.py": "", "tests/unit/test_u.py": "",
+    }, {})
+    assert result.files == ("tests/locks/nested/test_l.py", "tests/oracle/test_o.py")
+
+
+@pytest.mark.parametrize("changed", [
+    ["docs/guide.md"], ["scripts/ci/local.sh"], ["tests/unit/test_u.py"], ["rfxsomething/x.py"],
+])
+def test_oracle_and_locks_not_added_without_rfx_change(changed):
+    result = selector.select_tests(changed, {
+        "tests/oracle/test_o.py": "", "tests/locks/test_l.py": "", "tests/unit/test_u.py": "",
+    }, {})
+    assert "tests/oracle/test_o.py" not in result.files
+    assert "tests/locks/test_l.py" not in result.files
+    assert "oracle and lock tests added: 0 files, recorded 0.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("edited", [False, True])
+def test_oracle_and_locks_budget_excludes_heavy_unless_edited(edited):
+    heavy = "tests/locks/test_heavy.py"
+    changed = ["rfx/vmap_sweep.py"] + ([heavy] if edited else [])
+    result = selector.select_tests(changed, {heavy: "", "tests/oracle/test_light.py": ""}, {
+        "tests/locks/test_heavy.py::test_x[a]": 300,
+        "tests/locks/test_heavy.py::test_x[b]": 101,
+        "tests/oracle/test_light.py::test_x": 400,
+    })
+    if edited:
+        assert result.files == ("tests/locks/test_heavy.py", "tests/oracle/test_light.py")
+        assert "oracle and lock tests added: 1 files, recorded 400.000000 s" in result.summary()
+    else:
+        assert result.files == ("tests/oracle/test_light.py",)
+        assert result.excluded == {"tests/locks/test_heavy.py": 401}
+        assert "oracle and lock tests added: 1 files, recorded 400.000000 s" in result.summary()
+
+
+def test_oracle_summary_counts_only_files_no_other_rule_chose():
+    result = selector.select_tests(["rfx/geometry/x.py", "tests/oracle/test_edited.py"], {
+        "tests/oracle/test_edited.py": "",
+        "tests/oracle/test_direct.py": "import rfx.geometry.x",
+        "tests/oracle/test_added.py": "",
+    }, {"tests/oracle/test_added.py::test_x": 5, "tests/oracle/test_direct.py::test_x": 7})
+    assert result.files == (
+        "tests/oracle/test_added.py", "tests/oracle/test_direct.py", "tests/oracle/test_edited.py",
+    )
+    assert "oracle and lock tests added: 1 files, recorded 5.000000 s" in result.summary()
+
+
 def test_central_change_adds_runners_and_autodiff_except_over_budget(sources, durations):
     result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
     assert set(result.files) == {

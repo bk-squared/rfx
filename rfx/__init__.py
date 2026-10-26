@@ -212,6 +212,8 @@ from rfx.probes.probes import (
     FluxMonitor, init_flux_monitor, update_flux_monitor, flux_spectrum,
     subtract_flux_monitors,
 )
+# Reachable as rfx.renormalize_power_waves; kept off the curated star surface.
+from rfx.sparams._port_reference import renormalize_power_waves
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
 from rfx.pcb import PCBLayer, Stackup

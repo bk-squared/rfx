@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ratchet layer implementations in five callers and outside layers using ASTs.
+"""Ratchet layer implementations and reverse imports using ASTs.
 
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 read the working tree. Initial adoption requires a readable base with neither
@@ -28,6 +28,12 @@ CHECKER = "scripts/ci/check_layer_structure.py"
 FIVE_FILES = (
     "rfx/api/_execute.py", "rfx/api/__init__.py", "rfx/simulation.py",
     "rfx/nonuniform.py", "rfx/sources/waveguide_port.py",
+)
+CALLER_MODULES = (
+    "rfx.api._execute", "rfx.api", "rfx.simulation", "rfx.nonuniform",
+    "rfx.sources.waveguide_port",
+    # adjoint, ringdown and progress also call implementations in the layers.
+    "rfx.adjoint", "rfx.ringdown", "rfx.progress",
 )
 LAYERS = ("rfx.model", "rfx.stepping", "rfx.measurement", "rfx.boundaries")
 KERNEL_MODULES = {"rfx.core.yee", "rfx.core.dft_utils"}
@@ -357,8 +363,33 @@ def import_hits(sources: Sources, path: str, public: dict) -> list[str]:
     return sorted(hits)
 
 
+def reverse_imports(sources: Sources, path: str) -> list[str]:
+    """Exact caller-module imports in every scope, including lazy exports."""
+    hits = set()
+    for node in ast.walk(sources.tree(path)):
+        if isinstance(node, ast.ImportFrom):
+            module = import_module(path, node)
+            for alias in node.names:
+                if module in CALLER_MODULES:
+                    hits.add(f"{module}:{alias.name}")
+                elif f"{module}.{alias.name}" in CALLER_MODULES:  # from rfx import simulation
+                    hits.add(f"{module}.{alias.name}")
+        elif isinstance(node, ast.Import):
+            hits.update(alias.name for alias in node.names if alias.name in CALLER_MODULES)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and isinstance(node.value, ast.Dict):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(t, ast.Name) and t.id == "_LAZY_EXPORTS" for t in targets):
+                for key, value in zip(node.value.keys, node.value.values):
+                    if (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                            and isinstance(value, ast.Constant) and value.value in CALLER_MODULES):
+                        hits.add(f"{value.value}:{key.value}")
+    return sorted(hits)
+
+
 def count_file(sources: Sources, path: str, public: dict | None = None) -> dict:
     """The same per-file counter used by the CLI and real-source mutations."""
+    if any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS):
+        return {"R": reverse_imports(sources, path)}
     rules = {rule: set() for rule in RULES}
     for name, node, cls in units(sources.tree(path)):
         hits = unit_hits(node)
@@ -384,10 +415,13 @@ def count_file(sources: Sources, path: str, public: dict | None = None) -> dict:
 def count(sources: Sources) -> dict:
     """Count named units and imports without importing any inspected module."""
     public = {package: public_names(sources, package) for package in LAYERS}
-    files, outside, unit_counts, allowed = {}, {}, {}, []
+    files, outside, reverse, unit_counts, allowed = {}, {}, {}, {}, []
     for path in sorted(sources.paths | set(FIVE_FILES)):
         selected = path in FIVE_FILES
         if not selected and any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS):
+            rules = count_file(sources, path)
+            if rules["R"]:
+                reverse[path] = rules
             continue
         tree = sources.tree(path)
         rules = count_file(sources, path, public)
@@ -401,15 +435,16 @@ def count(sources: Sources) -> dict:
                     allowed.append((path, node.lineno, " ".join(source.splitlines())))
         elif rules["S"] or rules["M"]:
             outside[path] = {r: sorted(rules[r]) for r in ("S", "M")}
-    return {"baseline": {"files": files, "outside": outside},
+    return {"baseline": {"files": files, "outside": outside, "reverse": reverse},
             "surface_sizes": {p: len(names) for p, names in public.items()},
             "unit_counts": unit_counts, "allowed": sorted(allowed)}
 
 
 def baseline(raw: bytes) -> dict:
     data = json.loads(raw)
-    if not isinstance(data, dict) or set(data) != {"files", "outside"}:
-        raise ValueError("baseline must contain files and outside")
+    if not isinstance(data, dict) or set(data) not in (
+            {"files", "outside"}, {"files", "outside", "reverse"}):
+        raise ValueError("baseline must contain files and outside, optionally reverse")
     if not isinstance(data["files"], dict) or set(data["files"]) != set(FIVE_FILES):
         raise ValueError("baseline must list exactly the five files")
     if not isinstance(data["outside"], dict):
@@ -420,8 +455,16 @@ def baseline(raw: bytes) -> dict:
                 or path in FIVE_FILES
                 or any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS)):
             raise ValueError(f"{path}: outside must list Python files outside the five files and layers")
-    for group, expected in (("files", RULES), ("outside", ("S", "M"))):
-        for path, rules in data[group].items():
+    if "reverse" in data:
+        if not isinstance(data["reverse"], dict):
+            raise ValueError("reverse must map layer file paths to R import entries")
+        for path in data["reverse"]:
+            if (not path.endswith(".py")
+                    or any(part in {"", ".", ".."} for part in path.split("/"))
+                    or not any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS)):
+                raise ValueError(f"{path}: reverse must list Python files under layer packages")
+    for group, expected in (("files", RULES), ("outside", ("S", "M")), ("reverse", ("R",))):
+        for path, rules in data.get(group, {}).items():
             if not isinstance(rules, dict) or set(rules) != set(expected):
                 raise ValueError(f"{path}: baseline must list every rule ({', '.join(expected)})")
             for rule, names in rules.items():
@@ -628,7 +671,11 @@ class RenameMatcher:
 def violations(actual: dict, current: dict, previous: dict | None = None,
                *, renames: RenameMatcher | None = None) -> list[str]:
     errors = []
-    for group, rules in (("files", RULES), ("outside", ("S", "M"))):
+    if "reverse" not in current:
+        errors.append("HEAD baseline must contain reverse")
+    for group, rules in (("files", RULES), ("outside", ("S", "M")), ("reverse", ("R",))):
+        if group == "reverse" and group not in current:
+            continue
         for path in sorted(actual[group].keys() | current[group].keys()):
             for rule in rules:
                 found = set(actual[group].get(path, {}).get(rule, []))
@@ -637,9 +684,10 @@ def violations(actual: dict, current: dict, previous: dict | None = None,
                     errors.append(f"{path} {rule}: unlisted violation {name}")
                 for name in sorted(stored - found):
                     errors.append(f"{path} {rule}: stale baseline entry {name}")
-                if previous is not None:
+                if previous is not None and group in previous:
                     old = set(previous[group].get(path, {}).get(rule, []))
-                    pairs = renames.pairs(path, old - found, found - old) if renames else set()
+                    pairs = (renames.pairs(path, old - found, found - old)
+                             if renames and group != "reverse" else set())
                     accepted = {name for _, name in pairs}
                     for before, after in sorted(pairs):
                         print(f"renamed: {path} {rule} {before} -> {after}")
@@ -668,6 +716,11 @@ def report(result: dict):
         print(f"outside {path}: S={len(rules['S'])} M={len(rules['M'])}")
     totals = {r: sum(len(v[r]) for v in outside.values()) for r in ("S", "M")}
     print("outside totals: " + " ".join(f"{r}={n}" for r, n in totals.items()))
+    print("\nreverse imports from layers to callers — may only fall")
+    reverse = result["baseline"]["reverse"]
+    for path, rules in sorted(reverse.items(), key=lambda item: (-len(item[1]["R"]), item[0])):
+        print(f"reverse {path}: R={len(rules['R'])}")
+    print(f"reverse totals: R={sum(len(rules['R']) for rules in reverse.values())}")
 
 
 

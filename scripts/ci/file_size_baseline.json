@@ -5,7 +5,7 @@
     "rfx/api/__init__.py": 2089,
     "rfx/api/_execute.py": 2089,
     "rfx/api/_preflight.py": 1145,
-    "rfx/api/_spec.py": 1809,
+    "rfx/api/_spec.py": 1803,
     "rfx/interop/_design.py": 1643,
     "rfx/interop/emitters/openems.py": 1668,
     "rfx/nonuniform.py": 309,
@@ -17,7 +17,7 @@
     "rfx/simulation.py": 267,
     "rfx/sources/waveguide_port.py": 126,
     "rfx/sparams/_common.py": 2291,
-    "rfx/sparams/coax.py": 1705,
+    "rfx/sparams/coax.py": 1698,
     "rfx/subgridding/jit_runner.py": 2507
   }
 }

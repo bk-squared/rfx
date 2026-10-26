@@ -33,6 +33,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.sparams._port_reference import renormalize_power_waves
+from tests._msl_probe0 import line_s
 
 _EPS_R = 2.2
 _H = 0.0008
@@ -127,18 +129,25 @@ def test_feed_plane_s_is_d_times_probe0_s_times_d(tmp_path):
     d = np.exp(-1j * beta[None, :] * lengths[:, None])
     expected = d[:, None, :] * s0 * d[None, :, :]
     scale = float(np.max(np.abs(s0)))
+    # s0 is formed at the line Z0 the dump records; the result's S is referred
+    # to the declared 50 ohm (#2014), so the shift is checked on S brought back.
+    s_line = line_s(res, np.asarray(res.S))
     # The shift must be present and must not be the probe-0 matrix itself.
-    assert np.max(np.abs(np.asarray(res.S) - s0)) > 1e-2 * scale
-    np.testing.assert_allclose(np.asarray(res.S), expected, rtol=0,
+    assert np.max(np.abs(s_line - s0)) > 1e-2 * scale
+    np.testing.assert_allclose(s_line, expected, rtol=0,
                                atol=2e-5 * scale)
     # The returned fields carry the same numbers (rad/m and m).
     np.testing.assert_allclose(np.asarray(res.shift_beta, dtype=np.float64),
                                np.stack([beta, beta]), rtol=1e-6)
     np.testing.assert_allclose(np.asarray(res.reference_plane_offsets_m),
                                lengths, rtol=0, atol=1e-12)
-    # The dump records the same feed-plane S as the result.
+    # The dump records the same feed-plane S as the result, at the line Z0;
+    # the producer's own referral to the declared impedance gives res.S.
     assert meta["schema_version"] == 5
-    np.testing.assert_array_equal(production, np.asarray(res.S))
+    np.testing.assert_array_equal(
+        np.asarray(renormalize_power_waves(jnp.asarray(production),
+                                           res.line_impedances, res.reference_impedances)),
+        np.asarray(res.S))
 
 
 def _mixed_board(with_feed):
@@ -185,7 +194,9 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     # shift fails here even if S_wave is shifted.
     from tests.unit.sparams.test_mixed_port_sparam import _EPS_R as er_m
     from tests.unit.sparams.test_mixed_port_sparam import _H_SUB, _W_TRACE, _DX as dx_m
-    s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
+    # gamma0 is formed at the line Z0; the result's S is referred to the
+    # declared impedance (#2014), so S and S_wave are brought back there.
+    s = line_s(mixed, np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw))
     v0 = np.asarray(diag["v0_msl"])[1, 0]
     i0 = np.asarray(diag["i_msl"])[1, 0]
     z = float(np.asarray(diag["z0_hj_msl"])[0])
@@ -201,8 +212,8 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     # the flux-overridden off-diagonal magnitudes, so their phases agree:
     # both are referred to the same plane. Unshifted S_wave would differ by
     # beta*L = 0.03-0.12 rad here.
-    s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
-    sw = np.asarray(mixed.S_wave)
+    s = line_s(mixed, np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw))
+    sw = line_s(mixed, np.asarray(mixed.S_wave))
     # #1659 refuses (NaN) the entries formed from the per-cell lumped/wire
     # wave; the phase comparison reads the entries both results still carry.
     read = np.isfinite(s) & np.isfinite(sw) & (np.abs(sw) > 0)

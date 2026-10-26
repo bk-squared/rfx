@@ -102,7 +102,7 @@ class TimeBase:
 KERNEL_KNOWN_DIFFERENCES = (
     'rfx/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
     'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
-    'rfx/adjoint.py: own plane sum, physically stamped',
+    'rfx/stepping/adjoint_scan.py: own plane sum, physically stamped',
     'traced dt or frequencies: the phase is evaluated in the trace; its float32 error grows with the step index',
 )
 

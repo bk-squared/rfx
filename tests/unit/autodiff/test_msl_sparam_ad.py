@@ -10,7 +10,7 @@ from types import MethodType, SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from rfx.api import Simulation
@@ -302,7 +302,7 @@ def _run_manufactured_assembly(*, use_x64: bool):
         assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
         assert result.assembly == "multi_drive_solve"
         assert np.max(result.cond_a) < 2
-        actual = np.asarray(probe0_s(result))
+        actual = np.asarray(probe0_s(result, line_s(result)))
     for driven in range(2):
         for port, target in enumerate((12 * u, 28 * u)):
             for component in ("hy", "hz"):
@@ -800,8 +800,8 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     # 9 mm); read the live S there (see the docstring's PLANE paragraph).
     import dataclasses
     result = dataclasses.replace(
-        result, S=probe0_s(result),
-        S_raw=None if result.S_raw is None else probe0_s(result, result.S_raw))
+        result, S=probe0_s(result, line_s(result)),
+        S_raw=None if result.S_raw is None else probe0_s(result, line_s(result, result.S_raw)))
     qualification = qualify_result(result)
     s_actual = np.asarray(result.S).astype(np.complex128)
 

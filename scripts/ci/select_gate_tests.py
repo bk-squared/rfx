@@ -32,6 +32,8 @@ CENTRAL_PATHS = (
 CENTRAL_TEST_DIRS = ("tests/unit/runners/", "tests/unit/autodiff/")
 CONTRACT_DIR = "tests/contracts/"
 PACKAGE_TEST_ROOT = "tests/unit/"
+# Locks and closed-form oracles pin numbers a user receives; any rfx/ change runs them.
+ALWAYS_ON_TEST_DIRS = ("tests/oracle/", "tests/locks/")
 
 
 def is_test_file(path: str) -> bool:
@@ -74,6 +76,8 @@ class Selection:
     central_skipped_seconds: float
     package_directory_files: int
     package_directory_seconds: float
+    always_on_files: int
+    always_on_seconds: float
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
@@ -88,6 +92,8 @@ class Selection:
             f"recorded {self.selected_seconds:.6f} s",
             f"package directory tests added: {self.package_directory_files} files, "
             f"recorded {self.package_directory_seconds:.6f} s",
+            f"oracle and lock tests added: {self.always_on_files} files, "
+            f"recorded {self.always_on_seconds:.6f} s",
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"source-scan tests that run: {self.source_scan_run_count} tests, "
@@ -154,6 +160,11 @@ def select_tests(
     }))
     package_added = {path for path in tests if path.startswith(package_test_dirs)} - candidates
     candidates.update(package_added)
+    source_changed = any(path.startswith("rfx/") for path in changed)
+    always_on_added = {
+        path for path in tests if source_changed and path.startswith(ALWAYS_ON_TEST_DIRS)
+    } - candidates
+    candidates.update(always_on_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
     totals: dict[str, float] = defaultdict(float)
     for nodeid, seconds in durations.items():
@@ -164,12 +175,12 @@ def select_tests(
     }
     selected = candidates - excluded.keys()
     package_added &= selected
+    always_on_added &= selected
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
     marked_run = set()
     marked_deselected = set()
-    source_changed = any(path.startswith("rfx/") for path in changed)
     summary_tests = tests if source_changed else selected
     for path in sorted(summary_tests - invalid):
         if path.startswith(CONTRACT_DIR):
@@ -211,6 +222,7 @@ def select_tests(
         len(central_tests) if central_changed and not central_paths else None,
         sum(totals[path] for path in sorted(central_tests)),
         len(package_added), sum(totals[path] for path in sorted(package_added)),
+        len(always_on_added), sum(totals[path] for path in sorted(always_on_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),

@@ -600,7 +600,8 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert res.port_names[1] != "lw0" and res.port_names[0] == "lw0"
     assert res.z0_ref.shape == (2,)
     assert res.z0_ref[0] == pytest.approx(50.0)
-    assert 20.0 < res.z0_ref[1] < 120.0          # HJ analytic, sane band
+    assert res.z0_ref[1] == pytest.approx(50.0)  # declared impedance= (#2014)
+    assert 20.0 < res.line_impedances[1] < 120.0  # HJ analytic, sane band
     assert res.s21_power_witness.shape == (1, 1, 5)
     # The power witness of a refused wire-driven column is refused too.
     assert np.isnan(res.s21_power_witness).all()

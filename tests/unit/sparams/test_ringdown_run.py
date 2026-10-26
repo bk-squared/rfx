@@ -294,6 +294,8 @@ def _replay_without_half_step(monkeypatch):
             return orig(*a, **k)
 
     monkeypatch.setattr(rd, "_emulate_accumulators", replay)
+    import rfx.stepping.ringdown_emulation as ringdown_emulation
+    monkeypatch.setattr(ringdown_emulation, "_emulate_accumulators", replay)
 
 
 def _replay_one_step_late(monkeypatch):
@@ -308,6 +310,8 @@ def _replay_one_step_late(monkeypatch):
         return orig(lane, pm, shift(e32), {k: shift(v) for k, v in h32.items()}, dt)
 
     monkeypatch.setattr(rd, "_emulate_accumulators", replay)
+    import rfx.stepping.ringdown_emulation as ringdown_emulation
+    monkeypatch.setattr(ringdown_emulation, "_emulate_accumulators", replay)
 
 
 @pytest.mark.parametrize("defect", [_replay_without_half_step, _replay_one_step_late])
@@ -640,6 +644,8 @@ def test_w1_catches_a_completion_fed_the_midpoint_voltage(monkeypatch):
         return v, v_port, i_val
 
     monkeypatch.setattr(rd, "_port_vi", midpoint_voltage)
+    import rfx.stepping.ringdown_emulation as ringdown_emulation
+    monkeypatch.setattr(ringdown_emulation, "_port_vi", midpoint_voltage)
     with pytest.warns(UserWarning, match="W1 failed"):
         r = _run(_box("uniform", cells=3), 600, ringdown=RingdownSpec())
     rep = r.ringdown.report

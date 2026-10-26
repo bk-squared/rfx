@@ -53,6 +53,7 @@ from rfx.sparams._common import (
     _collocated_msl_h,
     _msl_power_wave_scales,
 )
+from rfx.sparams._port_reference import renormalize_power_waves
 
 
 def compute_msl_s_matrix(
@@ -72,12 +73,14 @@ def compute_msl_s_matrix(
 ) -> "MSLSMatrixResult":
     """Compute MSL S from probe-plane V/I with fitted line diagnostics.
 
-    Returned S uses power waves for the positive real per-port analytic
-    references: a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)).
-    ``reference_impedances`` records those R values separately from the
-    fitted ``Z0`` and source/load resistances. For unequal references,
-    transmission S differs from the legacy voltage ratio by
-    sqrt(R_input/R_output); equal-reference results are unchanged.
+    Returned S uses power waves referenced to each port's declared
+    ``impedance=`` (default 50 ohm): a=(V+R*I)/(2*sqrt(R)),
+    b=(V-R*I)/(2*sqrt(R)) with R the declared impedance (#2014). The waves
+    are formed at the analytic Hammerstad-Jensen line Z0 and the matrix is
+    then referred to R by ``renormalize_power_waves`` (exact for real
+    references; nothing is computed where R equals the line Z0).
+    ``reference_impedances`` records R; ``line_impedances`` records the
+    line Z0 the waves were formed at, separately from the fitted ``Z0``.
 
     ``S`` is the RAW extracted S-matrix on every channel — concrete,
     ``eps_override``, traced — and the default ``enforce_passivity=False``
@@ -255,6 +258,23 @@ def compute_msl_s_matrix(
     Returns
     -------
     MSLSMatrixResult
+        Field meanings are on :class:`rfx.api._spec.MSLSMatrixResult`.
+
+        **``assembly``: read this before trusting a fallback result.** The
+        fallback's characteristic symptom is column power above 1, which the
+        default ``enforce_passivity=False`` leaves standing in ``S`` and
+        ``sigma_max_excess`` measures. Under ``enforce_passivity=True``
+        the symptom is clipped out of ``S`` — but it is not erased from
+        the result: ``passivity_correction`` records how much was clipped
+        and ``S_raw`` keeps the unprojected matrix, and the run also emits
+        both a fallback warning and a passivity-guard
+        warning. So a fallback is not silent; ``assembly`` is simply the
+        *specific* signal. Column power above 1 has several causes (an
+        under-settled record, a standing-wave null, a mis-scaled current) and
+        only one of them is the fallback — that is what ``assembly``
+        disambiguates. It is ``None`` while tracing (the finiteness test
+        cannot run on a tracer, so the solve result is taken as-is — see
+        ``cond_a``).
     """
     resolve_field_dtype(self._precision)
     _diagnostics = ()
@@ -504,6 +524,9 @@ def compute_msl_s_matrix(
             2.0 * np.pi * freqs_arr * float(np.sqrt(eps_eff_hj)) / _C0_MSL
         )
         z0_hj_per_port.append(float(z0_hj))
+    # #2014: the S reference is the declared impedance=, not the line Z0.
+    declared_refs = np.asarray(
+        [float(pe.impedance) for pe in entries], dtype=np.float64)
 
     # Trace-conductor z-cell span per port (issue #80 stage S1). The
     # closed Ampere-loop current needs the PEC trace cells; the trace
@@ -1271,13 +1294,18 @@ def compute_msl_s_matrix(
                 "current_spatial_alignment": "linear_bracketing_H_to_E_node",
                 "current_plane_stencils": h_stencils,
                 "s_reference_impedances_ohm": z0_hj_per_port,
+                "declared_reference_impedances_ohm": [
+                    float(z) for z in declared_refs],
                 "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
                 "production_smatrix_stage": (
                     "PRE-passivity-projection raw extraction referred to "
-                    "the declared feed planes; the same matrix "
-                    "MSLSMatrixResult.S carries by default, and "
-                    "MSLSMatrixResult.S_raw when enforce_passivity=True "
-                    "clipped something. raw_v/raw_i1 stay at the probe "
+                    "the declared feed planes, at the line references "
+                    "s_reference_impedances_ohm; MSLSMatrixResult.S (and "
+                    "S_raw when enforce_passivity=True clipped something) "
+                    "is this matrix referred to "
+                    "declared_reference_impedances_ohm by "
+                    "renormalize_power_waves (#2014), and is this matrix "
+                    "itself where the two lists are equal. raw_v/raw_i1 stay at the probe "
                     "planes; undo the shift with "
                     "feed_plane_shift before comparing to a probe-0 replay"
                 ),
@@ -1378,6 +1406,10 @@ def compute_msl_s_matrix(
                 driven_port_indices=np.arange(n_ports, dtype=np.int64),
             )
 
+        # #2014: refer S from the line Z0 the waves were formed at to the
+        # declared impedance=, once, before the opt-in projection below.
+        S = renormalize_power_waves(S, z0_hj_per_port, declared_refs)
+
         s_raw = None
         passivity_correction = None
         # Measure the bound violation of the RAW extraction before any
@@ -1422,7 +1454,8 @@ def compute_msl_s_matrix(
             cond_a=msl_cond_a,
             beta_railed=beta_railed,
             probe_clearance=probe_clearance,
-            reference_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
+            reference_impedances=declared_refs.copy(),
+            line_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
             reference_plane_offsets_m=np.asarray(msl_planes.offsets_m),
             shift_beta=np.asarray(msl_planes.shift_beta),
         )

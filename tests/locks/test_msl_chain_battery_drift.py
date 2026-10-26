@@ -77,7 +77,7 @@ LOCK_PROVENANCE = {
 import json
 
 import numpy as np
-from tests._msl_probe0 import probe0_s
+from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from tests import _chain_battery_drift as drift
@@ -134,8 +134,9 @@ def _solve_live(fixture, driver, key: str, dut: str):
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,
                                rtol=1e-6, atol=0.0)
     # The record is at the probe-0 planes; compare there (see the module
-    # docstring): the live S with the feed-plane shift undone.
-    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(probe0_s(result))
+    # docstring): the live S with the feed-plane shift undone, back at the line
+    # Z0 the record was taken at (#2014: S is now at the declared impedance=).
+    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(probe0_s(result, line_s(result)))
 
 
 def _verdict_findings(driver, entry, result, live) -> list[str]:

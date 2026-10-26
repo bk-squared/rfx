@@ -48,6 +48,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from tests._msl_probe0 import line_s
 
 _EPS_R, _H, _W, _DX = 2.2, 0.0008, 0.0012, 2e-4
 _DELTA_CELLS = 36
@@ -82,10 +83,13 @@ def _feed_nodes(sim):
 
 
 def _probe0_s21(res):
+    # beta from the S21 phase ratio of two lines is a line property and
+    # assumes the line reference: S is brought back from the declared 50 ohm
+    # to line_impedances (#2014) before the phase is read.
     beta = np.asarray(res.shift_beta, dtype=np.float64)
     offsets = np.asarray(res.reference_plane_offsets_m, dtype=np.float64)
     u = np.exp(1j * beta * offsets[:, None])
-    return np.asarray(res.S)[1, 0] * u[1] * u[0]
+    return line_s(res, np.asarray(res.S))[1, 0] * u[1] * u[0]
 
 
 @pytest.mark.slow

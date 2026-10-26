@@ -110,7 +110,7 @@ def make_uniform_step(
     from rfx.boundaries.electric_coefficient import dispersive_curl, in_loop_loss
 
     if ctx.use_sheet_impedance:
-        from rfx.materials.thin_conductor import (
+        from rfx.stepping.conductors import (
             apply_sheet_impedance_e as _apply_sheet_e,
         )
 
@@ -325,7 +325,7 @@ def make_uniform_step(
                 # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
                 # the inv-eps tensor encodes the fully-PEC-cell zero
                 # already, so this would be redundant double-zeroing.
-                from rfx.geometry.conformal import apply_conformal_pec
+                from rfx.stepping.conductors import apply_conformal_pec
                 frame.st = apply_conformal_pec(frame.st, tensor.conformal_weights[0], tensor.conformal_weights[1], tensor.conformal_weights[2])
             if ctx.use_pec_edges:
                 # #931 §1.7: the (Mx, My, Mz) realized once at setup.

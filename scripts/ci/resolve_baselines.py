@@ -97,8 +97,8 @@ def regenerate_layer(repo: Path, ours: dict, theirs: dict) -> tuple[dict, list[s
     for group, paths in actual.items():
         for path, rules in paths.items():
             for rule, names in rules.items():
-                left = ours[group].get(path, {}).get(rule, [])
-                right = theirs[group].get(path, {}).get(rule, [])
+                left = ours.get(group, {}).get(path, {}).get(rule, [])
+                right = theirs.get(group, {}).get(path, {}).get(rule, [])
                 extra = set(names) - (set(left) | set(right))
                 if len(names) > min(len(left), len(right)) or extra:
                     detail = "; extra names " + ", ".join(sorted(extra)) if extra else ""

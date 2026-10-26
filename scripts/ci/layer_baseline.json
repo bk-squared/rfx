@@ -118,13 +118,6 @@
     }
   },
   "outside": {
-    "rfx/_ringdown_jax.py": {
-      "S": [],
-      "M": [
-        "plain_dft",
-        "tail_dft"
-      ]
-    },
     "rfx/adi.py": {
       "S": [
         "run_adi_2d",
@@ -132,22 +125,6 @@
         "thomas_solve"
       ],
       "M": []
-    },
-    "rfx/adjoint.py": {
-      "S": [
-        "design_adjoint_scan"
-      ],
-      "M": [
-        "_wavelet_basis",
-        "_wavelet_coefficients",
-        "design_adjoint_scan"
-      ]
-    },
-    "rfx/core/dft_utils.py": {
-      "S": [],
-      "M": [
-        "half_step_current_phase"
-      ]
     },
     "rfx/current_moments.py": {
       "S": [],
@@ -187,18 +164,6 @@
         "update_floquet_dft"
       ]
     },
-    "rfx/geometry/conformal.py": {
-      "S": [
-        "apply_conformal_pec"
-      ],
-      "M": []
-    },
-    "rfx/geometry/csg.py": {
-      "S": [
-        "PolylineWire.mask_on_coords"
-      ],
-      "M": []
-    },
     "rfx/io.py": {
       "S": [],
       "M": [
@@ -220,12 +185,6 @@
     "rfx/materials/nonlinear.py": {
       "S": [
         "apply_kerr_ade"
-      ],
-      "M": []
-    },
-    "rfx/materials/thin_conductor.py": {
-      "S": [
-        "apply_sheet_impedance_e"
       ],
       "M": []
     },
@@ -264,27 +223,11 @@
         "tfsf_source_drive"
       ]
     },
-    "rfx/progress.py": {
-      "S": [
-        "scan_with_progress"
-      ],
-      "M": []
-    },
     "rfx/rcs.py": {
       "S": [],
       "M": [
         "_incident_spectrum_amplitude",
         "compute_rcs"
-      ]
-    },
-    "rfx/ringdown.py": {
-      "S": [
-        "_emulate_accumulators"
-      ],
-      "M": [
-        "_pole_tails",
-        "plain_dft",
-        "tail_dft"
       ]
     },
     "rfx/ris.py": {
@@ -407,12 +350,201 @@
         "_update_h_only"
       ],
       "M": []
+    }
+  },
+  "reverse": {
+    "rfx/boundaries/upml.py": {
+      "R": [
+        "rfx.simulation:resolve_periodic"
+      ]
     },
-    "rfx/vmap_sweep.py": {
-      "S": [
-        "_build_vmap_scan_fn"
-      ],
-      "M": []
+    "rfx/measurement/declared.py": {
+      "R": [
+        "rfx.api:WaveguideSParamResult",
+        "rfx.sources.waveguide_port:extract_waveguide_sparams",
+        "rfx.sources.waveguide_port:waveguide_plane_positions"
+      ]
+    },
+    "rfx/measurement/flux_weights.py": {
+      "R": [
+        "rfx.nonuniform:NonUniformGrid"
+      ]
+    },
+    "rfx/measurement/modal.py": {
+      "R": [
+        "rfx.sources.waveguide_port:WaveguidePortConfig",
+        "rfx.sources.waveguide_port:modal_current",
+        "rfx.sources.waveguide_port:modal_voltage"
+      ]
+    },
+    "rfx/measurement/plan.py": {
+      "R": [
+        "rfx.nonuniform:NonUniformGrid",
+        "rfx.nonuniform:position_to_index"
+      ]
+    },
+    "rfx/measurement/port_records.py": {
+      "R": [
+        "rfx.simulation:LumpedPortSParamSpec"
+      ]
+    },
+    "rfx/measurement/port_registration.py": {
+      "R": [
+        "rfx.nonuniform:_build_wp_meta",
+        "rfx.simulation:LumpedPortSParamSpec",
+        "rfx.simulation:WirePortSParamSpec"
+      ]
+    },
+    "rfx/measurement/ports.py": {
+      "R": [
+        "rfx.nonuniform:NonUniformGrid"
+      ]
+    },
+    "rfx/measurement/ringdown_port_s.py": {
+      "R": [
+        "rfx.nonuniform:_assemble_nu_result",
+        "rfx.ringdown:_assemble",
+        "rfx.ringdown:_cmul"
+      ]
+    },
+    "rfx/measurement/ringdown_tail.py": {
+      "R": [
+        "rfx.ringdown:RingdownModel",
+        "rfx.ringdown:_as_2d",
+        "rfx.ringdown:_cmul"
+      ]
+    },
+    "rfx/measurement/waveguide_planes.py": {
+      "R": [
+        "rfx.nonuniform:position_to_index"
+      ]
+    },
+    "rfx/measurement/waveguide_s.py": {
+      "R": [
+        "rfx.simulation:run"
+      ]
+    },
+    "rfx/model/distributed_ports.py": {
+      "R": [
+        "rfx.nonuniform:current_source_samples",
+        "rfx.nonuniform:current_source_volume",
+        "rfx.nonuniform:make_current_source",
+        "rfx.simulation:SourceSpec"
+      ]
+    },
+    "rfx/model/electric_metrics.py": {
+      "R": [
+        "rfx.nonuniform:current_source_cb"
+      ]
+    },
+    "rfx/model/graded_ports.py": {
+      "R": [
+        "rfx.nonuniform:e_node_dual_spacing_at",
+        "rfx.nonuniform:port_metric",
+        "rfx.nonuniform:port_metric_axes",
+        "rfx.nonuniform:position_to_index"
+      ]
+    },
+    "rfx/model/materials.py": {
+      "R": [
+        "rfx.nonuniform:NonUniformGrid",
+        "rfx.nonuniform:current_source_cb",
+        "rfx.nonuniform:e_node_dual_spacings"
+      ]
+    },
+    "rfx/model/source_coefficients.py": {
+      "R": [
+        "rfx.nonuniform:current_source_cb",
+        "rfx.simulation:_uniform_cell_volume"
+      ]
+    },
+    "rfx/model/thin_conductors.py": {
+      "R": [
+        "rfx.nonuniform:e_node_dual_spacings"
+      ]
+    },
+    "rfx/stepping/adjoint_scan.py": {
+      "R": [
+        "rfx.adjoint:_plane_slice",
+        "rfx.simulation:core_step_invariants",
+        "rfx.simulation:make_core_step"
+      ]
+    },
+    "rfx/stepping/graded.py": {
+      "R": [
+        "rfx.nonuniform:NonUniformGrid",
+        "rfx.sources.waveguide_port:apply_waveguide_port_e",
+        "rfx.sources.waveguide_port:apply_waveguide_port_h",
+        "rfx.sources.waveguide_port:update_waveguide_port_probe"
+      ]
+    },
+    "rfx/stepping/graded_loop.py": {
+      "R": [
+        "rfx.progress:ProgressReporter",
+        "rfx.progress:concat_chunks"
+      ]
+    },
+    "rfx/stepping/probe_loop.py": {
+      "R": [
+        "rfx.simulation:_StepContext",
+        "rfx.simulation:make_core_step"
+      ]
+    },
+    "rfx/stepping/progress_scan.py": {
+      "R": [
+        "rfx.progress:ProgressReporter",
+        "rfx.progress:check_not_traced",
+        "rfx.progress:concat_chunks",
+        "rfx.progress:validate_report_every"
+      ]
+    },
+    "rfx/stepping/ringdown_emulation.py": {
+      "R": [
+        "rfx.ringdown:_PortMeta",
+        "rfx.ringdown:_port_vi"
+      ]
+    },
+    "rfx/stepping/slab_setup.py": {
+      "R": [
+        "rfx.nonuniform:current_source_cb",
+        "rfx.nonuniform:resolve_cpml_axes"
+      ]
+    },
+    "rfx/stepping/uniform.py": {
+      "R": [
+        "rfx.simulation",
+        "rfx.simulation:_StepContext",
+        "rfx.sources.waveguide_port:apply_waveguide_port_e",
+        "rfx.sources.waveguide_port:apply_waveguide_port_h",
+        "rfx.sources.waveguide_port:update_waveguide_port_probe"
+      ]
+    },
+    "rfx/stepping/uniform_loop.py": {
+      "R": [
+        "rfx.adjoint:design_adjoint_scan",
+        "rfx.progress:ProgressReporter",
+        "rfx.progress:check_not_traced",
+        "rfx.progress:concat_chunks",
+        "rfx.progress:scan_with_progress",
+        "rfx.progress:validate_report_every"
+      ]
+    },
+    "rfx/stepping/uniform_setup.py": {
+      "R": [
+        "rfx.progress:ProgressReporter",
+        "rfx.progress:check_not_traced",
+        "rfx.progress:concat_chunks",
+        "rfx.progress:scan_with_progress",
+        "rfx.progress:validate_report_every"
+      ]
+    },
+    "rfx/stepping/vmap_scan.py": {
+      "R": [
+        "rfx.simulation:ProbeSpec",
+        "rfx.simulation:SourceSpec",
+        "rfx.simulation:_StepContext",
+        "rfx.simulation:make_core_step"
+      ]
     }
   }
 }
