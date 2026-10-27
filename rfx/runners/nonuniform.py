@@ -1037,8 +1037,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             )
 
     # TFSF plane-wave source. Scope: axis-aligned +x / -x incidence with
-    # angle_deg=0 so the 1D auxiliary grid runs along the uniform x axis
-    # with scalar cell size grid.dx. Oblique angles (2D auxiliary grid)
+    # angle_deg=0; the 1D auxiliary grid runs on the realized x cells
+    # (tfsf_from_declaration, which also refuses traced x). Oblique angles (2D auxiliary grid)
     # and +z / -z incidence (which would require a z-nonuniform 1D aux)
     # are rejected here with actionable messages.
     tfsf_pair = None
@@ -1062,10 +1062,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "TFSF on nonuniform mesh supports only direction='+x' or "
                 f"'-x'; got {entry.direction!r}."
             )
-        if is_tracer(grid.cells("x")):
-            raise ValueError(
-                "a plane wave on a graded mesh needs a fixed, uniform x axis; "
-                "the x cell sizes are traced")
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_pair = tfsf_from_declaration(
             entry, grid, sim._freq_max, n_steps=n_steps,

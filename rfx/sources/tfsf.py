@@ -194,9 +194,15 @@ class TFSFConfig(NamedTuple):
     sin_theta: float
     grid_pad: int
     transverse_axis: str     # "y" for Ez, "z" for Ey
-    dx_1d: float             # 1D auxiliary grid cell size (dx/cos(theta))
+    dx_1d: float             # legacy scalar retained for existing callers
     magnetic_lo: CPMLParams
     magnetic_hi: CPMLParams
+    primal_widths: float | np.ndarray  # scalar iff every realized x cell agrees
+    dual_widths: float | np.ndarray    # 0.5 * (d[k-1] + d[k]) at E nodes
+    e_face_widths: tuple[float, float]  # host widths for x_lo and x_hi+1
+    h_face_widths: tuple[float, float]  # host widths for x_lo-1 and x_hi
+    b_cpml_hi: jnp.ndarray
+    c_cpml_hi: jnp.ndarray
     custom_waveform: object = None  # static JAX-compatible scalar callable
     closed_box: bool = False
     y_lo: int = 0
@@ -260,6 +266,7 @@ def init_tfsf(
     closed_box: bool = False,
     *, n_steps: int | None = None, theta_deg: float = 0.0, phi_deg: float = 0.0,
     direction_tol_deg: float = 0.1, max_component: int = 100,
+    x_cells=None,
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -290,6 +297,10 @@ def init_tfsf(
         oblique wave via a Bloch field-transformation (#404); use a small
         fractional ``bandwidth`` (≲0.15) and an open/commensurate transverse
         domain (see the module docstring and ``tfsf_2d.py``).
+    x_cells : array-like | None
+        Host-owned realized x cell widths for normal incidence. Equal cells
+        use a Python float; otherwise the line stores primal and dual arrays.
+        None uses the uniform width dx.
     ny : int | None
         Number of cells in y (3D grid).  Required for oblique incidence
         with ez polarization (2D TMz auxiliary grid).  Ignored for
@@ -471,10 +482,21 @@ def init_tfsf(
         # Launch from the right margin so the left-going wave enters the mapped region.
         src_idx = n_1d - n_cpml_1d - AUX_SRC_OFFSET_1D - 1
 
+    # Include both outside cells read by the four corrections and their
+    # updates. Source and absorber margins continue each mapped end cell.
+    cells = np.full(nx, dx) if x_cells is None else np.asarray(x_cells, dtype=float)
+    mapped = cells[x_lo - 1:x_hi + 2]
+    primal_widths = np.pad(mapped, (i0 - 1, n_1d - (i0 - 1) - len(mapped)),
+                          mode="edge")
+    dual_widths = np.concatenate([primal_widths[:1],
+                                 0.5 * (primal_widths[:-1] + primal_widths[1:])])
+    # Specialize only from the realized propagation-axis cells. Keeping a
+    # constant width as a Python float preserves the existing scan arithmetic.
+    uniform_x = bool(np.all(cells == cells[0]))
+
     # 1D CPML profile.  sigma_max is DERIVED from a target reflection through the
     # same law the 3-D absorber uses (rfx/boundaries/cpml.py::_cpml_profile), on
-    # dx_1d so the oblique dispersion match is preserved -- see AUX_*_1D above
-    # and #888.
+    # each mapped end cell width -- see AUX_*_1D above and #888.
     _kappa_1d = (AUX_CPML_KAPPA_MAX_1D if aux_cpml_kappa_max is None
                  else float(aux_cpml_kappa_max))
     if _kappa_1d != 1.0:
@@ -488,11 +510,12 @@ def init_tfsf(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    _prof = _cpml_profile(n_cpml_1d, dt, dx_1d, **profile_options)
+    _prof = _cpml_profile(n_cpml_1d, dt, float(primal_widths[0]), **profile_options)
+    _prof_hi = _cpml_profile(n_cpml_1d, dt, float(primal_widths[-1]), **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_1d, dt, dx_1d, sample_offset=0.5, **profile_options)
+        n_cpml_1d, dt, float(primal_widths[0]), sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_1d, dt, dx_1d, sample_offset=-0.5, **profile_options)
+        n_cpml_1d, dt, float(primal_widths[-1]), sample_offset=-0.5, **profile_options)
     b_prof, c_prof = _prof.b, _prof.c
 
     tau, t0 = pulse_timing(waveform, f0, bandwidth)
@@ -538,6 +561,14 @@ def init_tfsf(
         dx_1d=float(dx_1d),
         magnetic_lo=magnetic_lo,
         magnetic_hi=magnetic_hi,
+        primal_widths=float(cells[0]) if uniform_x else primal_widths,
+        dual_widths=float(cells[0]) if uniform_x else dual_widths,
+        e_face_widths=(float(dual_widths[i0]),
+                       float(dual_widths[i0 + x_hi + 1 - x_lo])),
+        h_face_widths=(float(primal_widths[i0 - 1]),
+                       float(primal_widths[i0 + x_hi - x_lo])),
+        b_cpml_hi=jnp.array(_prof_hi.b, dtype=fdtype),
+        c_cpml_hi=jnp.array(_prof_hi.c, dtype=fdtype),
         custom_waveform=waveform if custom else None,
     )
 
@@ -558,20 +589,17 @@ from rfx.stepping.incident_line import prepare_tfsf_for_scan
 
 
 def refuse_graded_propagation_axis(entry, grid):
-    """Refuse a plane wave whose propagation axis is graded (#2078).
-
-    The incident line is one cell size, the boundary cell, while the 3-D grid
-    carries the wave through the graded cells; the planes then inject a wave
-    that does not match the one arriving. Measured with no scatterer on 60 x
-    cells graded 1 / 0.5 / 1 mm: 0.72 of the total-field peak in the
-    scattered-field region, against 1e-5 on uniform cells. A graded
-    transverse axis is the supported case.
-    """
+    """Only the normal, open x slab has a realized-cell incident line."""
     from rfx._grid_metric import is_one_cell_size
     from rfx.core.jax_utils import is_tracer
     axis = entry.direction[-1]
     cells = grid.cells(axis)
-    if is_tracer(cells) or is_one_cell_size(cells):
+    if is_tracer(cells):
+        raise ValueError("TF/SF requires host x cell widths; a traced propagation "
+                         "profile (mesh as design variable) is not supported")
+    if is_one_cell_size(cells):
+        return
+    if axis == "x" and abs(entry.angle_deg) <= 0.01 and not entry.closed_box:
         return
     sizes = np.asarray(cells, dtype=float)
     raise ValueError(
@@ -601,8 +629,7 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
     if bounds_only and entry.closed_box:
         from rfx.sources.tfsf_discrete_plane_wave import box_bounds
         return box_bounds(grid.shape, grid.cpml_layers, entry.margin), None
-    if not bounds_only:
-        refuse_graded_propagation_axis(entry, grid)
+    refuse_graded_propagation_axis(entry, grid)
     pair = init_tfsf(
         grid.nx, float(grid.cells("x")[0]), grid.dt, cpml_layers=grid.cpml_layers,
         tfsf_margin=entry.margin,
@@ -613,7 +640,8 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
         waveform=entry.waveform, method=entry.method, closed_box=entry.closed_box,
         theta_deg=entry.theta_deg, phi_deg=entry.phi_deg,
         direction_tol_deg=entry.direction_tol_deg, max_component=entry.max_component,
-        n_steps=line_steps if line_steps is not None else n_steps)
+        n_steps=line_steps if line_steps is not None else n_steps,
+        x_cells=grid.cells("x"))
     if record_faces and entry.closed_box:
         from dataclasses import replace
         pair = (replace(pair[0], record_faces=True), pair[1])
@@ -630,9 +658,8 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     Call AFTER apply_tfsf_h (which reads e1d at time n) and BEFORE
     update_e / apply_tfsf_e (which need h1d at time n+1/2).
 
-    The 1D grid uses cfg.dx_1d (= dx/cos(theta) for oblique, dx for normal)
-    so that numerical dispersion matches the 3D grid along the oblique
-    propagation direction.
+    Normal incidence uses the realized primal cell widths. Method B keeps
+    its own scalar cfg.dx_1d and its existing dispersion match.
     """
     if getattr(cfg, "closed_box", False):
         if cfg.face_record is not None:
@@ -642,12 +669,13 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
-    dx_1d = cfg.dx_1d
 
     # 1D Faraday pair for +x propagation:
     #   Ez/Hy  ->  +sign
     #   Ey/Hz  ->  -sign
-    de = (jnp.concatenate([e1d[1:], jnp.zeros(1)]) - e1d) / dx_1d
+    de = jnp.concatenate([e1d[1:], jnp.zeros(1)]) - e1d
+    width_h = getattr(cfg, "primal_widths", cfg.dx_1d)
+    de = de / width_h
     h1d = h1d + cfg.curl_sign * (dt / mu_abs) * de
 
     # H CPML lo end
@@ -670,7 +698,7 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     Uses h1d at time n+1/2 (must call update_tfsf_1d_h first).
     Call AFTER apply_tfsf_e (which reads h1d at time n+1/2).
 
-    The 1D grid uses cfg.dx_1d (= dx/cos(theta) for oblique, dx for normal).
+    Normal incidence uses dual node widths; Method B retains cfg.dx_1d.
     """
     if getattr(cfg, "closed_box", False):
         if cfg.face_record is not None:
@@ -679,12 +707,13 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
         return update_line_e(cfg, st, dx, dt, t)
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
-    dx_1d = cfg.dx_1d
 
     # 1D Ampere pair for +x propagation:
     #   Ez/Hy  ->  +sign
     #   Ey/Hz  ->  -sign
-    dh = (h1d - jnp.concatenate([jnp.zeros(1), h1d[:-1]])) / dx_1d
+    dh = h1d - jnp.concatenate([jnp.zeros(1), h1d[:-1]])
+    width_e = getattr(cfg, "dual_widths", cfg.dx_1d)
+    dh = dh / width_e
     e1d = e1d + cfg.curl_sign * (dt / EPS_0) * dh
 
     # E CPML lo end
@@ -692,8 +721,8 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     e1d = e1d.at[:n].add(cfg.curl_sign * (dt / EPS_0) * psi_e_lo)
 
     # E CPML hi end
-    b_hi = jnp.flip(cfg.b_cpml)
-    c_hi = jnp.flip(cfg.c_cpml)
+    b_hi = jnp.flip(getattr(cfg, "b_cpml_hi", cfg.b_cpml))
+    c_hi = jnp.flip(getattr(cfg, "c_cpml_hi", cfg.c_cpml))
     psi_e_hi = b_hi * st.psi_e_hi + c_hi * dh[-n:]
     e1d = e1d.at[-n:].add(cfg.curl_sign * (dt / EPS_0) * psi_e_hi)
 

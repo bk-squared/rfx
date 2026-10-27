@@ -63,20 +63,12 @@ def test_a_dx_only_graded_mesh_is_checked_for_tfsf_support():
     assert "nonuniform_tfsf" in _codes(report)
 
 
-def test_the_same_mesh_at_normal_incidence_is_a_blocking_error():
-    """Normal incidence along a graded x is not the supported case either.
-
-    The runner builds the 1-D line that computes the incident wave on one
-    cell size, the boundary cell, while the 3-D grid carries the wave through
-    the graded x cells. The two waves part company inside the box, and the
-    difference leaks out of it (0.72 of the peak, #2078). Preflight reports
-    it as an error, as it does the oblique case.
-    """
+def test_the_same_mesh_at_normal_incidence_is_supported():
+    """The normal line now follows the realized x cells."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         report = _dx_graded_tfsf_sim(0.0).preflight()
-    found = [i for i in report.issues if getattr(i, "code", None) == "nonuniform_tfsf"]
-    assert [i.severity for i in found] == ["error"]
+    assert "nonuniform_tfsf" not in _codes(report)
 
 
 @pytest.mark.parametrize("graded", ["y", "z"])
@@ -132,13 +124,8 @@ _X_GRADED = np.concatenate([np.full(20, _DX), np.full(20, 0.5 * _DX), np.full(20
 def test_the_leakage_on_the_supported_meshes():
     """A plane wave with nothing in its way must stay inside the TFSF box. On
     uniform 1 mm x cells the scattered-field region reads about 1e-5 of the
-    total-field peak, and grading only y keeps it there.
-
-    Grading x 1 / 0.5 / 1 mm (20 cells each) put 0.72 of the peak outside the
-    box before #2078 refused it (0.716 with the magnetic CPML profile at the
-    Yee half cell, the same with 8, 16 or 24 absorber layers): the incident
-    line is built on the 1 mm boundary cell, so the wave it injects at the far
-    plane is not the one the graded grid delivers there.
+    total-field peak, and grading only y keeps it there. Graded x cells are
+    measured in ``test_realized_x_line_leakage``.
     """
     uniform = _tfsf_leakage(dx_profile=np.full(50, _DX))
     y_graded = _tfsf_leakage(dy_profile=np.concatenate(
@@ -147,25 +134,168 @@ def test_the_leakage_on_the_supported_meshes():
     assert y_graded < 2e-5, y_graded
 
 
+@pytest.mark.parametrize("kind", ["oblique", "methodB", "closed_box"])
 @pytest.mark.parametrize("direction", ["+x", "-x"])
 @pytest.mark.parametrize("entry", ["run", "run_skip_preflight", "forward",
                                    "forward_skip_preflight"])
-def test_a_graded_propagation_axis_is_refused_on_every_entry(entry, direction, monkeypatch):
+def test_unsupported_graded_tfsf_is_refused_on_every_entry(entry, direction, kind, monkeypatch):
     """#2078: a warning followed by a different model is refused instead, at
     the builder every entry calls, so skip_preflight cannot reach the solve."""
     import jax
     monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped a refused plane wave"))
+    from dataclasses import replace
     sim = _tfsf_line(direction, dx_profile=_X_GRADED)
+    sim._tfsf = replace(sim._tfsf, angle_deg=30.0 if kind != "closed_box" else 0.0,
+                        method="methodB" if kind == "methodB" else "bloch",
+                        closed_box=kind == "closed_box")
     skip = entry.endswith("skip_preflight")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises((ValueError, NotImplementedError)) as exc:
             if entry.startswith("run"):
                 sim.run(n_steps=4, compute_s_params=False, skip_preflight=skip)
             else:
                 sim.forward(n_steps=4, checkpoint=False, skip_preflight=skip)
     message = str(exc.value)
-    assert "x cells" in message and "2078" in message, message
+    assert ("x cells" in message and "2078" in message
+            or "oblique incidence" in message or "closed_box" in message), message
+
+
+def _graded_line_profile(case):
+    if case == "a":
+        return _X_GRADED.copy()
+    if case == "b":
+        ramp = [_DX]
+        while ramp[-1] > 0.4 * _DX:
+            ramp.append(max(ramp[-1] / 1.2, 0.4 * _DX))
+        return np.array([_DX] * 20 + ramp[1:] + ramp[-2::-1] + [_DX] * 20)
+    if case == "fractional":
+        return np.array([_DX] * 20 + [0.73e-3] * 11 + [0.41e-3] * 13
+                        + [_DX] * 20)
+    # The box starts three cells into the interior: its low E correction
+    # straddles the step, with d[x_lo-1] = 1 mm and d[x_lo] = 0.5 mm.
+    return np.array([_DX] * 3 + [0.5 * _DX] * 37 + [_DX] * 20)
+
+
+def _graded_line_leak(case, direction, entry, steps, *, off_axis=False):
+    """Peak |Ez| in the scattered-field region over the peak inside the box."""
+    sim = _tfsf_line(direction, dx_profile=_graded_line_profile(case))
+    if off_axis:
+        from dataclasses import replace
+        sim._probes = [replace(probe, position=(probe.position[0], 1.25e-3, 2.25e-3))
+                       for probe in sim._probes]
+    kwargs = dict(n_steps=steps)
+    if entry == "run":
+        kwargs["compute_s_params"] = False
+    else:
+        kwargs["checkpoint"] = False
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ts = np.asarray(getattr(sim, entry)(**kwargs).time_series)
+    return float(np.max(np.abs(ts[:, 1])) / np.max(np.abs(ts[:, 0])))
+
+
+@pytest.mark.parametrize("steps", [1500, 3000, 6000])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("direction", ["+x", "-x"])
+@pytest.mark.parametrize("case", ["a", "b", "c"])
+def test_realized_x_line_leakage(case, direction, entry, steps):
+    """No scatterer, x graded: the scattered-field region stays at or below
+    1e-5 of the total-field peak (#2078 bar, declared before the run). Before
+    the line followed the realized x cells, (a) read 0.716. (c) puts the step
+    across the low face, so the outside cell's width enters the corrections.
+    """
+    if case != "a" and steps != 1500:
+        pytest.skip("three record lengths are declared for profile (a) only")
+    leak = _graded_line_leak(case, direction, entry, steps)
+    assert leak <= 1e-5, f"{case} {direction} {entry} {steps}: {leak:.17g}"
+
+
+@pytest.mark.parametrize("case,off_axis", [("a", True), ("fractional", False)])
+def test_realized_x_line_additional_witnesses(case, off_axis):
+    if case == "fractional":
+        cells = _graded_line_profile(case)
+        assert not np.isclose(cells.sum() / _DX, round(cells.sum() / _DX))
+    leak = _graded_line_leak(case, "+x", "run", 1500, off_axis=off_axis)
+    assert leak <= 1e-5, f"{case} off_axis={off_axis}: {leak:.17g}"
+
+
+@pytest.mark.parametrize("axis", ["y", "z"])
+def test_transverse_grading_keeps_the_scalar_x_line(axis):
+    """Equal realized x cells keep the scalar line (#2078 decision A): a mesh
+    graded only across the wave builds the same line, bit for bit, and the same
+    four boundary coefficients as the uniform mesh. (Its 3-D fields differ:
+    the transverse absorber sits on other cells.)"""
+    import jax
+    import jax.numpy as jnp
+    from rfx.core.yee import EPS_0, MU_0, init_state
+    from rfx.sources.tfsf import (tfsf_from_declaration, apply_tfsf_e, apply_tfsf_h,
+                                  update_tfsf_1d_h, update_tfsf_1d_e)
+
+    def model(**kwargs):
+        sim = Simulation(freq_max=10e9, domain=(.05, .008, .008), dx=_DX,
+                         boundary="cpml", cpml_layers=8, **kwargs)
+        sim.add_tfsf_source(direction="+x", f0=6e9, bandwidth=.5, margin=3)
+        sim.add_probe((.02525, .004, .004), "ez")
+        return sim
+
+    reference = model()
+    ref_grid = reference._build_realized_grid()
+    # Same physical extent, boundary cells, smallest cell and timestep.
+    profile = np.array([1., 1.5, 1.5, 1.5, 1.5, 1.]) * _DX
+    graded = model(**{f"d{axis}_profile": profile}, dt=ref_grid.dt, dt_min_cell=_DX)
+    pairs = [tfsf_from_declaration(sim._tfsf, sim._build_realized_grid(), sim._freq_max)
+             for sim in (reference, graded)]
+    lines = []
+    for sim, (cfg, state) in zip((reference, graded), pairs):
+        assert type(cfg.primal_widths) is float and type(cfg.dual_widths) is float
+        assert cfg.primal_widths == cfg.dual_widths == _DX
+        # Host coefficients must equal the old scalar expressions exactly.
+        assert all(ref_grid.dt / (EPS_0 * width) == ref_grid.dt / (EPS_0 * _DX)
+                   for width in cfg.e_face_widths)
+        assert all(ref_grid.dt / (MU_0 * width) == ref_grid.dt / (MU_0 * _DX)
+                   for width in cfg.h_face_widths)
+        grid = sim._build_realized_grid()
+        fields = init_state(grid.shape)
+        incident = state._replace(e1d=jnp.ones_like(state.e1d), h1d=jnp.ones_like(state.h1d))
+        electric = apply_tfsf_e(fields, cfg, incident, _DX, grid.dt)
+        magnetic = apply_tfsf_h(fields, cfg, incident, _DX, grid.dt)
+        for idx, sign in ((cfg.x_lo, -1), (cfg.x_hi + 1, 1)):
+            np.testing.assert_array_equal(np.asarray(electric.ez[idx]),
+                np.full(grid.shape[1:], sign * grid.dt / (EPS_0 * _DX), np.float32))
+        for idx, sign in ((cfg.x_lo - 1, -1), (cfg.x_hi, 1)):
+            np.testing.assert_array_equal(np.asarray(magnetic.hy[idx]),
+                np.full(grid.shape[1:], sign * grid.dt / (MU_0 * _DX), np.float32))
+
+        def step(st, n):
+            st = update_tfsf_1d_h(cfg, st, _DX, grid.dt)
+            st = update_tfsf_1d_e(cfg, st, _DX, grid.dt, n.astype(jnp.float32) * grid.dt)
+            return st, st.e1d
+
+        lines.append(np.asarray(jax.lax.scan(step, state, jnp.arange(1500))[1]))
+    assert lines[0].tobytes() == lines[1].tobytes(), "incident line changed"
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_a_traced_x_profile_with_tfsf_is_refused(entry):
+    """The public trace reaches the host-width fence before a field scan."""
+    import jax
+
+    def solve(profile):
+        sim = Simulation(freq_max=10e9, domain=(float(_X_GRADED.sum()), .006, .006),
+                         dx=_DX, boundary="cpml", cpml_layers=8,
+                         dx_profile=profile, nominal_profiles={"x": _X_GRADED},
+                         dt=1e-13, dt_min_cell=0.5 * _DX)
+        sim.add_tfsf_source(direction="+x", f0=6e9, bandwidth=0.5)
+        kwargs = dict(n_steps=4, skip_preflight=True)
+        if entry == "run":
+            kwargs["compute_s_params"] = False
+        else:
+            kwargs["checkpoint"] = False
+        return getattr(sim, entry)(**kwargs).time_series
+
+    with pytest.raises(ValueError, match="TF/SF requires host x cell widths"):
+        jax.make_jaxpr(solve)(_X_GRADED)
 
 
 # ---------------------------------------------------------------------------
