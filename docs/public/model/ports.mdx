@@ -332,6 +332,17 @@ guide.add_waveguide_port(0.09, mode=(1, 0), mode_type="TE", direction="-x",
 print(guide.s_matrix_lane())
 ```
 
+The 23 × 10 mm cross-section is 23 × 10 whole cells at 1 mm. A cross-section
+between walls must be within 1 % of whole cells, or the default
+`snap="strict"` refuses it and names a cell size that fits: a real WR-90,
+22.86 × 10.16 mm, is refused at 1 mm and 2 mm and fits at 1.27 mm (see
+[Boundaries](/rfx/model/boundaries/)). The port's section, from the cell just
+behind its source through its reference plane, must hold one homogeneous, isotropic, lossless
+medium: an empty guide, or a fill that spans it wall to wall, whose cutoff,
+propagation constant and impedance the port then uses. Anything else there
+(a partial or lossy fill, metal, a sheet, a lumped element, a design region)
+is refused; start it beyond the reference plane.
+
 Compute the matrix with `guide.compute_waveguide_s_matrix(normalize=...)`.
 `waveform="differentiated_gaussian"` is refused on waveguide ports: its
 zero-phase incident filter wraps the precursor to the end of the run and

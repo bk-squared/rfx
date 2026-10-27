@@ -111,8 +111,9 @@ of them:
   the model and the message names the nearest `dx` that fits;
   `snap="declared"` runs it with a `wall_axis_off_node` warning. When you leave
   `dx` unset, rfx looks for a cell size that fits the walls, no smaller than
-  0.75 of the one it would otherwise choose; if none fits, it refuses and names
-  the largest `dx` that does. A WR-90 cross-section,
+  0.75 of the one it would otherwise choose. If none fits, it refuses and names
+  the largest smaller `dx` that does, searching down to 1/16 of its own choice;
+  below that the message says no fitting spacing was found. A WR-90 cross-section,
   22.86 × 10.16 mm, fits at `dx = 1.27 mm` (18 × 8 cells) and is refused at
   1 mm, where 10.16 mm would be solved as 10 mm.
 - **An axis with absorbing faces** is covered by whole cells and can be solved
