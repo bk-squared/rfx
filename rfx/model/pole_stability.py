@@ -224,6 +224,10 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
     xp = jnp if traced or spread else np
+    # A concrete sigma keeps concrete extremes when only eps is traced (the passive-Debye skip reads them).
+    sigma = values[1]
+    xs = np if not (abstract_masks or is_tracer(sigma)
+                    or not getattr(sigma, "is_fully_addressable", True)) else xp
     records = []
     for index, (pattern, count) in enumerate(zip(patterns, counts)):
         if not np.any(pattern):
@@ -239,8 +243,8 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
         chosen = tuple(p for p, present in zip(lp, pattern) if present)
         debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
         eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
-        sigma_low = xp.min(xp.where(selected, materials.sigma, xp.inf))
-        sigma_high = xp.max(xp.where(selected, materials.sigma, -xp.inf))
+        sigma_low = xs.min(xs.where(selected, materials.sigma, xs.inf))
+        sigma_high = xs.max(xs.where(selected, materials.sigma, -xs.inf))
 
         occupied = tuple((jnp if abstract_masks else np).any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
                          for axis in range(selected.ndim))
@@ -288,8 +292,53 @@ def _concrete(value):
     return value if concrete is None else concrete
 
 
+def _refuse_traced_out_of_program():
+    raise ValueError(
+        "cannot judge Lorentz/Drude time-step stability: this multi-device run's material values or "
+        "cell sizes are traced by an outer jax.jit (or a nested jax.vmap), and a check cannot be raised "
+        "from inside a multi-device program. Call it without jax.jit (jax.grad, jax.jvp and one "
+        "jax.vmap alone keep concrete values and are judged), or run on one device.")
+
+
+def _eager_batch_members(args):
+    """Each member's concrete arguments under one eager ``jax.vmap``, else None.
+
+    An eager vmap carries concrete values (``BatchTracer.val``); a vmap under
+    ``jit`` or a nested vmap does not, and returns None.
+    """
+    from jax._src.interpreters.batching import BatchTracer
+
+    batched = [v for v in args if isinstance(v, BatchTracer) and v.batch_dim is not None]
+    if not batched or any(v._trace is not batched[0]._trace for v in batched):
+        return None
+    if any(_is_abstract(v) and not isinstance(v, BatchTracer) for v in args) or \
+            any(_is_abstract(v.val) for v in args if isinstance(v, BatchTracer)):
+        return None
+    size = batched[0].val.shape[batched[0].batch_dim]
+
+    def member(v, i):
+        if not isinstance(v, BatchTracer):
+            return v
+        value = np.asarray(_concrete(v.val))   # an eager grad/jvp around the vmap wraps the batch
+        return value if v.batch_dim is None else np.take(value, i, axis=v.batch_dim)
+    return [tuple(member(v, i) for v in args) for i in range(size)]
+
+
+def _passive_debye(record):
+    """Concrete Debye poles with delta_eps >= 0, tau > 0 and a concrete sigma_low >= 0."""
+    values = [_concrete(record.sigma_low)] + [_concrete(v) for p in record.debye for v in p]
+    if any(_is_abstract(v) for v in values):
+        return False
+    sigma, *flat = (float(v) for v in values)
+    return sigma >= 0 and all(de >= 0 and tau > 0 for de, tau in zip(flat[::2], flat[1::2]))
+
+
 def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
-    """Judge concrete values; stage checks only in single-device programs."""
+    """Judge concrete values; stage checks only in single-device programs.
+
+    Out of program (multi-device) the members of an eager ``jax.vmap`` are judged
+    one by one; any other traced value is refused: it cannot be judged there.
+    """
     from rfx._traced_check import traced_check
 
     if budget is None:
@@ -336,6 +385,15 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
+            if not record.poles and _passive_debye(record):
+                # A passive Debye-only set (delta_eps >= 0, tau > 0, sigma >= 0) grows at most 1 inside the
+                # check's Courant pre-filter (trapezoidal update), so the check cannot refuse it.
+                continue
+            members = _eager_batch_members(args)
+            if members is None:
+                _refuse_traced_out_of_program()
+            for member in members:
+                check(*member)
             continue
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
@@ -518,5 +576,5 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
     operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
     operands = jax.tree.map(_concrete, operands)
     if not in_program and any(_is_abstract(v) for v in jax.tree.leaves(operands)):
-        return
+        _refuse_traced_out_of_program()
     traced_check("prebuilt Lorentz coefficients", "time-step stability", check, *operands, ordered=True)

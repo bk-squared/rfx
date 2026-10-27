@@ -77,13 +77,17 @@ def test_mixed_lorentz_refusal_matches_one_device(entry):
     assert str(distributed.value) == str(native.value)
 
 
+TRACED_MULTI_DEVICE = (r"cannot judge Lorentz/Drude time-step stability: this multi-device run's "
+                       r"material values or cell sizes are traced by an outer jax\.jit")
+
+
 def _devices():
     devices = jax.devices("cpu")
     assert len(devices) >= 2, "requires the root conftest's two CPU devices"
     return devices[:2]
 
 
-def test_two_device_pole_override_is_judged_eagerly_but_not_under_outer_jit():
+def test_two_device_pole_override_is_judged_eagerly_and_refused_under_outer_jit():
     import jax.numpy as jnp
 
     sim = _mixed_lorentz_admission_scene(2.0)
@@ -104,14 +108,20 @@ def test_two_device_pole_override_is_judged_eagerly_but_not_under_outer_jit():
     assert eager.shape == (2, 1)
     assert np.all(np.isfinite(eager))
 
-    # Documented limitation: outer-traced material values are not judged on
-    # multiple devices. Pin completion/shape, not stability, for both inputs.
+    # An eager vmap carries concrete members: each is judged, so one unstable
+    # member refuses the batch with its stable step (#1934).
+    with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        jax.vmap(forward)(jnp.stack([stable, unstable]))
+
+    # #1934: a jit-traced value cannot be judged on two devices, so it is
+    # refused by name whatever its value (it ran unjudged before).
     compiled = jax.jit(forward)
     for eps in (stable, unstable):
-        assert np.asarray(compiled(eps)).shape == (2, 1)
+        with pytest.raises(ValueError, match=TRACED_MULTI_DEVICE):
+            compiled(eps)
 
 
-def test_two_device_traced_declared_pole_material_runs():
+def test_two_device_traced_declared_pole_material_is_refused():
     import jax.numpy as jnp
 
     devices = _devices()
@@ -124,9 +134,9 @@ def test_two_device_traced_declared_pole_material_runs():
     # Independent literal material values and observation dimensions.
     with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
         forward(jnp.float32(1.0))
-    result = np.asarray(jax.jit(forward)(jnp.float32(2.0)))
-    assert result.shape == (2, 1)
-    assert np.all(np.isfinite(result))
+    assert np.all(np.isfinite(np.asarray(forward(jnp.float32(2.0)))))
+    with pytest.raises(ValueError, match=TRACED_MULTI_DEVICE):
+        jax.jit(forward)(jnp.float32(2.0))
 
 
 def test_one_device_distributed_outer_jit_refuses_unstable_pole_override(monkeypatch):

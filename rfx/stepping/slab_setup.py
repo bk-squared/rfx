@@ -333,8 +333,10 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                 if not metadata:
                     metadata.extend(found)
                 return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied) for r in found)
-            values = jax.checkpoint(jax.vmap(extrema))(inputs)
-            values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
+            # Concrete inputs give concrete records under an outer jit too, so the judge sees values.
+            with jax.ensure_compile_time_eval() if device is not None else nullcontext():
+                values = jax.checkpoint(jax.vmap(extrema))(inputs)
+                values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
             records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),

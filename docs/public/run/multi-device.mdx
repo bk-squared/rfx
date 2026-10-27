@@ -134,6 +134,7 @@ step. These are refused:
 | `solver="adi"`, `interface_eps="dual_average"` | all multi-device | the default solver and interface rule |
 | devices from several JAX processes | graded mesh, `run(devices=...)` | one process, or `forward(distributed=True)` for the probe signals |
 | an outer `jax.jit` on GPUs with command buffers on | all multi-device | see the outer-jit rule |
+| a Drude or Lorentz medium whose material values or cell sizes are traced by an outer `jax.jit` or a nested `jax.vmap` (the time-step limit cannot be checked inside a multi-device program) | all multi-device | the call without `jax.jit` (`jax.grad` or one `jax.vmap` alone is checked), or one device |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
 [support page](/rfx/support/) lists them per solver path.
