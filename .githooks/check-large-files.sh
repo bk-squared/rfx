@@ -4,6 +4,7 @@
 #   .githooks/check-large-files.sh <base> <head>   every commit after <base> up to <head> (CI): a file added and
 #                                                  removed again inside one push still stays in history
 # Every file over 50 MB is refused. Over 5 MB, only manuscript, figure and submission formats may stay on GitHub.
+# A file whose content is already reachable from the base (moved, renamed, added back) is no new upload and passes.
 REPO=rfx
 PUBLIC=1
 SOFT=5000000
@@ -18,12 +19,26 @@ digest() {
 bad=0
 nl='
 '
+known=''
+trap '[ -n "$known" ] && rm -f "$known"' EXIT
+
+# seen <blob>: the blob is reachable from $BASE (a moved or renamed file, or an old file added back), so it is no new
+# upload. Blobs absent from a partial clone still print (as ?<id>) because their trees are present.
+seen() {
+    [ -n "$BASE" ] || return 1
+    if [ -z "$known" ]; then
+        known=$(mktemp) || exit 2
+        git rev-list --objects --missing=print "$BASE" | cut -d' ' -f1 | sed 's/^?//' > "$known" || exit 2
+    fi
+    grep -qx "$1" "$known"
+}
 
 # check <rev> <names>: <rev> empty means the index. Renames count as additions (--no-renames).
 check() {
     rev=$1
     IFS=$nl
     for path in $2; do
+        seen "$(git rev-parse "$rev:$path")" && continue  # before the size: no blob download for a move
         size=$(git cat-file -s "$rev:$path") || exit 2
         [ "$size" -gt "$SOFT" ] || continue
         ext=$(printf '%s' "${path##*.}" | tr 'A-Z' 'a-z')
@@ -60,8 +75,11 @@ check() {
 }
 
 if [ "$1" = --staged ]; then
+    BASE=$(git rev-parse -q --verify HEAD)
     check '' "$(git -c core.quotepath=off diff --cached --name-only --no-renames --diff-filter=d)"
 else
+    BASE=$1
+    [ "$1" = "$EMPTY" ] && BASE=''
     if [ "$1" = "$EMPTY" ]; then
         commits=$(git rev-list --reverse "$2") || exit 2
     else

@@ -31,4 +31,21 @@ fill 1; m=$(sh .githooks/check-large-files.sh --staged 2>&1)
 case $m in *workspace*|*NFS_FILES*|*remilab-cnu*) r=0 ;; *"연구실 NFS"*) r=1 ;; *) r=0 ;; esac
 echo "M2 public message has no internal path (expect 1): $r"
 git reset -q; rm d.csv
+# Moves: a blob already reachable from the base is no new upload; one added inside the range still is.
+head -c 6000000 /dev/urandom > old.npz; git add old.npz; c old; B3=$(git rev-parse HEAD)
+mkdir -p moved; git mv old.npz moved/old.npz; c move
+echo "R5 move of a file already in the base (expect 0): $(chk $B3 HEAD)"
+head -c 6000000 /dev/urandom > new.npz; git add new.npz; c new; git mv new.npz moved/new.npz; c move-new
+echo "R6 file added then moved inside the range (expect 1): $(chk $B3 HEAD)"
+git mv moved/old.npz old.npz; echo "S3 staged move of a committed file (expect 0): $(chk --staged)"
+git reset -q --hard
+# The CI clone has no blobs (filter blob:none): the same answers must come from trees alone.
+git config uploadpack.allowFilter true
+git clone -q --filter=blob:none --no-checkout "file://$PWD" ../p 2>/dev/null && cd ../p
+pchk() { sh "$D/r/.githooks/check-large-files.sh" "$@" >/dev/null 2>&1; echo $?; }
+gone() { git rev-list --objects --missing=print --all | grep -c '^?'; }
+g0=$(gone)
+echo "P1 partial clone, move (expect 0): $(pchk $(git rev-parse HEAD~3) HEAD~2)"
+echo "P3 the move check fetched no blob (expect 1): $([ "$(gone)" -eq "$g0" ] && echo 1 || echo 0)"
+echo "P2 partial clone, added then moved (expect 1): $(pchk $(git rev-parse HEAD~2) HEAD)"
 cd / && rm -rf "${D:?}"
