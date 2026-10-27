@@ -16,7 +16,6 @@ import pytest
 
 from rfx import Simulation
 import rfx.stepping.graded_setup as nonuniform_core
-import rfx.simulation as uniform_core
 import rfx.sources.waveguide_port as waveguide_port
 import rfx.measurement.waveguide_s as _wg_move_waveguide_s
 from tests._x64_compat import enable_x64
@@ -110,7 +109,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
                           precision, expected_dtype):
     initialized = []
     initialize = uniform_setup.init_state
-    run = uniform_core.run
+    run = uniform_loop.run
     make_step = uniform_loop.make_core_step
     extract_waves = _wg_move_waveguide_s._s_matrix_port_waves
     # With x64 on, even explicit float32 frequencies keep extraction at
@@ -158,7 +157,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
         return state
 
     monkeypatch.setattr(uniform_setup, "init_state", observe_fields)
-    monkeypatch.setattr(uniform_core, "run", observe_run)
+    monkeypatch.setattr(uniform_loop, "run", observe_run)
     monkeypatch.setattr(uniform_loop, "make_core_step", observe_step)
     monkeypatch.setattr(_wg_move_waveguide_s, "_s_matrix_port_waves", observe_waves)
     try:
