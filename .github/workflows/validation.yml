@@ -352,7 +352,7 @@ jobs:
           echo "three-device job: $(( used / 60 )) min of a 75 min limit"
           test "$used" -le $(( 75 * 60 * 85 / 100 ))
 
-  # Python 3.12 with the newest jax 0.11.x (rfx-core-desk 2026-10-27): jax 0.11 renamed scan parameters and
+  # Python 3.12 with the newest jax release, no upper bound (rfx-core-desk 2026-10-27): jax 0.11 renamed scan parameters and
   # estimate_ad_memory raised KeyError for every Python 3.12 user while all other lanes ran 3.11 with jax 0.10.2
   # (record rfx-archive 20261027-jax-floor-options). Gradients and the contracts only; weekly, never a PR check.
   # Six shards balanced on .test_durations (recorded 3.11/jax 0.10.2: about 189 min single-process).
@@ -383,14 +383,15 @@ jobs:
       - name: Install the package
         run: pip install -e ".[dev]"
 
-      # Over pyproject's jax cap on purpose: this job exists to see the newest 0.11.x (acceleration D:996c06; the 2.0
+      # Over pyproject's jax cap on purpose: this job exists to see the newest jax release, with no upper bound,
+      # because an upstream fix lands on the newest line first (rfx-core-desk L:5bac96, acceleration D:996c06; the 2.0
       # cap below 0.11.2 is for the CPU step slowdown, openxla/xla#50977). pip's resolver does not hold a requested
       # package to an installed package's bounds, so -U installs the newest pair and upgrades what it needs, as a
       # user's `pip install -U jax` would. pip check then fails the job on any broken requirement except rfx's own
       # jax/jaxlib bound, which this step breaks deliberately.
-      - name: Install the newest jax 0.11.x over the cap
+      - name: Install the newest jax over the cap
         run: |
-          pip install -U "jax>=0.11,<0.12" "jaxlib>=0.11,<0.12"
+          pip install -U "jax>=0.11" "jaxlib>=0.11"
           pip check > pip-check.txt || true
           cat pip-check.txt
           if grep -vE '^(No broken requirements found\.|rfx-fdtd [^ ]+ has requirement (jax|jaxlib)[<>=!~][^ ]*, but you have (jax|jaxlib) [^ ]+)$' pip-check.txt; then echo 'pip check: broken requirements above'; exit 1; fi

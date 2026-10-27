@@ -237,7 +237,7 @@ def test_cpu_suite_python_and_jax_pins(
 def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     """jax 0.11 broke estimate_ad_memory on Python 3.12 while every other lane ran 3.11/jax 0.10.2.
 
-    The weekly job installs the newest 0.11.x of both wheels on 3.12, records what it got, runs the
+    The weekly job installs the newest release of both wheels, with no upper bound, on 3.12, records what it got, runs the
     gradient and contract tests over all of its shards, and the lane's verdict waits for it.
     """
     jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
@@ -254,7 +254,7 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     over = shlex.split(over)
     assert over[:3] == ["pip", "install", "-U"] and "--no-deps" not in over, installs[1]
     pins = {r.name: str(r.specifier) for r in map(Requirement, over[3:])}
-    assert pins == {"jax": "<0.12,>=0.11", "jaxlib": "<0.12,>=0.11"}, installs[1]
+    assert pins == {"jax": ">=0.11", "jaxlib": ">=0.11"}, installs[1]
     # pip check runs; only rfx's own jax/jaxlib bound is exempt from failing the job.
     assert check[0].startswith("pip check > pip-check.txt"), installs[1]
     fail = re.search(r"if grep -vE '([^']+)' pip-check.txt; then [^;]*; exit 1; fi", installs[1])
