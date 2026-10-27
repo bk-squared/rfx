@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.api import Simulation
+from rfx.api._ad_carry import scan_carry_invars
 from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.measurement.farfield import compute_far_field
 from rfx.geometry import Sphere
@@ -111,8 +112,7 @@ def _scan_carries(jaxpr):
     jaxpr = getattr(jaxpr, "jaxpr", jaxpr)
     for eqn in jaxpr.eqns:
         if eqn.primitive.name == "scan":
-            start, count = eqn.params["num_consts"], eqn.params["num_carry"]
-            yield eqn.params["length"], [v.aval for v in eqn.invars[start:start + count]]
+            yield eqn.params["length"], [v.aval for v in scan_carry_invars(eqn)]
         for value in eqn.params.values():
             if hasattr(value, "jaxpr") or hasattr(value, "eqns"):
                 yield from _scan_carries(value)
