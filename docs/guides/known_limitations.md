@@ -455,6 +455,17 @@ material's even extension; extending the material at least a cell beyond
 the face is supported. No issue plans these kernels or the smoothing
 extension for 2.0; they stay refusals.
 
+### A PMC wall on two x86 CPU devices moves H by up to 30 float32 ULP from one device.
+
+Tracker: #2086
+
+A closed box on a uniform mesh with one PMC face, run with `run(devices=...)` on 2 x86 CPU devices, gives H that
+differs from the one-device run by at most 30 float32 ULP of the H peak. The difference stays bounded over 400 steps
+and does not grow with the record; E differs by about 2 ULP of the E peak. With a PEC wall in the same place the
+two runs are bit-identical. The cause is undetermined.
+What to do: for a bit-for-bit comparison with one device, use a PEC wall or one device.
+→ [#2086](https://github.com/bk-squared/rfx/issues/2086)
+
 ### With the mesh as a design variable, a ground plane still ends at the absorber.
 
 Tracker: #1230
