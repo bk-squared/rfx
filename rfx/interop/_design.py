@@ -1762,8 +1762,7 @@ def simulation_from_design(document: Any) -> Any:
     floquet_payloads = _entry_list(excitations, "floquet_ports", what="excitations")
     plan = _plan_boundary(
         _section(document, "boundary", what="design document"),
-        has_floquet=bool(floquet_payloads),
-        open_tfsf=excitations["tfsf"] is not None and not excitations["tfsf"].get("closed_box", False),
+        has_floquet=bool(floquet_payloads), open_tfsf=excitations["tfsf"] is not None and not excitations["tfsf"].get("closed_box", False),
     )
 
     sim = Simulation(
