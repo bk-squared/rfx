@@ -20,7 +20,7 @@ from rfx import _realized, _grid_metric
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout
-from rfx.measurement.decay import make_field_decay_stop
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop
 from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.model import with_edge_keep
@@ -1088,7 +1088,9 @@ def run_until_decay(
     # energy criterion, and near-Nyquist grid buzz) because neither carries net radiated power.
     # It is the right stop for radiation / S-parameter measurements; it is opt-in (default
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
-    use_flux_stop = radiated_flux_box is not None and use_absorbing
+    # A direct caller gets run()'s refusal too: on a closed box the box was dropped (#2030 S2a).
+    refuse_radiated_flux_stop(radiated_flux_box, decay_by, boundary)
+    use_flux_stop = radiated_flux_box is not None
     from rfx.measurement import flux_box_bounds, radiated_power
     if use_flux_stop:
         _bl = flux_box_bounds(grid, radiated_flux_box)

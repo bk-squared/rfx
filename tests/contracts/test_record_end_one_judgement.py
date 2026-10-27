@@ -370,6 +370,24 @@ def test_s2_refuses_a_flux_box_without_a_flux_stop(graded, boundary, decay):
                                       radiated_flux_box=S2_BOX, skip_preflight=True)
 
 
+def test_s2_direct_loop_refuses_a_closed_box_flux_box(monkeypatch):
+    """The public loop called directly, not through run(): the box was dropped there too."""
+    import rfx.simulation as simulation
+
+    original = simulation.run_until_decay
+
+    def stop(*args, **kwargs):
+        raise _Loop(args, kwargs)
+
+    monkeypatch.setattr(simulation, "run_until_decay", stop)
+    with pytest.raises(_Loop) as entry:
+        _s2_scene(False, "pec").run(until_decay=1e-3, decay_max_steps=60, skip_preflight=True)
+    args, kwargs = entry.value.call
+    assert kwargs["boundary"] == "pec"
+    with pytest.raises(ValueError, match="radiated_flux_box selects the radiated-flux until_decay stop"):
+        original(*args, **{**kwargs, "radiated_flux_box": S2_BOX})
+
+
 @pytest.mark.parametrize("flux", [False, True])
 def test_s2_direct_constructor_and_still_on_cap(flux, monkeypatch):
     from rfx.measurement.decay import make_field_decay_stop, finish_decay
