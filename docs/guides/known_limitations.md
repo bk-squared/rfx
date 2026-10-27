@@ -64,7 +64,7 @@ definition per port kind. The periodic `run()` S refusal remains; graded
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_lumped_wire_s_isolated_drives.py::test_several_excited_ports_refused_before_step)
 
-Before this change, graded run()/forward() and uniform forward() could return
+Before 2.0.0rc1, graded run()/forward() and uniform forward() could return
 mixed S-parameters from one record with several excited lumped or wire ports.
 Each reported entry b_j/a_k was the sum, over every driven port m, of S_jm
 times its incident amplitude a_m divided by the incident amplitude a_k.
@@ -85,7 +85,7 @@ driver, is unchanged. One excited port with passive receiver ports is unchanged.
 ### A partly metal cell edge (metal density between 0 and 1) is an artificial loss; a source on such an edge is scaled by the same weight
 
 At metal density strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.
-Since this change, a source on such an edge is scaled by the same weight on single-device forward runs, as multi-device runs already did.
+In 2.0 a source on such an edge is scaled by the same weight on single-device forward runs, as on multi-device runs.
 A resistive sheet or lumped RLC element on such an edge is NOT scaled: its update replaces the field after the weight.
 Tracker: #1373
 → [#1373](https://github.com/bk-squared/rfx/issues/1373)
@@ -197,9 +197,9 @@ Grid-aligned faces are not affected. Judge such resonances by at least three ref
 `subpixel_smoothing=False`; disagreement means neither series has converged.
 
 `subpixel_smoothing="full_tensor"` uses full anisotropic averaging (Farjadpour 2006; Oskooi 2009;
-Werner–Bauer–Cary 2013 node form) on uniform single-device meshes. Extinction cross section on a synthetic eps-4
+Werner–Bauer–Cary 2013 node form) on single-device Yee meshes, uniform or graded. Extinction cross section on a synthetic eps-4
 sphere measured second-order convergence over three meshes. This is not a convergence-order claim for high-contrast rods.
-Graded meshes, multiple devices, ADI, subgrids, UPML, and the waveguide S driver refuse this option.
+Multiple devices, ADI, subgrids, UPML and the waveguide S driver refuse this option.
 Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
@@ -209,9 +209,8 @@ Tracker: #1632
 `conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
 with w the edge's open fraction (down to 0.1); only edges with w = 0 are metal. The cut cells become a high-permittivity
 skin about one cell thick, which makes the body electrically larger. On a PEC sphere against Mie, its extinction and
-backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). A run with conformal PEC warns, except together with
-`subpixel_smoothing="kottke_pec"`: that combination forms no conformal weights (the smoothed tensor treats the metal
-edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut H-face areas)
+backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). A run with conformal PEC warns. Conformal PEC together with
+`subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until the Dey-Mittra update (cut H-face areas)
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field near 1e-2 of the peak that does not decay (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
@@ -282,7 +281,7 @@ this path are not usable as an absolute power reference. Cross-family transition
 calculators are not pursued further before 2.0, so the excess will not be attributed or
 corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
 the coaxial two-port and line-reflection calculators) for a result you can cite.
-#838 was closed as not planned before 2.0 (PI decision, 2026-09-20); this is a standing limitation.
+#838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
 
@@ -297,11 +296,11 @@ cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), or as an absorber too close
 above the line (next entry), not as gain.
 `enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
-the raw S is gated: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch at its 25 µm claims rung, in
+a test checks the raw S: the microstrip chain battery holds its maximum column power at
+or below 1.02 on the open-stub notch on the 25 µm mesh the claims rest on, in
 `tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
 measured notch and thru values. Coarser meshes are
-reported, not gated.
+reported, not tested.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
@@ -358,9 +357,10 @@ Tracker: none — accepted limitation (diagnostic, does not enter the result: te
 
 The N-probe fit rides the standing wave instead of measuring the
 line: the fitted `Z0` follows the reflection's ripple, while `reliable` can stay
-True on every in-band bin. `S` itself is normalized with the analytic
-Hammerstad-Jensen `Z0` (`rfx/sparams/msl.py`, `reference_impedances`), not with
-the fitted one. Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
+True on every in-band bin. `S` itself is referred to each port's declared
+`impedance=` (`reference_impedances`), with its waves formed at the analytic
+Hammerstad-Jensen line impedance (`line_impedances`), not at the fitted `Z0`. Judge by
+`probe_clearance` and `beta_railed`, not by `reliable`; the
 fix is a longer uniform feed or a moved reference plane. Every warning about
 this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`).
 Settled in #726 (closed): the guard and preflight used to contradict each other
@@ -381,9 +381,11 @@ The field increment a source adds on its edge is the update's coefficient times 
 Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)
 
 Below f/fc = 1.2 the guide's slow group velocity rings long after the source
-ends. At a/45 cells such a band needs about 32 000 steps before |S11|²+|S21|²
-stops moving with record length; on 8 000 steps it moves by up to 1e-2 per bin,
-and the run's settling check reports that record (−39 dB against −40 dB).
+ends. At a/45 cells, |S11|²+|S21|² settles within 1e-3 from about 32 000 steps;
+on 8 000 steps it moves by up to 1.2e-2 per bin, and the run's settling check
+reports that record (−39.7 dB against −40 dB) and passes from 12 000 steps. Complex S11
+and S21 move by at most 1e-2 from 8 000 steps on. Measured on an empty WR-90 at
+7.0–7.9 GHz (f/fc 1.07–1.20) on 2026-10-27; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
 
 ## Ring-down completion and the early stop
@@ -398,22 +400,22 @@ Tracker: #1514
 `forward(ringdown=...)` identify the ringing's poles on the record's second
 half. Two resonances closer than the record can resolve come back as one
 blended pole, and the completion from any window of that record makes the same
-blend. The early-window vs late-window comparison WE then agrees while the completed S can be several
+blend. The comparison of an early-window and a late-window completion then agrees while the completed S can be several
 percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
-#1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
+#1381 was closed as a stated limit (decided 2026-09-30); this is a standing limitation.
 
 ### The early stop can end the run before a weak unresolved high-Q pair is resolved.
 
 Tracker: #1514
 
-The rule is `run(..., until_identified=True)`: stop once WE agrees
+The rule is `run(..., until_identified=True)`: stop once the early-window and late-window completions agree
 twice and the record is half the decay time of the slowest mode that moves S.
 A weakly coupled pair of very high-Q modes (Q about 5e4, each feature 0.02–0.03
 in |S|, 40–60 MHz apart) beats inside a short record. The record reads the beat
 as fast decay, the blended pole's weight falls below the bar, and the floor
 does not hold. Measured on a synthetic one-port: the stop fires at 2250 steps
-with the completed S up to 3e-2 off at the pair while WE reads about 1e-4.
+with the completed S up to 3e-2 off at the pair while that comparison reads about 1e-4.
 Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
@@ -432,7 +434,7 @@ On the same record, one-cell wire-port completion restores |S11| to 1 within 1e-
 `run(ringdown=...)` currently refuses one-cell lumped ports.
 What to do: record well past the slowest mode's decay, or use a one-cell wire port
 (`add_port(..., extent=dx)`) with `run(ringdown=...)`.
-#1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
+#1255 was closed as a stated limit (decided 2026-10-01); this is a standing limitation.
 
 ### A probe at the rounding level of a much stronger probe in the same cell is not judged by the decay check.
 
@@ -564,7 +566,7 @@ Tracker: #1991
 periodic slab in z). On a 2.2-wavelength PEC plate at θ = 20° and 40°, the specular peak of the returned bistatic RCS
 is +0.86 dB above a physical-optics uniform-aperture reference at λ/30 cells, and −1.55 dB below it at λ/60, a 2.4 dB
 change from mesh refinement alone. Treat the absolute value as a ±2 dB-class number at λ/30 to λ/60, not a sub-dB one.
-The far-field pattern shape and the direction of the specular peak are validated (peak within 3° at θ = 40°, gated at
+The far-field pattern shape and the direction of the specular peak are validated (peak within 3° at θ = 40°, tested at
 ±6°; tests/oracle/test_oblique_rcs_specular.py). The returned RCS is that of a strip whose height is the
 two-cell far-field box in z, `h_eff = 2·dx`: for a physical strip of height `L_z`, scale it by `(L_z/h_eff)²`.
 What to do: compare shapes and directions directly; for an absolute level, run two meshes (λ/30 and λ/60) and
@@ -576,7 +578,7 @@ report the spread as the uncertainty of the level.
 
 Tracker: #1373
 
-`forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`, and it refuses to run inside `jax.jit`. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
+`forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`. It runs inside a user `jax.jit`, where port S-parameters are refused by name. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
 
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
@@ -626,7 +628,7 @@ in every bin whose phase is `(ω − ω_r)·T`; a parameter that moves the reson
 spins that phase, and because the phase grows with the simulation time the spin
 lands in the derivative magnified while staying nearly invisible in the value.
 In the measured cases the sign of the slope was right and its size was not — an
-optimizer reading them takes steps of the wrong length, and a gate on a gradient
+optimizer reading them takes steps of the wrong length, and a check on a gradient
 value passes or fails on the simulation time rather than on the physics.
 
 The committed reproduction is a lossy-filled PEC cavity
@@ -647,7 +649,7 @@ the cosine between the two — so a change of step length reads differently from
 turn of the descent direction. Complex observables (an S-parameter, a DFT
 phasor) are compared as complex sensitivities, since a parameter that rotates a
 phasor at constant magnitude moves only its imaginary part. A per-element table
-comes with the result to locate where a failure sits; it is not the verdict,
+comes with the result to locate where a failure sits; it is not the pass/fail result,
 because an element carrying a millionth of the dominant sensitivity moves by
 100 % on its own rounding. The comparison with a longer run does not replace the −40 dB rule — a
 record too short by more than `factor` can still pass it, because both runs then
@@ -707,7 +709,7 @@ The SMOKE half was #1100.
 Tracker: #737
 
 The
-example-fidelity gate builds every reachable example and pins the preflight rows
+example-fidelity check builds every reachable example and pins the preflight rows
 it emits; it does not step time, and it does not check that any example's printed
 result is right. Six tutorials plus `hello_world` are additionally run end to end
 with physics assertions. Everything else in `examples/` and `validation/` is
@@ -721,7 +723,7 @@ Tracker: #1471
 The patch-antenna accuracy figure is not claimed for 2.0 because
 its simulation time predates the current decay check. It is re-measured after
 2.0, with the MSL notch filter's, on a redesigned record length and mesh ladder
-(PI decision 2026-10-04, recorded on
+(decided 2026-10-04, recorded on
 [#1471](https://github.com/bk-squared/rfx/issues/1471)).
 
 ---
