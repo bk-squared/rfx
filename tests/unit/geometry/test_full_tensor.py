@@ -88,3 +88,54 @@ def test_chunked_traced_build_and_jvp_equal_unchunked(monkeypatch):
     for value, reference in zip(jax.tree.leaves(actual), jax.tree.leaves(expected)):
         np.testing.assert_array_equal(value, reference)
     print('chunked build: 0 ULP primal and radius JVP')
+
+
+def test_serial_pieces_build_and_jvp_equal_batched(monkeypatch):
+    """A dielectric rod's node permittivity tensor and radius derivative must
+    not change by one bit when the pieces are issued in another order.
+    """
+    grid = Grid(domain=(.005, .005, .003), dx=.001, freq_max=10e9, cpml_axes='')
+    def build(radius):
+        rod = Cylinder((.0024, .0026, .0015), radius, .008, 'z')
+        return compute_node_tensor_eps(grid, [(rod, 38.)])
+    def evaluate():
+        return jax.jit(lambda r: jax.jvp(build, (r,), (jnp.ones_like(r),)))(jnp.float32(.0017))
+    monkeypatch.setattr(triplet, 'MATRIX_BATCH_SIZE', 64)
+    monkeypatch.setattr(triplet, '_serial_pieces', lambda: False)
+    expected = evaluate()
+    jax.clear_caches()
+    monkeypatch.setattr(triplet, '_serial_pieces', lambda: True)
+    actual = evaluate()
+    for value, reference in zip(jax.tree.leaves(actual), jax.tree.leaves(expected)):
+        np.testing.assert_array_equal(value, reference)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('version,backend,serial', [
+    ((0, 10, 2), 'cpu', True),
+    ((0, 11, 1), 'cpu', False),
+    ((0, 10, 2), 'gpu', False),
+])
+def test_serial_pieces_branch_choice(monkeypatch, version, backend, serial):
+    """A dielectric rod's node permittivity tensor and radius derivative must
+    not change by one bit when the pieces are issued in another order;
+    only old CPU jaxlib must issue those pieces serially.
+    """
+    monkeypatch.setattr(triplet, '_JAXLIB_VERSION', version)
+    monkeypatch.setattr(jax, 'default_backend', lambda: backend)
+    monkeypatch.setattr(triplet, 'MATRIX_BATCH_SIZE', 64)
+    calls = []
+    original_map = jax.lax.map
+    def spy(solve, pieces):
+        calls.append(pieces.shape)
+        return original_map(solve, pieces)
+    monkeypatch.setattr(jax.lax, 'map', spy)
+    grid = Grid(domain=(.005, .005, .003), dx=.001, freq_max=10e9, cpml_axes='')
+    def build(radius):
+        rod = Cylinder((.0024, .0026, .0015), radius, .008, 'z')
+        return compute_node_tensor_eps(grid, [(rod, 38.)])
+    jax.make_jaxpr(lambda r: jax.jvp(build, (r,), (jnp.ones_like(r),)))(jnp.float32(.0017))
+    assert bool(calls) == serial
+    if serial:
+        assert all(shape[0] > 1 and shape[1:] == (64, 3, 3) for shape in calls)
+    jax.clear_caches()
