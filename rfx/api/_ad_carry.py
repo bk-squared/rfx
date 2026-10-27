@@ -48,12 +48,26 @@ def linear_accumulators(sim, grid, n_steps):
     return records, warnings
 
 
+def scan_carry_invars(eqn):
+    """The carry operands of a ``scan`` equation, in either form of its parameters.
+
+    jax 0.10 counts the operands (``num_consts``, ``num_carry``); jax 0.11
+    gives their tree instead (``ft_in`` = consts, carry, xs).
+    """
+    params = eqn.params
+    if "ft_in" in params:
+        consts, carry, _ = params["ft_in"].unpack()
+        start, count = len(consts), len(carry)
+    else:
+        start, count = params["num_consts"], params["num_carry"]
+    return list(eqn.invars[start:start + count])
+
+
 def _scans(jaxpr):
     jaxpr = getattr(jaxpr, "jaxpr", jaxpr)
     for eqn in jaxpr.eqns:
         if eqn.primitive.name == "scan":
-            start = eqn.params["num_consts"]
-            yield [v.aval for v in eqn.invars[start:start + eqn.params["num_carry"]]]
+            yield [v.aval for v in scan_carry_invars(eqn)]
         for value in eqn.params.values():
             if hasattr(value, "jaxpr") or hasattr(value, "eqns"):
                 yield from _scans(value)
