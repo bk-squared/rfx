@@ -203,7 +203,9 @@ class ThinConductor:
     thickness : float
         Physical thickness in metres.
     eps_r : float
-        Relative permittivity (default 1.0).
+        Must stay at 1 (default 1.0): a PEC, surface-impedance or lossy sheet
+        uses the permittivity of the cells it lies in, and any other value is
+        refused. Declare the dielectric around it with ``add(..., material=...)``.
     surface_impedance_f0 : float | Array | None
         Band-centre frequency (Hz) for the opt-in Leontovich surface-
         impedance loss model. ``None`` (default) keeps the

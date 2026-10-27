@@ -164,7 +164,8 @@ def compute_msl_s_matrix(
     ``n_probes`` downstream DFT plane probes record Ez and the first
     probe also records the transverse H components for a closed
     Ampere-loop current. Production S is formed from this first-plane
-    V/I and the analytic Hammerstad-Jensen reference impedance. The
+    V/I: the waves at the analytic Hammerstad-Jensen line Z0, then referred
+    to each port's declared ``impedance=`` (see above). The
     N-probe least-squares fit of
     ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
     beta/Z0 diagnostics. Those fitted values do not enter S. S is formed

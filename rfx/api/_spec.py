@@ -187,7 +187,7 @@ class ADMemoryExplainabilityReport(NamedTuple):
 class ADMemoryPlan(NamedTuple):
     """Checkpoint planning result for reverse-mode AD memory.
 
-    ``checkpoint_every`` is the non-uniform segmented-scan chunk length.
+    ``checkpoint_every`` is the non-uniform segmented-scan chunk length (graded single device: or a tuple of levels).
     ``checkpoint_segments`` is the uniform segmented-scan segment count.
     ``checkpoint_mode`` is the knob selector, not a runnable-fit verdict:
     check ``full_ad_fits`` first, then require ``segmented_fits`` before wiring
