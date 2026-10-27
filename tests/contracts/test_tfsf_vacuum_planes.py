@@ -116,5 +116,5 @@ def test_traced_x_cell_sizes_refused():
     with pytest.raises(ValueError) as caught:
         jax.grad(energy)(jnp.full(30, .001))
     assert str(caught.value) == (
-        "a plane wave on a graded mesh needs a fixed, uniform x axis; "
-        "the x cell sizes are traced")
+        "TF/SF requires host x cell widths; a traced propagation "
+        "profile (mesh as design variable) is not supported")
