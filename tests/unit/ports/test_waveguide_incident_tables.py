@@ -95,7 +95,7 @@ def test_negative_time_causality(case):
 def test_direct_run_prefix():
     from unittest.mock import patch
     from rfx import Simulation
-    import rfx.simulation as stepping
+    import rfx.stepping.uniform_loop as stepping
     from rfx.measurement.waveguide_s import extract_waveguide_port_waves
     n=600
     series=('v_probe_t','v_ref_t','i_probe_t','i_ref_t','v_inc_t')
