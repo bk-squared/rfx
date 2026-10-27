@@ -372,6 +372,10 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
+            if not record.poles:
+                # Debye-only: inside the Courant pre-filter its growth is at most 1 (4000 sampled cells,
+                # largest 1.000000000000), so the check cannot refuse it; nothing to judge.
+                continue
             members = _eager_batch_members(args)
             if members is None:
                 _refuse_traced_out_of_program()
