@@ -153,10 +153,10 @@ All full matrices are indexed `S[receiver_port, driven_port, freq_index]`.
 | Calculator | Result | Main fields |
 |---|---|---|
 | `run(compute_s_params=True)` | `Result` | `s_params`, `freqs` |
-| `compute_msl_s_matrix()` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names`, `reliable`, `settling_db`, `reference_impedances`, `sigma_max_excess`, `S_raw`, `passivity_correction` |
+| `compute_msl_s_matrix()` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names`, `reliable`, `settling_db`, `reference_impedances`, `line_impedances`, `sigma_max_excess`, `S_raw`, `passivity_correction` |
 | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult` | `s_params`, `freqs`, `port_names`, `port_directions`, `reference_planes`, `settling_db`, `s21_phase_residual_deg_rms` |
 | `compute_coaxial_line_reflection()` | `CoaxialLineReflectionResult` | `s11`, `freqs`, `status`, `annulus_cells`, `gamma`, `recurrence_residual`, `fit_residual`, `z0_numerical_ohm`, `termination` |
-| `compute_coaxial_two_port()` | `CoaxialTwoPortResult` | `s_params`, `freqs`, `port_names`, `reference_planes`, `status`, `settling_db`, `cond_a`, `gamma`, `recurrence_residual`, `fit_residual` |
+| `compute_coaxial_two_port()` | `CoaxialTwoPortResult` | `s_params`, `freqs`, `port_names`, `reference_planes`, `status`, `settling_db`, `cond_a`, `gamma`, `recurrence_residual`, `fit_residual`, `reference_impedances`, `line_impedances` |
 
 **Microstrip.** `S` is the raw extraction, the same function a gradient
 differentiates. A raw S can exceed passivity. `sigma_max_excess[k]` gives how
@@ -167,12 +167,17 @@ set instead; the unprojected matrix stays in `S_raw` and the correction in
 `passivity_correction`. Don't quote projected values where the correction is
 large. `reliable[p, k]` marks low-signal bins: where any entry is `False`,
 drop the whole slice `S[:, :, k]`, because S is solved jointly across drives.
-`reference_impedances` are the power-wave references; `Z0` is the fitted line
-impedance, reported separately.
+`reference_impedances` are the power-wave references, each port's declared
+`impedance=`; `line_impedances` are the analytic line impedances the waves are
+formed at; `Z0` is the fitted line impedance, reported separately. The coaxial
+two-port result carries the same two fields.
 
-**Waveguide.** S is a ratio of modal voltage waves, each referenced to its own
-port's discrete modal impedance. It equals a power-wave S only when all ports
-share one cross-section. `s21_phase_residual_deg_rms` is the RMS difference
+**Waveguide.** Each port splits its waves with its own medium's discrete modal
+impedance. Between ports in one medium, S is the ratio of modal voltage waves,
+which equals a power-wave S when the ports also share one cross-section.
+Between ports in different media (an empty port facing a filled one),
+`normalize=False` returns the power-wave ratio `(b_i / a_j)·√(Z_j / Z_i)`;
+`normalize=True` and `"flux"` refuse unequal media. `s21_phase_residual_deg_rms` is the RMS difference
 between the S21 phase and `−βL` for a single-mode two-port. On an empty or
 matched guide it measures the port's discretization error. With a device
 between the planes, it includes the device's own phase.

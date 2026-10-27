@@ -164,6 +164,8 @@ a short probe array downstream of the feed.
   centre.
 - `direction`: `"+x"`, `"-x"`, `"+y"` or `"-y"`. The substrate normal is always
   z.
+- `impedance`: the port's reference impedance in ohms. S is referred to it;
+  the line's analytic impedance is reported as `line_impedances`.
 - `mode`: `"laplace"` (default, quasi-TEM) or `"uniform"`. `"eigenmode"` is
   x-only and outside the documented scope.
 - `n_probe_offset`, `n_probe_spacing`: in cells. When left at `None` on a
@@ -243,8 +245,11 @@ add_coaxial_port(position, face="top", *, pin_length=0.005,
 ```
 
 The coaxial calculators build their own line, TEM source, probe planes and
-termination. The port supplies only the x/y centre, `face`, the two radii and
-the waveform. See the complete example below.
+termination. The port supplies the x/y centre, `face`, the two radii, the
+waveform and `impedance`, the reference `compute_coaxial_two_port` refers S to
+(the line's TEM impedance is reported as `line_impedances`;
+`compute_coaxial_line_reflection` returns Γ at the line and does not use it).
+See the complete example below.
 
 ## S-parameter calculators
 

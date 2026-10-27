@@ -295,8 +295,9 @@ builds and preflights this board without solving it in the tutorial; the
 calculation above runs it. The tutorial's live generic-port S11 examples
 use `S11_STEPS = 600` each. This board is coarse for speed, so check the fitted
 Z0 against the closed form.
-S11 and S21 use the measured V and I with the analytic Z0, not the fitted
-Z0. Refine before you quote Z0.
+S11 and S21 use the measured V and I, referred to each port's declared
+`impedance=` (default 50 Ω); the fitted Z0 does not enter S. Refine before
+you quote Z0.
 
 Getting an accurate microstrip result:
 
