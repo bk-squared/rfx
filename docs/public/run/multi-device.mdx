@@ -76,8 +76,9 @@ What to know:
 - Splitting is along x only. A domain whose x size does not divide evenly is
   padded.
 - A plane wave runs split over the devices only as a closed box
-  (`closed_box=True`) at normal incidence, on a uniform mesh and on exactly 2
-  devices; its memory is then divided like any other model. Every other plane
+  (`closed_box=True`) at normal incidence, on a uniform mesh and on 2 to 4
+  devices; 5 or more devices are refused by name. Its memory is then divided
+  like any other model. Every other plane
   wave and every waveguide port is refused by name (table below); nothing runs
   on one device in place of the request.
 
@@ -121,7 +122,7 @@ step. These are refused:
 | a wire port with `reference_plane_cells` or an explicit radius | all multi-device | one device |
 | a PMC face with a wire port or lumped-port S, or, on a graded mesh, with any port or frequency-domain record | all multi-device | one device |
 | a plane wave that is not a closed box: an open slab, oblique incidence (Bloch line or Method B), a `face_record` replay | uniform mesh | one device |
-| a closed-box plane wave at oblique incidence (`theta_deg` or `phi_deg` not 0), or on 3 or more devices | uniform mesh | normal incidence on 2 devices, or one device |
+| a closed-box plane wave at oblique incidence (`theta_deg` or `phi_deg` not 0), or on 5 or more devices | uniform mesh | normal incidence on 2 to 4 devices, or one device |
 | any plane wave | graded mesh | one device |
 | a waveguide port | all multi-device | one device |
 | a Kerr material, a surface-impedance sheet, `add_refinement` | all multi-device | one device |
