@@ -73,8 +73,9 @@ def test_waveguide_uses_incident_record_and_farthest_plane():
     record = np.exp(-np.arange(100)/20.)
     incident = np.zeros(100)
     incident[:5] = 1.
+    # The incident E table the port applies (#2030), not the analytic v_inc_t.
     cfg = SimpleNamespace(
-        src_amp=1., v_inc_t=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
+        src_amp=1., e_inc_table=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
         reference_x_m=0., probe_x_m=2.5*C0,
         **{name: record for name in ('v_ref_t', 'i_ref_t', 'v_probe_t', 'i_probe_t')})
     actual = settling_db_from_port_records([cfg])
