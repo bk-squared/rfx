@@ -167,7 +167,7 @@ Tracker: #1739
 (737,009 nodes, float32, RTX A6000, JAX 0.10.2), single-output device peaks were
 1.00 to 1.14 times the estimate; leave 15 % above it with checkpoint levels.
 For simultaneous pullbacks, `cotangents=` now adds 7.5 carries per extra output:
-one boundary carry plus 6.5 carries of backward working arrays (#2089).
+one boundary carry plus 6.5 carries of backward working arrays.
 This calibration uses one graded whole-grid scene, not a runtime guarantee.
 Design boxes use the same whole-grid adjoint workspace estimate and are unmeasured;
 other scenes, backends, and JAX versions are also unmeasured for this coefficient.
