@@ -355,9 +355,12 @@ def forward_from_materials(
 
 
 def dispatch_forward(self, *, plan, _solve_assembly, _call_args):
-    """Refuse unsupported sources before the graded execution fences."""
-    from rfx.runners._admission import refuse_distributed_sources
-    refuse_distributed_sources(self, "fwd_distributed_nu")
+    """Apply shared multi-device admission before the graded execution fences."""
+    from rfx.model.distributed_ports import refuse_unsupported_distributed_features
+    refuse_unsupported_distributed_features(
+        self, lane="distributed multi-device forward()",
+        diagnostics=_solve_assembly.diagnostics,
+    )
     from rfx.api._gradient_witness import with_conductivity_record
     from rfx.materials.thin_conductor import refuse_f0_sheets
     refuse_f0_sheets(self._thin_conductors,

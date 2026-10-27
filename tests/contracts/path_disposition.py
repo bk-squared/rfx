@@ -645,7 +645,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=refuses("MSL ports refused (#1241)", raises="add_msl_port() port(s)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=admission("a microstrip port (add_msl_port)", FWD_DNU, "the port launched nothing (#1285)"),
+        fwd_distributed_nu=refuses("MSL ports refused by the shared multi-device check (#1241, #2076)", raises="add_msl_port() port(s)"),
         fwd_adi=admission("a microstrip port (add_msl_port)", FWD_ADI, "as on run_adi, a port declared without a trace was "
                           "dropped (#1308)"),
     )},
@@ -716,7 +716,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=refuses("lumped RLC refused (#1239)", raises="add_lumped_rlc() element(s)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("lumped RLC refused", raises="Lumped RLC ports are not yet supported"),
+        fwd_distributed_nu=refuses("lumped RLC refused by the shared multi-device check (#1239, #2076)", raises="add_lumped_rlc() element(s)"),
         fwd_adi=ADI_RLC,
     ) for element in ("R", "series_RL")},
     "_tfsf": {"plane_wave": lanes(

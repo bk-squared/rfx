@@ -343,12 +343,11 @@ def directions(declaration):
 
 
 # Both entries refuse, but from two guards, not one check both call
-# (rfx-core-desk 2026-10-27): census failing rows = 11.
+# (rfx-core-desk 2026-10-27). The graded multi-device MSL and RLC rows left
+# with #2076: both entries now refuse them from the shared multi-device check.
 TWO_GUARD_REFUSALS = {
     **{('P-coax', p): '#2075 run() and forward() refuse the coaxial port from two guards in _execute.py'
        for p in ('uniform', 'graded', 'multi-device-uniform', 'multi-device-graded')},
-    **{(d, 'multi-device-graded'): '#2076 graded multi-device forward() admits through its own list'
-       for d in ('P-msl', 'R-rlc')},
 }
 
 

@@ -25,8 +25,6 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     ports_present = any(p.impedance > 0 for p in sim._ports)
     call = "run(devices=...)" if lane == "run_distributed_nu" else "forward(distributed=True)"
     off = "omit devices=" if lane == "run_distributed_nu" else "omit distributed=True and devices="
-    if sim._lumped_rlc:
-        raise NotImplementedError(f'Lumped RLC ports are not yet supported by {call} on a graded mesh; remove the lumped_rlc spec or {off}.')
     if ports_present:
         if any(p.extent is not None and p.reference_plane_cells is not None for p in sim._ports):
             raise NotImplementedError(f'Wire ports with reference_plane_cells are not supported by {call} on a graded mesh; the V_ref path needs pre-injection recordings. Use one device ({off}).')
