@@ -20,6 +20,7 @@ def test_runtime_floor_contract():
     config = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert floor.MIN_PYTHON == (3, 11)
     assert floor.MIN_JAX == "0.10.2"
+    assert floor.JAX_BELOW == "0.11.2"
     assert config["project"]["requires-python"] == ">=3.11"
     assert config["tool"]["mypy"]["python_version"] == "3.11"
     deps = {r.name: r for r in map(Requirement, config["project"]["dependencies"])}
@@ -33,7 +34,7 @@ def test_runtime_floor_contract():
     install = next(step["run"] for step in workflow["jobs"]["docs-consistency"]["steps"]
                    if step["name"] == "Install package with dev dependencies")
     for name in ("jax", "jaxlib"):
-        assert str(deps[name].specifier) == f">={floor.MIN_JAX}"
+        assert {str(s) for s in deps[name].specifier} == {f">={floor.MIN_JAX}", f"<{floor.JAX_BELOW}"}
         assert str(docs[name].specifier) == f"=={floor.MIN_JAX}"
         assert f'"{name}=={floor.MIN_JAX}"' in install
 
