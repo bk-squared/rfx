@@ -1,9 +1,17 @@
 """Run-specific source coefficient selection and absorber admission."""
+from __future__ import annotations
+
 from rfx._grid_metric import field_index
 from dataclasses import replace
 
 import jax
 import jax.numpy as jnp
+import numpy as np
+
+from rfx.core.jax_utils import is_tracer
+from rfx.core.yee import EPS_0
+from rfx.grid import Grid
+from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacing_at
 
 
 def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None):
@@ -15,7 +23,6 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
     A None volume denotes an already resolved field increment.
     """
     import jax.numpy as jnp
-    from rfx.nonuniform import current_source_cb
 
     columns = []
     for n, ((axis, cell), volume) in enumerate(zip(cells, volumes)):
@@ -116,7 +123,6 @@ def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
     import jax
     import jax.numpy as jnp
     from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
-    from rfx.simulation import _uniform_cell_volume
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     return source_table(
         jax.vmap(waveform)(times), kind, native=native,
@@ -145,6 +151,127 @@ def current_source_samples(grid, waveform_fn, n_steps):
     ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     return jax.vmap(waveform_fn)(times)
+
+
+def current_source_cb(eps_r_c, sigma_c, dt):
+    """``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))`` of the edge a current
+    source feeds, from that edge's ``(eps_r, sigma)``.
+
+    ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
+    four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`
+    (#1210). Concrete and traced inputs use the same jnp arithmetic,
+    keeping a traced permittivity on the tape (GEO-C3).
+    The one spelling of the drive coefficient: :func:`make_current_source`
+    and the distributed graded forward, which builds it inside its jitted
+    program from the slabs its E update receives (#1279), both call it.
+    """
+    # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
+    # which overflowed float32 cotangents into NaN gradients (#1279).
+    eps_r = jnp.asarray(eps_r_c)
+    sigma = jnp.asarray(sigma_c)
+    return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
+
+
+def current_source_volume(grid, position_ijk, component):
+    """``(dV, grid_traced)``: the control volume of the E node a current
+    source at ``position_ijk`` injects into, and whether the profile is
+    traced (then ``dV`` is a jnp scalar, else a Python float)."""
+    i, j, k = position_ijk
+
+    # Control volume of the E node this source injects into (issue #672).
+    # An E_a component is an EDGE along its own axis a and sits ON a node on
+    # the two transverse axes, so its control volume is MIXED:
+    #   axis == a  -> primal per-cell width d[idx]
+    #   axis != a  -> dual spacing (d[idx-1]+d[idx])/2, which is exactly the
+    #                 metric the NU E update divides curl H by (CORE-C2,
+    #                 ``_profile_to_inv_arrays``); the Ex update, for
+    #                 instance, uses inv_dy and inv_dz and never inv_dx.
+    # Using the primal width on all three axes (pre-#672) is right only where
+    # both neighbour pairs are equal. On a 2:1 grading step it mis-normalizes
+    # the injected current moment by the local cell ratio on each graded
+    # TRANSVERSE axis (measured: dV too large by 1.333 with one graded
+    # transverse axis, 1.778 with two).
+    # Stay in jnp when the profile is traced so a mesh-as-design variable
+    # propagates the gradient into the waveform normalisation.
+    _axis_of = {"ex": 0, "ey": 1, "ez": 2}
+    if component not in _axis_of:
+        raise ValueError(
+            f"make_current_source: unknown component {component!r} "
+            f"(expected one of {sorted(_axis_of)}). The control volume is "
+            f"component-dependent on a non-uniform mesh, so there is no safe "
+            f"fallback (issue #672)."
+        )
+    p_axis = _axis_of[component]
+    grid_traced = (
+        is_tracer(grid.dx_arr) or is_tracer(grid.dy_arr) or is_tracer(grid.dz)
+    )
+    _profiles = tuple(store if grid_traced or exact is None else exact for store, exact in zip((grid.dx_arr, grid.dy_arr, grid.dz), (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)))
+    _idx = (i, j, k)
+    _widths = []
+    for _a in range(3):
+        if _a == p_axis:
+            _w = (jnp.asarray(_profiles[_a])[_idx[_a]] if grid_traced
+                  else float(np.asarray(_profiles[_a])[_idx[_a]]))
+        elif grid_traced:
+            _w = e_node_dual_spacing_at(jnp.asarray(_profiles[_a]), _idx[_a])
+        else:
+            _w = float(e_node_dual_spacing_at(
+                np.asarray(_profiles[_a], dtype=np.float64), _idx[_a]))
+        _widths.append(_w)
+    dx_local, dy_local, dz_local = _widths
+    return dx_local * dy_local * dz_local, grid_traced
+
+
+def make_current_source(grid: NonUniformGrid, position_ijk, component,
+                        waveform_fn, n_steps, materials, amplitude_kind=None):
+    """Create a properly normalized current source for non-uniform grid.
+
+    The waveform specifies CURRENT (Amperes). The E-field addition is:
+    E += (dt/ε) × I_source / dV
+    where dV is the E node's control volume: the PRIMAL per-cell width on
+    the component's own axis and the DUAL spacing ``(d[k-1]+d[k])/2`` on the
+    two transverse axes. On a uniform mesh the two coincide and
+    this is the familiar ``dx × dy × dz``.
+
+    This gives resolution-independent injected POWER regardless of cell size.
+    Same approach as Meep's internal source normalization.
+
+    Native amplitude convention: ``'current'`` —
+    ``amplitude_kind`` of None or ``'current'`` is bit-identical to the
+    historical output (no extra multiply). ``amplitude_kind='field'``
+    returns the waveform directly, without reading a material coefficient.
+    The shared builder preserves the current drive's differentiable Cb/dV.
+    """
+    i, j, k = position_ijk
+
+    # Read the edge's own eps and sigma, averaged over its four cells
+    # (#1210), with the same differentiable drive formula on every trace.
+    from rfx.model import e_update_coefficient_at
+    if str(component).lower() not in ("ex", "ey", "ez"):
+        raise ValueError(
+            f"unknown component {component!r}: a current source injects an "
+            f"electric field component, one of 'ex', 'ey', 'ez'.")
+    from rfx.model import electric_materials_traced
+    materials_traced = electric_materials_traced(materials)
+    from rfx.model import source_table
+    dV, grid_traced = current_source_volume(grid, (i, j, k), component)
+    any_traced = materials_traced or grid_traced
+    waveform = source_table(
+        current_source_samples(grid, waveform_fn, n_steps), amplitude_kind,
+        native="cb_over_dv", volume=dV,
+        coefficient=lambda: e_update_coefficient_at(
+            materials, (i, j, k), component, grid.dt, periodic=tuple(a in grid.periodic_axes for a in "xyz"), host=True, grid=grid))
+
+    waveform_out = waveform if any_traced or is_tracer(waveform) else np.array(waveform)
+    return (i, j, k, component, waveform_out)
+
+
+def _uniform_cell_volume(grid: Grid) -> float:
+    """dV = dx*dy*dz with missing axes duck-typed to dx (engineering
+    principle 3). A 2D grid is treated as ONE CELL DEEP (dz -> dx), so
+    dV = dx**3 there too — the documented #571 convention
+    (``rfx/api/_source_semantics.py``), not per-unit-length dx**2."""
+    return grid.dx * getattr(grid, "dy", grid.dx) * getattr(grid, "dz", grid.dx)
 
 def scale_source_columns(xs, scales, columns, volumes=()):
     """Finish distributed current tables from slab-local Cb and each dV."""

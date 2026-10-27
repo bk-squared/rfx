@@ -73,7 +73,7 @@ def execute_from_materials(
         stage_forward_dispersion_x_slab,
     )
     from rfx.core.yee import MaterialArrays
-    from rfx.nonuniform import (
+    from rfx.model.source_coefficients import (
         make_current_source as _nu_make_current_source,
         current_source_samples as _nu_current_source_samples,
         current_source_volume as _nu_current_source_volume,

@@ -5,14 +5,16 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax
+import numpy as np
 
 from rfx._grid_metric import field_index
 from rfx._traced_refusal import TracedStructureRefusal
 from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
+from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
 from rfx.model.conductors import lumped_port_stage, publish_port_release
 from rfx.nonuniform import (
-    e_node_dual_spacing_at, port_metric, port_metric_axes, position_to_index,
+    e_node_dual_spacing_at, position_to_index,
 )
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
@@ -37,6 +39,44 @@ class TracedWireLiveCellsError(TracedStructureRefusal, jax.errors.TracerArrayCon
 
     def __init__(self, message):
         TracedStructureRefusal.__init__(self, message)
+
+
+def port_metric_axes(grid):
+    """The three cell-size arrays a port sizes itself on, each with a flag
+    saying whether it has a host value.
+
+    Returns ``((dx, x_host), (dy, y_host), (dz, z_host))``.
+
+    A CONCRETE x/y axis comes back as the float64 host copy — the same
+    numbers :func:`_build_wp_meta` reads — so the termination conductance,
+    the Ampere-loop weights and the gap-voltage line integral are sized on
+    one set of numbers rather than three roundings of it. z is never
+    converted: ``grid.dz`` is already the float32 array both sites index,
+    and a float64 round trip would move the last bits of every shipped
+    non-uniform port.
+
+    A TRACED axis comes back untouched, so the cell sizes at the port's own
+    cells keep their gradient. That is the whole point: when the mesh is the
+    design variable, the port's cells change size with the deformation, and
+    a port sized on a host copy of the nominal mesh drops that term out of
+    the derivative while the physics keeps it.
+    """
+    dx_arr = grid.dx_arr
+    dy_arr = grid.dy_arr
+    x_traced, y_traced = is_tracer(dx_arr), is_tracer(dy_arr)
+    return (
+        (dx_arr if x_traced else np.asarray(dx_arr, dtype=np.float64),
+         not x_traced),
+        (dy_arr if y_traced else np.asarray(dy_arr, dtype=np.float64),
+         not y_traced),
+        (grid.dz, not is_tracer(grid.dz)),
+    )
+
+
+def port_metric(value, host):
+    """``float(value)`` on an axis with a host value, the tracer itself
+    otherwise. Keeps the concrete spelling byte-for-byte what it was."""
+    return float(value) if host else value
 
 
 def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,

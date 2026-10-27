@@ -60,6 +60,7 @@ from rfx.model.occupancy import (
 )
 from rfx.model.source_coefficients import (
     current_source_samples,
+    make_current_source,
     source_table,
     uniform_source_table,
 )
@@ -108,6 +109,7 @@ __all__ = [
     "init_multimode_waveguide_port",
     "init_waveguide_port",
     "make_band_profile",
+    "make_current_source",
     "make_nonuniform_grid",
     "make_z_profile",
     "NominalProfile",

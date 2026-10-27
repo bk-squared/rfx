@@ -21,7 +21,7 @@ SPEC.loader.exec_module(gate)
 SIM = "rfx/simulation.py"
 API = "rfx/api/__init__.py"
 EXECUTE = "rfx/api/_execute.py"
-CLEAN = "_uniform_cell_volume"
+CLEAN = "make_probe"
 EXECUTE_CLEAN = "_ExecuteMixin._resolve_field_dtype"
 
 

@@ -500,7 +500,7 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
     Read the actual owner compiled by the graded scan. Independent padded
     profile means below keep the original axis/metric discrimination.
     """
-    import rfx.nonuniform as _nu
+    import rfx.measurement.graded_port_meta as _meta
     import rfx.runners.nonuniform as _run
 
     grids = []
@@ -524,7 +524,7 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
         weights = {n.component: abs(n.weight) for n in current.nodes}
         # The Ez loop has x/y legs; pin the z metric through the same setup
         # metadata independently below rather than inventing a third H leg.
-        z = _nu._build_wp_meta([dict(mid_i=mi, mid_j=mj, mid_k=mk,
+        z = _meta._build_wp_meta([dict(mid_i=mi, mid_j=mj, mid_k=mk,
                                     component=comp, impedance=50., live_cells=live)], grid)[0][12]
         seen.append((comp, mi, mj, mk, weights['hx'], weights['hy'], float(z)))
         return o
@@ -589,7 +589,7 @@ def test_wp_meta_live_cell_slots_carry_primal_widths(monkeypatch):
     live-cell index tuple whose midpoint is slots 0..2, slot 14 the
     matching per-cell primal widths (same order as slot 13).
     """
-    import rfx.nonuniform as _nu
+    import rfx.measurement.graded_port_meta as _meta
     import rfx.runners.nonuniform as _run
 
     grids = []
@@ -603,14 +603,14 @@ def test_wp_meta_live_cell_slots_carry_primal_widths(monkeypatch):
     monkeypatch.setattr(_run, "make_nonuniform_grid", grid_spy)
 
     metas = []
-    orig_build = _nu._build_wp_meta
+    orig_build = _meta._build_wp_meta
 
     def build_spy(wire_ports, grid):
         m = orig_build(wire_ports, grid)
         metas.append(m)
         return m
 
-    monkeypatch.setattr(_nu, "_build_wp_meta", build_spy)
+    monkeypatch.setattr(_meta, "_build_wp_meta", build_spy)
 
     nx, ny, nz = _nodes(G_X), _nodes(G_Y), _nodes(G_Z)
     sim = Simulation(freq_max=10e9,

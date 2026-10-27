@@ -16,7 +16,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
              lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs, mesh):
     """Apply overrides, stamp loads, release edges, then resolve ordered drives."""
     from rfx.api._source_semantics import needs_scale
-    from rfx.nonuniform import make_current_source, current_source_samples, current_source_volume
+    from rfx.model.source_coefficients import make_current_source, current_source_samples, current_source_volume
     from rfx.runners.nonuniform import _port_drive_source
     from rfx.runners._admission import admit
     from rfx.simulation import SourceSpec

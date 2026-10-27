@@ -252,7 +252,7 @@ def _drive_sources(scene):
 
 
 def _drive_operands(scene):
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
     cells = _drive_sources(scene)
     volumes = tuple(current_source_volume(scene.grid, cell, ('ex', 'ey', 'ez')[axis])[0]
                     for axis, cell in cells)

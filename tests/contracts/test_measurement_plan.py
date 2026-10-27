@@ -130,7 +130,8 @@ def judge(plan, actual, row, nu):
             comp = get('component')
             axis = 'xyz'.index(comp[1])
             # Oracle uses the path's realized metadata and its metric API.
-            from rfx.nonuniform import port_metric_axes, e_node_dual_spacing_at
+            from rfx.model.graded_ports import port_metric_axes
+            from rfx.nonuniform import e_node_dual_spacing_at
             widths = ([np.asarray(m[0]) for m in port_metric_axes(actual['grid'])] if nu else
                       [np.full(actual['grid'].shape[a], actual['grid'].dx) for a in range(3)])
             assert node_map(owner.channels[0]) == {(comp, *mid): -float(widths[axis][mid[axis]])}
