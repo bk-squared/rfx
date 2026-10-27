@@ -1287,6 +1287,7 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
     from rfx.model.materials import assembled_as_pec
     findings: list[tuple] = []
     for idx, entry in enumerate(self._geometry):
+        mat_name = getattr(entry, "material_name", None)
         if not assembled_as_pec(self, entry):
             continue
         if not hasattr(entry.shape, "bounding_box"):
