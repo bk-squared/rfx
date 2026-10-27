@@ -133,7 +133,9 @@ widths; several windows, `traced_cells=((i0, i1), (j0, j1))`, let the cells on
 both sides of a feed move while the feed's own cells keep their width. A cell
 that moves outside every window is refused. A wire port with a radius runs on
 such a mesh only when a moving range is declared and keeps off the pin and the
-cell next to it.
+cell next to it. A flux monitor cannot form its area weights from traced cell
+widths and is refused on such a mesh, and so is a graded multi-device solve
+with a traced mesh: read probes on such a mesh, and run it on one device.
 
 `forward(pinned_sheet_layout=...)` switches a pinned sheet's metal edge by edge
 without compiling again. It is a switch for searching layouts, not a
@@ -158,7 +160,7 @@ run is long enough for it is a separate check
 | a permittivity box (`design_eps_override`) with a dispersive or Kerr material, anisotropy or subpixel smoothing, UPML, `stencil_order=4`, oblique periodic incidence, `eps_override`, `sigma_override`, `mu_r_override` or `pec_occupancy_override` | all | the box alone, or the whole-grid overrides alone |
 | a permittivity box touching a periodic face, or reaching the absorber (counting one cell past its upper corner) | all | move the box inside the domain |
 | a port in a permittivity box without `design_box_holds_ports=True`; a soft or magnetic source, an RLC element or a surface-impedance sheet in the box | all | hold the ports, or move the source out |
-| a design box, occupancy or whole-grid override that puts a dielectric or a finite block on or next to a plane wave's injection planes, or a finite block under an open plane wave (not uniform across its side faces) | uniform and graded mesh | keep the design clear of the planes; `closed_box=True` on a uniform mesh for one object |
+| a design box whose update window lies on or next to a plane wave's injection planes (the window counts as non-vacuum, whatever values it holds), an occupancy or whole-grid override that puts a dielectric or a finite block there, or a finite block under an open plane wave (not uniform across its side faces) | uniform and graded mesh | keep the design clear of the planes; `closed_box=True` on a uniform mesh for one object |
 | a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | all | put the shape's material in a design box or a whole-grid override and differentiate that |
 | an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with the opt-in Kottke occupancy tensor (`RFX_PEC_OCC_KOTTKE=1`) | all | one kind of box per call, clear of ports |
 

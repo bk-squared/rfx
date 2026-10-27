@@ -1,5 +1,6 @@
 ---
-title: "Migration Guide"
+title: "Coming from Meep or openEMS"
+description: "How a Meep or openEMS model maps to rfx: the concepts, three translated scripts, and the differences that most often catch newcomers."
 sidebar:
   order: 6
 ---

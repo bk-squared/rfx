@@ -100,7 +100,9 @@ large it is, and a plane on a magnetic (PMC) face reads zero
 values as `run()` bit for bit, and returns them in
 `ForwardResult.flux_monitors`; they add to the autodiff tape, so a gradient
 can be taken through a flux
-(`tests/unit/api/test_forward_declared_measurements.py`).
+(`tests/unit/api/test_forward_declared_measurements.py`). On a graded mesh
+whose cell widths are traced (the mesh as a design variable), a flux monitor
+is refused: its area weights need concrete widths.
 
 The number is a product of two raw spectra, so it is not a power in watts by
 itself. Use it as a ratio: transmitted over incident flux from two runs or two
@@ -119,9 +121,9 @@ fields at the end of the run.
 | Output | `run()` | `forward()` | Not available on |
 |---|---|---|---|
 | point probes | yes | yes | — |
-| DFT planes | yes | yes | ADI, subgridded |
-| flux monitors | yes | yes | ADI, subgridded |
-| snapshots | yes | no | graded mesh on one device, ADI, subgridded |
+| DFT planes | yes | yes | ADI, subgridded, a plane wave at `angle_deg` |
+| flux monitors | yes | yes | ADI, subgridded, a plane wave at `angle_deg` |
+| snapshots | yes | no | graded mesh on one device, ADI, subgridded, a plane wave at `angle_deg` |
 | final fields (`state`) | yes | no | — |
 
 ## How rfx checks it
@@ -136,6 +138,7 @@ that does not implement an output, the run is refused before the first step.
 | a DFT plane | ADI, subgridded | the standard solver, on one device or several |
 | a flux monitor | ADI, subgridded | the standard solver, on one device or several |
 | `snapshot=` | graded mesh on one device, ADI, subgridded | a uniform mesh, or several devices on either mesh |
+| a DFT plane, a flux monitor or `snapshot=` with a plane wave at an angle (`angle_deg`) | uniform mesh | probes and the final `state`, or `compute_rcs` for scattering ([Sources](/rfx/model/sources/)) |
 | a flux monitor with `dft_window="hann"` or `"tukey"` in a run stopped by `until_decay` | uniform and graded mesh | the default `dft_window="rect"`, or a fixed `n_steps`: a window needs the run's length in advance |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
