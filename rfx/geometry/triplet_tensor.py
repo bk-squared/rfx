@@ -35,7 +35,7 @@ def _linalg(xp, operation, matrix):
     if xp is np:
         return solve(matrix)
     flat = matrix.reshape((-1, 3, 3))
-    if _serial_pieces():
+    if flat.shape[0] > MATRIX_BATCH_SIZE and _serial_pieces():  # one piece: nothing to serialize
         n, size = flat.shape[0], MATRIX_BATCH_SIZE
         k = -(-n // size)
         pad = k * size - n

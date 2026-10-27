@@ -111,19 +111,20 @@ def test_serial_pieces_build_and_jvp_equal_batched(monkeypatch):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize('version,backend,serial', [
-    ((0, 10, 2), 'cpu', True),
-    ((0, 11, 1), 'cpu', False),
-    ((0, 10, 2), 'gpu', False),
+@pytest.mark.parametrize('version,backend,batch,serial', [
+    ((0, 10, 2), 'cpu', 64, True),
+    ((0, 11, 1), 'cpu', 64, False),
+    ((0, 10, 2), 'gpu', 64, False),
+    ((0, 10, 2), 'cpu', 1024, False),
 ])
-def test_serial_pieces_branch_choice(monkeypatch, version, backend, serial):
-    """A dielectric rod's node permittivity tensor and radius derivative must
-    not change by one bit when the pieces are issued in another order;
-    only old CPU jaxlib must issue those pieces serially.
+def test_serial_pieces_branch_choice(monkeypatch, version, backend, batch, serial):
+    """Only old CPU jaxlib issues a rod's node-tensor solves one piece after
+    another, and only when a call holds more than one piece (144 matrices per
+    call here: three pieces of 64, one piece of 1024).
     """
     monkeypatch.setattr(triplet, '_JAXLIB_VERSION', version)
     monkeypatch.setattr(jax, 'default_backend', lambda: backend)
-    monkeypatch.setattr(triplet, 'MATRIX_BATCH_SIZE', 64)
+    monkeypatch.setattr(triplet, 'MATRIX_BATCH_SIZE', batch)
     calls = []
     original_map = jax.lax.map
     def spy(solve, pieces):
