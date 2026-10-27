@@ -31,6 +31,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse
 from tests._coax_ad_objective import coax_band_mean_s21_sq
+from tests._msl_probe0 import line_s
 
 
 def test_coax_band_mean_s21_sq_reduction_is_correct():
@@ -160,15 +161,18 @@ def _band_mean_s21_phase(s):
 
 def _band_mean_s21_sq(eps_scale):
     # Retained for the standalone power diagnostic referee.
-    return coax_band_mean_s21_sq(_two_port(eps_scale).s_params)
+    return coax_band_mean_s21_sq(line_s(_two_port(eps_scale)))
 
 
 @pytest.fixture(scope="module")
 def phase_sensitivity():
     # One forward tape, two pullbacks: the power sanity check reuses the
     # expensive FDTD trace instead of running a separate simulation.
+    # The closed forms here are the matched line's (phase -beta*L, constant power), so
+    # S is read at the line (z_tem / sqrt(eps_scale)), not at the declared 50 ohm
+    # it is referred to since #2014, whose mismatch adds its own eps_scale slope.
     def objectives(eps):
-        s = _two_port(eps).s_params
+        s = line_s(_two_port(eps))
         return _band_mean_s21_phase(s), coax_band_mean_s21_sq(s)
 
     values, pullback = jax.vjp(objectives, jnp.float32(1.0))
@@ -206,8 +210,8 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent(phase_sensiti
     value, g_ad, g_power = phase_sensitivity
     assert np.all(np.isfinite([value, g_ad, g_power]))
     with enable_x64():
-        fp = _band_mean_s21_phase(_two_port(jnp.float32(1 + _FD_H)).s_params)
-        fm = _band_mean_s21_phase(_two_port(jnp.float32(1 - _FD_H)).s_params)
+        fp = _band_mean_s21_phase(line_s(_two_port(jnp.float32(1 + _FD_H))))
+        fm = _band_mean_s21_phase(line_s(_two_port(jnp.float32(1 - _FD_H))))
         assert fp.dtype == fm.dtype == jnp.float64
         fp, fm = float(fp), float(fm)
     assert _fd_ulp_span(fp, fm, np.float64) >= _MIN_FD_ULP_SPAN
@@ -218,7 +222,8 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent(phase_sensiti
     assert rel <= _REL_ERR_THRESHOLD
     concrete = _two_port()
     exact_phase, exact_grad = _closed_form(concrete)
-    phase_error = np.max(np.abs(np.unwrap(np.angle(concrete.s_params[1, 0])) - exact_phase) / np.abs(exact_phase))
+    phase_error = np.max(np.abs(np.unwrap(np.angle(np.asarray(line_s(concrete))[1, 0])) - exact_phase)
+                         / np.abs(exact_phase))
     print(f"planes={concrete.reference_planes}, mesh phase error={phase_error:.6g}, exact gradient={exact_grad:.10g}")
     assert phase_error <= _PHASE_ERROR_BAR
     assert abs(g_ad - exact_grad) / abs(exact_grad) <= _PHASE_GRAD_BAR
