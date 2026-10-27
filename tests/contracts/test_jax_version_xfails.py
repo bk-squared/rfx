@@ -48,3 +48,26 @@ def test_every_listed_id_names_an_existing_test_function():
 def test_no_id_is_listed_twice():
     ids = [nodeid for _, (_, listed) in plugin.JAX_011_XFAILS.items() for nodeid in listed]
     assert len(ids) == len(set(ids))
+
+
+def test_the_hook_adds_a_strict_mark_on_jax_011(monkeypatch):
+    import jax
+
+    class Item:
+        def __init__(self, nodeid):
+            self.nodeid, self.marks = nodeid, []
+
+        def add_marker(self, mark):
+            self.marks.append(mark)
+
+    issue, (_, ids) = next(iter(plugin.JAX_011_XFAILS.items()))
+    listed, other = Item(ids[0]), Item("tests/contracts/test_jax_version_xfails.py::not_listed")
+    monkeypatch.setattr(jax, "__version_info__", (0, 11, 2))
+    plugin.pytest_collection_modifyitems(None, [listed, other])
+    assert [(m.name, m.kwargs["strict"]) for m in listed.marks] == [("xfail", True)]
+    assert listed.marks[0].kwargs["reason"].startswith(f"#{issue} ")
+    assert other.marks == []
+    monkeypatch.setattr(jax, "__version_info__", (0, 10, 2))
+    again = Item(ids[0])
+    plugin.pytest_collection_modifyitems(None, [again])
+    assert again.marks == []
