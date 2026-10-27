@@ -17,8 +17,10 @@ class AD_MemoryEstimate(NamedTuple):
     plus a live segment, independently of the per-step checkpoint flag.
     The fixed AD working set is calibrated by
     formulation; it is distinct from the forward-only working set.
-    ``cotangents`` outputs pulled back at once add one carry each beyond the
-    first; the device holds more (docs/guides/known_limitations.md).
+    ``cotangents`` outputs pulled back at once add 7.5 carries each beyond the
+    first: one boundary carry plus 6.5 carries of working arrays, calibrated
+    on one graded whole-grid scene (GPU, JAX 0.10.2). The same whole-grid
+    adjoint workspace is estimated for design boxes; boxes are unmeasured.
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -67,6 +69,8 @@ class AD_MemoryEstimate(NamedTuple):
     replay_table_bytes: int = 0
     #: Realized measurement kind and its summed retained replay weight bytes.
     replay_table_bytes_by_kind: tuple[tuple[str, int], ...] = ()
+    #: Per-extra-cotangent working arrays, excluding the boundary carry.
+    working_bytes: int = 0
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -83,6 +87,7 @@ class AD_MemoryEstimate(NamedTuple):
             "checkpoint": self.checkpoint,
             "design": self.design,
             "carry_bytes": self.carry_bytes,
+            "working_bytes": self.working_bytes,
             "tape_step_bytes": self.tape_step_bytes,
             "tape_window_cells": self.tape_window_cells,
             "design_box_bounds": list(self.design_box_bounds) if self.design_box_bounds is not None else None,

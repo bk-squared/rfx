@@ -12,6 +12,10 @@ from rfx.model.design_box import design_box_bounds, design_box_window
 # G1 acc-admem-g1-20261016t043022z-648d9; both maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 
+# Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2 (#2089).
+# rfx/records/20261027-compiled-gradient-estimate/: working arrays beyond one carry.
+AD_MEMORY_WORKING_CARRIES = 6.5
+
 
 def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmented,
                     distributed=False, n_steps=1, checkpoint_every=None, checkpoint_segments=None, n_warmup=0):
@@ -63,7 +67,7 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
                 replay_table_bytes=sum(size for _, size in replay_tables),
                 replay_table_bytes_by_kind=tuple(replay_tables),
                 modelled=True, unmodelled_features=[],
-                carry_bytes=carry,
+                carry_bytes=carry, working_bytes=int(AD_MEMORY_WORKING_CARRIES * carry),
                 resident_bytes=resident,
                 tape_step_bytes=tape, tape_window_cells=window,
                 design_box_bounds=bounds, tape_is_bound=bounded,

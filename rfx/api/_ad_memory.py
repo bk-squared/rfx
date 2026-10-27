@@ -209,8 +209,11 @@ class _AdMemoryMixin:
         saves six permittivity or three occupancy window arrays. A rematted, unsegmented box uses a labelled
         carry-plus-window bound. The fixed term is calibrated on GPU with
         JAX 0.10.2, rather than a bound for CPU compiler temporaries.
-        ``cotangents`` outputs pulled back at once add one carry each beyond
-        the first; measured device peaks are higher (known limitations).
+        ``cotangents`` outputs pulled back at once add 7.5 carries each beyond
+        the first: one boundary carry plus 6.5 carries of working arrays.
+        This is calibrated on one graded whole-grid scene (GPU, JAX 0.10.2).
+        Adjoint fields and backward working arrays remain whole-grid with a
+        design box; the same workspace there is an unmeasured estimate.
 
         Segments save one carry per active boundary and one live segment,
         independently of the per-step checkpoint flag.
@@ -253,7 +256,7 @@ class _AdMemoryMixin:
         forward_bytes = accounting["forward_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
         replay_table_bytes = model["replay_table_bytes"]
-        batched_bytes = (cotangents - 1) * model["carry_bytes"]
+        batched_bytes = (cotangents - 1) * (model["working_bytes"] + model["carry_bytes"])
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes + batched_bytes  # legacy heuristic
         active_steps = n_steps_i - n_warmup_i
         fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"] + model["resident_bytes"]
@@ -306,7 +309,7 @@ class _AdMemoryMixin:
         if isinstance(checkpoint_every_i, tuple):
             memory = checkpoint_memory(active_steps, checkpoint_every_i,
                 boundary_bytes=model["carry_bytes"], step_bytes=model["tape_step_bytes"],
-                static_bytes=model["c0_bytes"], cotangents=cotangents)
+                static_bytes=model["c0_bytes"], cotangents=cotangents, working_bytes=model["working_bytes"])
             warning = " ".join(filter(None, (warning,
                 f"Checkpoint lengths {memory.lengths}: {memory.levels} levels, "
                 f"{memory.forward_passes} forward passes (estimate).")))
@@ -327,7 +330,7 @@ class _AdMemoryMixin:
             modelled=model["modelled"], unmodelled_features=tuple(model["unmodelled_features"]),
             checkpoint=checkpoint, design=design,
             cotangents=cotangents,
-            carry_bytes=model["carry_bytes"],
+            carry_bytes=model["carry_bytes"], working_bytes=model["working_bytes"],
             tape_step_bytes=model["tape_step_bytes"], tape_window_cells=model["tape_window_cells"],
             design_box_bounds=model["design_box_bounds"], tape_is_bound=model["tape_is_bound"],
             ad_fixed_gb=fixed_bytes * to_gb,
@@ -398,9 +401,10 @@ class _AdMemoryMixin:
                   "calibrated_working_set",
                   explanation="GPU, jax 0.10.2 calibrated fixed term minus the listed forward working set.")
         if cotangents > 1:
-            component("additional_cotangent_working_set", (cotangents - 1) * estimate.carry_bytes,
-                      "reverse_ad_working_set", count=cotangents - 1, per=estimate.carry_bytes,
-                      explanation="One carry per extra cotangent (estimate; device peaks are higher).")
+            component("additional_cotangent_working_set", (cotangents - 1) * (estimate.working_bytes + estimate.carry_bytes),
+                      "reverse_ad_working_set", count=cotangents - 1, per=estimate.working_bytes + estimate.carry_bytes,
+                      explanation="7.5 carries per extra cotangent: one boundary plus 6.5 working; "
+                      "calibrated on one graded whole-grid scene (GPU, JAX 0.10.2); design boxes unmeasured.")
         count, live = segment_counts(int(n_steps), int(n_warmup), checkpoint_every, checkpoint_segments)
         if segmented:
             component("segmented_boundary_field_tape", count * estimate.carry_bytes,
@@ -541,7 +545,7 @@ class _AdMemoryMixin:
             extra = accounting["sheet_bytes"] + accounting["ntff_bytes"] + model["resident_bytes"] + model["replay_table_bytes"]
             plan = plan_checkpoint_lengths(n - warmup, boundary_bytes=model["carry_bytes"],
                 step_bytes=model["tape_step_bytes"], static_bytes=model["c0_bytes"],
-                cotangents=cotangents,
+                cotangents=cotangents, working_bytes=model["working_bytes"],
                 budget_bytes=target * 1e9 / safety - extra, max_levels=max_levels)
             estimate = self.estimate_ad_memory(n, available_memory_gb=available,
                 n_warmup=warmup, checkpoint=True, checkpoint_every=plan.lengths, **options)
@@ -555,7 +559,7 @@ class _AdMemoryMixin:
             memory = (window_full.ad_fixed_gb + window_full.ntff_dft_gb
                       + window_full.replay_table_bytes / 1e9
                       + (count * window_full.carry_bytes + live * window_full.tape_step_bytes
-                         + (cotangents - 1) * window_full.carry_bytes) / 1e9)
+                         + (cotangents - 1) * (window_full.working_bytes + window_full.carry_bytes)) / 1e9)
             estimate = window_full._replace(
                 checkpoint=True, checkpoint_every=every, checkpoint_segments=segments,
                 ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=estimate_warning)
