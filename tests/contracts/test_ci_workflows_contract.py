@@ -247,11 +247,14 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
                 if str(step.get("uses", "")).startswith("actions/setup-python@")]
     assert versions == ["3.12"]
     installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
-    assert len(installs) == 1, installs
-    args = shlex.split(installs[0], comments=True)
-    assert args[:4] == ["pip", "install", "-e", ".[dev]"], installs[0]
-    pins = {r.name: str(r.specifier) for r in map(Requirement, args[4:])}
-    assert pins == {"jax": "<0.12,>=0.11", "jaxlib": "<0.12,>=0.11"}, installs[0]
+    assert len(installs) == 2, installs
+    assert shlex.split(installs[0], comments=True) == ["pip", "install", "-e", ".[dev]"], installs[0]
+    # The pair goes in over pyproject's cap, without the resolver (acceleration D:996c06), then pip check.
+    over, check = [shlex.split(line) for line in installs[1].strip().splitlines()]
+    assert over[:4] == ["pip", "install", "-U", "--no-deps"], installs[1]
+    pins = {r.name: str(r.specifier) for r in map(Requirement, over[4:])}
+    assert pins == {"jax": "<0.12,>=0.11", "jaxlib": "<0.12,>=0.11"}, installs[1]
+    assert check == ["pip", "check"], installs[1]
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved")]
     assert len(records) == 1 and "if" not in records[0]
     for package in ("jax", "jaxlib", "numpy"):

@@ -380,8 +380,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install package with the newest jax 0.11.x
-        run: pip install -e ".[dev]" "jax>=0.11,<0.12" "jaxlib>=0.11,<0.12"
+      - name: Install the package
+        run: pip install -e ".[dev]"
+
+      # Over pyproject's jax cap on purpose: this job exists to see the newest 0.11.x (acceleration D:996c06; the 2.0
+      # cap below 0.11.2 is for the CPU step slowdown, openxla/xla#50977). --no-deps keeps the resolver from
+      # pulling the pair back under the cap; pip check then fails the job if a dependency of the new pair is missing.
+      - name: Install the newest jax 0.11.x over the cap
+        run: |
+          pip install -U --no-deps "jax>=0.11,<0.12" "jaxlib>=0.11,<0.12"
+          pip check
 
       - name: Record the resolved Python/JAX/numpy versions
         run: python -c "import sys, jax, jaxlib, numpy; print('python', sys.version.split()[0], 'jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
