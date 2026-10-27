@@ -393,7 +393,7 @@ jobs:
           pip install -U "jax>=0.11,<0.12" "jaxlib>=0.11,<0.12"
           pip check > pip-check.txt || true
           cat pip-check.txt
-          if grep -vE '^(No broken requirements found\.|rfx [^ ]+ has requirement (jax|jaxlib)[<>=!~][^ ]*, but you have (jax|jaxlib) [^ ]+)$' pip-check.txt; then echo 'pip check: broken requirements above'; exit 1; fi
+          if grep -vE '^(No broken requirements found\.|rfx-fdtd [^ ]+ has requirement (jax|jaxlib)[<>=!~][^ ]*, but you have (jax|jaxlib) [^ ]+)$' pip-check.txt; then echo 'pip check: broken requirements above'; exit 1; fi
 
       - name: Record the resolved Python/JAX/numpy versions
         run: python -c "import sys, jax, jaxlib, numpy; print('python', sys.version.split()[0], 'jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"

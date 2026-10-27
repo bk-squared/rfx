@@ -260,11 +260,13 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     fail = re.search(r"if grep -vE '([^']+)' pip-check.txt; then [^;]*; exit 1; fi", installs[1])
     assert fail, installs[1]
     allowed = re.compile(fail.group(1))
-    assert allowed.match("rfx 1.9.0 has requirement jax<0.11.2,>=0.10.2, but you have jax 0.11.3.")
+    # pip check names the distribution as pyproject declares it, not the import name.
+    dist = re.search(r'^name = "([^"]+)"$', (REPO / "pyproject.toml").read_text(), re.M).group(1)
+    assert allowed.match(f"{dist} 1.9.0 has requirement jax<0.11.2,>=0.10.2, but you have jax 0.11.3.")
     assert allowed.match("No broken requirements found.")
     for broken in ("jax 0.11.3 has requirement ml_dtypes>=0.6, but you have ml_dtypes 0.5.0.",
-                   "rfx 1.9.0 has requirement numpy<3, but you have numpy 3.0.0.",
-                   "rfx 1.9.0 requires h5py, which is not installed."):
+                   f"{dist} 1.9.0 has requirement numpy<3, but you have numpy 3.0.0.",
+                   f"{dist} 1.9.0 requires h5py, which is not installed."):
         assert not allowed.match(broken), broken
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved")]
     assert len(records) == 1 and "if" not in records[0]
