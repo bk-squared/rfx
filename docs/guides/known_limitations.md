@@ -462,17 +462,18 @@ At normal incidence, on the uniform and the graded mesh alike, dispatch refuses 
 materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
-`closed_box=True` or `rfx.rcs.compute_rcs`. For propagation along x with E along z, the admitted wall
-pairs are PMC on y and PEC on z; either pair may instead be periodic. Each
+`closed_box=True` or `rfx.rcs.compute_rcs`. On the graded mesh, for propagation along x with E along z, the
+admitted wall pairs are PMC on y and PEC on z. Each
 transverse axis takes only a matched pair: both faces absorbing, both the wall
 that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
 A wall that does not suit the polarization is refused (for E along z, PEC on y or
 PMC on z), and so is a pair that mixes a PMC face with an absorbing one. A wall
-pair keeps the legacy wrap only for an invariant model; finite transverse
+pair admits only an invariant model; finite transverse
 structure with those walls is refused. UPML remains unsupported for TF/SF.
-The uniform plane-wave path retains its existing padded periodic wrap for an
-invariant absorber pair and reports the affected faces in preflight. Its grid
-and period do not change. Traced material overrides retain the legacy operator
+The uniform plane-wave path solves y and z (Method B: z) periodic, including their pads, when no
+boundary or `boundary='cpml'` is given, and reports the affected faces in preflight. Its grid and period do not
+change. On the uniform mesh it refuses absorbing or wall faces declared explicitly on those axes (a `BoundarySpec`,
+`Boundary` or dict), since it would solve them periodic: declare them periodic, omit them, or use the graded mesh. Traced material overrides retain the legacy operator
 with a warning when invariance cannot be judged. At oblique incidence the tilt
 axis keeps its operator and is reported as not judged for invariance.
 The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
@@ -482,6 +483,18 @@ its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
 with the same warning. A finite scatterer or an array, also one given to `forward()` as an override or a design
 box, is refused there with the uniform mesh named as the remedy, since a closed box and a plane wave with periodic axes are
 refused on the graded mesh (an operator that admits them is not planned for 2.0).
+
+### With no declared side faces, a plane wave solves periodic side faces on the uniform mesh and absorbing ones on the graded mesh.
+
+Tracker: #1961
+
+`add_tfsf_source` without `closed_box`, with no boundary or `boundary='cpml'`, is one request that the two meshes
+solve as two models: the uniform mesh makes the transverse faces periodic, the graded mesh keeps CPML on them. For
+the laterally invariant structures a plane wave admits, both give the same field: on a graded profile with the uniform
+mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
+(`tests/contracts/test_plane_wave_admission_both_meshes.py`). A declaration of the side faces gives one model per
+request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
+the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 

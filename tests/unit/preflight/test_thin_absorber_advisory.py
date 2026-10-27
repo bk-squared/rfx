@@ -169,12 +169,16 @@ def test_waveguide_pec_walls_are_not_absorbers(thin):
     ("closed", {"x_lo": 6, "y_lo": 4, "z_lo": 6}),
 ])
 def test_tfsf_names_only_faces_that_absorb_in_the_uniform_run(kind, expected):
+    # The uniform open plane wave solves y and z (Method B: z) periodic and
+    # refuses them declared otherwise (#1945): declare them periodic, whole cells.
+    wrapped = {"closed": "", "methodB": "z"}.get(kind, "yz")
     sim = Simulation(
-        freq_max=30e9, domain=(0.0483, 0.0427, 0.0381), dx=1e-3,
+        freq_max=30e9, domain=(0.0483, 0.042 if "y" in wrapped else 0.0427,
+                               0.038 if "z" in wrapped else 0.0381), dx=1e-3,
         cpml_layers=16,
         boundary=BoundarySpec(x=Boundary("cpml", "cpml", 6, 16),
-                              y=Boundary("cpml", "cpml", 4, 8),
-                              z=Boundary("cpml", "cpml", 6, 16)),
+                              y="periodic" if "y" in wrapped else Boundary("cpml", "cpml", 4, 8),
+                              z="periodic" if "z" in wrapped else Boundary("cpml", "cpml", 6, 16)),
     )
     sim.add_tfsf_source(
         f0=15e9, bandwidth=0.15, margin=3,
@@ -191,12 +195,28 @@ def test_nonuniform_tfsf_does_not_inherit_uniform_periodic_override():
     _assert_thin_faces(sim, {"x_lo": 6, "y_lo": 4})
 
 
+@pytest.mark.parametrize("kind,expected", [
+    ("normal", {"x_lo": 6, "x_hi": 6}),
+    ("methodB", {"x_lo": 6, "x_hi": 6, "y_lo": 6, "y_hi": 6}),
+])
+def test_tfsf_shorthand_names_only_faces_that_absorb_in_the_uniform_run(kind, expected):
+    # boundary="cpml" declares no side faces: the uniform run wraps y and z
+    # (Method B: z) and the advisory must not name the replaced faces.
+    sim = Simulation(freq_max=30e9, domain=(0.0483, 0.0427, 0.0381), dx=1e-3,
+                     cpml_layers=6, boundary="cpml")
+    sim.add_tfsf_source(f0=15e9, bandwidth=0.15, margin=3,
+                        angle_deg=20 if kind == "methodB" else 0,
+                        method="methodB" if kind == "methodB" else "bloch")
+    _assert_thin_faces(sim, expected)
+
+
 @pytest.mark.parametrize("mode", ["3d", "2d_tmz", "2d_tez"])
 def test_six_layer_tfsf_keeps_only_its_longitudinal_advisory(mode):
     sim = Simulation(
-        freq_max=30e9, domain=(0.0243, 0.0187, 0.0141 if mode == "3d" else 0.001),
+        freq_max=30e9, domain=(0.0243, 0.019, 0.014 if mode == "3d" else 0.001),
         dx=1e-3, cpml_layers=6, mode=mode,
-        boundary=BoundarySpec(x=Boundary("cpml", "cpml", 4, 6), y="cpml", z="cpml"),
+        boundary=BoundarySpec(x=Boundary("cpml", "cpml", 4, 6), y="periodic",
+                              z="periodic" if mode == "3d" else "cpml"),
     )
     sim.add_tfsf_source(f0=15e9, polarization="ey" if mode == "2d_tez" else "ez")
     _assert_thin_faces(sim, {"x_lo": 4, "x_hi": 6})

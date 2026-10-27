@@ -982,7 +982,7 @@ class _BoundaryPlan(NamedTuple):
     legacy_views: dict | None
 
 
-def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
+def _plan_boundary(payload: dict, *, has_floquet: bool, open_tfsf: bool = False) -> _BoundaryPlan:
     """Choose the construction path that reproduces a recorded boundary state.
 
     ``Simulation`` accepts either a ``BoundarySpec`` (authoritative; the
@@ -1050,7 +1050,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
         and periodic_ok
     ):
         return _BoundaryPlan(
-            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces, has_floquet=has_floquet), "cpml_layers": cpml_layers, **common},
+            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces, keeps_shorthand=has_floquet or open_tfsf), "cpml_layers": cpml_layers, **common},
             legacy_views=None,
         )
 
@@ -1762,7 +1762,7 @@ def simulation_from_design(document: Any) -> Any:
     floquet_payloads = _entry_list(excitations, "floquet_ports", what="excitations")
     plan = _plan_boundary(
         _section(document, "boundary", what="design document"),
-        has_floquet=bool(floquet_payloads),
+        has_floquet=bool(floquet_payloads), open_tfsf=excitations["tfsf"] is not None and not excitations["tfsf"].get("closed_box", False),
     )
 
     sim = Simulation(

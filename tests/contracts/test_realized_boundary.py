@@ -113,6 +113,11 @@ def compare_departures(problems):
 def test_no_unlisted_departures(cell):
     if cell["case"] == "floquet":
         return floquet_refused(cell["entry"])
+    if cell["case"] == "tfsf" and cell["entry"] not in ("nonuniform", "adi"):
+        # #1945 supersedes B1's explicit CPML replacement, at registration.
+        with pytest.raises(ValueError, match="y_lo='cpml'.*z_hi='cpml'"):
+            measured(cell["case"], cell["entry"])
+        return
     if cell["status"] == "REFUSED_AT_DISPATCH":
         with pytest.raises(ValueError) as caught:
             measured(cell["case"], cell["entry"])
@@ -151,6 +156,7 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
             for cell in CELLS if cell["status"] == "MEASURED"
             and not adi_absorber_cell(cell["case"], cell["entry"])
             and cell["case"] != "floquet"  # refused since #1944; pinned in test_no_unlisted_departures
+            and not (cell["case"] == "tfsf" and cell["entry"] != "nonuniform")
             for departure in cell["departures"]]
 # PMC images are checked at the declared plane on both device counts.
 EXPECTED += [pytest.param(case, entry, face, code,

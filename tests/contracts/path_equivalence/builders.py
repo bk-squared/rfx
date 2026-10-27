@@ -138,6 +138,10 @@ def build(row, lane, *, graded=False, dt=None):
         # Modal aperture dimensions are declarations, not inferred rounded
         # box lengths. Put both transverse walls exactly on grid nodes.
         kwargs['domain'] = point(10.3, 8, 7)
+    if row[0] == '_tfsf':
+        # One request on both meshes: uniform refuses explicit non-periodic
+        # side faces (#1945), so the plane wave takes the shorthand.
+        kwargs['boundary'] = 'cpml'
     nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
     # Off-node absorbers remain intentional; reflecting axes use whole cells.
     from rfx.boundaries.spec import normalize_boundary
