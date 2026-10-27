@@ -724,8 +724,9 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         # Find the dielectric geometry enclosing the port cell.
         enclosing_eps_r = None
         enclosing_name = None
+        from rfx.model.materials import assembled_as_pec
         for entry in self._geometry:
-            if entry.material_name == "pec":
+            if assembled_as_pec(self, entry):
                 continue
             if not hasattr(entry.shape, "bounding_box"):
                 continue
@@ -760,7 +761,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         from rfx.materials.thin_conductor import sheet_bounds as _sb
         adjacent_bounds = []
         for entry in self._geometry:
-            if entry.material_name != "pec":
+            if not assembled_as_pec(self, entry):
                 continue
             if not hasattr(entry.shape, "bounding_box"):
                 continue
@@ -1027,12 +1028,13 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
         coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,
     )
     from rfx.materials.thin_conductor import sheet_bounds
+    from rfx.model.materials import assembled_as_pec
     from rfx.nonuniform import NonUniformGrid
     ports = [pe for pe in sim._ports if float(pe.impedance) > 0]
     if not ports:
         return []
     shapes = [(e.shape, e.material_name) for e in sim._geometry
-              if e.material_name == "pec"
+              if assembled_as_pec(sim, e)
               and getattr(e.shape, "corner_lo", None) is not None
               and sum(a == b for a, b in zip(e.shape.corner_lo, e.shape.corner_hi)) == 1]
     shapes.extend((tc.shape, "thin_conductor") for tc in sim._thin_conductors)

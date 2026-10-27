@@ -40,6 +40,25 @@ from rfx.materials.thin_conductor import (
 from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacings
 
 
+def assembled_as_pec(sim, entry) -> bool:
+    """Does the assembly below route this geometry entry to the PEC branch?
+
+    The one realized PEC predicate (#1961): the RESOLVED material's concrete
+    ``sigma >= sim._PEC_SIGMA_THRESHOLD``, as ``assemble_cells`` keys it, not
+    the literal name "pec" -- a named copper at 5.8e7 S/m is PEC there too.
+    An unresolvable name falls back to the literal "pec"; a traced sigma is
+    not PEC (it never reaches the PEC branch as a concrete number).
+    """
+    try:
+        mat = sim._resolve_material(entry.material_name)
+    except Exception:
+        return entry.material_name == "pec"
+    sigma = getattr(mat, "sigma", 0.0)
+    if is_tracer(sigma):
+        return False
+    return float(sigma or 0.0) >= float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
+
+
 def assemble_cells(
     sim, grid, *, include_thin_conductors=True, include_cpml_pad_extension=True,
     sheet_specs=None, pec_sheets=None, pec_wires=None, pad_fill_findings=None,

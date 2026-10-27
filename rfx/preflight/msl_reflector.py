@@ -49,17 +49,18 @@ def msl_nearest_downstream_reflector(
     returns its signed distance to the candidate's entering boundary;
     this is needed when reporting how far an observation has passed it.
 
-    What counts as a conductor (issue #685). This used to be
-    ``isinstance(shape, Box) and str(material_name).lower() == "pec"``,
-    which was blind to two whole classes:
+    What counts as a conductor (issue #685). This used to be a Box whose
+    material carried the literal name PEC, which was blind to two whole
+    classes:
 
     * **PEC-PROMOTED materials** — a conductor registered with
       ``sigma >= 1e6`` under any other name. That is the common case for
-      imported CAD, where every conductor may be called ``"metal"``. Pass
-      ``resolve_material`` (normally ``sim._resolve_material``) and the
-      test becomes the same ``sigma >= pec_sigma_threshold`` rule the
-      assembler itself uses to build ``pec_mask``. Without it the legacy
-      name test is kept so old callers do not change behaviour.
+      imported CAD, where every conductor may be called ``"metal"``. The
+      test is the assembler's own predicate,
+      :func:`rfx.model.materials.assembled_as_pec` (#1961), with
+      ``resolve_material`` (normally ``sim._resolve_material``) and
+      ``pec_sigma_threshold``. Without a resolver the name is resolved
+      against the material library, as the assembler would resolve it.
     * **non-``Box`` shapes** — ``Sheet``, ``MeshShape`` (#358), CSG
       results. Any shape with a ``bounding_box()`` is now placed by that
       box; a bounding box OVERSTATES a non-convex outline, which is the
@@ -132,31 +133,40 @@ def msl_nearest_downstream_reflector(
     nearest_label = None
     unevaluated: list[str] = []
 
+    from types import SimpleNamespace as _NS
+    from rfx.core.jax_utils import is_tracer as _is_tracer
+    from rfx.model.materials import assembled_as_pec
+
+    def _library_material(name):
+        from rfx.materials.library import MATERIAL_LIBRARY
+        return _NS(sigma=MATERIAL_LIBRARY[name].get("sigma", 0.0))
+
+    # The assembler's own PEC predicate (#1961); a caller without a resolver
+    # is resolved against the material library, as the assembler would.
+    _resolver = _NS(
+        _resolve_material=(resolve_material if resolve_material is not None
+                           else _library_material),
+        _PEC_SIGMA_THRESHOLD=pec_sigma_threshold)
+
     def _is_conductor(material_name) -> bool:
-        if resolve_material is None:
-            # Legacy name test, kept for callers that cannot resolve.
-            return str(material_name).lower() == "pec"
-        try:
-            mat = resolve_material(material_name)
-        except Exception:
-            unevaluated.append(
-                f"geometry entry with material {material_name!r}: the "
-                f"material could not be resolved, so its conductivity is "
-                f"unknown")
-            return False
-        sigma = getattr(mat, "sigma", None)
-        if sigma is None:
-            return str(material_name).lower() == "pec"
-        try:
-            return float(sigma) >= float(pec_sigma_threshold)
-        except (TypeError, ValueError):
-            # A traced sigma (material-as-design-variable) cannot be
-            # compared host-side.
-            unevaluated.append(
-                f"geometry entry with material {material_name!r}: sigma is "
-                f"not a concrete number (traced design variable), so PEC "
-                f"promotion cannot be decided host-side")
-            return False
+        if resolve_material is not None:
+            try:
+                mat = resolve_material(material_name)
+            except Exception:
+                unevaluated.append(
+                    f"geometry entry with material {material_name!r}: the "
+                    f"material could not be resolved, so its conductivity is "
+                    f"unknown")
+                return False
+            if _is_tracer(getattr(mat, "sigma", None)):
+                # A traced sigma (material-as-design-variable) cannot be
+                # compared host-side.
+                unevaluated.append(
+                    f"geometry entry with material {material_name!r}: sigma is "
+                    f"not a concrete number (traced design variable), so PEC "
+                    f"promotion cannot be decided host-side")
+                return False
+        return assembled_as_pec(_resolver, _NS(material_name=material_name))
 
     def _bounds(shape, what: str):
         lo = getattr(shape, "corner_lo", None)

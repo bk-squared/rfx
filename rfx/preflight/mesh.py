@@ -349,7 +349,8 @@ def _validate_mesh_quality(self) -> None:
                         )
 
     # Check gaps between PEC structures
-    pec_entries = [e for e in self._geometry if e.material_name == "pec"]
+    from rfx.model.materials import assembled_as_pec
+    pec_entries = [e for e in self._geometry if assembled_as_pec(self, e)]
     if len(pec_entries) >= 2:
         for i in range(len(pec_entries)):
             for j in range(i + 1, min(i + 5, len(pec_entries))):
