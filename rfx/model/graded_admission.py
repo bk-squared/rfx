@@ -51,6 +51,31 @@ class DeclaredZWarning(UserWarning):
     """The caller explicitly keeps a declared z different from the solved length."""
 
 
+#: A concrete z profile may miss a positive declared z by this fraction (#1941).
+DECLARED_Z_RTOL = 0.01
+
+
+def judge_declared_z(declared_z, dz_total, snap="strict", *, stacklevel=2):
+    """Refuse (``snap="strict"``) or warn (``"declared"``) when a concrete z
+    profile's sum, the length the grid solves, misses the declared z by more
+    than :data:`DECLARED_Z_RTOL`. Every reader of the declared extent
+    (periodic z, flux regions, thin conductors, RCS) would read a length the
+    grid does not solve. ``stacklevel`` names the caller's line."""
+    rel = abs(dz_total - declared_z) / declared_z
+    if rel <= DECLARED_Z_RTOL:
+        return
+    message = (
+        f"Declared domain z = {declared_z:.12g} m differs from "
+        f"dz_profile sum (solved length) = {dz_total:.12g} m "
+        f"(rel = {rel:.12g}, greater than {DECLARED_Z_RTOL}). "
+        "Declare z equal to the profile sum, give 0 for z to "
+        'take it from the profile, or use snap="declared".')
+    if snap == "declared":
+        warnings.warn(message, DeclaredZWarning, stacklevel=stacklevel)
+    else:
+        raise ValueError(message)
+
+
 def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
                           dt=None, dt_min_cell=None, nominal_profiles=None, snap="strict",
                           multiband_ratio_cap=None, inplane_ratio_cap=None):
@@ -105,18 +130,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
             if len(domain) < 3 or domain[2] <= 0:
                 domain = (domain[0], domain[1], dz_total)
             else:
-                rel = abs(dz_total - domain[2]) / domain[2]
-                if rel > 0.01:
-                    message = (
-                        f"Declared domain z = {domain[2]:.12g} m differs from "
-                        f"dz_profile sum (solved length) = {dz_total:.12g} m "
-                        f"(rel = {rel:.12g}, greater than 0.01). "
-                        "Declare z equal to the profile sum, give 0 for z to "
-                        'take it from the profile, or use snap="declared".')
-                    if snap == "declared":
-                        warnings.warn(message, DeclaredZWarning, stacklevel=3)
-                    else:
-                        raise ValueError(message)
+                judge_declared_z(domain[2], dz_total, snap, stacklevel=4)
     elif any(d <= 0 for d in domain):
         raise ValueError(f"domain dimensions must be positive, got {domain}")
 

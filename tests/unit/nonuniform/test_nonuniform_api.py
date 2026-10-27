@@ -164,7 +164,9 @@ class TestSimulationNonUniform:
         """
         from rfx.measurement.farfield import compute_far_field
 
-        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+        # the box top lay outside the solved column; it now spans 10.1 mm.
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
         sim = Simulation(
             freq_max=5e9,
             domain=(0.02, 0.02, float(np.sum(dz))),
@@ -175,8 +177,7 @@ class TestSimulationNonUniform:
         sim.add_source((0.01, 0.01, 0.004), "ez")
         sim.add_ntff_box(
             corner_lo=(0.004, 0.004, 0.002),
-            # #1941: move the out-of-column corner to its solved-length fraction.
-            corner_hi=(0.016, 0.016, 0.006 / 0.01 * float(np.sum(dz))),
+            corner_hi=(0.016, 0.016, 0.006),
             freqs=[2.4e9],
         )
         result = sim.run(n_steps=150, compute_s_params=False)
@@ -217,7 +218,9 @@ class TestSimulationNonUniform:
         |DFT| magnitude at 200 steps must exceed the magnitude at 100
         steps. Also asserts the plane is finite and non-zero.
         """
-        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+        # the source and plane at 5 mm lay outside it; it now spans 10.1 mm.
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
 
         def _run(n_steps: int):
             sim = Simulation(
@@ -227,11 +230,9 @@ class TestSimulationNonUniform:
                 dz_profile=dz,
                 boundary="cpml",
             )
-            # #1941: move the out-of-column source and plane to their solved-length fraction.
-            z = 0.005 / 0.01 * float(np.sum(dz))
-            sim.add_source((0.01, 0.01, z), "ez")
+            sim.add_source((0.01, 0.01, 0.005), "ez")
             sim.add_dft_plane_probe(
-                axis="z", coordinate=z, component="ez",
+                axis="z", coordinate=0.005, component="ez",
                 freqs=jnp.asarray([2.4e9]),
                 name="mid_xy",
             )

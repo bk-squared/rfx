@@ -369,6 +369,7 @@ SIGMA_READS = {
     ('rfx/model/thin_conductors.py', 'splice_film', 'materials'): (1, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
     ('rfx/model/thin_conductors.py', 'splice_junction_materials', 'junction'): (1, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
     ('rfx/model/thin_conductors.py', 'splice_junction_materials', 'materials'): (1, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
+    ('rfx/preflight/absorber.py', '_validate_cfg_body_flush_on_absorber', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/absorber.py', '_validate_cfg_lossless_resonator_in_absorber._resolve', 'mspec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/line_stub.py', '_permittivity', 'material'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/mesh.py', '_validate_cfg_graded_box_rasterization', 'self._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),

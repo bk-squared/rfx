@@ -37,3 +37,13 @@ def test_half_percent_mismatch_is_silent():
     grid = sim._build_realized_grid()
     assert np.sum(grid.cells("z")[:-1]) == pytest.approx(.00796, rel=1e-9)
     assert sim._domain[2] == .008
+
+
+def test_the_public_grid_factory_refuses_a_declared_z_its_profile_misses():
+    from rfx import make_nonuniform_grid
+    with pytest.raises(ValueError, match=r"0\.009.*0\.008"):
+        make_nonuniform_grid((.008, .008), np.full(8, .001), .001,
+                             domain=(.008, .008, .009))
+    grid = make_nonuniform_grid((.008, .008), np.full(8, .001), .001,
+                                domain=(.008, .008, .008))
+    assert grid.domain[2] == .008

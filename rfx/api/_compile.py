@@ -492,6 +492,7 @@ class _CompileMixin:
             dt_caller="Simulation",
             nominal_profiles=getattr(self, "_nominal_profiles", None),
             automatic=self._declared_mesh["_dx"] is None,
+            snap=getattr(self, "_snap", "strict"),
         )
         from rfx.boundaries.features import judge_wall_axes
         judge_wall_axes(self, grid, boundary_depths=depths)

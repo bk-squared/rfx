@@ -127,6 +127,7 @@ def build_nonuniform_grid(
     periodic_axes: str = "",
     automatic: bool | None = None,
     boundary_depths: tuple | None = None,
+    snap: str = "strict",
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -187,6 +188,7 @@ def build_nonuniform_grid(
             face_layers=face_layers, boundary_depths=depths,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
             nominal_profiles=nominal_profiles, periodic_axes=periodic_axes, domain=tuple(map(float, domain)),
+            snap=snap,
         )
 
 

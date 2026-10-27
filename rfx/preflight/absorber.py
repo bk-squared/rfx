@@ -945,7 +945,7 @@ def _validate_cfg_body_flush_on_absorber(
         values = (mat.eps_r, mat.sigma, mat.mu_r)
         if any(is_tracer(v) for v in values):
             continue
-        if mat.sigma >= 1e6 or (values == (1.0, 0.0, 1.0)
+        if values[1] >= 1e6 or (values == (1.0, 0.0, 1.0)
                                 and not (mat.debye_poles or mat.lorentz_poles)):
             continue
         try:
