@@ -128,8 +128,12 @@ ydir.add_waveguide_port(0.01, direction="+y", name="bottom")
 ydir.add_waveguide_port(0.09, direction="-y", name="top")
 
 # Two parallel guides entering through the same x face.
+from rfx import Box
+
 pair = Simulation(freq_max=10e9, domain=(0.12, 0.10, 0.02),
-                  boundary="cpml", cpml_layers=10, dx=0.002)
+                  boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                  cpml_layers=10, dx=0.002)
+pair.add(Box((0.0, 0.04, 0.0), (0.12, 0.06, 0.02)), material="pec")
 pair.add_waveguide_port(0.01, y_range=(0.0, 0.04), direction="+x", name="lo")
 pair.add_waveguide_port(0.01, y_range=(0.06, 0.10), direction="+x", name="hi")
 ```
@@ -156,7 +160,8 @@ port_kwargs = dict(mode=(1, 0), mode_type="TE", f0=6e9,
 def three_port(walls):
     """Same domain, mesh and ports each time; only the PEC walls change."""
     s = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02),
-                   boundary="cpml", cpml_layers=10, dx=0.002)
+                   boundary={"x": "cpml", "y": "cpml", "z": "pec"},
+                   cpml_layers=10, dx=0.002)
     for lo, hi in walls:
         s.add(Box(lo, hi), material="pec")
     s.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x",
@@ -215,6 +220,11 @@ graded mesh it is a target segment count.
 
 ## Limits
 
+- **Every aperture edge needs a conductor on both meshes.** A bare edge is
+  refused before a solve or a multi-device hand-off. Draw PEC walls at the
+  aperture edges, or make the domain cross-section equal to the aperture and
+  declare its transverse faces PEC. A PEC face farther from an edge does not
+  close that edge.
 - **Validated scope** is uniform, single-mode, straight rectangular guides and
   same-guide junctions under the far-port conditions above. Phase is
   validated on fewer configurations than magnitude.

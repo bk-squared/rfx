@@ -450,6 +450,18 @@ def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ra
                                               for axis in "xyz"}),
                      cpml_layers=2, **{f"d{graded_axis}_profile": profile})
     value_range = (.002, .0072) if ranged else None
+    if ranged:
+        # Keep the off-node declaration: its nearest-node aperture needs
+        # conductors at those same realized planes, not at the domain faces.
+        # The sheets run past the declared domain: 22.86 mm realizes as 23
+        # cells, and a sheet ending at 22.86 mm leaves the last edge bare.
+        nodes = np.concatenate(([0.], np.cumsum(profile)))
+        for value in value_range:
+            plane = nodes[np.argmin(abs(nodes - value))]
+            lo, hi = [0., 0., 0.], [extent + .01 for extent in domain]
+            lo["xyz".index(graded_axis)] = plane
+            hi["xyz".index(graded_axis)] = plane
+            sim.add(Box(tuple(lo), tuple(hi)), material="pec")
     sim.add_waveguide_port(.01, direction=f"+{normal}", mode=(1, 0),
                            f0=15e9, freqs=np.array([15e9]),
                            **{f"{graded_axis}_range": value_range})

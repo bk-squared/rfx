@@ -395,6 +395,7 @@ DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_allowlist_entry_is_stale",
     "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_live_two_plane_outside_the_allowlist",
     "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_pending_entry_is_stale",
+    "tests/contracts/test_waveguide_aperture_conductors.py::test_rule4_support_refusal_row",
     "tests/unit/autodiff/test_ad_diagnostics.py::test_memory_reduction_docs_include_residual_inspection_boundary",
     "tests/unit/autodiff/test_estimate_ad_memory.py::test_memory_reduction_docs_separate_planning_from_certificate_evidence",
     "tests/unit/docs/test_showcase_catalog.py::test_each_case_title_and_question_are_its_pages_front_matter",

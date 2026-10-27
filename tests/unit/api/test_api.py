@@ -11,7 +11,7 @@ Validates that:
 8. Differentiable mode (checkpoint) works through the API
 9. Validation catches bad inputs
 """
-from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.boundaries.spec import BoundarySpec
 
 import numpy as np
 import jax
@@ -440,7 +440,7 @@ def test_waveguide_four_port_parallel_guides_through_api():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.10, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -489,10 +489,14 @@ def test_waveguide_same_boundary_overlapping_apertures_reject():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.10, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
+    # Keep the overlapping aperture declaration invalid for its original
+    # reason, with conductors on each rim for the earlier admission check.
+    for y in (0.04, 0.05, 0.09):
+        sim.add(Box((0., y, 0.), (0.12, y, 0.02)), material="pec")
     common = dict(
         mode=(1, 0),
         mode_type="TE",

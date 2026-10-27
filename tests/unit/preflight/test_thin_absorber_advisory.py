@@ -149,12 +149,12 @@ def test_floquet_periodic_faces_are_not_absorbers(thin):
 
 @pytest.mark.parametrize("thin", [False, True], ids=["default", "thin"])
 def test_waveguide_pec_walls_are_not_absorbers(thin):
-    boundary = (BoundarySpec(x=Boundary("cpml", "cpml", 4, 16), y="cpml", z="cpml")
-                if thin else "cpml")
-    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.011),  # main's solved length; #1887
+    boundary = (BoundarySpec(x=Boundary("cpml", "cpml", 4, 16), y="pec", z="pec")
+                if thin else BoundarySpec(x="cpml", y="pec", z="pec"))
+    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.010),  # full PEC guide; #1826 F1b
                      dx=1e-3, boundary=boundary)
     sim.add_waveguide_port(x_position=0.024, direction="+x",
-                          y_range=(0, 0.02286), z_range=(0, 0.01016),
+                          y_range=(0, 0.02286), z_range=(0, 0.010),
                           f0=10e9, freqs=np.linspace(8e9, 11.5e9, 8))
     grid = sim._build_realized_grid()
     assert grid.cpml_axes == "x"

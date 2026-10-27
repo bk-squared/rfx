@@ -25,7 +25,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Simulation
 from rfx.boundaries.features import admit_waveguide
 from rfx.interop import design_to_dict, simulation_from_design
 
@@ -34,12 +34,12 @@ from rfx.interop import design_to_dict, simulation_from_design
 # These are literal policy answers, never obtained from the admission function.
 # The final column names the reason for an exception to public guide admission.
 EXPECTED = {
-    # 22.86 x 10.16 mm at 2 mm: 11 x 5 wall cells on the uniform mesh (22 mm,
-    # -3.76 %; 10 mm, -1.57 %); the graded mesh keeps 8-cell absorbers on y/z.
+    # 22.86 x 10.16 mm at 2 mm: both meshes keep the declared transverse
+    # absorbers and refuse the explicitly absorbing full-aperture guide.
     "wr90-nonwhole-cells": (
-        ("refused", ValueError, "wall axis 'y': declared 22.86 mm, solved 22 mm, rel -3.76202974628 %, 11 cells, dx=2 mm; nearest dx=2.07818181818 mm, next dx=1.905 mm (both pass 1 %); wall axis 'z': declared 10.16 mm, solved 10 mm, rel -1.57480314961 %, 5 cells, dx=2 mm; nearest dx=2.032 mm, next dx=1.69333333333 mm (both pass 1 %); set snap='declared' to accept."),
         ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        "both refuse (#1887): the uniform mesh solves the zero-depth transverse faces as walls, judged 1 % off before guide admission; the graded mesh keeps absorbers there and refuses the declared full aperture",
+        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "both refuse: declared transverse absorbers are incompatible with the full aperture",
     ),
     "perpendicular-pec-z": (
         ("admitted", None, ""),
@@ -180,6 +180,14 @@ def guide(declaration, *, graded):
         boundary = {"x": "cpml", "y": "cpml", "z": "pec"} if declaration == "perpendicular-pec-z" else "cpml"
         sim = Simulation(12e9, (.016, .016, .008), dx=.004,
                          cpml_layers=2, boundary=boundary, **kwargs)
+        if declaration == "perpendicular-pec-z":
+            for lo, hi in (
+                ((-.004, 0., 0.), (0., .016, .008)),
+                ((.016, 0., 0.), (.020, .016, .008)),
+                ((0., -.004, 0.), (.016, 0., .008)),
+                ((0., .016, 0.), (.016, .020, .008)),
+            ):
+                sim.add(Box(lo, hi), material="pec")
         for direction in ("+x", "+y"):
             sim.add_waveguide_port(.004, direction=direction, freqs=np.array([10e9, 11e9]),
                                    f0=10e9, ref_offset=1, probe_offset=1)
@@ -266,8 +274,8 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
         assert "uniform run two-port refusal" in row[2]
         assert answers[0] != answers[1]
     elif declaration == "wr90-nonwhole-cells":
-        assert row[2] == "both refuse (#1887): the uniform mesh solves the zero-depth transverse faces as walls, judged 1 % off before guide admission; the graded mesh keeps absorbers there and refuses the declared full aperture"
-        assert answers[0] != answers[1]
+        assert row[2] == "both refuse: declared transverse absorbers are incompatible with the full aperture"
+        assert answers[0] == answers[1]
     elif declaration.startswith("perpendicular-"):
         assert row[2] == "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b"
         assert answers[0] != answers[1]

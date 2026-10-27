@@ -130,22 +130,22 @@ def _build_wg_sim() -> Simulation:
         freq_max=12e9,
         domain=(_WR90_LX, 0.024, 0.012),  # main's solved length; #1887
         dx=_WR90_DX,
-        boundary="cpml",
+        boundary=BoundarySpec(x="cpml", y="pec", z="pec"),
         cpml_layers=8,
     )
     sim.add_waveguide_port(
         direction="+x",
         x_position=0.01,
-        y_range=(0.0, _WR90_A),
-        z_range=(0.0, _WR90_B),
+        y_range=(0.0, 0.024),
+        z_range=(0.0, 0.012),
         n_modes=1,
         freqs=_WR90_FREQS,
     )
     sim.add_waveguide_port(
         direction="-x",
         x_position=_WR90_LX - 0.01,
-        y_range=(0.0, _WR90_A),
-        z_range=(0.0, _WR90_B),
+        y_range=(0.0, 0.024),
+        z_range=(0.0, 0.012),
         n_modes=1,
         freqs=_WR90_FREQS,
     )

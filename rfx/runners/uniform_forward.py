@@ -215,8 +215,7 @@ def _forward_from_materials(
     # was, so the source list order is unchanged.
     periodic_bool = resolve_periodic(grid, self._periodic_flags())
 
-    # Forward cpml_axes from the grid — when waveguide ports are
-    # present the grid restricts CPML to the non-propagation axes.
+    # Forward the declared absorbing axes and full-guide defaults from the grid.
     # Low-level runners also default to the grid. Keep this explicit
     # value so the TFSF subset override below shares these flags.
     cpml_axes_run = grid.cpml_axes

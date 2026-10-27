@@ -876,8 +876,9 @@ def test_subgridded_ntff_request_is_refused_by_its_reflecting_exterior(monkeypat
         "x_hi is pec; x_lo is pec; y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec: "
         "the far field would miss their images (a symmetry or ground plane is not "
         "reconstructed). Every face of the realized model must be absorbing: draw a "
-        "finite ground plane as geometry, and note that a waveguide port on the uniform mesh "
-        "solves its transverse faces as PEC walls; a symmetry plane is not supported "
+        "finite ground plane as geometry, and note that a full-aperture waveguide port "
+        "with an undeclared boundary on the uniform mesh solves its transverse faces "
+        "as PEC walls; a symmetry plane is not supported "
         "with NTFF yet."
     )
 

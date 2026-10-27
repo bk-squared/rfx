@@ -160,7 +160,7 @@ def _tj_common(freqs, f0):
 def _tj_sim():
     return Simulation(
         freq_max=10e9, domain=(0.12, 0.12, 0.02),
-        boundary="cpml", cpml_layers=10, dx=0.002,
+        boundary={"x": "cpml", "y": "cpml", "z": "pec"}, cpml_layers=10, dx=0.002,
     )
 
 

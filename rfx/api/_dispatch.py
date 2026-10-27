@@ -92,7 +92,10 @@ def _dispatch_plan(
     from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(self)
-    admit_waveguide(self, lane=f"{mode} dispatch")
+    # A multi-device lane steps no waveguide port and refuses it below, so
+    # the aperture edges are not judged there, as on the runner entries.
+    admit_waveguide(self, lane=f"{mode} dispatch",
+                    edges=not (distributed or (devices is not None and len(devices) > 1)))
     # ADI must first report that it does not support NTFF accumulation.
     if self._solver != "adi":
         admit_ntff(self, lane=f"{mode} dispatch")
