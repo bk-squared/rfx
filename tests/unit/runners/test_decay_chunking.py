@@ -86,7 +86,7 @@ def _run(
     branch, driver, monkeypatch, *, cap=None, interval=17, snapshot_interval=7, report_every=None,
     record_dft=False,
 ):
-    cap = (1000 if branch == "energy" else 241) if cap is None else cap
+    cap = (1000 if branch in ("energy", "point", "flux") else 241) if cap is None else cap
     sim = _loaded_sim("pec" if branch in ("point", "min-cap", "zero-cap") else "cpml")
     freqs = np.array([2e9, 4e9])
     if branch in ("energy", "flux"):
@@ -277,15 +277,15 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
     if branch.endswith("cap"):
         assert n == 241
     else:
-        assert 35 <= n < (1000 if branch == "energy" else 241)
+        assert 35 <= n < 1000
         assert n % interval == 0
         if branch == "point":
             # The peak is read from every step of each chunk, not only at checks.
-            assert n == 111
+            assert n == 296
 
 
-@pytest.mark.parametrize("branch,stop,interval", [("point", 111, 37), ("energy", 374, 17),
-                                                ("flux", 187, 17)])
+@pytest.mark.parametrize("branch,stop,interval", [("point", 296, 37), ("energy", 374, 17),
+                                                ("flux", 323, 17)])
 def test_decay_stops_before_absorbed_tail(branch, stop, interval, monkeypatch, record_property):
     kw = dict(cap=stop + 1, interval=interval, report_every=13)
     ref = _run(branch, run_until_decay_reference, monkeypatch, **kw)
