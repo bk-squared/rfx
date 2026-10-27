@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from tests._multi_device_scene import host_devices
 from tests.unit.boundaries.test_sheet_on_pec_face_wall_wins import wall_scene
 
@@ -146,11 +147,15 @@ def test_reference_masks_precede_faces(path):
                 return half_step['e']
             raise AssertionError('reference must reach the coupling boundary')
         with patch.object(runner, '_shared_node_coupling_3d', at_coupling):
-            _assert_order(jax.make_jaxpr(one_step)(c['mats']), shape=c['grid'].shape)
+            # The assembled materials enter as constants, as run() hands
+            # them over: a traced argument would detach the cells from the
+            # realization attached at assembly.
+            _assert_order(jax.make_jaxpr(lambda: one_step(c['mats']))(), shape=c['grid'].shape)
         return
     state = init_state(c['grid'].shape)
     def half_step(st):
         return _update_e_only(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
                               c['config'].dt, c['config'].dx_c,
-                              mats=c['mats'], pec_mask=c['mask'], boundary_pec=True)
+                              mats=c['mats'], pec_mask=c['mask'], boundary_pec=True,
+                              high_wall=unpadded_high_walls(c['grid']))
     _assert_order(jax.make_jaxpr(half_step)(state))

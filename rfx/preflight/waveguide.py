@@ -386,7 +386,7 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
                  if pec is not None or pec_sheets or pec_wires else None)
         _, debye, lorentz = sim._init_dispersion(
             materials, grid.dt, ds, ls, budget=courant_budget(grid),
-            periodic=sim._periodic_flags())
+            periodic=sim._periodic_flags(), grid=grid)
         overrides = {}
         for name, value in (("eps_override", eps_override), ("sigma_override", sigma_override), ("mu_r_override", mu_r_override)):
             if is_tracer(value):
