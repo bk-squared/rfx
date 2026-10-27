@@ -55,6 +55,9 @@ def _scene(kind, graded):
                              waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
         return sim
     sim = builders.build(ROWS[kind], "run_nonuniform" if graded else "run_uniform", graded=graded)
+    if kind == "tfsf" and graded:
+        # A plane wave along x needs uniform x cells (#2078); y and z stay graded.
+        sim._dx_profile = np.full_like(np.asarray(sim._dx_profile), builders.DX)
     # A pulse that ends inside the record (the builders' waveform never ends).
     sim._ports = [dataclasses.replace(p, waveform=PULSE) for p in sim._ports]
     sim._msl_ports = [dataclasses.replace(p, waveform=PULSE) for p in sim._msl_ports]
@@ -114,7 +117,7 @@ def _analytic_v_inc(cfg, dt):
 
 def _expected(kind, sim, grid, call):
     """(whole-domain end, end with transit to sim's probes), from the applied tables."""
-    from rfx.probes.settling import tfsf_source_drive
+    from rfx.measurement.settling import tfsf_source_drive
 
     _, kw = call
     dt = float(grid.dt)
@@ -227,7 +230,7 @@ SOURCE_END_NAMES = {"source_end_step", "simulation_source_end_step", "sampled_so
                     "drive_end", "injection_end"}
 CALLERS = ("rfx/api/_settling.py", "rfx/probes/sparam_driver.py", "rfx/sparams/msl.py",
            "rfx/sparams/mixed.py", "rfx/sparams/coax.py", "rfx/runners/uniform.py",
-           "rfx/runners/nonuniform.py", "rfx/rcs.py", "rfx/measurement/decay.py",
+           "rfx/runners/nonuniform.py", "rfx/measurement/rcs.py", "rfx/measurement/decay.py",
            "rfx/measurement/settling.py", "rfx/ringdown.py")
 # An off step from a drive table: a threshold relative to the table's peak.
 OFF_STEP = re.compile(r"nonzero\([^\n]*>[^\n]*peak")
