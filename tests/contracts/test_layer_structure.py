@@ -1227,3 +1227,32 @@ def test_check_refuses_a_five_file_definition_even_when_the_baseline_lists_it(sy
     write(synthetic, "rfx/nonuniform.py", "from rfx.model import helper\n")  # a re-export: rule R only
     assert gate.main(["--repo", str(synthetic)]) == 0
     assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("route,alias", [
+    ("from rfx import simulation", "simulation"),
+    ("import rfx.simulation as kernel", "kernel"),
+    ("import rfx.simulation", "rfx.simulation"),
+], ids=["from-package", "import-as", "dotted"])
+def test_attribute_read_through_a_module_import_is_refused(tmp_path, route, alias):
+    """Rule R records a whole-module import without a name; the attributes read through it are resolved."""
+    path = "rfx/stepping/__init__.py"
+    write(tmp_path, "rfx/simulation.py", (REPO / "rfx/simulation.py").read_text() + "\ndef helper():\n    pass\n")
+    write(tmp_path, path, (REPO / path).read_text()
+          + f"\ndef local():\n    {route}\n    return {alias}.helper, {alias}.apply_pec_faces\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == ["rfx.simulation:helper"]
+
+
+def test_restored_definition_read_through_the_step_module_import_is_refused(tmp_path):
+    """The defect on the real route: rfx/stepping/uniform.py reads re-exports through ``from rfx import
+    simulation``; a read of a name simulation.py defines (make_probe) through it is refused."""
+    path = "rfx/stepping/uniform.py"
+    reader = (REPO / path).read_text()
+    route = "    return simulation.apply_pec_faces(state, faces)\n"
+    assert reader.count(route) == 1
+    write(tmp_path, path, reader.replace(route, "    simulation.make_probe\n" + route))
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    entry = "rfx.simulation:make_probe"
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]

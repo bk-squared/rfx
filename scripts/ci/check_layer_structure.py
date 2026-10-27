@@ -413,23 +413,38 @@ def own_definitions(tree: ast.Module) -> set[str]:
     return names
 
 
+def module_attribute_reads(tree: ast.Module, path: str, module: str) -> set[str]:
+    """Names a file reads as ``alias.X`` where ``alias`` is a whole-module import of ``module``."""
+    aliases = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            parent = import_module(path, node)
+            aliases.update(a.asname or a.name for a in node.names if f"{parent}.{a.name}" == module)
+        elif isinstance(node, ast.Import):
+            aliases.update(a.asname or a.name for a in node.names if a.name == module)
+    return {node.attr for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and ast.unparse(node.value) in aliases}
+
+
 def caller_definitions(sources: Sources, reverse: dict) -> dict:
     """Reverse entries naming what the caller module defines itself, not what it re-exports.
 
     A five-file entry is layer code living in a five file (2.0: zero, whatever the
-    baseline says); adjoint, ringdown and progress entries are reported only.
+    baseline says); adjoint, ringdown and progress entries are reported only. A
+    whole-module import (``from rfx import simulation``) counts each attribute the
+    file reads through it.
     """
     defined, found = {}, {}
     for path, rules in reverse.items():
         for entry in rules["R"]:
             module, _, name = entry.partition(":")
-            if not name:
-                continue
             if module not in defined:
                 caller = sources.module_path(module)
                 defined[module] = own_definitions(sources.tree(caller)) if caller else set()
-            if name in defined[module]:
-                found.setdefault(path, []).append(entry)
+            names = [name] if name else sorted(module_attribute_reads(sources.tree(path), path, module))
+            for read in names:
+                if read in defined[module]:
+                    found.setdefault(path, []).append(f"{module}:{read}")
     return found
 
 

@@ -124,12 +124,12 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/geometry/smoothing.py": 6,
     "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,
+    "rfx/model/source_coefficients.py": 4,  # moved, not new: rfx/simulation.py's 4 reads moved with _uniform_cell_volume (total unchanged)
     "rfx/model/graded_grid.py": 2,  # the traced-axis fallback width, read once in _traced_fallback_width (position_to_index and the ring-down host helpers)
     "rfx/preflight/realization.py": 1,
     "rfx/runners/adi.py": 5,  # moved, not new: rfx/api/_execute.py's 5 reads moved with _run_adi_from_materials (Block E1; total unchanged)
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/subgridded.py": 1,
-    "rfx/simulation.py": 4,
     "rfx/sources/coaxial_port.py": 14,  # #1356 replaces two radial-grid reads with one Laplace spacing
     "rfx/sources/msl_eigenmode.py": 2,
     "rfx/sources/msl_port.py": 5,
