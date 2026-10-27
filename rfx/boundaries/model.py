@@ -257,6 +257,16 @@ def with_requirements(model: BoundaryModel, requirements: tuple[Requirement, ...
     return replace(model, requirements=requirements)
 
 
+def declared_nonperiodic_faces(sim, axes: str) -> list[str]:
+    """Name explicit faces a feature would replace with periodic faces."""
+    explicit = sim._boundary_spec is not getattr(sim._boundary, "spec", None)
+    return [
+        f"{a}_{side}={kind!r}"
+        for a, side, kind in sim._boundary_spec.faces()
+        if a in axes and kind != "periodic" and explicit
+    ]
+
+
 def require_floquet_lateral_faces(sim, axis: str) -> str:
     """Admit a port against the current declaration, before periodic auto-fill.
 
@@ -265,12 +275,7 @@ def require_floquet_lateral_faces(sim, axis: str) -> str:
     from a later explicit face declaration, even one with identical kinds.
     """
     transverse = "".join(a for a in "xyz" if a != axis)
-    explicit = sim._boundary_spec is not getattr(sim._boundary, "spec", None)
-    conflicts = [
-        f"{a}_{side}={kind!r}"
-        for a, side, kind in sim._boundary_spec.faces()
-        if a in transverse and kind != "periodic" and explicit
-    ]
+    conflicts = declared_nonperiodic_faces(sim, transverse)
     if sim._periodic_axes:
         conflicts.extend(f"{a}_{side}: missing from periodic_axes={sim._periodic_axes!r}"
                          for a in transverse if a not in sim._periodic_axes
@@ -286,6 +291,8 @@ def require_floquet_lateral_faces(sim, axis: str) -> str:
 
 def refresh_boundary_model(sim, *, rcs: bool = False) -> BoundaryModel:
     """Store and return ``sim``'s face declaration with its current feature requirements."""
+    from rfx.boundaries.tfsf import require_tfsf_side_faces
+    require_tfsf_side_faces(sim)
     for port in sim._floquet_ports:
         require_floquet_lateral_faces(sim, port.axis)
     sim._boundary_model = with_requirements(

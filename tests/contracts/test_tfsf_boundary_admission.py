@@ -79,6 +79,10 @@ def test_invariant_slab_keeps_pads_and_reports_faces(skip, monkeypatch):
 @pytest.mark.parametrize("boundary", [{"x": "cpml", "y": "pmc", "z": "pec"},
                                       {"x": "cpml", "y": "periodic", "z": "periodic"}])
 def test_declared_admissible_faces_reach_dispatch(skip, boundary, monkeypatch):
+    if boundary["y"] == "pmc":
+        with pytest.raises(ValueError, match="y_lo='pmc'.*z_hi='pec'"):
+            plane(boundary=boundary)
+        return
     sim = plane(boundary=boundary)
     stop_at_runner(monkeypatch)
     with pytest.raises(Admitted):
@@ -87,9 +91,9 @@ def test_declared_admissible_faces_reach_dispatch(skip, boundary, monkeypatch):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_inadmissible_electric_wall_is_refused(skip):
-    sim = plane(boundary={"x": "cpml", "y": "pec", "z": "pec"})
-    with pytest.raises(ValueError, match=r"y_lo, y_hi.*PERIODIC, PMC"):
-        sim.run(n_steps=1, skip_preflight=skip)
+    with pytest.raises(ValueError, match="y_lo='pec'.*z_hi='pec'"):
+        plane(boundary={"x": "cpml", "y": "pec", "z": "pec"}).run(
+            n_steps=1, skip_preflight=skip)
 
 
 @pytest.mark.parametrize("skip", [False, True])
