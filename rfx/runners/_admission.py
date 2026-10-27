@@ -1114,6 +1114,29 @@ def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
             f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
 
 
+_COAX_ADVICE = {
+    "run": ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
+            "dispatches to either. Use add_port(..., extent=...) for "
+            "probe-feed S-parameters."),
+    "forward": ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
+                "for differentiable probe-feed S11 objectives."),
+}
+
+
+def refuse_coaxial_port(sim, entry: str) -> None:
+    """The one coaxial-port refusal of ``run()`` and ``forward()`` (#2075),
+    raised before mesh planning while no time-stepping lane admits the row;
+    ``entry`` selects the advice."""
+    row = ("_coaxial_ports", "coax_port")
+    if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
+                                      for lane in LANES):
+        raise NotImplementedError(
+            f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
+            "coaxial port's S-parameters come from "
+            "compute_coaxial_line_reflection(...) (one-port reflection) "
+            "or compute_coaxial_two_port(...) (through line); " + _COAX_ADVICE[entry])
+
+
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
