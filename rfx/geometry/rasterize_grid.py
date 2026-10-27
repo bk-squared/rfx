@@ -1418,7 +1418,6 @@ def extend_cpml_pad_materials(
     ply: int, phy: int,
     plz: int, phz: int,
     dispersion_pole_mask: jnp.ndarray | None = None,
-    high_wall=(False, False, False),
 ):
     """Extend eps_r/sigma/mu_r into the CPML padding so guided modes see an
     impedance-matched absorber, equivalent to UPML. Each CPML face copies
@@ -1554,11 +1553,6 @@ def extend_cpml_pad_materials(
     committed envelopes pin the lo-statics state. Callers that pass no
     mask keep the pre-#808 behaviour bit-for-bit.
 
-    **Unpadded high walls (#1966).** The same repair runs on the
-    non-periodic high faces selected by ``high_wall``, which have no pad.
-    The same one-column bound and #808 pole gate apply;
-    no low-wall value or dispersion pole is extended by that selection.
-
     Parameters
     ----------
     dispersion_pole_mask : bool array or None
@@ -1590,9 +1584,9 @@ def extend_cpml_pad_materials(
             poleish = poleish.at[lo_dst].set(poleish[lo_src])
         return arrays, poleish
 
-    def _extend_hi(arrays, poleish, n, pad_lo, pad_hi, wall,
+    def _extend_hi(arrays, poleish, n, pad_lo, pad_hi,
                    outer_sl, inner_sl, dst_sl):
-        if pad_hi <= 0 and not wall:
+        if pad_hi <= 0:
             return arrays, poleish
         e, s, m = arrays[0], arrays[1], arrays[2]
         outer_vac = _vacuum(e[outer_sl], s[outer_sl], m[outer_sl])
@@ -1652,7 +1646,7 @@ def extend_cpml_pad_materials(
         arrays, poleish, plx, np.s_[plx:plx + 1, :, :], np.s_[:plx, :, :])
     nx = arrays[0].shape[0]
     arrays, poleish = _extend_hi(
-        arrays, poleish, nx, plx, phx, high_wall[0],
+        arrays, poleish, nx, plx, phx,
         np.s_[nx - phx - 1:nx - phx, :, :],
         np.s_[nx - phx - 2:nx - phx - 1, :, :],
         np.s_[nx - phx:nx, :, :],
@@ -1663,7 +1657,7 @@ def extend_cpml_pad_materials(
         arrays, poleish, ply, np.s_[:, ply:ply + 1, :], np.s_[:, :ply, :])
     ny = arrays[0].shape[1]
     arrays, poleish = _extend_hi(
-        arrays, poleish, ny, ply, phy, high_wall[1],
+        arrays, poleish, ny, ply, phy,
         np.s_[:, ny - phy - 1:ny - phy, :],
         np.s_[:, ny - phy - 2:ny - phy - 1, :],
         np.s_[:, ny - phy:ny, :],
@@ -1674,7 +1668,7 @@ def extend_cpml_pad_materials(
         arrays, poleish, plz, np.s_[:, :, plz:plz + 1], np.s_[:, :, :plz])
     nz = arrays[0].shape[2]
     arrays, poleish = _extend_hi(
-        arrays, poleish, nz, plz, phz, high_wall[2],
+        arrays, poleish, nz, plz, phz,
         np.s_[:, :, nz - phz - 1:nz - phz],
         np.s_[:, :, nz - phz - 2:nz - phz - 1],
         np.s_[:, :, nz - phz:nz],
@@ -1693,22 +1687,15 @@ def unpadded_high_walls(grid):
                  for a in "xyz")
 
 
-def repair_fine_high_wall_materials(materials, coords, coarse_grid, high_wall,
-                                    dispersion_specs=()):
-    """Repair a fine terminal sample only beyond a reached global wall.
-
-    Interior coarse/fine interfaces retain their actual samples (record 3).
-    The coarse grid's node spine defines the realized wall coordinates.
-    """
-    coarse = coords_from_uniform_grid(coarse_grid)
-    walls = tuple(reached and float(samples[-1]) > float(nodes[-1])
-                  for reached, samples, nodes in zip(high_wall, coords[:3], coarse[:3]))
-    pole_mask = None
-    for spec in dispersion_specs:
-        if spec is not None:
-            for mask in spec[1]:
-                pole_mask = mask if pole_mask is None else pole_mask | mask
-    eps, sig, mu = extend_cpml_pad_materials(
-        materials.eps_r, materials.sigma, materials.mu_r, 0, 0, 0, 0, 0, 0,
-        dispersion_pole_mask=pole_mask, high_wall=walls)
-    return materials._replace(eps_r=eps, sigma=sig, mu_r=mu)
+def fine_high_walls(grid, config):
+    """Global walls reached by the fine cell centres of a subgrid."""
+    coarse = coords_from_uniform_grid(grid)
+    starts = (config.fi_lo, config.fj_lo, config.fk_lo)
+    ends = (config.fi_hi, config.fj_hi, config.fk_hi)
+    counts = (config.nx_f, config.ny_f, config.nz_f)
+    # The fine region starts on the coarse node at its first index.
+    offsets = tuple(float(nodes[start]) for nodes, start in zip(coarse[:3], starts))
+    fine = coords_from_fine_grid(*counts, float(config.dx_f), *offsets)
+    return tuple(wall and end == grid.shape[a]
+                 and float(fine[a][-1]) > float(coarse[a][-1])
+                 for a, (wall, end) in enumerate(zip(unpadded_high_walls(grid), ends)))

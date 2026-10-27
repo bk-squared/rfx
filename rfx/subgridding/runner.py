@@ -16,6 +16,8 @@ from rfx.boundaries.pec import apply_pec, apply_pec_mask
 # Patching rfx.boundaries.cpml.init_cpml later does not replace this bound import.
 from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 from rfx.grid import Grid
+from rfx.geometry.rasterize_grid import unpadded_high_walls, fine_high_walls
+from rfx.model.materials import with_components
 from rfx.subgridding.sbp_sat_3d import (
     SubgridConfig3D, _shared_node_coupling_3d,
 )
@@ -67,6 +69,11 @@ def run_subgridded(
     dt = subgrid_config.dt
     dx_c = subgrid_config.dx_c
     dx_f = subgrid_config.dx_f
+    high_wall_c = unpadded_high_walls(grid_c)
+    high_wall_f = fine_high_walls(grid_c, subgrid_config)
+    periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
+    mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=high_wall_c)
+    mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=high_wall_f)
 
     # Override coarse grid dt to match the subgrid global timestep
     # (fine grid CFL is more restrictive than coarse grid CFL)
@@ -109,7 +116,7 @@ def run_subgridded(
         st_c = FDTDState(ex=ex_c, ey=ey_c, ez=ez_c,
                          hx=hx_c, hy=hy_c, hz=hz_c,
                          step=jnp.array(step, dtype=jnp.int32))
-        st_c = update_h(st_c, mats_c, dt, dx_c)
+        st_c = update_h(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         # materials= keeps the CPML impedance-matched inside dielectrics
         # (issue #205; without it the free-space coefficients diverge when a
         # dielectric overlaps the absorber — same mechanism as #203/#204).
@@ -120,10 +127,10 @@ def run_subgridded(
         st_f = FDTDState(ex=ex_f, ey=ey_f, ez=ez_f,
                          hx=hx_f, hy=hy_f, hz=hz_f,
                          step=jnp.array(step, dtype=jnp.int32))
-        st_f = update_h(st_f, mats_f, dt, dx_f)
+        st_f = update_h(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
 
         # === Coarse grid: E update + CPML + PEC ===
-        st_c = update_e(st_c, mats_c, dt, dx_c)
+        st_c = update_e(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         st_c, cpml_state = apply_cpml_e(st_c, cpml_params, cpml_state, grid_c, cpml_axes,
                                         materials=mats_c)
         if pec_mask_c is not None:
@@ -137,7 +144,7 @@ def run_subgridded(
         st_c = apply_pec(st_c)
 
         # === Fine grid: E update + PEC mask ===
-        st_f = update_e(st_f, mats_f, dt, dx_f)
+        st_f = update_e(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
         if pec_mask_f is not None:
             # #931: ``apply_pec_mask`` IS the shared realization
             # (realized_pec_edge_masks, volume branch). This lane

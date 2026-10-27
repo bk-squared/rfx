@@ -1,4 +1,6 @@
 """E3 frozen contracts and replay; no FDTD ladder is run by these tests."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import json
 from pathlib import Path
 
@@ -54,7 +56,7 @@ def test_columns_and_default_table(arm, scale):
     sim, prof = fixture(arm, scale, interface_eps="dual_average")
     grid = sim._build_nonuniform_grid()
     mats = sim._assemble_materials_nu(grid)[0]
-    ex, ey, ez = nu.assemble_interface_eps_nu(sim, grid, mats)
+    ex, ey, ez = nu.assemble_interface_eps_nu(sim, grid, mats, high_wall=unpadded_high_walls(grid))
     idx = (grid.nx//2, grid.ny//2)
     ref = np.asarray(w7.dual_eps_nodes(prof), np.float32)
     rel = np.max(abs(np.asarray(ey[idx])-ref)/ref)
@@ -81,7 +83,7 @@ def test_four_cell_weights_and_pec():
                     (.004, [.002,.006][y], [.003,.008][z])), material=f"m{y}{z}")
     grid = sim._build_nonuniform_grid()
     def ex():
-        return np.asarray(nu.assemble_interface_eps_nu(sim, grid, sim._assemble_materials_nu(grid)[0])[0])
+        return np.asarray(nu.assemble_interface_eps_nu(sim, grid, sim._assemble_materials_nu(grid)[0], high_wall=unpadded_high_walls(grid))[0])
     expected = (2*2*3 + 4*2*5 + 8*4*3 + 16*4*5)/(6*8)
     assert ex()[0,1,1] == np.float32(expected)
     # Only the large (y1,z1) owner cell is PEC. Exclude its area from the
@@ -99,7 +101,7 @@ def test_opt_in_reaches_stepper(monkeypatch):
     original = nu.run_nonuniform
     seen = []
     def capture(grid, materials, n_steps, **kwargs):
-        expected = nu.assemble_interface_eps_nu(sim, grid, materials)
+        expected = nu.assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
         for actual, ref in zip(kwargs["aniso_eps"], expected):
             np.testing.assert_array_equal(actual, ref)
         seen.append(True)

@@ -1,4 +1,6 @@
 """Conductor-bearing observations pin the single-device step's physical order."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import MISSING, fields, replace
 
 import jax
@@ -61,8 +63,8 @@ def _reference(ctx, carry, source, sheet_coeffs):
     # Today's single-device order. rfx issue 1373 tracks the one order for
     # all lanes; this independent straight-line test is where it will show.
     old = carry['fdtd']
-    st = update_h(old, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic)
-    st = update_e(st, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic)
+    st = update_h(old, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic, high_wall=(False, False, False))
+    st = update_e(st, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic, high_wall=(False, False, False))
     if ctx.use_pec_occupancy:
         # Independent of the published array: the cell occupancy through the
         # in-place 1 - M operator (0.5 is dyadic, so the two forms agree bit for bit).
@@ -172,9 +174,9 @@ def _graded_reference(ctx, carry, source, invariants):
     materials = invariants['materials']
     grid = ctx.grid
     st = update_h_nu(old, materials, ctx.dt, invariants['inv_dx_h'], grid.inv_dy_h,
-                     grid.inv_dz_h, cell_sizes=(invariants['dx_arr'], grid.dy_arr, grid.dz))
+                     grid.inv_dz_h, cell_sizes=(invariants['dx_arr'], grid.dy_arr, grid.dz), high_wall=unpadded_high_walls(grid))
     st = update_e_nu(st, materials, ctx.dt, invariants['inv_dx'], grid.inv_dy,
-                     grid.inv_dz, boundary=ctx.curl_boundary)
+                     grid.inv_dz, boundary=ctx.curl_boundary, high_wall=unpadded_high_walls(grid))
     if ctx.use_pec_occupancy:
         st = apply_pec_occupancy(st, _occupancy(st.ex.shape), (False, False, False))
     if ctx.use_sheet_impedance:

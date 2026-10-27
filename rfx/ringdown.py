@@ -1198,7 +1198,7 @@ class RingdownRun:
         ``(rows, largest ratio over WE's window [n_long, n_steps))``; only
         the main window refuses.
         """
-        from rfx.probes.settling import source_end_step
+        from rfx.measurement.record_end import source_end_step
 
         entries = [pe for pe in self.sim._ports
                    if (float(pe.impedance) == 0.0 or bool(pe.excite))
@@ -2117,7 +2117,7 @@ class RingdownStop:
         n_off`` (:func:`_first_check_record`). Condition (a) is still
         evaluated at every check.
         """
-        from rfx.probes.settling import source_end_step
+        from rfx.measurement.record_end import source_end_step
 
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in self.sim._ports

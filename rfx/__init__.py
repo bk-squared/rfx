@@ -94,15 +94,26 @@ from rfx.boundaries.pec import (
     realized_wall_planes,
 )
 from rfx.farfield import (
-    NTFFBox, NTFFData, FarFieldResult,
-    make_ntff_box, compute_far_field, compute_far_field_jax,
-    radiation_pattern, directivity,
-    axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
+    NTFFBox,
+    NTFFData,
+    FarFieldResult,
+    make_ntff_box,
+    radiation_pattern,
+    directivity,
+    axial_ratio,
+    axial_ratio_dB,
+    polarization_tilt,
+    polarization_sense,
+)
+from rfx.measurement.farfield import (
+    compute_far_field,
+    compute_far_field_jax,
 )
 # The block current-moment pattern: an explicit rfx import, outside the
 # curated star surface, like the NTFF surface interchange below.
 from rfx.current_moments import current_moment_far_field
-from rfx.rcs import compute_rcs, compute_rcs_jax, RCSResult, ScatteringResponse
+from rfx.measurement.rcs import compute_rcs
+from rfx.rcs import compute_rcs_jax, RCSResult, ScatteringResponse
 from rfx.antenna import (
     antenna_gain, antenna_gain_dB, antenna_efficiency,
     half_power_beamwidth, front_to_back_ratio,
@@ -222,14 +233,18 @@ from rfx.microstrip import (
 )
 from rfx.floquet import (
     FloquetPort,
-    floquet_phase_shift,
     floquet_wave_vector,
     FloquetDFTAccumulator,
     init_floquet_dft,
-    update_floquet_dft,
-    inject_floquet_source,
     extract_floquet_modes,
     compute_floquet_s_params,
+)
+from rfx.measurement.floquet import (
+    floquet_phase_shift,
+    update_floquet_dft,
+)
+from rfx.stepping.floquet import (
+    inject_floquet_source,
 )
 from rfx.material_fit import (
     load_material_csv, fit_debye, fit_lorentz,

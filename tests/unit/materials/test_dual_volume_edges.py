@@ -1,4 +1,6 @@
 """Independent four-cell references for the graded constitutive rule."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from itertools import product
 from types import SimpleNamespace
 
@@ -65,7 +67,7 @@ def test_volume_sigma_and_poles_against_hand_reference(periodic, shape):
             expected, _ = reference(array, g.widths, a, cell, periodic)
             np.testing.assert_allclose(float(edge[cell]), expected, rtol=3e-7, atol=1e-7)
         point = cell_component_e_materials(m, cell, 'e'+'xyz'[a], periodic,
-                                          cell_sizes=electric_cell_sizes(g))
+                                          cell_sizes=electric_cell_sizes(g), high_wall=unpadded_high_walls(g))
         np.testing.assert_allclose(point, [c.eps_update[a][cell], c.sigma_update[a][cell]], rtol=3e-7)
 
 
@@ -75,7 +77,7 @@ def test_derivative_is_primal_area_fraction(axis):
     values = np.arange(27, dtype=np.float32).reshape(g.shape) + 1
     cell = (1, 1, 1)
     derivative = jax.grad(lambda a: edge_mean_components(
-        a, cell_sizes=electric_cell_sizes(g))[axis][cell])(jnp.asarray(values))
+        a, cell_sizes=electric_cell_sizes(g), high_wall=unpadded_high_walls(g))[axis][cell])(jnp.asarray(values))
     _, expected = reference(values, g.widths, axis, cell, (False,)*3)
     np.testing.assert_allclose(derivative, expected, rtol=1e-7, atol=1e-8)
 
@@ -83,10 +85,10 @@ def test_derivative_is_primal_area_fraction(axis):
 def test_equal_cells_are_bit_identical_per_transverse_component():
     rng = np.random.default_rng(512)
     values = jnp.asarray(rng.uniform(1, 8, (3, 4, 5)).astype(np.float32))
-    plain = edge_mean_components(values)
+    plain = edge_mean_components(values, high_wall=(False, False, False))
     for widths in (([2.]*3, [3.]*4, [7.]*5), ([1., 2., 3.], [3.]*4, [7.]*5)):
         g = MetricGrid(widths)
-        actual = edge_mean_components(values, cell_sizes=electric_cell_sizes(g))
+        actual = edge_mean_components(values, cell_sizes=electric_cell_sizes(g), high_wall=unpadded_high_walls(g))
         axes = range(3) if g.is_constant(0) else (0,)
         for axis in axes:
             assert np.asarray(actual[axis]).tobytes() == np.asarray(plain[axis]).tobytes()
@@ -103,8 +105,8 @@ def test_raw_nu_update_requires_primal_metrics(tensor):
     c = realize_components(m,g,periodic=(False,)*3)
     def update(mat, metric=inv, **kwargs):
         if tensor:
-            return update_e_nu_aniso(state,mat,*c.eps_update,g.dt,*metric,**kwargs)
-        return update_e_nu(state,mat,g.dt,*metric,**kwargs)
+            return update_e_nu_aniso(state,mat,*c.eps_update,g.dt,*metric,**kwargs, high_wall=unpadded_high_walls(g))
+        return update_e_nu(state,mat,g.dt,*metric,**kwargs, high_wall=unpadded_high_walls(g))
     with pytest.raises(ValueError,match='requires realized component materials or primal'):
         update(m)
     with pytest.raises(ValueError,match='requires realized component materials or primal'):
@@ -128,7 +130,7 @@ def test_distributed_drive_window_reads_weighted_poles(kind):
     for cell in ((1, 1, 1), (0, 0, 0)):
         for a in range(3):
             expected = reference(np.asarray(m.eps_r), g.widths, a, cell, (False,)*3)[0]
-            actual = e_update_material_at(drive, cell, 'e'+'xyz'[a])[0]
+            actual = e_update_material_at(drive, cell, 'e'+'xyz'[a], high_wall=unpadded_high_walls(g))[0]
             np.testing.assert_allclose(actual, expected, rtol=2e-7)
         terms = drive.components.at(cell, g.dt)[0 if kind == 'debye' else 1]
         full = (c.debye if kind == 'debye' else c.lorentz).coefficients
@@ -148,9 +150,9 @@ def test_slab_widths_and_existing_ghost_match_global_reference():
         slab = jnp.asarray(values[indices])
         sizes = slab_cell_sizes(sg, rank)
         actual = slab_e_component_materials(MaterialArrays(slab, slab, slab), 3, 6,
-                                            rank=rank, cell_sizes=sizes)[0]
+                                            rank=rank, cell_sizes=sizes, high_wall=unpadded_high_walls(g))[0]
         fractions = slab_pole_fractions(jnp.asarray(mask[indices]), 3, 6,
-                                        rank=rank, cell_sizes=sizes)
+                                        rank=rank, cell_sizes=sizes, high_wall=unpadded_high_walls(g))
         for a, i, j, k in product(range(3), range(1, 4), range(3), range(3)):
             cell = (rank*3+i-1, j, k)
             for array, result in ((values, actual), (mask, fractions)):
@@ -248,8 +250,8 @@ def test_plain_distributed_drive_keeps_equal_cell_host_bits():
     raw = MaterialArrays(eps, sigma, jnp.ones(g.shape))
     carried = raw._replace(components=EdgePoles(None, None, g))
     for component in ('ex','ey','ez'):
-        old = e_update_coefficient_at(raw, (1,1,1), component, g.dt, host=True)
-        new = e_update_coefficient_at(carried, (1,1,1), component, g.dt, host=True)
+        old = e_update_coefficient_at(raw, (1,1,1), component, g.dt, host=True, grid=g)
+        new = e_update_coefficient_at(carried, (1,1,1), component, g.dt, host=True, grid=g)
         assert np.asarray(old).tobytes() == np.asarray(new).tobytes()
 
 
@@ -274,7 +276,7 @@ def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term)
     raw = MaterialArrays(eps, jnp.zeros_like(eps), jnp.ones_like(eps))
     realized = realize_components(ComponentCells(raw, None, ([pole], mask)),
                                   grid, periodic=periodic)
-    fractions = pole_component_weights(mask, periodic, cell_sizes=electric_cell_sizes(grid))
+    fractions = pole_component_weights(mask, periodic, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
     expected = np.empty((3, *shape))
     for axis in range(3):
         for cell in np.ndindex(shape):
@@ -307,8 +309,8 @@ def test_rounded_inverse_duals_cannot_decide_primal_constancy(tensor):
     def step(materials, **kwargs):
         if tensor:
             return update_e_nu_aniso(state, materials, *components.eps_update,
-                                     grid.dt, *inverse, **kwargs)
-        return update_e_nu(state, materials, grid.dt, *inverse, **kwargs)
+                                     grid.dt, *inverse, **kwargs, high_wall=unpadded_high_walls(grid))
+        return update_e_nu(state, materials, grid.dt, *inverse, **kwargs, high_wall=unpadded_high_walls(grid))
 
     with pytest.raises(ValueError, match='requires realized component materials or primal'):
         step(raw)

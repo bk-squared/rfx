@@ -364,11 +364,9 @@ def _find_shallowest_scan(jaxpr):
 
 
 def _carry_grid_bytes(eqn, spatial: tuple[int, int, int], n_t: int):
-    num_carry = eqn.params["num_carry"]
-    num_consts = eqn.params["num_consts"]
-    carry_avals = [
-        v.aval for v in eqn.invars[num_consts:num_consts + num_carry]
-    ]
+    from rfx.api._ad_carry import scan_carry_invars
+
+    carry_avals = [v.aval for v in scan_carry_invars(eqn)]
     primal_bytes, batched_bytes = 0, 0
     for a in carry_avals:
         shp = tuple(getattr(a, "shape", ()))

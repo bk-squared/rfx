@@ -251,10 +251,14 @@ def test_three_device_cases_run_in_their_own_job() -> None:
     assert steps[1]["run"] == 'echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"'
     runs = [s for s in steps if "pytest" in s.get("run", "")]
     assert runs
+    counts = {"three": 3, "four": 4, "five": 5}
     for step in runs:
         # A failing file must not skip the later steps.
         assert step["if"] == "${{ !cancelled() }}", step["name"]
-        assert step["env"] == {"JAX_PLATFORMS": "cpu", "XLA_FLAGS": "--xla_force_host_platform_device_count=3"}
+        # Each step names its host-device count; the closed-box TF/SF cap needs 4 and 5.
+        n = counts[step["name"].split()[1].removesuffix("-device")]
+        assert step["env"] == {"JAX_PLATFORMS": "cpu", "XLA_FLAGS": f"--xla_force_host_platform_device_count={n}"}
+    assert sum("three-device" in s["name"] for s in runs) >= 4
     check = steps[-1]
     assert check["name"] == "Job time against the job limit" and check["if"] == "always()"
     limit = job["timeout-minutes"]

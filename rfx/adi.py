@@ -339,7 +339,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     ez_new, hx_new, hy_new : updated fields
     """
     # This API accepts no magnetic materials; radius declarations are refused upstream.
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     _validate_interior_pec(ez_pec_mask)
     Nx, Ny = ez.shape
     half_dt = dt / 2.0
@@ -607,7 +607,7 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     in the CPML boundary strips.
     """
     # This API accepts no magnetic materials; radius declarations are refused upstream.
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     n = cpml_params.n_cpml
     bx, cx = cpml_params.bx, cpml_params.cx
     by, cy = cpml_params.by, cpml_params.cy
@@ -966,7 +966,7 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     ex, ey, ez, hx, hy, hz : updated fields
     """
     # This API accepts no magnetic materials; radius declarations are refused upstream.
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     _validate_interior_pec(pec_edge_masks)
     if _realized.ACTIVE is not None:
         observed = _realized.scalar_electric(

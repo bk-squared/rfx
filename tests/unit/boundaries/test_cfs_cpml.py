@@ -6,6 +6,8 @@ Tests:
 3. No regression for propagating waves when kappa_max > 1
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -28,10 +30,10 @@ def _run_simulation(grid, cpml_params, cpml_state, source_fn, n_steps,
 
     for n in range(n_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_h(
             state, cpml_params, cpml_state, grid, axes=cpml_axes)
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_e(
             state, cpml_params, cpml_state, grid, axes=cpml_axes)
         if pec_axes:
@@ -73,10 +75,10 @@ def _run_evanescent_sim(grid, cpml_params, cpml_state, n_steps, f0):
 
     for n in range(n_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_h(
             state, cpml_params, cpml_state, grid, axes=cpml_axes)
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_e(
             state, cpml_params, cpml_state, grid, axes=cpml_axes)
         state = apply_pec(state, axes="yz")
@@ -229,16 +231,16 @@ def test_cfs_cpml_no_regression_above_cutoff():
     materials = init_materials(grid.shape)
     for n in range(200):
         t = n * dt
-        state_std = update_h(state_std, materials, dt, dx)
+        state_std = update_h(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_std, cpml_state_std = apply_cpml_h(state_std, cpml_params_std, cpml_state_std, grid)
-        state_std = update_e(state_std, materials, dt, dx)
+        state_std = update_e(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_std, cpml_state_std = apply_cpml_e(state_std, cpml_params_std, cpml_state_std, grid)
         ez = state_std.ez.at[cx, cy, cz].add(pulse(t))
         state_std = state_std._replace(ez=ez)
     for _ in range(500):
-        state_std = update_h(state_std, materials, dt, dx)
+        state_std = update_h(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_std, cpml_state_std = apply_cpml_h(state_std, cpml_params_std, cpml_state_std, grid)
-        state_std = update_e(state_std, materials, dt, dx)
+        state_std = update_e(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_std, cpml_state_std = apply_cpml_e(state_std, cpml_params_std, cpml_state_std, grid)
     energy_std = _measure_energy(state_std)
 
@@ -247,16 +249,16 @@ def test_cfs_cpml_no_regression_above_cutoff():
     state_cfs = init_state(grid.shape)
     for n in range(200):
         t = n * dt
-        state_cfs = update_h(state_cfs, materials, dt, dx)
+        state_cfs = update_h(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_cfs, cpml_state_cfs = apply_cpml_h(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
-        state_cfs = update_e(state_cfs, materials, dt, dx)
+        state_cfs = update_e(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_cfs, cpml_state_cfs = apply_cpml_e(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
         ez = state_cfs.ez.at[cx, cy, cz].add(pulse(t))
         state_cfs = state_cfs._replace(ez=ez)
     for _ in range(500):
-        state_cfs = update_h(state_cfs, materials, dt, dx)
+        state_cfs = update_h(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_cfs, cpml_state_cfs = apply_cpml_h(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
-        state_cfs = update_e(state_cfs, materials, dt, dx)
+        state_cfs = update_e(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state_cfs, cpml_state_cfs = apply_cpml_e(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
     energy_cfs = _measure_energy(state_cfs)
 

@@ -5,6 +5,8 @@ Read all three permittivities at the capacitor node and the first E update
 from an identical initial H field, before subsequent field propagation.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from contextlib import ExitStack
 import os
 import sys
@@ -89,7 +91,7 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
             values = [1.0 / float(e[cell]) for e in inverse]
         else:
             if eps is None:
-                eps = component_e_materials(materials)[0]
+                eps = component_e_materials(materials, high_wall=unpadded_high_walls(grid))[0]
             values = [float(e[cell]) for e in eps]
         observed["eps"] = np.asarray(values)
         weights = kwargs.get("conformal_weights")

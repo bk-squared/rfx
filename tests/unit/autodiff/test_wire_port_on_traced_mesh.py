@@ -46,10 +46,8 @@ import pytest
 from rfx import Simulation
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry import Box
-from rfx.nonuniform import (
-    e_node_dual_spacing_at, make_nonuniform_grid, port_metric,
-    port_metric_axes,
-)
+from rfx.model.graded_ports import port_metric, port_metric_axes
+from rfx.nonuniform import e_node_dual_spacing_at, make_nonuniform_grid
 from rfx.runners.nonuniform import run_nonuniform_path
 from rfx.sources import GaussianPulse
 
@@ -212,7 +210,7 @@ def test_concrete_s11_is_byte_identical_with_the_tracer_branch_forced_off(
     and the single-cell lumped port on both — 15 arrays, 0 differing bytes.
     """
     ship = np.asarray(_s11(delta), dtype=np.complex64)
-    monkeypatch.setattr("rfx.nonuniform.port_metric_axes", _host_only_axes)
+    monkeypatch.setattr("rfx.measurement.graded_port_meta.port_metric_axes", _host_only_axes)
     monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _host_only_axes)
     before = np.asarray(_s11(delta), dtype=np.complex64)
@@ -223,7 +221,7 @@ def test_wire_port_meta_stays_plain_floats_on_a_concrete_mesh():
     """The extractor's per-port record carries Python floats on x and y, as
     it did — a jnp scalar there would change the dtype of every product it
     enters."""
-    from rfx.nonuniform import _build_wp_meta
+    from rfx.measurement.graded_port_meta import _build_wp_meta
     grid = _grid(0.25 * DX)
     wp = {'mid_i': I_PORT + CPML, 'mid_j': J_PORT + CPML,
           'mid_k': K_GND + CPML + 3, 'component': 'ez', 'impedance': 50.0,
@@ -410,7 +408,7 @@ def test_mutation_a_the_tracer_branch_off_refuses_the_traced_run(monkeypatch):
     """(a) With the metric read forced back to the host-only spelling, the
     traced run raises where it used to — so the gate is watching the branch
     it claims to."""
-    monkeypatch.setattr("rfx.nonuniform.port_metric_axes", _host_only_axes)
+    monkeypatch.setattr("rfx.measurement.graded_port_meta.port_metric_axes", _host_only_axes)
     monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _host_only_axes)
     with pytest.raises(jax.errors.TracerArrayConversionError):
@@ -440,7 +438,7 @@ def test_mutation_b_a_port_sized_on_the_nominal_cell_goes_red(monkeypatch):
     d0 = 0.25 * DX
     concrete = float(_obs(d0))
     fd = _fd(d0, DX / 32)
-    monkeypatch.setattr("rfx.nonuniform.port_metric_axes",
+    monkeypatch.setattr("rfx.measurement.graded_port_meta.port_metric_axes",
                         _nominal_when_traced)
     monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _nominal_when_traced)
@@ -508,7 +506,7 @@ def test_mutation_b_on_the_z_axis_goes_red(monkeypatch):
     d0 = 0.25 * DX
     concrete = float(_obs(d0, axis="z"))
     fd = _fd_z(d0, DX / 32)
-    monkeypatch.setattr("rfx.nonuniform.port_metric_axes",
+    monkeypatch.setattr("rfx.measurement.graded_port_meta.port_metric_axes",
                         _nominal_z_when_traced)
     monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _nominal_z_when_traced)

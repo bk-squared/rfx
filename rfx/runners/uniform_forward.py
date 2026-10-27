@@ -215,8 +215,7 @@ def _forward_from_materials(
     # was, so the source list order is unchanged.
     periodic_bool = resolve_periodic(grid, self._periodic_flags())
 
-    # Forward cpml_axes from the grid — when waveguide ports are
-    # present the grid restricts CPML to the non-propagation axes.
+    # Forward the declared absorbing axes and full-guide defaults from the grid.
     # Low-level runners also default to the grid. Keep this explicit
     # value so the TFSF subset override below shares these flags.
     cpml_axes_run = grid.cpml_axes
@@ -577,7 +576,7 @@ def _forward_from_materials(
     aniso_eps = finish_tensor_operands(materials, aniso_eps, None)
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        periodic=periodic_bool,
+        periodic=periodic_bool, grid=grid,
     )
 
     ntff_box = None
@@ -626,20 +625,9 @@ def _forward_from_materials(
 
     # Floquet ports — inject soft source, same as run_uniform.py:274-327
     if self._floquet_ports:
-        axis_map_str = {"x": 0, "y": 1, "z": 2}
+        from rfx.floquet import floquet_port_source
         for fpe in self._floquet_ports:
-            axis_idx = axis_map_str[fpe.axis]
-            fp_f0 = fpe.f0 if fpe.f0 is not None else self._freq_max / 2
-            from rfx.sources.sources import GaussianPulse as _GP
-            wf = _GP(f0=fp_f0, bandwidth=fpe.bandwidth, amplitude=fpe.amplitude)
-            center = [self._domain[i] / 2.0 for i in range(3)]
-            center[axis_idx] = fpe.position
-            if fpe.polarization == "te":
-                comp = {"z": "ex", "x": "ey", "y": "ex"}[fpe.axis]
-            else:
-                comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
-            from rfx.simulation import make_source as _make_src
-            sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
+            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
     conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy, sim=self, sheet_operator=sheet_impedance)
 
     # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when

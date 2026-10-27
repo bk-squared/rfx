@@ -309,7 +309,9 @@ def test_rule_i_fires_on_the_shorted_junction_copy():
     hits = _findings(ptfe, RULE_I_KIND)
     assert len(hits) == 1, [f["kind"] for f in ptfe["findings"]]
     f = hits[0]
-    assert f["overlap_cells"] == 52
+    # The ground is a sheet: it owns no cell, so the 52 count is faces.
+    assert f["overlap_faces"] == 52
+    assert f["overlap_cells"] == 0
     assert ptfe["n_cells"] == 156
     assert f["conductor_entities"] == [0]
     assert "geometry[0]" in f["detail"] and "52" in f["detail"]
@@ -348,7 +350,8 @@ def test_rule_i_ground_sheet_requires_dielectric_on_both_sides(normal, through):
     hits = _findings(sub, RULE_I_KIND)
     if through:
         assert len(hits) == 1
-        assert hits[0]["overlap_cells"] == 64
+        assert hits[0]["overlap_faces"] == 64
+        assert hits[0]["overlap_cells"] == 0
         assert "64 faces" in hits[0]["detail"]
         assert hits[0]["conductor_entities"] == [0]
     else:
@@ -397,6 +400,7 @@ def test_rule_i_minimal_slab_then_cylinder_fires_and_reverse_is_silent():
     assert len(hits) == 1
     assert hits[0]["conductor_entities"] == [0]
     assert 0 < hits[0]["overlap_cells"] <= ptfe["n_cells"]
+    assert hits[0]["overlap_faces"] == 0
     assert len(_findings(ptfe, "claimed-by-conductor")) == 1
 
     rep = _sim(dielectric_first=True).fidelity_report(print_report=False)
@@ -435,9 +439,64 @@ def test_rule_i_lists_every_earlier_conductor_and_sums_the_union():
     m1 = np.asarray(pec_volume_cell_mask(sim._geometry[1].shape, centres, sizes), bool)
     m2 = np.asarray(sim._geometry[2].shape.mask(grid), bool)
     assert f["overlap_cells"] == int(((m0 | m1) & m2).sum())
+    assert f["overlap_faces"] == 0
     # and the discrimination the comment claims, measured here
     n0 = np.asarray(sim._geometry[0].shape.mask(grid), bool)
     assert not bool((m0 == n0).all()), "centre and node samplers must differ here"
+
+
+def test_rule_i_counts_volume_cells_and_sheet_faces_under_separate_keys():
+    """An earlier PEC volume AND an earlier PEC sheet inside one dielectric:
+    the volume's shared cells go to ``overlap_cells`` and the sheet's metal
+    faces with dielectric on both sides go to ``overlap_faces``; neither
+    count is added into the other.
+
+    On the 1 mm grid: the volume (3,3,4)-(9,9,5) mm is centre-sampled to
+    cells 3..8 x 3..8 x 4 = 36 cells; the sheet at z = 6 mm has footprint
+    nodes 2..10 on x and y, so 8 x 8 = 64 complete faces; the dielectric
+    (2,2,2)-(10,10,7) mm holds nodes 2..9 x 2..9 x 2..6, which covers all 36
+    cells and both cells (z = 5 and 6) under every face.
+    """
+    d = 1e-3
+    sim = Simulation(freq_max=10e9, domain=(12 * d, 12 * d, 8 * d), dx=d,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_material("sub", eps_r=3.0)
+    sim.add(Box((3 * d, 3 * d, 4 * d), (9 * d, 9 * d, 5 * d)), material="pec")
+    sim.add(Box((2 * d, 2 * d, 6 * d), (10 * d, 10 * d, 6 * d)), material="pec")
+    sim.add(Box((2 * d, 2 * d, 2 * d), (10 * d, 10 * d, 7 * d)), material="sub")
+    (sub,) = _rows(sim.fidelity_report(print_report=False), "sub")
+    (f,) = _findings(sub, RULE_I_KIND)
+    assert f["conductor_entities"] == [0, 1]
+
+    # Expected counts from masks built here, not from fidelity helpers.
+    from rfx.geometry.rasterize_grid import (
+        centres_from_uniform_grid, cell_sizes_from_uniform_grid, pec_volume_cell_mask)
+    grid = sim._build_grid()
+    volume = np.asarray(pec_volume_cell_mask(
+        sim._geometry[0].shape, centres_from_uniform_grid(grid),
+        cell_sizes_from_uniform_grid(grid)), bool)
+    dielectric = np.asarray(sim._geometry[2].shape.mask(grid), bool)
+    expected_cells = int((volume & dielectric).sum())
+    # Sheet footprint: the nodes on the z = 6 mm plane inside 2..10 mm on x, y.
+    x = np.array([grid.node_of("x", i) for i in range(grid.nx)])
+    y = np.array([grid.node_of("y", j) for j in range(grid.ny)])
+    k = int(np.argmin(np.abs(np.array(
+        [grid.node_of("z", n) for n in range(grid.nz)]) - 6 * d)))
+    inside_x = (x > 2 * d - 1e-9) & (x < 10 * d + 1e-9)
+    inside_y = (y > 2 * d - 1e-9) & (y < 10 * d + 1e-9)
+    footprint = inside_x[:, None] & inside_y[None, :]
+    # A face is metal when all four corners are in the footprint; it counts
+    # when the dielectric fills the cells on both sides of the plane.
+    corners = (footprint[:-1, :-1] & footprint[1:, :-1]
+               & footprint[:-1, 1:] & footprint[1:, 1:])
+    both_sides = dielectric[:-1, :-1, k] & dielectric[:-1, :-1, k - 1]
+    expected_faces = int((corners & both_sides).sum())
+    assert (expected_cells, expected_faces) == (36, 64)
+
+    assert f["overlap_cells"] == expected_cells
+    assert f["overlap_faces"] == expected_faces
+    assert "64 metal faces" in f["detail"]
+    assert "36 cells are already PEC" in f["detail"]
 
 
 def test_rule_i_keys_on_assembled_pec_not_on_the_name_pec():
@@ -685,6 +744,7 @@ def test_rule_i_control_the_same_pair_with_a_working_mask_fires_normally():
     (d,) = _rows(report, "d")
     (f,) = _findings(d, RULE_I_KIND)
     assert f["conductor_entities"] == [0] and f["overlap_cells"] > 0
+    assert f["overlap_faces"] == 0
     for it in report:
         assert _findings(it, "rasterization-failed") == [], it["entity"]
         assert _findings(it, "dielectric-after-conductor-unaudited") == [], it["entity"]

@@ -1,4 +1,6 @@
 """#1373: conformal PEC must not replace dielectric edge means with cells."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from tests._wall_axis_declaration import assert_declared_wall_warning
 from unittest.mock import patch
 
@@ -51,7 +53,7 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         inverse = kwargs.get("aniso_inv_eps")
         seen["inverse"] = None if inverse is None else np.asarray(inverse)
         periodic = simulation.resolve_periodic(grid, kwargs.get("periodic"))
-        plain, sigma = component_e_materials(materials, periodic)
+        plain, sigma = component_e_materials(materials, periodic, high_wall=unpadded_high_walls(grid))
         eps = kwargs.get("aniso_eps") or plain
         state = init_state(grid.shape)._replace(ex=eps[0], ey=eps[1], ez=eps[2])
         faces = resolve_wall_faces(grid, periodic)[0]
@@ -66,7 +68,7 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         seen["lumped_eps"] = np.asarray([np.zeros(grid.shape) if st is None
                                          else np.asarray(st) for st in stamps])
         seen["volume_mean"] = np.asarray(edge_mean_components(
-            permittivity_without_lumped(materials), periodic))
+            permittivity_without_lumped(materials), periodic, high_wall=unpadded_high_walls(grid)))
         seen.update(eps=np.asarray(eps), plain=np.asarray(plain),
                     realized=np.asarray((realized.ex, realized.ey, realized.ez)),
                     live=np.asarray((live.ex, live.ey, live.ez), dtype=bool),
@@ -189,7 +191,7 @@ def test_waveguide_conformal_builder_uses_component_means(monkeypatch):
         pass
 
     def capture(grid, materials, ref_materials, cfgs, n_steps, **kwargs):
-        plain = component_e_materials(materials)[0]
+        plain = component_e_materials(materials, high_wall=unpadded_high_walls(grid))[0]
         weights = kwargs["conformal_weights"]
         for actual, eps, w, ref in zip(kwargs["aniso_eps"], plain, weights,
                                        kwargs["ref_aniso_eps"]):

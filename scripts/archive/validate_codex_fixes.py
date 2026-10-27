@@ -62,7 +62,7 @@ print(f"  {'PASS' if energy_ok else 'FAIL'}: energy non-increasing (dissipative 
 print("\n=== 2. NTFF Far-Field Accuracy (H phase compensation) ===")
 
 from rfx import Simulation, GaussianPulse
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 
 sim = Simulation(
     freq_max=3e9,

@@ -1136,7 +1136,7 @@ def _wire_cell_widths(grid):
                  getattr(grid, "dz_f64", None))
         if all(v is not None for v in spine):
             return [np.asarray(v, dtype=float) for v in spine]
-        from rfx.nonuniform import port_metric_axes
+        from rfx.model.graded_ports import port_metric_axes
         metrics = port_metric_axes(grid)
         if not all(host for _, host in metrics):
             return None

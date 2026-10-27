@@ -46,6 +46,7 @@ def _update_e_with_optional_dispersion(
     dt: float,
     dx: float,
     *,
+    high_wall: tuple[bool, bool, bool],
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     periodic: tuple = (False, False, False),
@@ -78,13 +79,13 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic, boundary=boundary), None, None
+                                      dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic, boundary=boundary), None, None
+                                  dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall), None, None
 
     if debye is not None and lorentz is None:
         from rfx.stepping.poles import update_e_debye
@@ -299,7 +300,9 @@ def _build_step_setup(
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
     from rfx.model.tensor_operands import TensorOperands
-    materials = with_components(materials, grid, periodic=periodic, tensor=
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    materials = with_components(materials, grid, periodic=periodic,
+        high_wall=unpadded_high_walls(grid), tensor=
         TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
@@ -835,8 +838,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
 def core_step_invariants(ctx: _StepContext) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
 
-    ``ctx`` itself plus the two arrays derived from it once, eagerly: the
-    CPML permittivity and the surface-impedance sheet coefficients. A jitted
+    ``ctx`` itself plus arrays derived from it once, before the loop: the
+    CPML permittivity, sheet coefficients and boolean conformal zero masks. A jitted
     caller passes the per-cell arrays in this dict as an argument
     (:func:`rfx.core.jax_utils.split_loop_invariants`) and hands the rebuilt
     dict to ``make_core_step(ctx, invariants=...)`` inside the trace, so they
@@ -847,6 +850,11 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     materials = ctx.materials
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
+    # Stage 1's zero set is loop-invariant, like the update coefficients.
+    # Keep it separate from pec_edge_masks: sheets use those for PEC ownership.
+    conformal_zero_masks = None
+    if ctx.use_conformal and not ctx.use_aniso_inv:
+        conformal_zero_masks = tuple(w == 0.0 for w in tensor.conformal_weights)
 
     # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the
@@ -883,4 +891,5 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     from rfx.boundaries.pmc import magnetic_update_factors
     magnetic_factors = magnetic_update_factors(ctx.pmc_faces_frozen, ctx.grid.shape, ctx.periodic)
     return {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
-            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss}
+            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
+            "conformal_zero_masks": conformal_zero_masks}

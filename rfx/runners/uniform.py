@@ -176,6 +176,12 @@ def run_uniform(
         from rfx.geometry.smoothing import warn_unextendable_shapes
         # Assembly already emitted the conductor findings for this run.
         warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
+    if sim._waveguide_ports and (conformal_weights is not None
+                                 or sim._boundary_spec.conformal_faces()):
+        # Dispatch judged the default conformal routing; judge the weights formed here.
+        from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+        refuse_bare_waveguide_edges(sim, grid, lane="run_uniform",
+                                    conformal_weights=conformal_weights)
     if conformal_weights is not None:
         # Conformal replaces binary pec_mask; Stage 2 keeps it alive.
         pec_mask = None
@@ -546,33 +552,15 @@ def run_uniform(
             "amplitude": fpe.amplitude,
         })
 
-        # Add a soft source at the port plane (uniform across the plane)
-        from rfx.sources.sources import GaussianPulse as GP
-        wf = GP(f0=fp_f0, bandwidth=fpe.bandwidth, amplitude=fpe.amplitude)
-        # Place source at center of transverse plane
-        center = [sim._domain[i] / 2.0 for i in range(3)]
-        center[axis_idx] = fpe.position
-        if fpe.polarization == "te":
-            # TE: inject first tangential E component
-            if fpe.axis == "z":
-                comp = "ex"
-            elif fpe.axis == "x":
-                comp = "ey"
-            else:
-                comp = "ex"
-        else:
-            # TM: inject second tangential E component
-            if fpe.axis == "z":
-                comp = "ey"
-            elif fpe.axis == "x":
-                comp = "ez"
-            else:
-                comp = "ez"
-        from rfx.simulation import make_source as _make_src
-        sources.append(_make_src(grid, tuple(center), comp, wf, sizing_n))
+        # A soft source at the centre of the port plane (one builder, read
+        # again by the source-end collector).
+        from rfx.floquet import floquet_port_source
+        sources.append(floquet_port_source(grid, fpe, sim._freq_max, sim._domain, sizing_n)[1])
 
     from rfx.model.materials import with_components
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     materials = with_components(materials, grid,
+        high_wall=unpadded_high_walls(grid),
         periodic=_simulation.resolve_periodic(grid, periodic),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
     from rfx.model.source_coefficients import resolve_run_sources
@@ -590,6 +578,7 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
+        grid=grid,
         field_dtype=field_dtype if field_dtype is not None else jnp.float32,
         # The run's flags after the TFSF override above (#1260: the edge
         # mean wraps on a periodic axis, as the E update's does).
@@ -676,7 +665,8 @@ def run_uniform(
     # Main simulation
     if until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
-        from rfx.measurement.decay import advisory_inputs, drive_end
+        from rfx.measurement.decay import advisory_inputs
+        from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
                            tfsf=tfsf, waveguide_ports=waveguide_ports)
                  if until_decay > 0 and sim._boundary in ("cpml", "upml")

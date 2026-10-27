@@ -52,35 +52,34 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.measurement.modal import recorded as _recorded
+    from rfx.measurement.record_end import injection_end
     from rfx.model.waveguide_modes import incident_tables_uncut
-    from rfx.probes.settling import source_end_step
 
     final_cfgs = tuple(final_cfgs)
-    timing_fields = ("v_inc_t", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
-    timing_available = all(
-        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
-        for cfg in final_cfgs for name in timing_fields)
-    drives = []
-    source_end = None
-    if (final_cfgs and timing_available
-            and len({getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}) == 1):
-        # Use the recorded incident pulse with the same amplitude threshold.
-        # Include free-space travel to every scored plane.
-        for cfg in final_cfgs:
-            if not cfg.src_amp:
-                continue
-            distance = max(abs(float(cfg.source_x_m) - float(x))
-                           for other in final_cfgs
-                           for x in (other.reference_x_m, other.probe_x_m))
-            drives.append((_recorded(cfg, "v_inc_t"), distance))
-        if drives:
-            source_end = source_end_step(drives, len(drives[0][0]), final_cfgs[0].dt)
     named = [
         (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]
     n_record = len(named[0][1]) if named else 0
+    timing_fields = ("e_inc_table", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
+    timing_available = all(
+        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
+        for cfg in final_cfgs for name in timing_fields)
+    source_end = None
+    axes = {getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}
+    if final_cfgs and timing_available and len(axes) == 1:
+        # The applied incident E table with the one source-end rule, plus
+        # free-space travel to every scored plane.
+        axis = "xyz".index(axes.pop())
+        planes = []
+        for other in final_cfgs:
+            for x in (other.reference_x_m, other.probe_x_m):
+                point = np.zeros(3)
+                point[axis] = float(x)
+                planes.append(point)
+        source_end = injection_end(n_record, final_cfgs[0].dt, records=planes,
+                                   waveguide_ports=final_cfgs)
     try:
         known_drives = [table for cfg in final_cfgs for table in incident_tables_uncut(cfg)
                         if len(table) > n_record]
@@ -280,3 +279,35 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             stacklevel=4,
         )
     return result
+
+
+def tfsf_source_drive(cfg, grid):
+    """TF/SF source waveform and transit across its box diagonal."""
+    import jax.numpy as jnp
+
+    def waveform(t):
+        custom = getattr(cfg, "custom_waveform", None)
+        if custom is not None:
+            return cfg.src_amp * custom(t)
+        arg = (t - cfg.src_t0) / cfg.src_tau
+        env = jnp.exp(-(arg ** 2))
+        kind = getattr(cfg, "src_waveform", "analytic")
+        if kind == "modulated_gaussian":
+            return cfg.src_amp * env * jnp.cos(2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        if kind == "continuous_wave":
+            ramp = .5 * (1 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0., 1.)))
+            return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
+        if kind == "analytic":
+            return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        return cfg.src_amp * (-2 * arg) * env
+
+    lengths = []
+    for axis in "xyz":
+        lo = getattr(cfg, axis + "_lo", 0)
+        hi = getattr(cfg, axis + "_hi", grid.shape["xyz".index(axis)] - 1)
+        # A slab has no transverse box indices (both default to zero),
+        # but the illumination spans the transverse domain.
+        if axis != "x" and hi == lo and grid.shape["xyz".index(axis)] > 1:
+            lo, hi = 0, grid.shape["xyz".index(axis)] - 1
+        lengths.append(grid.node_of(axis, hi) - grid.node_of(axis, lo))
+    return waveform, float(np.linalg.norm(lengths))

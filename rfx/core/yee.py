@@ -93,7 +93,7 @@ class MaterialArrays(NamedTuple):
     sigma_film: object = None
 
 
-def component_h_materials(materials, periodic=(False, False, False), *, cell_sizes=None):
+def component_h_materials(materials, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Relative permeability at Hx, Hy, Hz, including local wire contours.
 
     Each component lies on the face between its own-axis backward cell and
@@ -117,9 +117,11 @@ def component_h_materials(materials, periodic=(False, False, False), *, cell_siz
     if jnp.ndim(mu) == 0:
         volume = (mu,) * 3
     else:
+        high_wall = _walls_off_periodic(high_wall, periodic)
+        mu = _material_wall_view(mu, high_wall)
         volume = []
         for axis in range(3):
-            lo = _material_bwd_neighbour(mu, axis, periodic)
+            lo = _material_bwd_neighbour(mu, axis, periodic, high_wall=high_wall)
             if cell_sizes is None:
                 mean = 2 / (1 / lo + 1 / mu)
             else:
@@ -130,7 +132,8 @@ def component_h_materials(materials, periodic=(False, False, False), *, cell_siz
                 shape = [1, 1, 1]
                 shape[axis] = widths.shape[0]
                 hi_d = widths.reshape(shape)
-                lo_d = _material_bwd_neighbour(hi_d, axis, periodic)
+                hi_d = _material_wall_view(hi_d, high_wall)
+                lo_d = _material_bwd_neighbour(hi_d, axis, periodic, high_wall=high_wall)
                 mean = (lo_d + hi_d) / (lo_d / lo + hi_d / mu)
             volume.append(exact_equal(lo, mu, mean))
         volume = tuple(volume)
@@ -556,7 +559,24 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, 
                      inv_dz[None, None, :]))
 
 
-def _material_bwd_neighbour(arr, ax, periodic, *, array_module=jnp):
+def _walls_off_periodic(high_wall, periodic):
+    """A run-level periodic axis has no wall, even where the grid lists none (#1966)."""
+    return tuple(False if p else w for w, p in zip(high_wall, periodic))
+
+
+def _material_wall_view(arr, high_wall, *, array_module=jnp):
+    """Read the last inside cell at global high walls, without changing cells."""
+    for axis, wall in enumerate(high_wall):
+        if arr.shape[axis] < 2 or wall is False:
+            continue
+        indices = array_module.arange(arr.shape[axis])
+        indices = array_module.where(wall & (indices == arr.shape[axis] - 1),
+                                     indices - 1, indices)
+        arr = array_module.take(arr, indices, axis=axis)
+    return arr
+
+
+def _material_bwd_neighbour(arr, ax, periodic, *, high_wall: tuple[bool, bool, bool], array_module=jnp):
     """The cell one step back along ``ax``, with the MATERIAL's outside rule.
 
     ``jnp.roll(arr, 1, axis=ax)`` on a periodic axis and on a length-1 axis
@@ -573,6 +593,7 @@ def _material_bwd_neighbour(arr, ax, periodic, *, array_module=jnp):
     outside take the boundary cell's own value, so a boundary edge averages
     over the cells that exist.
     """
+    arr = _material_wall_view(arr, _walls_off_periodic(high_wall, periodic), array_module=array_module)
     if arr.shape[ax] == 1 or periodic[ax]:
         return array_module.roll(arr, 1, axis=ax)
     first = [slice(None)] * arr.ndim
@@ -582,7 +603,7 @@ def _material_bwd_neighbour(arr, ax, periodic, *, array_module=jnp):
     return array_module.concatenate([arr[tuple(first)], arr[tuple(body)]], axis=ax)
 
 
-def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, cell_sizes=None):
+def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)``: the mean over the edge's four cells.
 
     THE one spelling of the material-to-edge rule (#1210). Every lane that
@@ -618,8 +639,8 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, cel
     exactly in binary floating point. That is what keeps every vacuum fixture
     and every uniform-dielectric lock byte-for-byte where it was.
     """
-    return (edge_mean_components(eps_r, periodic, cell_sizes=cell_sizes),
-            edge_mean_components(sigma, periodic, cell_sizes=cell_sizes))
+    return (edge_mean_components(eps_r, periodic, high_wall=high_wall, cell_sizes=cell_sizes),
+            edge_mean_components(sigma, periodic, high_wall=high_wall, cell_sizes=cell_sizes))
 
 
 def _edge_mean_four(values):
@@ -703,7 +724,9 @@ def _width_fraction(lo, d, array_module=jnp):
     return jnp.asarray(d / (lo + d))
 
 
-def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp):
+def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp, *, high_wall: tuple[bool, bool, bool]):
+    high_wall = _walls_off_periodic(high_wall, periodic)
+    arr = _material_wall_view(arr, high_wall, array_module=array_module)
     if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
         result = arr
         for t in (t1, t2):
@@ -714,18 +737,19 @@ def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp):
                 shape = [1, 1, 1]
                 shape[t] = arr.shape[t]
                 d = array_module.asarray(d, dtype=arr.dtype).reshape(shape)
-                lo = _material_bwd_neighbour(d, t, periodic, array_module=array_module)
+                d = _material_wall_view(d, high_wall, array_module=array_module)
+                lo = _material_bwd_neighbour(d, t, periodic, high_wall=high_wall, array_module=array_module)
                 fraction = _width_fraction(lo, d, array_module)
-            lo = _material_bwd_neighbour(result, t, periodic, array_module=array_module)
+            lo = _material_bwd_neighbour(result, t, periodic, high_wall=(False,) * 3, array_module=array_module)
             result = _edge_mean_pair(lo, result, fraction)
         return result
-    a1 = _material_bwd_neighbour(arr, t1, periodic, array_module=array_module)
-    a2 = _material_bwd_neighbour(arr, t2, periodic, array_module=array_module)
-    a12 = _material_bwd_neighbour(a1, t2, periodic, array_module=array_module)
+    a1 = _material_bwd_neighbour(arr, t1, periodic, high_wall=(False,) * 3, array_module=array_module)
+    a2 = _material_bwd_neighbour(arr, t2, periodic, high_wall=(False,) * 3, array_module=array_module)
+    a12 = _material_bwd_neighbour(a1, t2, periodic, high_wall=(False,) * 3, array_module=array_module)
     return _edge_mean_four((arr, a1, a2, a12))
 
 
-def edge_mean_components(arr, periodic=(False, False, False), *, cell_sizes=None, array_module=jnp):
+def edge_mean_components(arr, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None, array_module=jnp):
     """``(mean_x, mean_y, mean_z)``: a cell array averaged over each E edge's
     four incident cells -- the arithmetic of :func:`edge_averaged_materials`,
     which calls it for ``eps_r`` and ``sigma``.
@@ -739,12 +763,12 @@ def edge_mean_components(arr, periodic=(False, False, False), *, cell_sizes=None
     a tuple of one-dimensional widths, with None for constant axes.
     """
     def mean4(t1, t2):
-        return _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module)
+        return _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module, high_wall=high_wall)
 
     return tuple(mean4(*[t for t in range(3) if t != c]) for c in range(3))
 
 
-def component_e_materials(materials, periodic=(False, False, False), *, cell_sizes=None):
+def component_e_materials(materials, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays` (#1210).
 
     The volume part is edge-averaged; the lumped stamps
@@ -764,7 +788,7 @@ def component_e_materials(materials, periodic=(False, False, False), *, cell_siz
     if sig_l is not None:
         sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(
-        eps_v, sig_v, periodic, **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
+        eps_v, sig_v, periodic, high_wall=high_wall, **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
     # Each stamp back on its OWN component (#1236).
     eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
@@ -776,7 +800,7 @@ _E_COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
 
 def cell_component_e_materials(materials, cell, component,
-                               periodic=(False, False, False), *, cell_sizes=None):
+                               periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """``(eps_r, sigma)`` the E update uses for ONE component at ONE cell.
 
     :func:`component_e_materials` restricted to a single node, by indexing the
@@ -817,7 +841,8 @@ def cell_component_e_materials(materials, cell, component,
                 c[t1] = back(cell[t1], t1)
             if d2:
                 c[t2] = back(cell[t2], t2)
-            idxs.append(tuple(c))
+            idxs.append(tuple(n - 2 if wall and n > 1 and i == n - 1 else i
+                              for i, n, wall in zip(c, shape, high_wall)))
 
     eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
     sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
@@ -845,7 +870,8 @@ def cell_component_e_materials(materials, cell, component,
                     fractions.append(0.5)
                 else:
                     d = jnp.asarray(cell_sizes[t], dtype=arr.dtype)
-                    fractions.append(_width_fraction(d[back(cell[t], t)], d[cell[t]]))
+                    hi = cell[t] - int(high_wall[t] and shape[t] > 1 and cell[t] == shape[t] - 1)
+                    fractions.append(_width_fraction(d[back(cell[t], t)], d[hi]))
             hi = _edge_mean_pair(v[2], v[0], fractions[0])
             lo = _edge_mean_pair(v[3], v[1], fractions[0])
             m = _edge_mean_pair(lo, hi, fractions[1])
@@ -863,19 +889,19 @@ def cell_component_e_materials(materials, cell, component,
 
 
 def cell_component_e_coeffs(materials, cell, component, dt,
-                            periodic=(False, False, False)):
+                            periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool]):
     """``(Ca, Cb)`` of the E update for one component at one cell (#1210)."""
     eps_r, sigma = cell_component_e_materials(materials, cell, component,
-                                              periodic)
+                                              periodic, high_wall=high_wall)
     return e_update_coeffs(eps_r, sigma, dt)
 
 
-def e_component_coeffs(materials, dt, periodic=(False, False, False), *, cell_sizes=None):
+def e_component_coeffs(materials, dt, periodic=(False, False, False), *, cell_sizes=None, high_wall: tuple[bool, bool, bool]):
     """Per-component E coefficients differentiated through their stored operands."""
     eps, sig = ((materials.components.eps_update, materials.components.sigma_update)
                 if materials.components is not None
                 else component_e_materials(materials, periodic,
-                    **({} if cell_sizes is None else dict(cell_sizes=cell_sizes))))
+                    **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)), high_wall=high_wall))
     if _realized.ACTIVE is not None:
         eps, sig = _realized.electric(materials, eps, sig, "yee.E", periodic=periodic)
     pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
@@ -883,7 +909,7 @@ def e_component_coeffs(materials, dt, periodic=(False, False, False), *, cell_si
 
 
 def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
-                                  periodic=(False, False, False)):
+                                  periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool]):
     """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for the edge-averaged rule.
 
     :func:`edge_averaged_materials` followed by :func:`e_update_coeffs`, which
@@ -891,7 +917,7 @@ def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
     identity lock ``tests/locks/test_sheet_refactor_bit_identity.py`` watches
     that function).
     """
-    eps, sig = edge_averaged_materials(eps_r, sigma, periodic)
+    eps, sig = edge_averaged_materials(eps_r, sigma, periodic, high_wall=high_wall)
     pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
     return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
 
@@ -1066,6 +1092,7 @@ def precompute_coeffs(
     pec_axes: str = "",
     pec_faces=(),
     periodic: tuple = (False, False, False),
+    high_wall: tuple[bool, bool, bool],
 ) -> UpdateCoeffs:
     """Pre-compute all FDTD update coefficients.
 
@@ -1091,7 +1118,7 @@ def precompute_coeffs(
     UpdateCoeffs
     """
     mu = (materials.components.mu_update if materials.components is not None
-          else component_h_materials(materials, periodic))
+          else component_h_materials(materials, periodic, high_wall=high_wall))
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "precompute.H", periodic=periodic)
     # Preserve the historical scalar-array bake, including its f32 numerator.
@@ -1106,7 +1133,7 @@ def precompute_coeffs(
     # to each component's edge. The arithmetic below is unchanged, so a
     # homogeneous grid bakes the same bits it baked before.
     _eps_c, _sig_c = ((materials.components.eps_update, materials.components.sigma_update) if materials.components is not None
-                      else component_e_materials(materials, periodic))
+                      else component_e_materials(materials, periodic, high_wall=high_wall))
     if _realized.ACTIVE is not None:
         _eps_c, _sig_c = _realized.electric(
             materials, _eps_c, _sig_c, "precompute.E", periodic=periodic)
@@ -1217,10 +1244,10 @@ def _require_nu_aniso_metrics(update):
     """Validate raw-cell metrics before the anisotropic builder is traced."""
     @wraps(update)
     def checked(state, materials, eps_ex, eps_ey, eps_ez, dt,
-                inv_dx, inv_dy, inv_dz, *, boundary=None, cell_sizes=None):
+                inv_dx, inv_dy, inv_dz, *, high_wall, boundary=None, cell_sizes=None):
         metrics = _nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes)
         return update(state, materials, eps_ex, eps_ey, eps_ez, dt,
-                      inv_dx, inv_dy, inv_dz, boundary=boundary, **metrics)
+                      inv_dx, inv_dy, inv_dz, high_wall=high_wall, boundary=boundary, **metrics)
     return checked
 
 

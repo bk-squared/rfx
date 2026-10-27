@@ -35,6 +35,8 @@ of EPS_0 is accounted for in the coefficient-builder contract.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -269,15 +271,15 @@ def _dispersion_cases(dtype):
           lorentz_pole(.7, 2 * np.pi * 15e9, 2e9)]
 
     def debye_coeffs(e, s):
-        return debye.init_debye(dp, m._replace(eps_r=e, sigma=s), dt, masks)[0]
+        return debye.init_debye(dp, m._replace(eps_r=e, sigma=s), dt, masks, high_wall=(False, False, False))[0]
 
     def lorentz_coeffs(e, s):
-        return lorentz.init_lorentz(lp, m._replace(eps_r=e, sigma=s), dt, masks)[0]
+        return lorentz.init_lorentz(lp, m._replace(eps_r=e, sigma=s), dt, masks, high_wall=(False, False, False))[0]
 
     dc, lc = debye_coeffs(m.eps_r, m.sigma), lorentz_coeffs(m.eps_r, m.sigma)
 
     def components(e, s):
-        return rfx.core.yee.component_e_materials(m._replace(eps_r=e, sigma=s))
+        return rfx.core.yee.component_e_materials(m._replace(eps_r=e, sigma=s), high_wall=(False, False, False))
 
     def mixed(e, s):
         dc, lc = debye_coeffs(e, s), lorentz_coeffs(e, s)
@@ -325,14 +327,14 @@ def _builder_cases():
         "e_update_coeffs": (
             lambda e: rfx.core.yee.e_update_coeffs(e, mats.sigma, dt), mats.eps_r, 1e24),
         "precompute_coeffs": (
-            lambda e: rfx.core.yee.precompute_coeffs(mats._replace(eps_r=e), dt, dx),
+            lambda e: rfx.core.yee.precompute_coeffs(mats._replace(eps_r=e), dt, dx, high_wall=(False, False, False)),
             mats.eps_r, 1e24),
         "update_e_aniso": (
-            lambda e: rfx.core.yee.update_e_aniso(st, mats, e, e, e, dt, dx).ex,
+            lambda e: rfx.core.yee.update_e_aniso(st, mats, e, e, e, dt, dx, high_wall=(False, False, False)).ex,
             mats.eps_r, 1e24),
         "update_e_aniso_inv": (
             lambda e: rfx.core.yee.update_e_aniso_inv(
-                st, mats, 1.0 / e, 1.0 / e, 1.0 / e, dt, dx).ez, mats.eps_r, 1e28),
+                st, mats, 1.0 / e, 1.0 / e, 1.0 / e, dt, dx, high_wall=(False, False, False)).ez, mats.eps_r, 1e28),
         "adi_step_2d": (
             lambda e: rfx.adi.adi_step_2d(*f2, e, sig2, 5 * dt, dx, dx)[0], eps2, 1e20),
         "adi_step_3d": (
@@ -346,8 +348,9 @@ def _builder_cases():
             lambda e: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, mats._replace(eps_r=e), dt), mats.eps_r, 1e24),
         "edge_update_denominator": (
+            # This raw-array fixture has no wall face.
             lambda e: rfx.lumped.edge_update_denominator(
-                mats._replace(eps_r=e), (2, 3, 3), "ez", dt), mats.eps_r, 1e30),
+                mats._replace(eps_r=e), (2, 3, 3), "ez", dt, grid=SimpleNamespace()), mats.eps_r, 1e30),
         "init_upml": (
             lambda e: rfx.boundaries.upml.init_upml(
                 upml_grid, m3._replace(eps_r=e))[:6], m3.eps_r, 1e24),
@@ -537,15 +540,15 @@ def _jvp_cases(dtype):
         "e_update_coeffs": (
             lambda e, s: yee.e_update_coeffs(e, s, dt), m.eps_r, m.sigma),
         "precompute_coeffs": (
-            lambda e, s: yee.precompute_coeffs(m._replace(eps_r=e, sigma=s), dt, dx),
+            lambda e, s: yee.precompute_coeffs(m._replace(eps_r=e, sigma=s), dt, dx, high_wall=(False, False, False)),
             m.eps_r, m.sigma),
         "update_e_aniso": (
             lambda e, s: yee.update_e_aniso(st, m._replace(sigma=s), e, 0.5 * e + 1.0,
-                                            2.0 * e, dt, dx)[:3],
+                                            2.0 * e, dt, dx, high_wall=(False, False, False))[:3],
             m.eps_r, m.sigma),
         "update_e_aniso_inv": (
             lambda e, s: yee.update_e_aniso_inv(st, m._replace(sigma=s), 1.0 / e,
-                                                0.5 / e, 1.0 / (e + 1.0), dt, dx)[:3],
+                                                0.5 / e, 1.0 / (e + 1.0), dt, dx, high_wall=(False, False, False))[:3],
             m.eps_r, m.sigma),
         "adi_step_2d": (
             lambda e, s: rfx.adi.adi_step_2d(*f2, e, s, 5 * dt, dx, dx),
@@ -572,8 +575,9 @@ def _jvp_cases(dtype):
             lambda e, s: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, m._replace(eps_r=e, sigma=s), dt), m.eps_r, sheet_sigma),
         "edge_update_denominator": (
+            # This raw-array fixture has no wall face.
             lambda e, s: rfx.lumped.edge_update_denominator(
-                m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt),
+                m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt, grid=SimpleNamespace()),
             m.eps_r, m.sigma),
         "init_upml": (
             lambda e, s: rfx.boundaries.upml.init_upml(

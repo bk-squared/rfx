@@ -910,7 +910,7 @@ def build_coaxial_tem_plane_source_specs(
     # εr correction so the per-step E-injection matches the physical
     # ``cb = dt/(εr·ε₀·dz)`` of the FDTD update.
     from rfx.core.yee import MaterialArrays, component_h_materials
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     coeff_h = jnp.float32(dt_step / (mu_abs * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 

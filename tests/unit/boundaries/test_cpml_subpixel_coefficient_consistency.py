@@ -23,6 +23,8 @@ recorded as "exponential divergence -> all-NaN s11".
 """
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import pytest
 
@@ -358,11 +360,11 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     from rfx.core.yee import component_e_materials
     realize = material_model.realize_components
     expected_eps = []
-    def observe_cells(cells, grid, *, periodic):
+    def observe_cells(cells, grid, *, periodic, **kw):
         # The scan now carries only consumed operands, not assembly cells.
         raw = cells.materials if isinstance(cells, material_model.ComponentCells) else cells
-        expected_eps.append(component_e_materials(raw, periodic)[0])
-        return realize(cells, grid, periodic=periodic)
+        expected_eps.append(component_e_materials(raw, periodic, high_wall=unpadded_high_walls(grid))[0])
+        return realize(cells, grid, periodic=periodic, **kw)
     monkeypatch.setattr(material_model, "realize_components", observe_cells)
 
     def spy(*a, **kw):

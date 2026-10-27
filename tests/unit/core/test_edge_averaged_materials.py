@@ -12,6 +12,8 @@ A test that compares two calls of the same helper would survive that.
 """
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -67,7 +69,7 @@ def test_the_coefficient_on_a_dielectric_face_is_the_mean_of_the_four_cells(
         import rfx.core.yee as _yee
         monkeypatch.setattr(
             _yee, "edge_averaged_materials",
-            lambda eps_r, sigma, periodic=(False, False, False): (
+            lambda eps_r, sigma, periodic=(False, False, False), **kw: (
                 (eps_r, eps_r, eps_r), (sigma, sigma, sigma)))
 
     eps = _half_space_eps(1.0, 9.0, axis=2, cut=4)
@@ -75,7 +77,7 @@ def test_the_coefficient_on_a_dielectric_face_is_the_mean_of_the_four_cells(
 
     # Read it where the solver reads it: the baked coefficients.
     coeffs = precompute_coeffs(MaterialArrays(eps, sigma, jnp.ones(SHAPE)),
-                               DT, DX)
+                               DT, DX, high_wall=(False, False, False))
     # Ex(i+1/2, j, k) at k = 4 is incident on cells k = 3 (eps 1) and k = 4
     # (eps 9), twice each over the y pair.
     cb_ex_face = float(np.asarray(coeffs.cb_ex)[2, 3, 4]) * DX
@@ -104,7 +106,7 @@ def test_a_lossy_face_averages_the_conductance_not_the_resistance():
     idx = np.indices(SHAPE)[2]
     sigma = jnp.asarray(np.where(idx < 4, 0.0, 1e4).astype(np.float32))
     eps = jnp.ones(SHAPE, jnp.float32)
-    (_, _, _), (sx, sy, sz) = edge_averaged_materials(eps, sigma)
+    (_, _, _), (sx, sy, sz) = edge_averaged_materials(eps, sigma, high_wall=(False, False, False))
     assert float(np.asarray(sx)[2, 3, 4]) == pytest.approx(5e3, rel=1e-6)
     assert float(np.asarray(sy)[2, 3, 4]) == pytest.approx(5e3, rel=1e-6)
     # Ez averages over x and y, both uniform here: the step along z cannot
@@ -130,8 +132,8 @@ def test_update_e_multiplies_each_component_by_its_own_coefficient():
     sigma = jnp.zeros(SHAPE, jnp.float32)
     mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE, jnp.float32))
 
-    out = update_e(st, mats, DT, DX)
-    _, (cb_x, cb_y, cb_z) = edge_averaged_e_update_coeffs(eps, sigma, DT)
+    out = update_e(st, mats, DT, DX, high_wall=(False, False, False))
+    _, (cb_x, cb_y, cb_z) = edge_averaged_e_update_coeffs(eps, sigma, DT, high_wall=(False, False, False))
     cx, cy, cz = curl_h(st.hx, st.hy, st.hz, DX, (False, False, False), 2, None)
     # Not bitwise: ``update_e`` is jitted and XLA fuses the multiply-add, so
     # the two orderings differ by a float32 ULP or two (measured 8e-6
@@ -165,14 +167,14 @@ def test_a_uniform_material_gives_bit_identical_coefficients(eps_r, sigma_v):
     """((a + a) + (a + a)) * 0.25 == a exactly, so vacuum fixtures do not move."""
     eps = jnp.full(SHAPE, eps_r, jnp.float32)
     sigma = jnp.full(SHAPE, sigma_v, jnp.float32)
-    (e_c, s_c) = edge_averaged_materials(eps, sigma)
+    (e_c, s_c) = edge_averaged_materials(eps, sigma, high_wall=(False, False, False))
     for a in e_c:
         assert np.array_equal(np.asarray(a), np.asarray(eps))
     for a in s_c:
         assert np.array_equal(np.asarray(a), np.asarray(sigma))
 
     ca, cb = e_update_coeffs(eps, sigma, DT)
-    new_ca, new_cb = edge_averaged_e_update_coeffs(eps, sigma, DT)
+    new_ca, new_cb = edge_averaged_e_update_coeffs(eps, sigma, DT, high_wall=(False, False, False))
     for a, b in zip(new_ca, (ca,) * 3):
         assert np.array_equal(np.asarray(a), np.asarray(b))
     for a, b in zip(new_cb, (cb,) * 3):
@@ -183,7 +185,7 @@ def test_a_uniform_grid_bakes_bit_identical_fast_coefficients():
     eps = jnp.full(SHAPE, 2.55, jnp.float32)
     sigma = jnp.full(SHAPE, 0.0, jnp.float32)
     mu = jnp.ones(SHAPE, jnp.float32)
-    c = precompute_coeffs(MaterialArrays(eps, sigma, mu), DT, DX)
+    c = precompute_coeffs(MaterialArrays(eps, sigma, mu), DT, DX, high_wall=(False, False, False))
     loss = sigma * np.float32(DT) / (np.float32(2.0) * eps * np.float32(EPS_0))
     denom = np.float32(1.0) + loss
     ca = (np.float32(1.0) - loss) / denom
@@ -214,7 +216,7 @@ def test_the_edge_average_and_the_pec_incidence_rule_cover_the_same_cells(period
     rng = np.random.default_rng(0)
     occ = jnp.asarray((rng.random(SHAPE) < 0.4).astype(np.float32))
     masks = _volume_occupancy_masks(occ, periodic)
-    means, _ = edge_averaged_materials(occ, occ, periodic)
+    means, _ = edge_averaged_materials(occ, occ, periodic, high_wall=(False, False, False))
     for c, (m, mean) in enumerate(zip(masks, means)):
         assert np.array_equal((np.asarray(mean) > 0).astype(np.float32),
                               np.asarray(m)), (
@@ -228,17 +230,17 @@ def test_a_periodic_axis_wraps_and_a_non_periodic_one_replicates():
     sigma = jnp.asarray(np.where(idx == SHAPE[0] - 1, 4.0, 0.0).astype(np.float32))
     eps = jnp.ones(SHAPE, jnp.float32)
 
-    _, (_, sy_p, _) = edge_averaged_materials(eps, sigma, (True, False, False))
+    _, (_, sy_p, _) = edge_averaged_materials(eps, sigma, (True, False, False), high_wall=(False, False, False))
     # Ey averages over x and z; with x periodic, cell 0's backward neighbour is
     # the conducting last layer: (0 + 4 + 0 + 4)/4 = 2.
     assert float(np.asarray(sy_p)[0, 2, 3]) == pytest.approx(2.0)
 
-    _, (_, sy_n, _) = edge_averaged_materials(eps, sigma, (False, False, False))
+    _, (_, sy_n, _) = edge_averaged_materials(eps, sigma, (False, False, False), high_wall=(False, False, False))
     # Non-periodic: cell 0 replicates itself, so it stays lossless.
     assert float(np.asarray(sy_n)[0, 2, 3]) == 0.0
     # And the eps at that same edge is 1, not 0 -- a zero pad would be a
     # division by zero in e_update_coeffs.
-    (_, ey_n, _), _ = edge_averaged_materials(eps, sigma, (False, False, False))
+    (_, ey_n, _), _ = edge_averaged_materials(eps, sigma, (False, False, False), high_wall=(False, False, False))
     assert float(np.asarray(ey_n)[0, 2, 3]) == pytest.approx(1.0)
 
 
@@ -269,7 +271,7 @@ def test_a_lumped_stamp_reaches_its_own_edge_undiluted(component):
         MaterialArrays(eps, jnp.zeros(SHAPE, jnp.float32), jnp.ones(SHAPE)),
         cell, g, component)
     sigma = mats.sigma
-    _, sig_c = component_e_materials(mats)
+    _, sig_c = component_e_materials(mats, high_wall=unpadded_high_walls(g))
     for c, (name, arr) in enumerate(zip(("ex", "ey", "ez"), sig_c)):
         want = g if c == axis else 0.0
         assert float(np.asarray(arr)[cell]) == pytest.approx(want, rel=1e-6), (
@@ -285,7 +287,7 @@ def test_a_lumped_stamp_reaches_its_own_edge_undiluted(component):
     # Without the record, the same sigma array is averaged: a quarter here,
     # a quarter on each of three neighbours. That is the defect.
     plain = MaterialArrays(eps, sigma, jnp.ones(SHAPE))
-    _, sig_plain = component_e_materials(plain)
+    _, sig_plain = component_e_materials(plain, high_wall=unpadded_high_walls(g))
     assert float(np.asarray(sig_plain[0])[cell]) == pytest.approx(g / 4, rel=1e-6)
 
 
@@ -296,8 +298,8 @@ def test_no_lumped_record_is_bit_identical_to_the_plain_average():
     idx = np.indices(SHAPE)[1]
     sigma = jnp.asarray(np.where(idx < 3, 0.0, 7.0).astype(np.float32))
     mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE))
-    eps_c, sig_c = component_e_materials(mats)
-    eps_ref, sig_ref = edge_averaged_materials(eps, sigma)
+    eps_c, sig_c = component_e_materials(mats, high_wall=(False, False, False))
+    eps_ref, sig_ref = edge_averaged_materials(eps, sigma, high_wall=(False, False, False))
     for a, b in zip(eps_c + sig_c, eps_ref + sig_ref):
         assert np.array_equal(np.asarray(a), np.asarray(b))
 
@@ -327,10 +329,10 @@ def test_the_cell_helper_agrees_with_the_grid_wide_one(component):
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
 
     for periodic in [(False, False, False), (True, True, True)]:
-        eps_g, sig_g = component_e_materials(mats, periodic)
+        eps_g, sig_g = component_e_materials(mats, periodic, high_wall=(False, False, False))
         for cell in [(0, 0, 0), (2, 3, 4), (5, 6, 7), (0, 6, 0)]:
             e_c, s_c = cell_component_e_materials(mats, cell, component,
-                                                  periodic)
+                                                  periodic, high_wall=(False, False, False))
             assert float(e_c) == pytest.approx(
                 float(np.asarray(eps_g[axis])[cell]), rel=1e-6), (
                 f"eps disagrees at {cell}, {component}, periodic={periodic}")
@@ -363,7 +365,7 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
     if mutate:
         monkeypatch.setattr(
             _materials, "e_update_coefficient_at",
-            lambda m, cell, comp, dt, periodic=(False, False, False):
+            lambda m, cell, comp, dt, periodic=(False, False, False), **kw:
                 e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
@@ -381,7 +383,7 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
     assert (spec.i, spec.j, spec.k) == cell, "fixture moved off the interface"
     # make_j_source scales Cb by the cell volume; divide it back out.
     drive = float(np.asarray(spec.waveform)[0]) * (1e-3 ** 3)
-    update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt)[1][0])[cell])
+    update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt, high_wall=unpadded_high_walls(grid))[1][0])[cell])
     owning_cb = float(e_update_coeffs(eps, sigma, grid.dt)[1][cell])
 
     if mutate:
@@ -415,13 +417,13 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
                           jnp.ones(SHAPE), sigma_lumped=(None, None, lumped))
 
     for periodic in [(True, True, True), (True, False, False)]:
-        _, sig_c = component_e_materials(mats, periodic)
+        _, sig_c = component_e_materials(mats, periodic, high_wall=unpadded_high_walls(g))
         for name, arr in zip(("ex", "ey", "ez"), sig_c):
             a = np.asarray(arr)
             # the volume part at this cell, computed without the stamp
             plain = MaterialArrays(jnp.ones(SHAPE, jnp.float32), vol,
                                    jnp.ones(SHAPE))
-            base = np.asarray(component_e_materials(plain, periodic)[1][
+            base = np.asarray(component_e_materials(plain, periodic, high_wall=unpadded_high_walls(g))[1][
                 {"ex": 0, "ey": 1, "ez": 2}[name]])
             want = g if name == "ez" else 0.0
             assert a[cell] - base[cell] == pytest.approx(want, rel=1e-5,
@@ -465,7 +467,7 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
         for module in (_yee, _stepping_yee):
             monkeypatch.setattr(
                 module, "component_e_materials",
-                lambda m, periodic=(False, False, False), *, cell_sizes=None: (
+                lambda m, periodic=(False, False, False), *, cell_sizes=None, **kw: (
                     (m.eps_r,) * 3, (m.sigma,) * 3))
 
     idx = np.indices(SHAPE)[2]
@@ -489,14 +491,14 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     ca_edge, ca_owned = ca_of(1e4), ca_of(2e4)
     assert abs(ca_edge - ca_owned) > 1e-3, "the fixture cannot separate the two"
 
-    out = update_e_aniso_inv(st, mats, inv, inv, inv, DT, DX)
+    out = update_e_aniso_inv(st, mats, inv, inv, inv, DT, DX, high_wall=(False, False, False))
     jax.clear_caches()
     got = float(np.asarray(out.ex)[cell])
     nu_inv = jnp.ones(SHAPE[0], jnp.float32)
     out_nu = update_e_nu_aniso(st, mats, eps, eps, eps, DT,
                                nu_inv, jnp.ones(SHAPE[1], jnp.float32),
                                jnp.ones(SHAPE[2], jnp.float32),
-                               cell_sizes=(None, None, None))
+                               cell_sizes=(None, None, None), high_wall=(False, False, False))
     got_nu = float(np.asarray(out_nu.ex)[cell])
 
     expect = ca_owned if mutate else ca_edge
@@ -530,7 +532,7 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     if mutate:
         monkeypatch.setattr(
             _src, "e_update_coefficient_at",
-            lambda m, cell, comp, dt, periodic=(False, False, False):
+            lambda m, cell, comp, dt, periodic=(False, False, False), **kw:
                 e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
@@ -543,7 +545,7 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     cell = (4, 4, 4)
     pos = tuple((c + 0.5) * 1e-3 for c in cell)
 
-    update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt)[1][2])[cell])
+    update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt, high_wall=unpadded_high_walls(grid))[1][2])[cell])
     owning_cb = float(e_update_coeffs(eps, sigma, grid.dt)[1][cell])
     expect = owning_cb if mutate else update_cb
     assert update_cb / owning_cb == pytest.approx(1.8, rel=1e-2)

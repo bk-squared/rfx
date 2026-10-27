@@ -207,7 +207,7 @@ def test_current_moment_monitor_and_its_far_field():
 
 def test_ntff_far_field():
     from rfx import Simulation
-    from rfx.farfield import compute_far_field_jax
+    from rfx.measurement.farfield import compute_far_field_jax
     sim = Simulation(freq_max=12e9, domain=(12e-3, 12e-3, 12e-3), dx=1e-3,
                      boundary="cpml", cpml_layers=4)
     sim.add_source((6e-3, 6e-3, 6e-3), "ez")

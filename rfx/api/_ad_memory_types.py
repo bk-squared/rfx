@@ -12,12 +12,15 @@ class ADMemoryUnavailable(ValueError):
 class AD_MemoryEstimate(NamedTuple):
     """Reverse-mode tape estimate, calibrated on GPU with JAX 0.10.2.
 
-    Sizes are decimal GB. Segments save one scan carry per active boundary
+    Sizes ending in ``_gb`` are decimal GB; ``_bytes`` fields are integers.
+    Segments save one scan carry per active boundary
     plus a live segment, independently of the per-step checkpoint flag.
     The fixed AD working set is calibrated by
     formulation; it is distinct from the forward-only working set.
-    ``cotangents`` outputs pulled back at once add one carry each beyond the
-    first; the device holds more (docs/guides/known_limitations.md).
+    ``cotangents`` outputs pulled back at once add 7.5 carries each beyond the
+    first: one boundary carry plus 6.5 carries of working arrays, calibrated
+    on one graded whole-grid scene (GPU, JAX 0.10.2). The same whole-grid
+    adjoint workspace is estimated for design boxes; boxes are unmeasured.
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -62,6 +65,21 @@ class AD_MemoryEstimate(NamedTuple):
     calibration: str = "calibrated (GPU, jax 0.10.2)"
     carry_warnings: tuple[str, ...] = ()
     cotangents: int = 1
+    #: Post-scan replay weights, separate from scan carry and NTFF state.
+    replay_table_bytes: int = 0
+    #: Realized measurement kind and its summed retained replay weight bytes.
+    replay_table_bytes_by_kind: tuple[tuple[str, int], ...] = ()
+    #: Per-extra-cotangent working arrays, excluding the boundary carry.
+    working_bytes: int = 0
+    #: Opt-in compile-only device peak; analytic estimates leave these None.
+    compiled_bytes: int | None = None
+    #: Live device memory after compilation, including trace-time constants
+    #: and arrays the process already holds. The run includes those existing
+    #: arrays only if they are still live when it runs.
+    resident_bytes: int | None = None
+    allocator_rounding_bytes: int | None = None
+    allocator_rounding_max_bytes: int | None = None
+    compiled_total_bytes: int | None = None
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -71,6 +89,10 @@ class AD_MemoryEstimate(NamedTuple):
     def to_dict(self) -> dict[str, float | int | None | str]:
         """Return a stable JSON-serializable AD memory artifact."""
         return {
+            **({name: getattr(self, name) for name in (
+                "compiled_bytes", "resident_bytes", "allocator_rounding_bytes",
+                "allocator_rounding_max_bytes", "compiled_total_bytes",
+            )} if self.compiled_total_bytes is not None else {}),
             "saved": list(self.saved),
             "excluded_linear": list(self.excluded_linear),
             "modelled": self.modelled,
@@ -78,6 +100,7 @@ class AD_MemoryEstimate(NamedTuple):
             "checkpoint": self.checkpoint,
             "design": self.design,
             "carry_bytes": self.carry_bytes,
+            "working_bytes": self.working_bytes,
             "tape_step_bytes": self.tape_step_bytes,
             "tape_window_cells": self.tape_window_cells,
             "design_box_bounds": list(self.design_box_bounds) if self.design_box_bounds is not None else None,

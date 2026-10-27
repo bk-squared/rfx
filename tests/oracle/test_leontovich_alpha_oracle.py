@@ -452,16 +452,14 @@ def test_absorber_realizes_the_declared_ramp_without_gaps_or_overwrites():
     expected[start:start + ABSORBER_N,
              grid.pad_y_lo:grid.pad_y_lo + ny,
              grid.pad_z_lo:grid.pad_z_lo + nz] = values[:, None, None]
-    # The ramp ends on the unpadded high x (PEC), y (PMC) and z (PEC) walls.
-    # The high-wall node repair (#1966) gives each wall's node layer its inner
-    # neighbour, one axis after another, so the material keeps full weight on
-    # the wall edges (on the PMC face those edges carry field).
     i_x, i_y, i_z = start + ABSORBER_N, grid.pad_y_lo + ny, grid.pad_z_lo + nz
     assert sigma.shape == (i_x + 1, i_y + 1, i_z + 1), sigma.shape
-    expected[i_x] = expected[i_x - 1]
-    expected[:, i_y] = expected[:, i_y - 1]
-    expected[:, :, i_z] = expected[:, :, i_z - 1]
     np.testing.assert_array_equal(sigma, expected)
+    from rfx.core.yee import component_e_materials
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    _, sigma_edges = component_e_materials(materials, high_wall=unpadded_high_walls(grid))
+    for component in sigma_edges:
+        assert float(component[i_x, i_y, i_z]) == float(values[-1])
 
 
 def test_ez_prediction_recovers_tem_impedance_and_physical_phase_reference():

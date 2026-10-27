@@ -113,7 +113,7 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
     transverse = [t for t in range(3) if t != axis]
     if hasattr(grid, "dx_arr"):
-        from rfx.nonuniform import port_metric_axes
+        from rfx.model.graded_ports import port_metric_axes
         spine = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
         if all(v is not None for v in spine):
             # A fixed mesh built inside jit has traced solver arrays but

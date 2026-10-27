@@ -20,12 +20,12 @@ from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
 from rfx.nonuniform import (
     NonUniformGrid,
-    interior_cells,
     make_nonuniform_grid,
     run_nonuniform,
     run_nonuniform_until_decay,
     make_current_source,
 )
+from rfx.model.graded_grid import interior_cells
 
 
 INTERFACE_EPS_RULES = ("sampled", "dual_average")
@@ -46,7 +46,7 @@ def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=No
         raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
 
 
-def assemble_interface_eps_nu(sim, grid, materials):
+def assemble_interface_eps_nu(sim, grid, materials, *, high_wall: tuple[bool, bool, bool]):
     """Cell-centre eps averaged over the four cells sharing each E edge.
 
     Tangential weights are dual-face areas, with PEC cells excluded. Along
@@ -83,7 +83,10 @@ def assemble_interface_eps_nu(sim, grid, materials):
     if any(not grid.is_constant(a) for a in range(3)):
         from rfx.model.materials import geometric_interface_components
         return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
-                     geometric_interface_components(eps, live, volume_eps, widths))
+                     geometric_interface_components(eps, live, volume_eps, widths, high_wall=high_wall))
+    from rfx.core.yee import _material_wall_view
+    eps = _material_wall_view(eps, high_wall, array_module=np)
+    live = _material_wall_view(live, high_wall, array_module=np)
     components = []
     for c in range(3):
         num, den = eps * live, live
@@ -93,6 +96,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
             shape = [1, 1, 1]
             shape[a] = grid.shape[a]
             d = np.asarray(widths[a]).reshape(shape)
+            d = _material_wall_view(d, high_wall, array_module=np)
             num, den = num * d, den * d
             lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
             num = num + np.take(num, lower, axis=a)
@@ -255,7 +259,7 @@ def _range_to_slice_nu(grid, axis, value_range):
     lo, hi = value_range
     # Each end on the node pos_to_nu_index names (the #1295 tie rule),
     # as the uniform builder puts it on round(lo/dx).
-    from rfx.nonuniform import _axis_position_to_index
+    from rfx.model.graded_grid import _axis_position_to_index
     lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
     hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
     if hi_local <= lo_local:
@@ -839,7 +843,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     )
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":
-        aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
+        from rfx.geometry.rasterize_grid import unpadded_high_walls
+        aniso_eps = assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
 
     # Fold RLC R/C into materials before other port/source setup
     # (mirrors the uniform path). #1256: into the drive's copy too -- an
@@ -1032,8 +1037,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             )
 
     # TFSF plane-wave source. Scope: axis-aligned +x / -x incidence with
-    # angle_deg=0 so the 1D auxiliary grid runs along the uniform x axis
-    # with scalar cell size grid.dx. Oblique angles (2D auxiliary grid)
+    # angle_deg=0; the 1D auxiliary grid runs on the realized x cells
+    # (tfsf_from_declaration, which also refuses traced x). Oblique angles (2D auxiliary grid)
     # and +z / -z incidence (which would require a z-nonuniform 1D aux)
     # are rejected here with actionable messages.
     tfsf_pair = None
@@ -1057,10 +1062,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "TFSF on nonuniform mesh supports only direction='+x' or "
                 f"'-x'; got {entry.direction!r}."
             )
-        if is_tracer(grid.cells("x")):
-            raise ValueError(
-                "a plane wave on a graded mesh needs a fixed, uniform x axis; "
-                "the x cell sizes are traced")
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_pair = tfsf_from_declaration(
             entry, grid, sim._freq_max, n_steps=n_steps,
@@ -1213,7 +1214,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
     elif until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
-        from rfx.measurement.decay import advisory_inputs, drive_end
+        from rfx.measurement.decay import advisory_inputs
+        from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
                  if until_decay > 0 and radiated_flux_box is None else None)
@@ -1392,3 +1394,14 @@ def build_flux_monitor_cfgs_nu(sim, grid, sizing_n):
             )
 
     return flux_monitor_objs
+
+
+def bind_solve_call(assembly, call):
+    """Consume a graded solve before ring-down adds internal probes."""
+    from functools import partial
+    root = assembly.take()
+    return partial(
+        call,
+        conductors=root,
+        diagnostics=assembly.diagnostics,
+    ), root.grid

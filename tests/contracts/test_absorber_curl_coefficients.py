@@ -8,12 +8,19 @@ import pytest
 
 from rfx import Box
 from rfx.core.yee import EPS_0
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from tests.contracts._absorber_curl_scene import build
 
 
-def edge_mean(cells, component):
+def edge_mean(cells, component, *, high_wall):
     """Independent numpy four-cell mean, exterior cells replicated."""
-    cells = np.asarray(cells, dtype=np.float64)
+    cells = np.array(cells, dtype=np.float64, copy=True)
+    for axis, wall in enumerate(high_wall):
+        if wall:
+            outside = [slice(None)] * 3
+            inside = [slice(None)] * 3
+            outside[axis], inside[axis] = -1, -2
+            cells[tuple(outside)] = cells[tuple(inside)]
     a, b = [axis for axis in range(3) if axis != component]
     prev_a = np.take(cells, np.maximum(np.arange(cells.shape[a]) - 1, 0), axis=a)
     prev_b = np.take(cells, np.maximum(np.arange(cells.shape[b]) - 1, 0), axis=b)
@@ -126,13 +133,13 @@ def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_prope
     assert set(observed['update']) == set(observed['absorber']) == {0, 1, 2}
     values = []
     for c in range(3):
-        eps = edge_mean(mats.eps_r, c)
-        sigma = edge_mean(mats.sigma, c)
+        eps = edge_mean(mats.eps_r, c, high_wall=unpadded_high_walls(grid))
+        sigma = edge_mean(mats.sigma, c, high_wall=unpadded_high_walls(grid))
         # Written owner formula, independent numpy arithmetic; never a product coefficient helper.
         denominator = eps * EPS_0 + sigma * float(grid.dt) / 2
         if ds is not None:
             mask = ds[1][0] if isinstance(ds[1], (list, tuple)) else ds[1]
-            fraction = edge_mean(mask, c)
+            fraction = edge_mean(mask, c, high_wall=unpadded_high_walls(grid))
             denominator += EPS_0 * 50. * float(grid.dt) / (2 * 5e-12 + float(grid.dt)) * fraction
         expected = np.asarray(float(grid.dt) / denominator, np.float32)
         actual = observed['absorber'][c][:6]

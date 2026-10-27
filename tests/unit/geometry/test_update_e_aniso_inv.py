@@ -65,13 +65,13 @@ def test_update_e_aniso_inv_vacuum_matches_update_e():
     dt = dx / (3e8 * np.sqrt(3.0)) * 0.99
 
     state0 = _make_state_with_seeded_field(shape, seed=42)
-    state0 = update_h(state0, _make_materials_constant(shape), dt, dx)
+    state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
     materials = _make_materials_constant(shape, eps_r=1.0, sigma=0.0)
     ones = jnp.ones(shape, dtype=jnp.float32)
 
-    out_legacy = update_e(state0, materials, dt, dx)
-    out_inv = update_e_aniso_inv(state0, materials, ones, ones, ones, dt, dx)
+    out_legacy = update_e(state0, materials, dt, dx, high_wall=(False, False, False))
+    out_inv = update_e_aniso_inv(state0, materials, ones, ones, ones, dt, dx, high_wall=(False, False, False))
 
     # Tolerance: float32 ULP at the typical Cb · curl scale (~1e-3) is
     # ~1e-10. The two paths differ in arithmetic ordering — `update_e`
@@ -114,7 +114,7 @@ def test_update_e_aniso_inv_dielectric_matches_update_e_aniso():
     eps_r = 4.0
 
     state0 = _make_state_with_seeded_field(shape, seed=7)
-    state0 = update_h(state0, _make_materials_constant(shape), dt, dx)
+    state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
     materials = _make_materials_constant(shape, eps_r=1.0, sigma=0.0)
 
@@ -131,10 +131,10 @@ def test_update_e_aniso_inv_dielectric_matches_update_e_aniso():
 
     out_legacy = update_e_aniso(
         state0, materials, eps_aniso[0], eps_aniso[1], eps_aniso[2], dt, dx,
-    )
+     high_wall=(False, False, False))
     out_inv = update_e_aniso_inv(
         state0, materials, inv_aniso[0], inv_aniso[1], inv_aniso[2], dt, dx,
-    )
+     high_wall=(False, False, False))
 
     # Within 5 ULP for float32 ~ 6e-7 relative.
     np.testing.assert_allclose(
@@ -170,7 +170,7 @@ def test_update_e_aniso_inv_pec_tangential_frozen():
 
     state0 = _make_state_with_seeded_field(shape, seed=3)
     # Ensure non-zero H (so curl(H) is non-trivial when E updates).
-    state0 = update_h(state0, _make_materials_constant(shape), dt, dx)
+    state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
     # Seed Ex with a known non-zero pattern so we can verify it is
     # preserved (not zeroed by some side-effect).
@@ -183,7 +183,7 @@ def test_update_e_aniso_inv_pec_tangential_frozen():
     ones = jnp.ones(shape, dtype=jnp.float32)
 
     # inv_xx = 0 (PEC tangential), inv_yy = inv_zz = 1 (vacuum).
-    out = update_e_aniso_inv(state0, materials, zeros, ones, ones, dt, dx)
+    out = update_e_aniso_inv(state0, materials, zeros, ones, ones, dt, dx, high_wall=(False, False, False))
 
     # Ex must remain at its seeded value (Ca=1 · ex_seed + Cb=0 · curl).
     np.testing.assert_allclose(
@@ -205,7 +205,7 @@ def test_update_e_aniso_inv_pec_tangential_with_sigma_still_frozen():
     dt = dx / (3e8 * np.sqrt(3.0)) * 0.99
 
     state0 = _make_state_with_seeded_field(shape, seed=23)
-    state0 = update_h(state0, _make_materials_constant(shape), dt, dx)
+    state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
     # Seed Ex.
     rng = np.random.default_rng(99)
@@ -217,7 +217,7 @@ def test_update_e_aniso_inv_pec_tangential_with_sigma_still_frozen():
     zeros = jnp.zeros(shape, dtype=jnp.float32)
     ones = jnp.ones(shape, dtype=jnp.float32)
 
-    out = update_e_aniso_inv(state0, materials, zeros, ones, ones, dt, dx)
+    out = update_e_aniso_inv(state0, materials, zeros, ones, ones, dt, dx, high_wall=(False, False, False))
 
     np.testing.assert_allclose(
         np.asarray(out.ex), ex_seed, rtol=0, atol=1e-7,
@@ -244,13 +244,13 @@ def test_update_e_aniso_inv_partial_pec_perpendicular_finite():
     dt = dx / (3e8 * np.sqrt(3.0)) * 0.99
 
     state0 = _make_state_with_seeded_field(shape, seed=55)
-    state0 = update_h(state0, _make_materials_constant(shape), dt, dx)
+    state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
     materials = _make_materials_constant(shape, eps_r=1.0, sigma=0.0)
     ones = jnp.ones(shape, dtype=jnp.float32)
     inv_yy = jnp.full(shape, 0.36, dtype=jnp.float32)
 
-    out = update_e_aniso_inv(state0, materials, ones, inv_yy, ones, dt, dx)
+    out = update_e_aniso_inv(state0, materials, ones, inv_yy, ones, dt, dx, high_wall=(False, False, False))
 
     assert np.all(np.isfinite(np.asarray(out.ex)))
     assert np.all(np.isfinite(np.asarray(out.ey)))
@@ -273,7 +273,7 @@ def test_update_e_aniso_inv_jit_compatible():
     dx = 0.001
     dt = dx / (3e8 * np.sqrt(3.0)) * 0.99
 
-    fn_jit = jax.jit(update_e_aniso_inv)
+    fn_jit = jax.jit(update_e_aniso_inv, static_argnames=('high_wall',))
 
     state0 = _make_state_with_seeded_field(shape, seed=1)
     materials = _make_materials_constant(shape, eps_r=2.0, sigma=0.5)
@@ -281,7 +281,8 @@ def test_update_e_aniso_inv_jit_compatible():
     inv_yy = jnp.full(shape, 0.5, dtype=jnp.float32)
     inv_zz = jnp.full(shape, 0.5, dtype=jnp.float32)
 
-    out = fn_jit(state0, materials, inv_xx, inv_yy, inv_zz, dt, dx)
+    out = fn_jit(state0, materials, inv_xx, inv_yy, inv_zz, dt, dx,
+                 high_wall=(False,) * 3)
     assert np.all(np.isfinite(np.asarray(out.ex)))
     assert np.all(np.isfinite(np.asarray(out.ey)))
     assert np.all(np.isfinite(np.asarray(out.ez)))

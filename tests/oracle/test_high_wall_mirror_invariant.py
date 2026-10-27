@@ -24,9 +24,8 @@ Variants (one parametrized test):
   selector only (measured 8.55 GHz, the same rule on both sides). PEC zeroes
   the wall edges, so this pair must agree with or without the repair.
 
-A dispersive (Debye) slab is not here: its record is not a few damped sinusoids,
-so the pencil cannot identify its mode. It is checked on the DFT bar alone in
-the producer fix for #1966.
+The Debye slab uses the full-record DFT bar alone (producer Decision record 2).
+Its pencil frequency and identification error are diagnostics only.
 
 Mirror on the realized lattice. Case H's indices are the nearest nodes of the
 requested positions (round half up, the rule of ``Grid.position_to_index``
@@ -101,9 +100,15 @@ VARIANTS = {
               (0.5 * F_EZ, 1.5 * C0 / (2.0 * A)), (3e9, 7e9), 12e9, True),
     "pmc_x": ((B, A, D), dict(x="pmc", y="pec", z="pec"), 0, 1, "ez", F_EZ,
               (0.5 * F_EZ, 1.5 * C0 / (2.0 * A)), (3e9, 7e9), 12e9, True),
+    "pmc_z": ((A, D, B), dict(x="pec", y="pec", z="pmc"), 2, 0, "ey", F_EZ,
+              (0.5 * F_EZ, 1.5 * C0 / (2.0 * A)), (3e9, 7e9), 12e9, True),
     "pec_y_control": ((A, B, D), dict(x="pec", y="pec", z="pec"), 1, 0, "ey", F_EY,
                       (0.5 * F_EY, 1.5 * F_EY), (0.6 * F_EY, 1.4 * F_EY), 15e9, False),
 }
+VARIANTS["graded_pmc_y"] = VARIANTS["pmc_y"]
+VARIANTS["debye_pmc_y"] = (*VARIANTS["pmc_y"][:9], False)
+# Each half is 4 mm; the sequence is deliberately not palindromic.
+GRADED_Y = H * np.array([0.90, 1.10, 1.05, 0.95, 1.08, 0.92, 1.10, 0.90])
 
 # Case H positions as fractions of (mirror length W, sin length L, D).
 SOURCE_H = (0.30, 0.31, 0.43)
@@ -124,8 +129,11 @@ def _indices(variant, frac, side):
     pos = [0.0, 0.0, 0.0]
     pos[mirror_ax] = frac[0] * domain[mirror_ax]
     pos[sin_ax] = frac[1] * domain[sin_ax]
-    pos[2] = frac[2] * D
+    pos[3 - mirror_ax - sin_ax] = frac[2] * D
     idx = [_nearest_node(p) for p in pos]
+    if variant == "graded_pmc_y":
+        nodes = np.r_[0.0, np.cumsum(GRADED_Y)]
+        idx[mirror_ax] = int(np.argmin(abs(nodes - pos[mirror_ax])))
     if side == "L":
         n = _nearest_node(domain[mirror_ax])
         displaced = comp == "e" + "xyz"[mirror_ax]
@@ -139,9 +147,12 @@ def _point(variant, frac, side):
     p = [0.0, 0.0, 0.0]
     p[mirror_ax] = frac[0] * domain[mirror_ax]
     p[sin_ax] = frac[1] * domain[sin_ax]
-    p[2] = frac[2] * D
+    p[3 - mirror_ax - sin_ax] = frac[2] * D
     if side == "L":
         p[mirror_ax] = _indices(variant, frac, "L")[mirror_ax] * H
+    if variant == "graded_pmc_y":
+        widths = GRADED_Y if side == "H" else GRADED_Y[::-1]
+        p[mirror_ax] = float(np.r_[0.0, np.cumsum(widths)][_indices(variant, frac, side)[mirror_ax]])
     return tuple(p)
 
 
@@ -156,8 +167,16 @@ def _slab_bounds(variant, side):
 
 def _solve(variant, side):
     domain, boundary, mirror_ax, _, comp, f_est, _, _, freq_max = VARIANTS[variant][:9]
-    sim = Simulation(freq_max=freq_max, domain=domain, dx=H, boundary=BoundarySpec(**boundary))
-    sim.add_material("d", eps_r=SLAB_EPS)
+    profiles = {}
+    if variant == "graded_pmc_y":
+        profiles = dict(dy_profile=(GRADED_Y if side == "H" else GRADED_Y[::-1]).copy(),
+                        dz_profile=np.full(16, H))
+    sim = Simulation(freq_max=freq_max, domain=domain, dx=H, boundary=BoundarySpec(**boundary), **profiles)
+    poles = {}
+    if variant == "debye_pmc_y":
+        from rfx.materials.debye import DebyePole
+        poles = dict(debye_poles=[DebyePole(delta_eps=3.0, tau=1 / (2 * np.pi * 50e9))])
+    sim.add_material("d", eps_r=SLAB_EPS, **poles)
     lo, hi = _slab_bounds(variant, side)
     lo_c, hi_c = [0.0, 0.0, 0.0], list(domain)
     lo_c[mirror_ax], hi_c[mirror_ax] = lo, hi
@@ -246,14 +265,22 @@ def _layered_resonance(a, b, t, eps1):
     raise RuntimeError("no root of the transverse-resonance equation in the scan")
 
 
-@pytest.mark.parametrize("variant", ["pmc_y", "pmc_x", "pec_y_control"])
+@pytest.mark.parametrize("variant", list(VARIANTS))
 def test_high_wall_slab_solves_as_its_low_wall_mirror(variant):
     tr_h, dt_h, src_h, prb_h = _solve(variant, "H")
     tr_l, dt_l, src_l, prb_l = _solve(variant, "L")
     assert dt_h == dt_l
 
-    m_h = _mode(tr_h, dt_h, variant, "H")
-    m_l = _mode(tr_l, dt_l, variant, "L")
+    if variant == "debye_pmc_y":
+        def diagnostic(trace, dt):
+            from types import SimpleNamespace
+            modes = matrix_pencil(trace[PENCIL_START:], dt, *VARIANTS[variant][6])
+            return (min(modes, key=lambda m: abs(m.freq - VARIANTS[variant][5])) if modes
+                    else SimpleNamespace(freq=float("nan"), error=float("nan")))
+        m_h, m_l = diagnostic(tr_h, dt_h), diagnostic(tr_l, dt_l)
+    else:
+        m_h = _mode(tr_h, dt_h, variant, "H")
+        m_l = _mode(tr_l, dt_l, variant, "L")
     ratio = m_h.freq / m_l.freq
 
     freqs = _dft_freqs(variant)
@@ -278,7 +305,7 @@ def test_high_wall_slab_solves_as_its_low_wall_mirror(variant):
             failed.append("anchor H")
         if not abs(dev_l) <= ANCHOR_BAR:
             failed.append("anchor L")
-    if not abs(ratio - 1.0) <= FREQ_BAR:
+    if variant != "debye_pmc_y" and not abs(ratio - 1.0) <= FREQ_BAR:
         failed.append("mirror frequency")
     if not rel <= DFT_BAR:
         failed.append("mirror DFT")

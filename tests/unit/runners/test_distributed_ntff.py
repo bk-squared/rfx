@@ -10,7 +10,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.antenna import antenna_gain
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from rfx.geometry import Box
 
 # Per-array peak-relative bar. PEC compensation is compared to its own peak.
@@ -148,8 +148,8 @@ def test_mutation_h_update_skips_ghost_rows(monkeypatch):
     from rfx.runners import distributed_v2 as runner
     original = runner._update_h_local
 
-    def skip_ghosts(state, *args):
-        updated = original(state, *args)
+    def skip_ghosts(state, *args, **kwargs):
+        updated = original(state, *args, **kwargs)
         return updated._replace(**{
             name: getattr(updated, name).at[0].set(getattr(state, name)[0])
                   .at[-1].set(getattr(state, name)[-1])

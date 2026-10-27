@@ -1613,7 +1613,7 @@ def extract_s_matrix(
     debye = None
     if debye_spec is not None:
         debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, mats, dt, mask=debye_masks)
+        debye = init_debye(debye_poles, mats, dt, mask=debye_masks, grid=grid)
 
     lorentz = None
     if lorentz_spec is not None:
@@ -1910,7 +1910,7 @@ def extract_s_matrix_wire(
     debye = None
     if debye_spec is not None:
         debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, mats, dt, mask=debye_masks)
+        debye = init_debye(debye_poles, mats, dt, mask=debye_masks, grid=grid)
 
     lorentz = None
     if lorentz_spec is not None:

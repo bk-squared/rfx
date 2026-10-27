@@ -193,7 +193,7 @@ _apply_pec_shmap = apply_pec_face_shmap
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
                          e_slab=None, e_materials=None,
-                         *, ranks, grid, e_curl_coeff=None, boundary=None):
+                         *, ranks, grid, high_wall, e_curl_coeff=None, boundary=None):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -205,7 +205,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     The psi coefficient takes the permittivity the E update of the same step
     used (#1043): with ``e_slab = (nx_per, nx)`` each component's four-cell
     edge mean, built on each slab by
-    :func:`rfx.runners._distributed_common.slab_e_component_materials`
+    :func:`rfx.model.electric_metrics.slab_e_component_materials`
     (#1303), including on dispersive models (#1260). ``e_materials`` can
     supply the same means already formed before the time loop.
 
@@ -250,7 +250,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         if mat_slab is not None and means is None:
-            means = slab_e_component_materials(mat_slab, *e_slab, rank=rank)
+            means = slab_e_component_materials(mat_slab, *e_slab, rank=rank, high_wall=high_wall)
         eps_r_slab = None if means is None else means[0]
         _cs = cpml_state._replace(
             psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
@@ -306,7 +306,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
-                         *, ranks, grid):
+                         *, ranks, grid, high_wall, slab):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -361,7 +361,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         )
         new_st, new_cs = apply_cpml_h(
             _st, cpml_params, _cs, grid,
-            materials=cpml_h_materials(mu_r_slab, rank, ghost),
+            materials=cpml_h_materials(mu_r_slab, rank, ghost, nx_per=slab[0], nx=slab[1], high_wall=high_wall),
             faces=cpml_absorbing_faces(grid), frame=cpml_slab_frame(ex.shape, ghost, pad_x),
             owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
@@ -544,7 +544,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
 def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
                     _source_port_indices=None, _record_probes=None, preflight=None, assembly=None,
-                    snapshot=None, **kwargs):
+                    snapshot=None, _pre_injection_probes=(), _record_vref=True, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -572,6 +572,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         The numerical step is shared with the main run.
     _record_probes : tuple or None
         Optional global-cell probes in place of the model probes.
+    _pre_injection_probes : tuple
+        Private S-driver E probes; append their pre-injection samples to the
+        probe output. _record_vref=False is the bit-identity test control.
 
     Returns
     -------
@@ -659,6 +662,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     else:
         conductors = assembly.take(n_devices=n_devices)
         grid = conductors.grid
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
         assembled_materials(conductors, pec_sheets=_d_pec_sheets,
                                 pec_wires=_d_pec_wires,
@@ -761,7 +766,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # A dispersive edge's drive needs the ADE update's coefficient, as on one
     # device (#1524); the pole terms are read edge by edge from the specs.
     from rfx.model.source_coefficients import dispersive_drive_model
-    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, stability_grid=grid,
+    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
                                             in_program=mesh.devices.size < 2)
     sources = sources.resolve(drive_materials)
     del wire_edges, drive_materials
@@ -848,7 +853,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     e_wall_faces = distributed_electric_walls(grid) - _pmc_faces_frozen
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
-        n_devices, nx_per, ghost, shd, nx=nx)
+        n_devices, nx_per, ghost, shd, nx=nx, high_wall=high_wall)
     del materials, pec_mask, pec_shapes
     del debye_spec, lorentz_spec
     if has_debye:
@@ -953,6 +958,16 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             reduce_devices=False,
             ranks=ranks)
 
+    def _sample_pre_injection(st, *, ranks):
+        if not _pre_injection_probes:
+            return None  # no reference sampler: the step output stays main's
+        if not _record_vref:
+            return jnp.zeros((n_devices, len(_pre_injection_probes)), dtype=st.ex.dtype)
+        return sample_probes_shmap(
+            st, mesh, len(_pre_injection_probes),
+            [(layout.local_index(p.i), p.j, p.k, p.component) for p in _pre_injection_probes],
+            [layout.owner(p.i) for p in _pre_injection_probes], reduce_devices=False, ranks=ranks)
+
     # ------------------------------------------------------------------
     # H and E local updates via shard_map
     # ------------------------------------------------------------------
@@ -981,8 +996,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, factors, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
-                                 mu_r=magnetic_low_ghost(mu_r, rank, ghost))
-            new_st = _update_h_local(_st, _mat, dt, dx, factors)
+                                 mu_r=magnetic_low_ghost(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall))
+            new_st = _update_h_local(_st, _mat, dt, dx, factors, high_wall=(False, *high_wall[1:]))
             return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
         hx, hy, hz, step = _h(
@@ -1042,7 +1057,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             from rfx.stepping.absorber import local_e_with_absorber
             new_st, new_db, new_lr, absorber = local_e_with_absorber(
                 _st, _mat, dt, dx, debye=_db, lorentz=_lr,
-                slab=(nx_per, nx), e_materials=means, rank=rank,
+                slab=(nx_per, nx), e_materials=means, rank=rank, high_wall=high_wall,
                 **_slab_curl_kwargs(curl_boundary, hx.shape, ghost, pad_x, rank, n_devices))
             # Unpack debye
             if new_db is not None:
@@ -1144,7 +1159,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x, ranks=ranks, grid=cpml_grid)
+            pad_x=pad_x, ranks=ranks, grid=cpml_grid, high_wall=high_wall, slab=(nx_per, nx))
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
@@ -1165,9 +1180,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             mesh, n_devices, ghost=ghost, materials=materials_arg,
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
-            ranks=ranks, grid=cpml_grid,
+            ranks=ranks, grid=cpml_grid, high_wall=high_wall,
             e_curl_coeff=absorber, boundary=curl_boundary)
 
+        reference_out = _sample_pre_injection(st, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 6b. Realized conductor edges, distinct from domain walls. The
@@ -1227,7 +1243,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        return updated, probe_out
+        if reference_out is None:
+            return updated, probe_out
+        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1273,6 +1291,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         st, incident = slab_tfsf.apply_e(
             st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
+        reference_out = _sample_pre_injection(st, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), BEFORE the domain faces and
@@ -1321,7 +1340,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        return updated, probe_out
+        if reference_out is None:
+            return updated, probe_out
+        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
 
     # ------------------------------------------------------------------
     # Build step indices and waveform scan inputs
@@ -1351,7 +1372,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             cpml_params_arg, pec_mask_arg, tfsf_tables_arg,
             *, ranks,
         ):
-            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
+            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall)
                            if has_debye or has_lorentz else None)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_cpml(
@@ -1391,7 +1412,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             pec_mask_arg, tfsf_tables_arg,
             *, ranks,
         ):
-            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
+            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall)
                            if has_debye or has_lorentz else None)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_pec(
@@ -1463,7 +1484,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Probe time series: summed across devices after the scan inside jit
     # probe_ts shape: (n_steps, n_probes) or (n_steps, 0)
     # ------------------------------------------------------------------
-    if n_prb > 0:
+    if n_prb > 0 or _pre_injection_probes:
         time_series = jnp.array(probe_ts)  # (n_steps, n_probes)
     else:
         time_series = jnp.zeros((n_steps, 0), dtype=jnp.float32)

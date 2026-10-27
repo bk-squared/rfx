@@ -59,7 +59,7 @@ def test_the_fine_grid_port_conductance_is_realized_whole(stamp, expect):
 
     # The dielectric background is uniform, so everything the edge average
     # does to sigma here is done to the stamp.
-    _, sigma_edge = cell_component_e_materials(mats, cell, "ez")
+    _, sigma_edge = cell_component_e_materials(mats, cell, "ez", high_wall=(False, False, False))
     realized = float(sigma_edge)
 
     assert realized == pytest.approx(expect * sigma_port, rel=1e-6), (
@@ -78,7 +78,7 @@ def test_the_stamp_does_not_leak_onto_neighbouring_fine_edges():
     mats = stamp_lumped_sigma(init_materials(SHAPE), cell, sigma_port, "ez")
 
     for neighbour in [(6, 7, 6), (6, 6, 7), (7, 6, 6), (6, 5, 6)]:
-        _, s = cell_component_e_materials(mats, neighbour, "ez")
+        _, s = cell_component_e_materials(mats, neighbour, "ez", high_wall=(False, False, False))
         assert float(s) == pytest.approx(0.0, abs=1e-9), (
             f"the port's conductance reached {neighbour}, an edge it does "
             f"not span")
@@ -99,7 +99,7 @@ def test_the_wire_port_branch_stamps_every_live_cell():
     assert sx is None and sy is None
     assert np.count_nonzero(np.asarray(sz)) == len(cells)
     for c in cells:
-        _, s = cell_component_e_materials(mats, c, "ez")
+        _, s = cell_component_e_materials(mats, c, "ez", high_wall=(False, False, False))
         assert float(s) == pytest.approx(sigma_per_cell, rel=1e-6)
     # Series conductance of the three-cell wire: each cell carries 3/(Z0*d),
     # three in series gives 1/(Z0*d) over the whole span.

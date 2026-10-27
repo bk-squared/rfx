@@ -13,6 +13,8 @@ introduced for issue #72:
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -98,8 +100,8 @@ def test_jit_path_matches_python_loop_extractor():
 
     for n in range(n_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # The eager loop must use the same two slots the JIT scan uses:
         # the PRE-injection drive sample into v_ref, the PHYSICAL V/I after

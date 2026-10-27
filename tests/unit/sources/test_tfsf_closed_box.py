@@ -10,9 +10,18 @@ import pytest
 from rfx.api import Simulation
 from rfx.core.yee import EPS_0, MU_0, init_state
 from rfx.sources.sources import CustomWaveform, GaussianPulse
+from rfx.stepping.tfsf import (
+    apply_tfsf_e,
+    apply_tfsf_h,
+    update_tfsf_1d,
+)
 from rfx.sources.tfsf import (
-    apply_tfsf_e, apply_tfsf_h, init_tfsf, tfsf_injection_planes,
-    update_tfsf_1d, update_tfsf_1d_e, measure_normal_incident_spectrum,
+    init_tfsf,
+    tfsf_injection_planes,
+    update_tfsf_1d_e,
+)
+from rfx.measurement.incident import (
+    measure_normal_incident_spectrum,
 )
 
 
@@ -459,10 +468,9 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
         old_core.get_opaque_trace_state = get_state
         old_core.take_current_trace = take_trace
     else:
-        def clean():
-            caller = get_state()
-            with take_trace():
-                return caller == get_state()
+        def clean():  # an untransformed thread's state (take_trace asserts on jax 0.11)
+            from rfx.runners._admission import _eager_trace_state
+            return get_state() == _eager_trace_state(get_state)
         old_core.trace_state_clean = clean
     monkeypatch.setitem(sys.modules, "jax.extend.core", old_extension)
     monkeypatch.setitem(sys.modules, "jax.core", old_core)

@@ -46,7 +46,7 @@ def _background():
 
 
 def _coeffs(mats):
-    ca, cb = e_component_coeffs(mats, DT)
+    ca, cb = e_component_coeffs(mats, DT, high_wall=(False, False, False))
     return [np.asarray(a) for a in ca], [np.asarray(b) for b in cb]
 
 
@@ -88,8 +88,8 @@ def test_a_stamp_changes_only_its_own_component_at_its_own_node(component,
                     f"{component} loads the {COMPONENTS[c]} edge too (#1236)")
 
     # The realized edge value is the declared one, whole (not averaged).
-    eps_c, sig_c = component_e_materials(mats)
-    eps_b, sig_b = component_e_materials(base)
+    eps_c, sig_c = component_e_materials(mats, high_wall=(False, False, False))
+    eps_b, sig_b = component_e_materials(base, high_wall=(False, False, False))
     got = (np.asarray(sig_c[axis])[CELL] - np.asarray(sig_b[axis])[CELL]
            if kind == "sigma" else
            np.asarray(eps_c[axis])[CELL] - np.asarray(eps_b[axis])[CELL])
@@ -98,7 +98,7 @@ def test_a_stamp_changes_only_its_own_component_at_its_own_node(component,
     # Every port / source DRIVE coefficient reads the single-node rule; it
     # must agree with the grid-wide one for all three components.
     for c, comp in enumerate(COMPONENTS):
-        ca_n, cb_n = cell_component_e_coeffs(mats, CELL, comp, DT)
+        ca_n, cb_n = cell_component_e_coeffs(mats, CELL, comp, DT, high_wall=(False, False, False))
         assert float(ca_n) == pytest.approx(float(ca1[c][CELL]), rel=1e-6)
         assert float(cb_n) == pytest.approx(float(cb1[c][CELL]), rel=1e-6)
 
@@ -115,8 +115,8 @@ def test_two_elements_of_different_components_on_one_node_keep_both():
     mats = stamp_lumped_sigma(mats, CELL, g_x, "ex")
     mats = stamp_lumped_eps(mats, CELL, c_x, "ex")
 
-    eps_c, sig_c = component_e_materials(mats)
-    eps_b, sig_b = component_e_materials(base)
+    eps_c, sig_c = component_e_materials(mats, high_wall=(False, False, False))
+    eps_b, sig_b = component_e_materials(base, high_wall=(False, False, False))
     d_sig = [float(np.asarray(s)[CELL] - np.asarray(b)[CELL])
              for s, b in zip(sig_c, sig_b)]
     d_eps = [float(np.asarray(e)[CELL] - np.asarray(b)[CELL])
@@ -126,8 +126,8 @@ def test_two_elements_of_different_components_on_one_node_keep_both():
 
     for comp, want_s, want_e in zip(COMPONENTS, (g_x, 0.0, g_z),
                                     (c_x, 0.0, 0.0)):
-        e_n, s_n = cell_component_e_materials(mats, CELL, comp)
-        e_0, s_0 = cell_component_e_materials(base, CELL, comp)
+        e_n, s_n = cell_component_e_materials(mats, CELL, comp, high_wall=(False, False, False))
+        e_0, s_0 = cell_component_e_materials(base, CELL, comp, high_wall=(False, False, False))
         assert float(s_n - s_0) == pytest.approx(want_s, rel=1e-5, abs=1e-4)
         assert float(e_n - e_0) == pytest.approx(want_e, rel=1e-5, abs=1e-5)
 
@@ -144,9 +144,9 @@ def test_a_component_less_record_is_refused():
     bare = jnp.zeros(SHAPE, jnp.float32).at[CELL].add(20.0)
     mats = base._replace(sigma=base.sigma + bare, sigma_lumped=bare)
     with pytest.raises(TypeError, match="per E component"):
-        component_e_materials(mats)
+        component_e_materials(mats, high_wall=(False, False, False))
     with pytest.raises(TypeError, match="per E component"):
-        cell_component_e_materials(mats, CELL, "ez")
+        cell_component_e_materials(mats, CELL, "ez", high_wall=(False, False, False))
     with pytest.raises(ValueError, match="one E edge"):
         stamp_lumped_sigma(base, CELL, 1.0, "hz")
 
@@ -188,18 +188,18 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
         local = FDTDState(*(getattr(slab_st, f)[rank] for f in
                             ("ex", "ey", "ez", "hx", "hy", "hz")),
                           step=jnp.array(0, jnp.int32))
-        e_mats = slab_e_component_materials(mat, nx_per, SHAPE[0], rank=rank)
+        e_mats = slab_e_component_materials(mat, nx_per, SHAPE[0], rank=rank, high_wall=(False, False, False))
         for name, per_comp in zip(("eps", "sigma"), e_mats):
             for c, arr in enumerate(per_comp):
                 edge[name][c].append(np.asarray(arr)[1:1 + nx_per])
-        out = _update_e_local(local, slab_e_coeffs(mat, nx_per, SHAPE[0], DT, rank=rank), DX)
+        out = _update_e_local(local, slab_e_coeffs(mat, nx_per, SHAPE[0], DT, rank=rank, high_wall=(False, False, False)), DX)
         for c in COMPONENTS:
             fields[c].append(np.asarray(getattr(out, c))[1:1 + nx_per])
-    for name, want in zip(("eps", "sigma"), component_e_materials(mats)):
+    for name, want in zip(("eps", "sigma"), component_e_materials(mats, high_wall=(False, False, False))):
         for c, comp in enumerate(COMPONENTS):
             got = np.concatenate(edge[name][c])
             assert got.tobytes() == np.asarray(want[c]).tobytes(), (name, comp)
-    ref = update_e(st, mats, DT, DX)
+    ref = update_e(st, mats, DT, DX, high_wall=(False, False, False))
     for comp in COMPONENTS:
         b = np.asarray(getattr(ref, comp))
         # The two kernels spell the curl differently (division vs the jitted
@@ -256,6 +256,6 @@ def test_save_and_load_materials_keep_the_per_component_records(tmp_path):
     for name in ("sigma_lumped", "eps_r_lumped"):
         for a, b in zip(getattr(mats, name), getattr(back, name)):
             assert (a is None and b is None) or np.array_equal(np.asarray(a), np.asarray(b)), name
-    for a, b in zip(component_e_materials(mats), component_e_materials(back)):
+    for a, b in zip(component_e_materials(mats, high_wall=(False, False, False)), component_e_materials(back, high_wall=(False, False, False))):
         for x, y in zip(a, b):
             assert np.array_equal(np.asarray(x), np.asarray(y))

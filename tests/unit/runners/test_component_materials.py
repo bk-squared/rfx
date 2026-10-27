@@ -1,4 +1,6 @@
 """Realization operands, shared consumption, and one build per main-path run."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
 
@@ -36,18 +38,19 @@ def test_realized_volume_stamps_poles_and_metric(periodic, graded):
     d = DebyePole(1.2, 2e-11)
     lorentz_pole = LorentzPole(2e10, 1e9, 3e20)
     specs = model.ComponentCells(cells, ([d], [a > 20]), ([lorentz_pole], [a < 30]))
-    result = model.realize_components(specs, grid, periodic=periodic)
+    # The raw-array branch has no grid and no wall face.
+    result = model.realize_components(specs, grid, periodic=periodic, high_wall=unpadded_high_walls(grid))
     e_widths = model.electric_cell_sizes(grid)
     assert_tree_equal((result.eps_update, result.sigma_update),
-                      yee.component_e_materials(cells, periodic, cell_sizes=e_widths))
+                      yee.component_e_materials(cells, periodic, cell_sizes=e_widths, high_wall=unpadded_high_walls(grid)))
     widths = (grid.dx_arr, grid.dy_arr, grid.dz) if graded else None
     assert_tree_equal(result.mu_update, yee.component_h_materials(
-        cells, periodic, cell_sizes=widths))
-    assert_tree_equal(result.eps, yee.edge_mean_components(cells.eps_r - stamp, periodic, cell_sizes=e_widths))
-    assert_tree_equal(result.sigma, yee.edge_mean_components(cells.sigma - 2 * stamp, periodic, cell_sizes=e_widths))
+        cells, periodic, cell_sizes=widths, high_wall=unpadded_high_walls(grid)))
+    assert_tree_equal(result.eps, yee.edge_mean_components(cells.eps_r - stamp, periodic, cell_sizes=e_widths, high_wall=unpadded_high_walls(grid)))
+    assert_tree_equal(result.sigma, yee.edge_mean_components(cells.sigma - 2 * stamp, periodic, cell_sizes=e_widths, high_wall=unpadded_high_walls(grid)))
     assert_tree_equal((result.upml_eps, result.upml_sigma), yee.cell_owned_component_materials(cells))
-    dw = (yee.edge_mean_components((a > 20).astype(jnp.float32), periodic, cell_sizes=e_widths),)
-    lw = (yee.edge_mean_components((a < 30).astype(jnp.float32), periodic, cell_sizes=e_widths),)
+    dw = (yee.edge_mean_components((a > 20).astype(jnp.float32), periodic, cell_sizes=e_widths, high_wall=unpadded_high_walls(grid)),)
+    lw = (yee.edge_mean_components((a < 30).astype(jnp.float32), periodic, cell_sizes=e_widths, high_wall=unpadded_high_walls(grid)),)
     if graded:
         from rfx.materials.debye import debye_pole_coeffs
         from rfx.materials.lorentz import lorentz_pole_coeffs
@@ -67,7 +70,7 @@ def test_main_kernels_and_ade_read_stored_operands(monkeypatch):
     d = DebyePole(1.2, 2e-11)
     lorentz_pole = LorentzPole(2e10, 1e9, 3e20)
     materials = model.with_components(cells, None, periodic=(False,) * 3,
-                                     debye_spec=([d], None), lorentz_spec=([lorentz_pole], None))
+                                     debye_spec=([d], None), lorentz_spec=([lorentz_pole], None), high_wall=(False, False, False))
     def forbidden(*args, **kwargs):
         raise AssertionError("repeated material realization/averaging")
     monkeypatch.setattr(model, "realize_components", forbidden)
@@ -78,14 +81,14 @@ def test_main_kernels_and_ade_read_stored_operands(monkeypatch):
     monkeypatch.setattr(stepping_yee, "component_h_materials", forbidden)
     jax.clear_caches()
     state = yee.init_state(cells.eps_r.shape)
-    state = yee.update_h(state, materials, 1e-12, .001)
-    state = yee.update_e(state, materials, 1e-12, .001)
+    state = yee.update_h(state, materials, 1e-12, .001, high_wall=(False, False, False))
+    state = yee.update_e(state, materials, 1e-12, .001, high_wall=(False, False, False))
     inv = [jnp.ones(n) * 1000 for n in cells.eps_r.shape]
-    state = yee.update_h_nu(state, materials, 1e-12, *inv)
-    state = yee.update_e_nu(state, materials, 1e-12, *inv)
-    yee.precompute_coeffs(materials, 1e-12, .001)
-    init_debye([d], materials, 1e-12)
-    init_lorentz([lorentz_pole], materials, 1e-12)
+    state = yee.update_h_nu(state, materials, 1e-12, *inv, high_wall=(False, False, False))
+    state = yee.update_e_nu(state, materials, 1e-12, *inv, high_wall=(False, False, False))
+    yee.precompute_coeffs(materials, 1e-12, .001, high_wall=(False, False, False))
+    init_debye([d], materials, 1e-12, high_wall=(False, False, False))
+    init_lorentz([lorentz_pole], materials, 1e-12, high_wall=(False, False, False))
     jax.block_until_ready(state)
     jax.clear_caches()
 
@@ -127,10 +130,10 @@ def test_scan_value_and_gradient_match_cell_path_peak_tolerance(quantity):
     def objective(values, realized):
         m = cells._replace(**{quantity: values})
         if realized:
-            m = model.with_components(m, None, periodic=(False,) * 3)
+            m = model.with_components(m, None, periodic=(False,) * 3, high_wall=(False, False, False))
         def step(state, _):
-            state = yee.update_h(state, m, 1e-12, .001)
-            return yee.update_e(state, m, 1e-12, .001), None
+            state = yee.update_h(state, m, 1e-12, .001, high_wall=(False, False, False))
+            return yee.update_e(state, m, 1e-12, .001, high_wall=(False, False, False)), None
         state, _ = jax.lax.scan(step, initial, None, length=4)
         return jnp.sum(state.ex**2 + state.ey**2 + state.ez**2)
     values = getattr(cells, quantity)
@@ -177,7 +180,7 @@ def test_stale_realization_is_rejected(quantity, entry):
     cells = yee.init_materials((4, 3, 5))
     materials = model.with_components(cells, None, periodic=(False,) * 3,
         debye_spec=([DebyePole(1.2, 2e-11)], None),
-        lorentz_spec=([LorentzPole(2e10, 1e9, 3e20)], None))
+        lorentz_spec=([LorentzPole(2e10, 1e9, 3e20)], None), high_wall=(False, False, False))
     materials = materials._replace(**{quantity: getattr(materials, quantity) * 2})
     with pytest.raises(ValueError, match="stale realized material"):
         if entry == "step":
@@ -187,9 +190,9 @@ def test_stale_realization_is_rejected(quantity, entry):
                           periodic=(False,) * 3, pec_axes="", stencil_order=2)
             core_step_invariants(_StepContext(**kwargs))
         elif entry == "debye":
-            init_debye([DebyePole(1.2, 2e-11)], materials, 1e-12)
+            init_debye([DebyePole(1.2, 2e-11)], materials, 1e-12, high_wall=(False, False, False))
         else:
-            init_lorentz([LorentzPole(2e10, 1e9, 3e20)], materials, 1e-12)
+            init_lorentz([LorentzPole(2e10, 1e9, 3e20)], materials, 1e-12, high_wall=(False, False, False))
 
 
 def test_realization_reuse_checks_periodic_and_grid():
@@ -205,7 +208,7 @@ def test_realization_reuse_checks_periodic_and_grid():
 
 def test_step_materials_have_no_cell_or_pole_arrays():
     cells = yee.init_materials((4, 3, 5))
-    materials = model.with_components(cells, None, periodic=(False,) * 3)
+    materials = model.with_components(cells, None, periodic=(False,) * 3, high_wall=(False, False, False))
     slim = model.kernel_materials(materials)
     assert slim.eps_r.shape == ()  # dtype token for CPML, not the cell epsilon
     assert slim.sigma is slim.mu_r is None

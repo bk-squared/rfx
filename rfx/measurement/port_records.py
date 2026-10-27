@@ -9,7 +9,7 @@ def pack_port_records(kinds, accumulators, metadata, *, graded=False, freqs=None
     metadata retain their static tuple schema; lumped records select slots
     0, 1 and 4 from the joint five-channel carry used internally for S.
     """
-    from rfx.simulation import LumpedPortSParamSpec
+    from rfx._uniform_specs import LumpedPortSParamSpec
 
     wire, lumped = [], []
     for kind, accs, meta in zip(kinds, accumulators, metadata, strict=True):

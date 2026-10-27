@@ -61,6 +61,11 @@ def declare_physics(sim, feature):
     return ("_floquet_ports", feature if feature == "scan_angle" else "floquet_port")
 
 
+# The 1 mm fixture's solved lengths, 13 x 14 x 13 cells, declared at
+# construction (#1887).
+SOLVED_1MM = (13 * .001, 14 * .001, 13 * .001)
+
+
 def calculator_case(calculator, *, feature=None):
     """A registered model and one public call, with a four-step request."""
     if calculator == "waveguide_s_matrix":
@@ -93,13 +98,16 @@ def calculator_case(calculator, *, feature=None):
             lambda *args: sim, np.zeros((1, 1, 3), complex),
             np.array([2e9, 3e9, 4e9]), n_iterations=1, verbose=False)
     elif calculator == "mixed_s_matrix":
-        sim = _mixed(False)
+        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length; #1887
         call = lambda: sim.compute_mixed_s_matrix(
             n_steps=4, skip_preflight=True, magnitude_channel="wave")
     else:
+        # The scan_angle witness keeps the declared box: declare_physics fits
+        # it to whole cells itself for the Floquet port.
         sim = _sim(ports="lumped" if calculator == "s_matrix_scan" else None,
                    absorber=BoundarySpec(x="periodic", y="periodic", z="pec")
-                   if feature == "scan_angle" else None)
+                   if feature == "scan_angle" else None,
+                   domain=None if feature == "scan_angle" else SOLVED_1MM)
         if calculator == "s_matrix_scan":
             from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
             call = lambda: compute_lumped_wire_s_matrix_via_scan(
@@ -127,10 +135,6 @@ def calculator_case(calculator, *, feature=None):
 ])
 def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, attr, value, words):
     sim, call = calculator_case(calculator)
-    if sim._domain == (.0123, .0131, .0127):
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    elif sim._domain == (.0123, .0061, .0047):
-        sim._domain = (.0123, 13 * .0005, .0047)  # solved length; #1887
     # Uniform Yee fixtures: these settings are unread on the base routes
     # (except material fit's existing interface-rule refusal).
     setattr(sim, attr, value)
@@ -217,8 +221,7 @@ def test_waveguide_timestep_gate(attr, value, graded, monkeypatch):
 
 @pytest.mark.parametrize("solver", ["yee", "adi"])
 def test_topology_cfl_gate(solver):
-    sim = _sim(solver=solver)
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
+    sim = _sim(solver=solver, domain=SOLVED_1MM)
     sim._adi_cfl_factor = 2.718
     assert ("_adi_cfl_factor", "") not in A.refused(sim, "topology_optimize")
 
@@ -227,10 +230,6 @@ def test_topology_cfl_gate(solver):
 def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator, feature):
     sim, call = calculator_case(calculator, feature=feature)
     row = declare_physics(sim, feature)
-    if sim._domain == (.0123, .0131, .0127):
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    elif sim._domain == (.0123, .0061, .0047):
-        sim._domain = (.0123, 13 * .0005, .0047)  # solved length; #1887
     assert A.DETECTORS[row](sim)
 
     def forbidden(*args, **kwargs):
@@ -258,8 +257,6 @@ EXTRA_SETTINGS = [
 @pytest.mark.parametrize("calculator,attr,value", EXTRA_SETTINGS)
 def test_calculator_refuses_unread_setting_variant(monkeypatch, calculator, attr, value):
     sim, call = calculator_case(calculator)
-    if calculator != "waveguide_s_matrix":
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     setattr(sim, attr, value)
 
     def forbidden(*args, **kwargs):
@@ -294,10 +291,6 @@ def test_waveguide_refuses_upml_before_scan(monkeypatch):
 @pytest.mark.parametrize("calculator", A.CALCULATORS)
 def test_yee_calculator_accepts_adi_cfl_setting(calculator):
     sim, _ = calculator_case(calculator)
-    if sim._domain == (.0123, .0131, .0127):
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    elif sim._domain == (.0123, .0061, .0047):
-        sim._domain = (.0123, 13 * .0005, .0047)  # solved length; #1887
     sim._adi_cfl_factor = 2.718
     assert ("_adi_cfl_factor", "") not in A.refused(sim, calculator)
 
@@ -305,7 +298,6 @@ def test_yee_calculator_accepts_adi_cfl_setting(calculator):
 @pytest.mark.parametrize("compute_s_params", [None, True])
 def test_run_kerr_s_matrix_refuses_before_main_scan(monkeypatch, compute_s_params):
     sim, _ = calculator_case("s_matrix_scan")
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     declare_physics(sim, "kerr")
 
     def forbidden(*args, **kwargs):
@@ -318,7 +310,6 @@ def test_run_kerr_s_matrix_refuses_before_main_scan(monkeypatch, compute_s_param
 
 def test_run_kerr_fields_only_reaches_main_scan(monkeypatch):
     sim, _ = calculator_case("s_matrix_scan")
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     declare_physics(sim, "kerr")
 
     class Reached(Exception):
@@ -335,7 +326,6 @@ def test_run_kerr_fields_only_reaches_main_scan(monkeypatch):
 def test_devices_s_matrix_admission_precedes_distributed_runner(monkeypatch):
     from types import SimpleNamespace
     sim, _ = calculator_case("s_matrix_scan")
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     sim._dt_pin = 1e-12
     monkeypatch.setattr(Simulation, "_dispatch_plan", lambda *args, **kwargs:
                         SimpleNamespace(lane="run_distributed", n_steps=4))

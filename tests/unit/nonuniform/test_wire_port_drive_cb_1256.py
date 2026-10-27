@@ -383,8 +383,8 @@ def _worst_cb_mismatch(case, *, mutated=False):
         assert len(on) == 1 and on <= driven, (on, driven)
     worst = 0.0
     for cell, comp, drive in handed:
-        cb_drive = float(cell_component_e_coeffs(drive, cell, comp, dt)[1])
-        cb_step = float(cell_component_e_coeffs(stepper, cell, comp, dt)[1])
+        cb_drive = float(cell_component_e_coeffs(drive, cell, comp, dt, high_wall=(False, False, False))[1])
+        cb_step = float(cell_component_e_coeffs(stepper, cell, comp, dt, high_wall=(False, False, False))[1])
         worst = max(worst, abs(cb_drive / cb_step - 1.0))
     return worst, len(handed)
 

@@ -40,11 +40,14 @@ from rfx.core.yee import MaterialArrays, init_materials
 from rfx.geometry.csg import Box, rasterize
 from rfx.farfield import NTFFBox
 from rfx.simulation import run
-from rfx.rcs import compute_rcs, compute_rcs_jax, _incident_spectrum_amplitude
+from rfx.measurement.rcs import compute_rcs, _incident_spectrum_amplitude
+from rfx.rcs import compute_rcs_jax
 from rfx.sources.tfsf_oblique_open import (
     init_tfsf_methodB,
-    measure_incident_spectrum,
     validate_vacuum_boundary,
+)
+from rfx.measurement.incident import (
+    measure_incident_spectrum,
 )
 
 F0 = 5e9

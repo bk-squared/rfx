@@ -1,5 +1,7 @@
 """Tests for eigenmode solver integration with waveguide ports."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -25,10 +27,10 @@ def _run_waveguide(port, dx, freqs, f0, n_steps, grid):
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, dx)
+        state = update_h(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
         state = apply_pec(state)
-        state = update_e(state, materials, grid.dt, dx)
+        state = update_e(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
         state = inject_waveguide_port(state, cfg, t, grid.dt, dx)
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         state = apply_pec(state)
@@ -101,10 +103,10 @@ def test_eigenmode_port_matches_analytical():
     cp, cs = init_cpml(grid)
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, dx)
+        state = update_h(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
         state = apply_pec(state)
-        state = update_e(state, materials, grid.dt, dx)
+        state = update_e(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
         state = inject_waveguide_port(state, cfg_eigen, t, grid.dt, dx)
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         state = apply_pec(state)

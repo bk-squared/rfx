@@ -1,4 +1,6 @@
 """Every material-aware H builder consumes component mu or refuses its record."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import inspect
 
 import jax
@@ -16,7 +18,7 @@ def test_face_harmonic_mean_and_equal_cell_bits(periodic):
     mats = yee.init_materials((4,)*3)
     mu = jnp.arange(64, dtype=jnp.float32).reshape((4,)*3)+1
     mats = mats._replace(mu_r=mu)
-    parts = yee.component_h_materials(mats, periodic=periodic)
+    parts = yee.component_h_materials(mats, periodic=periodic, high_wall=(False, False, False))
     for axis, part in enumerate(parts):
         lo = np.roll(np.asarray(mu), 1, axis=axis)
         if not periodic[axis]:
@@ -27,7 +29,7 @@ def test_face_harmonic_mean_and_equal_cell_bits(periodic):
         np.testing.assert_allclose(part, expected, rtol=2e-7)
     for value in (1., 2.2, 7.3):
         homogeneous = jnp.full(mu.shape, value, dtype=jnp.float32)
-        for part in yee.component_h_materials(mats._replace(mu_r=homogeneous), periodic):
+        for part in yee.component_h_materials(mats._replace(mu_r=homogeneous), periodic, high_wall=(False, False, False)):
             assert np.asarray(part).tobytes() == np.asarray(homogeneous).tobytes()
 
 
@@ -36,7 +38,7 @@ def test_face_mean_uses_actual_cell_lengths_then_adds_contours():
     mu = jnp.broadcast_to(jnp.array([1., 4., 4.])[:, None, None], mats.mu_r.shape)
     widths = (jnp.array([.9, 1.1, 1.]), jnp.ones(2), jnp.ones(2))
     mats = mats._replace(mu_r=mu, mu_r_wire=(jnp.full(mu.shape, .3), None, None))
-    hx, hy, hz = yee.component_h_materials(mats, cell_sizes=widths)
+    hx, hy, hz = yee.component_h_materials(mats, cell_sizes=widths, high_wall=(False, False, False))
     np.testing.assert_allclose(hx[1], (2 / (.9 / 1 + 1.1 / 4)) + .3, rtol=2e-7)
     np.testing.assert_array_equal(hy, mu)
     np.testing.assert_array_equal(hz, mu)
@@ -47,7 +49,7 @@ def test_equal_cell_rounding_guard_keeps_both_material_derivatives():
     widths = (jnp.array([.9, 1.1]), jnp.ones(1), jnp.ones(1))
     def face(values):
         material = mats._replace(mu_r=values[:, None, None])
-        return yee.component_h_materials(material, cell_sizes=widths)[0][1, 0, 0]
+        return yee.component_h_materials(material, cell_sizes=widths, high_wall=(False, False, False))[0][1, 0, 0]
     derivative = jax.grad(face)(jnp.array([2.2, 2.2]))
     np.testing.assert_allclose(derivative, [.45, .55], rtol=3e-7)
 
@@ -57,7 +59,7 @@ def test_homogeneous_fast_bake_keeps_legacy_field_bits(value):
     grid, mats, _, state = _fixture()
     mats = mats._replace(mu_r=jnp.full(grid.shape, value, dtype=jnp.float32))
     old_ch = jnp.float32(grid.dt / (yee.MU_0 * grid.dx)) / mats.mu_r
-    new_ch = yee.precompute_coeffs(mats, grid.dt, grid.dx).ch
+    new_ch = yee.precompute_coeffs(mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch
     expected = yee.update_h_fast(state, old_ch)
     got = yee.update_h_fast(state, new_ch)
     for a, b in zip(got[:6], expected[:6]):
@@ -74,19 +76,20 @@ def test_normal_h_face_reads_neighbour_ghost_across_x_split(homogeneous):
               jnp.ones(3), jnp.ones(3))
     state = yee.init_state(shape)._replace(ez=jnp.indices(shape)[1].astype(jnp.float32))
     inv = tuple(1 / d for d in widths)
-    reference = yee.update_h_nu(state, mats, 1e-12, *inv, cell_sizes=widths)
+    reference = yee.update_h_nu(state, mats, 1e-12, *inv, cell_sizes=widths, high_wall=(False, False, False))
     split_m = dc._split_materials(mats, 2)
     split_s = dc._split_state(state, 2)
     got = []
     for rank in range(2):
         local_m = jax.tree.map(lambda a: a[rank], split_m)
-        local_m = local_m._replace(mu_r=dc.magnetic_low_ghost(local_m.mu_r, rank))
+        local_m = local_m._replace(mu_r=dc.magnetic_low_ghost(
+            local_m.mu_r, rank, nx_per=4, nx=shape[0], high_wall=(False,) * 3))
         local_s = jax.tree.map(lambda a: a[rank], split_s)
         local_x = jnp.take(widths[0], jnp.clip(jnp.arange(rank * 4 - 1, rank * 4 + 5), 0, 7))
         local_widths = (local_x, *widths[1:])
         local_inv = tuple(1 / d for d in local_widths)
         result = dc._update_h_local_nu(local_s, local_m, 1e-12,
-                                      *local_inv, *local_inv, cell_sizes=local_widths)
+                                      *local_inv, *local_inv, cell_sizes=local_widths, high_wall=(False, False, False))
         got.append(np.asarray(result.hx)[1:5])
     np.testing.assert_array_equal(np.concatenate(got), np.asarray(reference.hx))
 
@@ -111,15 +114,15 @@ def test_h_builder_carries_component_record(path):
 
     def build(m):
         if path == "uniform":
-            return yee.update_h(state, m, grid.dt, grid.dx)
+            return yee.update_h(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         if path == "nonuniform":
-            return yee.update_h_nu(state, m, grid.dt, *inv)
+            return yee.update_h_nu(state, m, grid.dt, *inv, high_wall=unpadded_high_walls(grid))
         if path == "fast":
-            return yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx).ch)
+            return yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
         if path == "distributed_v2":
-            return dc._update_h_local(state, m, grid.dt, grid.dx)
+            return dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         if path == "distributed_nu":
-            return dc._update_h_local_nu(state, m, grid.dt, *inv, *inv)
+            return dc._update_h_local_nu(state, m, grid.dt, *inv, *inv, high_wall=unpadded_high_walls(grid))
         # The two public lanes share the CPML H builder; exercise both grids.
         g = grid
         if path == "cpml_nonuniform":
@@ -156,12 +159,14 @@ def test_unimplemented_carrier_refuses_non_none_record(path):
             run_nonuniform_distributed_pec(None, marked, None, 1, n_devices=2)
         elif path == "distributed_h_shard":
             dc.update_h_nu_shmap(None, marked, None, 1., *([None]*6),
-                                 ranks=jnp.zeros(1, jnp.int32))
+                                 ranks=jnp.zeros(1, jnp.int32), nx_per=grid.nx,
+                                 nx=grid.nx, high_wall=unpadded_high_walls(grid))
         elif path == "subgridded":
             sg.run_subgridded_jit(None, marked, marked, None, 1)
         elif path == "subgridded_reference":
             from rfx.subgridding.sbp_sat_3d import step_subgrid_3d
-            step_subgrid_3d(None, None, mats_c=marked)
+            step_subgrid_3d(None, None, mats_c=marked,
+                            high_wall_c=(False,) * 3, high_wall_f=(False,) * 3)
         elif path in ("sat_h", "sat_e"):
             fn = getattr(sg, f"_z_slab_material_coupling_{path[-1]}_3d")
             fn(None, None, marked, marked, None)
@@ -179,7 +184,8 @@ def test_h_builder_inventory_reads_the_shared_owner():
     from rfx.boundaries import cpml, upml
     from rfx.runners import distributed_nu
     from rfx.subgridding import jit_runner as sg, sbp_sat_1d, sbp_sat_2d, disjoint_3d
-    from rfx.sources import tfsf, tfsf_2d, tfsf_oblique_open, waveguide_port, msl_port, coaxial_port
+    from rfx.sources import tfsf, tfsf_2d, waveguide_port, msl_port, coaxial_port
+    from rfx.stepping import tfsf_2d as step_tfsf_2d, tfsf_oblique
     sites = [yee.update_h, yee.update_h_nu, yee.precompute_coeffs,
              dc._update_h_local, dc._update_h_local_nu, cpml.apply_cpml_h,
              upml.init_upml, adi.adi_step_2d, adi.adi_step_3d, adi.apply_adi_cpml_2d,
@@ -187,18 +193,19 @@ def test_h_builder_inventory_reads_the_shared_owner():
              sbp_sat_1d._update_h_1d,
              sbp_sat_2d._update_hx_2d, sbp_sat_2d._update_hy_2d,
              tfsf.update_tfsf_1d_h, tfsf.apply_tfsf_h,
-             tfsf_2d._update_h_tmz, tfsf_2d._update_h_tez, tfsf_2d.apply_tfsf_2d_h,
-             tfsf_oblique_open.apply_methodB_h, waveguide_port.apply_waveguide_port_h,
+             step_tfsf_2d._update_h_tmz, step_tfsf_2d._update_h_tez, tfsf_2d.apply_tfsf_2d_h,
+             tfsf_oblique.apply_methodB_h, waveguide_port.apply_waveguide_port_h,
              msl_port.make_msl_port_sources_jm,
              coaxial_port.build_coaxial_tem_plane_source_specs, disjoint_3d]
     # Since S1 M2a the raw CPML/UPML entries read μ through the realized-model
     # owner ``rfx.model.materials.h_components``, which itself calls the shared
     # builder; either spelling reaches the one H-face rule.
-    from rfx.model.materials import h_components
+    from rfx.model.materials import h_components, sat_face_mu
     assert "component_h_materials(" in inspect.getsource(h_components)
+    assert "h_components(" in inspect.getsource(sat_face_mu)
     for fn in sites:
         src = inspect.getsource(fn)
-        assert ("component_h_materials(" in src or "h_components(" in src), \
+        assert ("component_h_materials(" in src or "h_components(" in src or "sat_face_mu(" in src), \
             getattr(fn, "__qualname__", fn.__name__)
 
 
@@ -228,15 +235,15 @@ def test_realized_h_tuple_replays_and_perturbs_one_component(path, wire):
     @jax.jit
     def advance(m):
         if path == "uniform":
-            result = yee.update_h(state, m, grid.dt, grid.dx)
+            result = yee.update_h(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         elif path == "nonuniform":
-            result = yee.update_h_nu(state, m, grid.dt, *inv)
+            result = yee.update_h_nu(state, m, grid.dt, *inv, high_wall=unpadded_high_walls(grid))
         elif path == "fast":
-            result = yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx).ch)
+            result = yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
         elif path == "distributed_v2":
-            result = dc._update_h_local(state, m, grid.dt, grid.dx)
+            result = dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         else:
-            result = dc._update_h_local_nu(state, m, grid.dt, *inv, *inv)
+            result = dc._update_h_local_nu(state, m, grid.dt, *inv, *inv, high_wall=unpadded_high_walls(grid))
         return jnp.stack(result[3:6])
 
     plain = np.asarray(advance(materials))
@@ -245,7 +252,7 @@ def test_realized_h_tuple_replays_and_perturbs_one_component(path, wire):
     records = [r for r in saved.records if "mu_h" in r]
     assert len(records) == 1
     stored = records[0]["mu_h"]
-    for got, expected in zip(stored, yee.component_h_materials(materials)):
+    for got, expected in zip(stored, yee.component_h_materials(materials, high_wall=unpadded_high_walls(grid))):
         np.testing.assert_array_equal(got, expected)
 
     def replay(axis):

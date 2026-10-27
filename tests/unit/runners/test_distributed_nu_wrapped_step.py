@@ -1,4 +1,6 @@
 """W1 slices 1–3: model identity and cross-trace bars for the graded slab step."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -901,8 +903,8 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
     mask = s.pec_mask if case in ('pec', 'sheet_wire') else None
     edges = None if mask is None and not sheets else realized_pec_edge_masks(mask, sheets, wires)
     mats = with_components(cells.materials, grid, periodic=(False,) * 3, debye_spec=db, lorentz_spec=lr)
-    debye = None if db is None else init_debye(db[0], mats, grid.dt, mask=db[1])
-    lorentz = None if lr is None else init_lorentz(lr[0], mats, grid.dt, mask=lr[1])
+    debye = None if db is None else init_debye(db[0], mats, grid.dt, mask=db[1], high_wall=unpadded_high_walls(grid))
+    lorentz = None if lr is None else init_lorentz(lr[0], mats, grid.dt, mask=lr[1], high_wall=unpadded_high_walls(grid))
     sources = [SourceSpec(3, 2, 2, 'ez', jnp.arange(3, dtype=jnp.float32))]
     probes = [ProbeSpec(4, 2, 2, 'ez')]
     # This is the sole whole-grid build in this test. It does not use any

@@ -23,12 +23,13 @@ from __future__ import annotations
 import numpy as np
 import jax.numpy as jnp
 
-import rfx.rcs as rcs_mod
+import rfx.measurement.rcs as rcs_mod
 from rfx.core.yee import MaterialArrays
-from rfx.farfield import compute_far_field as _real_compute_far_field
+from rfx.measurement.farfield import compute_far_field as _real_compute_far_field
 from rfx.grid import Grid, C0
 from rfx.simulation import ProbeSpec, run as _real_run
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 
 F0 = 6e9
 BW = 0.5

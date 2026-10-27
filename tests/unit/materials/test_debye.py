@@ -49,7 +49,7 @@ def test_debye_coefficients():
     )
 
     poles = [DebyePole(delta_eps=delta_eps, tau=tau)]
-    coeffs, dstate = init_debye(poles, materials, dt)
+    coeffs, dstate = init_debye(poles, materials, dt, high_wall=(False, False, False))
 
     # Hand-computed coefficients
     alpha_expected = (2 * tau - dt) / (2 * tau + dt)
@@ -117,7 +117,7 @@ def test_debye_medium_slower_propagation():
             )
 
         if debye_poles:
-            coeffs, dstate = init_debye(debye_poles, materials, dt)
+            coeffs, dstate = init_debye(debye_poles, materials, dt, high_wall=(False, False, False))
         else:
             coeffs, dstate = None, None
 
@@ -126,13 +126,13 @@ def test_debye_medium_slower_propagation():
 
         for step in range(n_steps):
             t = step * dt
-            state = update_h(state, materials, dt, dx)
+            state = update_h(state, materials, dt, dx, high_wall=(False, False, False))
 
             if coeffs is not None:
                 state, dstate = update_e_debye(state, coeffs, dstate, dt, dx)
             else:
                 from rfx.core.yee import update_e
-                state = update_e(state, materials, dt, dx)
+                state = update_e(state, materials, dt, dx, high_wall=(False, False, False))
 
             state = apply_pec(state)
 
@@ -184,7 +184,7 @@ def test_debye_energy_bounded():
     )
 
     poles = [DebyePole(delta_eps=10.0, tau=50e-12)]
-    coeffs, dstate = init_debye(poles, materials, dt)
+    coeffs, dstate = init_debye(poles, materials, dt, high_wall=(False, False, False))
 
     # Initialize with cavity mode
     Lx = (shape[0] - 1) * dx
@@ -201,7 +201,7 @@ def test_debye_energy_bounded():
 
     max_energy = initial_energy
     for step in range(1000):
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=(False, False, False))
         state, dstate = update_e_debye(state, coeffs, dstate, dt, dx)
         state = apply_pec(state)
 
@@ -237,7 +237,7 @@ def test_debye_mask_selective():
     mask = mask.at[10:, :, :].set(True)
 
     poles = [DebyePole(delta_eps=5.0, tau=20e-12)]
-    coeffs, dstate = init_debye(poles, materials, dt, mask=mask)
+    coeffs, dstate = init_debye(poles, materials, dt, mask=mask, high_wall=(False, False, False))
 
     # In vacuum region (x < 10): ca should be standard vacuum coefficient
     # ca_vac = (eps0 - 0 - 0) / (eps0 + 0 + 0) = 1.0
@@ -272,7 +272,7 @@ def test_debye_two_poles():
         DebyePole(delta_eps=3.0, tau=10e-12),
         DebyePole(delta_eps=5.0, tau=100e-12),
     ]
-    coeffs, dstate = init_debye(poles, materials, dt)
+    coeffs, dstate = init_debye(poles, materials, dt, high_wall=(False, False, False))
 
     # Should have 2 poles in alpha/beta arrays
     assert coeffs.alpha.shape[0] == 2

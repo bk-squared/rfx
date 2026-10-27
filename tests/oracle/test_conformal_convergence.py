@@ -8,6 +8,8 @@ frequency accuracy and convergence remain strict expected failures until
 #1651 replaces the eps/w skin with the Dey-Mittra update.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import time
 
 import jax
@@ -77,11 +79,11 @@ def _cavity_trace(ppw, conformal):
 
     def step(state, n):
         state = state._replace(ez=state.ez.at[source].add(pulse(n * grid.dt)))
-        state = update_h(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         if conformal:
-            state = update_e_aniso(state, materials, *eps, grid.dt, grid.dx)
+            state = update_e_aniso(state, materials, *eps, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         else:
-            state = update_e(state, materials, grid.dt, grid.dx)
+            state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         if conformal:
             state = apply_conformal_pec(state, *weights)
@@ -273,9 +275,9 @@ class TestConformalConvergence:
             if n < 200:
                 state = state._replace(ez=state.ez.at[src_idx].add(pulse(t)))
 
-            state = update_h(state, materials, grid.dt, grid.dx)
+            state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
             state = update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                   grid.dt, grid.dx)
+                                   grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
             state = apply_pec(state)
             state = apply_conformal_pec(state, w_ex, w_ey, w_ez)
 

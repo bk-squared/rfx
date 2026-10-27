@@ -89,7 +89,7 @@ def test_soft_source_refuses_an_unresolved_kind():
 
 
 def test_graded_current_coefficient_is_bit_equal_under_jit(record_property):
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
 
     dt = 1.699011380310442e-12
     compiled = jax.jit(lambda e, s: current_source_cb(e, s, dt))

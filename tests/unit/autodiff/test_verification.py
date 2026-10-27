@@ -6,6 +6,8 @@ Validates that:
 3. Oblique TFSF (angle_deg != 0) produces correct Fresnel reflection
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -22,9 +24,14 @@ from rfx.simulation import (
 )
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.tfsf import (
-    init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
-    apply_tfsf_e, apply_tfsf_h,
+    init_tfsf,
+    update_tfsf_1d_h,
+    update_tfsf_1d_e,
     is_tfsf_2d,
+)
+from rfx.stepping.tfsf import (
+    apply_tfsf_e,
+    apply_tfsf_h,
 )
 from rfx.probes.probes import init_dft_plane_probe, update_dft_plane_probe
 from rfx.probes.fresnel import extract_fresnel_from_planes, fresnel_r_te
@@ -211,7 +218,11 @@ def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
     FLAT ``|amplitude|`` plateau — the extractor's known-good witness.
     """
     from rfx.sources.tfsf_2d import (
-        update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+        update_tfsf_2d_h,
+        update_tfsf_2d_e,
+    )
+    from rfx.stepping.tfsf_2d import (
+        bloch_phase_tuple,
     )
     grid = Grid(freq_max=10e9, domain=(0.60, 0.12, 0.006), dx=0.002, cpml_layers=10)
     dt, dx = grid.dt, grid.dx
@@ -242,11 +253,11 @@ def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
         Sx = Sy = 0.0
         for step in range(n_steps):
             t = step * dt
-            st = update_h(st, mat, dt, dx, periodic=periodic, bloch=bloch)
+            st = update_h(st, mat, dt, dx, periodic=periodic, bloch=bloch, high_wall=unpadded_high_walls(grid))
             st = apply_tfsf_h(st, cfg, aux, dx, dt)
             st, cs = apply_cpml_h(st, cp, cs, grid, axes="x")
             aux = update_tfsf_2d_h(cfg, aux, dx, dt)
-            st = update_e(st, mat, dt, dx, periodic=periodic, bloch=bloch)
+            st = update_e(st, mat, dt, dx, periodic=periodic, bloch=bloch, high_wall=unpadded_high_walls(grid))
             st = apply_tfsf_e(st, cfg, aux, dx, dt)
             st, cs = apply_cpml_e(st, cp, cs, grid, axes="x")
             aux = update_tfsf_2d_e(cfg, aux, dx, dt, t)

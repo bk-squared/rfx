@@ -1,4 +1,6 @@
 """One-plane film contracts; expected conductivities follow G and the grid by hand."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from pathlib import Path
 import ast
 
@@ -62,8 +64,12 @@ def test_c1_arrays(graded, plane):
     assert mats.sigma_film[0] is None
     c = realize_components(mats, grid, periodic=(False,) * 3)
     assert_expected(c.sigma_update, c.eps_update, widths, plane)
+    # Cell conductivity remains zero; full wall coverage belongs to the edges.
+    dual = (widths[plane - 1] + widths[plane]) / 2
+    assert float(c.sigma_update[1][plane, -1, 4]) == pytest.approx(G / dual, rel=2e-7)
+    assert float(c.sigma_update[2][plane, 4, -1]) == pytest.approx(G / dual, rel=2e-7)
     eps, sigma = component_e_materials(mats, cell_sizes=(None, None, None)
-                                       if not graded else (grid.dx_arr, None, None))
+                                       if not graded else (grid.dx_arr, None, None), high_wall=unpadded_high_walls(grid))
     assert_expected(sigma, eps, widths, plane)
 
 
@@ -122,8 +128,8 @@ def test_c2_film_shape_and_identity():
     mats = init_materials((3, 4, 5))
     with pytest.raises(ValueError, match="sigma_film arrays must have the cells' shape"):
         realize_components(mats._replace(sigma_film=(jnp.zeros((2, 4, 5)), None, None)),
-                           None, periodic=(False,) * 3)
-    ready = with_components(mats, None, periodic=(False,) * 3)
+                           None, periodic=(False,) * 3, high_wall=(False, False, False))
+    ready = with_components(mats, None, periodic=(False,) * 3, high_wall=(False, False, False))
     with pytest.raises(ValueError, match='sigma_film'):
         validate_components(ready._replace(sigma_film=(jnp.zeros((3, 4, 5)), None, None)),
                             periodic=(False,) * 3)
@@ -239,7 +245,7 @@ def test_c4_topology_design_film(inside):
 @pytest.mark.parametrize('impedance', [0., 50.])
 def test_c6_source_port_coefficient(graded, impedance):
     from rfx.core.yee import e_update_coeffs, cell_component_e_materials
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
     sim, widths = model(graded)
     from dataclasses import replace
     sim._ports[0] = replace(sim._ports[0], impedance=impedance)
@@ -261,7 +267,7 @@ def test_c6_source_port_coefficient(graded, impedance):
     assert float(sources[-1]['drive_scale'][0]) == pytest.approx(expected_scale, rel=1e-6)
     mats = sources[-1]['materials']
     _, point = cell_component_e_materials(mats, cell, 'ez',
-        cell_sizes=(grid.dx_arr, None, None) if graded else None)
+        cell_sizes=(grid.dx_arr, None, None) if graded else None, high_wall=unpadded_high_walls(grid))
     assert float(point) == pytest.approx(float(sig), rel=1e-6)
 
 
@@ -296,19 +302,19 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/model/electric_metrics.py', 'stage_forward_materials'): (1, '**staged includes sigma_film with the lumped cut policy'),
     ('rfx/model/materials.py', 'assemble_cells'): (1, 'initial cell construction precedes the shared film fold'),
     ('rfx/model/materials.py', 'kernel_materials'): (1, 'KernelComponents already contains the film in sigma_update'),
-    ('rfx/rcs.py', 'compute_rcs'): (2, 'vacuum reference, with sigma explicitly zero'),
+    ('rfx/measurement/rcs.py', 'compute_rcs'): (2, 'vacuum reference, with sigma explicitly zero'),
     ('rfx/runners/_distributed_common.py', 'update_h_nu_shmap._h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec._update_e_dispersive_shmap._e_disp'): (1, 'only called with dispersion; shared means already enter Debye/Lorentz coefficients'),
     ('rfx/runners/distributed_v2.py', 'run_distributed._update_h_shmap._h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/runners/distributed_v2.py', '_shard_materials'): (1, 'refuses a non-None film before constructing'),
     ('rfx/sources/coaxial_port.py', 'build_coaxial_tem_plane_source_specs'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/msl_port.py', 'make_msl_port_sources_jm'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/sources/tfsf.py', 'apply_tfsf_h'): (1, 'H-only operand: no electric conductivity consumed'),
+    ('rfx/stepping/tfsf.py', 'apply_tfsf_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf.py', 'update_tfsf_1d_h'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/sources/tfsf_2d.py', '_update_h_tez'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/sources/tfsf_2d.py', '_update_h_tmz'): (1, 'H-only operand: no electric conductivity consumed'),
+    ('rfx/stepping/tfsf_2d.py', '_update_h_tez'): (1, 'H-only operand: no electric conductivity consumed'),
+    ('rfx/stepping/tfsf_2d.py', '_update_h_tmz'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf_2d.py', 'apply_tfsf_2d_h'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/sources/tfsf_oblique_open.py', 'apply_methodB_h'): (1, 'H-only operand: no electric conductivity consumed'),
+    ('rfx/stepping/tfsf_oblique.py', 'apply_methodB_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/stepping/waveguide_source.py', 'apply_waveguide_port_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/stepping/slab.py', '_vacuum_dispersion_values'): (1, 'vacuum reference, with sigma explicitly zero'),
     ('rfx/subgridding/disjoint_3d.py', ''): (1, 'H-only operand: no electric conductivity consumed'),
@@ -340,7 +346,6 @@ SIGMA_READS = {
     ('rfx/fidelity.py', '_declared_material', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/geometry/port_termination.py', 'conductor_entries', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/geometry/rasterize_grid.py', 'rasterize_geometry', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/geometry/rasterize_grid.py', 'repair_fine_high_wall_materials', 'materials'): (1, '#1966 fine-grid wall-node repair of rasterized statics, before any film fold (the subgridded lane refuses sheets)'),
     ('rfx/geometry/smoothing.py', 'smoothed_shape_pairs', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/interop/_design.py', 'simulation_from_design', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/io.py', 'export_geometry_json', 'm'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
@@ -352,14 +357,13 @@ SIGMA_READS = {
     ('rfx/model/pole_stability.py', 'pole_set_extremes', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
-    ('rfx/model/materials.py', '_design_box_edge_coeffs', 'win_mats'): (4, '#1966 wall-node repair of the traced window volume: subtract lumped stamps, repair, add them back; the film carrier is not read'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'electric_materials_traced', 'materials'): (1, 'source trace detection includes the film record'),
     ('rfx/model/materials.py', 'realize_components', 'materials'): (1, 'arithmetic: volume sigma / lumped subtraction and edge averaging'),
     ('rfx/model/overrides.py', 'apply_material_overrides', 'materials'): (2, 'slicing/passing on or retaining unoverridden cell sigma'),
     ('rfx/model/overrides.py', 'apply_material_overrides', 'out'): (1, 'slicing the grid rows of a padded override for the pole-stability judge, which reads no film carrier'),
-    ('rfx/model/thin_conductors.py', '_fold_dc_plane', 'materials'): (4, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice; #1966 coverage repair takes the shape and dtype of sigma'),
+    ('rfx/model/thin_conductors.py', '_fold_dc_plane', 'materials'): (2, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
     ('rfx/model/thin_conductors.py', 'conductivity_envelope', 'materials'): (1, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
     ('rfx/model/thin_conductors.py', 'fold_thin_conductor', 'materials'): (1, 'passing on: ones_like shape for f0, where overwrite for DC'),
     ('rfx/model/thin_conductors.py', 'splice_film', 'materials'): (1, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
@@ -380,13 +384,13 @@ SIGMA_READS = {
     ('rfx/preflight/ports.py', '_validate_cfg_port_inside_pec', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/ports.py', 'half_node_split_findings', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/preflight/realization.py', '_CampaignStaticsContext.entry_realizations', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/rcs.py', 'compute_rcs', 'materials'): (1, 'passing on: zeros_like for vacuum reference shape'),
+    ('rfx/measurement/rcs.py', 'compute_rcs', 'materials'): (1, 'passing on: zeros_like for vacuum reference shape'),
     ('rfx/runners/_admission.py', '', 'm'): (1, 'explicit sigma operand; see classified constructor and shared realization reach'),
     ('rfx/runners/_admission.py', '_adi_homogeneous', 'materials'): (1, 'arithmetic/interface refusal: homogeneous cell eps/sigma'),
     ('rfx/geometry/smoothing.py', 'warn_curved_high_contrast', 'sim._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material: PEC-threshold test that skips conductors in the advisory; not assembled cells'),
     ('rfx/runners/_admission.py', '_pec_shapes', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/runners/_admission.py', '_placed', 'material'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/runners/_distributed_common.py', 'slab_e_component_materials', 'materials'): (1, 'slicing/passing on: replicated x-low view into edge mean'),
+    ('rfx/model/electric_metrics.py', 'slab_e_component_materials', 'materials'): (1, 'slicing/passing on: replicated x-low view into edge mean'),
     ('rfx/runners/_distributed_common.py', 'slab_e_materials_shmap', 'mat'): (1, 'passing on: checkpointed slab mean operands'),
     ('rfx/runners/_distributed_common.py', 'update_e_nu_shmap', 'mat'): (1, 'passing on into slab E coefficient construction'),
     ('rfx/runners/_distributed_common.py', 'update_h_nu_shmap', 'mat'): (1, 'passing on into MaterialArrays for H update'),
@@ -488,7 +492,7 @@ def test_c1_split_materials_consumed_on_two_devices():
     slabs = _split_materials(mats, 2)
     nx_per = (grid.shape[0] + 1) // 2
     def consume(local, rank):
-        return slab_e_component_materials(local, nx_per, grid.shape[0], rank=rank)
+        return slab_e_component_materials(local, nx_per, grid.shape[0], rank=rank, high_wall=unpadded_high_walls(grid))
     eps, sigma = jax.pmap(consume)(slabs, jnp.arange(2))
     for rank in range(2):
         count = min(nx_per, grid.shape[0] - rank * nx_per)
@@ -570,7 +574,7 @@ def test_c2_checkpoint_roundtrip(tmp_path):
     mats = sim._assemble_materials(grid)[0]
     save_materials(tmp_path / 'film.h5', mats)
     restored = load_materials(tmp_path / 'film.h5')
-    eps, sigma = component_e_materials(restored)
+    eps, sigma = component_e_materials(restored, high_wall=unpadded_high_walls(grid))
     assert_expected(sigma, eps, widths, 9)
 
 
@@ -582,7 +586,7 @@ def test_c3_global_sigma_sweep_retains_film():
     batch = _build_batched_materials(sim, grid, mats, 'sigma', jnp.asarray([0., 7.]))
     for row in range(2):
         local = jax.tree.map(lambda a: a[row], batch)
-        eps, sigma = component_e_materials(local)
+        eps, sigma = component_e_materials(local, high_wall=unpadded_high_walls(grid))
         assert_expected(sigma, eps, widths, 9)
 
 

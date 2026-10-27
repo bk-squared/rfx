@@ -76,8 +76,9 @@ What to know:
 - Splitting is along x only. A domain whose x size does not divide evenly is
   padded.
 - A plane wave runs split over the devices only as a closed box
-  (`closed_box=True`) at normal incidence, on a uniform mesh and on exactly 2
-  devices; its memory is then divided like any other model. Every other plane
+  (`closed_box=True`) at normal incidence, on a uniform mesh and on 2 to 4
+  devices; 5 or more devices are refused by name. Its memory is then divided
+  like any other model. Every other plane
   wave and every waveguide port is refused by name (table below); nothing runs
   on one device in place of the request.
 
@@ -121,7 +122,7 @@ step. These are refused:
 | a wire port with `reference_plane_cells` or an explicit radius | all multi-device | one device |
 | a PMC face with a wire port or lumped-port S, or, on a graded mesh, with any port or frequency-domain record | all multi-device | one device |
 | a plane wave that is not a closed box: an open slab, oblique incidence (Bloch line or Method B), a `face_record` replay | uniform mesh | one device |
-| a closed-box plane wave at oblique incidence (`theta_deg` or `phi_deg` not 0), or on 3 or more devices | uniform mesh | normal incidence on 2 devices, or one device |
+| a closed-box plane wave at oblique incidence (`theta_deg` or `phi_deg` not 0), or on 5 or more devices | uniform mesh | normal incidence on 2 to 4 devices, or one device |
 | any plane wave | graded mesh | one device |
 | a waveguide port | all multi-device | one device |
 | a Kerr material, a surface-impedance sheet, `add_refinement` | all multi-device | one device |
@@ -133,6 +134,7 @@ step. These are refused:
 | `solver="adi"`, `interface_eps="dual_average"` | all multi-device | the default solver and interface rule |
 | devices from several JAX processes | graded mesh, `run(devices=...)` | one process, or `forward(distributed=True)` for the probe signals |
 | an outer `jax.jit` on GPUs with command buffers on | all multi-device | see the outer-jit rule |
+| a Drude or Lorentz medium whose material values or cell sizes are traced by an outer `jax.jit` or a nested `jax.vmap` (the time-step limit cannot be checked inside a multi-device program) | all multi-device | the call without `jax.jit` (`jax.grad` or one `jax.vmap` alone is checked), or one device |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
 [support page](/rfx/support/) lists them per solver path.

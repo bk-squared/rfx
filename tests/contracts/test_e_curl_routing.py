@@ -18,8 +18,10 @@ import rfx.stepping.poles as poles  # the moved pole E updates read curl_h here
 from rfx.materials import debye, lorentz
 from rfx.boundaries import upml
 import rfx.simulation as uniform
+import rfx.stepping.uniform as stepping_uniform
 import rfx.stepping.uniform_setup as uniform_setup
 import rfx.nonuniform as nu
+import rfx.measurement.graded_wire as graded_wire
 from tests.contracts.curl_cases import model
 
 
@@ -174,13 +176,13 @@ def kernel_inputs():
 def test_kernel_adapters(branch):
     state, mats, boundary = kernel_inputs()
     dt, dx = 1e-12, 1e-3
-    coeffs = yee.precompute_coeffs(mats, dt, dx)
+    coeffs = yee.precompute_coeffs(mats, dt, dx, high_wall=(False, False, False))
     calls = {
-        "plain": lambda: yee.update_e(state, mats, dt, dx, boundary=boundary),
+        "plain": lambda: yee.update_e(state, mats, dt, dx, boundary=boundary, high_wall=(False, False, False)),
         "aniso": lambda: yee.update_e_aniso(state, mats, mats.eps_r, mats.eps_r,
-                                           mats.eps_r, dt, dx, boundary=boundary),
+                                           mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
         "inverse": lambda: yee.update_e_aniso_inv(state, mats, mats.eps_r, mats.eps_r,
-                                                  mats.eps_r, dt, dx, boundary=boundary),
+                                                  mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
         "fast_e": lambda: yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey, coeffs.ca_ez,
                                             coeffs.cb_ex, coeffs.cb_ey, coeffs.cb_ez,
                                             boundary=boundary),
@@ -305,12 +307,12 @@ def test_gpu_query_standard_dispatch_passes_realized_boundary_on_cpu():
     # An accelerator query keeps the standard lane and its realized boundary.
     sim = model(wall="pec", solved_domain=True)
     invoked = []
-    original = uniform.update_he_fast
+    original = stepping_uniform.update_he_fast
     def baked(*args, **kwargs):
         invoked.append(True)
         return original(*args, **kwargs)
     with patch.object(jax, "default_backend", lambda: "gpu"), \
-            patch.object(uniform, "update_he_fast", baked):
+            patch.object(stepping_uniform, "update_he_fast", baked):
         boundary = require_shared(lambda: sim.run(
             n_steps=2, skip_preflight=True, compute_s_params=False))
     assert not invoked
@@ -333,7 +335,7 @@ def test_each_port_sample_reads_two_neighbors(component, idx, periodic):
 @pytest.mark.parametrize("idx", [(0, 0, 0), (2, 1, 1), (4, 3, 2)])
 def test_each_graded_port_sample_reads_two_neighbors(component, idx):
     state, _, boundary = kernel_inputs()
-    require_shared(lambda: nu.wire_port_current(
+    require_shared(lambda: graded_wire.wire_port_current(
         state.hx, state.hy, state.hz, component, *idx,
         .9e-3, 1.1e-3, 1.3e-3, boundary=boundary),
         helper="h_neighbor", indexed=True, expected_calls=2)

@@ -7,7 +7,7 @@ import pytest
 from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import component_e_materials, component_h_materials
-from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
+from rfx.geometry.rasterize_grid import extend_cpml_pad_materials, unpadded_high_walls
 from rfx.model.materials import electric_cell_sizes, pole_component_weights
 from rfx.stepping.slab_view import slab_views
 
@@ -48,7 +48,7 @@ def test_assembled_wall_rows(graded, wall, kind, span, row):
     if graded:
         assert widths[2] is not None  # Ex averages over this genuinely graded axis.
         assert np.ptp(np.asarray(widths[2])) > 0
-    eps, sigma = component_e_materials(mats, PERIODIC, cell_sizes=widths)
+    eps, sigma = component_e_materials(mats, PERIODIC, high_wall=unpadded_high_walls(grid), cell_sizes=widths)
     mid = grid.shape[0] // 2
     if kind == "film":
         z = grid.pad_z_lo + 6
@@ -63,32 +63,31 @@ def test_assembled_wall_rows(graded, wall, kind, span, row):
         np.testing.assert_allclose(np.asarray(sigma[0])[mid, :, z], .1*np.array(row),
                                    rtol=2e-7, atol=0)
         if span == (3, 8):
-            h = component_h_materials(mats, PERIODIC)
+            h = component_h_materials(mats, PERIODIC, high_wall=unpadded_high_walls(grid))
             assert float(h[1][mid, -1, z]) == 2.
             assert float(h[1][mid, -2, z]) == 2.
 
 
-def test_debye_wall_retains_unrepaired_static_and_pole_edges():
+def test_debye_wall_replicates_static_and_pole_edges_together():
     grid, result = scene("debye")
     mats, debye = result[:2]
-    eps, sig = component_e_materials(mats, PERIODIC)
-    weights = pole_component_weights(debye[1][0], PERIODIC)
+    walls = unpadded_high_walls(grid)
+    eps, sig = component_e_materials(mats, PERIODIC, high_wall=walls)
+    weights = pole_component_weights(debye[1][0], PERIODIC, high_wall=walls)
     index = (grid.shape[0]//2, grid.shape[1]-1, grid.pad_z_lo+3)
     # #808/#627b: promoting eps_inf without the poles is forbidden.
-    # The dropped wall node stays vacuum: one of four Ex cells is body.
+    # Stored outside cells stay vacuum; both inside Ex cells carry the pole.
     assert float(mats.eps_r[index]) == 1.
     assert float(mats.sigma[index]) == 0.
     assert float(mats.mu_r[index]) == 1.
-    assert float(eps[0][index]) == 1.75
-    np.testing.assert_allclose(sig[0][index], .05, rtol=2e-7)
-    np.testing.assert_allclose(component_h_materials(mats)[1][index], 4/3, rtol=2e-7)
-    assert float(weights[0][index]) == .25
-    print("Debye wall cell (eps,sigma,mu)=(1,0,1); Ex eps_inf=1.75, sigma=.05; "
-          "Hy mu=4/3; Ex pole fraction=.25; delta_eps edge=.75")
+    assert float(eps[0][index]) == 2.5
+    np.testing.assert_allclose(sig[0][index], .1, rtol=2e-7)
+    np.testing.assert_allclose(component_h_materials(mats, high_wall=walls)[1][index], 2., rtol=2e-7)
+    assert float(weights[0][index]) == .5
 
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
-def test_one_column_gate_and_nonvacuum_outer_are_preserved(axis):
+def test_wall_read_preserves_air_gap_and_ignores_stored_outside(axis):
     shape = (5, 5, 5)
     eps = jnp.ones(shape)
     interior = [slice(None)]*3
@@ -96,15 +95,22 @@ def test_one_column_gate_and_nonvacuum_outer_are_preserved(axis):
     eps = eps.at[tuple(interior)].set(4.)
     walls = tuple(a == axis for a in range(3))
     got, _, _ = extend_cpml_pad_materials(eps, jnp.zeros(shape), jnp.ones(shape),
-                                        0, 0, 0, 0, 0, 0, high_wall=walls)
+                                        0, 0, 0, 0, 0, 0)
     np.testing.assert_array_equal(got, eps)  # Do not bridge a one-cell air gap.
+    from rfx.core.yee import edge_mean_components
+    outer = [slice(None)] * 3
+    outer[axis] = -1
+    for edge in edge_mean_components(eps, high_wall=walls):
+        np.testing.assert_array_equal(edge[tuple(outer)], 1.)
     interior[axis] = -2
     eps = eps.at[tuple(interior)].set(4.)
     interior[axis] = -1
     eps = eps.at[tuple(interior)].set(2.)
     got, _, _ = extend_cpml_pad_materials(eps, jnp.zeros(shape), jnp.ones(shape),
-                                        0, 0, 0, 0, 0, 0, high_wall=walls)
+                                        0, 0, 0, 0, 0, 0)
     np.testing.assert_array_equal(got, eps)
+    for edge in edge_mean_components(eps, high_wall=walls):
+        np.testing.assert_array_equal(edge[tuple(outer)], 4.)
 
 
 @pytest.mark.parametrize("nx", [17, 19])
@@ -118,12 +124,15 @@ def test_high_x_pmc_slabs_equal_whole(nx, devices):
     grid = sim._build_realized_grid()
     assert grid.shape[0] == nx
     mats = sim._assemble_materials(grid)[0]
-    whole = component_e_materials(mats), component_h_materials(mats)
+    walls = unpadded_high_walls(grid)
+    whole = component_e_materials(mats, high_wall=walls), component_h_materials(mats, high_wall=walls)
     assert float(whole[0][0][1][-1, 2, 2]) == 4.
     for view in slab_views(grid, devices):
         local = mats._replace(eps_r=view.rows(mats.eps_r), sigma=view.rows(mats.sigma),
                               mu_r=view.rows(mats.mu_r))
-        actual = component_e_materials(local), component_h_materials(local)
+        local_walls = (walls[0] and view.last, *walls[1:])
+        actual = (component_e_materials(local, high_wall=local_walls),
+                  component_h_materials(local, high_wall=local_walls))
         for got, expected in zip(jax.tree_util.tree_leaves(actual), jax.tree_util.tree_leaves(whole)):
             assert np.asarray(view.own(got)).tobytes() == np.asarray(expected[view.x0:view.x1]).tobytes()
     # Execute the uniform runner's actual split/mean on virtual ranks as
@@ -132,7 +141,7 @@ def test_high_x_pmc_slabs_equal_whole(nx, devices):
     per = split.eps_r.shape[1] - 2
     for rank in range(devices):
         local = jax.tree.map(lambda a: a[rank], split)
-        actual = slab_e_component_materials(local, per, nx, rank=rank)
+        actual = slab_e_component_materials(local, per, nx, rank=rank, high_wall=walls)
         start, stop = rank*per, min((rank+1)*per, nx)
         for got, expected in zip(jax.tree.leaves(actual), jax.tree.leaves(whole[0])):
             assert np.asarray(got[1:1+stop-start]).tobytes() == np.asarray(expected[start:stop]).tobytes()
@@ -176,7 +185,7 @@ def test_design_written_wall_value_and_derivative(seeded, end, value, wall, inte
     grid = sim._build_realized_grid()
     mats = sim._assemble_materials(grid)[0]
     z = grid.pad_z_lo + 3
-    assert float(mats.eps_r[2, 8, z]) == (2. if seeded and end == 8 else 1.)
+    assert float(mats.eps_r[2, 8, z]) == 1.
     bounds = (1, 5, 3, end, z, z+1)
 
     @jax.jit
@@ -237,12 +246,12 @@ def test_override_and_checkpoint_are_explicit_cell_inputs(tmp_path):
     # geometry/pole provenance from which to decide a dropped-node repair.
     explicit = repaired._replace(eps_r=repaired.eps_r.at[:, -1, :].set(1.))
     overridden = apply_material_overrides(repaired, eps_override=explicit.eps_r)
-    assert float(component_e_materials(overridden)[0][0][index]) == 1.75
+    assert float(component_e_materials(overridden, high_wall=unpadded_high_walls(grid))[0][0][index]) == 2.5
     path = tmp_path / "wall-materials.h5"
     save_materials(path, explicit)
     loaded = load_materials(path)
     np.testing.assert_array_equal(loaded.eps_r, explicit.eps_r)
-    assert float(component_e_materials(loaded)[0][0][index]) == 1.75
+    assert float(component_e_materials(loaded, high_wall=unpadded_high_walls(grid))[0][0][index]) == 2.5
 
 
 def test_periodic_terminal_is_a_real_cell():
@@ -255,13 +264,13 @@ def test_periodic_terminal_is_a_real_cell():
     assert unpadded_high_walls(grid) == (True, False, True)
     mats = sim._assemble_materials(grid)[0]
     assert float(mats.eps_r[2, -1, 2]) == 1.
-    assert float(component_e_materials(mats, (False, True, False))[0][0][2, -1, 2]) == 2.5
+    assert float(component_e_materials(mats, (False, True, False), high_wall=unpadded_high_walls(grid))[0][0][2, -1, 2]) == 2.5
 
 
 @pytest.mark.parametrize("reached,last_inside", [(True, False), (False, False), (True, True)])
 def test_fine_sample_requires_reached_wall_and_beyond_coordinate(reached, last_inside):
     from rfx.geometry.rasterize_grid import (
-        coords_from_fine_grid, rasterize_geometry, repair_fine_high_wall_materials)
+        coords_from_fine_grid, coords_from_uniform_grid, rasterize_geometry)
     from rfx.subgridding.validation import overlap_fine_extent
     sim = Simulation(freq_max=10e9, domain=(6*H, 8*H, 10*H), dx=H,
                      boundary=BoundarySpec(x="pec", y="pmc", z="pec"), cpml_layers=0)
@@ -275,14 +284,14 @@ def test_fine_sample_requires_reached_wall_and_beyond_coordinate(reached, last_i
     assert float(grid.domain[1]) == 8*H
     raw, debye, lorentz, *_ = rasterize_geometry(
         sim._geometry, sim._resolve_material, coords, centres=coords)
-    fixed = repair_fine_high_wall_materials(
-        raw, coords, grid, (False, reached, False), (debye, lorentz))
+    global_coords = coords_from_uniform_grid(grid)
+    walls = (False, unpadded_high_walls(grid)[1] and reached
+             and float(coords.y[-1]) > float(global_coords.y[-1]), False)
     index = (6, counts[1]-1, 6)
-    assert float(component_e_materials(raw)[0][0][index]) == 1.75
-    assert float(component_e_materials(fixed)[0][0][index]) == (
+    assert float(component_e_materials(raw, high_wall=(False,) * 3)[0][0][index]) == 1.75
+    assert float(component_e_materials(raw, high_wall=walls)[0][0][index]) == (
         2.5 if reached and not last_inside else 1.75)
-    if not reached or last_inside:
-        np.testing.assert_array_equal(raw.eps_r, fixed.eps_r)
+    assert float(raw.eps_r[index]) == 1.
 
 
 def test_dual_average_rasterization_already_repeats_last_centre(monkeypatch):
@@ -304,14 +313,14 @@ def test_dual_average_rasterization_already_repeats_last_centre(monkeypatch):
         return out
 
     monkeypatch.setattr(raster, "rasterize_geometry", capture)
-    eps = assemble_interface_eps_nu(sim, grid, result[0])
+    eps = assemble_interface_eps_nu(sim, grid, result[0], high_wall=unpadded_high_walls(grid))
     coords, cells = observed[0]
     assert coords.y[-1] == coords.y[-2] == 7.5*H
     np.testing.assert_array_equal(cells.eps_r[:, -1], cells.eps_r[:, -2])
     assert float(eps[0][3, -1, grid.pad_z_lo+3]) == 2.5
 
 
-def test_batched_writer_repairs_each_swept_wall_value():
+def test_batched_writer_leaves_stored_wall_and_producer_reads_inside():
     from rfx.vmap_sweep import _extend_batched_cpml_pad
     grid, result = scene("static")
     mats = result[0]
@@ -320,4 +329,7 @@ def test_batched_writer_repairs_each_swept_wall_value():
     mu = mats.mu_r.at[:, -1, :].set(1.)
     eps = jnp.stack([eps, jnp.where(eps == 4., 7., eps)])
     fixed, _, _ = _extend_batched_cpml_pad(eps, jnp.stack([sig, sig]), jnp.stack([mu, mu]), grid)
-    np.testing.assert_array_equal(fixed[:, 3, -1, grid.pad_z_lo+3], [4., 7.])
+    np.testing.assert_array_equal(fixed[:, 3, -1, grid.pad_z_lo+3], [1., 1.])
+    from rfx.core.yee import edge_mean_components
+    means = jax.vmap(lambda a: edge_mean_components(a, high_wall=unpadded_high_walls(grid)))(fixed)
+    np.testing.assert_array_equal(means[0][:, 3, -1, grid.pad_z_lo+3], [2.5, 4.])

@@ -36,6 +36,79 @@ class ProbeSpec(NamedTuple):
     component: str
 
 
+class WirePortSParamSpec(NamedTuple):
+    """Wire port S-param DFT specification for the compiled runner.
+
+    Pre-computed metadata for inline V/I DFT accumulation inside
+    jax.lax.scan, avoiding the separate Python-loop S-param extraction.
+
+    mid_i, mid_j, mid_k: midpoint cell for V and I measurement — the
+        midpoint of the LIVE wire run (issue #764; identical to the
+        historical all-extent midpoint when no extent cell is dead).
+    component: 'ez', 'ex', or 'ey'.
+    freqs: (n_freqs,) frequency array.
+    impedance: port reference impedance (Z0).
+    live_cells: static tuple of (i, j, k) LIVE wire cells (issue #764) for
+        the whole-port gap-voltage accumulator
+        V_port = sum over live cells of -E_c*dx.  Empty tuple = degenerate
+        fallback to the single midpoint cell (pre-#764 constructors).
+    excite: whether this port is genuinely driven in THIS pass.  The
+        whole-port driven-diagonal formula
+        S_kk = (V_port - Z0*I)/(V_port + Z0*I) applies ONLY when True;
+        a passive port's diagonal keeps the legacy per-cell convention
+        (a load-independent port-cell diagnostic, not S_jj — issue #764).
+    """
+    mid_i: int
+    mid_j: int
+    mid_k: int
+    component: str
+    freqs: jnp.ndarray
+    impedance: float
+    live_cells: tuple = ()
+    excite: bool = True
+
+
+class LumpedPortSParamSpec(NamedTuple):
+    """Lumped port S-param DFT specification for the compiled runner.
+
+    Pre-computed metadata for inline V/I DFT accumulation inside
+    jax.lax.scan, providing an AD-compatible alternative to the
+    Python-loop ``extract_s_matrix`` path for single-cell lumped ports.
+
+    Attributes
+    ----------
+    i, j, k : int
+        Lumped port cell index.
+    component : str
+        E-field component ("ex", "ey", or "ez").
+    freqs : (n_freqs,) jnp.ndarray
+        Frequencies (Hz) at which to accumulate V and I DFTs.
+    impedance : float
+        Port reference impedance Z0 (ohms).
+    excite : bool
+        Whether this port is genuinely driven in THIS pass.  A driven port
+        reads its diagonal from the terminal V/I pair
+        (:func:`rfx.probes.probes.driven_port_reflection`); a passive one
+        keeps the load-independent port-branch reading
+        (:func:`rfx.probes.probes.extract_lumped_s11`).  Mirrors
+        :class:`WireSParamSpec.excite`.
+
+    Notes
+    -----
+    V is sampled as ``-E·dx`` and I as the curl-H loop integral times
+    ``dx`` at the port cell, both AFTER source injection, with the Yee
+    half-step phase on I.  Issue #72; sampling slot and diagonal formula
+    decided by scripts/diagnostics/lumped_port_known_load_line.py.
+    """
+    i: int
+    j: int
+    k: int
+    component: str
+    freqs: jnp.ndarray
+    impedance: float
+    excite: bool = True
+
+
 class DesignBoxSpec(NamedTuple):
     """One static box whose E update runs on its own permittivity (#1179).
 

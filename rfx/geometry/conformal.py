@@ -26,7 +26,12 @@ import jax.numpy as jnp
 
 from rfx.grid import Grid
 from rfx.geometry.smoothing import _get_sdf_fn, _yee_coords
-from rfx.stepping.conductors import apply_conformal_pec  # noqa: F401 (public compatibility)
+from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
+
+
+def apply_conformal_pec(state, w_ex, w_ey, w_ez):
+    """Compatibility entry for weight callers; production forms masks at setup."""
+    return _apply_conformal_pec(state, w_ex == 0.0, w_ey == 0.0, w_ez == 0.0)
 
 
 def _signed_distance_sphere(x, y, z, center, radius):

@@ -174,12 +174,12 @@ def measure(case, entry, n_steps=2):
     hold_faces = tuple(f for f in sim._boundary_spec.pmc_faces() if f.endswith("hi")) if entry == "nonuniform" else ()
     with observe_scans(records, grid.shape if entry == "distributed" else None, hold_faces):
         if entry == "gpu-query":
-            import rfx.simulation as simulation
-            original_fast = simulation.update_he_fast
+            import rfx.stepping.uniform as stepping_uniform
+            original_fast = stepping_uniform.update_he_fast
             def observed_fast(*args, **kwargs):
                 fast_calls.append(1)
                 return original_fast(*args, **kwargs)
-            with patch.object(jax, "default_backend", lambda: "gpu"), patch.object(simulation, "update_he_fast", observed_fast):
+            with patch.object(jax, "default_backend", lambda: "gpu"), patch.object(stepping_uniform, "update_he_fast", observed_fast):
                 result = execute(sim, "run")
         elif entry == "adi":
             import rfx.adi as adi

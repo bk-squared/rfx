@@ -21,6 +21,8 @@ true reflection-immune leading-edge slowdown is only ~1.19× — too weak to
 gate. This file pins the ADE coefficient / stability / runner mechanics only.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -54,7 +56,7 @@ def test_lorentz_coefficients():
 
     materials = init_materials(shape)
     poles = [LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)]
-    coeffs, lstate = init_lorentz(poles, materials, dt)
+    coeffs, lstate = init_lorentz(poles, materials, dt, high_wall=(False, False, False))
 
     # Hand-computed
     denom = 1.0 + delta * dt
@@ -116,7 +118,7 @@ def test_lorentz_energy_bounded():
         eps_r=jnp.full(shape, 2.0, dtype=jnp.float32)
     )
     poles = [LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)]
-    coeffs, lstate = init_lorentz(poles, materials, dt)
+    coeffs, lstate = init_lorentz(poles, materials, dt, high_wall=(False, False, False))
 
     # Initialize with cavity mode
     Lx = (shape[0] - 1) * dx
@@ -133,7 +135,7 @@ def test_lorentz_energy_bounded():
 
     max_energy = initial_energy
     for step in range(500):
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=(False, False, False))
         state, lstate = update_e_lorentz(state, coeffs, lstate, dt, dx)
         state = apply_pec(state)
 
@@ -160,7 +162,7 @@ def test_lorentz_simulation_runner():
 
     omega_0 = 2 * np.pi * 10e9
     poles = [LorentzPole(omega_0=omega_0, delta=5e9, kappa=1.0 * omega_0**2)]
-    lorentz = init_lorentz(poles, materials, grid.dt)
+    lorentz = init_lorentz(poles, materials, grid.dt, high_wall=unpadded_high_walls(grid))
 
     from rfx.sources.sources import GaussianPulse
     center = (0.01, 0.01, 0.01)
@@ -190,12 +192,12 @@ def test_mixed_debye_and_lorentz_runner():
         [DebyePole(delta_eps=1.5, tau=8e-12)],
         materials,
         grid.dt,
-    )
+     high_wall=unpadded_high_walls(grid))
     lorentz = init_lorentz(
         [LorentzPole(omega_0=2 * np.pi * 9e9, delta=2e9, kappa=(2 * np.pi * 9e9) ** 2)],
         materials,
         grid.dt,
-    )
+     high_wall=unpadded_high_walls(grid))
 
     from rfx.sources.sources import GaussianPulse
 

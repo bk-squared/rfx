@@ -1,4 +1,6 @@
 """Low-level runners judge the ADE coefficients they actually receive (#1934)."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import numpy as np
 import pytest
 import jax
@@ -25,9 +27,9 @@ def test_prebuilt_lorentz_is_judged(graded, decay):
     else:
         runner = run
     kwargs = dict(max_steps=2, min_steps=1, check_interval=1) if decay else dict(n_steps=2)
-    stable = init_lorentz([drude_pole(.25 / grid.dt, 0.)], materials, grid.dt)
+    stable = init_lorentz([drude_pole(.25 / grid.dt, 0.)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     runner(grid, materials, lorentz=stable, **kwargs)
-    unstable = init_lorentz([drude_pole(.45 / grid.dt, 0.)], materials, grid.dt)
+    unstable = init_lorentz([drude_pole(.45 / grid.dt, 0.)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     with pytest.raises(ValueError, match="unstable at this model's time step"):
         runner(grid, materials, lorentz=unstable, **kwargs)
 
@@ -36,7 +38,7 @@ def test_prebuilt_lorentz_is_judged(graded, decay):
 def test_prebuilt_runner_transforms_refuse(transform):
     grid = _box(.25)._build_realized_grid()
     materials = init_materials(grid.shape)
-    coeffs, state = init_lorentz([drude_pole(.45 / grid.dt, 0.)], materials, grid.dt)
+    coeffs, state = init_lorentz([drude_pole(.45 / grid.dt, 0.)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     def loss(scale):
         scaled = coeffs._replace(c=tuple(v * scale for v in coeffs.c))
         result = run(grid, materials, n_steps=1, lorentz=(scaled, state))
@@ -86,7 +88,7 @@ def test_prebuilt_occupied_cells_do_not_include_edge_extension():
     materials = init_materials(grid.shape)
     mask = np.zeros(grid.shape, bool)
     mask[:, :, :7] = True
-    poles = init_lorentz([drude_pole(1.5 / grid.dt, 0.)], materials, grid.dt, mask=mask)
+    poles = init_lorentz([drude_pole(1.5 / grid.dt, 0.)], materials, grid.dt, mask=mask, high_wall=unpadded_high_walls(grid))
     assert not pole_sets_judged(poles[0])
     judge_prebuilt_poles(grid, poles)
 
@@ -100,7 +102,7 @@ def test_prebuilt_cost_reduces_per_pole_set(monkeypatch, n, levels):
     eps = (1 + 3 * rng.random(grid.shape) if levels is None else
            1 + rng.integers(0, levels, grid.shape) * (3. / (levels - 1)))
     materials = init_materials(grid.shape)._replace(eps_r=jnp.asarray(eps, jnp.float32))
-    poles = init_lorentz([drude_pole(.2 / grid.dt, 1e10)], materials, grid.dt)
+    poles = init_lorentz([drude_pole(.2 / grid.dt, 1e10)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     calls = []
     original = stability.largest_growth
     def measured(*args, **kwargs):
@@ -112,13 +114,31 @@ def test_prebuilt_cost_reduces_per_pole_set(monkeypatch, n, levels):
 
 
 def test_prebuilt_binary_masks_recover_cell_patterns(monkeypatch):
+    """The inverse recovers the REALIZED cell pattern, not the stored one.
+
+    On an axis with an unpadded high wall the last stored row lies beyond the
+    high-wall node. No edge of the realized model reads it: the wall edges take
+    the last inside row, as the low-wall mirror replicates row 0 (#1966). The
+    stored row entered the model only through the earlier per-writer repair, so
+    the expected pattern replicates the last inside row on every flagged axis.
+    """
     from rfx.grid import Grid
     import rfx.model.pole_stability as stability
     grid = Grid(freq_max=10e9, domain=(.004,) * 3, dx=.001, cpml_layers=0)
     rng = np.random.default_rng(42)
     mask = rng.random(grid.shape) > .5
+    high_wall = unpadded_high_walls(grid)
+    assert high_wall == (True, True, True)
     materials = init_materials(grid.shape)
-    lorentz = init_lorentz([drude_pole(.123 / grid.dt, 0.)], materials, grid.dt, mask=mask)
+    lorentz = init_lorentz([drude_pole(.123 / grid.dt, 0.)], materials, grid.dt, mask=mask, high_wall=high_wall)
+    realized = mask.copy()
+    for axis, flagged in enumerate(high_wall):
+        if flagged:
+            inside = np.take(realized, [-2], axis=axis)
+            index = [slice(None)] * 3
+            index[axis] = slice(-1, None)
+            realized[tuple(index)] = inside
+    mask = realized
     recorded = []
     original = stability.judge_pole_sets
     def measured(records, *args, **kwargs):
@@ -166,7 +186,7 @@ def test_prebuilt_missing_metrics_refuses_by_name(missing):
     from rfx.model.pole_stability import judge_prebuilt_poles
     grid = _box(.25)._build_realized_grid()
     materials = init_materials(grid.shape)
-    lorentz = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt)
+    lorentz = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     incomplete = SimpleNamespace(cells=grid.cells, dt=grid.dt)
     delattr(incomplete, missing)
     with pytest.raises(ValueError, match="require cell sizes and dt for pole stability admission"):
@@ -182,7 +202,7 @@ def _periodic_prebuilt(periodic, wp):
     mask = np.zeros(grid.shape, bool)
     mask[:3, 2:9, 2:9] = mask[-2:, 2:9, 2:9] = True
     lorentz = init_lorentz([drude_pole(wp / grid.dt, 0.)], materials, grid.dt,
-                           mask=[jnp.asarray(mask)], periodic=periodic)
+                           mask=[jnp.asarray(mask)], periodic=periodic, high_wall=unpadded_high_walls(grid))
     return grid, materials, lorentz, mask
 
 
@@ -223,7 +243,7 @@ def test_even_periodic_prebuilt_stable_medium_refuses_by_name(periodic):
     mask = np.zeros(grid.shape, bool)
     mask[:3, 2:9, 2:9] = mask[-2:, 2:9, 2:9] = True
     lorentz = init_lorentz([drude_pole(.25 / grid.dt, 0.)], materials, grid.dt,
-                           mask=[jnp.asarray(mask)], periodic=periodic)
+                           mask=[jnp.asarray(mask)], periodic=periodic, high_wall=unpadded_high_walls(grid))
     message = (r"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis [012] "
                r"does not determine unique cells")
     with pytest.raises(ValueError, match=message):
@@ -260,7 +280,7 @@ def test_prebuilt_setup_passes_run_periodic_axes(graded, monkeypatch):
     grid = sim._build_realized_grid()
     materials = init_materials(grid.shape)
     periodic = (True, False, False)
-    lorentz = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, periodic=periodic)
+    lorentz = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, periodic=periodic, high_wall=unpadded_high_walls(grid))
     seen = []
     def observe(*args, **kwargs):
         seen.append(kwargs["periodic"])
@@ -335,7 +355,7 @@ def test_inconsistent_periodic_edges_refuse_by_name():
     grid = Grid(freq_max=10e9, domain=(.003,) * 3, dx=.001, cpml_layers=0)
     materials = init_materials(grid.shape)
     periodic = (True,) * 3
-    coeffs, state = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, periodic=periodic)
+    coeffs, state = init_lorentz([drude_pole(.2 / grid.dt, 0.)], materials, grid.dt, periodic=periodic, high_wall=unpadded_high_walls(grid))
     factor = jnp.where(jnp.indices(grid.shape)[1] % 2, 2., 1.)
     coeffs = coeffs._replace(cc=(coeffs.cc[0] / factor, *coeffs.cc[1:]))
     with pytest.raises(ValueError, match="cannot judge prebuilt Lorentz coefficients: recovered cells do not reproduce"):

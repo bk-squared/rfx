@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import threading
 from dataclasses import fields, is_dataclass, replace
 from typing import Callable
 
@@ -319,6 +320,8 @@ DETECTORS: dict[Row, Callable] = {
     ("_ports", "wire_port"): lambda sim: bool(_ports(sim, extent=True)),
     ("_msl_ports", "msl_port"): lambda sim: bool(sim._msl_ports),
     ("_waveguide_ports", "waveguide_port"): lambda sim: bool(sim._waveguide_ports),
+    ("_waveguide_ports", "n_modes"): lambda sim: any(
+        p.n_modes > 1 for p in sim._waveguide_ports),
     ("_coaxial_ports", "coax_port"): lambda sim: bool(sim._coaxial_ports),
     ("_floquet_ports", "floquet_port"): lambda sim: bool(sim._floquet_ports),
     ("_floquet_ports", "scan_angle"): lambda sim: any(
@@ -390,6 +393,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_ports", "wire_port"): "a wire port (add_port(extent=...))",
     ("_msl_ports", "msl_port"): "a microstrip port (add_msl_port)",
     ("_waveguide_ports", "waveguide_port"): "a waveguide port (add_waveguide_port)",
+    ("_waveguide_ports", "n_modes"): "a waveguide port with several modes (add_waveguide_port(n_modes>1))",
     ("_coaxial_ports", "coax_port"): "a coaxial port (add_coaxial_port)",
     ("_floquet_ports", "floquet_port"): "a Floquet port (add_floquet_port)",
     ("_floquet_ports", "scan_angle"): "a Floquet port scanned off normal (scan_theta != 0)",
@@ -471,6 +475,9 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
+    # One configuration per port is all the single-run assembly takes; the
+    # per-mode list is driven only by compute_waveguide_s_matrix() (#2070).
+    ("_waveguide_ports", "n_modes"): frozenset(),
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
@@ -561,7 +568,7 @@ for _row in (
     ("_geometry", "pec_volume"), ("_geometry", "pec_sheet"), ("_geometry", "pec_wire"),
     ("_thin_conductors", "lossy_sheet"), ("_thin_conductors", "pec_sheet"),
     ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
-    ("_waveguide_ports", "waveguide_port"),
+    ("_waveguide_ports", "waveguide_port"), ("_waveguide_ports", "n_modes"),
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
     ("_boundary_spec", "conformal"),
     ("_boundary_spec", "absorbing_lid"),
@@ -1027,6 +1034,9 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if ("_boundary_spec", "conformal_s_matrix") in rows:
         where += (" Use compute_s_params=False for conformal probe fields, or "
                   "conformal_pec=False for a staircase S-matrix.")
+    if ("_waveguide_ports", "n_modes") in rows:
+        where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
+                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port (#2070).")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
@@ -1090,10 +1100,9 @@ def refuse_slab_tfsf(entry, lane="uniform multi-device"):
     raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
 
 
-#: Device counts a closed-box TF/SF has been validated on (rfx-lead L:5446b5): one seam is measured
-#: (PEC sphere backscatter vs Mie, far field vs one device, the right-Hx ghost invariant); two seams
-#: and a box face on a seam are not.
-SLAB_TFSF_MAX_DEVICES = 2
+#: Closed-box TF/SF validation covers three seams, a padded last slab, a box face
+#: on a seam, probe and far-field parity, and PEC sphere backscatter vs Mie.
+SLAB_TFSF_MAX_DEVICES = 4
 
 
 def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
@@ -1101,8 +1110,31 @@ def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
     if entry is not None and getattr(entry, "closed_box", False) and n_devices > SLAB_TFSF_MAX_DEVICES:
         raise NotImplementedError(
             f"closed-box TFSF (add_tfsf_source(closed_box=True)) on {n_devices} devices is not supported on "
-            f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (one seam); 3 or more wait for "
-            f"the multi-seam validation (two seams, a box face on a seam). Use devices=jax.devices()[:2] or one device")
+            f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (three seams); "
+            f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
+
+
+_COAX_ADVICE = {
+    "run": ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
+            "dispatches to either. Use add_port(..., extent=...) for "
+            "probe-feed S-parameters."),
+    "forward": ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
+                "for differentiable probe-feed S11 objectives."),
+}
+
+
+def refuse_coaxial_port(sim, entry: str) -> None:
+    """The one coaxial-port refusal of ``run()`` and ``forward()`` (#2075),
+    raised before mesh planning while no time-stepping lane admits the row;
+    ``entry`` selects the advice."""
+    row = ("_coaxial_ports", "coax_port")
+    if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
+                                      for lane in LANES):
+        raise NotImplementedError(
+            f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
+            "coaxial port's S-parameters come from "
+            "compute_coaxial_line_reflection(...) (one-port reflection) "
+            "or compute_coaxial_two_port(...) (through line); " + _COAX_ADVICE[entry])
 
 
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
@@ -1295,20 +1327,26 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
             "the unsupported input.") from error
 
 
+def _eager_trace_state(get_opaque_trace_state):
+    """The trace state of a thread no transformation has entered (state is per thread)."""
+    state = []
+    thread = threading.Thread(target=lambda: state.append(get_opaque_trace_state()))
+    thread.start()
+    thread.join()
+    return state[0]
+
+
 def _under_external_jax_transform() -> bool:
-    """Read the public trace-state API across the supported JAX versions."""
+    """Compare the caller's trace state with an untransformed thread's (jax 0.10 and 0.11)."""
     try:
-        from jax.extend.core import get_opaque_trace_state, take_current_trace
+        from jax.extend.core import get_opaque_trace_state
     except ImportError:
-        try:  # JAX 0.6, including the Python 3.10 CI environment.
-            from jax.core import get_opaque_trace_state, take_current_trace
-        except ImportError:  # The declared JAX 0.4.20 floor.
+        try:  # JAX 0.6 export layout.
+            from jax.core import get_opaque_trace_state
+        except ImportError:  # The JAX 0.4.20 export layout.
             from jax.core import trace_state_clean
             return not trace_state_clean()
-    caller = get_opaque_trace_state()
-    with take_current_trace():
-        eager = get_opaque_trace_state()
-    return caller != eager
+    return get_opaque_trace_state() != _eager_trace_state(get_opaque_trace_state)
 
 
 def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=None) -> None:

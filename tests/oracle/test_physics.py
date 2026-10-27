@@ -9,6 +9,8 @@ Tests:
 Plus: dielectric-filled cavity resonance (validates eps_r handling).
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -49,8 +51,13 @@ def test_fresnel_normal_incidence():
     Probe in the scattered-field region directly measures the reflected wave.
     """
     from rfx.sources.tfsf import (
-        init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
-        apply_tfsf_e, apply_tfsf_h,
+        init_tfsf,
+        update_tfsf_1d_h,
+        update_tfsf_1d_e,
+    )
+    from rfx.stepping.tfsf import (
+        apply_tfsf_e,
+        apply_tfsf_h,
     )
 
     eps_r = 4.0
@@ -107,7 +114,7 @@ def test_fresnel_normal_incidence():
 
         # Correct leapfrog interleaving (Taflove Ch. 5):
         # 1) H update — uses E at time n
-        state = update_h(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
         # 2) TFSF H correction — uses e1d at time n (not yet advanced)
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
@@ -115,7 +122,7 @@ def test_fresnel_normal_incidence():
         tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
 
         # 4) E update — uses H at time n+1/2
-        state = update_e(state, materials, dt, dx, periodic)
+        state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
         # 5) TFSF E correction — uses h1d at time n+1/2
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
@@ -186,9 +193,9 @@ def test_cpml_grazing_incidence():
     peak_energy = 0.0
     for n in range(300):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid)
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_e(state, cp, cs, grid)
         ez = state.ez.at[src].add(pulse(t))
         state = state._replace(ez=ez)
@@ -199,9 +206,9 @@ def test_cpml_grazing_incidence():
 
     # Let CPML absorb — run until energy decays
     for n in range(1500):
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid)
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_e(state, cp, cs, grid)
 
     energy_final = em_energy(state)
@@ -256,8 +263,8 @@ def test_mesh_convergence_2nd_order():
         ts = np.zeros(num_steps)
         for n in range(num_steps):
             t = n * dt
-            state = update_h(state, materials, dt, dx)
-            state = update_e(state, materials, dt, dx)
+            state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+            state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
             state = apply_pec(state)
             ez = state.ez.at[src_i, src_j, src_k].add(pulse(t))
             state = state._replace(ez=ez)
@@ -309,16 +316,16 @@ def test_late_time_stability():
     # Inject source for 150 steps
     for n in range(150):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         ez = state.ez.at[cx, cy, cz].add(pulse(t))
         state = state._replace(ez=ez)
 
     # Let settle for 50 steps (no source)
     for _ in range(50):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
 
     energy_ref = em_energy(state)
@@ -327,8 +334,8 @@ def test_late_time_stability():
 
     # Run 5000 more steps — check for stability
     for n in range(5000):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
 
         if n % 1000 == 999:
@@ -387,8 +394,8 @@ def test_dielectric_cavity_resonance():
     ts = np.zeros(num_steps)
     for n in range(num_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         ez = state.ez.at[src_i, src_j, src_k].add(pulse(t))
         state = state._replace(ez=ez)

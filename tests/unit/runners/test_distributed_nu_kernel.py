@@ -22,6 +22,8 @@ fast-suite/weekly CPU shards as the sibling
 ``test_distributed_nu_composition.py`` file, which never carried it.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import os
 # Force 2 virtual devices for the sharded tests in sibling file; also
 # harmless here because we don't actually create a mesh in this file.
@@ -182,7 +184,7 @@ def test_update_h_nu_local_matches_global_interior():
     global_h = update_h_nu(
         state, mats, grid.dt,
         grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h,
-    )
+     high_wall=unpadded_high_walls(grid))
 
     # Device-0 slab (with ghost). Pick slab build identical to runner.
     inv_dx_g, inv_dx_h_g, _ = _build_sharded_inv_dx_arrays(
@@ -243,7 +245,7 @@ def test_update_h_nu_local_matches_global_interior():
         grid.inv_dy, grid.inv_dz,
         jnp.asarray(idxh_slab[d]),
         grid.inv_dy_h, grid.inv_dz_h,
-    )
+     high_wall=unpadded_high_walls(grid))
 
     # Compare interior real cells (exclude ghost + the seam cell, which
     # uses the global mean-spacing; this cell's forward-diff reaches
@@ -1381,7 +1383,7 @@ def test_distributed_debye_only_2device_matches_single_device():
                                nz_g // 4:3 * nz_g // 4].set(True)
 
     debye = init_debye([_phase2d_debye_pole()], materials, grid.dt,
-                       mask=debye_mask)
+                       mask=debye_mask, high_wall=unpadded_high_walls(grid))
 
     src_idx = (4, ny_g // 2, nz_g // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -1454,7 +1456,7 @@ def test_distributed_lorentz_only_2device_matches_single_device():
                                    nz_g // 4:3 * nz_g // 4].set(True)
 
     lorentz = init_lorentz([_phase2d_lorentz_pole()], materials, grid.dt,
-                           mask=lorentz_mask)
+                           mask=lorentz_mask, high_wall=unpadded_high_walls(grid))
 
     src_idx = (4, ny_g // 2, nz_g // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -1529,9 +1531,9 @@ def test_distributed_mixed_dispersion_2device_matches_single_device():
                    ny_g // 4:3 * ny_g // 4,
                    nz_g // 4:3 * nz_g // 4].set(True)
 
-    debye = init_debye([_phase2d_debye_pole()], materials, grid.dt, mask=mask)
+    debye = init_debye([_phase2d_debye_pole()], materials, grid.dt, mask=mask, high_wall=unpadded_high_walls(grid))
     lorentz = init_lorentz([_phase2d_lorentz_pole()], materials, grid.dt,
-                           mask=mask)
+                           mask=mask, high_wall=unpadded_high_walls(grid))
 
     src_idx = (4, ny_g // 2, nz_g // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -1721,7 +1723,7 @@ def test_distributed_debye_seam_ade_ordering_isolated():
     debye_mask = debye_mask.at[seam_i, 1:-1, 1:-1].set(True)
 
     debye = init_debye([_phase2d_debye_pole()], materials, grid.dt,
-                       mask=debye_mask)
+                       mask=debye_mask, high_wall=unpadded_high_walls(grid))
 
     src_idx = (3, ny_g // 2, nz_g // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -1798,7 +1800,7 @@ def test_distributed_dispersion_drift_over_time():
     debye_mask = debye_mask.at[seam_i - 2:seam_i + 3, 1:-1, 1:-1].set(True)
 
     debye = init_debye([_phase2d_debye_pole()], materials, grid.dt,
-                       mask=debye_mask)
+                       mask=debye_mask, high_wall=unpadded_high_walls(grid))
 
     src_idx = (3, ny_g // 2, nz_g // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(

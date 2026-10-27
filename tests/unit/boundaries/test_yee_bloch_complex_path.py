@@ -49,13 +49,13 @@ def test_real_path_unaffected_by_new_signature(periodic, order):
     st_a = _state(jnp.float32)
     st_b = _state(jnp.float32)
     for _ in range(6):
-        st_a = update_h(st_a, mat, DT, DX, periodic=periodic, stencil_order=order)
-        st_a = update_e(st_a, mat, DT, DX, periodic=periodic, stencil_order=order)
+        st_a = update_h(st_a, mat, DT, DX, periodic=periodic, stencil_order=order, high_wall=(False, False, False))
+        st_a = update_e(st_a, mat, DT, DX, periodic=periodic, stencil_order=order, high_wall=(False, False, False))
         # explicit bloch=None must be identical to omitting it
         st_b = update_h(st_b, mat, DT, DX, periodic=periodic, stencil_order=order,
-                        bloch=None)
+                        bloch=None, high_wall=(False, False, False))
         st_b = update_e(st_b, mat, DT, DX, periodic=periodic, stencil_order=order,
-                        bloch=None)
+                        bloch=None, high_wall=(False, False, False))
     for f in ("ex", "ey", "ez", "hx", "hy", "hz"):
         assert np.array_equal(np.asarray(getattr(st_a, f)),
                               np.asarray(getattr(st_b, f)))
@@ -70,10 +70,10 @@ def test_complex_zero_bloch_reduces_to_real(periodic):
     st_c = _state(jnp.complex64)
     bloch = (1.0 + 0j, 1.0 + 0j, 1.0 + 0j)
     for _ in range(6):
-        st_r = update_h(st_r, mat, DT, DX, periodic=periodic)
-        st_r = update_e(st_r, mat, DT, DX, periodic=periodic)
-        st_c = update_h(st_c, mat, DT, DX, periodic=periodic, bloch=bloch)
-        st_c = update_e(st_c, mat, DT, DX, periodic=periodic, bloch=bloch)
+        st_r = update_h(st_r, mat, DT, DX, periodic=periodic, high_wall=(False, False, False))
+        st_r = update_e(st_r, mat, DT, DX, periodic=periodic, high_wall=(False, False, False))
+        st_c = update_h(st_c, mat, DT, DX, periodic=periodic, bloch=bloch, high_wall=(False, False, False))
+        st_c = update_e(st_c, mat, DT, DX, periodic=periodic, bloch=bloch, high_wall=(False, False, False))
     for f in ("ex", "ey", "ez", "hx", "hy", "hz"):
         r = np.asarray(getattr(st_r, f))
         c = np.asarray(getattr(st_c, f))
@@ -94,7 +94,7 @@ def test_bloch_requires_order2(fn):
     st = _state(jnp.complex64)
     with pytest.raises(ValueError, match="stencil_order=2"):
         fn(st, mat, DT, DX, periodic=(False, True, True), stencil_order=4,
-           bloch=(1.0 + 0j, 1.0 + 0.5j, 1.0 + 0j))
+           bloch=(1.0 + 0j, 1.0 + 0.5j, 1.0 + 0j), high_wall=(False,) * 3)
 
 
 def _kernel_prop_angle(theta_deg, ny=16, nx=600):
@@ -122,8 +122,8 @@ def _kernel_prop_angle(theta_deg, ny=16, nx=600):
     Sx = Sy = 0.0
     for step in range(700):
         t = step * dt
-        st = update_h(st, mat, dt, dx, periodic=(False, True, True), bloch=bloch)
-        st = update_e(st, mat, dt, dx, periodic=(False, True, True), bloch=bloch)
+        st = update_h(st, mat, dt, dx, periodic=(False, True, True), bloch=bloch, high_wall=(False, False, False))
+        st = update_e(st, mat, dt, dx, periodic=(False, True, True), bloch=bloch, high_wall=(False, False, False))
         src = np.exp(-1j * 2 * np.pi * f0 * (t - t0)) * np.exp(-((t - t0) / tau) ** 2)
         st = st._replace(ez=st.ez.at[src_x, :, 0].add(complex(src)))
         if step >= 700 // 3:
@@ -176,8 +176,8 @@ def test_bloch_path_is_differentiable():
 
         def body(st, step):
             t = step * dt
-            st = update_h(st, mat, dt, dx, periodic=per, bloch=bloch)
-            st = update_e(st, mat, dt, dx, periodic=per, bloch=bloch)
+            st = update_h(st, mat, dt, dx, periodic=per, bloch=bloch, high_wall=(False, False, False))
+            st = update_e(st, mat, dt, dx, periodic=per, bloch=bloch, high_wall=(False, False, False))
             src = jnp.exp(-1j * 2 * jnp.pi * f0 * (t - t0)) * jnp.exp(-((t - t0) / tau) ** 2)
             st = st._replace(ez=st.ez.at[20, :, 0].add(src.astype(jnp.complex64)))
             return st, None

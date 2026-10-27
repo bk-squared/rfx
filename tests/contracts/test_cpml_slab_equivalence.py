@@ -33,6 +33,15 @@ def _whole_array(state, params, psi, grid, materials, faces, magnetic, walls=())
             # Uniform Yee H faces use the harmonic mean with the backward
             # cell on the component axis; the outer cell is edge-replicated.
             mu = materials.mu_r
+            # A high face with no absorber layers is a wall: the mean reads
+            # the last inside cell there, not the stored cell beyond it.
+            for axis, pad in enumerate(grid.face_pads[1::2]):
+                if pad == 0 and mu.shape[axis] > 1:
+                    last = [slice(None)] * 3
+                    last[axis] = -1
+                    inside = list(last)
+                    inside[axis] = -2
+                    mu = mu.at[tuple(last)].set(mu[tuple(inside)])
             indices = jnp.maximum(jnp.arange(mu.shape[target]) - 1, 0)
             backward = jnp.take(mu, indices, axis=target)
             material = jnp.where(backward == mu, mu, 2 / (1 / backward + 1 / mu))

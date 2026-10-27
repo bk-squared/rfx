@@ -65,6 +65,8 @@ the E update); the mutations patch it there and fail if it is not reached.
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from contextlib import contextmanager, nullcontext
 import functools
 import io
@@ -228,7 +230,7 @@ def _stepper_cb(grid, eps, sigma):
                           jnp.ones(grid.shape, jnp.float32))
     from rfx.model.materials import electric_cell_sizes
     new = update_e_nu(state, mats, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
-                      cell_sizes=electric_cell_sizes(grid))
+                      cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
     curl = curl_h_nu(*h, grid.inv_dx, grid.inv_dy, grid.inv_dz)
     return {c: np.asarray(getattr(new, c), np.float64) / np.asarray(curl[a], np.float64)
             for a, c in enumerate(("ex", "ey", "ez"))}
@@ -451,7 +453,7 @@ def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotang
     NaN gradient at the four cells a current source's drive reads -- on this lane
     and on the single-device lane since #1280 (#1279 review). In eps_r units the
     same Cb keeps the reverse pass finite far past any objective a board makes."""
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     dt = float(_board(EPS_LO)._build_nonuniform_grid().dt)
     for cotangent in (1e18, 1e22, 1e26, 1e30):
         grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt),

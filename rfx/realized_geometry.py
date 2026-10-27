@@ -463,7 +463,8 @@ def _ports(sim, ctx, assembled):
                     sl, _ = _range_to_slice_nu(grid, axis, getattr(pe, f'{axis}_range'))
                 else:
                     sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
-                                                grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b])
+                                                grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b],
+                                                getattr(grid, f"pad_{axis}_hi"))
                 aperture.append((int(sl[0]), int(sl[1] - 1)))
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
@@ -623,3 +624,13 @@ def _conductor_view(record, conductors):
     # object includes assembly bookkeeping and lane-specific grid types.
     object.__setattr__(record, '_conductors', conductors)
     return record
+
+
+def early_run_record(sim, root, lane):
+    """ADI/subgrid record timing remains at assembly, as before this move."""
+    if lane == "run_uniform":
+        return None
+    from rfx.realized_geometry import record_from_assembly
+    return record_from_assembly(sim, root.grid, root.materials, root.pec_cells,
+        root.sheets, root.wires, list(root.geometry_masks.items()),
+        list(root.assembly_entries), lane=lane, conductors=root)

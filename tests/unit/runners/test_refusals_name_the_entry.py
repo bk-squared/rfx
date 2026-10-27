@@ -33,13 +33,18 @@ def graded_scene(kind):
     ("run", "wire", None,
      "Wire ports with reference_plane_cells are not supported with devices=...; "
      "the V_ref path needs pre-injection recordings. Use one device."),
-    ("forward", "rlc", "fwd_distributed_nu",
-     "Lumped RLC ports are not yet supported by forward(distributed=True) on a graded mesh; "
-     "remove the lumped_rlc spec or omit distributed=True and devices=."),
-    ("forward", "wire", "fwd_distributed_nu",
-     "Wire ports with reference_plane_cells are not supported by forward(distributed=True) "
-     "on a graded mesh; the V_ref path needs pre-injection recordings. "
-     "Use one device (omit distributed=True and devices=)."),
+    # Graded forward(distributed=True) is refused at the shared multi-device check,
+    # as run() is, before the graded lane assembles (#2076).
+    ("forward", "rlc", None,
+     "add_lumped_rlc() element(s) (1): not supported on the distributed multi-device forward() "
+     "path; the lane never applies them and would solve the structure as if "
+     "the elements were absent, with no warning (#1239; "
+     "rfx.runners.distributed_v2.run_distributed / "
+     "rfx.runners.distributed.run_distributed have no lumped-element update). "
+     "Remove the elements, or omit distributed=True (use a single-device forward() instead)."),
+    ("forward", "wire", None,
+     "Wire ports with reference_plane_cells are not supported with distributed=True; "
+     "the V_ref path needs pre-injection recordings. Use one device."),
 ])
 def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     from rfx.model import distributed_ports

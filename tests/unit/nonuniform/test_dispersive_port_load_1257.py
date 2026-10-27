@@ -158,6 +158,7 @@ def _dispersion_built_before_the_stamps(*kinds):
     def _assemble(*a, **kw):
         out = real_assemble(*a, **kw)
         assembled["materials"] = out[0]
+        assembled["grid"] = a[1]
         return out
 
     with contextlib.ExitStack() as stack:
@@ -167,7 +168,7 @@ def _dispersion_built_before_the_stamps(*kinds):
             real = getattr(_nu_runner, f"init_{kind}")
 
             def _pre_stamp(poles, materials, dt, *a, _real=real, **kw):
-                return _real(poles, assembled["materials"], dt, *a, **kw)
+                return _real(poles, assembled["materials"], dt, *a, grid=assembled["grid"], **kw)
 
             stack.enter_context(
                 mock.patch.object(_nu_runner, f"init_{kind}", _pre_stamp))

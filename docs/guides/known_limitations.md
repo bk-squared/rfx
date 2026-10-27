@@ -22,6 +22,19 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Traced full-tensor CPU builds on older jaxlib issue pieces serially
+
+Tracker: #2095
+
+On CPU with jaxlib < 0.11.1, `forward(subpixel_smoothing="full_tensor")` with traced geometry or permittivity
+could hang. When one linear-algebra call holds more than 2^20 matrices (grids above about 1 M nodes), rfx now
+issues its pieces one after another. At 1.48 M nodes the measured runs hung 0 of 8 times, against 6 of 11
+before, at about 1.5× the build time and about 1.24× host memory. Smaller grids keep the previous code and
+cost. This is a stopgap with an
+unproven bound: 56 independent `_linalg` sites remain concurrent in one build. If a build still hangs,
+set `PJRT_NPROC=1` before JAX starts; that workaround's cost is unmeasured. jaxlib ≥ 0.11.1 keeps full speed.
+rfx's dependency range now installs jaxlib 0.11.1 on Python 3.12+; Python 3.11 installs jax 0.10.2.
+
 ### `plan_mesh` with a graded z mesh solves the board on the lower absorber, in a shorter domain than it reports
 
 Tracker: #1941
@@ -33,18 +46,6 @@ of air: a 1.6 mm FR4 board planned for 1.5–3.5 GHz reports a 101.5 mm z domain
 lower margin, meant to keep the absorber away from the board, is missing. Until the fix lands, raise the geometry by
 the margin before planning (about 50 mm in this example; the profile then spans the lower margin and matches the
 reported domain), or build the model with a uniform z mesh and an explicit domain.
-
-### Drude/Lorentz time-step admission limits on periodic and multi-device runs
-
-Tracker: #1934
-
-Low-level `run()` with prebuilt Lorentz coefficients on a periodic axis with an even number of cells is refused by name
-when the medium varies along that axis: the edge mean there does not determine the cell values.
-Build the medium through `add_material` (judged at assembly), or use an odd cell count.
-
-Multi-device runs whose material values are traced by an outer `jax.jit` or `jax.vmap` are not judged by the
-Drude/Lorentz time-step check: a refusal cannot be raised from inside a multi-device compiled program.
-The same model is judged when called without the outer transform (or on one device).
 
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
@@ -110,26 +111,6 @@ preflight. Its drawn rectangle is clipped to the sampled tangential extent, incl
 on periodic axes). Non-Box films retain their existing admission rule. Surface-impedance sheets use the same
 `sheet_effective_size` check and solved-edge model as PEC sheets.
 
-### Dispersive material touching a high-side magnetic (PMC) wall retains reduced wall-edge weight
-
-Tracker: #1966
-
-The high-side boundary-node repair now covers assembled static dielectric, conductivity and magnetic material,
-and DC film coverage. It leaves dispersive columns unchanged: promoting their static permittivity without
-their poles would create an undeclared material, and extending the poles into a boundary node is excluded
-after an earlier stability failure.
-
-Measured on assembled arrays with a Debye box (epsilon infinity 4, delta epsilon 3) occupying one z cell
-and reaching the high-y PMC wall: the wall node's cell permittivity is 1, the Ex static edge permittivity
-is 1.75, and the Ex pole fraction is 0.25 (delta epsilon contribution 0.75). The static counterpart's
-Ex edge permittivity is 2.5. These are material-array measurements, not a new field-level accuracy claim.
-
-Whole-grid material overrides, prebuilt MaterialArrays and checkpoint loads preserve their supplied cells;
-they enter after the geometry repair and do not infer a dropped boundary node from those values.
-
-Workaround: put a half model's symmetry plane on the LOW side of the axis (the lower coordinate face), or keep the
-dispersive material one cell away from a high-side PMC face.
-
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 
 Tracker: #1523
@@ -163,13 +144,37 @@ the support matrix's **Refused inputs** table.
 
 Tracker: #1739
 
-`estimate_ad_memory` and `plan_ad_memory` can plan a gradient that runs out of device memory. On one graded scene
-(737,009 nodes, float32, RTX A6000, 16 runs) the measured device peak was 1.00 to 1.14 times the estimate with one
-output pulled back (worst: three checkpoint levels), and 1.04 to 2.17 times the estimate with 2 or 8 outputs pulled
-back at once by `jax.jacrev` or `vmap` (worst: 8 outputs with two checkpoint levels). An extra output holds about 7
-carries on the device; `cotangents=` counts 1. Leave 15 % above the estimate for one output with checkpoint levels.
-With several outputs at once, budget 2.2 times the estimate, measure one short run, or pull back one output at a time.
-An estimate read from the compiled whole gradient (within 3 % of every peak measured) is the planned replacement.
+`estimate_ad_memory` and `plan_ad_memory` remain static estimates. On one graded scene
+(737,009 nodes, float32, RTX A6000, JAX 0.10.2), single-output device peaks were
+1.00 to 1.14 times the estimate; leave 15 % above it with checkpoint levels.
+For simultaneous pullbacks, `cotangents=` now adds 7.5 carries per extra output:
+one boundary carry plus 6.5 carries of backward working arrays.
+This calibration uses one graded whole-grid scene, not a runtime guarantee.
+Design boxes use the same whole-grid adjoint workspace estimate and are unmeasured;
+other scenes, backends, and JAX versions are also unmeasured for this coefficient.
+Measure a representative run or pull back one output at a time when memory is tight.
+The former 2.2-times advice was exceeded by the measured 16-output row (2.25 times).
+An estimate from the compiled whole gradient is the planned replacement.
+
+### jax 0.11.2 and 0.12.0 run the time step slower than jax 0.10.2, on CPU at every measured size and on GPU on a large grid
+
+Tracker: #2125
+
+Measured at two grid sizes, with and without one lumped RLC element. This is not a trend over grid size.
+On one RTX A6000 at 3.05 M cells (CPML included), jax 0.11.2 takes 1.18 times as long per time step as jax 0.10.2.
+On the GPU at 0.53 M cells, the two versions take the same time (1.00).
+On both devices the slowdown appears with and without the lumped element, so it comes from the compiler version, not from rfx.
+Peak device memory is the same on both versions.
+`estimate_ad_memory` still reads 1.007 to 1.009 of the measured gradient peak with `checkpoint=True`.
+On CPU (one node, 8 cores, the same two grids), jax 0.11.2 takes 2.7 to 3.0 times as long per step at 0.53 M cells.
+At 3.05 M cells it takes 1.6 to 2.4 times as long.
+The compiled CPU step holds 18 more domain-sized copies on jax 0.11.2, with and without the lumped element.
+Peak host memory is unchanged on CPU (0.91 to 1.01 times).
+jax 0.11.0 and 0.11.1 run the CPU step at jax 0.10.2's speed (1.00 to 1.01 times, 8 domain-sized copies); jax 0.12.0 is slower (5.6 times at 0.53 M cells, 2.4 times at 3.05 M cells).
+The release and the change in the compiled program (domain-sized fusions 85 to 98, copies 8 to 26) match openxla/xla#50977: from jaxlib 0.11.2, chains of partial array updates are recomputed. This is a match by version and operation counts, not a proven cause.
+No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
+Workaround on CPU with Python 3.12 or newer: install `jax==0.11.1 jaxlib==0.11.1`.
+jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 ### A finite flux box closes only when it is centred on its source
 
@@ -287,7 +292,7 @@ reported, not gated.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
-Tracker: #1976
+Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
 
 On a passive microstrip, `compute_msl_s_matrix(...)` can return S whose column
 power is above 1 on nearly every bin. On a synthetic board with a 0.3 mm
@@ -297,9 +302,27 @@ board, with 1.5 mm of air above the line and 8 CPML layers, the extra power
 enters the board region through the top face, from the absorber. With 4.5 mm of
 air above the line, or with 16 layers (the default), the column power stays at
 or below 1 on every bin from 1.5 to 7 GHz. A wider lateral margin does not
-change it. Two causes remain possible, not yet told apart: the thin top absorber
-returns the feed's upward radiation into the board, or it is not passive for the
-strip's near field.
+change it.
+
+A power balance on a closed box around the board (diagnostic: one board, one
+50 µm mesh, 1.5–7 GHz) measures the same thing directly. With 8 layers, the
+top and side faces return up to 0.2 % of the driven power into the board
+(2.0×10⁻³, near 5.8 GHz). On this board's |S21| that is at most 0.009 dB. A
+record 1.5 times longer moves the balance by at most 0.1 %. With 16 layers on
+every face the returned power falls to the noise level (+1.1×10⁻⁴), at 1.26
+times the cells of the 8-layer run. Sampling E and H from one absorber profile
+at their own Yee positions lowers the 8-layer excess to 0.72 of its size and
+does not remove it. The absorber depth matters more than the E/H profile
+offset. The returned power follows the strip, not the domain: moving the side
+absorbers 6 mm farther from the strip ends changes it by at most 1.3 %, and its
+swing over frequency has the strip's one-way transit time (within 3 %). Whether
+the thin top absorber reflects the line's near field or is not passive for it
+is not measured. Not measured either:
+16 layers on the top face alone, other substrates and air heights, and how the
+balance moves with the mesh.
+
+An optimiser objective that rewards `|S21|` can exploit that 0.2 % of
+returned power. Keep 16 layers (the default) when passivity matters.
 
 The non-passive warning from this call tells you to suspect a record that ended
 early or a coarse mesh. That advice does not fit this case: these records ring
@@ -339,26 +362,6 @@ against a run with the update's exact coefficient, and refused if the error is
 outside the accuracy bar.
 
 The field increment a source adds on its edge is the update's coefficient times the drive. One place still computes that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
-
-### On the uniform mesh, a waveguide port smaller than the domain cross-section closes the transverse faces with metal walls, whatever boundary is declared.
-
-Tracker: #1826
-
-When a waveguide port is given a `y_range`/`z_range` aperture smaller than the
-domain (an open-ended guide or a horn drawn as geometry), the uniform mesh puts
-the absorber only on the port's axis. The other four domain faces get no
-absorber layers and reflect like metal walls, even with `boundary="cpml"`
-declared, and no warning is given. A structure that radiates is then solved
-inside a closed box. On an open-ended WR-90 radiating into air (1.27 mm cells,
-8.2–12.4 GHz), `|S11|` on the uniform mesh was off by up to 2.9 dB (median
-1.8 dB) from the same declaration on a graded mesh. The ripple moves with the
-lateral margin, as box resonances do, and the run does not settle. The graded
-mesh keeps the declared absorber on all six faces, and its `|S11|` did not
-change when the absorber depth or the simulation time was doubled. A port that
-spans the whole cross-section is not affected: there the transverse faces are
-the guide's walls, and both meshes warn or refuse unless they are declared PEC.
-Until this is fixed, solve a partial-aperture port that radiates on a graded
-mesh (a constant `dz_profile` is enough).
 
 ### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
 
@@ -472,17 +475,18 @@ At normal incidence, on the uniform and the graded mesh alike, dispatch refuses 
 materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
-`closed_box=True` or `rfx.rcs.compute_rcs`. For propagation along x with E along z, the admitted wall
-pairs are PMC on y and PEC on z; either pair may instead be periodic. Each
+`closed_box=True` or `rfx.rcs.compute_rcs`. On the graded mesh, for propagation along x with E along z, the
+admitted wall pairs are PMC on y and PEC on z. Each
 transverse axis takes only a matched pair: both faces absorbing, both the wall
 that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
 A wall that does not suit the polarization is refused (for E along z, PEC on y or
 PMC on z), and so is a pair that mixes a PMC face with an absorbing one. A wall
-pair keeps the legacy wrap only for an invariant model; finite transverse
+pair admits only an invariant model; finite transverse
 structure with those walls is refused. UPML remains unsupported for TF/SF.
-The uniform plane-wave path retains its existing padded periodic wrap for an
-invariant absorber pair and reports the affected faces in preflight. Its grid
-and period do not change. Traced material overrides retain the legacy operator
+The uniform plane-wave path solves y and z (Method B: z) periodic, including their pads, when no
+boundary or `boundary='cpml'` is given, and reports the affected faces in preflight. Its grid and period do not
+change. On the uniform mesh it refuses absorbing or wall faces declared explicitly on those axes (a `BoundarySpec`,
+`Boundary` or dict), since it would solve them periodic: declare them periodic, omit them, or use the graded mesh. Traced material overrides retain the legacy operator
 with a warning when invariance cannot be judged. At oblique incidence the tilt
 axis keeps its operator and is reported as not judged for invariance.
 The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
@@ -492,6 +496,18 @@ its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
 with the same warning. A finite scatterer or an array, also one given to `forward()` as an override or a design
 box, is refused there with the uniform mesh named as the remedy, since a closed box and a plane wave with periodic axes are
 refused on the graded mesh (an operator that admits them is not planned for 2.0).
+
+### With no declared side faces, a plane wave solves periodic side faces on the uniform mesh and absorbing ones on the graded mesh.
+
+Tracker: #1961
+
+`add_tfsf_source` without `closed_box`, with no boundary or `boundary='cpml'`, is one request that the two meshes
+solve as two models: the uniform mesh makes the transverse faces periodic, the graded mesh keeps CPML on them. For
+the laterally invariant structures a plane wave admits, both give the same field: on a graded profile with the uniform
+mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
+(`tests/contracts/test_plane_wave_admission_both_meshes.py`). A declaration of the side faces gives one model per
+request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
+the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 

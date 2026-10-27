@@ -258,13 +258,16 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     original = sparam_driver._distributed_port_cells
 
     def capture(g, ports, pec_edge_masks=None):
-        for pe in ports:
-            counts.append(_wire_port_live_cells(g, wire_port_from_entry(pe), pec_edge_masks)[2])
+        counts.append([_wire_port_live_cells(g, wire_port_from_entry(pe), pec_edge_masks)[2]
+                       for pe in ports])
         return original(g, ports, pec_edge_masks)
 
     monkeypatch.setattr(sparam_driver, '_distributed_port_cells', capture)
     multi = _port_model().run(devices=_devices(), **kwargs)
-    assert counts == expected_counts
+    # One batch per call (main-run records, S driver); each call is one reader.
+    assert counts
+    for batch in counts:
+        assert batch == expected_counts, (batch, expected_counts)
     by_position = {tuple(pe.position): n for pe, n in zip(expected_sim._ports, expected_counts)}
     assert reader_counts
     for position, live_count in reader_counts:

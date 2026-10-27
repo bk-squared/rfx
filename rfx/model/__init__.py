@@ -6,8 +6,9 @@ realized-model object follow (plan: rfx-archive rfx/plans/20261004-s1-realized-m
 
 # The conductor layer's interface to the five large callers (2.0 layer rule): the
 # assembly and stage entry points they call. Preflight reporting, run-record timing and
-# solve binding (auto_preflight, early_run_record, bind_solve_call) are not model assembly
-# and stay out until they move to their own layer.
+# solve binding are not model assembly and live outside it: auto_preflight in
+# rfx.preflight._impl, early_run_record in rfx.realized_geometry, bind_solve_call in
+# rfx.runners.nonuniform.
 from rfx.model.conductors import (
     admit_adi_sources,
     distributed_kernel_inputs,
@@ -38,14 +39,34 @@ from rfx.model.graded_admission import (
     NominalProfile,
     traced_cell_mask,
 )
+from rfx.model.graded_grid import (
+    e_node_dual_spacing_at,
+    make_nonuniform_grid,
+    position_to_index,
+)
+from rfx.model.graded_profile import (
+    make_band_profile,
+    make_z_profile,
+)
+from rfx.model.materials import (
+    e_update_coefficient_at,
+    electric_grid_kwargs,
+    electric_materials_traced,
+)
 from rfx.model.occupancy import (
     graded_conductor_masks,
     select_occupancy_operator,
     with_edge_keep,
     with_graded_edge_keep,
 )
+from rfx.model.overrides import (
+    apply_material_overrides,
+)
 from rfx.model.source_coefficients import (
     current_source_samples,
+    make_current_source,
+    source_table,
+    uniform_source_table,
 )
 from rfx.model.thin_conductors import (
     admit_thin_conductor,
@@ -69,6 +90,7 @@ __all__ = [
     "admit_adi_sources",
     "admit_graded_profiles",
     "admit_thin_conductor",
+    "apply_material_overrides",
     "C0_LOCAL",
     "current_source_samples",
     "cutoff_frequency",
@@ -78,6 +100,10 @@ __all__ = [
     "distributed_kernel_inputs",
     "distributed_solve_inputs",
     "drawn_launch_eps",
+    "e_node_dual_spacing_at",
+    "e_update_coefficient_at",
+    "electric_grid_kwargs",
+    "electric_materials_traced",
     "forward_kernel_inputs",
     "forward_lumped_port_stage",
     "forward_port_stage",
@@ -87,8 +113,13 @@ __all__ = [
     "held_edge_masks",
     "init_multimode_waveguide_port",
     "init_waveguide_port",
+    "make_band_profile",
+    "make_current_source",
+    "make_nonuniform_grid",
+    "make_z_profile",
     "NominalProfile",
     "PortMedium",
+    "position_to_index",
     "prepare_port_occupancy",
     "prepare_sheet_layout",
     "PreparedSolve",
@@ -96,10 +127,12 @@ __all__ = [
     "resolve_design_box",
     "select_occupancy_operator",
     "solve_rectangular_modes",
+    "source_table",
     "stage_distributed_edges",
     "stage_distributed_occupancy",
     "traced_cell_mask",
     "uniform_solve_inputs",
+    "uniform_source_table",
     "waveguide_waveform_error",
     "WaveguidePort",
     "WaveguidePortConfig",

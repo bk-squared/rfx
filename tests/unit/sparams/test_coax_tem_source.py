@@ -1,5 +1,7 @@
 """The thru's drive must stay in the realized transverse TEM subspace."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -47,7 +49,7 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
         # dx=1, dt=mu0 remove dimensions; only transverse cancellation is
         # tested. The z profile cannot contribute to either longitudinal curl.
         state = init_state(shape)._replace(ex=fields["ex"], ey=fields["ey"])
-        h = update_h(state, init_materials(shape), dt=MU_0, dx=1.0)
+        h = update_h(state, init_materials(shape), dt=MU_0, dx=1.0, high_wall=unpadded_high_walls(grid))
         _, _, ez_curl = curl_h(fields["hx"], fields["hy"], state.hz,
                                dx=1.0, periodic=(False, False, False))
         hz_error = float(jnp.max(jnp.abs(h.hz)))

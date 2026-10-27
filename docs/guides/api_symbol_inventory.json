@@ -2841,7 +2841,8 @@
       "design",
       "checkpoint",
       "distributed",
-      "cotangents"
+      "cotangents",
+      "compiled"
     ],
     "explain_ad_memory": [
       "n_steps",

@@ -87,13 +87,13 @@ def init_subgrid_2d(
 
 def _update_hx_2d(ez, hx, dt, dx):
     """Hx = Hx - dt/mu0 * dEz/dy."""
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     return hx - (dt / mu_abs) * (ez[:, 1:] - ez[:, :-1]) / dx
 
 
 def _update_hy_2d(ez, hy, dt, dx):
     """Hy = Hy + dt/mu0 * dEz/dx."""
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     return hy + (dt / mu_abs) * (ez[1:, :] - ez[:-1, :]) / dx
 
 

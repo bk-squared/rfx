@@ -4,6 +4,8 @@ NOT accuracy tests (frequency matching). These verify the FDTD engine
 correctly implements Maxwell's equations at the discrete level.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -41,7 +43,7 @@ def test_maxwell_residual_vacuum():
     hx_before = state.hx.copy()  # noqa: F841
 
     # One H update
-    state_after = update_h(state, materials, grid.dt, grid.dx)
+    state_after = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
 
     # Compute curl(E) numerically (forward differences, matching Yee)
     dx = grid.dx
@@ -114,8 +116,8 @@ def test_energy_conservation_pec_cavity():
     # Run 500 steps
     energies = [E_initial]
     for _ in range(500):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         energies.append(total_energy(state))
 
@@ -167,8 +169,8 @@ def test_energy_decay_lossy():
     # Run and track energy
     energies = []
     for step in range(200):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         energies.append(total_energy(state))
 
@@ -210,8 +212,8 @@ def test_field_pattern_tm110():
     # Run until mode establishes (100 periods)
     n_steps = grid.num_timesteps(num_periods=100)
     for n in range(n_steps):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = state._replace(ez=state.ez.at[si, sj, sk].add(pulse(n * grid.dt)))
 
@@ -321,8 +323,8 @@ def test_convergence_order():
         n_steps = grid.num_timesteps(num_periods=150)
         ts = np.zeros(n_steps)
         for n in range(n_steps):
-            state = update_h(state, materials, grid.dt, dx)
-            state = update_e(state, materials, grid.dt, dx)
+            state = update_h(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
+            state = update_e(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
             state = apply_pec(state)
             state = state._replace(ez=state.ez.at[si, sj, sk].add(pulse(n * grid.dt)))
             ts[n] = float(state.ez[pi, pj, sk])

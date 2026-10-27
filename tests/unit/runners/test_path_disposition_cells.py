@@ -222,7 +222,7 @@ def _board(lane, on, ref=False):
     return sim
 
 
-def _guide(lane, on, ref=False):
+def _guide(lane, on, ref=False, n_modes=1):
     """A 12 × 6 mm PEC guide absorbing on x; the TE10 port the only drive.
     ADI refuses the CPML box required by the port at construction."""
     spec = ("cpml" if lane in ADI else
@@ -231,7 +231,7 @@ def _guide(lane, on, ref=False):
     if on:
         sim.add_waveguide_port(6e-3, direction="+x", mode=(1, 0), mode_type="TE",
                                freqs=np.linspace(13e9, 18e9, 3), f0=15e9, bandwidth=0.5,
-                               probe_offset=4, ref_offset=2)
+                               probe_offset=4, ref_offset=2, n_modes=n_modes)
     sim.add_probe(mm(20, 6, 3), "ez")
     if lane == "run_subgridded" and not ref:
         # #1465: explicitly opt in to exercise the experimental subgrid lane.
@@ -385,6 +385,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
         mm(6, 8, 5), "ez", impedance=50.0, extent=2e-3, waveform=WAVEFORM)),
     ("_msl_ports", "msl_port"): Feature(_board),
     ("_waveguide_ports", "waveguide_port"): Feature(_guide),
+    ("_waveguide_ports", "n_modes"): Feature(lambda lane, on, ref=False: _guide(lane, on, ref, n_modes=2)),
     ("_coaxial_ports", "coax_port"): _plus(lambda s, _: s.add_coaxial_port(
         mm(6, 6, 0), face="bottom", pin_length=3e-3)),
     ("_floquet_ports", "floquet_port"): Feature(_floquet_cell(0.0)),

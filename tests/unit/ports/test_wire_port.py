@@ -1,5 +1,7 @@
 """Tests for multi-cell (wire) lumped port."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 
 from rfx.grid import Grid
@@ -55,8 +57,8 @@ def test_wire_port_excites_vertical_field():
     # Run a few steps
     for n in range(20):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_wire_port(state, grid, port, t, materials)
 
     # Check Ez along the wire
@@ -97,8 +99,8 @@ def test_wire_port_cavity_resonance():
 
     for n in range(n_steps):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_wire_port(state, grid, port, t, materials)
         ez_trace[n] = float(state.ez[feed_idx])

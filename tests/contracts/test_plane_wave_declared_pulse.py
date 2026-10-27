@@ -8,7 +8,8 @@ from rfx.interop import design_to_dict, simulation_from_design
 from rfx.sources.tfsf import init_tfsf, tfsf_from_declaration
 from rfx.sources.tfsf_2d import init_tfsf_2d
 from rfx.sources.tfsf_discrete_plane_wave import init_plane_wave
-from rfx.sources.tfsf_oblique_open import init_tfsf_methodB, measure_incident_spectrum
+from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
+from rfx.measurement.incident import measure_incident_spectrum
 
 
 DG = "differentiated_gaussian"

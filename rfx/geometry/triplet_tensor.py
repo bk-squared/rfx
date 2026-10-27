@@ -5,16 +5,29 @@ Fractions analytically clip edges and dual faces against one local plane.
 Concrete inputs accumulate in host float64; tracers use the field dtype.
 """
 from itertools import product
+import re
 
 import jax
 import jax.numpy as jnp
+import jaxlib
 import numpy as np
 
 from rfx._precision import HIGHEST
+from rfx.backend import backend_class
 
 SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
 PAIRS = ((0, 1), (0, 2), (1, 2))
 MATRIX_BATCH_SIZE = 2**20
+_JAXLIB_VERSION_MATCH = re.match(r"(\d+)\.(\d+)\.(\d+)", jaxlib.__version__)
+_JAXLIB_VERSION = (tuple(map(int, _JAXLIB_VERSION_MATCH.groups()))
+                   if _JAXLIB_VERSION_MATCH else (0, 11, 1))
+
+
+def _serial_pieces():
+    # Stopgap against the jaxlib < 0.11.1 CPU deadlock (#2095); remove when
+    # the jax floor reaches 0.11.1. The bound is not proven: 56 independent
+    # _linalg sites stay concurrent in one build.
+    return backend_class().name == "cpu" and _JAXLIB_VERSION < (0, 11, 1)
 
 
 def _linalg(xp, operation, matrix):
@@ -23,6 +36,18 @@ def _linalg(xp, operation, matrix):
     if xp is np:
         return solve(matrix)
     flat = matrix.reshape((-1, 3, 3))
+    if flat.shape[0] > MATRIX_BATCH_SIZE and _serial_pieces():  # one piece: nothing to serialize
+        n, size = flat.shape[0], MATRIX_BATCH_SIZE
+        k = -(-n // size)
+        pad = k * size - n
+        if pad:
+            flat = jnp.concatenate([flat, jnp.broadcast_to(jnp.eye(3, dtype=flat.dtype), (pad, 3, 3))])
+        out = jax.lax.map(solve, flat.reshape((k, size, 3, 3)))
+        if operation == "eigh":
+            w, v = out
+            return (w.reshape((-1, 3))[:n].reshape(matrix.shape[:-1]), v.reshape((-1, 3, 3))[:n].reshape(matrix.shape))
+        tail = (3,) if operation == "eigvalsh" else (3, 3)
+        return out.reshape((-1,) + tail)[:n].reshape(matrix.shape[:-2] + tail)
     pieces = [solve(flat[start:start + MATRIX_BATCH_SIZE])
               for start in range(0, flat.shape[0], MATRIX_BATCH_SIZE)]
     if operation == "eigh":

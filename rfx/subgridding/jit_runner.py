@@ -35,6 +35,8 @@ from rfx.subgridding.sbp_sat_3d import (
 from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0, component_h_materials
 from rfx.probes.probes import _ampere_loop
+from rfx.geometry.rasterize_grid import unpadded_high_walls, fine_high_walls
+from rfx.model.materials import sat_face_mu, subgrid_components
 
 
 class SubgridResult(NamedTuple):
@@ -221,79 +223,6 @@ MODAL_TRACE_DELTA_FILTERS = frozenset(
         "modal_low2_delta",
     }
 )
-
-
-def _modal_axis_basis(n: int, kind: str, dtype):
-    """Return a normalized low-order modal basis vector for one face axis."""
-    constant = jnp.ones((n,), dtype=dtype) / jnp.sqrt(jnp.asarray(n, dtype=dtype))
-    if kind == "constant":
-        return constant
-    coord = jnp.linspace(-1.0, 1.0, n, dtype=dtype)
-    linear = coord - jnp.sum(coord * constant) * constant
-    linear = linear / jnp.maximum(
-        jnp.sqrt(jnp.sum(linear * linear)),
-        jnp.asarray(1e-30, dtype=dtype),
-    )
-    if kind == "linear":
-        return linear
-    if kind == "quadratic":
-        quadratic = coord * coord
-        quadratic = quadratic - jnp.sum(quadratic * constant) * constant
-        quadratic = quadratic - jnp.sum(quadratic * linear) * linear
-        return quadratic / jnp.maximum(
-            jnp.sqrt(jnp.sum(quadratic * quadratic)),
-            jnp.asarray(1e-30, dtype=dtype),
-        )
-    raise ValueError(f"unknown modal axis basis kind={kind!r}")
-
-
-def _modal_face_component(face_delta, y_kind: str, x_kind: str):
-    """Project a 2-D face delta onto one separable low-order modal component."""
-    y_basis = _modal_axis_basis(face_delta.shape[0], y_kind, face_delta.dtype)
-    x_basis = _modal_axis_basis(face_delta.shape[1], x_kind, face_delta.dtype)
-    basis = y_basis[:, None] * x_basis[None, :]
-    return jnp.sum(face_delta * basis) * basis
-
-
-def _modal_filter_face_delta(face_delta, mode: str):
-    """Return a low-order modal subset of a z-face trace delta.
-
-    This diagnostic filter is based only on the current simulated pre/post
-    trace delta.  It does not use reference fields or probe-error artifacts.
-    """
-    specs_by_mode = {
-        "modal_linear_delta": (
-            ("constant", "linear"),
-            ("linear", "constant"),
-            ("linear", "linear"),
-        ),
-        "modal_xy_linear_delta": (("linear", "linear"),),
-        "modal_mixed_quadratic_delta": (
-            ("linear", "quadratic"),
-            ("quadratic", "linear"),
-        ),
-        "modal_xy_plus_mixed_delta": (
-            ("linear", "linear"),
-            ("linear", "quadratic"),
-            ("quadratic", "linear"),
-        ),
-        "modal_low2_delta": (
-            ("constant", "linear"),
-            ("linear", "constant"),
-            ("linear", "linear"),
-            ("constant", "quadratic"),
-            ("quadratic", "constant"),
-            ("linear", "quadratic"),
-            ("quadratic", "linear"),
-            ("quadratic", "quadratic"),
-        ),
-    }
-    if mode not in specs_by_mode:
-        raise ValueError(f"unknown modal trace delta filter={mode!r}")
-    filtered = jnp.zeros_like(face_delta)
-    for y_kind, x_kind in specs_by_mode[mode]:
-        filtered = filtered + _modal_face_component(face_delta, y_kind, x_kind)
-    return filtered
 
 
 def _z_slab_face_ks(config, *, use_exterior_z_interfaces: bool = False):
@@ -856,7 +785,7 @@ def _z_slab_material_coupling_h_3d(
 
     def face_coeffs(materials, sl, site):
         eps = materials.eps_r[sl]
-        mu = tuple(component[sl] for component in component_h_materials(materials)[:2])
+        mu = sat_face_mu(materials, sl)
         if _realized.ACTIVE is not None:
             # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
@@ -1281,7 +1210,7 @@ def _z_slab_material_coupling_e_3d(
 
     def face_coeffs(materials, sl, site):
         eps = materials.eps_r[sl]
-        mu = tuple(component[sl] for component in component_h_materials(materials)[:2])
+        mu = sat_face_mu(materials, sl)
         if _realized.ACTIVE is not None:
             # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
@@ -1748,6 +1677,7 @@ def _make_step_fn(ctx):
     mask_coarse_shadow_interior = ctx.get("mask_coarse_shadow_interior")
     mats_c = ctx.get("mats_c")
     mats_f = ctx.get("mats_f")
+    high_wall_c, high_wall_f = unpadded_high_walls(grid_c), fine_high_walls(grid_c, config)
     n_lumped_sparams = ctx.get("n_lumped_sparams")
     n_probes = ctx.get("n_probes")
     n_probes_c = ctx.get("n_probes_c")
@@ -1835,7 +1765,7 @@ def _make_step_fn(ctx):
         st_c = FDTDState(ex=ex_c, ey=ey_c, ez=ez_c,
                          hx=hx_c, hy=hy_c, hz=hz_c,
                          step=step_idx)
-        st_c = update_h(st_c, mats_c, dt, dx_c)
+        st_c = update_h(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         if use_cpml:
             # materials= keeps the CPML impedance-matched inside dielectrics
             # (issue #205; free-space coefficients diverge when a dielectric
@@ -1859,7 +1789,7 @@ def _make_step_fn(ctx):
         st_f = FDTDState(ex=ex_f, ey=ey_f, ez=ez_f,
                          hx=hx_f, hy=hy_f, hz=hz_f,
                          step=step_idx)
-        st_f = update_h(st_f, mats_f, dt, dx_f)
+        st_f = update_h(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
 
         # === SAT H-coupling (tangential H on all 6 faces) ===
         if is_full_xy_z_slab:
@@ -1965,7 +1895,7 @@ def _make_step_fn(ctx):
             )
 
         # === Coarse E update + boundary ===
-        st_c = update_e(st_c, mats_c, dt, dx_c)
+        st_c = update_e(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         if use_cpml:
             st_c, cpml_new = apply_cpml_e(st_c, cpml_params, cpml_new,
                                            grid_c, cpml_axes, materials=mats_c)
@@ -1992,7 +1922,7 @@ def _make_step_fn(ctx):
             st_c = st_c._replace(ex=ex_c, ey=ey_c, ez=ez_c)
 
         # === Fine E update + PEC mask ===
-        st_f = update_e(st_f, mats_f, dt, dx_f)
+        st_f = update_e(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
         if use_pec_mask_f:
             # #931: ``apply_pec_mask`` IS the shared realization
             # (realized_pec_edge_masks, volume branch). This lane
@@ -2476,6 +2406,8 @@ def run_subgridded_jit(
     dt = config.dt
     dx_c = config.dx_c
     dx_f = config.dx_f
+
+    mats_c, mats_f = subgrid_components(mats_c, mats_f, grid_c, config)
 
     # Override coarse grid dt to match subgrid global timestep
     grid_c.dt = dt

@@ -1,5 +1,7 @@
 """Measure an absorber's plane-wave return and a record's depth sensitivity."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from functools import lru_cache
 
 import jax
@@ -52,17 +54,17 @@ def _line(n_layers, kappa_max, interior, dx, transverse_phase=None,
             state, auxiliary = carry
             if nonuniform:
                 state = update_h_nu(state, materials, dt, grid.inv_dx_h,
-                                    grid.inv_dy_h, grid.inv_dz_h)
+                                    grid.inv_dy_h, grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
                 state = apply_pmc_faces(state, {f"{magnetic}_lo", f"{magnetic}_hi"})
             else:
-                state = update_h(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)
+                state = update_h(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch, high_wall=unpadded_high_walls(grid))
             state, auxiliary = cpml.apply_cpml_h(state, params, auxiliary, grid, axes=axis)
             if nonuniform:
                 state = update_e_nu(state, materials, dt, grid.inv_dx,
-                                    grid.inv_dy, grid.inv_dz, cell_sizes=electric_cell_sizes(grid))
+                                    grid.inv_dy, grid.inv_dz, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
                 state = apply_pec_faces(state, {f"{electric}_lo", f"{electric}_hi"})
             else:
-                state = update_e(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)
+                state = update_e(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch, high_wall=unpadded_high_walls(grid))
             state, auxiliary = cpml.apply_cpml_e(state, params, auxiliary, grid, axes=axis)
             state = apply_pec_faces(state, {f"{axis}_lo", f"{axis}_hi"})
             sheet = [slice(None)] * 3

@@ -144,6 +144,31 @@ def _wr90_sim(*, conformal: bool):
     return sim
 
 
+def _rim_faced_sim(*, conformal: bool):
+    """The routing scene with PEC faces on the snapped aperture rims.
+
+    Rule 4 (#1826) admits a waveguide port only on a conducting aperture,
+    so the binary twin of :func:`_wr90_sim` is refused. Here the domain
+    ends on the rims the port snaps to (23 and 10 mm), so the binary model
+    is a guide, while the conformal walls (22.86 and 9.6 mm) still cut the
+    last cells: at z = 9.5 mm the Ez edge has open fraction 0.6.
+    """
+    sim = Simulation(
+        freq_max=10e9, domain=(0.06, 0.023, 0.010), dx=0.001,
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec", conformal=conformal),
+            z=Boundary(lo="pec", hi="pec", conformal=conformal),
+        ),
+        cpml_layers=8,
+    )
+    sim.add_waveguide_port(
+        0.020, y_range=(0.0, WR_90_A), z_range=(0.0, 0.0096), direction="+x",
+        mode=(1, 0), mode_type="TE", f0=8e9, bandwidth=0.5, name="left",
+    )
+    return sim
+
+
 def _half_space_box_lo_y(pec_shapes, axis_idx: int, value: float, *, atol=1e-9):
     """Return Box(es) in ``pec_shapes`` whose ``corner_lo[axis_idx]``
     equals ``value`` (within ``atol``). Used to spot the y_hi/z_hi
@@ -262,9 +287,9 @@ def test_run_conformal_auto_routes_from_boundaryspec():
         explicit ``conformal_pec=True`` (auto-routing is consistent
         with the manual flag, no surprise from setting both)."""
     n = 30
-    r_off = _wr90_sim(conformal=False).run(n_steps=n)
-    r_on = _wr90_sim(conformal=True).run(n_steps=n)
-    r_on_explicit = _wr90_sim(conformal=True).run(
+    r_off = _rim_faced_sim(conformal=False).run(n_steps=n)
+    r_on = _rim_faced_sim(conformal=True).run(n_steps=n)
+    r_on_explicit = _rim_faced_sim(conformal=True).run(
         n_steps=n, conformal_pec=True,
     )
 
@@ -293,8 +318,8 @@ def test_run_explicit_false_overrides_conformal_boundary():
     declares ``conformal=True``. Useful for A/B regression diagnosis
     and for keeping older diagnostic scripts on the legacy path."""
     n = 30
-    r_off = _wr90_sim(conformal=False).run(n_steps=n)
-    r_forced = _wr90_sim(conformal=True).run(
+    r_off = _rim_faced_sim(conformal=False).run(n_steps=n)
+    r_forced = _rim_faced_sim(conformal=True).run(
         n_steps=n, conformal_pec=False,
     )
 

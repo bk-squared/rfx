@@ -1,4 +1,6 @@
 """W0: graded operands come from invariants and exchange hooks carry fields."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import fields
 
 import jax
@@ -38,13 +40,13 @@ def _setup(monkeypatch, widths, branch='ordinary', probes=((2, 2, 2, 'ez'), (3, 
     options = {}
     if branch == 'debye':
         from rfx.materials.debye import DebyePole, init_debye
-        options['debye'] = init_debye([DebyePole(delta_eps=2., tau=5e-12)], materials, grid.dt)
+        options['debye'] = init_debye([DebyePole(delta_eps=2., tau=5e-12)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     elif branch == 'lorentz':
         from rfx.materials.lorentz import init_lorentz, lorentz_pole
         # 20 GHz: the 30 GHz pole was above the check's bound (growth 1.34 per step
         # on the smallest cells); this test reads invariants only.
         options['lorentz'] = init_lorentz(
-            [lorentz_pole(delta_eps=1.5, omega_0=2 * np.pi * 20e9, delta=1e10)], materials, grid.dt)
+            [lorentz_pole(delta_eps=1.5, omega_0=2 * np.pi * 20e9, delta=1e10)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     elif branch == 'anisotropic':
         options['aniso_eps'] = tuple(jnp.full(grid.shape, value) for value in (1.5, 2., 2.5))
 
@@ -139,7 +141,7 @@ def test_t3_after_h_write_is_read_by_e_update(monkeypatch):
     altered = initial._replace(hy=initial.hy.at[2, 2, 2].add(.125))
     expected = update_e_nu(altered, setup.invariants['materials'], ctx.dt,
                            setup.invariants['inv_dx'], ctx.inv_dy, ctx.inv_dz,
-                           boundary=ctx.curl_boundary)
+                           boundary=ctx.curl_boundary, high_wall=(False, False, False))
     expected = apply_pec_faces(expected, ctx._pec_faces_frozen)
     step = graded.make_graded_step(ctx, hooks={HookPoint.AFTER_H: (write,)})
     actual, _ = jax.jit(lambda carry: step(

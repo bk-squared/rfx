@@ -44,6 +44,8 @@ x64 is scoped with ``tests/_x64_compat.enable_x64()``. A bare
 ``jax.config.update("jax_enable_x64", True)`` is process-global, is forbidden
 by this repo's CLAUDE.md, and reddened 13 unrelated tests on PR #645.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -58,7 +60,7 @@ from rfx.lumped import init_rlc_state
 import rfx.stepping.poles as _poles_mod
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import drude_pole, init_lorentz, lorentz_pole
-from rfx.rcs import compute_rcs
+from rfx.measurement.rcs import compute_rcs
 from rfx.simulation import run, ProbeSpec
 from rfx.sources.tfsf import init_tfsf
 
@@ -406,18 +408,18 @@ def test_ade_allocation_sites_honour_the_policy():
     mats = init_materials((4, 4, 4))
     dt = 1e-12
     _, lor = init_lorentz([lorentz_pole(2.0, 2 * np.pi * 5e9, 1e9)], mats, dt,
-                          field_dtype=jnp.float16)
+                          field_dtype=jnp.float16, high_wall=(False, False, False))
     _, deb = init_debye([DebyePole(delta_eps=2.0, tau=1e-10)], mats, dt,
-                        field_dtype=jnp.float16)
+                        field_dtype=jnp.float16, high_wall=(False, False, False))
     # float16 fields must NOT give a float16 recursive accumulator
     assert lor.px.dtype == jnp.float32
     assert lor.px_prev.dtype == jnp.float32
     assert deb.px.dtype == jnp.float32
     with enable_x64():
         _, lor64 = init_lorentz([lorentz_pole(2.0, 2 * np.pi * 5e9, 1e9)],
-                                mats, dt, field_dtype=jnp.float64)
+                                mats, dt, field_dtype=jnp.float64, high_wall=(False, False, False))
         _, deb64 = init_debye([DebyePole(delta_eps=2.0, tau=1e-10)], mats, dt,
-                              field_dtype=jnp.float64)
+                              field_dtype=jnp.float64, high_wall=(False, False, False))
         assert lor64.px.dtype == jnp.float64
         assert deb64.px.dtype == jnp.float64
 
@@ -534,7 +536,7 @@ def test_oblique_bloch_plus_dispersion_still_raises():
     # Delta eps 1.0: 2.0 sat 0.46 % above the pole time-step bound on these 4 mm cells (#1934), which
     # now refuses first; this test pins the Bloch/dispersion carry refusal, not the pole bound.
     lor = init_lorentz([lorentz_pole(1.0, 2 * np.pi * 5e9, 1e9)], mats,
-                       grid.dt, mask=[mask], field_dtype=jnp.float32)
+                       grid.dt, mask=[mask], field_dtype=jnp.float32, high_wall=unpadded_high_walls(grid))
     with pytest.raises(TypeError, match="carry"):
         run(grid, mats, 8, boundary="cpml", cpml_axes="x",
             periodic=(False, True, True), tfsf=(cfg, st0), probes=[probe],

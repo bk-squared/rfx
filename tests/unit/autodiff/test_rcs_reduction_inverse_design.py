@@ -44,7 +44,8 @@ import pytest
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.farfield import NTFFBox
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 from rfx.simulation import run
 from rfx.rcs import compute_rcs_jax
 

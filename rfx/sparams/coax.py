@@ -1038,10 +1038,10 @@ def compute_coaxial_two_port(
 
             ts = np.asarray(result.time_series)
             if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-                from rfx.probes.settling import sampled_source_end_step
+                from rfx.measurement.record_end import injection_end
                 from rfx.sources.waveguide_port import settling_db_from_named_records
-                source_end = sampled_source_end_step(
-                    (*spec.electric_sources, *spec.magnetic_sources), witness_probes, grid, len(ts))
+                source_end = injection_end(len(ts), grid.dt, records=witness_probes, grid=grid,
+                                           sources=spec.electric_sources, mag_sources=spec.magnetic_sources)
                 _plane_records = getattr(result, "dft_time_records", None)
                 _channels = [(f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
                     grid, _plane_records[2*pi], _plane_records[2*pi+1],
@@ -1939,10 +1939,10 @@ def compute_coax_msl_transition(
 
         ts = np.asarray(result.time_series)
         if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-            from rfx.probes.settling import sampled_source_end_step
+            from rfx.measurement.record_end import injection_end
             from rfx.sources.waveguide_port import settling_db_from_named_records
-            source_end = sampled_source_end_step(
-                (*sources, *mag_sources), witness_probes, grid, len(ts))
+            source_end = injection_end(len(ts), grid.dt, records=witness_probes, grid=grid,
+                                       sources=sources, mag_sources=mag_sources)
             _plane_records = getattr(result, "dft_time_records", None)
             _channels = []
             if _plane_records:

@@ -121,7 +121,7 @@ def test_source_first_e_update(case):
 def test_graded_source_final_stamp(kind, later_first):
     """Both declaration orders see the same homogeneous ADE edge and load."""
     from rfx.runners import nonuniform as runner
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
 
     s = Simulation(
         freq_max=8e9,

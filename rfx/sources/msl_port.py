@@ -1194,7 +1194,7 @@ def make_msl_port_sources_jm(
 
     # TFSF coefficients — identical to waveguide_port.py apply_waveguide_port_h/e
     from rfx.core.yee import MaterialArrays, component_h_materials
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     coeff_H = float(dt / (mu_abs * dx))
 
     # Direction: +x → H plane behind = i-1; sign = -1 (matches waveguide port)
@@ -1318,7 +1318,7 @@ def _msl_coord_for_index(grid, axis: str, target_i: int) -> float:
         return float(u * grid.dx)
     # NonUniformGrid — cumulative interior cell-edge positions.
     pad_hi = int(getattr(grid, f"pad_{axis}_hi", 0))
-    from rfx.nonuniform import interior_cells
+    from rfx.model.graded_grid import interior_cells
     interior = interior_cells(np.asarray(per_cell, dtype=float), pad, pad_hi)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
     u_c = max(0, min(u, len(edges) - 1))

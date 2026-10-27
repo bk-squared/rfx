@@ -17,7 +17,7 @@ from typing import Any, TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 
-from rfx.core.yee import FDTDState
+from rfx.core.yee import FDTDState, update_he_fast
 from rfx.boundaries.pec import (
     apply_edge_keep,
     apply_pec_occupancy_box,
@@ -103,6 +103,8 @@ def make_uniform_step(
     dx = ctx.dx
     periodic = ctx.periodic
     grid = ctx.grid
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
     cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
@@ -140,8 +142,7 @@ def make_uniform_step(
 
     def he_update(frame: UniformFrame):
         """Advance H and E together with conductor faces baked into coefficients."""
-        from rfx import simulation
-        frame.st = simulation.update_he_fast(
+        frame.st = update_he_fast(
             frame.st, ctx.fast_coeffs, boundary=ctx.curl_boundary)
 
     def h_update(frame: UniformFrame):
@@ -151,8 +152,8 @@ def make_uniform_step(
                 frame.st = ctx.apply_upml_h(frame.st, ctx.upml_coeffs, periodic=periodic)
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
-                              stencil_order=ctx.stencil_order, bloch=ctx.bloch,
-                              magnetic_factors=invariants["magnetic_factors"])
+                    high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch,
+                    magnetic_factors=invariants["magnetic_factors"])
 
     def h_boundary(frame: UniformFrame):
         """Correct incident H, absorb outgoing H, and damp conductor cells."""
@@ -248,6 +249,7 @@ def make_uniform_step(
                     debye=(ctx.debye_coeffs, frame.carry["debye"]) if ctx.use_debye else None,
                     lorentz=(ctx.lorentz_coeffs, frame.carry["lorentz"]) if ctx.use_lorentz else None,
                     periodic=periodic,
+                    high_wall=high_wall,
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
@@ -321,7 +323,7 @@ def make_uniform_step(
                 # the inv-eps tensor encodes the fully-PEC-cell zero
                 # already, so this would be redundant double-zeroing.
                 from rfx.stepping.conductors import apply_conformal_pec
-                frame.st = apply_conformal_pec(frame.st, tensor.conformal_weights[0], tensor.conformal_weights[1], tensor.conformal_weights[2])
+                frame.st = apply_conformal_pec(frame.st, *invariants["conformal_zero_masks"])
             if ctx.use_pec_edges:
                 # #931 §1.7: the (Mx, My, Mz) realized once at setup.
                 #

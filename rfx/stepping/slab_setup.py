@@ -121,7 +121,7 @@ def _gather_drive_map(mesh, owners):
 
 def eager_drive_scales(eps, sigma, mesh, drives, dt, ranks, reduce_devices):
     """Scalar reads stay mapped; source arithmetic is eager over device rows."""
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     means = _drive_means_map(mesh, drives)(ranks, eps, sigma)
     def local(eps, sigma, rank):
         values = []
@@ -249,10 +249,13 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
         inputs = input_materials(materials, layout, mesh)
         occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
     model_grid = _host_arrays(grid) if device is not None else grid
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
 
     def local(cells, index, occupancy, widths):
         view = None if index is None else UniformSlabView(index, grid, {'x_widths': widths})
-        components = realize_components(cells, model_grid, periodic=(False,) * 3, view=view)
+        components = realize_components(cells, model_grid, periodic=(False,) * 3,
+                                        high_wall=high_wall, view=view)
         cells = cells._replace(components=components)
         cells = with_edge_keep(cells, occupancy, dtype=jnp.float32, view=view)
         inverse, loss = graded_cpml_operands(cells, None, use_cpml=cpml,
@@ -330,8 +333,10 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                 if not metadata:
                     metadata.extend(found)
                 return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied) for r in found)
-            values = jax.checkpoint(jax.vmap(extrema))(inputs)
-            values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
+            # Concrete inputs give concrete records under an outer jit too, so the judge sees values.
+            with jax.ensure_compile_time_eval() if device is not None else nullcontext():
+                values = jax.checkpoint(jax.vmap(extrema))(inputs)
+                values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
             records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
@@ -394,7 +399,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
-    from rfx.nonuniform import resolve_cpml_axes
+    from rfx.boundaries.axes import resolve_cpml_axes
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout

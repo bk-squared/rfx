@@ -949,11 +949,12 @@ def apply_cpml_h(
     # CPML localization refactor, not the material convention, so both sides
     # read the same material; the localization arithmetic below is unchanged.
     from rfx.core.yee import MaterialArrays, component_h_materials
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     _mag = materials if hasattr(materials, "mu_r") else None
     _periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
     _mu = component_h_materials(
         _mag if _mag is not None else MaterialArrays(None, None, 1.0),
-        periodic=_periodic,
+        periodic=_periodic, high_wall=unpadded_high_walls(grid),
         cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None)
     _ch = tuple(dt / (m * MU_0) for m in _mu)
 

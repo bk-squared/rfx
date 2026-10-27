@@ -33,13 +33,13 @@ FC_TE10 = 3e8 / (2 * A_WR90)  # ~6.56 GHz
 
 def _build(lx, dx, freqs, *, f0=None, x1=0.024, x2=None):
     sim = Simulation(freq_max=12e9, domain=(lx, 0.024, 0.012), dx=dx,  # main's solved length at dx = 2 mm; #1887
-                     boundary="cpml", cpml_layers=8)
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
     kw = {} if f0 is None else {"f0": f0}
-    sim.add_waveguide_port(x_position=x1, y_range=(0.0, A_WR90),
-                           z_range=(0.0, B_WR90), direction="+x",
+    sim.add_waveguide_port(x_position=x1, y_range=(0.0, 0.024),
+                           z_range=(0.0, 0.012), direction="+x",
                            n_modes=1, freqs=freqs, **kw)
     sim.add_waveguide_port(x_position=(x2 if x2 is not None else lx - x1),
-                           y_range=(0.0, A_WR90), z_range=(0.0, B_WR90),
+                           y_range=(0.0, 0.024), z_range=(0.0, 0.012),
                            direction="-x", n_modes=1, freqs=freqs, **kw)
     return sim
 

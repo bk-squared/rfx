@@ -86,7 +86,7 @@ def test_default_budget_chunks_a_large_problem(monkeypatch):
     th = np.radians(np.linspace(0.0, 180.0, 61))
     ph = np.radians(np.linspace(0.0, 350.0, 24))
 
-    import rfx.farfield as _ff
+    import rfx.measurement.farfield as _ff
     real = _ff.compute_far_field_jax
     calls = {"n": 0}
 
@@ -130,7 +130,7 @@ def test_chunking_block_is_code_not_docstring():
     solve. This pins the shape directly: the sizing symbols belong to the code
     object, not to __doc__.
     """
-    import rfx.farfield as _ff
+    import rfx.measurement.farfield as _ff
 
     doc = _ff.compute_far_field_jax.__doc__ or ""
     assert "max_phase_bytes" in doc, "the budget parameter must stay documented"

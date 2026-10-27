@@ -46,6 +46,8 @@ Tracking: https://github.com/bk-squared/rfx/issues/141
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import math
 
 import jax
@@ -58,9 +60,11 @@ from rfx.core.yee import (
 )
 from rfx.floquet import (
     init_floquet_dft,
-    update_floquet_dft,
     extract_floquet_modes,
     compute_floquet_s_params,
+)
+from rfx.measurement.floquet import (
+    update_floquet_dft,
 )
 
 ETA0 = float(jnp.sqrt(MU_0 / EPS_0))  # ~377 ohms
@@ -106,8 +110,8 @@ def _drive_unit_cell_accumulators(n_steps: int = 400):
     acc_trans = init_floquet_dft(len(freqs), plane_shape)
 
     for step in range(n_steps):
-        state = update_h(state, materials, dt, dx, periodic)
-        state = update_e(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
 
         t = step * dt
         arg = (t - t0) / tau_g

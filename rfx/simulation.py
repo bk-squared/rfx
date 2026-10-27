@@ -12,10 +12,12 @@ from __future__ import annotations
 from rfx._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
+    LumpedPortSParamSpec,
     ProbeSpec,
     SimResult,
     SnapshotSpec,
     SourceSpec,
+    WirePortSParamSpec,
     _ORDER4_CFL_FACTOR,
     _StepContext,
     _nearest_divisor,
@@ -35,27 +37,19 @@ import jax.numpy as jnp
 
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
-from rfx.model.source_coefficients import drive_table
 from rfx.model import with_edge_keep
 import numpy as np
 
-from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
 from rfx.stepping import recorded_scan, update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h, scan_with_progress
 from rfx.core.yee import (
-    FDTDState, MaterialArrays, init_state,
-    e_update_coeffs, component_e_materials,
-    EPS_0, MU_0, curl_h, CurlBoundary,
-    map_lumped, lumped_total,
-    precompute_coeffs, update_he_fast,
+    FDTDState, MaterialArrays,
+    EPS_0, MU_0, CurlBoundary,
 )
-from rfx.boundaries.pec import (
+from rfx.boundaries import (
     apply_pec,  # noqa: F401 -- re-exported; tests import it from here (not used by the step since #1164)
-    resolve_wall_faces,
     apply_pec_edges,
     apply_pec_faces,
-    kottke_fenced_edge_masks,
-    realized_pec_edge_masks,
 )
 from rfx.progress import (
     ProgressReporter, check_not_traced, concat_chunks,
@@ -101,87 +95,6 @@ class MagneticSourceSpec(NamedTuple):
 
 
 
-class WirePortSParamSpec(NamedTuple):
-    """Wire port S-param DFT specification for the compiled runner.
-
-    Pre-computed metadata for inline V/I DFT accumulation inside
-    jax.lax.scan, avoiding the separate Python-loop S-param extraction.
-
-    mid_i, mid_j, mid_k: midpoint cell for V and I measurement — the
-        midpoint of the LIVE wire run (issue #764; identical to the
-        historical all-extent midpoint when no extent cell is dead).
-    component: 'ez', 'ex', or 'ey'.
-    freqs: (n_freqs,) frequency array.
-    impedance: port reference impedance (Z0).
-    live_cells: static tuple of (i, j, k) LIVE wire cells (issue #764) for
-        the whole-port gap-voltage accumulator
-        V_port = sum over live cells of -E_c*dx.  Empty tuple = degenerate
-        fallback to the single midpoint cell (pre-#764 constructors).
-    excite: whether this port is genuinely driven in THIS pass.  The
-        whole-port driven-diagonal formula
-        S_kk = (V_port - Z0*I)/(V_port + Z0*I) applies ONLY when True;
-        a passive port's diagonal keeps the legacy per-cell convention
-        (a load-independent port-cell diagnostic, not S_jj — issue #764).
-    """
-    mid_i: int
-    mid_j: int
-    mid_k: int
-    component: str
-    freqs: jnp.ndarray
-    impedance: float
-    live_cells: tuple = ()
-    excite: bool = True
-
-
-class LumpedPortSParamSpec(NamedTuple):
-    """Lumped port S-param DFT specification for the compiled runner.
-
-    Pre-computed metadata for inline V/I DFT accumulation inside
-    jax.lax.scan, providing an AD-compatible alternative to the
-    Python-loop ``extract_s_matrix`` path for single-cell lumped ports.
-
-    Attributes
-    ----------
-    i, j, k : int
-        Lumped port cell index.
-    component : str
-        E-field component ("ex", "ey", or "ez").
-    freqs : (n_freqs,) jnp.ndarray
-        Frequencies (Hz) at which to accumulate V and I DFTs.
-    impedance : float
-        Port reference impedance Z0 (ohms).
-    excite : bool
-        Whether this port is genuinely driven in THIS pass.  A driven port
-        reads its diagonal from the terminal V/I pair
-        (:func:`rfx.probes.probes.driven_port_reflection`); a passive one
-        keeps the load-independent port-branch reading
-        (:func:`rfx.probes.probes.extract_lumped_s11`).  Mirrors
-        :class:`WireSParamSpec.excite`.
-
-    Notes
-    -----
-    V is sampled as ``-E·dx`` and I as the curl-H loop integral times
-    ``dx`` at the port cell, both AFTER source injection, with the Yee
-    half-step phase on I.  Issue #72; sampling slot and diagonal formula
-    decided by scripts/diagnostics/lumped_port_known_load_line.py.
-    """
-    i: int
-    j: int
-    k: int
-    component: str
-    freqs: jnp.ndarray
-    impedance: float
-    excite: bool = True
-
-
-
-
-
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Helpers to build source / probe specs
 # ---------------------------------------------------------------------------
@@ -200,16 +113,8 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     ``materials.eps_r``/``sigma`` may be JAX tracers (forward/AD path) —
     The model accessor reads the finished edge and retains JAX derivatives.
     """
-    from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
+    from rfx.model import e_update_coefficient_at, electric_grid_kwargs
     return e_update_coefficient_at(materials, idx, component, grid.dt, periodic, **electric_grid_kwargs(grid))
-
-
-def _uniform_cell_volume(grid: Grid) -> float:
-    """dV = dx*dy*dz with missing axes duck-typed to dx (engineering
-    principle 3). A 2D grid is treated as ONE CELL DEEP (dz -> dx), so
-    dV = dx**3 there too — the documented #571 convention
-    (``rfx/api/_source_semantics.py``), not per-unit-length dx**2."""
-    return grid.dx * getattr(grid, "dy", grid.dx) * getattr(grid, "dz", grid.dx)
 
 
 def make_source(grid: Grid, position, component, waveform_fn, n_steps,
@@ -227,7 +132,7 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
     multiply is applied at all). ``materials`` is accepted and unused in
     that legacy/native case.
     """
-    from rfx.model.source_coefficients import uniform_source_table
+    from rfx.model import uniform_source_table
     idx = _grid_metric.field_index(grid, position, component)
     if amplitude_kind == "current" and materials is None:
         raise ValueError(
@@ -272,7 +177,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     materials : MaterialArrays (for Cb computation at source cell)
     amplitude_kind : 'field' | 'current' | None (issue #571, above)
     """
-    from rfx.model.source_coefficients import uniform_source_table
+    from rfx.model import uniform_source_table
     idx = _grid_metric.field_index(grid, position, component)
     i, j, k = idx
     waveform = uniform_source_table(

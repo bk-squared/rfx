@@ -9,6 +9,8 @@ claim about S-parameter accuracy.
 """
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import functools
 import sys
 import warnings
@@ -180,7 +182,7 @@ def material_pairs(dump, row, axis):
         else:
             from rfx.model.materials import electric_cell_sizes
             eps, sig = component_e_materials(mats, r["periodic"],
-                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()))
+                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()), high_wall=(False, False, False))
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])
         got = r[quantity][axis]
         if r["region"] is not None:
@@ -197,7 +199,7 @@ def material_pairs(dump, row, axis):
 
 
 def drive_pairs(dump, row):
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
     from rfx.sources.sources import port_sigma, port_d_parallel
     records = [r for r in dump.records if "drive_scale" in r]
     if not records:
@@ -222,7 +224,7 @@ def drive_pairs(dump, row):
         if row == "override_drive":
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
         from rfx.model.materials import electric_cell_sizes
-        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid))
+        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
         expected = []
         for i, j, k, component in r["cells"]:
             axis = "xyz".index(component[1])
@@ -359,14 +361,14 @@ def test_dump_is_consumed(lane, row):
 @pytest.mark.parametrize("lane", ["run_distributed", "run_distributed_nu", "fwd_distributed_nu"])
 @pytest.mark.parametrize("row", ["eps", "sigma"])
 def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
-    from rfx.runners import _distributed_common as dc
+    from rfx.model import electric_metrics
     from rfx.stepping import slab_setup
 
-    original = dc._slab_x_lo_view
+    original = electric_metrics.slab_wall_view
     original_view_rows = slab_setup.uniform_from_cut
 
-    def broken_ghost(arr, rank):
-        view = original(arr, rank)
+    def broken_ghost(arr, nx_per, nx, rank, **kw):
+        view = original(arr, nx_per, nx, rank, **kw)
         # Keep both material helpers; corrupt rank 1's incoming ghost.
         return view.at[0].set(jnp.where(rank == 1, jnp.ones_like(view[0]), view[0]))
 
@@ -383,7 +385,7 @@ def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
         # Concrete whole-grid realization reads owned rows, never these halos.
         # This mutation continues to gate the retained per-slab producer.
         monkeypatch.setattr(slab_setup, "_material_host_device", lambda *args, **kwargs: (None, "traced inputs"))
-        monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
+        monkeypatch.setattr(electric_metrics, "slab_wall_view", broken_ghost)
         monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
         dump = measured(lane, row)
         for axis in (1, 2):
@@ -433,11 +435,11 @@ def test_kernel_dump_is_consumed(kernel, quantity):
     @jax.jit
     def advance(mats, fields):
         if kernel == "precompute":
-            coeffs = precompute_coeffs(mats, 1e-12, MM)
+            coeffs = precompute_coeffs(mats, 1e-12, MM, high_wall=(False, False, False))
             result = update_he_fast(fields, coeffs)
         else:
             result = update_e_aniso(fields, mats, mats.eps_r, mats.eps_r * 1.1,
-                                    mats.eps_r * 1.2, 1e-12, MM)
+                                    mats.eps_r * 1.2, 1e-12, MM, high_wall=(False, False, False))
         return jnp.stack([getattr(result, component)
                           for component in ("ex", "ey", "ez", "hx", "hy", "hz")])
 

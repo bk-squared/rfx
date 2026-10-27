@@ -328,9 +328,10 @@ def _build_nu_scan(
     from rfx.model.materials import kernel_materials, with_components
     from rfx.geometry.node_tensor import SmoothedEps
     from rfx.model.tensor_operands import TensorOperands
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
     tensor = TensorOperands.of(aniso_eps) if isinstance(aniso_eps, SmoothedEps) else None
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
-                                tensor=tensor)
+                                high_wall=unpadded_high_walls(grid), tensor=tensor)
     if tensor is not None:
         aniso_eps = tensor.eps
     from rfx.sources.wire_radius import require_radius_update

@@ -358,7 +358,7 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
         incident[0] = 1.
         cfg = SimpleNamespace(
             v_probe_t=port, i_probe_t=port, v_ref_t=port, i_ref_t=port,
-            dt=DT, freqs=np.array([.5]), src_amp=1., v_inc_t=incident,
+            dt=DT, freqs=np.array([.5]), src_amp=1., v_inc_t=incident, e_inc_table=incident,
             source_x_m=0., reference_x_m=0., probe_x_m=0.)
         ports = dict(s_params=None, waveguide_ports={'p': cfg})
     result = Result(state=None, dt=DT, time_series=slow[:, None],

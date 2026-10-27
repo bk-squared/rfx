@@ -4,7 +4,8 @@ import pytest
 import jax.numpy as jnp
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.farfield import compute_far_field, directivity, radiation_pattern
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity, radiation_pattern
 from tests._multi_device_scene import host_devices
 from tests.unit.runners._graded_records_scene import pair, measure, record, mutation_result, with_bars
 

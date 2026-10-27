@@ -83,7 +83,7 @@ _DZ = jnp.array([1., 1., 3., 1., 1., 3., 1., 1.], dtype=jnp.float32) * 1.0e-3
 def test_corec2_h_update_uses_local_cell_width():
     """update_h_nu, fed the production inv_d_h, recovers the exact
     derivative of a z-linear E field on a 3:1-graded mesh."""
-    from rfx.nonuniform import _profile_to_inv_arrays
+    from rfx.model.graded_grid import _profile_to_inv_arrays
 
     dz = _DZ
     nz = int(dz.shape[0])
@@ -102,7 +102,7 @@ def test_corec2_h_update_uses_local_cell_width():
     # the runner passes the H array (2nd) to update_h_nu.
     _, inv_dz_h = _profile_to_inv_arrays(np.asarray(dz))
     _, inv_xy_h = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
-    new = update_h_nu(state, mats, dt, inv_xy_h, inv_xy_h, inv_dz_h)
+    new = update_h_nu(state, mats, dt, inv_xy_h, inv_xy_h, inv_dz_h, high_wall=(False, False, False))
 
     # curl_x = dEz/dy - dEy/dz = -discrete(dEy/dz); hx = -(dt/mu)*curl_x
     # => discrete(dEy/dz) = hx * mu / dt
@@ -114,7 +114,7 @@ def test_corec2_h_update_uses_local_cell_width():
 def test_corec2_e_update_uses_mean_spacing():
     """update_e_nu, fed the production inv_d_e, recovers the exact
     derivative of a z-linear H field on a 3:1-graded mesh."""
-    from rfx.nonuniform import _profile_to_inv_arrays
+    from rfx.model.graded_grid import _profile_to_inv_arrays
 
     dz = _DZ
     nz = int(dz.shape[0])
@@ -134,7 +134,7 @@ def test_corec2_e_update_uses_mean_spacing():
     inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz))
     inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
     new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e,
-                      cell_sizes=(None, None, dz))
+                      cell_sizes=(None, None, dz), high_wall=(False, False, False))
 
     # curl_x = dHz/dy - dHy/dz = -discrete(dHy/dz); ex = (dt/eps)*curl_x
     # => discrete(dHy/dz) = -ex * eps / dt
@@ -389,8 +389,8 @@ def test_optc1_falsifier_yee_matches_corrected_analytic():
 
     @jax.jit
     def step(s):
-        s = update_h(s, materials, dt, dx)
-        s = update_e(s, materials, dt, dx)
+        s = update_h(s, materials, dt, dx, high_wall=(False, False, False))
+        s = update_e(s, materials, dt, dx, high_wall=(False, False, False))
         return apply_pec(s)
 
     signal = np.zeros(n_steps)

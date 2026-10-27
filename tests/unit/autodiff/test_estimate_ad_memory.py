@@ -320,7 +320,7 @@ def test_public_imports_and_json_roundtrip():
     assert estimate.to_dict()["checkpoint_segments"] == 10
     estimate_keys = {
         "saved", "excluded_linear", "modelled", "unmodelled_features",
-        "checkpoint", "design", "carry_bytes", "tape_step_bytes",
+        "checkpoint", "design", "carry_bytes", "working_bytes", "tape_step_bytes",
         "tape_window_cells", "design_box_bounds", "ad_fixed_gb",
         "tape_is_bound", "calibration", "carry_warnings",
         "cotangents",

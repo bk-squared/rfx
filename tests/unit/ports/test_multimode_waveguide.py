@@ -7,6 +7,8 @@ Covers:
 - Backward compatibility with single-mode usage
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -311,10 +313,10 @@ class TestMultiModeSMatrix:
 
         for step in range(n_steps):
             t = step * grid.dt
-            state = update_h(state, materials, grid.dt, dx)
+            state = update_h(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
             state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
             state = apply_pec(state)
-            state = update_e(state, materials, grid.dt, dx)
+            state = update_e(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
             for cfg in all_cfgs:
                 state = inject_waveguide_port(state, cfg, t, grid.dt, dx)
             state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")

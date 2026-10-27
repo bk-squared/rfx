@@ -66,7 +66,7 @@ import jax.numpy as jnp
 from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.materials.thin_conductor import ThinConductor, leontovich_rs
-from rfx.nonuniform import e_node_dual_spacings
+from rfx.model.graded_grid import e_node_dual_spacings
 from rfx.runners.nonuniform import (assemble_materials_nu,
                                     build_nonuniform_grid)
 
@@ -115,7 +115,7 @@ def test_dual_spacing_is_the_e_update_metric():
     """``e_node_dual_spacings`` must be the reciprocal of the metric the NU E
     update actually divides by, and must return a uniform profile's cell size
     bit-exactly (so uniform-profile results cannot move)."""
-    from rfx.nonuniform import _profile_to_inv_arrays
+    from rfx.model.graded_grid import _profile_to_inv_arrays
 
     for prof in ([0.5e-3] * 6,
                  [0.25e-3] * 3 + [1.0e-3] * 4,

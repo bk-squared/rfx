@@ -75,19 +75,23 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                              for n in range(max(1, int(np.ceil(length / dx))),
                                             int(np.floor(length / minimum)) + 1)}, reverse=True)
         fitting = next((candidate for candidate in candidates if fits(candidate)), None)
+        # The wall-axes clause is written only when a wall axis exists.
+        wall_names = ''.join(walls)
         if fitting is not None and fitting >= PERIODIC_AUTO_MIN_FRACTION * dx:
+            walls_fit = f" and wall axes {wall_names!r} are within 1 %" if walls else ""
             warnings.warn(
                 f"Automatic dx={dx:.12g} m snapped to dx={fitting:.12g} m: "
-                f"periodic axes {axes!r} divide exactly and wall axes {''.join(walls)!r} "
-                f"are within 1 % (minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
+                f"periodic axes {axes!r} divide exactly{walls_fit} "
+                f"(minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
                 UserWarning, stacklevel=3)
             return fitting
         advice = (f"largest fitting dx={fitting:.12g} m ({fitting * 1e3:.12g} mm); "
                   "set dx explicitly to use it" if fitting is not None
                   else "no fitting spacing found")
+        walls_fit = f" and wall axes {wall_names!r} within 1 %" if walls else ""
         raise ValueError(
-            f"Automatic dx={dx:.12g} m cannot fit periodic axes {axes!r} and wall axes "
-            f"{''.join(walls)!r} within 1 % at >= {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx; "
+            f"Automatic dx={dx:.12g} m cannot fit periodic axes {axes!r}{walls_fit} "
+            f"at >= {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx; "
             f"{advice}. Suggestion search limit: requested dx/{PERIODIC_COMMON_SEARCH_REFINEMENT}.")
     if all(_divides_period(length, dx) for length in lengths):
         return dx

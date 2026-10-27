@@ -126,10 +126,10 @@ def test_graded_mean_has_one_value_eager_jit_scan_and_numpy(periodic):
     ref = reference_mean(arr, sizes, periodic)
     jsizes = tuple(jnp.asarray(s) for s in sizes)
     for label, got in _contexts(
-            lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes), jnp.asarray(arr)).items():
+            lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes, high_wall=(False, False, False)), jnp.asarray(arr)).items():
         for c in range(3):
             _assert_equal_bits(got[c], ref[c], f"{label} component {c}")
-    host = edge_mean_components(arr, periodic, cell_sizes=sizes, array_module=np)
+    host = edge_mean_components(arr, periodic, cell_sizes=sizes, array_module=np, high_wall=(False, False, False))
     for c in range(3):
         _assert_equal_bits(host[c], ref[c], f"numpy module component {c}")
 
@@ -143,7 +143,7 @@ def test_a_stamp_added_after_the_mean_does_not_change_its_bits_under_jit():
     ref = reference_mean(arr, sizes, periodic)
     jsizes = tuple(jnp.asarray(s) for s in sizes)
     got = jax.jit(lambda v, p: tuple(
-        m + p for m in edge_mean_components(v, periodic, cell_sizes=jsizes)))(jnp.asarray(arr), jnp.asarray(stamp))
+        m + p for m in edge_mean_components(v, periodic, cell_sizes=jsizes, high_wall=(False, False, False))))(jnp.asarray(arr), jnp.asarray(stamp))
     for c in range(3):
         _assert_equal_bits(got[c], (ref[c] + stamp).astype(np.float32), f"stamped component {c}")
 
@@ -159,7 +159,7 @@ def test_each_slab_forms_the_whole_domain_mean_on_its_own_rows(n_slabs):
     for lo, hi in zip(edges[:-1], edges[1:]):
         ghost = max(lo - 1, 0)
         local_sizes = (jnp.asarray(sizes[0][ghost:hi]), jnp.asarray(sizes[1]), jnp.asarray(sizes[2]))
-        got = jax.jit(lambda v: edge_mean_components(v, periodic, cell_sizes=local_sizes))(jnp.asarray(arr[ghost:hi]))
+        got = jax.jit(lambda v: edge_mean_components(v, periodic, cell_sizes=local_sizes, high_wall=(False, False, False)))(jnp.asarray(arr[ghost:hi]))
         for c in range(3):
             _assert_equal_bits(np.asarray(got[c])[lo - ghost:], ref[c][lo:hi], f"slab {lo}:{hi} component {c}")
 
@@ -175,7 +175,7 @@ def test_lane_function_hands_the_step_the_reference_bits():
 
     def lane(e, s):
         materials = MaterialArrays(eps_r=e, sigma=s, mu_r=jnp.ones_like(e))
-        return component_e_materials(materials, periodic, cell_sizes=jsizes)
+        return component_e_materials(materials, periodic, cell_sizes=jsizes, high_wall=(False, False, False))
 
     got_eps, got_sig = jax.jit(lane)(jnp.asarray(eps), jnp.asarray(sigma))
     for c in range(3):
@@ -188,7 +188,7 @@ def test_gradient_is_the_area_weight():
     arr, sizes = _fields(np.float32)
     jsizes = tuple(jnp.asarray(s) for s in sizes)
     grad = np.asarray(jax.grad(lambda v: jnp.sum(
-        edge_mean_components(v, periodic, cell_sizes=jsizes)[0]))(jnp.asarray(arr)))
+        edge_mean_components(v, periodic, cell_sizes=jsizes, high_wall=(False, False, False))[0]))(jnp.asarray(arr)))
     ones = np.ones(SHAPE, np.float64)
     # d(sum of means)/d(cell) = total weight the cell gets from the edges that read it.
     weight = np.zeros(SHAPE)
@@ -225,7 +225,7 @@ def test_gradient_in_the_cell_sizes_is_the_plain_formula_s():
         return jnp.sum(lo2 + (r - lo2) * 0.5)
 
     def ours(d1):
-        return jnp.sum(edge_mean_components(x, periodic, cell_sizes=(None, d1, None))[0])
+        return jnp.sum(edge_mean_components(x, periodic, cell_sizes=(None, d1, None), high_wall=(False, False, False))[0])
 
     want = np.asarray(jax.grad(plain)(jnp.asarray(sizes[1])))
     got = np.asarray(jax.grad(ours)(jnp.asarray(sizes[1])))
@@ -241,10 +241,10 @@ def test_single_edge_form_is_the_grid_wide_value(graded):
     sigma, _ = _fields(np.float32, seed=11)
     cell_sizes = tuple(jnp.asarray(s) for s in sizes) if graded else None
     materials = MaterialArrays(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sigma), mu_r=jnp.ones(SHAPE, jnp.float32))
-    grid_eps, grid_sig = jax.jit(lambda m: component_e_materials(m, periodic, cell_sizes=cell_sizes))(materials)
+    grid_eps, grid_sig = jax.jit(lambda m: component_e_materials(m, periodic, cell_sizes=cell_sizes, high_wall=(False, False, False)))(materials)
     for component, name in enumerate(("ex", "ey", "ez")):
         for cell in ((0, 0, 0), (3, 4, 2), (11, 8, 6), (5, 0, 6), (1, 8, 0)):
-            e, s = cell_component_e_materials(materials, cell, name, periodic, cell_sizes=cell_sizes)
+            e, s = cell_component_e_materials(materials, cell, name, periodic, cell_sizes=cell_sizes, high_wall=(False, False, False))
             _assert_equal_bits(np.asarray(e), np.asarray(grid_eps[component][cell]), f"eps {name} {cell}")
             _assert_equal_bits(np.asarray(s), np.asarray(grid_sig[component][cell]), f"sigma {name} {cell}")
 
@@ -256,7 +256,7 @@ def test_float64_fields_have_one_value_too():
         ref = reference_mean(arr, sizes, periodic)
         jsizes = tuple(jnp.asarray(s) for s in sizes)
         for label, got in _contexts(
-                lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes), jnp.asarray(arr)).items():
+                lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes, high_wall=(False, False, False)), jnp.asarray(arr)).items():
             for c in range(3):
                 _assert_equal_bits(got[c], ref[c], f"float64 {label} component {c}")
 
@@ -266,7 +266,7 @@ def test_uniform_mesh_mean_is_untouched():
     periodic = (False, False, False)
     a1, a2 = _back(arr, 1, periodic), _back(arr, 2, periodic)
     want = (((arr + a1) + (a2 + _back(a1, 2, periodic))) * np.float32(0.25)).astype(np.float32)
-    got = jax.jit(lambda v: edge_mean_components(v, periodic))(jnp.asarray(arr))
+    got = jax.jit(lambda v: edge_mean_components(v, periodic, high_wall=(False, False, False)))(jnp.asarray(arr))
     _assert_equal_bits(got[0], want, "uniform component 0")
 
 
@@ -282,7 +282,7 @@ def test_graded_mean_has_one_value_on_this_backend():
     ref = reference_mean(arr, sizes, periodic)
     jsizes = tuple(jnp.asarray(s) for s in sizes)
     for label, got in _contexts(
-            lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes), jnp.asarray(arr)).items():
+            lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes, high_wall=(False, False, False)), jnp.asarray(arr)).items():
         for c in range(3):
             _assert_equal_bits(got[c], ref[c], f"{jax.default_backend()} {label} component {c}")
 

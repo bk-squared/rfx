@@ -620,17 +620,17 @@ PATCHES = {
 
 @contextlib.contextmanager
 def _fast_path_probe(record):
-    """Wrap rfx.simulation.update_he_fast so the JSON records whether the
+    """Wrap rfx.stepping.uniform.update_he_fast so the JSON records whether the
     uniform fused fast path was traced (it is on GPU for the pec fixture:
     that arm then IS the fused target, not the slow path)."""
-    import rfx.simulation as sim_mod
-    orig = sim_mod.update_he_fast
+    import rfx.stepping.uniform as seam_mod
+    orig = seam_mod.update_he_fast
 
-    def probe(st, coeffs):
+    def probe(st, coeffs, **kw):
         record["fast_path_seen"] = True
-        return orig(st, coeffs)
+        return orig(st, coeffs, **kw)
 
-    with _swap(sim_mod, "update_he_fast", probe):
+    with _swap(seam_mod, "update_he_fast", probe):
         yield
 
 

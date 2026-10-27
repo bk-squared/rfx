@@ -4,6 +4,8 @@ Verifies that the normalization pattern cancels Yee-grid numerical
 dispersion and achieves |S21| > 0.95 for an empty straight waveguide.
 """
 
+import math
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -24,12 +26,15 @@ def _make_straight_waveguide_sim(
     ref_offset=3,
 ):
     """Build a Simulation for a straight empty PEC waveguide with two ports."""
-    # The cross-section stays at 27 by 14 cells: a_wg and b_wg do not
-    # set its dimensions. f_max sets dx, and a_wg sets the default band.
+    # The cross-section is a_wg x b_wg rounded up to whole cells, the count
+    # the grid built before #1930 (27 x 14 cells for the defaults, so the
+    # default model is unchanged). f_max sets dx; a_wg also sets the band.
     dx = C0 / f_max / 20.0
+    n_y = math.ceil(a_wg / dx - 1e-9)
+    n_z = math.ceil(b_wg / dx - 1e-9)
     sim = Simulation(
         freq_max=f_max, dx=dx,
-        domain=(length, 27 * dx, 14 * dx),  # solved length; #1887
+        domain=(length, n_y * dx, n_z * dx),  # solved length; #1887
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
@@ -60,6 +65,22 @@ def _make_straight_waveguide_sim(
         name="port2",
     )
     return sim, freqs
+
+
+def test_straight_waveguide_helper_cross_section_follows_a_wg():
+    """The helper's realized cross-section is a_wg x b_wg in whole cells.
+
+    dx = C0 / 10 GHz / 20 = 1.499 mm: 40 mm -> 27 cells, 20 mm -> 14 cells,
+    and a_wg = 50 mm -> 34 cells. The y and z walls are PEC, so the grid
+    holds one more node than cells on those axes.
+    """
+    sim, _ = _make_straight_waveguide_sim()
+    grid = sim._build_grid()
+    assert (grid.shape[1] - 1, grid.shape[2] - 1) == (27, 14)
+
+    sim, _ = _make_straight_waveguide_sim(a_wg=0.05)
+    grid = sim._build_grid()
+    assert (grid.shape[1] - 1, grid.shape[2] - 1) == (34, 14)
 
 
 def test_normalized_s21_straight_waveguide():

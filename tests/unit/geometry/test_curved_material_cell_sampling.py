@@ -3,6 +3,8 @@
 Expected occupancy uses analytic geometry and independently built coordinates;
 no expected value calls the product's shape mask or centre provider (#1138).
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from contextlib import nullcontext
 
 import jax
@@ -102,7 +104,7 @@ def test_uniform_curved_cells_and_each_yee_edge_are_centred(kind, precision):
         assert pec is None
         np.testing.assert_allclose(_centroid(sigma, centres), shape.center,
                                    rtol=0, atol=grid.dx*1e-10)
-        _, sig_edges = edge_averaged_materials(eps, sigma)
+        _, sig_edges = edge_averaged_materials(eps, sigma, high_wall=unpadded_high_walls(grid))
         for component, sig in enumerate(sig_edges):
             axes = [centres[a] if a == component else nodes[a] for a in range(3)]
             np.testing.assert_allclose(_centroid(sig, axes), shape.center,
@@ -241,7 +243,7 @@ def test_dual_average_uses_supplied_centres_and_excludes_only_pec_cells(kind, gr
         xyz = np.meshgrid(*axes, indexing='ij')
         live = ~np.logical_and.reduce([(x >= l) & (x < h) for x, l, h in zip(xyz, lo, hi)])
     mats = sim._assemble_materials_nu(grid)[0]
-    got = assemble_interface_eps_nu(sim, grid, mats)
+    got = assemble_interface_eps_nu(sim, grid, mats, high_wall=unpadded_high_walls(grid))
     for c in range(3):
         transverse = [a for a in range(3) if a != c]
         num, den = np.zeros(grid.shape), np.zeros(grid.shape)

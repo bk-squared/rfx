@@ -20,19 +20,26 @@ ALLOWED_CALLS = {'rfx/adi.py': 3,
  'rfx/current_moments.py': 2,
  # static_remnant_advisory's H average moved here from rfx/simulation.py (decay stop PR).
  'rfx/measurement/decay.py': 1,
- 'rfx/runners/_distributed_common.py': 6,
+ # slab_e_component_materials moved here from rfx/runners/_distributed_common.py
+ # (#1966). It has 3 calls, one more than on main: the slab takes the edge-owned
+ # lumped stamp out of the cells before the high-wall view (the view replicates
+ # cells, not edges). jit_runner.py's 2 calls moved into rfx/model/materials.py.
+ 'rfx/model/electric_metrics.py': 3,
+ 'rfx/runners/_distributed_common.py': 4,
  'rfx/runners/distributed_nu.py': 1,
  'rfx/runners/nonuniform.py': 1,
  'rfx/sources/coaxial_port.py': 1,
  'rfx/sources/msl_port.py': 1,
- 'rfx/sources/tfsf.py': 2,
- 'rfx/sources/tfsf_2d.py': 3,
- 'rfx/sources/tfsf_oblique_open.py': 1,
+ 'rfx/sources/tfsf.py': 1,
+ 'rfx/sources/tfsf_2d.py': 1,
  'rfx/stepping/waveguide_source.py': 1,
  'rfx/subgridding/disjoint_3d.py': 1,
- 'rfx/subgridding/jit_runner.py': 2,
  'rfx/subgridding/sbp_sat_1d.py': 1,
- 'rfx/subgridding/sbp_sat_2d.py': 2}
+ 'rfx/subgridding/sbp_sat_2d.py': 2,
+    "rfx/stepping/tfsf.py": 1,
+    "rfx/stepping/tfsf_2d.py": 2,
+    "rfx/stepping/tfsf_oblique.py": 1,
+}
 
 
 def averaging_calls(tree):

@@ -685,6 +685,11 @@ def add_tfsf_source(
         closed_box=closed_box, theta_deg=theta_deg, phi_deg=phi_deg,
         direction_tol_deg=direction_tol_deg, max_component=max_component,
     )
+    mesh = self._declared_mesh
+    if mesh["_dx"] is not None and all(mesh[name] is None for name in (
+            "_dx_profile", "_dy_profile", "_dz_profile")):
+        from rfx.boundaries.tfsf import require_tfsf_side_faces
+        require_tfsf_side_faces(self)
     return self
 
 

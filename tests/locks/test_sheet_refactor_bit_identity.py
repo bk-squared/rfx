@@ -256,7 +256,7 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
     @jax.jit
     def ref_uniform(st, mats):
         (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
-            mats.eps_r, mats.sigma, per)
+            mats.eps_r, mats.sigma, per, high_wall=(False, False, False))
         out = []
         for e_r, s_v, fld, curl in zip(
                 (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z),
@@ -270,7 +270,7 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
         return tuple(out)
 
     ref = ref_uniform(st, mats)
-    got = update_e(st, mats, dt, dx, periodic=per)
+    got = update_e(st, mats, dt, dx, periodic=per, high_wall=(False, False, False))
     _assert_e_fields((got.ex, got.ey, got.ez), ref)
 
     inv = [jnp.asarray(rng.random(n).astype(np.float32) + 0.5) for n in _SHAPE]
@@ -280,7 +280,7 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
     def ref_nu(st, mats, inv_dx, inv_dy, inv_dz):
         # The graded-mesh lane installs no periodic BC (#1210 docstring).
         (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
-            mats.eps_r, mats.sigma, (False, False, False), cell_sizes=cell_sizes)
+            mats.eps_r, mats.sigma, (False, False, False), cell_sizes=cell_sizes, high_wall=(False, False, False))
         out = []
         for e_r, s_v, fld, curl in zip(
                 (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z),
@@ -294,7 +294,8 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
         return tuple(out)
 
     ref = ref_nu(st, mats, *inv)
-    got = jax.jit(update_e_nu)(st, mats, dt, *inv, cell_sizes=cell_sizes)
+    got = jax.jit(update_e_nu, static_argnames=('high_wall',))(
+        st, mats, dt, *inv, cell_sizes=cell_sizes, high_wall=(False,) * 3)
     _assert_e_fields((got.ex, got.ey, got.ez), ref)
 
 

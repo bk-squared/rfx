@@ -309,13 +309,41 @@ def report(sim, issues, *, root=None, material_overrides=()):
             severity="warning", code="tfsf_transverse_periodic"))
 
 
-def boundary_flags(cfg, grid=None):
+def _wrapped_axes(cfg):
+    """One axis choice for registration entries and initialized configs."""
     from rfx.sources.tfsf import is_tfsf_methodB
     if getattr(cfg, "closed_box", False):
-        return (False, False, False), "xyz"
-    # Addendum 5c(2): admitted declared walls retain main's wrap. Finite
-    # transverse structure is refused before this operator is selected.
-    return (False, not is_tfsf_methodB(cfg), True), "xy" if is_tfsf_methodB(cfg) else "x"
+        return ""
+    method_b = is_tfsf_methodB(cfg) or (
+        getattr(cfg, "method", None) == "methodB"
+        and abs(getattr(cfg, "angle_deg", 0.)) > .01)
+    return "z" if method_b else "yz"
+
+
+def boundary_flags(cfg, grid=None):
+    # Admitted declarations retain the same wrap and absorber axes.
+    axes = _wrapped_axes(cfg)
+    return tuple(a in axes for a in "xyz"), "".join(a for a in "xyz" if a not in axes)
+
+
+def require_tfsf_side_faces(sim):
+    """Refuse explicit side faces the uniform TF/SF lane would replace."""
+    if sim._tfsf is None or sim._tfsf.closed_box or sim._uses_nonuniform_mesh:
+        return
+    from rfx.boundaries.model import declared_nonperiodic_faces
+    axes = _wrapped_axes(sim._tfsf)
+    if sim._mode in ("2d_tmz", "2d_tez"):
+        axes = axes.replace("z", "")
+    conflicts = declared_nonperiodic_faces(sim, axes)
+    if conflicts:
+        # #1961: declarations reaching different lanes must not silently change
+        # the solved model; #1945 is the uniform TF/SF side-face instance.
+        raise ValueError(
+            f"TF/SF on the uniform mesh solves axes {axes!r} periodic; "
+            f"declared {', '.join(conflicts)}. Declare periodic on "
+            f"{' and '.join(axes)}, or omit the boundary (default or boundary=\"cpml\" "
+            "keeps periodic side faces with a preflight warning); use closed_box=True "
+            "for a finite scatterer, or a graded mesh, which keeps declared side faces.")
 
 
 def refuse_injection_plane_operands(cfg, grid, materials, updates, localized):

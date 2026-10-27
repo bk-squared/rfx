@@ -59,6 +59,34 @@ def test_common_wall_spacing_inside_the_cost_bound_is_adopted(domain, expected_d
         np.array(domain) * 1e6, rel=2e-14)
 
 
+def test_snap_warning_without_wall_axes_names_none():
+    # Periodic x with absorbers on y and z: no axis is closed by walls, so the
+    # warning must not name an empty wall-axis list.
+    sim = Simulation(C0 / .020, (.0103, .008, .006), cpml_layers=4,
+                     boundary=BoundarySpec(x='periodic', y='cpml', z='cpml'))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        grid = sim._build_grid()
+    snapped = [str(w.message) for w in caught if 'snapped' in str(w.message)]
+    assert len(snapped) == 1, snapped
+    assert "wall axes ''" not in snapped[0]
+    assert "wall axes" not in snapped[0]
+    assert "periodic axes 'x' divide exactly (minimum 0.75 * requested dx)." in snapped[0]
+    # 10.3 mm / 11 cells is the first spacing at or below the 1 mm request.
+    assert grid.dx == pytest.approx(.0103 / 11, rel=2e-14, abs=0)
+
+
+def test_snap_warning_with_wall_axes_still_names_them():
+    sim = wall_model(domain=(.0096, .0072, .0056))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        sim._build_grid()
+    snapped = [str(w.message) for w in caught if 'snapped' in str(w.message)]
+    assert len(snapped) == 1, snapped
+    assert ("periodic axes 'x' divide exactly and wall axes 'yz' are within 1 % "
+            "(minimum 0.75 * requested dx).") in snapped[0]
+
+
 def test_closed_walls_constrain_an_already_dividing_period():
     # Mixed PEC/PMC faces also close an axis. This checks lattice length;
     # it makes no claim about the separate PMC half-cell wall convention.
