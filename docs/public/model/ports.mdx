@@ -317,7 +317,9 @@ Getting an accurate microstrip result:
 ## Waveguide ports
 
 `add_waveguide_port` launches a TE or TM mode of a rectangular aperture and
-decomposes the fields into that mode. Its aperture defines the guide. A port
+decomposes the fields into that mode. Its aperture defines the guide, and
+every aperture edge needs a conductor: draw PEC walls on the edges of a smaller
+aperture, or a bare edge is refused. A port
 that spans the whole cross-section uses the transverse domain faces as the
 guide walls, so declare them PEC and put the absorber on the port axis only;
 on a uniform mesh `boundary="cpml"` on every face is refused.
