@@ -309,6 +309,10 @@ BOTH_REFUSE_ROWS = (
     ('P-msl', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'multi-device-uniform'),
+    ('P-waveguide-2mode', 'graded'),
+    ('P-waveguide-2mode', 'multi-device-graded'),
+    ('P-waveguide-2mode', 'multi-device-uniform'),
+    ('P-waveguide-2mode', 'uniform'),
     ('PW-A', 'multi-device-graded'),
     ('PW-A', 'multi-device-uniform'),
     ('PW-B', 'graded'),
@@ -633,6 +637,14 @@ def test_both_refuse(declaration, path, direction):
             assert expected in record['message'], record
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
+    if declaration == 'P-waveguide-2mode':
+        # The per-mode list once reached the single-run assembly and raised
+        # AttributeError on both entries (#2070); pin the refusal's text too.
+        expected = ('waveguide ports (add_waveguide_port) are not supported on'
+                    if path.startswith('multi-device') else 'compute_waveguide_s_matrix()')
+        for record in pair.values():
+            assert record['type'] == 'NotImplementedError', record
+            assert expected in record['message'], record
 
 
 def _raised(kind, message, site='rfx/runners/_admission.py:1'):

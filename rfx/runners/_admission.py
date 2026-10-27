@@ -319,6 +319,8 @@ DETECTORS: dict[Row, Callable] = {
     ("_ports", "wire_port"): lambda sim: bool(_ports(sim, extent=True)),
     ("_msl_ports", "msl_port"): lambda sim: bool(sim._msl_ports),
     ("_waveguide_ports", "waveguide_port"): lambda sim: bool(sim._waveguide_ports),
+    ("_waveguide_ports", "n_modes"): lambda sim: any(
+        p.n_modes > 1 for p in sim._waveguide_ports),
     ("_coaxial_ports", "coax_port"): lambda sim: bool(sim._coaxial_ports),
     ("_floquet_ports", "floquet_port"): lambda sim: bool(sim._floquet_ports),
     ("_floquet_ports", "scan_angle"): lambda sim: any(
@@ -390,6 +392,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_ports", "wire_port"): "a wire port (add_port(extent=...))",
     ("_msl_ports", "msl_port"): "a microstrip port (add_msl_port)",
     ("_waveguide_ports", "waveguide_port"): "a waveguide port (add_waveguide_port)",
+    ("_waveguide_ports", "n_modes"): "a waveguide port with several modes (add_waveguide_port(n_modes>1))",
     ("_coaxial_ports", "coax_port"): "a coaxial port (add_coaxial_port)",
     ("_floquet_ports", "floquet_port"): "a Floquet port (add_floquet_port)",
     ("_floquet_ports", "scan_angle"): "a Floquet port scanned off normal (scan_theta != 0)",
@@ -471,6 +474,9 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
+    # One configuration per port is all the single-run assembly takes; the
+    # per-mode list is driven only by compute_waveguide_s_matrix() (#2070).
+    ("_waveguide_ports", "n_modes"): frozenset(),
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
@@ -561,7 +567,7 @@ for _row in (
     ("_geometry", "pec_volume"), ("_geometry", "pec_sheet"), ("_geometry", "pec_wire"),
     ("_thin_conductors", "lossy_sheet"), ("_thin_conductors", "pec_sheet"),
     ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
-    ("_waveguide_ports", "waveguide_port"),
+    ("_waveguide_ports", "waveguide_port"), ("_waveguide_ports", "n_modes"),
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
     ("_boundary_spec", "conformal"),
     ("_boundary_spec", "absorbing_lid"),
@@ -1027,6 +1033,9 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if ("_boundary_spec", "conformal_s_matrix") in rows:
         where += (" Use compute_s_params=False for conformal probe fields, or "
                   "conformal_pec=False for a staircase S-matrix.")
+    if ("_waveguide_ports", "n_modes") in rows:
+        where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
+                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port (#2070).")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
