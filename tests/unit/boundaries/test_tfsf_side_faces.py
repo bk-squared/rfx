@@ -8,19 +8,19 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 REFUSED = [
-    pytest.param(BoundarySpec(y="cpml", z="cpml"), False,
+    pytest.param(BoundarySpec(x="cpml", y="cpml", z="cpml"), False,
                  {"y_lo": "cpml", "y_hi": "cpml", "z_lo": "cpml", "z_hi": "cpml"}, id="cpml"),
-    pytest.param(BoundarySpec(y="pmc", z="pec"), False,
+    pytest.param(BoundarySpec(x="cpml", y="pmc", z="pec"), False,
                  {"y_lo": "pmc", "y_hi": "pmc", "z_lo": "pec", "z_hi": "pec"}, id="walls"),
-    pytest.param(BoundarySpec(y="periodic", z="cpml"), False,
+    pytest.param(BoundarySpec(x="cpml", y="periodic", z="cpml"), False,
                  {"z_lo": "cpml", "z_hi": "cpml"}, id="mixed-cpml"),
-    pytest.param(BoundarySpec(y="periodic", z="pec"), False,
+    pytest.param(BoundarySpec(x="cpml", y="periodic", z="pec"), False,
                  {"z_lo": "pec", "z_hi": "pec"}, id="mixed-pec"),
-    pytest.param(BoundarySpec(y="cpml", z="cpml"), True,
+    pytest.param(BoundarySpec(x="cpml", y="cpml", z="cpml"), True,
                  {"z_lo": "cpml", "z_hi": "cpml"}, id="methodB"),
     pytest.param({"x": "cpml", "y": "pmc", "z": "pec"}, False,
                  {"y_lo": "pmc", "y_hi": "pmc", "z_lo": "pec", "z_hi": "pec"}, id="dict"),
-    pytest.param(BoundarySpec(y="periodic", z=Boundary("pmc", "cpml")), False,
+    pytest.param(BoundarySpec(x="cpml", y="periodic", z=Boundary("pmc", "cpml")), False,
                  {"z_lo": "pmc", "z_hi": "cpml"}, id="asymmetric"),
 ]
 
@@ -90,7 +90,7 @@ def test_refresh_reads_current_declaration(entry):
     sim = source(scene())
     # No public boundary setter exists. Internal rebuilds replace the frozen
     # spec; refresh must check that current declaration rather than its cache.
-    sim._boundary_spec = BoundarySpec(y="pmc", z="pec")
+    sim._boundary_spec = BoundarySpec(x="cpml", y="pmc", z="pec")
     with pytest.raises(ValueError, match="y_lo='pmc'.*z_hi='pec'"):
         invoke(sim, entry)
 
@@ -108,7 +108,7 @@ def trace(boundary, method_b=False, graded=False, entry="run"):
     return values
 
 
-@pytest.mark.parametrize("boundary", [None, "cpml", BoundarySpec(y="periodic", z="periodic")],
+@pytest.mark.parametrize("boundary", [None, "cpml", BoundarySpec(x="cpml", y="periodic", z="periodic")],
                          ids=["default", "cpml", "periodic"])
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_admitted_uniform_traces(boundary, entry):
@@ -121,13 +121,13 @@ def test_admitted_uniform_traces(boundary, entry):
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_method_b_keeps_y_absorber(entry):
     with jax.enable_x64(False):
-        actual = trace(BoundarySpec(y="cpml", z="periodic"), method_b=True, entry=entry)
+        actual = trace(BoundarySpec(x="cpml", y="cpml", z="periodic"), method_b=True, entry=entry)
         expected = trace("cpml", method_b=True, entry=entry)
     assert actual.tobytes() == expected.tobytes()
 
 
-@pytest.mark.parametrize("boundary", [None, "cpml", BoundarySpec(y="cpml", z="cpml"),
-                                      BoundarySpec(y="pmc", z="pec")],
+@pytest.mark.parametrize("boundary", [None, "cpml", BoundarySpec(x="cpml", y="cpml", z="cpml"),
+                                      BoundarySpec(x="cpml", y="pmc", z="pec")],
                          ids=["default", "cpml", "spec-cpml", "walls"])
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_admitted_graded_traces(boundary, entry):
@@ -139,11 +139,11 @@ def test_admitted_graded_traces(boundary, entry):
 
 @pytest.mark.parametrize("mode", ["2d_tmz", "2d_tez"])
 def test_invariant_z_is_not_a_side_face(mode):
-    sim = source(scene(BoundarySpec(y="periodic", z="cpml"), mode=mode),
+    sim = source(scene(BoundarySpec(x="cpml", y="periodic", z="cpml"), mode=mode),
                  polarization="ey" if mode == "2d_tez" else "ez")
     sim.boundary_model()
     with pytest.raises(ValueError) as error:
-        source(scene(BoundarySpec(y="cpml", z="pec"), mode=mode),
+        source(scene(BoundarySpec(x="cpml", y="cpml", z="pec"), mode=mode),
                polarization="ey" if mode == "2d_tez" else "ez")
     assert "y_lo='cpml'" in str(error.value)
     assert "z_lo" not in str(error.value) and "z_hi" not in str(error.value)
@@ -167,3 +167,15 @@ def test_declared_periodic_axes_are_in_faces():
         ("y", "lo", "periodic"), ("y", "hi", "periodic"),
         ("z", "lo", "periodic"), ("z", "hi", "periodic")]
     sim.boundary_model()
+
+
+@pytest.mark.parametrize("method_b", [False, True], ids=["normal", "methodB"])
+@pytest.mark.parametrize("boundary", [None, "cpml"], ids=["default", "cpml"])
+def test_rebuilds_keep_the_shorthand(boundary, method_b):
+    """A design document and the convergence clone rebuild the request; the
+    shorthand must stay one, or its replaced side faces read as declared."""
+    from rfx.boundaries.serialization import constructor_boundary
+    from rfx.interop import design_to_dict, simulation_from_design
+    sim = source(scene(boundary), method_b)
+    simulation_from_design(design_to_dict(sim)).boundary_model()
+    source(scene(constructor_boundary(sim)), method_b).boundary_model()

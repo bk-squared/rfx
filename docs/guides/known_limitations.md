@@ -480,7 +480,7 @@ transverse axis takes only a matched pair: both faces absorbing, both the wall
 that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
 A wall that does not suit the polarization is refused (for E along z, PEC on y or
 PMC on z), and so is a pair that mixes a PMC face with an absorbing one. A wall
-pair keeps the legacy wrap only for an invariant model; finite transverse
+pair admits only an invariant model; finite transverse
 structure with those walls is refused. UPML remains unsupported for TF/SF.
 The uniform plane-wave path solves y and z (Method B: z) periodic, including their pads, when no
 boundary or `boundary='cpml'` is given, and reports the affected faces in preflight. Its grid and period do not
@@ -505,8 +505,8 @@ solve as two models: the uniform mesh makes the transverse faces periodic, the g
 the laterally invariant structures a plane wave admits, both give the same field: on a graded profile with the uniform
 mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
 (`tests/contracts/test_plane_wave_admission_both_meshes.py`). A declaration of the side faces gives one model per
-request, solved as declared or refused: periodic faces run on the uniform mesh only, CPML or the wall pair that suits
-the polarization on the graded mesh only. One transverse operator for both meshes is planned after 2.0.
+request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
+the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 
