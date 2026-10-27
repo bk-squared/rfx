@@ -16,11 +16,12 @@ def test_the_plugin_is_loaded_by_the_root_conftest():
 
 
 def test_marks_only_from_jax_011():
-    nodeid = plugin.JAX_011_XFAILS[2114][1][0]
+    issue, (_, ids) = next(iter(plugin.JAX_011_XFAILS.items()))
+    nodeid = ids[0]
     assert plugin.reason_for(nodeid, (0, 10, 2)) is None
     assert plugin.reason_for(nodeid, (0, 10)) is None
-    assert plugin.reason_for(nodeid, (0, 11, 0)).startswith("#2114 ")
-    assert plugin.reason_for(nodeid, (0, 12)).startswith("#2114 ")
+    assert plugin.reason_for(nodeid, (0, 11, 0)).startswith(f"#{issue} ")
+    assert plugin.reason_for(nodeid, (0, 12)).startswith(f"#{issue} ")
     assert plugin.reason_for("tests/unit/autodiff/test_estimate_ad_memory.py::not_listed", (0, 11)) is None
 
 
