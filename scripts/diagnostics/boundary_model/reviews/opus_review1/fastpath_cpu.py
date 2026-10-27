@@ -13,6 +13,7 @@ import warnings
 warnings.simplefilter("ignore")
 import jax
 import rfx.simulation as S
+import rfx.stepping.uniform as U
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.harminv import harminv
@@ -22,11 +23,11 @@ calls = {"fast": 0}
 if fake:
     real_backend = jax.default_backend
     S.jax.default_backend = lambda: "gpu"
-    _orig_uhf = S.update_he_fast
-    def _spy(st, c):
+    _orig_uhf = U.update_he_fast
+    def _spy(st, c, **kw):
         calls["fast"] += 1
-        return _orig_uhf(st, c)
-    S.update_he_fast = _spy
+        return _orig_uhf(st, c, **kw)
+    U.update_he_fast = _spy
 
 sim = Simulation(freq_max=12e9, domain=(0.024, 0.020, 0.004), dx=1e-3,
                  boundary=BoundarySpec(x=Boundary("pmc", "pmc"), y="pec", z="pec"))

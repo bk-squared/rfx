@@ -18,14 +18,14 @@ def _closed_box():
 
 
 def test_gpu_query_closed_box_keeps_standard_lane_and_cpu_bits(monkeypatch):
-    import rfx.simulation as simulation
+    import rfx.stepping.uniform as stepping_uniform
 
     with jax.default_device(jax.devices("cpu")[0]):
         assert not backend_class().accelerator
         plain = _closed_box().run(n_steps=40, compute_s_params=False,
                                   skip_preflight=True)
         trace_calls = 0
-        original = simulation.update_he_fast
+        original = stepping_uniform.update_he_fast
 
         def counted(*args, **kwargs):
             nonlocal trace_calls
@@ -34,7 +34,7 @@ def test_gpu_query_closed_box_keeps_standard_lane_and_cpu_bits(monkeypatch):
 
         with monkeypatch.context() as forced:
             forced.setattr(jax, "default_backend", lambda: "gpu")
-            forced.setattr(simulation, "update_he_fast", counted)
+            forced.setattr(stepping_uniform, "update_he_fast", counted)
             assert backend_class().accelerator
             accelerated = _closed_box().run(n_steps=40, compute_s_params=False,
                                             skip_preflight=True)

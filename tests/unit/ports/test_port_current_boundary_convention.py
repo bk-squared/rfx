@@ -26,11 +26,11 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import curl_h
+from rfx.core.yee import curl_h, init_state
 from rfx.grid import Grid
 from rfx.probes.probes import _bwd_h, port_current, wire_port_current
 from rfx.simulation import (
-    MaterialArrays, apply_pec, init_state, update_e, update_h,
+    MaterialArrays, apply_pec, update_e, update_h,
 )
 from rfx.sources.sources import (
     GaussianPulse, LumpedPort, WirePort, _wire_port_cells,
