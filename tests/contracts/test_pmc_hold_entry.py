@@ -9,6 +9,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from tests._multi_device_scene import host_devices
 from tests.contracts.boundary_fields import component, field_nodes, is_aux
 
 
@@ -121,10 +122,9 @@ def assert_records(records, mode):
 
 
 def devices_for(count, two_devices):
-    # Root conftest initializes the CPU host devices before importing JAX.
-    devices = two_devices if count == 2 else jax.devices('cpu')[:count]
-    assert len(devices) == count, 'run with three CPU host devices'
-    return devices
+    # Root conftest initializes the CPU host devices before importing JAX. The PR lane has
+    # two; the three-device cases run in validation.yml's weekly three-device job.
+    return two_devices if count == 2 else host_devices(count)
 
 
 @pytest.mark.parametrize('axis', tuple('xyz'))
