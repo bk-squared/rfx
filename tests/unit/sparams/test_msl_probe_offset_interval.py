@@ -216,7 +216,7 @@ def _pw_box(direction, p0, p1, w0, w1, z0, z1):
 def _nu_sim(direction="+x", **profiles):
     """The Sheen-parameter feed+patch board, oriented along ``direction``."""
     dom = _board_domain(direction)
-    sim = Simulation(freq_max=20e9, domain=dom, dx=DX,
+    sim = Simulation(freq_max=20e9, domain=(dom[0], dom[1], float(np.sum(profiles["dz_profile"]))) if "dz_profile" in profiles else dom, dx=DX,
                      boundary="cpml", cpml_layers=8, **profiles)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (dom[0], dom[1], H_SUB)), material="sub")

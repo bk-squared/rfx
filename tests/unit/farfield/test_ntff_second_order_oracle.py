@@ -840,7 +840,7 @@ def test_nonuniform_runner_hands_back_a_face_centre_box():
     """
     from rfx import Simulation
 
-    sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
+    sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, float(np.sum(np.full(28, 3.0e-3)))), dx=3.0e-3,
                      dz_profile=np.full(28, 3.0e-3),
                      boundary="cpml", cpml_layers=4)
     sim.add_source((0.03, 0.03, 0.03), "ez")

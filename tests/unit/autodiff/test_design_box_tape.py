@@ -527,7 +527,7 @@ def test_fence_nonuniform_lane_takes_a_permittivity_but_not_an_occupancy():
     is that the lane check still refuses the design OCCUPANCY, which only
     the uniform lane carries.
     """
-    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="cpml",
+    sim = Simulation(freq_max=2 * F0, domain=(DOMAIN[0], DOMAIN[1], float(np.sum(1.0e-3 * 1.05 ** np.arange(16, dtype=float)))), dx=DX, boundary="cpml",
                      cpml_layers=CPML,
                      dz_profile=1.0e-3 * 1.05 ** np.arange(16, dtype=float))
     sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",

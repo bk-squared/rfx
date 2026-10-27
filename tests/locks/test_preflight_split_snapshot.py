@@ -1565,7 +1565,7 @@ def _nonuniform_tfsf_oblique_sim():
     from rfx import Simulation
 
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, 0.006),
+    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, float(np.sum(dz))),
                      boundary="cpml", cpml_layers=8, dx=0.001, dz_profile=dz)
     sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
                         angle_deg=30.0)

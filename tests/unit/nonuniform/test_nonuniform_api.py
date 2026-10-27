@@ -95,7 +95,7 @@ class TestSimulationNonUniform:
     def test_dz_profile_stored(self):
         dz = np.array([0.4e-3]*4 + [0.5e-3]*5)
         sim = Simulation(
-            freq_max=5e9, domain=(0.05, 0.05, 0.01),
+            freq_max=5e9, domain=(0.05, 0.05, float(np.sum(dz))),
             dz_profile=dz, cpml_layers=8,
         )
         assert sim._dz_profile is not None
@@ -105,7 +105,7 @@ class TestSimulationNonUniform:
         """Smoke test: non-uniform sim runs without error."""
         dz = np.array([0.4e-3]*4 + [0.5e-3]*5)
         sim = Simulation(
-            freq_max=5e9, domain=(0.02, 0.02, 0.01),
+            freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
             dx=0.5e-3, dz_profile=dz, cpml_layers=8,
         )
         sim.add_source((0.01, 0.01, 0.001), "ez")
@@ -134,7 +134,7 @@ class TestSimulationNonUniform:
         """
         dz = np.array([0.4e-3] * 4 + [0.6e-3] * 6)
         sim = Simulation(
-            freq_max=5e9, domain=(0.02, 0.02, 0.01),
+            freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
             dx=0.5e-3, dz_profile=dz, cpml_layers=8,
             boundary="cpml",
         )
@@ -167,7 +167,7 @@ class TestSimulationNonUniform:
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.01),
+            domain=(0.02, 0.02, float(np.sum(dz))),
             dx=0.5e-3,
             dz_profile=dz,
             boundary="cpml",
@@ -175,7 +175,8 @@ class TestSimulationNonUniform:
         sim.add_source((0.01, 0.01, 0.004), "ez")
         sim.add_ntff_box(
             corner_lo=(0.004, 0.004, 0.002),
-            corner_hi=(0.016, 0.016, 0.006),
+            # #1941: move the out-of-column corner to its solved-length fraction.
+            corner_hi=(0.016, 0.016, 0.006 / 0.01 * float(np.sum(dz))),
             freqs=[2.4e9],
         )
         result = sim.run(n_steps=150, compute_s_params=False)
@@ -221,14 +222,16 @@ class TestSimulationNonUniform:
         def _run(n_steps: int):
             sim = Simulation(
                 freq_max=5e9,
-                domain=(0.02, 0.02, 0.01),
+                domain=(0.02, 0.02, float(np.sum(dz))),
                 dx=0.5e-3,
                 dz_profile=dz,
                 boundary="cpml",
             )
-            sim.add_source((0.01, 0.01, 0.005), "ez")
+            # #1941: move the out-of-column source and plane to their solved-length fraction.
+            z = 0.005 / 0.01 * float(np.sum(dz))
+            sim.add_source((0.01, 0.01, z), "ez")
             sim.add_dft_plane_probe(
-                axis="z", coordinate=0.005, component="ez",
+                axis="z", coordinate=z, component="ez",
                 freqs=jnp.asarray([2.4e9]),
                 name="mid_xy",
             )
@@ -262,7 +265,7 @@ class TestSimulationNonUniform:
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
             freq_max=8e9,
-            domain=(0.08, 0.006, 0.006),
+            domain=(0.08, 0.006, float(np.sum(dz))),
             boundary="cpml",
             cpml_layers=8,
             dx=0.001,
@@ -286,7 +289,7 @@ class TestSimulationNonUniform:
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
             freq_max=8e9,
-            domain=(0.08, 0.006, 0.006),
+            domain=(0.08, 0.006, float(np.sum(dz))),
             boundary="cpml",
             cpml_layers=8,
             dx=0.001,
@@ -402,7 +405,7 @@ class TestSimulationNonUniform:
         def _build(with_r: bool):
             sim = Simulation(
                 freq_max=5e9,
-                domain=domain,
+                domain=(domain[0], domain[1], float(np.sum(dz))),
                 dx=0.5e-3,
                 dz_profile=dz,
                 boundary="cpml",
@@ -573,7 +576,7 @@ class TestNonUniformDispersive:
         """Debye on non-uniform grid should not blow up (energy bounded)."""
         from rfx.materials.debye import DebyePole
         dz = np.array([0.2e-3]*4 + [0.5e-3]*6)
-        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.005),
+        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
                          boundary="cpml", dz_profile=dz, dx=0.5e-3)
         sim.add_material("dispersive", eps_r=4.0,
                          debye_poles=[DebyePole(delta_eps=2.0, tau=5e-12)])

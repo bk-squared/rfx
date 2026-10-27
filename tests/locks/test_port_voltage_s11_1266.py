@@ -37,7 +37,7 @@ def measure(lane, kind):
         profiles = {f'd{a}_profile': np.r_[h, np.full(int(np.ceil((length-2*h)/step)), step), h]
                     for a, length, step in zip('xy', domain, (.0005, .0004))}
         profiles['dz_profile'] = np.full(int(np.ceil(domain[2]/h)), h)
-    sim = Simulation(freq_max=20e9, domain=domain, dx=h, cpml_layers=3,
+    sim = Simulation(freq_max=20e9, domain=(domain[0], domain[1], float(np.sum(profiles["dz_profile"]))) if lane == "graded" else domain, dx=h, cpml_layers=3,
                      boundary=BoundarySpec(x=Boundary('pec', 'cpml'),
                          y=Boundary('cpml', 'cpml'), z=Boundary('cpml', 'cpml')),
                      **profiles)

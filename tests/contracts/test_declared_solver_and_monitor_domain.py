@@ -72,8 +72,13 @@ def test_plane_registration_is_independent_of_geometry_order(method, stage, prev
     for slab in slabs[:stage]:
         sim.add(slab, material="fr4")
     if preview:
-        extent = sim._domain[2]
-        assert (extent < .15) if stage == 1 else (extent >= .2)
+        # Auto mesh keeps the declared column as geometry is added (#1941).
+        grid = sim._build_realized_grid()
+        cells = grid.cells("z")[grid.pad_z_lo:grid.nz - grid.pad_z_hi - 1]
+        if stage:
+            assert sum(cells) == pytest.approx(.2, rel=1e-9)
+        else:
+            assert sim._domain[2] == pytest.approx(.2, rel=1e-9)
 
     def forbidden_resolution():
         pytest.fail("Registration resolved an unfinished model")
@@ -86,7 +91,10 @@ def test_plane_registration_is_independent_of_geometry_order(method, stage, prev
             getattr(sim, method)(axis="z", coordinate=.21)
     for slab in slabs[stage:]:
         sim.add(slab, material="fr4")
-    assert sim._domain[2] > .2
+    # Adding a second slab changes the cells, not the declared length (#1941).
+    grid = sim._build_realized_grid()
+    cells = grid.cells("z")[grid.pad_z_lo:grid.nz - grid.pad_z_hi - 1]
+    assert sum(cells) == pytest.approx(.2, rel=1e-9)
     records = sim._dft_planes if method == "add_dft_plane_probe" else sim._flux_monitors
     assert len(records) == 1
     assert records[0].coordinate == .15

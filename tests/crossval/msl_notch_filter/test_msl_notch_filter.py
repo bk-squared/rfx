@@ -311,7 +311,7 @@ def build(dx: float, arm_length_m: float = ARM_LENGTH_M, *,
     # at dx = 127 um; the edge-aware profiles solve them at the drawn width.
     sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
-        domain=(domain_x, DOMAIN_Y_M, DOMAIN_Z_M),
+        domain=(domain_x, DOMAIN_Y_M, float(np.sum(profiles["dz_profile"])) if "dz_profile" in profiles else DOMAIN_Z_M),
         dx=dx,
         cpml_layers=CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),

@@ -28,7 +28,7 @@ def _graded(n, d0, ratio):
 
 
 def _sim(boundary, **profiles):
-    sim = Simulation(freq_max=10e9, domain=(4e-3, 4e-3, 3e-3), dx=0.5e-3,
+    sim = Simulation(freq_max=10e9, domain=(4e-3, 4e-3, float(np.sum(profiles["dz_profile"])) if "dz_profile" in profiles else 3e-3), dx=0.5e-3,
                      boundary=boundary, cpml_layers=6, **profiles)
     sim.add_source(position=(2e-3, 2e-3, 1.5e-3), component="ez",
                    waveform=GaussianPulse(f0=10e9, bandwidth=0.8),
