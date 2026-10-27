@@ -21,7 +21,9 @@ reddening anything:
    cross-validation case.)
 4. The notifier counts ``skipped`` as not green. No job here is supposed to skip
    on either trigger, so a skip means the lane quietly stopped covering
-   something.
+   something. The one exception is a dispatch with ``only_latest_jax`` set:
+   ``slow-tests`` and ``three-device`` skip and so does the notifier, so no
+   verdict is written for that run. Only that exact switch may skip a job.
 5. A denied ``issues: write`` is annotated (``core.error``), not only warned.
    That branch degrades the notifier back to the pre-#717 status quo — a job
    summary nobody reads — so it has to be visible on the run page.
@@ -239,13 +241,35 @@ def test_weekly_uses_sixteen_shards() -> None:
     assert _workflow("regen-durations.yml")["jobs"]["slow"]["timeout-minutes"] == 360
 
 
+ONLY_LATEST_JAX_SKIP = "${{ !inputs.only_latest_jax }}"
+
+
+def test_only_the_latest_jax_dispatch_switch_skips_a_job() -> None:
+    """On a scheduled run ``inputs`` is empty, so ``!inputs.only_latest_jax`` is true and every job runs.
+
+    A dispatch with the switch set runs latest-jax alone and skips the notifier with the slow shards,
+    so that run writes no verdict and files no issue. Any other job-level condition is refused.
+    """
+    workflow = _workflow("validation.yml")
+    switch = _triggers(workflow)["workflow_dispatch"]["inputs"]["only_latest_jax"]
+    assert switch["type"] == "boolean" and switch["default"] is False
+    conditions = {name: job.get("if") for name, job in workflow["jobs"].items()}
+    assert conditions == {
+        "slow-tests": ONLY_LATEST_JAX_SKIP,
+        "three-device": ONLY_LATEST_JAX_SKIP,
+        "latest-jax": None,
+        "notify": "${{ always() && !inputs.only_latest_jax }}",
+    }
+
+
 def test_three_device_cases_run_in_their_own_job() -> None:
     # pytest-split balances only a shard's main step. On run 39748623375 shard 1 carried
     # these cases after its group and was cut at its limit with no test failed.
     jobs = _workflow("validation.yml")["jobs"]
     assert not [s for s in jobs["slow-tests"]["steps"] if "xla_force_host_platform_device_count" in str(s.get("env"))]
     job = jobs["three-device"]
-    assert not {"if", "strategy", "needs", "continue-on-error"} & set(job)
+    assert job.get("if") == ONLY_LATEST_JAX_SKIP
+    assert not {"strategy", "needs", "continue-on-error"} & set(job)
     steps = job["steps"]
     assert steps[0]["uses"] == "actions/checkout@v4"
     assert steps[1]["run"] == 'echo "JOB_T0=$(date +%s)" >> "$GITHUB_ENV"'

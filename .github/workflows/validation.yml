@@ -435,8 +435,9 @@ jobs:
   # hand-cancelled scheduled run also gets a comment.
   #
   # `skipped` also counts as not-green (issue #717 review, 2026-09-13). No job
-  # in this workflow is supposed to skip on either trigger: neither slow-tests
-  # nor three-device carries a job-level `if:`. So a skip here means the
+  # in this workflow is supposed to skip on either trigger. The one job-level `if:`
+  # is the dispatch switch only_latest_jax, which skips slow-tests, three-device
+  # and this job together, so that run writes no verdict. So a skip here means the
   # lane quietly stopped covering something — the exact silent-gap class #717
   # exists to close — and the notifier must say so instead of printing "all
   # green". tests/contracts/test_validation_workflow_signal.py pins both halves

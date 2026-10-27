@@ -241,6 +241,7 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     gradient and contract tests over all of its shards, and the lane's verdict waits for it.
     """
     jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
+    assert "if" not in jobs["latest-jax"]
     steps = jobs["latest-jax"]["steps"]
     versions = [step.get("with", {}).get("python-version") for step in steps
                 if str(step.get("uses", "")).startswith("actions/setup-python@")]
