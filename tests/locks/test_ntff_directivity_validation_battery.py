@@ -149,7 +149,8 @@ import jax.numpy as jnp
 
 from rfx import Simulation, GaussianPulse
 from rfx.antenna import _radiation_intensity, _total_radiated_power
-from rfx.farfield import compute_far_field, directivity
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity
 from rfx.grid import C0
 from rfx.probes.probes import flux_spectrum
 

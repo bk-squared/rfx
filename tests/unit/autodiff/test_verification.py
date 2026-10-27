@@ -22,9 +22,14 @@ from rfx.simulation import (
 )
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.tfsf import (
-    init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
-    apply_tfsf_e, apply_tfsf_h,
+    init_tfsf,
+    update_tfsf_1d_h,
+    update_tfsf_1d_e,
     is_tfsf_2d,
+)
+from rfx.stepping.tfsf import (
+    apply_tfsf_e,
+    apply_tfsf_h,
 )
 from rfx.probes.probes import init_dft_plane_probe, update_dft_plane_probe
 from rfx.probes.fresnel import extract_fresnel_from_planes, fresnel_r_te
@@ -211,7 +216,11 @@ def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
     FLAT ``|amplitude|`` plateau — the extractor's known-good witness.
     """
     from rfx.sources.tfsf_2d import (
-        update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+        update_tfsf_2d_h,
+        update_tfsf_2d_e,
+    )
+    from rfx.stepping.tfsf_2d import (
+        bloch_phase_tuple,
     )
     grid = Grid(freq_max=10e9, domain=(0.60, 0.12, 0.006), dx=0.002, cpml_layers=10)
     dt, dx = grid.dt, grid.dx

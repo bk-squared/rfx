@@ -89,60 +89,6 @@
       ],
       "M": []
     },
-    "rfx/current_moments.py": {
-      "S": [],
-      "M": [
-        "block_far_field_jax",
-        "block_far_field_np",
-        "end_of_record_moments",
-        "to_post_processing_convention"
-      ]
-    },
-    "rfx/farfield.py": {
-      "S": [],
-      "M": [
-        "compute_far_field",
-        "compute_far_field_jax"
-      ]
-    },
-    "rfx/floquet.py": {
-      "S": [
-        "apply_bloch_periodic_x",
-        "inject_floquet_source"
-      ],
-      "M": [
-        "floquet_phase_shift",
-        "update_floquet_dft"
-      ]
-    },
-    "rfx/probes/fresnel.py": {
-      "S": [],
-      "M": [
-        "extract_fresnel_coefficient",
-        "fresnel_reflection_coefficient",
-        "oblique_reflection_coefficient",
-        "oblique_reflection_magnitude"
-      ]
-    },
-    "rfx/probes/settling.py": {
-      "S": [],
-      "M": [
-        "tfsf_source_drive"
-      ]
-    },
-    "rfx/rcs.py": {
-      "S": [],
-      "M": [
-        "_incident_spectrum_amplitude",
-        "compute_rcs"
-      ]
-    },
-    "rfx/ris.py": {
-      "S": [],
-      "M": [
-        "_extract_reflection"
-      ]
-    },
     "rfx/runners/_distributed_common.py": {
       "S": [
         "_update_e_debye_local",
@@ -176,44 +122,6 @@
         "run_distributed"
       ],
       "M": []
-    },
-    "rfx/sources/tfsf.py": {
-      "S": [
-        "apply_tfsf_e",
-        "apply_tfsf_h",
-        "measure_normal_incident_spectrum",
-        "update_tfsf_1d"
-      ],
-      "M": [
-        "measure_normal_incident_spectrum"
-      ]
-    },
-    "rfx/sources/tfsf_2d.py": {
-      "S": [
-        "update_tfsf_2d"
-      ],
-      "M": [
-        "_transverse_phase",
-        "_update_e_tez",
-        "_update_e_tmz",
-        "_update_h_tez",
-        "_update_h_tmz",
-        "bloch_phase_tuple"
-      ]
-    },
-    "rfx/sources/tfsf_oblique_open.py": {
-      "S": [
-        "advance_methodB_e",
-        "advance_methodB_h",
-        "apply_methodB_e",
-        "apply_methodB_h",
-        "measure_incident_spectrum",
-        "update_open_oblique_e",
-        "update_open_oblique_h"
-      ],
-      "M": [
-        "measure_incident_spectrum"
-      ]
     },
     "rfx/subgridding/disjoint_3d.py": {
       "S": [

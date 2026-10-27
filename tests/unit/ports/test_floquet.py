@@ -23,13 +23,17 @@ from rfx.core.yee import (
     init_state, init_materials, update_e, update_h,
     EPS_0, MU_0,
 )
-from rfx.floquet import (
+from rfx.measurement.floquet import (
     floquet_phase_shift,
+    update_floquet_dft,
+)
+from rfx.floquet import (
     floquet_wave_vector,
     init_floquet_dft,
-    update_floquet_dft,
-    inject_floquet_source,
     extract_floquet_modes,
+)
+from rfx.stepping.floquet import (
+    inject_floquet_source,
 )
 from rfx.api import Simulation
 from rfx.geometry.csg import Box

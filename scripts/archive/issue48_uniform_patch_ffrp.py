@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 from rfx import Simulation, Box
 from rfx.sources.sources import GaussianPulse
 from rfx.harminv import harminv
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 
 
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),

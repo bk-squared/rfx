@@ -16,7 +16,7 @@ def test_no_plane_wave_builder_bypass():
     for path in sorted((root / "rfx").rglob("*.py")):
         # compute_rcs builds an open source from calculator arguments, not a
         # Simulation declaration; it never builds a closed box.
-        if path.relative_to(root).as_posix() in {"rfx/sources/tfsf.py", "rfx/rcs.py"}:
+        if path.relative_to(root).as_posix() in {"rfx/sources/tfsf.py", "rfx/measurement/rcs.py"}:
             continue
         tree = ast.parse(path.read_text(), filename=str(path))
         names = {"init_tfsf"}

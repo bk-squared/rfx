@@ -162,7 +162,7 @@ class TestSimulationNonUniform:
         non-zero magnitude, (c) compute_far_field returns a finite
         far-field at a small angular sample without raising.
         """
-        from rfx.farfield import compute_far_field
+        from rfx.measurement.farfield import compute_far_field
 
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(

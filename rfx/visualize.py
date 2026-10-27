@@ -1352,7 +1352,7 @@ def visualize_farfield_3d(result, sim=None, *, f_idx: int = 0,
             "visualize_farfield_3d requires ntff_data/ntff_box on the "
             "result — add sim.add_ntff_box(...) and re-run."
         )
-    from rfx.farfield import compute_far_field
+    from rfx.measurement.farfield import compute_far_field
 
     if theta_grid is None:
         theta_grid = np.linspace(0.01, np.pi / 2, 60)

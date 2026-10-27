@@ -592,24 +592,6 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
     return pair
 
 
-def update_tfsf_1d(cfg: TFSFConfig, st: TFSFState, dx: float, dt: float,
-                   t: float) -> TFSFState:
-    """Advance the 1D auxiliary FDTD by one full timestep (convenience wrapper).
-
-    Calls update_tfsf_1d_h then update_tfsf_1d_e. For correct leapfrog
-    interleaving with the 3D grid, use the split functions directly:
-
-        loop:
-          1. update_h(3D)
-          2. apply_tfsf_h(3D)        ← uses e1d at time n
-          3. update_tfsf_1d_h(1D)    ← h1d → time n+1/2
-          4. update_e(3D)
-          5. apply_tfsf_e(3D)        ← uses h1d at time n+1/2
-          6. update_tfsf_1d_e(1D, t) ← e1d → time n+1, inject source
-    """
-    st = update_tfsf_1d_h(cfg, st, dx, dt)
-    st = update_tfsf_1d_e(cfg, st, dx, dt, t)
-    return st
 
 
 def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
@@ -719,172 +701,19 @@ def line_source_value(cfg, t, amplitude):
     return amplitude * (-2.0 * arg) * env
 
 
-def measure_normal_incident_spectrum(
-    cfg: TFSFConfig,
-    state: TFSFState,
-    n_steps: int,
-    freqs,
-    dt: float,
-    *,
-    reference_index: int | None = None,
-) -> np.ndarray:
-    """Spectrum of the incident E the normal-incidence plane wave actually carries.
-
-    The auxiliary line ADDS the source waveform to one E node
-    (``update_tfsf_1d_e``: ``e1d.at[src_idx].add(src_val)``). That is a soft
-    source: it launches half of the added field each way, scaled by the Yee
-    update, so the wave that crosses the TF/SF plane is not the waveform. From
-    the 1-D update equations, per frequency,
-
-        E_launched / waveform = 1 / (2 S cos(k~ dx / 2)),  S = c dt / dx,
-
-    with k~ the grid wavenumber (sin(w dt / 2) = S sin(k~ dx / 2)). At the
-    uniform-grid default S = 0.99/sqrt(3) = 0.5716 that is 0.875 (-1.16 dB)
-    before the cos term, -1.14 dB at 40 cells per wavelength. sigma goes as
-    |E_scat / E_inc|^2 and E_scat follows the launched wave, so an RCS
-    normalized by the waveform itself is low by that same number of dB,
-    1.14 dB at 40 cells per wavelength (issue #820).
-
-    This replays the auxiliary line standalone from a fresh zero state (the
-    caller's ``state`` is only a shape/dtype template and is never mutated) for
-    ``n_steps``, with the same time argument ``run()`` passes it, and DFTs
-    ``e1d`` at ``cfg.i0`` -- the node mapped onto the 3-D TF/SF plane
-    ``x_lo`` -- as ``sum_n e(n) exp(-j w n dt) dt``, the convention of
-    :func:`rfx.sources.tfsf_oblique_open.measure_incident_spectrum`. The DFT
-    window is the 3-D run's ``n_steps``, so truncation matches the far-field
-    DFT it normalizes. The auxiliary line and the 3-D grid have the same
-    dispersion along x at normal incidence, so the magnitude is the same
-    anywhere in the total-field region; the phase reference is the auxiliary
-    line's own, and only ``abs()`` of the result is meant for normalization.
-
-    For complex normalization, pass ``reference_index``: the padded 3-D x
-    index of an E-node plane inside the total-field slab. The auxiliary
-    sample then follows that plane and its E field is stamped at
-    ``(n + 1) * dt``, matching ``accumulate_ntff`` and the actual 3-D E
-    update. This preserves the incident phase, including source delay and
-    grid dispersion; it does not replace a record-length/mesh witness.
-    Omitting this argument retains the historical magnitude-only result.
-
-    Normal-incidence ``TFSFConfig`` only; the oblique open-domain path has
-    its own replay (``tfsf_oblique_open.measure_incident_spectrum``).
-    """
-    from jax import lax
-
-    if getattr(cfg, "closed_box", False):
-        from rfx.sources.tfsf_discrete_plane_wave import normal_incident_spectrum
-        return normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index)
-    if not isinstance(cfg, TFSFConfig):
-        raise TypeError(
-            "measure_normal_incident_spectrum takes the normal-incidence "
-            f"TFSFConfig; got {type(cfg).__name__}. The open-domain oblique "
-            "path uses rfx.sources.tfsf_oblique_open.measure_incident_spectrum."
-        )
-    zero = state._replace(
-        e1d=jnp.zeros_like(state.e1d),
-        h1d=jnp.zeros_like(state.h1d),
-        psi_e_lo=jnp.zeros_like(state.psi_e_lo),
-        psi_e_hi=jnp.zeros_like(state.psi_e_hi),
-        psi_h_lo=jnp.zeros_like(state.psi_h_lo),
-        psi_h_hi=jnp.zeros_like(state.psi_h_hi),
-        step=jnp.array(0, dtype=jnp.int32),
-    )
-    i_ref = int(cfg.i0)
-    if reference_index is not None:
-        if (not isinstance(reference_index, (int, np.integer))
-                or isinstance(reference_index, (bool, np.bool_))
-                or not cfg.x_lo <= reference_index <= cfg.x_hi):
-            raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
-        i_ref += int(reference_index) - int(cfg.x_lo)
-
-    def _step(st, step_idx):
-        # Same order and time argument as the run() scan body.
-        st = update_tfsf_1d_h(cfg, st, cfg.dx_1d, dt)
-        t = step_idx.astype(jnp.float32) * dt
-        st = update_tfsf_1d_e(cfg, st, cfg.dx_1d, dt, t)
-        return st, st.e1d[i_ref]
-
-    _, rec = lax.scan(_step, zero, jnp.arange(n_steps, dtype=jnp.int32))
-    rec = np.asarray(rec, dtype=np.float64)
-    times = (np.arange(n_steps) + (reference_index is not None)) * float(dt)
-    freqs = np.atleast_1d(np.asarray(freqs, dtype=np.float64))
-    out = np.empty(len(freqs), dtype=np.complex128)
-    for i, f in enumerate(freqs):
-        out[i] = np.sum(rec * np.exp(-1j * 2.0 * np.pi * f * times)) * float(dt)
-    return out
+# Lazy compatibility exports keep record definitions free of import cycles.
+_LAZY_EXPORTS = {
+    "apply_tfsf_e": "rfx.stepping.tfsf",
+    "apply_tfsf_h": "rfx.stepping.tfsf",
+    "measure_normal_incident_spectrum": "rfx.measurement.incident",
+}
 
 
-def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
-    """Apply TFSF E-field correction (call AFTER update_e).
+def __getattr__(name):
+    from importlib import import_module
 
-    Corrects Ez at x_lo and x_hi+1 where the H-curl stencil
-    crosses the TFSF boundary.
-
-    Dispatches to 2D auxiliary grid version for oblique incidence.
-    """
-    # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
-    if is_tfsf_methodB(cfg):
-        from rfx.sources.tfsf_oblique_open import apply_methodB_e
-        return apply_methodB_e(state, cfg, tfsf_st, dx, dt)
-    # Dispatch to 2D if config is TFSF2DConfig
-    if is_tfsf_2d(cfg):
-        from rfx.sources.tfsf_2d import apply_tfsf_2d_e
-        return apply_tfsf_2d_e(state, cfg, tfsf_st, dx, dt)
-    if getattr(cfg, "closed_box", False):
-        from rfx.sources.tfsf_discrete_plane_wave import apply_tables
-        return apply_tables(state, cfg, tfsf_st, magnetic=False)
-    coeff = dt / (EPS_0 * dx)
-    i0 = cfg.i0
-
-    # ---- Normal incidence: direct 1D grid lookup ----
-    # Hy_inc at position x_lo - 0.5 → h1d[i0 - 1]
-    # (h1d[i] represents Hy at (i + 0.5) in 1D grid coords;
-    #  h1d[i0-1] is at position i0 - 0.5, which maps to x_lo - 0.5 in 3D)
-    h_inc_lo = tfsf_st.h1d[i0 - 1]
-
-    # Hy_inc at position x_hi + 0.5 → h1d[i0 + (x_hi - x_lo)]
-    h_inc_hi = tfsf_st.h1d[i0 + (cfg.x_hi - cfg.x_lo)]
-
-    e_field = getattr(state, cfg.electric_component)
-    # Sign flips for Ey/Hz because Ampere carries -dH/dx there.
-    e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff * h_inc_lo)
-    e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff * h_inc_hi)
-
-    return state._replace(**{cfg.electric_component: e_field})
-
-
-def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
-    """Apply TFSF H-field correction (call AFTER update_h).
-
-    Corrects Hy at x_lo-1 and x_hi where the E-curl stencil
-    crosses the TFSF boundary.
-
-    Dispatches to 2D auxiliary grid version for oblique incidence.
-    """
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
-    # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
-    if is_tfsf_methodB(cfg):
-        from rfx.sources.tfsf_oblique_open import apply_methodB_h
-        return apply_methodB_h(state, cfg, tfsf_st, dx, dt)
-    # Dispatch to 2D if config is TFSF2DConfig
-    if is_tfsf_2d(cfg):
-        from rfx.sources.tfsf_2d import apply_tfsf_2d_h
-        return apply_tfsf_2d_h(state, cfg, tfsf_st, dx, dt)
-    if getattr(cfg, "closed_box", False):
-        from rfx.sources.tfsf_discrete_plane_wave import apply_tables
-        return apply_tables(state, cfg, tfsf_st, magnetic=True)
-    coeff = dt / (mu_abs * dx)
-    i0 = cfg.i0
-
-    # ---- Normal incidence: direct 1D grid lookup ----
-    # Ez_inc at position x_lo → e1d[i0]
-    e_inc_lo = tfsf_st.e1d[i0]
-
-    # Ez_inc at position x_hi+1 → e1d[i0 + (x_hi+1 - x_lo)]
-    e_inc_hi = tfsf_st.e1d[i0 + (cfg.x_hi + 1 - cfg.x_lo)]
-
-    h_field = getattr(state, cfg.magnetic_component)
-    # Sign flips for Ey/Hz because Faraday carries -dE/dx there.
-    h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff * e_inc_lo)
-    h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff * e_inc_hi)
-
-    return state._replace(**{cfg.magnetic_component: h_field})
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value

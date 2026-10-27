@@ -16,7 +16,7 @@ REALIZED_SITE = ("rfx/farfield.py", "faces.get(face, 0 if legacy is None else le
 DECLARED_SITES = {
     ("rfx/grid.py", "record.declared"),  # Public legacy face_layers view preserves declared counts.
     ("rfx/api/_compile.py", "record.declared"),  # Pass declared counts to the grid's resolver.
-    ("rfx/rcs.py", "face.declared"),  # Preserve the scalar-only phase-reference admission gate.
+    ("rfx/measurement/rcs.py", "face.declared"),  # Preserve the scalar-only phase-reference admission gate.
 }
 DECLARATION_MODULES = {"rfx/boundaries/depths.py", "rfx/boundaries/spec.py"}
 
