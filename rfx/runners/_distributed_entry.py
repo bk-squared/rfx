@@ -171,10 +171,13 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
     else:
         from rfx.runners.distributed_v2 import run_distributed
         record_options = {}
-        if not _forward_port_s11 and any(pe.impedance != 0 for pe in self._ports):
+        if any(pe.impedance != 0 for pe in self._ports):
+            # run() and forward() take the same main-run port records; forward's
+            # port S stays on the driver call below (records only here).
             from rfx.probes.sparam_driver import run_distributed_with_port_records
             run_distributed = run_distributed_with_port_records
-            record_options = dict(s_param_freqs=s_param_freqs, compute_s_params=compute_s_params)
+            record_options = dict(s_param_freqs=s_param_freqs,
+                                  compute_s_params=False if _forward_port_s11 else compute_s_params)
         _res = run_distributed(
             self,
             n_steps=n_steps,

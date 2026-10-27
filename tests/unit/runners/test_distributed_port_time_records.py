@@ -99,3 +99,37 @@ def test_records_without_s_ignore_s_options(kind):
     assert multi.s_params is None and multi.freqs is None
     assert multi.wire_port_sparams is None
     assert multi.time_series.shape == one.time_series.shape == (12, 2)
+
+
+@pytest.mark.parametrize('kind', ['lumped', 'wire'])
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_records_inside_jit_match_direct_call(kind, entry):
+    """Cross-trace: jitted port records within 9 float32 ULP of each channel's peak."""
+    devices = jax.devices('cpu')
+    if len(devices) < 2:
+        pytest.skip('Requires XLA_FLAGS=--xla_force_host_platform_device_count=2')
+    devices = devices[:2]
+    sim = _scene(kind, 'cpml')
+
+    def call():
+        if entry == 'run':
+            result = sim.run(n_steps=12, devices=devices, compute_s_params=False,
+                             skip_preflight=True)
+        else:
+            result = sim.forward(n_steps=12, distributed=True, devices=devices,
+                                 skip_preflight=True)
+        return tuple(record.samples for record in result.sparam_time_records)
+
+    # Expected values: the direct (untraced) public call.
+    direct = [np.asarray(samples) for samples in call()]
+    jitted = [np.asarray(samples) for samples in jax.jit(call)()]
+    assert direct and len(jitted) == len(direct)
+    for expected, actual in zip(direct, jitted, strict=True):
+        assert actual.shape == expected.shape
+        for channel in range(expected.shape[1]):
+            peak = np.float32(np.max(np.abs(expected[:, channel])))
+            assert peak > 0
+            ulp = float(np.spacing(peak))
+            error = float(np.max(np.abs(actual[:, channel].astype(np.float64)
+                                        - expected[:, channel])))
+            assert error <= 9 * ulp, (entry, kind, channel, error / ulp)
