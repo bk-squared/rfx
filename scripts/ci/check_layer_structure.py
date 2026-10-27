@@ -29,6 +29,8 @@ FIVE_FILES = (
     "rfx/api/_execute.py", "rfx/api/__init__.py", "rfx/simulation.py",
     "rfx/nonuniform.py", "rfx/sources/waveguide_port.py",
 )
+FIVE_MODULES = tuple(p.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
+                     for p in FIVE_FILES)
 CALLER_MODULES = (
     "rfx.api._execute", "rfx.api", "rfx.simulation", "rfx.nonuniform",
     "rfx.sources.waveguide_port",
@@ -386,6 +388,51 @@ def reverse_imports(sources: Sources, path: str) -> list[str]:
     return sorted(hits)
 
 
+def own_definitions(tree: ast.Module) -> set[str]:
+    """Top-level names a module binds by its own code (def, class, assignment), never by import.
+
+    Statements inside if/try/with/for/while/match count; function and class bodies do not.
+    """
+    names = set()
+
+    def visit(body):
+        for node in body:
+            if isinstance(node, (*FUNCTIONS, ast.ClassDef)):
+                names.add(node.name)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                names.update(n.id for target in targets for n in ast.walk(target)
+                             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store))
+            else:
+                for field in ("body", "orelse", "finalbody"):
+                    visit(getattr(node, field, []))
+                for block in (*getattr(node, "handlers", []), *getattr(node, "cases", [])):
+                    visit(block.body)
+
+    visit(tree.body)
+    return names
+
+
+def caller_definitions(sources: Sources, reverse: dict) -> dict:
+    """Reverse entries naming what the caller module defines itself, not what it re-exports.
+
+    A five-file entry is layer code living in a five file (2.0: zero, whatever the
+    baseline says); adjoint, ringdown and progress entries are reported only.
+    """
+    defined, found = {}, {}
+    for path, rules in reverse.items():
+        for entry in rules["R"]:
+            module, _, name = entry.partition(":")
+            if not name:
+                continue
+            if module not in defined:
+                caller = sources.module_path(module)
+                defined[module] = own_definitions(sources.tree(caller)) if caller else set()
+            if name in defined[module]:
+                found.setdefault(path, []).append(entry)
+    return found
+
+
 def count_file(sources: Sources, path: str, public: dict | None = None) -> dict:
     """The same per-file counter used by the CLI and real-source mutations."""
     if any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS):
@@ -436,6 +483,7 @@ def count(sources: Sources) -> dict:
         elif rules["S"] or rules["M"]:
             outside[path] = {r: sorted(rules[r]) for r in ("S", "M")}
     return {"baseline": {"files": files, "outside": outside, "reverse": reverse},
+            "caller_definitions": caller_definitions(sources, reverse),
             "surface_sizes": {p: len(names) for p, names in public.items()},
             "unit_counts": unit_counts, "allowed": sorted(allowed)}
 
@@ -698,6 +746,12 @@ def violations(actual: dict, current: dict, previous: dict | None = None,
     return errors
 
 
+def five_file_definitions(defined: dict) -> list[str]:
+    return [f"{path} R: imports {entry}, which the five file defines; move the definition into its layer"
+            for path, entries in sorted(defined.items()) for entry in entries
+            if entry.partition(":")[0] in FIVE_MODULES]
+
+
 def report(result: dict):
     print("2.0 condition — five files")
     for path in FIVE_FILES:
@@ -721,6 +775,14 @@ def report(result: dict):
     for path, rules in sorted(reverse.items(), key=lambda item: (-len(item[1]["R"]), item[0])):
         print(f"reverse {path}: R={len(rules['R'])}")
     print(f"reverse totals: R={sum(len(rules['R']) for rules in reverse.values())}")
+    defined = result["caller_definitions"]
+    if defined:
+        print("\nlayer imports of names a caller module defines itself — five files must be 0")
+        for path, entries in sorted(defined.items()):
+            print(f"defined {path}: {' '.join(entries)}")
+        five = sum(e.partition(":")[0] in FIVE_MODULES for entries in defined.values() for e in entries)
+        other = sum(len(entries) for entries in defined.values()) - five
+        print(f"defined totals: five files={five} other callers={other}")
 
 
 
@@ -745,6 +807,7 @@ def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, l
         current = baseline(sources.read(BASELINE))
     errors = violations(actual, current, previous,
                         renames=RenameMatcher(sources, base) if previous is not None else None)
+    errors += five_file_definitions(result["caller_definitions"])
     for error in errors:
         print(error, file=sys.stderr)
     return int(bool(errors))
