@@ -639,8 +639,8 @@ def test_both_refuse(declaration, path, direction):
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
     if declaration == 'P-waveguide-2mode':
-        # Any exception counts as a refusal above; the per-mode list once
-        # reached the single-run assembly and raised AttributeError (#2070).
+        # The per-mode list once reached the single-run assembly and raised
+        # AttributeError on both entries (#2070); pin the refusal's text too.
         expected = ('waveguide ports (add_waveguide_port) are not supported on'
                     if path.startswith('multi-device') else 'compute_waveguide_s_matrix()')
         for record in pair.values():
