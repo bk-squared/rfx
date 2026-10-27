@@ -45,6 +45,7 @@ def test_runtime_floor_contract():
     ((3, 11), "0.10.2", "0.6.2"),
     ((3, 11), "0.10.2.dev20260101", "0.10.2"),
     ((3, 11), "0.10.2rc1", "0.10.2"),
+    ((3, 11), "0.10.2", "0.10.1.9"),
     ((3, 11), "unknown", "0.10.2"),
 ])
 def test_check_refuses_unsupported_runtime(python, jax, jaxlib):
@@ -59,9 +60,18 @@ def test_check_refuses_unsupported_runtime(python, jax, jaxlib):
 
 
 @pytest.mark.parametrize("version", ["0.10.2", "0.10.2+cuda12", "0.10.2.post1",
-                                    "0.10.3.dev20260101", "0.11.0", "1.0.0"])
+                                    "0.10.3.dev20260101", "0.11.0", "1.0.0",
+                                    "0.10.2.1", "0.12.0.1", "0.13.0rc1"])
 def test_check_accepts_supported_runtime(version):
     floor.check((3, 11), version, version)
+
+
+def test_the_install_cap_is_read_by_the_same_parser_and_never_refuses_an_import():
+    """#2133: JAX_BELOW sits above MIN_JAX under the one parser; import accepts jax at and past the cap."""
+    assert floor._version_key(floor.MIN_JAX) < floor._version_key(floor.JAX_BELOW)
+    for version in (floor.JAX_BELOW, "0.12.0.1", "0.13.0rc1"):
+        assert floor._version_key(version) >= floor._version_key(floor.JAX_BELOW)
+        floor.check((3, 12), version, version)
 
 
 @pytest.mark.parametrize("package", ["jax", "jaxlib"])

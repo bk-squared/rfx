@@ -112,10 +112,12 @@ def test_serial_pieces_build_and_jvp_equal_batched(monkeypatch):
 
 
 @pytest.mark.parametrize('version,backend,batch,serial', [
-    ((0, 10, 2), 'cpu', 64, True),
-    ((0, 11, 1), 'cpu', 64, False),
-    ((0, 10, 2), 'gpu', 64, False),
-    ((0, 10, 2), 'cpu', 1024, False),
+    ('0.10.2', 'cpu', 64, True),
+    ('0.11.1', 'cpu', 64, False),
+    ('0.11.1rc1', 'cpu', 64, True),
+    ('0.12.0.1', 'cpu', 64, False),
+    ('0.10.2', 'gpu', 64, False),
+    ('0.10.2', 'cpu', 1024, False),
 ])
 def test_serial_pieces_branch_choice(monkeypatch, version, backend, batch, serial):
     """Only old CPU jaxlib issues a rod's node-tensor solves one piece after

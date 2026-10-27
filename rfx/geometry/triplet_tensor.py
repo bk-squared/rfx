@@ -5,7 +5,6 @@ Fractions analytically clip edges and dual faces against one local plane.
 Concrete inputs accumulate in host float64; tracers use the field dtype.
 """
 from itertools import product
-import re
 
 import jax
 import jax.numpy as jnp
@@ -13,21 +12,21 @@ import jaxlib
 import numpy as np
 
 from rfx._precision import HIGHEST
+from rfx._runtime_floor import _version_key
 from rfx.backend import backend_class
 
 SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
 PAIRS = ((0, 1), (0, 2), (1, 2))
 MATRIX_BATCH_SIZE = 2**20
-_JAXLIB_VERSION_MATCH = re.match(r"(\d+)\.(\d+)\.(\d+)", jaxlib.__version__)
-_JAXLIB_VERSION = (tuple(map(int, _JAXLIB_VERSION_MATCH.groups()))
-                   if _JAXLIB_VERSION_MATCH else (0, 11, 1))
+_JAXLIB_VERSION = jaxlib.__version__
 
 
 def _serial_pieces():
     # Stopgap against the jaxlib < 0.11.1 CPU deadlock (#2095); remove when
     # the jax floor reaches 0.11.1. The bound is not proven: 56 independent
     # _linalg sites stay concurrent in one build.
-    return backend_class().name == "cpu" and _JAXLIB_VERSION < (0, 11, 1)
+    # The runtime floor's parser (#2133): a pre-release or unreadable version counts as old.
+    return backend_class().name == "cpu" and _version_key(_JAXLIB_VERSION) < _version_key("0.11.1")
 
 
 def _linalg(xp, operation, matrix):

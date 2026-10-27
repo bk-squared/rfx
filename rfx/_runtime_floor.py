@@ -8,21 +8,26 @@ MIN_JAX = "0.10.2"
 JAX_BELOW = "0.11.2"
 
 
-def _version_key(version: str) -> tuple[int, int, int, int]:
-    """Compare JAX release triplets, with dev/alpha/beta/rc before final.
+def _version_key(version: str) -> tuple[tuple[int, ...], int]:
+    """Order JAX versions; the one comparison for MIN_JAX and JAX_BELOW (#2133).
 
-    Local build and post-release suffixes meet the corresponding release floor.
-    Unknown version formats fail closed.
+    The release segment compares numerically at any length (0.12.0.1 above 0.12.0,
+    0.10.2.0 equal to 0.10.2); dev/alpha/beta/rc sort before their release. Local
+    build and post-release suffixes meet the corresponding release. Unknown version
+    formats fail closed.
     """
     match = re.fullmatch(
-        r"(\d+)\.(\d+)\.(\d+)((?:(?:\.dev|a|b|rc)\d*)?(?:\.post\d+)?(?:\+[-\w.]+)?)",
+        r"(\d+(?:\.\d+)*)((?:(?:\.dev|a|b|rc)\d*)?(?:\.post\d+)?(?:\+[-\w.]+)?)",
         version,
     )
     if match is None:
-        return (-1, -1, -1, -1)
-    major, minor, patch, suffix = match.groups()
+        return ((-1,), 0)
+    release, suffix = match.groups()
+    parts = [int(part) for part in release.split(".")]
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
     prerelease = suffix.startswith((".dev", "a", "b", "rc"))
-    return (int(major), int(minor), int(patch), int(not prerelease))
+    return (tuple(parts), int(not prerelease))
 
 
 def check(python_version_info, jax_version: str, jaxlib_version: str) -> None:
