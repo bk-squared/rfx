@@ -202,11 +202,46 @@ def _tj_ref_vertical(freqs, f0):
     return s
 
 
+def _tj_pocket_horizontal(freqs, f0):
+    """The horizontal reference with the top port in a closed air pocket
+    (x 40..80 mm, y 84..120 mm) behind a 4 mm PEC floor: the main guide is the
+    straight horizontal guide, and the undriven top port terminates a stub
+    instead of sitting inside the block. A reference port's section is
+    admitted on the reference's own model, as on a direct entry (#2058)."""
+    s = _tj_sim()
+    s.add(Box((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)), material="pec")
+    s.add(Box((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)), material="pec")
+    s.add(Box((0.08, 0.08, 0.0), (0.12, 0.12, 0.02)), material="pec")
+    s.add(Box((0.04, 0.08, 0.0), (0.08, 0.084, 0.02)), material="pec")
+    common = _tj_common(freqs, f0)
+    s.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x", name="left", **common)
+    s.add_waveguide_port(0.11, y_range=(0.04, 0.08), direction="-x", name="right", **common)
+    s.add_waveguide_port(0.11, x_range=(0.04, 0.08), direction="-y", name="top", **common)
+    return s
+
+
+def _tj_pocket_vertical(freqs, f0):
+    """The vertical reference with the left and right ports in closed air
+    pockets (y 40..80 mm, x 0..36 and 84..120 mm) behind 4 mm PEC walls."""
+    s = _tj_sim()
+    s.add(Box((0.0, 0.0, 0.0), (0.04, 0.04, 0.02)), material="pec")
+    s.add(Box((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)), material="pec")
+    s.add(Box((0.036, 0.04, 0.0), (0.04, 0.08, 0.02)), material="pec")
+    s.add(Box((0.08, 0.0, 0.0), (0.12, 0.04, 0.02)), material="pec")
+    s.add(Box((0.08, 0.08, 0.0), (0.12, 0.12, 0.02)), material="pec")
+    s.add(Box((0.08, 0.04, 0.0), (0.084, 0.08, 0.02)), material="pec")
+    common = _tj_common(freqs, f0)
+    s.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x", name="left", **common)
+    s.add_waveguide_port(0.11, y_range=(0.04, 0.08), direction="-x", name="right", **common)
+    s.add_waveguide_port(0.11, x_range=(0.04, 0.08), direction="-y", name="top", **common)
+    return s
+
+
 def _tj_refs(freqs, f0):
     return [
-        _tj_ref_horizontal(freqs, f0),   # left  (+x)
-        _tj_ref_horizontal(freqs, f0),   # right (-x)
-        _tj_ref_vertical(freqs, f0),     # top   (-y)
+        _tj_pocket_horizontal(freqs, f0),   # left  (+x)
+        _tj_pocket_horizontal(freqs, f0),   # right (-x)
+        _tj_pocket_vertical(freqs, f0),     # top   (-y)
     ]
 
 
@@ -374,6 +409,62 @@ def test_port_reference_sims_compact_junction_necessary_not_sufficient():
     # Direction 2 — the overall matrix is still non-physical (compact geometry).
     assert max_ref > 1.05               # non-passive residual remains
     assert max_ref < max_vac            # but the blow-up is reduced
+
+
+def _stub_the_solve(monkeypatch):
+    import jax
+    monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped a refused reference"))
+
+
+def test_a_reference_port_inside_pec_is_refused_like_a_direct_entry(monkeypatch):
+    """#2058: the straight horizontal guide keeps the top port inside its upper
+    block. As a direct entry its section is refused (#1994); as
+    ``port_reference_sims[0]`` it used to run, normalizing the device by a mode
+    launched inside a conductor. Both now refuse with the same reason."""
+    _stub_the_solve(monkeypatch)
+    freqs = jnp.linspace(4.5e9, 8.0e9, 6)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match=r"'top'.*PEC volume.*rfx#1994"):
+            _tj_ref_horizontal(freqs, 6e9).compute_waveguide_s_matrix(
+                num_periods=30, normalize="flux")
+        refs = [_tj_ref_horizontal(freqs, 6e9)] + _tj_refs(freqs, 6e9)[1:]
+        with pytest.raises(ValueError, match=r"port_reference_sims\[0\]: .*'top'.*PEC volume.*rfx#1994"):
+            _tj_device(freqs, 6e9).compute_waveguide_s_matrix(
+                num_periods=30, normalize="flux", port_reference_sims=refs)
+
+
+def test_a_dispersive_reference_is_refused_not_run_without_its_poles(monkeypatch):
+    """The reference run carries no Debye or Lorentz poles; a dispersive
+    material in a reference is refused instead of run as a constant (#2058)."""
+    from rfx import DebyePole
+    _stub_the_solve(monkeypatch)
+    freqs = jnp.linspace(4.5e9, 8.0e9, 6)
+    refs = _tj_refs(freqs, 6e9)
+    refs[2].add_material("debye", eps_r=2.0, debye_poles=[DebyePole(delta_eps=1.5, tau=1e-11)])
+    refs[2].add(Box((0.05, 0.02, 0.0), (0.07, 0.03, 0.02)), material="debye")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(NotImplementedError, match=r"port_reference_sims\[2\] declares a dispersive"):
+            _tj_device(freqs, 6e9).compute_waveguide_s_matrix(
+                num_periods=30, normalize="flux", port_reference_sims=refs)
+
+
+def test_a_reference_impedance_sheet_is_refused_not_run_without_it(monkeypatch):
+    """A surface-impedance sheet reaches assembly only through its collector,
+    and the reference run carries no sheet context (#677); a reference that
+    declares one is refused instead of run without it (#2058)."""
+    _stub_the_solve(monkeypatch)
+    freqs = jnp.linspace(4.5e9, 8.0e9, 6)
+    refs = _tj_refs(freqs, 6e9)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        refs[0].add_thin_conductor(Box((0.05, 0.06, 0.0), (0.07, 0.06, 0.02)),
+                                   sigma_bulk=1e4, surface_impedance_f0=6e9)
+        with pytest.raises(NotImplementedError,
+                           match=r"port_reference_sims\[0\] declares a surface-impedance sheet"):
+            _tj_device(freqs, 6e9).compute_waveguide_s_matrix(
+                num_periods=30, normalize="flux", port_reference_sims=refs)
 
 
 def test_tj_walls_are_realized_where_they_are_drawn():
