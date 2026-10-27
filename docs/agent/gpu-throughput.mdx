@@ -31,9 +31,10 @@ interior (t_CPML / t_PEC from the table): 4 layers 1.22-1.40x and
 8 layers 1.40-1.59x over 13.1 M and 27.3 M cells, uniform and graded.
 Most of that is the extra padded cells; an
 absorbing cell costs about one more bare cell, plus a few percent per
-padded cell. The PEC rows are the standard GPU lane: a closed box today
-takes the GPU fast lane, which measured 1.988 ms (13.1 M) and 3.871 ms
-(27.3 M) on this card, slower than the standard lane.
+padded cell. The PEC rows are the standard GPU lane, which `run()` takes
+for closed boxes too since the GPU fast lane was retired; that lane measured
+1.988 ms (13.1 M) and 3.871 ms (27.3 M) on this card, slower than the
+standard lane.
 
 Quote the PEC figure only for closed-cavity work. Antenna, scattering
 and any open-boundary problem pays the absorber, so the CPML rows are the
