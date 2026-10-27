@@ -309,6 +309,10 @@ BOTH_REFUSE_ROWS = (
     ('P-msl', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'multi-device-uniform'),
+    ('P-waveguide-2mode', 'graded'),
+    ('P-waveguide-2mode', 'multi-device-graded'),
+    ('P-waveguide-2mode', 'multi-device-uniform'),
+    ('P-waveguide-2mode', 'uniform'),
     ('PW-A', 'multi-device-graded'),
     ('PW-A', 'multi-device-uniform'),
     ('PW-B', 'graded'),
@@ -343,12 +347,11 @@ def directions(declaration):
 
 
 # Both entries refuse, but from two guards, not one check both call
-# (rfx-core-desk 2026-10-27): census failing rows = 11.
+# (rfx-core-desk 2026-10-27). The graded multi-device MSL and RLC rows left
+# with #2076: both entries now refuse them from the shared multi-device check.
 TWO_GUARD_REFUSALS = {
     **{('P-coax', p): '#2075 run() and forward() refuse the coaxial port from two guards in _execute.py'
        for p in ('uniform', 'graded', 'multi-device-uniform', 'multi-device-graded')},
-    **{(d, 'multi-device-graded'): '#2076 graded multi-device forward() admits through its own list'
-       for d in ('P-msl', 'R-rlc')},
 }
 
 
@@ -634,6 +637,14 @@ def test_both_refuse(declaration, path, direction):
             assert expected in record['message'], record
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
+    if declaration == 'P-waveguide-2mode':
+        # The per-mode list once reached the single-run assembly and raised
+        # AttributeError on both entries (#2070); pin the refusal's text too.
+        expected = ('waveguide ports (add_waveguide_port) are not supported on'
+                    if path.startswith('multi-device') else 'compute_waveguide_s_matrix()')
+        for record in pair.values():
+            assert record['type'] == 'NotImplementedError', record
+            assert expected in record['message'], record
 
 
 def _raised(kind, message, site='rfx/runners/_admission.py:1'):

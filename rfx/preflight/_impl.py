@@ -11,6 +11,7 @@ from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.preflight._common import (
     PreflightErrorWarning, PreflightIssue, PreflightReport, PreflightWarning,
 )
+from rfx.model.conductors import prepare_solve
 
 
 def _preflight_impl(
@@ -262,3 +263,47 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
             issues.diagnostics,
             causes=PreflightReport(errors).diagnostics,
         )
+
+
+def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
+                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=()):
+    """Emit a UserWarning if preflight finds issues (issue #66).
+
+    Called automatically at the start of ``forward()``, ``optimize()``,
+    and ``topology_optimize()`` so users discover physics violations
+    (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
+    spending minutes of GPU compute. Pass ``skip_preflight=True`` at
+    the call site to opt out (tests, already-validated configs).
+
+    ``check_ntff`` gates the NTFF check family. ``run()`` passes
+    ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
+    and sub-wavelength ground-plane (issue #334) advisories are
+    physics-relevant to any far-field computation and
+    run() is the common NTFF entry point, so they are surfaced as
+    warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
+    (the inverse-design entry points) hard-fail on the PEC-overlap
+    error. Previously run() skipped the family entirely and still
+    printed "All checks passed", which contradicted explicit
+    ``sim.preflight()`` output on the same configuration.
+
+    ``prepare=True`` also returns an execution-local solve handoff. With
+    skipped preflight it stays lazy until lane admission; otherwise checks
+    read its assembled product before the selected runner takes ownership.
+    """
+    assembly = prepare_solve(sim, distributed=distributed) if prepare else None
+    if skip:
+        return assembly if prepare else PreflightReport()
+    if assembly is not None:
+        conductors = assembly.realized()
+    # A validator bug must propagate, rather than become an advisory.
+    if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
+    else:
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                     _conductors=conductors)
+    # gate -> this helper -> facade -> public entry -> user
+    sim._run_preflight_gate(issues, context=context, stacklevel=5)
+    if assembly is not None:
+        assembly.diagnostics = tuple(getattr(issues, "diagnostics", ()))
+    return assembly if prepare else issues

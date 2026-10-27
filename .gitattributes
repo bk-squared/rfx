@@ -1,0 +1,2 @@
+# Hooks run under sh on every platform: keep LF on Windows checkouts.
+.githooks/* text eol=lf

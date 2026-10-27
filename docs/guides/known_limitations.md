@@ -143,13 +143,37 @@ the support matrix's **Refused inputs** table.
 
 Tracker: #1739
 
-`estimate_ad_memory` and `plan_ad_memory` can plan a gradient that runs out of device memory. On one graded scene
-(737,009 nodes, float32, RTX A6000, 16 runs) the measured device peak was 1.00 to 1.14 times the estimate with one
-output pulled back (worst: three checkpoint levels), and 1.04 to 2.17 times the estimate with 2 or 8 outputs pulled
-back at once by `jax.jacrev` or `vmap` (worst: 8 outputs with two checkpoint levels). An extra output holds about 7
-carries on the device; `cotangents=` counts 1. Leave 15 % above the estimate for one output with checkpoint levels.
-With several outputs at once, budget 2.2 times the estimate, measure one short run, or pull back one output at a time.
-An estimate read from the compiled whole gradient (within 3 % of every peak measured) is the planned replacement.
+`estimate_ad_memory` and `plan_ad_memory` remain static estimates. On one graded scene
+(737,009 nodes, float32, RTX A6000, JAX 0.10.2), single-output device peaks were
+1.00 to 1.14 times the estimate; leave 15 % above it with checkpoint levels.
+For simultaneous pullbacks, `cotangents=` now adds 7.5 carries per extra output:
+one boundary carry plus 6.5 carries of backward working arrays.
+This calibration uses one graded whole-grid scene, not a runtime guarantee.
+Design boxes use the same whole-grid adjoint workspace estimate and are unmeasured;
+other scenes, backends, and JAX versions are also unmeasured for this coefficient.
+Measure a representative run or pull back one output at a time when memory is tight.
+The former 2.2-times advice was exceeded by the measured 16-output row (2.25 times).
+An estimate from the compiled whole gradient is the planned replacement.
+
+### jax 0.11.2 and 0.12.0 run the time step slower than jax 0.10.2, on CPU at every measured size and on GPU on a large grid
+
+Tracker: #2125
+
+Measured at two grid sizes, with and without one lumped RLC element. This is not a trend over grid size.
+On one RTX A6000 at 3.05 M cells (CPML included), jax 0.11.2 takes 1.18 times as long per time step as jax 0.10.2.
+On the GPU at 0.53 M cells, the two versions take the same time (1.00).
+On both devices the slowdown appears with and without the lumped element, so it comes from the compiler version, not from rfx.
+Peak device memory is the same on both versions.
+`estimate_ad_memory` still reads 1.007 to 1.009 of the measured gradient peak with `checkpoint=True`.
+On CPU (one node, 8 cores, the same two grids), jax 0.11.2 takes 2.7 to 3.0 times as long per step at 0.53 M cells.
+At 3.05 M cells it takes 1.6 to 2.4 times as long.
+The compiled CPU step holds 18 more domain-sized copies on jax 0.11.2, with and without the lumped element.
+Peak host memory is unchanged on CPU (0.91 to 1.01 times).
+jax 0.11.0 and 0.11.1 run the CPU step at jax 0.10.2's speed (1.00 to 1.01 times, 8 domain-sized copies); jax 0.12.0 is slower (5.6 times at 0.53 M cells, 2.4 times at 3.05 M cells).
+The release and the change in the compiled program (domain-sized fusions 85 to 98, copies 8 to 26) match openxla/xla#50977: from jaxlib 0.11.2, chains of partial array updates are recomputed. This is a match by version and operation counts, not a proven cause.
+No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
+Workaround on CPU with Python 3.12 or newer: install `jax==0.11.1 jaxlib==0.11.1`.
+jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 ### A finite flux box closes only when it is centred on its source
 
