@@ -1353,12 +1353,12 @@ class _ExecuteMixin:
             known-spurious warning on a deliberate configuration.
         distributed : bool, optional
             Run on several devices: a uniform mesh uses the runner of
-            ``run(devices=...)``, including its one-device fallback; a graded mesh
-            the graded multi-device runner. On a uniform mesh, override and design
-            arguments, ``checkpoint=True`` and the other checkpoint arguments,
-            ``n_warmup``, ``emit_time_series=False``, ``ringdown`` and a call
-            inside ``jax.jit`` are refused. Multi-device runs are compared with
-            one-device runs in the test suite; no accuracy statement of their own.
+            ``run(devices=...)``, a graded mesh the graded multi-device runner;
+            every waveguide port, and every plane wave but a normal-incidence
+            closed box on a uniform mesh, is refused by name. On a uniform mesh,
+            override, design and checkpoint arguments (``checkpoint=True`` too),
+            ``n_warmup``, ``emit_time_series=False``, ``ringdown`` and port S inside
+            ``jax.jit`` are refused. Compared with one device in tests; no accuracy claim.
         devices : list of jax.Device or None, optional
             Devices for the distributed run.  When ``distributed=True``
             and ``devices=None``, defaults to ``jax.devices()``.  When
