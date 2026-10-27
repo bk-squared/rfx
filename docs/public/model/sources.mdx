@@ -160,7 +160,7 @@ checks that it implements the source (below).
 | a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
 | anything other than vacuum on or next to an injection plane: a dielectric (even a near-vacuum one), a dispersive or Kerr medium, a PEC volume, a sheet, a wire, a lumped element or a design region | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
 | a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
-| a plane wave | several devices, either mesh | runs on one device, with a warning; `Result.diagnostics` records it | — |
+| a plane wave on several devices, other than a closed box (`closed_box=True`) at normal incidence on a uniform mesh | several devices, either mesh | refused by name; nothing runs on one device in its place | one device, or the closed box as [Multiple devices](/rfx/run/multi-device/) describes |
 | a plane wave at an angle with an NTFF box, DFT planes, flux monitors, `snapshot=` or `until_decay=` | uniform mesh | refused | probes and the final `state`, a fixed `n_steps`, or `compute_rcs` for scattering |
 | a soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire), or tangential in a declared PEC wall face | all | refused | move the source off the metal and at least one cell inside the domain, or use a port |
 | a drive whose pulse samples to zero at every time step (usually `bandwidth` given in Hz) | all, and `preflight()` | refused | give `bandwidth` as a fraction of `f0` |

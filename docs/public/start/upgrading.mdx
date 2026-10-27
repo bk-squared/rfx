@@ -45,6 +45,7 @@ once and names the new one.
 | `compute_coaxial_s_matrix` and `CoaxialSMatrixResult` | `compute_coaxial_line_reflection(termination=..., dut_impedance=...)` for a one-port reflection, `compute_coaxial_two_port(...)` for a through line. |
 | the legacy multi-device runner `rfx.runners.distributed.run_distributed` (now raises `RuntimeError`) and the `rfx.runners.run_distributed` shortcut | `sim.run(devices=[...])`, or `rfx.runners.distributed_v2.run_distributed` with the same arguments. |
 | rfx Studio, the experiment service, the agent control plane and their command-line tools | Not shipped in 2.0. Stay on the last 1.x release that ships them, or take the code from the repository history. |
+| `interior_cells`, `e_node_dual_spacings`, `node_positions_from_profile`, `z_position_to_index` and `wire_port_current` imported from `rfx.nonuniform` | Import them from the modules that define them: `rfx.model.graded_grid` for the first four, `rfx.measurement.graded_wire` for the graded-mesh `wire_port_current` (`rfx.wire_port_current` is unchanged). `make_nonuniform_grid`, `position_to_index`, `make_z_profile` and `make_band_profile` still import from `rfx.nonuniform`. |
 
 **Low-level API.** The update coefficients of `DebyeCoeffs` (`ca`, `cb`, `cc`,
 `beta`) and `LorentzCoeffs` (`ca`, `cb`, `c`, `cc`) are now a tuple of three
@@ -97,6 +98,7 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 | Input | Instead |
 |---|---|
 | A waveguide port filling a guide whose side faces are declared absorbing, or left undeclared on a graded mesh | Declare PEC side walls, e.g. `boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an x-directed port. Left undeclared on a uniform mesh, the side faces are walls, with a warning. |
+| A waveguide port whose section, from its H-correction cell through its reference plane, holds anything but one homogeneous, isotropic, lossless medium: a partial, lossy, dispersive or anisotropic fill, a PEC volume, a sheet, wire, film or lumped element, a design box, or a traced override (also one that puts another medium at a port's S21 probe plane). 1.x launched and read such a port as an empty guide. | Start the structure beyond the port's reference plane. A fill that spans the guide wall to wall with one lossless medium runs: the port uses the fill's cutoff, propagation constant and impedance. |
 | A plane wave (`add_tfsf_source`) with a structure that is not uniform across its side faces (a finite scatterer, a lumped element). Those faces are solved as periodic. | Declare `periodic` side faces for an array, or use `add_tfsf_source(..., closed_box=True)` for one object. |
 | `waveform="differentiated_gaussian"` on an oblique plane wave with `method="bloch"`, in Python or in a saved interop document (1.x launched a modulated Gaussian instead) | Declare `waveform="modulated_gaussian"` or leave `waveform` unset; for an open domain around one scatterer, `method="methodB"` takes the differentiated Gaussian. An interop document is refused on load: replace its waveform string with `"modulated_gaussian"`; the field is required, so do not remove it. |
 | A far-field (NTFF) box whose faces are not at least one cell inside the grid, or that touches the plane-wave injection region | Move each face at least one cell inside the domain and outside the injection region. |
@@ -139,7 +141,12 @@ size of each change and the test that pins it.
   one-cell lumped port and a one-cell wire port now give the same S.
 - **Microstrip S-parameters** use standard power waves when the two port
   references differ, and S is no longer projected onto the passive set by
-  default.
+  default. Microstrip, mixed, coax-to-microstrip and coaxial two-port S are
+  referred to each port's declared `impedance=` (default 50 Ω), not to the
+  line's analytic impedance; a port whose `impedance=` equals its line's
+  impedance gives the same S. The line impedances are in `line_impedances`;
+  `rfx.renormalize_power_waves(S, reference_impedances, line_impedances)`
+  brings S back to the line for line properties.
 - **Absorbing boundaries.** The CPML magnetic loss is evaluated at its own
   half cell; every absorbing face is backed by a conducting plane on every
   entry (`run()`, `forward()`, multi-device runs, waveguide calculators,

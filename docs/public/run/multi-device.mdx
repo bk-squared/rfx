@@ -69,8 +69,10 @@ What to know:
   differentiates them with respect to the permittivity, conductivity and PEC
   overrides.
 - On a uniform mesh, `forward(distributed=True)` runs the declared model as it
-  is: it takes no override or design arguments, gives no gradient through its
-  port S, and cannot run inside `jax.jit`.
+  is: it takes no override or design arguments and gives no gradient through
+  its port S. It runs inside a user `jax.jit` and returns the same probe
+  records as a direct call; port S-parameters (`port_s11_freqs`) inside
+  `jax.jit` are refused by name.
 - `exchange_interval` must be 1 (the default): the slabs exchange fields every
   step.
 - Splitting is along x only. A domain whose x size does not divide evenly is
@@ -90,9 +92,10 @@ makes XLA encode each device's position in a way CUDA graphs reject. rfx
 refuses that call with a message that gives both ways out: call
 `run(devices=...)` / `forward(distributed=True)`, and `jax.grad` of it, without
 `jax.jit`; or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`
-set before JAX is imported. On CPU this rule does not apply, but
-`forward(distributed=True)` on a uniform mesh refuses an enclosing `jax.jit` on
-every platform.
+set before JAX is imported. On CPU this rule does not apply. Where an enclosing
+`jax.jit` is admitted, a uniform-mesh run returns the same fields and probe
+records as a direct call, and port S-parameters inside it are refused by name:
+call the run directly for S.
 
 ## How rfx checks it
 
