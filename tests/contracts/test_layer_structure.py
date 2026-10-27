@@ -1256,3 +1256,20 @@ def test_restored_definition_read_through_the_step_module_import_is_refused(tmp_
     entry = "rfx.simulation:make_probe"
     assert defined[path] == [entry]
     assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+@pytest.mark.parametrize("read,entry", [
+    ("from rfx import make_probe\n    return make_probe", "rfx.simulation:make_probe"),
+    ("from rfx import Simulation\n    return Simulation", "rfx.api:Simulation"),
+    ("import rfx\n    return rfx.simulation.make_probe", "rfx.simulation:make_probe"),
+    ("from rfx.api import _ExecuteMixin\n    return _ExecuteMixin", "rfx.api._execute:_ExecuteMixin"),
+    ("from rfx.api import _execute\n    return _execute._ExecuteMixin", "rfx.api._execute:_ExecuteMixin"),
+], ids=["package-top", "package-top-class", "dotted-package", "five-to-five", "submodule"])
+def test_read_of_a_five_file_definition_through_a_reexport_is_refused(tmp_path, read, entry):
+    """Re-exports are followed to the module that defines the name: the rfx package top, one five
+    file re-exporting another, a module bound through a package."""
+    path = "rfx/stepping/uniform.py"
+    write(tmp_path, path, (REPO / path).read_text() + f"\n\ndef local():\n    {read}\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]

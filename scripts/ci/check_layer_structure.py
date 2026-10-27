@@ -86,6 +86,7 @@ class Sources:
                           for p in (repo / "rfx").rglob("*.py")}
         self.trees = {}
         self.texts = {}
+        self.definitions = {}
 
     def read(self, path: str) -> bytes:
         if self.head:
@@ -97,6 +98,12 @@ class Sources:
             self.texts[path] = self.read(path).decode("utf-8")
             self.trees[path] = ast.parse(self.texts[path], filename=path)
         return self.trees[path]
+
+    def own(self, path: str) -> set[str]:
+        """``own_definitions`` of one file, computed once."""
+        if path not in self.definitions:
+            self.definitions[path] = own_definitions(self.tree(path))
+        return self.definitions[path]
 
     def module_path(self, module: str) -> str | None:
         stem = module.replace(".", "/")
@@ -388,63 +395,137 @@ def reverse_imports(sources: Sources, path: str) -> list[str]:
     return sorted(hits)
 
 
+def top_level(body):
+    """Module-level statements, also inside if/try/with/for/while/match; never function or class bodies."""
+    for node in body:
+        yield node
+        if not isinstance(node, (*FUNCTIONS, ast.ClassDef)):
+            for field in ("body", "orelse", "finalbody"):
+                yield from top_level(getattr(node, field, []))
+            for block in (*getattr(node, "handlers", []), *getattr(node, "cases", [])):
+                yield from top_level(block.body)
+
+
 def own_definitions(tree: ast.Module) -> set[str]:
     """Top-level names a module binds by its own code (def, class, assignment), never by import.
 
     Statements inside if/try/with/for/while/match count; function and class bodies do not.
     """
     names = set()
-
-    def visit(body):
-        for node in body:
-            if isinstance(node, (*FUNCTIONS, ast.ClassDef)):
-                names.add(node.name)
-            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                names.update(n.id for target in targets for n in ast.walk(target)
-                             if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store))
-            else:
-                for field in ("body", "orelse", "finalbody"):
-                    visit(getattr(node, field, []))
-                for block in (*getattr(node, "handlers", []), *getattr(node, "cases", [])):
-                    visit(block.body)
-
-    visit(tree.body)
+    for node in top_level(tree.body):
+        if isinstance(node, (*FUNCTIONS, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names.update(n.id for target in targets for n in ast.walk(target)
+                         if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store))
     return names
 
 
-def module_attribute_reads(tree: ast.Module, path: str, module: str) -> set[str]:
-    """Names a file reads as ``alias.X`` where ``alias`` is a whole-module import of ``module``."""
-    aliases = set()
+def lazy_exports(tree: ast.Module) -> dict[str, str]:
+    """A literal ``_LAZY_EXPORTS`` table (name -> module) that a package ``__getattr__`` serves."""
+    table = {}
+    for node in top_level(tree.body):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)) and isinstance(node.value, ast.Dict):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(isinstance(t, ast.Name) and t.id == "_LAZY_EXPORTS" for t in targets):
+                table.update((key.value, value.value) for key, value in zip(node.value.keys, node.value.values)
+                             if isinstance(key, ast.Constant) and isinstance(key.value, str)
+                             and isinstance(value, ast.Constant) and isinstance(value.value, str))
+    return table
+
+
+def resolve(sources: Sources, module: str, name: str, seen: frozenset = frozenset()) -> tuple | None:
+    """What ``module.name`` is, following re-exports without executing anything.
+
+    ("definition", home, name) when a module's own code defines it, ("module", dotted)
+    for a module object, None outside rfx/ or when nothing binds it statically (a star
+    import, a dynamic read).
+    """
+    path = sources.module_path(module)
+    if path is None or (module, name) in seen:
+        return None
+    seen = seen | {(module, name)}
+    if name in sources.own(path):
+        return ("definition", module, name)
+    if sources.module_path(f"{module}.{name}"):  # an imported submodule replaces the package attribute
+        return ("module", f"{module}.{name}")
+    tree = sources.tree(path)
+    for node in top_level(tree.body):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if (alias.asname or alias.name) == name:
+                    return resolve(sources, import_module(path, node), alias.name, seen)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname == name and sources.module_path(alias.name):
+                    return ("module", alias.name)
+    lazy = lazy_exports(tree)
+    if name in lazy:
+        return resolve(sources, lazy[name], name, seen)
+    return None
+
+
+def definition_reads(sources: Sources, path: str) -> set[tuple[str, str]]:
+    """(home, name) for every top-level definition a layer file reads from an rfx module.
+
+    Routes: a from-import, through any chain of re-exports (``from rfx import make_probe``,
+    one five file re-exporting another); an attribute read through a module binding
+    (``from rfx import simulation``, ``import rfx.simulation as kernel``, dotted
+    ``rfx.simulation.make_probe``, nested ``api._execute.X``); a ``_LAZY_EXPORTS`` entry.
+    Module aliases are collected per file, not per scope (conservative).
+    """
+    tree = sources.tree(path)
+    reads, modules = set(), {}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             parent = import_module(path, node)
-            aliases.update(a.asname or a.name for a in node.names if f"{parent}.{a.name}" == module)
+            for alias in node.names:
+                found = resolve(sources, parent, alias.name)
+                if found and found[0] == "definition":
+                    reads.add(found[1:])
+                elif found:
+                    modules[alias.asname or alias.name] = found[1]
         elif isinstance(node, ast.Import):
-            aliases.update(a.asname or a.name for a in node.names if a.name == module)
-    return {node.attr for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and ast.unparse(node.value) in aliases}
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                target = alias.name if alias.asname else bound
+                if sources.module_path(target):
+                    modules[bound] = target
+    for name, module in lazy_exports(tree).items():
+        found = resolve(sources, module, name)
+        if found and found[0] == "definition":
+            reads.add(found[1:])
+    for node in ast.walk(tree):
+        root = node
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if isinstance(node, ast.Attribute) and isinstance(root, ast.Name):
+            head, *attrs = dotted(node).split(".")
+            module = modules.get(head)
+            for attr in attrs if module else ():
+                found = resolve(sources, module, attr)
+                if found and found[0] == "module":
+                    module = found[1]
+                    continue
+                if found:
+                    reads.add(found[1:])
+                break
+    return reads
 
 
-def caller_definitions(sources: Sources, reverse: dict) -> dict:
-    """Reverse entries naming what the caller module defines itself, not what it re-exports.
+def caller_definitions(sources: Sources, paths) -> dict:
+    """Layer reads of a name a caller module defines itself, not one it re-exports.
 
     A five-file entry is layer code living in a five file (2.0: zero, whatever the
-    baseline says); adjoint, ringdown and progress entries are reported only. A
-    whole-module import (``from rfx import simulation``) counts each attribute the
-    file reads through it.
+    baseline says); adjoint, ringdown and progress entries are reported only.
     """
-    defined, found = {}, {}
-    for path, rules in reverse.items():
-        for entry in rules["R"]:
-            module, _, name = entry.partition(":")
-            if module not in defined:
-                caller = sources.module_path(module)
-                defined[module] = own_definitions(sources.tree(caller)) if caller else set()
-            names = [name] if name else sorted(module_attribute_reads(sources.tree(path), path, module))
-            for read in names:
-                if read in defined[module]:
-                    found.setdefault(path, []).append(f"{module}:{read}")
+    found = {}
+    for path in paths:
+        entries = sorted(f"{home}:{name}" for home, name in definition_reads(sources, path)
+                         if home in CALLER_MODULES)
+        if entries:
+            found[path] = entries
     return found
 
 
@@ -498,7 +579,9 @@ def count(sources: Sources) -> dict:
         elif rules["S"] or rules["M"]:
             outside[path] = {r: sorted(rules[r]) for r in ("S", "M")}
     return {"baseline": {"files": files, "outside": outside, "reverse": reverse},
-            "caller_definitions": caller_definitions(sources, reverse),
+            "caller_definitions": caller_definitions(sources, [
+                p for p in sorted(sources.paths)
+                if any(p.startswith(layer.replace(".", "/") + "/") for layer in LAYERS)]),
             "surface_sizes": {p: len(names) for p, names in public.items()},
             "unit_counts": unit_counts, "allowed": sorted(allowed)}
 
