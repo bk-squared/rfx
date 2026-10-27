@@ -14,8 +14,11 @@ from tests._x64_compat import enable_x64
 FACES = tuple(f"{a}_{s}" for a in "xyz" for s in ("lo", "hi"))
 
 
-def _whole_array(state, params, psi, grid, materials, faces, magnetic):
+def _whole_array(state, params, psi, grid, materials, faces, magnetic, walls=()):
     """Independent full-field zero-extended differences and sequential scatters.
+
+    ``walls`` names the faces the scene declares as walls: they carry no
+    absorber (a physical run keeps their psi at 0).
 
     No slab-neighbor, selection, write-back, or coefficient helper is shared
     with production. Each difference is constructed over the whole array.
@@ -48,6 +51,8 @@ def _whole_array(state, params, psi, grid, materials, faces, magnetic):
             for side in ("lo", "hi"):
                 face = f"{a}_{side}"
                 if face not in faces:
+                    continue
+                if face in walls:
                     continue
                 component = "xyz"[target]
                 key = f"psi_{kind}{component}_{a}{side}"
@@ -114,8 +119,25 @@ def test_slab_update_equals_whole_array_per_face_subset(magnetic, varying_mu, wa
     for enabled in itertools.product((False, True), repeat=6):
         faces = tuple(f for f, active in zip(FACES, enabled) if active)
         actual = apply(state, params, psi, grid, materials=materials, faces=faces)
-        expected = _whole_array(state, params, psi, grid, materials, faces, magnetic)
+        expected = _whole_array(state, params, psi, grid, materials, faces, magnetic,
+                                walls=(wall,))
         _assert_equal(actual, expected)
+
+
+@pytest.mark.parametrize("wall", ("z_hi", "x_lo"), ids=("hi-wall", "lo-wall"))
+@pytest.mark.parametrize("magnetic", (False, True))
+def test_declared_wall_face_is_a_no_op(magnetic, wall):
+    """The wall's seeded psi and every field are left bit-unchanged by its face."""
+    grid, params, psi, state, materials = _scene(wall)
+    apply = apply_cpml_h if magnetic else apply_cpml_e
+    key = f"_{wall[0]}{wall[2:]}"
+    state_out, psi_out = apply(state, params, psi, grid, materials=materials, faces=(wall,))
+    for name in psi._fields:
+        if name.endswith(key):
+            np.testing.assert_array_equal(np.asarray(getattr(psi_out, name)).view(np.uint32),
+                                          np.asarray(getattr(psi, name)).view(np.uint32), err_msg=name)
+    for before, after in zip(state, state_out):
+        np.testing.assert_array_equal(np.asarray(after).view(np.uint32), np.asarray(before).view(np.uint32))
 
 
 def test_equivalence_check_rejects_a_changed_field():
@@ -136,7 +158,7 @@ def test_float64_corrections_with_float32_fields_equal_whole_array():
         for magnetic, apply in ((False, apply_cpml_e), (True, apply_cpml_h)):
             actual = apply(state, params, psi, grid, materials=materials)
             expected = _whole_array(
-                state, params, psi, grid, materials, FACES, magnetic)
+                state, params, psi, grid, materials, FACES, magnetic, walls=("z_hi",))
             assert all(v.dtype == jnp.float32 for v in actual[0])
             _assert_equal(actual, expected)
 
