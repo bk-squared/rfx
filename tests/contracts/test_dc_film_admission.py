@@ -49,8 +49,15 @@ def reference(grid, shape):
     nodes = [np.asarray(c, dtype=float) for c in _grid_coords(grid)]
     tangents = [a for a in range(3) if a != normal]
     a, b = tangents
-    footprint = ((nodes[a][:, None] - shape.center[a])**2
-                 + (nodes[b][None, :] - shape.center[b])**2 <= shape.radius**2)
+    # A DC film mask entry j is cell j, [x_j, x_j+1): sample it at the cell
+    # centre x_j + w_j/2, the last width repeated past the final node (#1958 F8).
+    centres = []
+    for t in (a, b):
+        w = np.asarray(grid.cells(t), dtype=float)
+        w = np.r_[w, w[-1]][:len(nodes[t])]
+        centres.append(nodes[t] + w / 2)
+    footprint = ((centres[0][:, None] - shape.center[a])**2
+                 + (centres[1][None, :] - shape.center[b])**2 <= shape.radius**2)
     area = float(np.sum(footprint * np.asarray(grid.cells(a))[:, None]
                         * np.asarray(grid.cells(b))[None, :]))
     k = int(np.argmin(np.abs(nodes[normal] - shape.center[normal])))
@@ -128,7 +135,8 @@ class UnknownArea:
 @pytest.mark.parametrize('lane', ['uniform', 'equal', 'normal', 'inplane'])
 @pytest.mark.parametrize('radius', [2.5, 5.5])
 def test_b4_small_disc_refusal_and_declared_finding(lane, radius):
-    # Canonical placement retains the predeclared 3.4% / 1.03% witnesses.
+    # Canonical placement: area errors -9.7% (r 2.5, 16 cells) and -3.8% (r 5.5, 88 cells)
+    # with cell-centre sampling (#1958 F8; node sampling gave +3.4% / +1.03%).
     # B2/B3/B5 also exercise fractional, asymmetric transverse placement.
     sim, grid, shape = model(lane, radius, centre=(24, 24))
     _, area, declared = reference(grid, shape)
