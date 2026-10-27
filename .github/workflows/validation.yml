@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 6 * * 1'  # Every Monday 06:00 UTC
   workflow_dispatch:  # Manual trigger
+    inputs:
+      only_latest_jax:
+        # The latest-jax job alone (its timing runs), without the 16 slow shards or the tracking issue.
+        description: "Run only the Python 3.12 / newest jax 0.11 job"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,6 +79,7 @@ jobs:
   # which plus setup fits the 153-min budget; 14 do not. The contract test bounds the largest group
   # on recorded prices (it passes from 12, as it cannot see stale prices); a contract pins 16.
   slow-tests:
+    if: ${{ !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
     # suite grows weekly; the 60-min ceiling left <15% headroom.
@@ -212,6 +219,7 @@ jobs:
   # 180-min limit, and on run 39748623375 shard 1 was cut at 180 min with no test failed,
   # its runner taking 1.42x as long as the green run's for the same 8,225 tests.
   three-device:
+    if: ${{ !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     # The limit stops a hung run before GitHub's 6 h. 75 min = about 34 min (these steps
     # plus install on run 39698601854) x 1.42 (the slowest runner seen, run 39748623375)
@@ -344,6 +352,54 @@ jobs:
           echo "three-device job: $(( used / 60 )) min of a 75 min limit"
           test "$used" -le $(( 75 * 60 * 85 / 100 ))
 
+  # Python 3.12 with the newest jax 0.11.x (rfx-core-desk 2026-10-27): jax 0.11 renamed scan parameters and
+  # estimate_ad_memory raised KeyError for every Python 3.12 user while all other lanes ran 3.11 with jax 0.10.2
+  # (record rfx-archive 20261027-jax-floor-options). Gradients and the contracts only; weekly, never a PR check.
+  # Six shards balanced on .test_durations (recorded 3.11/jax 0.10.2: about 189 min single-process).
+  latest-jax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Record shard start time
+        run: echo "SHARD_T0=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Raise the memory-mapping limit for the test process
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package with the newest jax 0.11.x
+        run: pip install -e ".[dev]" "jax>=0.11,<0.12" "jaxlib>=0.11,<0.12"
+
+      - name: Record the resolved Python/JAX/numpy versions
+        run: python -c "import sys, jax, jaxlib, numpy; print('python', sys.version.split()[0], 'jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
+
+      - name: Gradients and contracts on Python 3.12 / jax 0.11 — shard ${{ matrix.group }} of 6
+        env:
+          JAX_PLATFORMS: cpu
+          RFX_CLEAR_JAX_CACHES_PER_MODULE: "1"
+        run: >
+          pytest tests/unit/autodiff tests/contracts -v -ra -p no:cacheprovider
+          -m "not gpu and not slow and not slow_physics and not docs_consistency"
+          --splits 6 --group ${{ matrix.group }}
+
+      - name: Shard wall time
+        if: always()
+        run: |
+          echo "latest-jax shard ${{ matrix.group }}: $(( $(date +%s) - SHARD_T0 )) s including install"
+
   # The weekly external-solver job (crossval-external: Meep legs of the scheduled
   # cross-validation cases) was removed on 2026-09-21 with the last scheduled case.
   # CI does not run external solvers: a cross-validation case compares rfx with
@@ -395,8 +451,8 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests, three-device]
-    if: always()
+    needs: [slow-tests, three-device, latest-jax]
+    if: ${{ always() && !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

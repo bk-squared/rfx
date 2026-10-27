@@ -234,6 +234,35 @@ def test_cpu_suite_python_and_jax_pins(
     assert {r.name: str(r.specifier) for r in requirements} == expected_pins, installs[0]
 
 
+def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
+    """jax 0.11 broke estimate_ad_memory on Python 3.12 while every other lane ran 3.11/jax 0.10.2.
+
+    The weekly job installs the newest 0.11.x of both wheels on 3.12, records what it got, runs the
+    gradient and contract tests over all of its shards, and the lane's verdict waits for it.
+    """
+    jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
+    steps = jobs["latest-jax"]["steps"]
+    versions = [step.get("with", {}).get("python-version") for step in steps
+                if str(step.get("uses", "")).startswith("actions/setup-python@")]
+    assert versions == ["3.12"]
+    installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
+    assert len(installs) == 1, installs
+    args = shlex.split(installs[0], comments=True)
+    assert args[:4] == ["pip", "install", "-e", ".[dev]"], installs[0]
+    pins = {r.name: str(r.specifier) for r in map(Requirement, args[4:])}
+    assert pins == {"jax": "<0.12,>=0.11", "jaxlib": "<0.12,>=0.11"}, installs[0]
+    records = [s for s in steps if s.get("name", "").startswith("Record the resolved")]
+    assert len(records) == 1 and "if" not in records[0]
+    for package in ("jax", "jaxlib", "numpy"):
+        assert f"{package}.__version__" in records[0]["run"]
+    tests = [str(step["run"]) for step in steps if "pytest " in str(step.get("run", ""))]
+    assert len(tests) == 1, tests
+    assert tests[0].split()[1:3] == ["tests/unit/autodiff", "tests/contracts"], tests[0]
+    assert re.findall(r"--splits\s+(\d+)", tests[0]) == [str(len(jobs["latest-jax"]["strategy"]["matrix"]["group"]))]
+    assert "--group ${{ matrix.group }}" in tests[0]
+    assert "latest-jax" in jobs["notify"]["needs"]
+
+
 def test_fast_suite_records_the_resolved_versions() -> None:
     steps = load(PR_TESTS)["jobs"]["fast-suite"]["steps"]
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved JAX/numpy versions")]
@@ -1187,7 +1216,7 @@ def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, ba
 
 @pytest.mark.parametrize("workflow,jobs", [
     (PR_TESTS, ("guards-and-preflight", "fast-suite")),
-    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device")),
+    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device", "latest-jax")),
     (WORKFLOW_DIR / "regen-durations.yml", ("fast", "slow")),
 ])
 def test_test_jobs_raise_the_mapping_limit_before_pytest(workflow, jobs) -> None:
