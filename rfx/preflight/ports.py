@@ -721,10 +721,12 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         if not pe.excite:
             continue
         pos = pe.position
-        # Find the dielectric geometry enclosing the port cell.
-        enclosing_eps_r = None
-        enclosing_name = None
+        # Find the dielectric geometry enclosing the port cell. The
+        # assembly paints entries in order, so the LAST enclosing one is
+        # what the port cell holds (#1961); library names resolve too.
+        from rfx.core.jax_utils import is_tracer
         from rfx.model.materials import assembled_as_pec
+        enclosing = None
         for entry in self._geometry:
             if assembled_as_pec(self, entry):
                 continue
@@ -735,15 +737,19 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
             except (NotImplementedError, TypeError):
                 continue
             inside = all(c1[ax] <= pos[ax] <= c2[ax] for ax in range(3))
-            if not inside:
-                continue
-            mspec = self._materials.get(entry.material_name)
-            if mspec is not None and float(mspec.eps_r) > 1.0 + 1e-3:
-                enclosing_eps_r = float(mspec.eps_r)
-                enclosing_name = entry.material_name
-                break
-        if enclosing_eps_r is None:
+            if inside:
+                enclosing = entry
+        if enclosing is None:
             continue
+        try:
+            mspec = self._resolve_material(enclosing.material_name)
+        except Exception:
+            continue
+        eps_r = getattr(mspec, "eps_r", 1.0)
+        if is_tracer(eps_r) or float(eps_r) <= 1.0 + 1e-3:
+            continue
+        enclosing_eps_r = float(eps_r)
+        enclosing_name = enclosing.material_name
         # Check for a PEC geometry one cell away along the port's
         # component axis (coax-style pin or microstrip feed edge).
         # Without such a pin, the port cell cannot drive a vertical
