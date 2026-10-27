@@ -12,7 +12,7 @@ from rfx.api import Simulation
 from rfx.core.yee import EPS_0, MU_0, FDTDState, init_state
 from rfx.sources import tfsf_discrete_plane_wave as plane
 from rfx.sources.sources import CustomWaveform
-from rfx.sources.tfsf import measure_normal_incident_spectrum
+from rfx.measurement.incident import measure_normal_incident_spectrum
 
 DIRECTIONS = ((0, 0), (10, 0), (20, 0), (30, 0), (40, 0), (50, 0),
               (60, 0), (30, 90), (45, 30), (80, 0))
@@ -381,7 +381,7 @@ def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None
     sample_indices = [np.floor((nodes + o) @ cfg.m).astype(int) - cfg.origin for o in OFFSETS]
     peak_indices = [np.unique(np.floor((tf_nodes + o) @ cfg.m).astype(int) - cfg.origin) for o in OFFSETS[:3]]
     def auxiliary(st, n):
-        from rfx.sources.tfsf import update_tfsf_1d
+        from rfx.stepping.tfsf import update_tfsf_1d
         st = update_tfsf_1d(cfg, st, DX, DT, n.astype(jnp.float32) * DT)
         samples = jnp.stack([getattr(st, c)[idx] for c, idx in zip(COMP, sample_indices)])
         peak = jnp.max(jnp.stack([jnp.max(jnp.abs(getattr(st, c)[idx]))

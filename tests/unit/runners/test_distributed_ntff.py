@@ -10,7 +10,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.antenna import antenna_gain
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from rfx.geometry import Box
 
 # Per-array peak-relative bar. PEC compensation is compared to its own peak.

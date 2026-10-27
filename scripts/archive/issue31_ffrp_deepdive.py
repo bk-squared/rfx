@@ -28,7 +28,7 @@ import numpy as np
 from rfx import Simulation, Box
 from rfx.auto_config import smooth_grading
 from rfx.sources.sources import GaussianPulse
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 
 
 C0 = 2.998e8

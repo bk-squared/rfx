@@ -734,7 +734,7 @@ def test_leontovich_algebraic_realization_o2():
     """
     from rfx.core.yee import init_materials
     from rfx.materials.thin_conductor import leontovich_rs
-    from rfx.nonuniform import e_node_dual_spacings
+    from rfx.model.graded_grid import e_node_dual_spacings
     from rfx.runners.nonuniform import assemble_materials_nu
 
     f0, sigma_bulk = 10e9, 1e4

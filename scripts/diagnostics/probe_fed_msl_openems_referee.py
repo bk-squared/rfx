@@ -229,6 +229,9 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from openems_power_waves import power_wave_s  # noqa: E402
+
 C0_M_S = 2.99792458e8
 # CSXCAD drawing unit for Stage 2 (mm). ref_plane_shift and
 # MeasPlaneShift are both expressed in it, never in metres.
@@ -603,6 +606,23 @@ def deembed_two_port(s11: np.ndarray, s21: np.ndarray, s22: np.ndarray,
         "s21": refer_plane(refer_plane(s21, beta1, d1_m, 1), beta2, d2_m, 1),
         "s12": refer_plane(refer_plane(s12, beta1, d1_m, 1), beta2, d2_m, 1),
     }
+
+
+def assemble_stage2_s(results: dict) -> tuple:
+    """(s11, s21, s22, s12) of the two Stage-2 drives, port 1 = lumped probe,
+    port 2 = MSL port, in power waves (#1059). Each drive's run splits the
+    lumped port's waves at its Feed_R and the MSL port's at that run's own
+    measured line impedance, so a transmission carries
+    sqrt(Re Z_ref_in / Re Z_ref_out); a bare uf_ref/uf_inc ratio across the
+    two ports over-read |S21| by about 10 % at 50 vs 61 ohm."""
+    lumped, msl = results["lumped"], results["msl"]
+    s11 = lumped["lumped_ref"] / lumped["inc"]
+    s22 = msl["msl_ref"] / msl["inc"]
+    s21 = power_wave_s(lumped["msl_ref"], lumped["inc"],
+                       lumped["z_ref_msl"], lumped["z_ref_lumped"])
+    s12 = power_wave_s(msl["lumped_ref"], msl["inc"],
+                       msl["z_ref_lumped"], msl["z_ref_msl"])
+    return s11, s21, s22, s12
 
 
 def implied_plane_error_m(dphi_rad: np.ndarray, beta: np.ndarray) -> np.ndarray:
@@ -1965,13 +1985,15 @@ def _run_stage2_leg(*, dx_m: float, sim_root: str, threads: int, nrts: int,
             # not replace the analytic anchor anywhere in shipped code).
             "z0_msl": np.asarray(getattr(msl, "ZL", getattr(msl, "Z_ref", _nan)),
                                  dtype=np.complex128),
+            # The impedances CalcPort split each port's waves with in THIS
+            # run: the power-wave factor of assemble_stage2_s (#1059).
+            "z_ref_lumped": np.asarray(lumped.Z_ref, dtype=np.complex128),
+            "z_ref_msl": np.asarray(msl.Z_ref, dtype=np.complex128),
         }
     elapsed = time.time() - t0
 
-    s11 = results["lumped"]["lumped_ref"] / results["lumped"]["inc"]
-    s21 = results["lumped"]["msl_ref"] / results["lumped"]["inc"]
-    s22 = results["msl"]["msl_ref"] / results["msl"]["inc"]
-    s12 = results["msl"]["lumped_ref"] / results["msl"]["inc"]
+    s11, s21, s22, s12 = assemble_stage2_s(results)
+    s21_voltage_ratio = results["lumped"]["msl_ref"] / results["lumped"]["inc"]
     for nm, arr in (("s11", s11), ("s21", s21), ("s22", s22), ("s12", s12)):
         _non_physical_guard(np.abs(arr), f"{label}_{nm}")
 
@@ -1994,6 +2016,13 @@ def _run_stage2_leg(*, dx_m: float, sim_root: str, threads: int, nrts: int,
         "abs_s11_reported_only": np.abs(s11).tolist(),
         "abs_s21": np.abs(s21).tolist(),
         "abs_s22": np.abs(s22).tolist(),
+        "s_normalization": "power waves: S_ij = (uf_ref_i / uf_inc_j) * sqrt(Re Z_ref_j / Re Z_ref_i) (#1059)",
+        "z_ref_ohm": {drive: {port: [[float(c.real), float(c.imag)]
+                                     for c in np.broadcast_to(results[drive][f"z_ref_{port}"], freqs.shape)]
+                              for port in ("lumped", "msl")}
+                      for drive in ("lumped", "msl")},
+        # Artifacts before #1059 recorded this ratio as |S21|.
+        "abs_s21_voltage_wave_ratio_reported_only": np.abs(s21_voltage_ratio).tolist(),
         "arg_s21_deg_unwrapped": np.degrees(np.unwrap(np.angle(s21))).tolist(),
         "beta_rad_per_m": beta.tolist(),
         "z0_msl_measured_ohm": [[float(c.real), float(c.imag)]

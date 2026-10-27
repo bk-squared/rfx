@@ -17,7 +17,7 @@ from typing import Any, TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 
-from rfx.core.yee import FDTDState
+from rfx.core.yee import FDTDState, update_he_fast
 from rfx.boundaries.pec import (
     apply_edge_keep,
     apply_pec_occupancy_box,
@@ -142,8 +142,7 @@ def make_uniform_step(
 
     def he_update(frame: UniformFrame):
         """Advance H and E together with conductor faces baked into coefficients."""
-        from rfx import simulation
-        frame.st = simulation.update_he_fast(
+        frame.st = update_he_fast(
             frame.st, ctx.fast_coeffs, boundary=ctx.curl_boundary)
 
     def h_update(frame: UniformFrame):
@@ -326,7 +325,7 @@ def make_uniform_step(
                 # the inv-eps tensor encodes the fully-PEC-cell zero
                 # already, so this would be redundant double-zeroing.
                 from rfx.stepping.conductors import apply_conformal_pec
-                frame.st = apply_conformal_pec(frame.st, tensor.conformal_weights[0], tensor.conformal_weights[1], tensor.conformal_weights[2])
+                frame.st = apply_conformal_pec(frame.st, *invariants["conformal_zero_masks"])
             if ctx.use_pec_edges:
                 # #931 §1.7: the (Mx, My, Mz) realized once at setup.
                 #

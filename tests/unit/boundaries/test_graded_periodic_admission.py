@@ -37,8 +37,12 @@ def test_nonconstant_periodic_profile_refuses(entry, skip_preflight, axis):
 @pytest.mark.parametrize("domain", [(.020, .003, .005), (.020, .028, .021)],
                          ids=["broadside", "induced-wrap-3d"])
 def test_plane_wave_with_periodic_graded_mesh_refuses(entry, skip_preflight, domain):
-    sim = simulation(True, 20e9, domain, dx=.001, cpml_layers=8,
-                     boundary=BoundarySpec(x="cpml", y="periodic", z="periodic"))
+    # The graded lane with one x cell size: y and z are periodic (constant by
+    # rule) and x carries the wave, so a graded x would meet the graded
+    # propagation-axis refusal (#2078) before the periodic one pinned here.
+    sim = Simulation(20e9, domain, dx=.001, cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y="periodic", z="periodic"),
+                     dx_profile=np.full(round(domain[0] / .001), .001))
     sim.add_tfsf_source(f0=10e9, margin=3)
     with pytest.raises(NotImplementedError, match="plane wave.*periodic.*'yz'.*use the uniform mesh"):
         getattr(sim, entry)(n_steps=1, skip_preflight=skip_preflight)

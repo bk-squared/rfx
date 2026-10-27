@@ -370,7 +370,7 @@ def maximize_directivity(
     phi_full = np.linspace(0.0, 2.0 * np.pi, n_phi)
 
     def objective(result) -> jnp.ndarray:
-        from rfx.farfield import compute_far_field
+        from rfx.measurement.farfield import compute_far_field
         from rfx._radiated_power import integrate_radiated_power
 
         ntff_data = result.ntff_data

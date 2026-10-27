@@ -37,8 +37,10 @@ from rfx import Simulation, Box
 
 C0 = 299_792_458.0
 
-a_wg = 0.02286   # WR-90 broad face (m)
-b_wg = 0.01016   # WR-90 narrow face (m)
+# A 23 x 10 mm rectangular guide, with both walls on this mesh's nodes.
+# Use 22.86 x 10.16 mm with a common cell divisor for an exact WR-90 instead.
+a_wg = 0.023     # broad face (m), 46 cells at dx below
+b_wg = 0.010     # narrow face (m), 20 cells at dx below
 length = 0.10    # total guide length (m)
 dx = 0.5e-3      # cell size (m)
 

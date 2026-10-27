@@ -13,11 +13,21 @@ Tests:
 import jax.numpy as jnp
 import pytest
 from rfx.sources.tfsf import (
-    init_tfsf, apply_tfsf_e, apply_tfsf_h, is_tfsf_2d,
-    update_tfsf_1d_h, update_tfsf_1d_e,
+    init_tfsf,
+    is_tfsf_2d,
+    update_tfsf_1d_h,
+    update_tfsf_1d_e,
+)
+from rfx.stepping.tfsf import (
+    apply_tfsf_e,
+    apply_tfsf_h,
 )
 from rfx.sources.tfsf_2d import (
-    update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+    update_tfsf_2d_h,
+    update_tfsf_2d_e,
+)
+from rfx.stepping.tfsf_2d import (
+    bloch_phase_tuple,
 )
 from rfx.core.yee import init_state, init_materials, update_h, update_e
 

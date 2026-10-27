@@ -7,7 +7,7 @@ import warnings
 
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Simulation
 from rfx.boundaries.depths import Kind
 from rfx.boundaries.features import WaveguideBoundaryWarning
 from rfx.boundaries.pec import resolve_wall_faces
@@ -31,6 +31,14 @@ def guide(boundary=None, *, partial=False, **mesh):
                      cpml_layers=4, **kwargs, **mesh)
     sim.add_waveguide_port(.01, f0=8e9, probe_offset=2, ref_offset=1,
                            y_range=(.003, .017) if partial else None)
+    if partial:
+        for lo, hi in (
+            ((0., .003, 0.), (.04, .003, .01)),
+            ((0., .017, 0.), (.04, .017, .01)),
+            ((0., .003, 0.), (.04, .017, 0.)),
+            ((0., .003, .01), (.04, .017, .01)),
+        ):
+            sim.add(Box(lo, hi), material="pec")
     return sim
 
 
@@ -52,8 +60,12 @@ def stop_after_admission(sim, monkeypatch):
 @pytest.mark.parametrize("boundary", ["cpml", {"x": "cpml", "y": "cpml", "z": "pec"}])
 def test_explicit_absorber_is_refused_at_dispatch(skip, method, boundary):
     sim = guide(boundary)
-    with pytest.raises(ValueError, match=r"full-aperture waveguide requires PEC on .*y_lo.*declare boundary="):
+    with pytest.raises(ValueError) as caught:
         getattr(sim, method)(n_steps=1, skip_preflight=skip)
+    faces = "y_hi, y_lo, z_hi, z_lo" if boundary == "cpml" else "y_hi, y_lo"
+    assert str(caught.value) == (
+        f"{method} dispatch: full-aperture waveguide requires PEC on {faces}; "
+        "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
 
 
 @pytest.mark.parametrize("skip", [False, True])
@@ -67,10 +79,14 @@ def test_refusal_declaration_preserves_port_axis_depths(skip):
     declaration = ast.literal_eval(str(caught.value).split("declare boundary=", 1)[1].split(" (", 1)[0])
     assert declaration == {"x": {"lo": "cpml", "hi": "cpml", "lo_thickness": 2, "hi_thickness": 3},
                            "y": "pec", "z": "pec"}
-    for model in (sim, guide(declaration)):
+    for model, shape, depths, axes in (
+        (sim, (46, 29, 19), (2, 3, 4, 4, 4, 4), "xyz"),
+        (guide(declaration), (46, 21, 11), (2, 3, 0, 0, 0, 0), "x"),
+    ):
         grid = model._build_grid()
-        assert grid.shape == (46, 21, 11)
-        assert tuple(face.realized for face in grid.boundary_depths) == (2, 3, 0, 0, 0, 0)
+        assert grid.shape == shape
+        assert tuple(face.realized for face in grid.boundary_depths) == depths
+        assert grid.cpml_axes == axes
 
 
 @pytest.mark.parametrize("skip", [False, True])
@@ -79,6 +95,7 @@ def test_default_records_pec_and_warns_once_at_caller(skip, monkeypatch):
     grid = sim._build_grid()
     assert sim._boundary == "cpml" and sim._boundary_explicit is False
     assert grid.shape == (49, 21, 11)
+    assert grid.cpml_axes == "x"
     assert tuple(face.kind for face in grid.boundary_depths) == (
         Kind.ABSORBER, Kind.ABSORBER, Kind.PEC, Kind.PEC, Kind.PEC, Kind.PEC)
     assert tuple(face.realized for face in grid.boundary_depths) == (4, 4, 0, 0, 0, 0)
@@ -97,14 +114,18 @@ def test_default_records_pec_and_warns_once_at_caller(skip, monkeypatch):
     assert all(face in str(defaults[0].message) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
 
 
-def test_declared_pec_and_legacy_zero_depth_absorber_apply_same_walls():
+def test_declared_absorber_pads_and_pec_default_walls():
     legacy = guide("cpml")._build_grid()
     declared = guide({"x": "cpml", "y": "pec", "z": "pec"})._build_grid()
     default = guide()._build_grid()
     expected = frozenset(("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")), frozenset()
-    for grid in (legacy, declared, default):
+    assert legacy.shape == (49, 29, 19)
+    assert tuple(face.realized for face in legacy.boundary_depths) == (4, 4, 4, 4, 4, 4)
+    assert legacy.cpml_axes == "xyz"
+    for grid in (declared, default):
         assert grid.shape == (49, 21, 11)
         assert tuple(face.realized for face in grid.boundary_depths) == (4, 4, 0, 0, 0, 0)
+        assert grid.cpml_axes == "x"
         assert resolve_wall_faces(grid, (False, False, False)) == expected
 
 
@@ -119,13 +140,14 @@ def test_kind_readers_keep_zero_pad_electric_backings():
     new = guide({"x": "cpml", "y": "pec", "z": "pec"})
     grids = (old._build_grid(), new._build_grid(), guide()._build_grid())
     coefficients = []
-    for grid in grids:
+    for grid, walls, axes in zip(grids, ((False, False, False), (False, True, True),
+                                       (False, True, True)), ("xyz", "x", "x")):
         # Tracker 1549: the multi-device run backs every electric face, the absorbing x faces included
         # (the conducting plane behind an absorber), as the single-device run does.
         assert distributed_electric_walls(grid) == frozenset(
             ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
-        assert tuple(hi_face_is_wall(grid, axis) for axis in "xyz") == (False, True, True)
-        assert grid.cpml_axes == "x"
+        assert tuple(hi_face_is_wall(grid, axis) for axis in "xyz") == walls
+        assert grid.cpml_axes == axes
         params = init_cpml(grid)[0]
         # Addendum 2 keeps legacy profiles on excluded axes; those profiles
         # are never applied. Compare every profile this guide actually uses.
@@ -139,7 +161,7 @@ def test_kind_readers_keep_zero_pad_electric_backings():
         assert magnetic_faces(sim.boundary_model()) == frozenset()
 
 
-def test_smaller_aperture_keeps_legacy_rewrite():
+def test_smaller_aperture_keeps_declared_absorbers():
     sim = guide("cpml", partial=True)
     assert sim._dispatch_plan(mode="run", n_steps=1, num_periods=1).lane == "run_uniform"
     assert tuple(face.kind for face in sim._build_grid().boundary_depths) == (Kind.ABSORBER,) * 6
@@ -191,8 +213,11 @@ def test_terminal_planes_use_realized_pads():
     from rfx.boundaries.model import realize
     legacy = guide("cpml")
     declared = guide({"x": "cpml", "y": "pec", "z": "pec"})
-    expected = (-.004, .044, 0., .02, 0., .01)
-    for sim in (legacy, declared):
+    for sim, expected in (
+        (legacy, (-.004, .044, -.004, .024, -.004, .014)),
+        (declared, (-.004, .044, 0., .02, 0., .01)),
+        (guide(), (-.004, .044, 0., .02, 0., .01)),
+    ):
         planes = realize(sim.boundary_model(), sim._build_grid())
         actual = tuple(face.terminal_m if face.terminal_m is not None else face.plane_m
                        for face in planes.faces)
@@ -259,5 +284,8 @@ def test_low_level_run_keeps_simulation_admission(include_ports):
     cfg = sim._build_waveguide_port_config(sim._waveguide_ports[0], grid,
                                           jnp.asarray([8e9]), 8)
     del sim  # the grid must retain its declaration's refusal
-    with pytest.raises(ValueError, match="low-level dispatch: full-aperture waveguide requires PEC"):
+    with pytest.raises(ValueError) as caught:
         run(grid, materials, 8, waveguide_ports=[cfg] if include_ports else [])
+    assert str(caught.value) == (
+        "low-level dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
+        "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")

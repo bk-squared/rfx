@@ -100,7 +100,7 @@ class TimeBase:
 #: one case in which the kernel itself is less accurate. Decision record
 #: 2026-10-07 "M2 after two reviews", items 3 and 4.
 KERNEL_KNOWN_DIFFERENCES = (
-    'rfx/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
+    'rfx/measurement/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
     'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
     'rfx/stepping/adjoint_scan.py: own plane sum, physically stamped',
     'traced dt or frequencies: the phase is evaluated in the trace; its float32 error grows with the step index',

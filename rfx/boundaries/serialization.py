@@ -30,9 +30,11 @@ def resolved_guide_spec(sim):
     """Resolve only main's zero-pad full-guide faces, preserving port depths."""
     if sim._uses_nonuniform_mesh or not sim._waveguide_ports:
         return sim._boundary_spec
-    from rfx.boundaries.features import guide_faces
     payload = sim._boundary_spec.to_dict()
-    for face in guide_faces(sim, sim._build_grid()):
+    # The admission record retains the former full-guide faces even when an
+    # explicit absorber now allocates pads. Old documents lack provenance;
+    # importing them must still recognize the same implicit guide default.
+    for face in sim._build_grid()._waveguide_admission[0]:
         axis, side = face.split("_")
         if payload[axis][side] in ("cpml", "upml"):
             payload[axis][side] = "pec"

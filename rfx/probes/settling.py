@@ -83,6 +83,7 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     Unknown plane/volume drives must not silently disappear from coverage.
     TF/SF uses its waveform and box diagonal in addition to point drives.
     """
+    from rfx.measurement.settling import tfsf_source_drive
     from rfx.measurement.modal import recorded
     from rfx.sources.sources import GaussianPulse
 
@@ -141,36 +142,6 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     return source_end_step(drives, n_steps, dt) if drives else None
 
 
-def tfsf_source_drive(cfg, grid):
-    """TF/SF source waveform and transit across its box diagonal."""
-    import jax.numpy as jnp
-
-    def waveform(t):
-        custom = getattr(cfg, "custom_waveform", None)
-        if custom is not None:
-            return cfg.src_amp * custom(t)
-        arg = (t - cfg.src_t0) / cfg.src_tau
-        env = jnp.exp(-(arg ** 2))
-        kind = getattr(cfg, "src_waveform", "analytic")
-        if kind == "modulated_gaussian":
-            return cfg.src_amp * env * jnp.cos(2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        if kind == "continuous_wave":
-            ramp = .5 * (1 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0., 1.)))
-            return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
-        if kind == "analytic":
-            return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        return cfg.src_amp * (-2 * arg) * env
-
-    lengths = []
-    for axis in "xyz":
-        lo = getattr(cfg, axis + "_lo", 0)
-        hi = getattr(cfg, axis + "_hi", grid.shape["xyz".index(axis)] - 1)
-        # A slab has no transverse box indices (both default to zero),
-        # but the illumination spans the transverse domain.
-        if axis != "x" and hi == lo and grid.shape["xyz".index(axis)] > 1:
-            lo, hi = 0, grid.shape["xyz".index(axis)] - 1
-        lengths.append(grid.node_of(axis, hi) - grid.node_of(axis, lo))
-    return waveform, float(np.linalg.norm(lengths))
 
 
 def sampled_source_end_step(sources, probes, grid, n_steps):

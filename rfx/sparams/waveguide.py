@@ -636,6 +636,7 @@ def compute_waveguide_s_matrix(
     # plain path — no subpixel/conformal handling for references).
     ref_materials_per_port = None
     ref_pec_edge_masks_per_port = None
+    ref_pec_masks = []
     if port_reference_sims is not None:
         ref_materials_per_port = []
         ref_pec_edge_masks_per_port = []
@@ -652,10 +653,26 @@ def compute_waveguide_s_matrix(
                 )
             _ref_pec_sheets: list = []
             _ref_pec_wires: list = []
-            _ref_base, _, _, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(
+            _ref_sheet_specs: list = []
+            _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(
                 _ref_grid, pec_sheets=_ref_pec_sheets,
-                pec_wires=_ref_pec_wires)
+                pec_wires=_ref_pec_wires, sheet_specs=_ref_sheet_specs)
+            # The reference run carries no sheet context (#677): refuse, never drop.
+            if _ref_sheet_specs:
+                raise NotImplementedError(
+                    f"port_reference_sims[{_i}] declares a surface-impedance sheet "
+                    "(add_thin_conductor(..., surface_impedance_f0=...)); the reference "
+                    "run does not model sheet impedance and would run without it. "
+                    "Remove it from the reference simulation.")
+            # The reference run carries no poles (#2058): refuse, never drop.
+            if _ref_debye is not None or _ref_lorentz is not None:
+                raise NotImplementedError(
+                    f"port_reference_sims[{_i}] declares a dispersive (Debye or "
+                    "Lorentz) material; the reference run does not model "
+                    "dispersion and would run it as a constant permittivity. "
+                    "Use non-dispersive materials in reference simulations.")
             ref_materials_per_port.append(_ref_base)
+            ref_pec_masks.append(_ref_pec_mask)
             _ref_edges_i = None
             if (_ref_pec_mask is not None or _ref_pec_sheets
                     or _ref_pec_wires):
@@ -676,6 +693,14 @@ def compute_waveguide_s_matrix(
     has_multimode = any(entry.n_modes > 1 for entry in entries)
     raw_cfgs = [self._build_waveguide_port_config(entry, grid, freqs, n_steps) for entry in entries]
     from rfx.boundaries.features import resolve_waveguide_section_medium
+    # Each reference runs these ports on its own model: admit its sections
+    # against its own materials and PEC cells, as a direct entry would (#2058).
+    for _i, (_ref_base, _ref_pec_mask) in enumerate(zip(ref_materials_per_port or (), ref_pec_masks)):
+        try:
+            resolve_waveguide_section_medium(
+                raw_cfgs, grid, _ref_base, dict(debye=None, lorentz=None, pec_mask=_ref_pec_mask), ())
+        except (ValueError, NotImplementedError) as exc:
+            raise type(exc)(f"port_reference_sims[{_i}]: {exc}") from exc
     raw_cfgs = resolve_waveguide_section_medium(
         raw_cfgs, grid, materials, dict(debye=debye, lorentz=lorentz, pec_mask=pec_mask_wg), ())
     reference_medium = _reference_medium(raw_cfgs, normalize)

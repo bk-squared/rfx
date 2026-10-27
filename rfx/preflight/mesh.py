@@ -548,7 +548,7 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
     # as single-sample arrays because only the z profile is needed here;
     # the mask admits the box's own midpoint, so the combined mask's z
     # profile is the z-axis mask.
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
     z_nodes = np.asarray(node_positions_from_profile(dz), dtype=np.float64)
 
     z_centres = z_nodes[:-1] + 0.5 * np.diff(z_nodes)
@@ -769,7 +769,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
     model, unchanged), so mirroring its mask here IS reading what the
     run realizes, not a re-derivation.
     """
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
     from rfx.materials.thin_conductor import sheet_bounds
 
     tcs = [tc for tc in getattr(self, "_thin_conductors", ())
@@ -880,7 +880,7 @@ def _graded_node_report(self, axis: int, coord: float):
     construction and never report.
     """
     from rfx._grid_metric import nearest_node_index
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
     if prof is None or is_tracer(prof):
@@ -1048,42 +1048,36 @@ def _validate_cfg_nonuniform_limitations(
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
-            # Normal incidence along a GRADED propagation axis is not the
-            # supported case either. The runner builds the 1-D incident line
-            # as ``init_tfsf(grid.nx, grid.dx, ...)``: nx cells of the
-            # boundary cell, while the 3-D axis is graded (G14). A warning,
-            # not a refusal: the runner accepts this case, and whether to
-            # block it is a separate decision.
+            # Normal incidence along a GRADED propagation axis is refused
+            # (#2078): the incident line is built on one cell size, the
+            # boundary cell, while the 3-D axis is graded (G14). The builder
+            # every entry calls refuses it too, so skip_preflight cannot
+            # reach the solve.
             _tfsf_ax = self._tfsf.direction[-1]
             _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
                           "z": self._dz_profile}[_tfsf_ax]
             if (_tfsf_prof is not None and not is_tracer(_tfsf_prof)
                     and not is_one_cell_size(_tfsf_prof)):
                 _tp = np.asarray(_tfsf_prof, dtype=float)
-                _w.warn(
-                    PreflightWarning(
-                        f"TFSF plane wave along {_tfsf_ax} on a mesh whose "
-                        f"{_tfsf_ax} cells are not one size "
-                        f"({_fmt_len(float(_tp.min()))} to "
-                        f"{_fmt_len(float(_tp.max()))}). The 1-D line that "
-                        f"computes the incident wave is built on one cell "
-                        f"size, the boundary cell, while the 3-D grid "
-                        f"carries the wave through the graded {_tfsf_ax} "
-                        f"cells. The wave the TFSF planes inject then does "
-                        f"not match the wave arriving at them, and the "
-                        f"difference leaks into the scattered-field region "
-                        f"as a spurious field. Measured with no scatterer on "
-                        f"a 60-cell +x line graded 1 / 0.5 / 1 mm: the "
-                        f"scattered-field region read 0.7 of the total-field "
-                        f"peak, against 1e-5 or less on uniform 1 mm cells "
-                        f"and with only y graded (tests/unit/preflight/"
-                        f"test_graded_axis_findings.py). Keep the "
-                        f"{_tfsf_ax} cells uniform, grading y or z instead, "
-                        f"or run on the uniform lane.",
-                        code="nonuniform_tfsf",
-                        source="_validate_cfg_nonuniform_limitations",
-                    ),
-                    stacklevel=3,
+                raise PreflightConfigError(
+                    f"TFSF plane wave along {_tfsf_ax} on a mesh whose "
+                    f"{_tfsf_ax} cells are not one size "
+                    f"({_fmt_len(float(_tp.min()))} to "
+                    f"{_fmt_len(float(_tp.max()))}). The 1-D line that "
+                    f"computes the incident wave is built on one cell "
+                    f"size, the boundary cell, while the 3-D grid "
+                    f"carries the wave through the graded {_tfsf_ax} "
+                    f"cells. The wave the TFSF planes inject then does "
+                    f"not match the wave arriving at them, and the "
+                    f"difference leaks into the scattered-field region "
+                    f"as a spurious field: 0.72 of the total-field peak "
+                    f"with no scatterer on a 60-cell +x line graded "
+                    f"1 / 0.5 / 1 mm, against 1e-5 or less on uniform 1 mm "
+                    f"cells and with only y graded (rfx#2078). Keep the "
+                    f"{_tfsf_ax} cells uniform, grading y or z instead, "
+                    f"or run on the uniform lane.",
+                    code="nonuniform_tfsf",
+                    source="_validate_cfg_nonuniform_limitations",
                 )
 
         # P2.6: CPML z-thickness on non-uniform mesh.

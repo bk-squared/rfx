@@ -137,7 +137,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "UPML's H coefficients: the PML loss sigma_perp*dt/(2*EPS_0)",
     ("rfx/current_moments.py", "accumulate_current_moments"):
         "EPS_0/dt multiplies a field difference (displacement current)",
-    ("rfx/current_moments.py", "end_of_record_moments"): _HOST,
+    ("rfx/measurement/current_moments.py", "end_of_record_moments"): _HOST,
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
     ("rfx/lumped.py", "setup_rlc_materials"):
         "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
@@ -153,13 +153,13 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sources/coaxial_port.py", "coaxial_tem_capacitance_per_m"): _HOST,
     ("rfx/sources/msl_port.py", "compute_msl_mode_profile._cap_per_metre"): _HOST,
     ("rfx/sources/tfsf_discrete_plane_wave.py", "_tables"): _VACUUM,
-    ("rfx/sources/tfsf.py", "apply_tfsf_e"): _VACUUM,
+    ("rfx/stepping/tfsf.py", "apply_tfsf_e"): _VACUUM,
     ("rfx/sources/tfsf.py", "update_tfsf_1d_e"): _VACUUM + " (the 1-D auxiliary line)",
-    ("rfx/sources/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
-    ("rfx/sources/tfsf_2d.py", "_update_e_tmz"): _VACUUM + " (the 1-D auxiliary line)",
+    ("rfx/stepping/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
+    ("rfx/stepping/tfsf_2d.py", "_update_e_tmz"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
     ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
-    ("rfx/sources/tfsf_oblique_open.py", "apply_methodB_e"): _VACUUM,
+    ("rfx/stepping/tfsf_oblique.py", "apply_methodB_e"): _VACUUM,
     ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "port medium is a concrete resolved scalar; traced section permittivity is refused",
     ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"):

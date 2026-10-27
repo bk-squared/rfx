@@ -38,6 +38,20 @@ from rfx.model.graded_admission import (
     NominalProfile,
     traced_cell_mask,
 )
+from rfx.model.graded_grid import (
+    e_node_dual_spacing_at,
+    make_nonuniform_grid,
+    position_to_index,
+)
+from rfx.model.graded_profile import (
+    make_band_profile,
+    make_z_profile,
+)
+from rfx.model.materials import (
+    e_update_coefficient_at,
+    electric_grid_kwargs,
+    electric_materials_traced,
+)
 from rfx.model.occupancy import (
     graded_conductor_masks,
     select_occupancy_operator,
@@ -46,6 +60,8 @@ from rfx.model.occupancy import (
 )
 from rfx.model.source_coefficients import (
     current_source_samples,
+    source_table,
+    uniform_source_table,
 )
 from rfx.model.thin_conductors import (
     admit_thin_conductor,
@@ -78,6 +94,10 @@ __all__ = [
     "distributed_kernel_inputs",
     "distributed_solve_inputs",
     "drawn_launch_eps",
+    "e_node_dual_spacing_at",
+    "e_update_coefficient_at",
+    "electric_grid_kwargs",
+    "electric_materials_traced",
     "forward_kernel_inputs",
     "forward_lumped_port_stage",
     "forward_port_stage",
@@ -87,8 +107,12 @@ __all__ = [
     "held_edge_masks",
     "init_multimode_waveguide_port",
     "init_waveguide_port",
+    "make_band_profile",
+    "make_nonuniform_grid",
+    "make_z_profile",
     "NominalProfile",
     "PortMedium",
+    "position_to_index",
     "prepare_port_occupancy",
     "prepare_sheet_layout",
     "PreparedSolve",
@@ -96,10 +120,12 @@ __all__ = [
     "resolve_design_box",
     "select_occupancy_operator",
     "solve_rectangular_modes",
+    "source_table",
     "stage_distributed_edges",
     "stage_distributed_occupancy",
     "traced_cell_mask",
     "uniform_solve_inputs",
+    "uniform_source_table",
     "waveguide_waveform_error",
     "WaveguidePort",
     "WaveguidePortConfig",

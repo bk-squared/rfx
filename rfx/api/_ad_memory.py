@@ -252,18 +252,19 @@ class _AdMemoryMixin:
             segmented=segmented)
         forward_bytes = accounting["forward_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
+        replay_table_bytes = model["replay_table_bytes"]
         batched_bytes = (cotangents - 1) * model["carry_bytes"]
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes + batched_bytes  # legacy heuristic
         active_steps = n_steps_i - n_warmup_i
         fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"] + model["resident_bytes"]
-        ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes + batched_bytes
+        ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes + replay_table_bytes + batched_bytes
         segmented_active_segments, segmented_live_tape_steps = segment_counts(
             n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         ad_seg_bytes = None
         if segmented_active_segments is not None:
             saved = segmented_active_segments * model["carry_bytes"]
             ad_seg_bytes = (fixed_bytes + saved
-                            + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes + batched_bytes)
+                            + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes + replay_table_bytes + batched_bytes)
 
         # Device memory detection (best effort). CPU has no device budget.
         memory_limit_unknown = False
@@ -334,6 +335,8 @@ class _AdMemoryMixin:
             ad_checkpointed_gb=ad_ckpt_bytes * to_gb,
             ad_full_gb=ad_full_bytes * to_gb,
             ntff_dft_gb=ntff_bytes * to_gb,
+            replay_table_bytes=replay_table_bytes,
+            replay_table_bytes_by_kind=model["replay_table_bytes_by_kind"],
             available_gb=avail_gb,
             warning=warning,
             ad_segmented_gb=(ad_seg_bytes * to_gb) if ad_seg_bytes is not None else None,
@@ -415,6 +418,9 @@ class _AdMemoryMixin:
                       unit="live-segment-time-step-tape", explanation="One live rematerialized segment.")
         component("ntff_dft_state", accounting["ntff_bytes"], "monitor_state",
                   explanation="NTFF DFT state counted separately from the calibrated fixed term.")
+        for kind, size in estimate.replay_table_bytes_by_kind:
+            component(f"{kind}_replay_tables", size, "reverse_ad_saved_state",
+                      explanation=f"Post-scan {kind} replay weights retained by the pullback, padded to replay blocks.")
         dominant = max(parts, key=lambda c: c.memory_gb).name
         recommendations = [f"Dominant AD memory contributor is {dominant}.",
                            "Treat ad_checkpointed_gb as a legacy heuristic; use the selected memory field for planning."]
@@ -532,7 +538,7 @@ class _AdMemoryMixin:
             model = tape_accounting(self, accounting, design_box=design_box, design=design,
                 checkpoint=True, segmented=True, distributed=distributed, n_steps=n,
                 checkpoint_every=1, n_warmup=warmup)
-            extra = accounting["sheet_bytes"] + accounting["ntff_bytes"] + model["resident_bytes"]
+            extra = accounting["sheet_bytes"] + accounting["ntff_bytes"] + model["resident_bytes"] + model["replay_table_bytes"]
             plan = plan_checkpoint_lengths(n - warmup, boundary_bytes=model["carry_bytes"],
                 step_bytes=model["tape_step_bytes"], static_bytes=model["c0_bytes"],
                 cotangents=cotangents,
@@ -547,6 +553,7 @@ class _AdMemoryMixin:
             every, segments = (knob, None) if graded else (None, knob)
             count, live = segment_counts(n, warmup, every, segments)
             memory = (window_full.ad_fixed_gb + window_full.ntff_dft_gb
+                      + window_full.replay_table_bytes / 1e9
                       + (count * window_full.carry_bytes + live * window_full.tape_step_bytes
                          + (cotangents - 1) * window_full.carry_bytes) / 1e9)
             estimate = window_full._replace(

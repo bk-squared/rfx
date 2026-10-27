@@ -161,7 +161,7 @@ def run_rfx_mono(
     from rfx.grid import Grid, C0
     from rfx.geometry.csg import Sphere, rasterize
     from rfx.core.yee import MaterialArrays
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
 
     f0 = ka * C0 / (2.0 * np.pi * _RADIUS_M)
     lam = C0 / f0

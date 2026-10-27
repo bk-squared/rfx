@@ -41,9 +41,10 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     else:
         shape = tuple(grid.shape) if grid is not None else ()
     from rfx.api._ad_carry import read_carry
+    replay_tables = []
     saved, excluded, carry_warnings = read_carry(sim, grid, n_steps, design_box=design_box, design=design,
         shape=shape, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
-        checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
+        checkpoint_segments=checkpoint_segments, n_warmup=n_warmup, replay_tables=replay_tables)
     carry = sum(x["bytes"] for x in saved)
     resident = face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
         checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
@@ -59,6 +60,8 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         # it by the carry plus six window arrays, rather than claiming a fit.
         tape = carry + 6 * window * 4
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
+                replay_table_bytes=sum(size for _, size in replay_tables),
+                replay_table_bytes_by_kind=tuple(replay_tables),
                 modelled=True, unmodelled_features=[],
                 carry_bytes=carry,
                 resident_bytes=resident,

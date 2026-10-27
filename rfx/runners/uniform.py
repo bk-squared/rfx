@@ -176,6 +176,12 @@ def run_uniform(
         from rfx.geometry.smoothing import warn_unextendable_shapes
         # Assembly already emitted the conductor findings for this run.
         warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
+    if sim._waveguide_ports and (conformal_weights is not None
+                                 or sim._boundary_spec.conformal_faces()):
+        # Dispatch judged the default conformal routing; judge the weights formed here.
+        from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+        refuse_bare_waveguide_edges(sim, grid, lane="run_uniform",
+                                    conformal_weights=conformal_weights)
     if conformal_weights is not None:
         # Conformal replaces binary pec_mask; Stage 2 keeps it alive.
         pec_mask = None

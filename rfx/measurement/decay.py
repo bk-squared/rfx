@@ -75,7 +75,8 @@ def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
     drive whose end cannot be computed before the loop.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.probes.settling import source_end_step, tfsf_source_drive
+    from rfx.probes.settling import source_end_step
+    from rfx.measurement.settling import tfsf_source_drive
 
     drives = []
     for kind, entries in (("source", sources), ("magnetic source", mag_sources)):

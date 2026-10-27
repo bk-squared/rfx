@@ -8,11 +8,19 @@ import numpy as np
 import pytest
 
 from rfx import Simulation, Box, DebyePole
+import rfx.model
 from rfx.model import source_coefficients as tables
 from rfx.simulation import make_source, make_j_source
 from rfx.nonuniform import make_current_source
 
 EPS = 8.8541878128e-12
+
+
+def _patch_source_table(monkeypatch, replacement):
+    """The graded lane reads the one builder through the rfx.model package top, the others through its module."""
+    assert rfx.model.source_table is tables.source_table
+    for owner in (tables, rfx.model):
+        monkeypatch.setattr(owner, 'source_table', replacement)
 
 
 def _wave(t):
@@ -188,7 +196,7 @@ def test_mutation_field_coefficient_round_trip_is_detected(monkeypatch):
             cb = kw['coefficient']()
             return (kw['volume'] / cb) * ((cb / kw['volume']) * samples)
         return original(samples, kind, **kw)
-    monkeypatch.setattr(tables, 'source_table', mutated)
+    _patch_source_table(monkeypatch, mutated)
     with pytest.raises(AssertionError):
         _field_oracle('graded')
 
@@ -224,7 +232,7 @@ def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane)
         result = original(*args, **kwargs)
         built.append(result)
         return result
-    monkeypatch.setattr(tables, 'source_table', capture)
+    _patch_source_table(monkeypatch, capture)
     def table(a):
         built.clear()
         override = a if lane == 'adi' else jnp.ones(grid.shape) * a

@@ -96,6 +96,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.simulation import _suggest_checkpoint_segments
+from tests._msl_probe0 import line_s
 
 # --------------------------------------------------------------------------
 # Fixture geometry (mirrors test_msl_port_integration.py, L_LINE shortened)
@@ -491,7 +492,9 @@ def test_o3_mean_s21_drift_lock(record_property):
     """
     got = {}
     for tag, want in O3_MEAN_S21.items():
-        got[tag] = float(np.mean(np.abs(np.asarray(_settled(tag)[0].S)[1, 0, GATE])))
+        # Locked at the line's analytic impedance (47.89 ohm); since #2014 S is referred
+        # to the declared impedance= (50 ohm), which alone lowers this mean by 2e-3.
+        got[tag] = float(np.mean(np.abs(np.asarray(line_s(_settled(tag)[0]))[1, 0, GATE])))
         record_property(f"o3_mean_s21_{tag}", got[tag])
         print(f"[O3 drift] {tag}: mean|S21|(gate) = {got[tag]!r} (locked {want!r}, "
               f"diff {got[tag] - want:+.3e}, tol {O3_DRIFT_TOL:.1e})", file=sys.stderr)

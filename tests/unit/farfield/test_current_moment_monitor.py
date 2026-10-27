@@ -55,17 +55,19 @@ from rfx.current_moments import (
     NONUNIFORM_PLANE_STAMP_STEPS,
     UNIFORM_PLANE_STAMP_STEPS,
     accumulate_current_moments,
-    block_far_field_jax,
-    block_far_field_np,
     build_current_moment_monitor,
     current_moment_far_field,
     current_moment_monitor_from_grid,
     e_dual_spacings,
-    end_of_record_moments,
     init_current_moment_data,
     moments_to_PQT,
     plane_stamp_steps,
     slab_e_snapshot,
+)
+from rfx.measurement.current_moments import (
+    block_far_field_jax,
+    block_far_field_np,
+    end_of_record_moments,
     to_post_processing_convention,
 )
 from rfx.probes.probes import init_dft_plane_probe
@@ -2027,7 +2029,7 @@ def test_refuses_a_pmc_face_and_accepts_absorbing_faces():
 
 
 def test_refuses_a_plane_port_and_accepts_a_lumped_port():
-    from rfx import Simulation
+    from rfx import Box, Simulation
 
     def bare():
         sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
@@ -2040,6 +2042,12 @@ def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     sim = bare()
     sim.add_waveguide_port(4e-3, y_range=(4e-3, 20e-3), z_range=(8e-3, 16e-3),
                            freqs=GUARD_FREQS)
+    # PEC guide walls on the aperture edges, ending before the slab (x < 6 mm)
+    for lo, hi in (((0., 2e-3, 6e-3), (5e-3, 4e-3, 18e-3)),
+                   ((0., 20e-3, 6e-3), (5e-3, 22e-3, 18e-3)),
+                   ((0., 2e-3, 6e-3), (5e-3, 22e-3, 8e-3)),
+                   ((0., 2e-3, 16e-3), (5e-3, 22e-3, 18e-3))):
+        sim.add(Box(lo, hi), material="pec")
     with pytest.raises(NotImplementedError, match="waveguide port"):
         _guard_runs(sim)
     sim = bare()

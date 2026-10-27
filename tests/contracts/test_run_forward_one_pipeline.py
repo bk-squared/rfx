@@ -342,11 +342,25 @@ def directions(declaration):
     return ('a', 'b') if declaration in PORTED else (None,)
 
 
+# Both entries refuse, but from two guards, not one check both call
+# (rfx-core-desk 2026-10-27): census failing rows = 11.
+TWO_GUARD_REFUSALS = {
+    **{('P-coax', p): '#2075 run() and forward() refuse the coaxial port from two guards in _execute.py'
+       for p in ('uniform', 'graded', 'multi-device-uniform', 'multi-device-graded')},
+    **{(d, 'multi-device-graded'): '#2076 graded multi-device forward() admits through its own list'
+       for d in ('P-msl', 'R-rlc')},
+}
+
+
 def parameters(rows, level, *, slow=False):
+    def marks(d, p):
+        found = [pytest.mark.slow] if (
+            slow or (level == 'L1' and p == 'multi-device-graded' and DISTRIBUTED_L1_SLOW)) else []
+        if level == 'refusal' and (d, p) in TWO_GUARD_REFUSALS:
+            found.append(pytest.mark.xfail(strict=True, reason=TWO_GUARD_REFUSALS[d, p]))
+        return found
     return [pytest.param(d, p, direction, id=f'{d}-{p}' + (f'-{direction}' if direction else ''),
-                         marks=[pytest.mark.slow] if
-                         slow or (level == 'L1' and p == 'multi-device-graded' and DISTRIBUTED_L1_SLOW)
-                         else []) for d, p in rows for direction in directions(d)]
+                         marks=marks(d, p)) for d, p in rows for direction in directions(d)]
 
 
 def entry_options(declaration):
@@ -553,9 +567,35 @@ DECLARATION_REFUSAL_ROWS = (
 )
 
 
+#: The exception classes rfx raises to refuse a request it does not solve
+#: (admission rows and lane refusals: NotImplementedError; configuration
+#: guards, PreflightConfigError included: ValueError).
+REFUSAL_TYPES = ('NotImplementedError', 'ValueError')
+
+
+def raised_in_rfx(record):
+    source_root = Path(__file__).resolve().parents[2] / 'rfx'
+    raising_path = Path(record['raising_site'].rsplit(':', 1)[0]).resolve()
+    return raising_path.is_relative_to(source_root)
+
+
+def same_raising_line(run, forward):
+    # One refusal both entries call raises from one line; two guards with
+    # the same text do not (rfx-core-desk 2026-10-27).
+    return (Path(run['raising_site'].rsplit(':', 1)[0]).resolve(),
+            run['raising_site'].rsplit(':', 1)[1]) == (
+        Path(forward['raising_site'].rsplit(':', 1)[0]).resolve(),
+        forward['raising_site'].rsplit(':', 1)[1])
+
+
 def both_refused(declaration, path, pair):
-    if all(record['outcome'] == 'raised' for record in pair.values()):
-        return True
+    # A crash on both entries is not a refusal: both must raise the same
+    # refusal type from the same line inside rfx. Messages are not compared.
+    run, forward = pair['run'], pair['forward']
+    if run['outcome'] == forward['outcome'] == 'raised':
+        return (run['type'] == forward['type'] and run['type'] in REFUSAL_TYPES
+                and raised_in_rfx(run) and raised_in_rfx(forward)
+                and same_raising_line(run, forward))
     if (declaration, path) not in DECLARATION_REFUSAL_ROWS:
         return False
     if not all(record['outcome'] == 'not_called' for record in pair.values()):
@@ -563,12 +603,10 @@ def both_refused(declaration, path, pair):
     construction = pair['run']['construction']
     if construction != pair['forward']['construction']:
         return False
-    source_root = Path(__file__).resolve().parents[2] / 'rfx'
-    raising_path = Path(construction['raising_site'].rsplit(':', 1)[0]).resolve()
     return (construction['outcome'] == 'raised'
-            and construction['type'] in ('NotImplementedError', 'ValueError')
+            and construction['type'] in REFUSAL_TYPES
             and 'closed_box TFSF require a uniform' in construction['message']
-            and raising_path.is_relative_to(source_root))
+            and raised_in_rfx(construction))
 
 
 @pytest.mark.parametrize('declaration,path,direction', parameters(BOTH_REFUSE_ROWS, 'refusal'))
@@ -596,6 +634,30 @@ def test_both_refuse(declaration, path, direction):
             assert expected in record['message'], record
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
+
+
+def _raised(kind, message, site='rfx/runners/_admission.py:1'):
+    root = Path(__file__).resolve().parents[2]
+    return {'outcome': 'raised', 'type': kind, 'message': message,
+            'raising_site': f'{root / site}'}
+
+
+@pytest.mark.parametrize('case,run,forward,refused', [
+    ('one refusal', _raised('NotImplementedError', 'm'), _raised('NotImplementedError', 'm'), True),
+    ('crash on both', _raised('AttributeError', "'list' object has no attribute 'v_probe_t'"),
+     _raised('AttributeError', "'list' object has no attribute 'v_probe_t'"), False),
+    ('different types', _raised('NotImplementedError', 'm'), _raised('ValueError', 'm'), False),
+    ('one entry crashes', _raised('AttributeError', 'm'), _raised('NotImplementedError', 'm'), False),
+    ('messages differ by entry name', _raised('ValueError', 'm run()'), _raised('ValueError', 'm forward()'), True),
+    ('two guards with one text', _raised('ValueError', 'm', 'rfx/api/_dispatch.py:252'),
+     _raised('ValueError', 'm', 'rfx/api/_dispatch.py:190'), False),
+    ('two guards in two files', _raised('ValueError', 'm'), _raised('ValueError', 'm', 'rfx/runners/distributed_v2.py:1'), False),
+    ('raised outside rfx', _raised('ValueError', 'm', 'tests/x.py:1'),
+     _raised('ValueError', 'm', 'tests/x.py:1'), False),
+])
+def test_both_refused_requires_one_refusal_from_rfx(case, run, forward, refused):
+    """#2070: a crash on both entries read as 'both refuse'."""
+    assert both_refused('P-waveguide', 'uniform', {'run': run, 'forward': forward}) is refused, case
 
 
 @pytest.mark.parametrize('error', (TypeError, ValueError, NotImplementedError))

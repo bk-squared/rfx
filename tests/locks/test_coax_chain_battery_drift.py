@@ -60,6 +60,7 @@ import numpy as np
 import pytest
 
 from tests import _chain_battery_drift as drift
+from tests._msl_probe0 import line_s
 
 FAMILY = "coaxial"
 DRIVER = LOCK_PROVENANCE["generator"]
@@ -114,7 +115,11 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
         entry["cross_check"],
         driver.cross_check_result_against_layout(live_geometry, result, "two_port"),
         "cross_check")
-    live = np.asarray(result.s_params)
+    # The record's S is at the line's analytic TEM impedance (48.59 ohm); since #2014
+    # the result is referred to the declared impedance= (50 ohm), so read it back at
+    # the line before comparing. At 50 ohm the 1.4 ohm reference step alone moves the
+    # bead's |S11| zero 9.091 -> 8.987 GHz.
+    live = np.asarray(line_s(result))
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,
                                rtol=1e-6, atol=0.0)

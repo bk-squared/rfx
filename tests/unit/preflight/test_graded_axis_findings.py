@@ -63,18 +63,20 @@ def test_a_dx_only_graded_mesh_is_checked_for_tfsf_support():
     assert "nonuniform_tfsf" in _codes(report)
 
 
-def test_the_same_mesh_at_normal_incidence_is_flagged_too():
+def test_the_same_mesh_at_normal_incidence_is_a_blocking_error():
     """Normal incidence along a graded x is not the supported case either.
 
     The runner builds the 1-D line that computes the incident wave on one
     cell size, the boundary cell, while the 3-D grid carries the wave through
     the graded x cells. The two waves part company inside the box, and the
-    difference leaks out of it; the witness below measures how much.
+    difference leaks out of it (0.72 of the peak, #2078). Preflight reports
+    it as an error, as it does the oblique case.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         report = _dx_graded_tfsf_sim(0.0).preflight()
-    assert "nonuniform_tfsf" in _codes(report)
+    found = [i for i in report.issues if getattr(i, "code", None) == "nonuniform_tfsf"]
+    assert [i.severity for i in found] == ["error"]
 
 
 @pytest.mark.parametrize("graded", ["y", "z"])
@@ -96,54 +98,74 @@ def test_a_constant_x_with_a_graded_transverse_axis_is_not_flagged(graded):
     assert "nonuniform_tfsf" not in _codes(report)
 
 
-def _tfsf_leakage(**profiles):
-    """Peak |Ez| in the scattered-field region beyond the far TFSF plane,
-    over the peak inside the box, for a +x plane wave with NO scatterer:
-    50 x 6 x 6 cells of 1 mm unless a profile says otherwise, 1500 steps.
-    With nothing to scatter, anything outside the box is leakage."""
+def _tfsf_line(direction="+x", **profiles):
+    """A +x or -x plane wave with NO scatterer: 50 x 6 x 6 cells of 1 mm
+    unless a profile says otherwise. Probe 0 inside the box, probe 1 in the
+    scattered-field region 1 mm before the far absorber."""
     lx = float(np.sum(profiles.get("dx_profile", np.full(50, _DX))))
     ly = float(np.sum(profiles.get("dy_profile", np.full(6, _DX))))
     lz = float(np.sum(profiles.get("dz_profile", np.full(6, _DX))))
     sim = Simulation(freq_max=10e9, domain=(lx, ly, lz), dx=_DX,
                      boundary="cpml", cpml_layers=8, **profiles)
-    sim.add_tfsf_source(direction="+x", f0=6e9, bandwidth=0.5, amplitude=1.0,
+    sim.add_tfsf_source(direction=direction, f0=6e9, bandwidth=0.5, amplitude=1.0,
                         margin=3, polarization="ez")
+    far = lx - 1.0e-3 if direction == "+x" else 1.0e-3
     sim.add_probe((lx / 2 + 0.25e-3, ly / 2, lz / 2), "ez")
-    sim.add_probe((lx - 1.0e-3, ly / 2, lz / 2), "ez")
+    sim.add_probe((far, ly / 2, lz / 2), "ez")
+    return sim
+
+
+def _tfsf_leakage(**profiles):
+    """Peak |Ez| in the scattered-field region over the peak inside the box,
+    1500 steps. With nothing to scatter, anything outside the box is leakage."""
+    sim = _tfsf_line(**profiles)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        codes = _codes(sim.preflight())
         ts = np.asarray(sim.run(n_steps=1500, compute_s_params=False)
                         .time_series)
-    return (float(np.max(np.abs(ts[:, 1])) / np.max(np.abs(ts[:, 0]))),
-            "nonuniform_tfsf" in codes)
+    return float(np.max(np.abs(ts[:, 1])) / np.max(np.abs(ts[:, 0])))
 
 
-def test_the_leakage_the_tfsf_advisory_quotes():
-    """The witness for the numbers the advisory prints.
+_X_GRADED = np.concatenate([np.full(20, _DX), np.full(20, 0.5 * _DX), np.full(20, _DX)])
 
-    A plane wave with nothing in its way must stay inside the TFSF box. On
+
+def test_the_leakage_on_the_supported_meshes():
+    """A plane wave with nothing in its way must stay inside the TFSF box. On
     uniform 1 mm x cells the scattered-field region reads about 1e-5 of the
-    total-field peak, and grading only y keeps it there. Grading x
-    1 / 0.5 / 1 mm (20 cells each) puts 0.7 of the peak outside the box: the
-    incident line is built on the 1 mm boundary cell, so the wave it injects
-    at the far plane is not the one the graded grid delivers there. The
-    advisory fires on that board and on no other.
+    total-field peak, and grading only y keeps it there.
+
+    Grading x 1 / 0.5 / 1 mm (20 cells each) put 0.72 of the peak outside the
+    box before #2078 refused it (0.716 with the magnetic CPML profile at the
+    Yee half cell, the same with 8, 16 or 24 absorber layers): the incident
+    line is built on the 1 mm boundary cell, so the wave it injects at the far
+    plane is not the one the graded grid delivers there.
     """
-    uniform, flagged_u = _tfsf_leakage(dx_profile=np.full(50, _DX))
-    y_graded, flagged_y = _tfsf_leakage(dy_profile=np.concatenate(
+    uniform = _tfsf_leakage(dx_profile=np.full(50, _DX))
+    y_graded = _tfsf_leakage(dy_profile=np.concatenate(
         [np.full(2, _DX), np.full(4, 0.5 * _DX), np.full(2, _DX)]))
-    x_graded, flagged_x = _tfsf_leakage(dx_profile=np.concatenate(
-        [np.full(20, _DX), np.full(20, 0.5 * _DX), np.full(20, _DX)]))
     assert uniform < 2e-5, uniform
     assert y_graded < 2e-5, y_graded
-    # 0.716 with the magnetic CPML profile at the Yee half cell, the same with
-    # 8, 16 or 24 absorber layers. Before #1012 this read 0.598 with 8 layers,
-    # 0.677 with 16 and 0.702 with 24: the probe sits 1 mm in front of the x-hi
-    # absorber, and the old absorber's reflection reached it (Addendum 11 of
-    # #1012).
-    assert 0.67 < x_graded < 0.77, x_graded
-    assert (flagged_u, flagged_y, flagged_x) == (False, False, True)
+
+
+@pytest.mark.parametrize("direction", ["+x", "-x"])
+@pytest.mark.parametrize("entry", ["run", "run_skip_preflight", "forward",
+                                   "forward_skip_preflight"])
+def test_a_graded_propagation_axis_is_refused_on_every_entry(entry, direction, monkeypatch):
+    """#2078: a warning followed by a different model is refused instead, at
+    the builder every entry calls, so skip_preflight cannot reach the solve."""
+    import jax
+    monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped a refused plane wave"))
+    sim = _tfsf_line(direction, dx_profile=_X_GRADED)
+    skip = entry.endswith("skip_preflight")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError) as exc:
+            if entry.startswith("run"):
+                sim.run(n_steps=4, compute_s_params=False, skip_preflight=skip)
+            else:
+                sim.forward(n_steps=4, checkpoint=False, skip_preflight=skip)
+    message = str(exc.value)
+    assert "x cells" in message and "2078" in message, message
 
 
 # ---------------------------------------------------------------------------

@@ -267,7 +267,7 @@ reported, not gated.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
-Tracker: #1976
+Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
 
 On a passive microstrip, `compute_msl_s_matrix(...)` can return S whose column
 power is above 1 on nearly every bin. On a synthetic board with a 0.3 mm
@@ -277,9 +277,27 @@ board, with 1.5 mm of air above the line and 8 CPML layers, the extra power
 enters the board region through the top face, from the absorber. With 4.5 mm of
 air above the line, or with 16 layers (the default), the column power stays at
 or below 1 on every bin from 1.5 to 7 GHz. A wider lateral margin does not
-change it. Two causes remain possible, not yet told apart: the thin top absorber
-returns the feed's upward radiation into the board, or it is not passive for the
-strip's near field.
+change it.
+
+A power balance on a closed box around the board (diagnostic: one board, one
+50 µm mesh, 1.5–7 GHz) measures the same thing directly. With 8 layers, the
+top and side faces return up to 0.2 % of the driven power into the board
+(2.0×10⁻³, near 5.8 GHz). On this board's |S21| that is at most 0.009 dB. A
+record 1.5 times longer moves the balance by at most 0.1 %. With 16 layers on
+every face the returned power falls to the noise level (+1.1×10⁻⁴), at 1.26
+times the cells of the 8-layer run. Sampling E and H from one absorber profile
+at their own Yee positions lowers the 8-layer excess to 0.72 of its size and
+does not remove it. The absorber depth matters more than the E/H profile
+offset. The returned power follows the strip, not the domain: moving the side
+absorbers 6 mm farther from the strip ends changes it by at most 1.3 %, and its
+swing over frequency has the strip's one-way transit time (within 3 %). Whether
+the thin top absorber reflects the line's near field or is not passive for it
+is not measured. Not measured either:
+16 layers on the top face alone, other substrates and air heights, and how the
+balance moves with the mesh.
+
+An optimiser objective that rewards `|S21|` can exploit that 0.2 % of
+returned power. Keep 16 layers (the default) when passivity matters.
 
 The non-passive warning from this call tells you to suspect a record that ended
 early or a coarse mesh. That advice does not fit this case: these records ring
@@ -319,26 +337,6 @@ against a run with the update's exact coefficient, and refused if the error is
 outside the accuracy bar.
 
 The field increment a source adds on its edge is the update's coefficient times the drive. One place still computes that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
-
-### On the uniform mesh, a waveguide port smaller than the domain cross-section closes the transverse faces with metal walls, whatever boundary is declared.
-
-Tracker: #1826
-
-When a waveguide port is given a `y_range`/`z_range` aperture smaller than the
-domain (an open-ended guide or a horn drawn as geometry), the uniform mesh puts
-the absorber only on the port's axis. The other four domain faces get no
-absorber layers and reflect like metal walls, even with `boundary="cpml"`
-declared, and no warning is given. A structure that radiates is then solved
-inside a closed box. On an open-ended WR-90 radiating into air (1.27 mm cells,
-8.2–12.4 GHz), `|S11|` on the uniform mesh was off by up to 2.9 dB (median
-1.8 dB) from the same declaration on a graded mesh. The ripple moves with the
-lateral margin, as box resonances do, and the run does not settle. The graded
-mesh keeps the declared absorber on all six faces, and its `|S11|` did not
-change when the absorber depth or the simulation time was doubled. A port that
-spans the whole cross-section is not affected: there the transverse faces are
-the guide's walls, and both meshes warn or refuse unless they are declared PEC.
-Until this is fixed, solve a partial-aperture port that radiates on a graded
-mesh (a constant `dz_profile` is enough).
 
 ### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
 

@@ -12,7 +12,8 @@ class ADMemoryUnavailable(ValueError):
 class AD_MemoryEstimate(NamedTuple):
     """Reverse-mode tape estimate, calibrated on GPU with JAX 0.10.2.
 
-    Sizes are decimal GB. Segments save one scan carry per active boundary
+    Sizes ending in ``_gb`` are decimal GB; ``_bytes`` fields are integers.
+    Segments save one scan carry per active boundary
     plus a live segment, independently of the per-step checkpoint flag.
     The fixed AD working set is calibrated by
     formulation; it is distinct from the forward-only working set.
@@ -62,6 +63,10 @@ class AD_MemoryEstimate(NamedTuple):
     calibration: str = "calibrated (GPU, jax 0.10.2)"
     carry_warnings: tuple[str, ...] = ()
     cotangents: int = 1
+    #: Post-scan replay weights, separate from scan carry and NTFF state.
+    replay_table_bytes: int = 0
+    #: Realized measurement kind and its summed retained replay weight bytes.
+    replay_table_bytes_by_kind: tuple[tuple[str, int], ...] = ()
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""

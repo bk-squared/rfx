@@ -241,11 +241,6 @@ def admission(what, lane, before):
 GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
                     "(mode='3d') as the remedy (#1340)",
                     raises="Build the 2-D problem as a thin 3-D box")
-# forward() returns no flux field and does not build the monitors, by design:
-# a monitor declared for run() costs forward() nothing and drops no result.
-FWD_FLUX = ("forward() returns no flux field and does not build flux monitors, by design "
-            "(tests/unit/sparams/test_mixed_port_sparam.py::"
-            "test_forward_does_not_pay_for_flux_monitors); the monitor belongs to run()")
 
 
 # Lane gates: a cell whose lane admits the row for some declarations only,
@@ -789,8 +784,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             fwd_nonuniform=refuses("the graded runner implements CPML only",
                                    raises="boundary='upml' does not support the non-uniform forward() lane"),
             fwd_distributed_nu=refuses(
-                "the graded runner implements CPML only",
-                raises="boundary='upml' does not support the distributed non-uniform forward() lane"),
+                "boundary='upml' refused by the multi-device check both entries call",
+                raises="boundary='upml' does not support distributed execution"),
             fwd_adi=refuses("boundary='upml' refused", raises="solver='adi' does not support boundary='upml'",
                             declared=True),
         ),

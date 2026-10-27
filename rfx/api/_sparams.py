@@ -36,7 +36,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,
 )
 
-from rfx.nonuniform import NonUniformGrid, interior_cells
+from rfx.model.graded_grid import NonUniformGrid, interior_cells
 
 from rfx.api._spec import (
     WaveguideSMatrixResult,

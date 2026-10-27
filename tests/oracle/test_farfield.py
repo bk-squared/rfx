@@ -17,7 +17,11 @@ from rfx.core.yee import init_materials
 from rfx.sources.sources import GaussianPulse
 from rfx.simulation import make_source, make_probe, run
 from rfx.farfield import (
-    make_ntff_box, compute_far_field, directivity,
+    make_ntff_box,
+    directivity,
+)
+from rfx.measurement.farfield import (
+    compute_far_field,
 )
 from rfx.optimize_objectives import maximize_directivity
 
