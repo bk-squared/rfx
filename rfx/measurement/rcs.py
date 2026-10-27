@@ -568,9 +568,8 @@ def compute_rcs(
     mono_linear = 4.0 * np.pi * power_back / safe_power_inc
     monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
 
-    from rfx.probes.settling import source_end_step
-    from rfx.measurement.settling import tfsf_source_drive
-    source_end = source_end_step([tfsf_source_drive(tfsf_cfg, grid)], n_steps, grid.dt)
+    from rfx.measurement.record_end import injection_end
+    source_end = injection_end(n_steps, grid.dt, grid=grid, tfsf=tfsf_cfg)
     settling_db = None
     settling_witness = {"status": "absent", "source_end_index": source_end, "reason":
                         "no time-domain record; add an identification probe"}

@@ -5,8 +5,8 @@ Both time loops (``simulation.run_until_decay`` on the uniform mesh,
 module at their chunk boundaries ``c = k * interval``; neither scan
 program contains any of it.
 
-* ``drive_end``: the step at which every built drive has ended, with the
-  settling check's definition (``rfx.probes.settling.source_end_step``).
+* ``drive_end`` (``rfx.measurement.record_end``): the step at which every
+  built drive has ended, the source-end rule at distance zero.
 * ``boundary_energy``: the leapfrog-conserved interior energy
   ``W_c = sum((eps E^c . E^c + (mu0/eps0) mu H^(c-1/2) . H^(c+1/2)) dV)``.
   ``H^(c+1/2)`` comes from one side step of the loop's own chunk program on
@@ -33,6 +33,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.measurement.record_end import drive_end
 
 AUTO_END = object()   # the loop resolves the drive end from its own tables
 MU0_OVER_EPS0 = MU_0 / EPS_0   # a vacuum constant (Z0 squared); no permittivity divides by it
@@ -60,62 +61,6 @@ REMEDIES = (
     "zero); ModulatedGaussian keeps a DC part unless bandwidth <= 0.4, and even then "
     "some; radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator stops on "
     "the outgoing flux, which a static field does not carry; or run a fixed n_steps")
-
-
-def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
-              waveguide_ports=()):
-    """Last step any built drive is on, plus the TF/SF box transit.
-
-    Point, port and Floquet drives (``sources``, ``mag_sources``) and a
-    driven waveguide port's applied incident table (``cfg.e_inc_table``,
-    held at its last entry past its end, as the port reads it) are read at
-    distance zero; TF/SF uses its waveform and the total-field box diagonal
-    (``tfsf_source_drive``). Returns None when a drive has not ended by
-    ``max_steps`` (the stop then never fires). Raises ValueError naming a
-    drive whose end cannot be computed before the loop.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.probes.settling import source_end_step
-    from rfx.measurement.settling import tfsf_source_drive
-
-    drives = []
-    for kind, entries in (("source", sources), ("magnetic source", mag_sources)):
-        for index, src in enumerate(entries or ()):
-            table = src.waveform if hasattr(src, "waveform") else src[4]
-            if table is not None and not is_tracer(table):
-                # Zero padded or cut to the loop's length, as the loops do.
-                table = np.asarray(table)[:max_steps]
-                table = np.pad(table, (0, max_steps - len(table)))
-            drives.append((f"{kind}[{index}]", table, 0.0))
-    if tfsf is not None:
-        drives.append(("TF/SF source", *tfsf_source_drive(tfsf[0], grid)))
-    for index, cfg in enumerate(waveguide_ports or ()):
-        if cfg.src_amp:
-            # Read E: the companion H table rings physically at the mode cutoff.
-            # That ringing is assessed by the per-bin tail witness, not drive end.
-            table = cfg.e_inc_table
-            if is_tracer(table) or table.shape[0] <= 1:
-                raise ValueError(
-                    f"until_decay: waveguide port[{index}] was initialised without dt, so "
-                    "the incident table it applies is not available before the loop; "
-                    "initialise it with dt and dft_total_steps, or use a fixed n_steps")
-            table = np.asarray(table)[:max_steps]
-            drives.append((f"waveguide port[{index}]",
-                           np.pad(table, (0, max_steps - len(table)), mode="edge"), 0.0))
-    end = 0
-    for name, samples, distance in drives:
-        value, rows = source_end_step([(samples, distance)], max_steps, grid.dt,
-                                      return_detail=True)
-        if value is not None:
-            end = max(end, value)
-            continue
-        if rows and rows[0][1] > 0 and rows[0][2] >= len(rows[0][0]) \
-                and np.isfinite(rows[0][0]).all():
-            return None   # still on at max_steps
-        raise ValueError(
-            f"until_decay: the drive end of {name} cannot be computed before the "
-            "loop (its samples are missing, traced, nonfinite or of the wrong length)")
-    return None if end > max_steps else end
 
 
 def known_drive_ready_step(waveguide_ports, interval):

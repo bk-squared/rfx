@@ -757,11 +757,12 @@ def compute_msl_s_matrix(
                     _ts[:, _witness_base:_witness_base + _witness_total],
                 )
                 if _ts_np.shape[0] >= 10 and _ts_np.shape[1] == _witness_total:
-                    from rfx.probes.settling import simulation_source_end_step
+                    from rfx.measurement.record_end import injection_end
                     from rfx.sources.waveguide_port import settling_db_from_named_records
-                    _source_end = simulation_source_end_step(
-                        self, _ts_np.shape[0], getattr(_ts_result, "dt", None) or grid.dt,
-                        self._probes[_witness_base:_witness_base + _witness_total], grid=grid)
+                    _source_end = injection_end(
+                        _ts_np.shape[0], getattr(_ts_result, "dt", None) or grid.dt,
+                        records=self._probes[_witness_base:_witness_base + _witness_total],
+                        grid=grid, sim=self)
                     from rfx.sparams._tail_witness import msl_time_channels
                     _plane_records = getattr(_ts_result, "dft_time_records", None)
                     _channels = msl_time_channels(

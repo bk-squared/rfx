@@ -324,7 +324,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             )
 
         if return_settling:
-            from rfx.probes.settling import simulation_source_end_step
+            from rfx.measurement.record_end import injection_end
             from rfx.sparams._tail_witness import port_record_witness
             from copy import copy
             from dataclasses import replace
@@ -351,7 +351,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 plane_counts[port_id] = plane + 1
                 receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
             receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
-            end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
+            end = injection_end(n_steps, grid.dt, records=receivers, grid=grid, sim=driven_sim)
             settling_runs.append(port_record_witness(
                 raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
                 end, freqs, freq_max=sim._freq_max))

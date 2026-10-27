@@ -52,35 +52,34 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.measurement.modal import recorded as _recorded
+    from rfx.measurement.record_end import injection_end
     from rfx.model.waveguide_modes import incident_tables_uncut
-    from rfx.probes.settling import source_end_step
 
     final_cfgs = tuple(final_cfgs)
-    timing_fields = ("v_inc_t", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
-    timing_available = all(
-        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
-        for cfg in final_cfgs for name in timing_fields)
-    drives = []
-    source_end = None
-    if (final_cfgs and timing_available
-            and len({getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}) == 1):
-        # Use the recorded incident pulse with the same amplitude threshold.
-        # Include free-space travel to every scored plane.
-        for cfg in final_cfgs:
-            if not cfg.src_amp:
-                continue
-            distance = max(abs(float(cfg.source_x_m) - float(x))
-                           for other in final_cfgs
-                           for x in (other.reference_x_m, other.probe_x_m))
-            drives.append((_recorded(cfg, "v_inc_t"), distance))
-        if drives:
-            source_end = source_end_step(drives, len(drives[0][0]), final_cfgs[0].dt)
     named = [
         (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]
     n_record = len(named[0][1]) if named else 0
+    timing_fields = ("e_inc_table", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
+    timing_available = all(
+        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
+        for cfg in final_cfgs for name in timing_fields)
+    source_end = None
+    axes = {getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}
+    if final_cfgs and timing_available and len(axes) == 1:
+        # The applied incident E table with the one source-end rule, plus
+        # free-space travel to every scored plane.
+        axis = "xyz".index(axes.pop())
+        planes = []
+        for other in final_cfgs:
+            for x in (other.reference_x_m, other.probe_x_m):
+                point = np.zeros(3)
+                point[axis] = float(x)
+                planes.append(point)
+        source_end = injection_end(n_record, final_cfgs[0].dt, records=planes,
+                                   waveguide_ports=final_cfgs)
     try:
         known_drives = [table for cfg in final_cfgs for table in incident_tables_uncut(cfg)
                         if len(table) > n_record]
