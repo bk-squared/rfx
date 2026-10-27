@@ -483,7 +483,7 @@ def test_clearing_drives_suppresses_electric_and_magnetic_sources(monkeypatch):
 
 def test_adjoint_zero_cotangent_has_no_primal_drive(monkeypatch):
     """Exercise the actual adjoint context replacement and its full scan."""
-    import rfx.simulation as runner
+    import rfx.stepping.uniform_setup as runner
     original = runner.make_core_step
     adjoint_contexts = []
     def capture(ctx, *args, **kwargs):

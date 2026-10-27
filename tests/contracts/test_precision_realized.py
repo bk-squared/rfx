@@ -361,7 +361,7 @@ def test_realized_field_storage(monkeypatch, entry, precision):
 
     monkeypatch.setattr(uniform_setup, 'init_state', observe_fields)
     monkeypatch.setattr(uniform_loop, 'make_core_step', observe_step)
-    monkeypatch.setattr(core, 'make_core_step', observe_step)
+    monkeypatch.setattr(uniform_setup, 'make_core_step', observe_step)
     try:
         with jax.enable_x64() if precision == 'float64' else jax.enable_x64(False):
             with warnings.catch_warnings():

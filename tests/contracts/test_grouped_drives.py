@@ -104,7 +104,7 @@ def test_checker_is_live():
 def test_production_step_scatter_count(lane, monkeypatch):
     import importlib
     module = importlib.import_module({
-        'uniform': 'rfx.simulation', 'graded': 'rfx.stepping.graded',
+        'uniform': 'rfx.core.drives', 'graded': 'rfx.stepping.graded',
         'distributed': 'rfx.runners._distributed_common',
         'distributed_graded': 'rfx.stepping.graded',
         'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
