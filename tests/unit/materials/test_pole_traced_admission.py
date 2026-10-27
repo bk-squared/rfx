@@ -64,7 +64,7 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
 
 
 @pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap"])
-def test_out_of_program_admission_keeps_concrete_primals(transform):
+def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(transform):
     def checked(eps):
         materials = MaterialArrays(jnp.full((2, 2, 2), eps), jnp.zeros((2, 2, 2)), None)
         # At dt=1, budget=0, the undamped Drude condition is kappa<=4*eps:
@@ -84,13 +84,16 @@ def test_out_of_program_admission_keeps_concrete_primals(transform):
             return jax.vmap(checked)(jnp.full((2,), eps))
         return checked(eps)
 
-    np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else
-                                  np.full((2,), 9.) if transform == "vmap" else 9.)
+    if transform in ("eager", "jvp", "grad"):
+        np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else 9.)
     if transform in ("eager", "jvp", "grad"):
         with pytest.raises(ValueError, match="unstable at this model's time step"):
             call(1.)
     else:
-        np.testing.assert_array_equal(call(1.), np.full((2,), 1.) if transform == "vmap" else 1.)
+        # #1934: outside a program a traced value cannot be judged; it is refused, stable or not.
+        for eps in (3., 1.):
+            with pytest.raises(ValueError, match="traced by an outer jax.jit or jax.vmap"):
+                call(eps)
 
 
 @pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])

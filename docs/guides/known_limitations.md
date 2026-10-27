@@ -34,18 +34,6 @@ lower margin, meant to keep the absorber away from the board, is missing. Until 
 the margin before planning (about 50 mm in this example; the profile then spans the lower margin and matches the
 reported domain), or build the model with a uniform z mesh and an explicit domain.
 
-### Drude/Lorentz time-step admission limits on periodic and multi-device runs
-
-Tracker: #1934
-
-Low-level `run()` with prebuilt Lorentz coefficients on a periodic axis with an even number of cells is refused by name
-when the medium varies along that axis: the edge mean there does not determine the cell values.
-Build the medium through `add_material` (judged at assembly), or use an odd cell count.
-
-Multi-device runs whose material values are traced by an outer `jax.jit` or `jax.vmap` are not judged by the
-Drude/Lorentz time-step check: a refusal cannot be raised from inside a multi-device compiled program.
-The same model is judged when called without the outer transform (or on one device).
-
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373

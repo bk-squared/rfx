@@ -288,8 +288,19 @@ def _concrete(value):
     return value if concrete is None else concrete
 
 
+def _refuse_traced_out_of_program():
+    raise ValueError(
+        "cannot judge Lorentz/Drude time-step stability: this multi-device run's material values or "
+        "cell sizes are traced by an outer jax.jit or jax.vmap, and a check cannot be raised from "
+        "inside a multi-device program. Call it without the outer transform (jax.grad and jax.jvp "
+        "alone keep concrete values and are judged), or run on one device.")
+
+
 def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
-    """Judge concrete values; stage checks only in single-device programs."""
+    """Judge concrete values; stage checks only in single-device programs.
+
+    Out of program (multi-device) a traced value is refused: it cannot be judged there.
+    """
     from rfx._traced_check import traced_check
 
     if budget is None:
@@ -336,7 +347,7 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
-            continue
+            _refuse_traced_out_of_program()
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
 
@@ -516,5 +527,5 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
     operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
     operands = jax.tree.map(_concrete, operands)
     if not in_program and any(_is_abstract(v) for v in jax.tree.leaves(operands)):
-        return
+        _refuse_traced_out_of_program()
     traced_check("prebuilt Lorentz coefficients", "time-step stability", check, *operands, ordered=True)
