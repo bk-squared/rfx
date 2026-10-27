@@ -251,6 +251,34 @@ def cell_sizes_from_uniform_grid(grid):
     return tuple(np.full((n,), dx, dtype=np.float64) for n in grid.shape)
 
 
+def footprint_sample_coords(grid, axes, carrier):
+    """Sample a footprint at its carrier: nodes or forward cell centres.
+
+    Unrequested axes retain their node samples. A ``GridCoords`` record is
+    also accepted for node-carried sheets, preserving the caller's exact
+    arrays (including coordinate-only and fine-grid callers).
+    Non-periodic terminal nodes repeat the last width; periodic grids carry
+    the seam cell's own width through ``grid.cells``.
+    """
+    if carrier not in ('node', 'cell'):
+        raise ValueError(f'unknown footprint carrier {carrier!r}')
+    coords = (grid if isinstance(grid, GridCoords) else
+              coords_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr') else
+              coords_from_uniform_grid(grid))
+    samples = list(coords[:3])
+    if carrier == 'node':
+        return tuple(samples)
+    for a in axes:
+        nodes = samples[a]
+        widths = grid.cells(a)
+        xp = jnp if is_tracer(nodes) or is_tracer(widths) else np
+        widths = xp.asarray(widths)
+        if 'xyz'[a] not in getattr(grid, 'periodic_axes', '') and len(nodes) > 1:
+            widths = xp.concatenate((widths[:len(nodes) - 1], widths[len(nodes) - 2:len(nodes) - 1]))
+        samples[a] = nodes + widths / 2
+    return tuple(samples)
+
+
 def cell_sizes_from_nonuniform_grid(grid):
     """Per-cell sizes of a NonUniformGrid: the float64 spine when present
     (``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``), else the store."""
@@ -528,7 +556,8 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if normal_axis is None:
         normal_axis = min(range(3), key=lambda i: extents[i])
     a = int(normal_axis)
-    node_axes = (coords.x, coords.y, coords.z)
+    node_axes = footprint_sample_coords(
+        coords, tuple(t for t in range(3) if t != a), carrier="node")
     if cell_sizes is None:
         cell_sizes = tuple(axis_cell_sizes(n) for n in node_axes)
     mid = 0.5 * (lo[a] + hi[a])

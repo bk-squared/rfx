@@ -610,11 +610,11 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
                 from rfx.model.thin_conductors import admit_dc_film
                 film = admit_dc_film(shape, grid, snap=sim._snap, emit=False)
                 return [(np.asarray(film.mask), (False, False, False))]
-            if getattr(grid, 'periodic_axes', ''):
-                from rfx.materials.thin_conductor import _thin_conductor_cell_mask
-                return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
-                         (False, False, False))]
-            return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
+            # Continuation must see the same cell-centred Box footprint as
+            # assembly, on non-periodic axes as well as across a seam.
+            # The normal sample and Box's own tie rule remain unchanged.
+            from rfx.materials.thin_conductor import _thin_conductor_cell_mask
+            return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
                      (False, False, False))]
         centres = cell_centres_from_nodes(coords, sizes)
         name = next((e.material_name for e in getattr(sim, "_geometry", ())

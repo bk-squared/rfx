@@ -10,7 +10,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, _grid_coords
 from rfx.geometry.rasterize_grid import (
     GridCoords, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
-    sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
+    footprint_sample_coords, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.materials.thin_conductor import (
     _PEC_SIGMA_THRESHOLD, ThinConductor,
@@ -171,7 +171,7 @@ def dc_footprint_areas(shape, grid, mask, normal):
 
 
 def admit_dc_film(shape, grid, *, snap='strict', emit=True):
-    """DC area admission using each family's unchanged occupancy sampler.
+    """DC area admission using cell-centred in-plane occupancy samples.
 
     The Box DC sampler owns layer selection. Only its normal-axis occupancy
     is borrowed; the shape still owns its in-plane cross-section and area.
@@ -212,6 +212,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
             f'{extents.tolist()}; draw a single planar film or use add() for a volume.',
             code='dc_film_layers')
     coords = list(_grid_coords(grid))
+    tangents = tuple(a for a in range(3) if a != normal)
     mid = .5 * (lo[normal] + hi[normal])
     traced = any(is_tracer(c) for c in coords)
     if traced:
@@ -229,9 +230,9 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
         # Keep the coordinate-dependent Box selection and cross-section traced.
         plane_lo, plane_hi = list(lo), list(hi)
         plane_lo[normal] = plane_hi[normal] = mid
-        layer = Box(tuple(plane_lo), tuple(plane_hi)).mask_on_coords(*coords).any(
+        sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
+        layer = Box(tuple(plane_lo), tuple(plane_hi)).mask_on_coords(*sample).any(
             axis=tuple(a for a in range(3) if a != normal))
-        sample = list(coords)
         sample[normal] = jnp.asarray([mid])
         footprint = shape.mask_on_coords(*sample)
         view = [1, 1, 1]
@@ -250,7 +251,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
         plane_lo[normal] = plane_hi[normal] = mid
         control = dc_cell_mask(Box(tuple(plane_lo), tuple(plane_hi)), grid)
         layer = np.asarray(control).any(axis=tuple(a for a in range(3) if a != normal))
-        sample = list(coords)
+        sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
         sample[normal] = np.asarray([mid])
         footprint = np.asarray(periodic_mask(
             grid, shape, sample, axes=tuple(a for a in range(3) if a != normal)))
@@ -445,22 +446,22 @@ def warn_dc_films(sim, warn):
 
 
 def dc_cell_mask(shape, grid):
-    """Sample DC occupancy, retaining periodic plane identification."""
+    """Sample in-plane cell centres, retaining normal plane identification."""
+    lo, hi = sheet_bounds(shape)
+    normal = None if lo is None or hi is None else sheet_normal_axis(lo, hi)
+    tangents = tuple(a for a in range(3) if a != normal)
+    sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
     if getattr(grid, 'periodic_axes', ''):
         from rfx._periodic import periodic_mask, plane_coordinate
-        lo, hi = sheet_bounds(shape)
-        normal = None if lo is None or hi is None else sheet_normal_axis(lo, hi)
         if normal is not None and hi[normal] - lo[normal] <= float(grid.cells(normal)[0]):
             mid = .5 * (lo[normal] + hi[normal])
-            sample = list(_grid_coords(grid))
             shift = mid - plane_coordinate(grid, normal, mid)
             if shift:
                 sample[normal] = sample[normal] + shift
             return periodic_mask(grid, shape, sample,
                                  axes=tuple(a for a in range(3) if a != normal))
-    if hasattr(grid, 'dx_arr'):
-        return shape.mask_on_coords(*_grid_coords(grid))
-    return shape.mask(grid)
+        return periodic_mask(grid, shape, sample)
+    return shape.mask_on_coords(*sample)
 
 
 def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
