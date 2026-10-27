@@ -121,7 +121,7 @@ def _gather_drive_map(mesh, owners):
 
 def eager_drive_scales(eps, sigma, mesh, drives, dt, ranks, reduce_devices):
     """Scalar reads stay mapped; source arithmetic is eager over device rows."""
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     means = _drive_means_map(mesh, drives)(ranks, eps, sigma)
     def local(eps, sigma, rank):
         values = []

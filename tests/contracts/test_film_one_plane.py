@@ -245,7 +245,7 @@ def test_c4_topology_design_film(inside):
 @pytest.mark.parametrize('impedance', [0., 50.])
 def test_c6_source_port_coefficient(graded, impedance):
     from rfx.core.yee import e_update_coeffs, cell_component_e_materials
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
     sim, widths = model(graded)
     from dataclasses import replace
     sim._ports[0] = replace(sim._ports[0], impedance=impedance)

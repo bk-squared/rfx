@@ -306,7 +306,7 @@ def test_model_drives_and_cut(case, n, entry, monkeypatch):
     from rfx.stepping import slab_setup
     from rfx.stepping.slab import cut
     from rfx.model.materials import e_update_coefficient_at
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     from jax.sharding import Mesh
     selected = jax.devices('cpu')
     sim = scene(case, len(selected))

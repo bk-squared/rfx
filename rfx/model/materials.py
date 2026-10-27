@@ -682,7 +682,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
             lt_terms = (a[pole_cell], b[pole_cell], tuple(v[pole_cell] for v in strength))
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
     if host:
-        from rfx.nonuniform import current_source_cb
+        from rfx.model.source_coefficients import current_source_cb
         return current_source_cb(eps, sigma, dt)
     return e_update_coeffs(eps, sigma, dt)[1]
 

@@ -141,7 +141,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
     ("rfx/lumped.py", "setup_rlc_materials"):
         "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
-    ("rfx/nonuniform.py", "current_source_cb"):
+    ("rfx/model/source_coefficients.py", "current_source_cb"):
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
     ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,

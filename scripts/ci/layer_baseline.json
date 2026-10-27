@@ -158,18 +158,6 @@
         "rfx.nonuniform:position_to_index"
       ]
     },
-    "rfx/measurement/port_records.py": {
-      "R": [
-        "rfx.simulation:LumpedPortSParamSpec"
-      ]
-    },
-    "rfx/measurement/port_registration.py": {
-      "R": [
-        "rfx.nonuniform:_build_wp_meta",
-        "rfx.simulation:LumpedPortSParamSpec",
-        "rfx.simulation:WirePortSParamSpec"
-      ]
-    },
     "rfx/measurement/ports.py": {
       "R": [
         "rfx.nonuniform:NonUniformGrid"
@@ -201,34 +189,13 @@
     },
     "rfx/model/distributed_ports.py": {
       "R": [
-        "rfx.nonuniform:current_source_samples",
-        "rfx.nonuniform:current_source_volume",
-        "rfx.nonuniform:make_current_source",
         "rfx.simulation:SourceSpec"
-      ]
-    },
-    "rfx/model/electric_metrics.py": {
-      "R": [
-        "rfx.nonuniform:current_source_cb"
       ]
     },
     "rfx/model/graded_ports.py": {
       "R": [
         "rfx.nonuniform:e_node_dual_spacing_at",
-        "rfx.nonuniform:port_metric",
-        "rfx.nonuniform:port_metric_axes",
         "rfx.nonuniform:position_to_index"
-      ]
-    },
-    "rfx/model/materials.py": {
-      "R": [
-        "rfx.nonuniform:current_source_cb"
-      ]
-    },
-    "rfx/model/source_coefficients.py": {
-      "R": [
-        "rfx.nonuniform:current_source_cb",
-        "rfx.simulation:_uniform_cell_volume"
       ]
     },
     "rfx/stepping/adjoint_scan.py": {
@@ -270,11 +237,6 @@
       "R": [
         "rfx.ringdown:_PortMeta",
         "rfx.ringdown:_port_vi"
-      ]
-    },
-    "rfx/stepping/slab_setup.py": {
-      "R": [
-        "rfx.nonuniform:current_source_cb"
       ]
     },
     "rfx/stepping/uniform.py": {

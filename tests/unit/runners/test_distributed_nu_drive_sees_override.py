@@ -453,7 +453,7 @@ def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotang
     NaN gradient at the four cells a current source's drive reads -- on this lane
     and on the single-device lane since #1280 (#1279 review). In eps_r units the
     same Cb keeps the reverse pass finite far past any objective a board makes."""
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     dt = float(_board(EPS_LO)._build_nonuniform_grid().dt)
     for cotangent in (1e18, 1e22, 1e26, 1e30):
         grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt),

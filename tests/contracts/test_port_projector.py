@@ -11,7 +11,7 @@ from rfx.core.yee import CurlBoundary
 from rfx.measurement.ports import lumped_wire_owner
 from rfx.measurement.projector import sample_table, gather, combine, project
 from rfx.probes.probes import _ampere_loop
-from rfx.nonuniform import _build_wp_meta
+from rfx.measurement.graded_port_meta import _build_wp_meta
 from rfx.measurement.graded_wire import wire_port_current
 
 

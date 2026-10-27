@@ -21,7 +21,7 @@ SPEC.loader.exec_module(gate)
 SIM = "rfx/simulation.py"
 API = "rfx/api/__init__.py"
 EXECUTE = "rfx/api/_execute.py"
-CLEAN = "_uniform_cell_volume"
+CLEAN = "make_probe"
 EXECUTE_CLEAN = "_ExecuteMixin._resolve_field_dtype"
 
 
@@ -1159,3 +1159,117 @@ def test_reverse_report_order_and_totals(synthetic, capsys):
         "reverse rfx/stepping/z.py: R=2", "reverse rfx/stepping/a.py: R=1",
         "reverse rfx/stepping/b.py: R=1", "reverse totals: R=4",
     ]
+
+
+# A layer import of a name a five file defines itself is layer code living in a five file; the unit rules read
+# syntax and miss a scalar formula, a metric choice or a record type (rfx-core-desk L:e06a77).
+FIVE_DEFINITION = "{path} R: imports {entry}, which the five file defines; move the definition into its layer"
+
+
+def test_no_layer_imports_a_name_a_five_file_defines():
+    assert gate.five_file_definitions(gate.count(gate.Sources(REPO))["caller_definitions"]) == []
+
+
+@pytest.mark.parametrize("five,code,entry", [
+    ("rfx/nonuniform.py", "def helper():\n    pass\n", "rfx.nonuniform:helper"),
+    ("rfx/simulation.py", "class Spec:\n    pass\n", "rfx.simulation:Spec"),
+    ("rfx/api/__init__.py", "if True:\n    TABLE = {}\n", "rfx.api:TABLE"),
+], ids=["function", "class", "guarded-assignment"])
+def test_layer_import_of_a_five_file_definition_is_refused(tmp_path, five, code, entry):
+    path = "rfx/stepping/__init__.py"
+    module, _, name = entry.partition(":")
+    write(tmp_path, five, (REPO / five).read_text() + "\n" + code)
+    write(tmp_path, path, (REPO / path).read_text() + f"\ndef local():\n    from {module} import {name}\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+def test_reexport_and_other_callers_are_not_refused(tmp_path):
+    path = "rfx/stepping/__init__.py"
+    write(tmp_path, path, (REPO / path).read_text() + "\ndef local():\n"
+          "    from rfx.nonuniform import NonUniformGrid\n    from rfx.progress import ProgressReporter\n")
+    result = gate.count(CopiedSources(tmp_path))
+    assert "rfx.nonuniform:NonUniformGrid" in result["baseline"]["reverse"][path]["R"]
+    assert result["caller_definitions"][path] == ["rfx.progress:ProgressReporter"]
+    assert gate.five_file_definitions(result["caller_definitions"]) == []
+
+
+def test_restored_drive_coefficient_in_nonuniform_is_refused(tmp_path):
+    """The defect put back, every helper intact: the drive Cb defined in nonuniform.py again and
+    model/materials.py reading it there."""
+    home = (REPO / "rfx/model/source_coefficients.py").read_text()
+    node = next(n for n in ast.parse(home).body
+                if isinstance(n, ast.FunctionDef) and n.name == "current_source_cb")
+    source = "\n".join(home.splitlines()[node.lineno - 1:node.end_lineno])
+    write(tmp_path, "rfx/nonuniform.py", (REPO / "rfx/nonuniform.py").read_text()
+          + "\nimport jax.numpy as jnp\nfrom rfx.core.yee import EPS_0\n\n\n" + source + "\n")
+    reader = (REPO / "rfx/model/materials.py").read_text()
+    route = "from rfx.model.source_coefficients import current_source_cb"
+    assert reader.count(route) == 1
+    write(tmp_path, "rfx/model/materials.py", reader.replace(route, "from rfx.nonuniform import current_source_cb"))
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    entry = "rfx.nonuniform:current_source_cb"
+    assert defined["rfx/model/materials.py"] == [entry]
+    assert gate.five_file_definitions(defined) == [
+        FIVE_DEFINITION.format(path="rfx/model/materials.py", entry=entry)]
+
+
+def test_check_refuses_a_five_file_definition_even_when_the_baseline_lists_it(synthetic, capsys):
+    path, entry = "rfx/stepping/a.py", "rfx.nonuniform:helper"
+    write(synthetic, "rfx/nonuniform.py", "def helper():\n    pass\n")
+    write(synthetic, path, "from rfx.nonuniform import helper\n")
+    listed = empty_baseline()
+    listed["reverse"][path] = {"R": [entry]}
+    write(synthetic, gate.BASELINE, json.dumps(listed))
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert capsys.readouterr().err == FIVE_DEFINITION.format(path=path, entry=entry) + "\n"
+    write(synthetic, "rfx/nonuniform.py", "from rfx.model import helper\n")  # a re-export: rule R only
+    assert gate.main(["--repo", str(synthetic)]) == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("route,alias", [
+    ("from rfx import simulation", "simulation"),
+    ("import rfx.simulation as kernel", "kernel"),
+    ("import rfx.simulation", "rfx.simulation"),
+], ids=["from-package", "import-as", "dotted"])
+def test_attribute_read_through_a_module_import_is_refused(tmp_path, route, alias):
+    """Rule R records a whole-module import without a name; the attributes read through it are resolved."""
+    path = "rfx/stepping/__init__.py"
+    write(tmp_path, "rfx/simulation.py", (REPO / "rfx/simulation.py").read_text() + "\ndef helper():\n    pass\n")
+    write(tmp_path, path, (REPO / path).read_text()
+          + f"\ndef local():\n    {route}\n    return {alias}.helper, {alias}.apply_pec_faces\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == ["rfx.simulation:helper"]
+
+
+def test_restored_definition_read_through_the_step_module_import_is_refused(tmp_path):
+    """The defect on the real route: rfx/stepping/uniform.py reads re-exports through ``from rfx import
+    simulation``; a read of a name simulation.py defines (make_probe) through it is refused."""
+    path = "rfx/stepping/uniform.py"
+    reader = (REPO / path).read_text()
+    route = "    return simulation.apply_pec_faces(state, faces)\n"
+    assert reader.count(route) == 1
+    write(tmp_path, path, reader.replace(route, "    simulation.make_probe\n" + route))
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    entry = "rfx.simulation:make_probe"
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+@pytest.mark.parametrize("read,entry", [
+    ("from rfx import make_probe\n    return make_probe", "rfx.simulation:make_probe"),
+    ("from rfx import Simulation\n    return Simulation", "rfx.api:Simulation"),
+    ("import rfx\n    return rfx.simulation.make_probe", "rfx.simulation:make_probe"),
+    ("from rfx.api import _ExecuteMixin\n    return _ExecuteMixin", "rfx.api._execute:_ExecuteMixin"),
+    ("from rfx.api import _execute\n    return _execute._ExecuteMixin", "rfx.api._execute:_ExecuteMixin"),
+], ids=["package-top", "package-top-class", "dotted-package", "five-to-five", "submodule"])
+def test_read_of_a_five_file_definition_through_a_reexport_is_refused(tmp_path, read, entry):
+    """Re-exports are followed to the module that defines the name: the rfx package top, one five
+    file re-exporting another, a module bound through a package."""
+    path = "rfx/stepping/uniform.py"
+    write(tmp_path, path, (REPO / path).read_text() + f"\n\ndef local():\n    {read}\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]

@@ -105,7 +105,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     from rfx.core.yee import MaterialArrays, map_lumped
     from rfx.model.materials import e_update_material_at
     from rfx.runners._distributed_common import rank_shard_map
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
 
     @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x"), P("x")),
              out_specs=P() if reduce_devices else P("x"), check_rep=False)

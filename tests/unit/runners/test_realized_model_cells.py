@@ -199,7 +199,7 @@ def material_pairs(dump, row, axis):
 
 
 def drive_pairs(dump, row):
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
     from rfx.sources.sources import port_sigma, port_d_parallel
     records = [r for r in dump.records if "drive_scale" in r]
     if not records:
