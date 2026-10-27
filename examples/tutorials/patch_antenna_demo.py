@@ -214,7 +214,7 @@ AIR_ABOVE = 84.0e-3
 #
 # run(until_decay=1e-3) also stops on this fixture: the interior energy fell to
 # 1e-3 of its after-drive value at step 48 850, 1.9 times the 25 832 steps of
-# NUM_PERIODS, with no static-charge warning (measured 2026-10-27 on a CPU job).
+# NUM_PERIODS, and the probe fell to 1e-3 of its peak (measured 2026-10-27).
 # The static charge field of issue #388 came from the old pulse's DC content;
 # the default GaussianPulse integrates to zero since 2.0.
 NUM_PERIODS = 125
