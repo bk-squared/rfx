@@ -291,15 +291,40 @@ def _concrete(value):
 def _refuse_traced_out_of_program():
     raise ValueError(
         "cannot judge Lorentz/Drude time-step stability: this multi-device run's material values or "
-        "cell sizes are traced by an outer jax.jit or jax.vmap, and a check cannot be raised from "
-        "inside a multi-device program. Call it without the outer transform (jax.grad and jax.jvp "
-        "alone keep concrete values and are judged), or run on one device.")
+        "cell sizes are traced by an outer jax.jit (or a nested jax.vmap), and a check cannot be raised "
+        "from inside a multi-device program. Call it without jax.jit (jax.grad, jax.jvp and one "
+        "jax.vmap alone keep concrete values and are judged), or run on one device.")
+
+
+def _eager_batch_members(args):
+    """Each member's concrete arguments under one eager ``jax.vmap``, else None.
+
+    An eager vmap carries concrete values (``BatchTracer.val``); a vmap under
+    ``jit`` or a nested vmap does not, and returns None.
+    """
+    from jax._src.interpreters.batching import BatchTracer
+
+    batched = [v for v in args if isinstance(v, BatchTracer) and v.batch_dim is not None]
+    if not batched or any(v._trace is not batched[0]._trace for v in batched):
+        return None
+    if any(_is_abstract(v) and not isinstance(v, BatchTracer) for v in args) or \
+            any(_is_abstract(v.val) for v in args if isinstance(v, BatchTracer)):
+        return None
+    size = batched[0].val.shape[batched[0].batch_dim]
+
+    def member(v, i):
+        if not isinstance(v, BatchTracer):
+            return v
+        value = np.asarray(v.val)
+        return value if v.batch_dim is None else np.take(value, i, axis=v.batch_dim)
+    return [tuple(member(v, i) for v in args) for i in range(size)]
 
 
 def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
     """Judge concrete values; stage checks only in single-device programs.
 
-    Out of program (multi-device) a traced value is refused: it cannot be judged there.
+    Out of program (multi-device) the members of an eager ``jax.vmap`` are judged
+    one by one; any other traced value is refused: it cannot be judged there.
     """
     from rfx._traced_check import traced_check
 
@@ -347,7 +372,12 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
-            _refuse_traced_out_of_program()
+            members = _eager_batch_members(args)
+            if members is None:
+                _refuse_traced_out_of_program()
+            for member in members:
+                check(*member)
+            continue
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
 

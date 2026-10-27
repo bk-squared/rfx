@@ -84,15 +84,17 @@ def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(tra
             return jax.vmap(checked)(jnp.full((2,), eps))
         return checked(eps)
 
-    if transform in ("eager", "jvp", "grad"):
-        np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else 9.)
-    if transform in ("eager", "jvp", "grad"):
+    if transform != "jit":
+        np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else
+                                      np.full((2,), 9.) if transform == "vmap" else 9.)
+    if transform != "jit":
+        # An eager vmap carries concrete members; each is judged (#1934).
         with pytest.raises(ValueError, match="unstable at this model's time step"):
             call(1.)
     else:
-        # #1934: outside a program a traced value cannot be judged; it is refused, stable or not.
+        # #1934: outside a program a jit-traced value cannot be judged; it is refused, stable or not.
         for eps in (3., 1.):
-            with pytest.raises(ValueError, match="traced by an outer jax.jit or jax.vmap"):
+            with pytest.raises(ValueError, match=r"traced by an outer jax\.jit"):
                 call(eps)
 
 

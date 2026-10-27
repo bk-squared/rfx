@@ -78,7 +78,7 @@ def test_mixed_lorentz_refusal_matches_one_device(entry):
 
 
 TRACED_MULTI_DEVICE = (r"cannot judge Lorentz/Drude time-step stability: this multi-device run's "
-                       r"material values or cell sizes are traced by an outer jax\.jit or jax\.vmap")
+                       r"material values or cell sizes are traced by an outer jax\.jit")
 
 
 def _devices():
@@ -108,7 +108,12 @@ def test_two_device_pole_override_is_judged_eagerly_and_refused_under_outer_jit(
     assert eager.shape == (2, 1)
     assert np.all(np.isfinite(eager))
 
-    # #1934: an outer-traced value cannot be judged on two devices, so it is
+    # An eager vmap carries concrete members: each is judged, so one unstable
+    # member refuses the batch with its stable step (#1934).
+    with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        jax.vmap(forward)(jnp.stack([stable, unstable]))
+
+    # #1934: a jit-traced value cannot be judged on two devices, so it is
     # refused by name whatever its value (it ran unjudged before).
     compiled = jax.jit(forward)
     for eps in (stable, unstable):
