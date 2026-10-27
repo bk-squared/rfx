@@ -552,30 +552,10 @@ def run_uniform(
             "amplitude": fpe.amplitude,
         })
 
-        # Add a soft source at the port plane (uniform across the plane)
-        from rfx.sources.sources import GaussianPulse as GP
-        wf = GP(f0=fp_f0, bandwidth=fpe.bandwidth, amplitude=fpe.amplitude)
-        # Place source at center of transverse plane
-        center = [sim._domain[i] / 2.0 for i in range(3)]
-        center[axis_idx] = fpe.position
-        if fpe.polarization == "te":
-            # TE: inject first tangential E component
-            if fpe.axis == "z":
-                comp = "ex"
-            elif fpe.axis == "x":
-                comp = "ey"
-            else:
-                comp = "ex"
-        else:
-            # TM: inject second tangential E component
-            if fpe.axis == "z":
-                comp = "ey"
-            elif fpe.axis == "x":
-                comp = "ez"
-            else:
-                comp = "ez"
-        from rfx.simulation import make_source as _make_src
-        sources.append(_make_src(grid, tuple(center), comp, wf, sizing_n))
+        # A soft source at the centre of the port plane (one builder, read
+        # again by the source-end collector).
+        from rfx.floquet import floquet_port_source
+        sources.append(floquet_port_source(grid, fpe, sim._freq_max, sim._domain, sizing_n)[1])
 
     from rfx.model.materials import with_components
     from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -685,7 +665,8 @@ def run_uniform(
     # Main simulation
     if until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
-        from rfx.measurement.decay import advisory_inputs, drive_end
+        from rfx.measurement.decay import advisory_inputs
+        from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
                            tfsf=tfsf, waveguide_ports=waveguide_ports)
                  if until_decay > 0 and sim._boundary in ("cpml", "upml")

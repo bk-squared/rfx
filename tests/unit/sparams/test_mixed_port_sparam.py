@@ -552,7 +552,7 @@ def test_guard_rejects_cpml_adjacent_probe_ladder():
 # ---------------------------------------------------------------------------
 
 def _assert_drive_settling_witnesses(sim, result, periods, end_amplitudes):
-    from rfx.probes.settling import source_end_step
+    from rfx.measurement.record_end import source_end_step
 
     grid = sim._build_grid()
     n_steps = grid.num_timesteps(periods)

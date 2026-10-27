@@ -50,7 +50,7 @@ def test_a_source_still_on_at_the_end_is_not_read_as_ended():
     reader of the raw record sees a drive that is still on, not one that fell
     to zero on the last step."""
     from rfx.measurement.modal import recorded
-    from rfx.probes.settling import source_end_step
+    from rfx.measurement.record_end import source_end_step
     from rfx.sources.waveguide_port import settling_db_from_port_records
 
     sim = _guide()

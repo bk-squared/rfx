@@ -8,7 +8,7 @@ import pytest
 
 from rfx.api._sparams import settling_verdict
 from rfx.grid import C0
-from rfx.probes.settling import source_end_step, simulation_source_end_step
+from rfx.measurement.record_end import injection_end, source_end_step
 from rfx.sources.waveguide_port import settling_db_from_named_records
 
 
@@ -64,7 +64,7 @@ def test_registered_drives_include_farthest_record_and_skip_passive_ports():
         SimpleNamespace(impedance=50., excite=False, waveform=lambda t: 1., position=(0.,0.,0.))],
         _msl_ports=[], _waveguide_ports=[], _tfsf=None)
     probes = [SimpleNamespace(position=(0.,0.,0.)), SimpleNamespace(position=(2.5*C0,0.,0.))]
-    assert simulation_source_end_step(sim, 20, 1., probes) == 5
+    assert injection_end(20, 1., records=probes, sim=sim) == 5
 
 
 def test_waveguide_uses_incident_record_and_farthest_plane():
@@ -73,8 +73,9 @@ def test_waveguide_uses_incident_record_and_farthest_plane():
     record = np.exp(-np.arange(100)/20.)
     incident = np.zeros(100)
     incident[:5] = 1.
+    # The incident E table the port applies (#2030), not the analytic v_inc_t.
     cfg = SimpleNamespace(
-        src_amp=1., v_inc_t=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
+        src_amp=1., e_inc_table=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
         reference_x_m=0., probe_x_m=2.5*C0,
         **{name: record for name in ('v_ref_t', 'i_ref_t', 'v_probe_t', 'i_probe_t')})
     actual = settling_db_from_port_records([cfg])
@@ -134,4 +135,4 @@ def test_recorded_wire_endpoint_contributes_to_transit():
                             position=(0., 0., 0.))
     sim = SimpleNamespace(_ports=[drive], _msl_ports=[], _waveguide_ports=[], _tfsf=None)
     record = SimpleNamespace(position=(0., 0., 0.), component='ez', extent=3*C0)
-    assert simulation_source_end_step(sim, 20, 1., [record]) == 5
+    assert injection_end(20, 1., records=[record], sim=sim) == 5

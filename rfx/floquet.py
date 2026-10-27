@@ -265,6 +265,27 @@ class FloquetPort:
     amplitude: float = 1.0
 
 
+def floquet_port_source(grid, entry, freq_max, domain, n_steps):
+    """The soft source a Floquet port declaration drives: ``(center, SourceSpec)``.
+
+    A GaussianPulse at the centre of the port plane, on the first (TE) or
+    second (TM) tangential E component. The uniform run() and forward()
+    runners inject it; the source-end collector reads its table.
+    """
+    from rfx.simulation import make_source
+    from rfx.sources.sources import GaussianPulse
+
+    f0 = entry.f0 if entry.f0 is not None else freq_max / 2
+    waveform = GaussianPulse(f0=f0, bandwidth=entry.bandwidth, amplitude=entry.amplitude)
+    center = [domain[i] / 2.0 for i in range(3)]
+    center["xyz".index(entry.axis)] = entry.position
+    if entry.polarization == "te":
+        component = {"z": "ex", "x": "ey", "y": "ex"}[entry.axis]
+    else:
+        component = {"z": "ey", "x": "ez", "y": "ez"}[entry.axis]
+    return tuple(center), make_source(grid, tuple(center), component, waveform, n_steps)
+
+
 # ---------------------------------------------------------------------------
 # Plane-wave source injection for Floquet excitation
 # ---------------------------------------------------------------------------

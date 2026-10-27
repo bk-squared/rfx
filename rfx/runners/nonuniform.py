@@ -1218,7 +1218,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
     elif until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
-        from rfx.measurement.decay import advisory_inputs, drive_end
+        from rfx.measurement.decay import advisory_inputs
+        from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
                  if until_decay > 0 and radiated_flux_box is None else None)

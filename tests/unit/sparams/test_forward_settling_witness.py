@@ -172,25 +172,25 @@ def test_recorded_s_channels_reproduce_accumulators(extent):
 
 
 def test_reference_plane_drive_channels_and_source_selection(monkeypatch):
-    from rfx.probes import settling
+    from rfx.measurement import record_end
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     from rfx.sparams import _tail_witness
     from tests.unit.materials.test_conductor_mask_accessor import _refplane_thru, _RP_FREQS
 
     sim = _refplane_thru("pec")
     selected, shapes = [], []
-    original_end = settling.simulation_source_end_step
+    original_end = record_end.injection_end
     original_witness = _tail_witness.port_record_witness
 
-    def source_end(driven, n_steps, dt, records, **kwargs):
-        selected.append(([port.excite for port in driven._ports], len(records)))
-        return original_end(driven, n_steps, dt, records, **kwargs)
+    def source_end(n_steps, dt, **kwargs):
+        selected.append(([port.excite for port in kwargs["sim"]._ports], len(kwargs["records"])))
+        return original_end(n_steps, dt, **kwargs)
 
     def witness(records, *args, **kwargs):
         shapes.append([record.samples.shape for record in records])
         return original_witness(records, *args, **kwargs)
 
-    monkeypatch.setattr(settling, 'simulation_source_end_step', source_end)
+    monkeypatch.setattr(record_end, 'injection_end', source_end)
     monkeypatch.setattr(_tail_witness, 'port_record_witness', witness)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
@@ -220,17 +220,17 @@ def test_s_only_undetermined_warning_names_only_worst_bin_and_share(monkeypatch)
 
 
 def test_probe_source_end_uses_probe_count_when_port_channels_are_present(monkeypatch):
-    import rfx.probes.settling as settling
+    import rfx.measurement.record_end as record_end
 
     sim = _sim()
     sim.add_probe((.003, .003, .003), 'ez')
     selected = []
 
-    def source_end(simulation, n_steps, dt, records, **kwargs):
+    def source_end(n_steps, dt, *, records, **kwargs):
         selected.extend(records)
         return 10
 
-    monkeypatch.setattr(settling, 'simulation_source_end_step', source_end)
+    monkeypatch.setattr(record_end, 'injection_end', source_end)
     result = SimpleNamespace(time_series=np.ones((200, 2)), dt=1.,
                              sparam_time_records=(PortTimeRecord('port:0:mode:0', 'lumped', ('V',), np.ones((200, 1))),))
     assert sim._settling_source_end(result) == 10
