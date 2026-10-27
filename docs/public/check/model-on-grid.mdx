@@ -126,6 +126,7 @@ Preflight's findings that compare the drawing with the grid:
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
 | a sheet off a dielectric face | The face is not on a node plane, so the sheet snaps up to half a cell away. | Put the face on a node plane. |
+| body flush on an absorber (`body_flush_on_absorber`, warning) | The body's thin face touches the absorber, which continues its material as a half-space. | Leave free space between the body and the face, or declare that half-space on purpose. PEC and vacuum bodies are excluded. |
 | geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. |
 
 Other findings are about the setup rather than the grid: cell size against
