@@ -71,8 +71,9 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
 def _declared_material(sim, name):
     if name == "pec":
         return dict(kind="pec")
-    spec = sim._materials.get(name)
-    if spec is None:
+    try:  # registered first, then the library (as the assembler resolves it)
+        spec = sim._resolve_material(name)
+    except KeyError:
         return dict(kind="unknown", name=name)
     return dict(kind="dielectric", name=name,
                 eps_r=float(getattr(spec, "eps_r", 1.0)),

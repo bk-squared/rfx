@@ -227,3 +227,19 @@ def test_no_name_keyed_pec_test_left_in_preflight():
             for n, line in enumerate(p.read_text().splitlines(), 1)
             if pattern.search(line)]
     assert hits == []
+
+
+@pytest.mark.parametrize("material", ["copper", "copper_lib"])
+def test_fidelity_report_reads_library_copper_as_a_conductor(material):
+    """The report resolved only registered materials: library copper read as
+    'unknown' (sigma 0), so its own PEC cells were reported as a dielectric
+    claimed by a conductor, and the lossless-PEC finding stayed silent."""
+    sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.001, boundary="pec")
+    name = _register(sim, material)
+    sim.add(Box((.0043, .0061, .0052), (.0117, .0129, .0093)), material=name)
+    item = next(i for i in sim.fidelity_report(print_report=False)
+                if i["entity"].startswith("geometry[0]"))
+    kinds = [f["kind"] for f in item["findings"]]
+    assert item["material"]["sigma"] == pytest.approx(5.8e7)
+    assert "claimed-by-conductor" not in kinds
+    assert "declared-lossy-realized-pec" in kinds
