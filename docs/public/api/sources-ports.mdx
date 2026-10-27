@@ -63,8 +63,8 @@ circular polarization from this source has not been verified. Don't use it to
 report axial ratio or sense.
 
 For the plane wave on a graded mesh, only normal incidence along `+x` or `-x`
-is valid, and only when x itself is uniform. A graded x axis still runs, with
-a preflight warning. Far-field and RCS use is covered in
+is valid, and only when x itself is uniform: a graded x axis is refused before
+the first step. Grading y or z is supported. Far-field and RCS use is covered in
 [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
 
 ## Ports
@@ -219,7 +219,9 @@ add_waveguide_port(x_position, *, x_range=None, y_range=None, z_range=None,
 arguments across that axis give the guide aperture. An aperture that spans
 the whole cross-section needs PEC on the transverse faces and an absorber on
 the port axis only (`boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an
-x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. Waveguide ports
+x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. A
+smaller aperture needs a conductor on every edge: draw PEC walls there, or a bare
+edge is refused on both meshes. Waveguide ports
 need `mode="3d"`, and cannot share a simulation with lumped ports.
 
 ```python
