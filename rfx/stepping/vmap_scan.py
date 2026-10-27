@@ -8,7 +8,7 @@ from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.core.yee import MaterialArrays, init_state
 from rfx.measurement.accumulators import plane_metadata
 from rfx.probes.probes import DFTPlaneProbe
-from rfx.simulation import SourceSpec, ProbeSpec
+from rfx._uniform_specs import SourceSpec, ProbeSpec
 
 
 def _build_vmap_scan_fn(
@@ -115,7 +115,8 @@ def _build_vmap_scan_fn(
 
         j_src_waveforms = prepared_j_waveforms
 
-        from rfx.simulation import _StepContext, make_core_step
+        from rfx._uniform_specs import _StepContext
+        from rfx.stepping.uniform_setup import make_core_step
         ctx = _StepContext(
             grid=grid, materials=materials, dt=dt, dx=dx, periodic=periodic,
             pec_axes=pec_axes, stencil_order=2, use_fast_he=False,

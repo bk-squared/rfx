@@ -19,7 +19,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     from rfx.model.source_coefficients import make_current_source, current_source_samples, current_source_volume
     from rfx.runners.nonuniform import _port_drive_source
     from rfx.runners._admission import admit
-    from rfx.simulation import SourceSpec
+    from rfx._uniform_specs import SourceSpec
     from rfx.stepping.slab_wrap import select_step
 
     ports_present = any(p.impedance > 0 for p in sim._ports)

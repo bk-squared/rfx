@@ -55,7 +55,7 @@ def normal_weights(nodes, index, *, uniform=False):
 def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, **kwargs):
     """Adapt either grid's realized coordinates to the sole monitor constructor."""
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid, coords_from_uniform_grid
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     from rfx.probes.probes import init_flux_monitor
 
     if isinstance(grid, NonUniformGrid) and any(grid.is_traced(a) for a in range(3)):
@@ -95,7 +95,7 @@ def flux_regions(mon):
 
 def monitor_periodic_flags(sim, grid):
     """Use the graded topology or the uniform stepper's TF/SF override."""
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     if isinstance(grid, NonUniformGrid):
         return tuple(a in grid.periodic_axes for a in "xyz")
     if sim._tfsf is None:

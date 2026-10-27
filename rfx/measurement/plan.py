@@ -126,7 +126,7 @@ def _frequencies(sim, entry=None, freqs=None):
 
 
 def _index(grid, position):
-    from rfx.nonuniform import NonUniformGrid, position_to_index
+    from rfx.model.graded_grid import NonUniformGrid, position_to_index
     indices = position_to_index(grid, position) if isinstance(grid, NonUniformGrid) else grid.position_to_index(position)
     return tuple(int(i) for i in indices)
 
@@ -167,7 +167,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     adapters; calculator planes cannot be inferred from a run declaration.
     ``frequencies`` is the run's explicit port frequency request, if any.
     """
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     if isinstance(n_steps, bool) or not isinstance(n_steps, (int, np.integer)) or n_steps < 0:
         raise ValueError('n_steps must be a nonnegative integer')
     nu = isinstance(grid, NonUniformGrid)

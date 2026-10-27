@@ -229,7 +229,7 @@ def init_upml(
     from rfx.model.materials import with_components
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="UPML", unsupported=True)
-    from rfx.simulation import resolve_periodic
+    from rfx._uniform_specs import resolve_periodic
     if periodic is None:
         periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
     components = with_components(materials, grid,

@@ -19,7 +19,7 @@ def design_adjoint_scan(ctx, initial, xs):
     import numpy as np
     from rfx.stepping import recorded_scan
     from rfx.core.yee import curl_h, e_component_coeffs
-    from rfx.simulation import make_core_step, core_step_invariants
+    from rfx.stepping.uniform_setup import make_core_step, core_step_invariants
 
     unsupported = ("use_debye", "use_lorentz", "use_kerr", "use_upml",
                    "use_design_occupancy", "use_current_moments",

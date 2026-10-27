@@ -371,7 +371,7 @@ def extract_waveguide_s_matrix(
     if len(ref_shifts) != len(port_cfgs):
         raise ValueError("ref_shifts must match the number of waveguide ports when provided")
 
-    from rfx.simulation import run as run_simulation
+    from rfx.stepping.uniform_loop import run as run_simulation
 
     template_cfgs = tuple(port_cfgs)
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
@@ -582,7 +582,7 @@ def extract_waveguide_s_matrix_flux(
     if len(ref_shifts) != len(port_cfgs):
         raise ValueError("ref_shifts must match the number of waveguide ports when provided")
 
-    from rfx.simulation import run as run_simulation
+    from rfx.stepping.uniform_loop import run as run_simulation
     from rfx.probes.probes import flux_spectrum
     from rfx.measurement import grid_flux_monitor
 
@@ -894,7 +894,7 @@ def extract_waveguide_s_params_normalized(
     if len(ref_shifts) != len(port_cfgs):
         raise ValueError("ref_shifts must match the number of waveguide ports when provided")
 
-    from rfx.simulation import run as run_simulation
+    from rfx.stepping.uniform_loop import run as run_simulation
 
     template_cfgs = tuple(port_cfgs)
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
@@ -1090,7 +1090,7 @@ def extract_multimode_s_matrix(
         Ordering of rows/columns in the S-matrix.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-    from rfx.simulation import run as run_simulation
+    from rfx.stepping.uniform_loop import run as run_simulation
 
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
     flat_cfgs: list[WaveguidePortConfig] = []
@@ -1269,7 +1269,7 @@ def extract_multimode_s_matrix_flux(
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-    from rfx.simulation import run as run_simulation
+    from rfx.stepping.uniform_loop import run as run_simulation
 
     flat_cfgs: list[WaveguidePortConfig] = []
     mode_map: list[tuple[int, int, str, tuple[int, int]]] = []

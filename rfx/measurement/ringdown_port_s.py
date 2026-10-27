@@ -45,7 +45,7 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
         return driven_port_reflection(vp[0], ii[0], pm.z0)[None, None, :]
     from types import SimpleNamespace
 
-    from rfx.nonuniform import _assemble_nu_result
+    from rfx.measurement.graded_result import assemble_graded_result as _assemble_nu_result
     nf = int(np.asarray(freqs32).shape[0])
     zeros = jnp.zeros(nf, dtype=vp[0].dtype)
     accs = tuple(
