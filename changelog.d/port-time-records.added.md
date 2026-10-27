@@ -3,6 +3,6 @@
 Uniform `run(devices=...)` and `forward(distributed=True)`, with or without
 `port_s11_freqs`, now return lumped and wire `sparam_time_records` from the
 main run, with port ids and `V`, `I`, `V_ref`, and wire `V_port` channels
-matching one-device runs; both also return them inside `jax.jit`. Wire
-S-parameter requests on `run(devices=...)` also return `wire_port_sparams`,
-including the pre-injection reference spectrum.
+matching one-device runs. Without an S request, both also return them inside
+`jax.jit`. Wire S-parameter requests on `run(devices=...)` also return
+`wire_port_sparams`, including the pre-injection reference spectrum.
