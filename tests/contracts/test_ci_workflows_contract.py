@@ -249,12 +249,23 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
     assert len(installs) == 2, installs
     assert shlex.split(installs[0], comments=True) == ["pip", "install", "-e", ".[dev]"], installs[0]
-    # The pair goes in over pyproject's cap, without the resolver (acceleration D:996c06), then pip check.
-    over, check = [shlex.split(line) for line in installs[1].strip().splitlines()]
-    assert over[:4] == ["pip", "install", "-U", "--no-deps"], installs[1]
-    pins = {r.name: str(r.specifier) for r in map(Requirement, over[4:])}
+    # The pair goes in over pyproject's cap with its own dependencies (acceleration D:996c06), then pip check.
+    over, *check = installs[1].strip().splitlines()
+    over = shlex.split(over)
+    assert over[:3] == ["pip", "install", "-U"] and "--no-deps" not in over, installs[1]
+    pins = {r.name: str(r.specifier) for r in map(Requirement, over[3:])}
     assert pins == {"jax": "<0.12,>=0.11", "jaxlib": "<0.12,>=0.11"}, installs[1]
-    assert check == ["pip", "check"], installs[1]
+    # pip check runs; only rfx's own jax/jaxlib bound is exempt from failing the job.
+    assert check[0].startswith("pip check > pip-check.txt"), installs[1]
+    fail = re.search(r"if grep -vE '([^']+)' pip-check.txt; then [^;]*; exit 1; fi", installs[1])
+    assert fail, installs[1]
+    allowed = re.compile(fail.group(1))
+    assert allowed.match("rfx 1.9.0 has requirement jax<0.11.2,>=0.10.2, but you have jax 0.11.3.")
+    assert allowed.match("No broken requirements found.")
+    for broken in ("jax 0.11.3 has requirement ml_dtypes>=0.6, but you have ml_dtypes 0.5.0.",
+                   "rfx 1.9.0 has requirement numpy<3, but you have numpy 3.0.0.",
+                   "rfx 1.9.0 requires h5py, which is not installed."):
+        assert not allowed.match(broken), broken
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved")]
     assert len(records) == 1 and "if" not in records[0]
     for package in ("jax", "jaxlib", "numpy"):
