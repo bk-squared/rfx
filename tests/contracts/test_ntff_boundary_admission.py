@@ -143,7 +143,7 @@ RCS_TABLE = (
 def test_rcs_boundary_table(boundary, outcome, message, monkeypatch):
     from rfx.core.yee import init_materials
     from rfx.grid import Grid
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
 
     grid = Grid(freq_max=15e9, domain=(.054, .054, .054), dx=.003, cpml_layers=6)
     kwargs = {} if boundary is None else {"boundary": boundary}
@@ -265,7 +265,7 @@ def test_waveguide_realized_exterior(aperture, boundary, faces, entry, monkeypat
 def test_oblique_rcs_wrapped_z_is_not_refused(case, monkeypatch):
     from rfx.core.yee import init_materials
     from rfx.grid import Grid
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
 
     kwargs = {"cpml_axes": "xy"} if case == "xy_pads" else {"pec_faces": {"z_lo", "z_hi"}}
     grid = Grid(freq_max=15e9, domain=(.054, .054, .054), dx=.003, cpml_layers=6, **kwargs)
@@ -278,7 +278,7 @@ def test_oblique_rcs_wrapped_z_is_not_refused(case, monkeypatch):
         assert kwargs["cpml_axes"] == "xy"
         raise FieldLoopReached
 
-    monkeypatch.setattr("rfx.rcs.run", reached)
+    monkeypatch.setattr("rfx.measurement.rcs.run", reached)
     with pytest.raises(FieldLoopReached):
         compute_rcs(grid, init_materials(grid.shape), 4, f0=10e9, theta_inc=20.,
                     cpml_layers=6, tfsf_margin=3, freqs=np.array([1e10]),

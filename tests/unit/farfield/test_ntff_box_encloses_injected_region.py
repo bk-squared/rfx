@@ -34,7 +34,7 @@ from rfx.farfield import (
     require_box_encloses_injected_region,
 )
 from rfx.grid import Grid
-from rfx.rcs import compute_rcs
+from rfx.measurement.rcs import compute_rcs
 from rfx.simulation import run
 from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
 

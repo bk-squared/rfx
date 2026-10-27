@@ -48,9 +48,11 @@ from rfx.farfield import (
     ETA_0,
     NTFFBox,
     accumulate_ntff,
-    compute_far_field,
     init_ntff_data,
     with_face_centre_collocation,
+)
+from rfx.measurement.farfield import (
+    compute_far_field,
 )
 from rfx.grid import C0
 
@@ -396,7 +398,7 @@ def test_box_is_a_valid_jax_pytree():
 
 def _numpy_jax_parity(dx_w, dy_w, dz_w, grid):
     """Relative L2 between compute_far_field and compute_far_field_jax."""
-    from rfx.farfield import compute_far_field_jax
+    from rfx.measurement.farfield import compute_far_field_jax
 
     box, data, _scale, _src = _accumulated_case(dx_w, dy_w, dz_w, grid)
     theta = np.linspace(0.05, np.pi - 0.05, 17)
@@ -895,7 +897,7 @@ def test_scalar_face_area_elements_span_their_own_face():
     when each face carries its own pair of widths. A rule that used dx*dy
     everywhere gives (dx*dy)^3 instead.
     """
-    from rfx.farfield import _scalar_face_dS
+    from rfx.measurement.farfield import _scalar_face_dS
 
     dx, dy, dz = 1.5e-3, 4.0e-3, 2.5e-3
     areas = [_scalar_face_dS(axis, dx, dy, dz) for axis in (0, 1, 2)]

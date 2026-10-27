@@ -55,17 +55,19 @@ from rfx.current_moments import (
     NONUNIFORM_PLANE_STAMP_STEPS,
     UNIFORM_PLANE_STAMP_STEPS,
     accumulate_current_moments,
-    block_far_field_jax,
-    block_far_field_np,
     build_current_moment_monitor,
     current_moment_far_field,
     current_moment_monitor_from_grid,
     e_dual_spacings,
-    end_of_record_moments,
     init_current_moment_data,
     moments_to_PQT,
     plane_stamp_steps,
     slab_e_snapshot,
+)
+from rfx.measurement.current_moments import (
+    block_far_field_jax,
+    block_far_field_np,
+    end_of_record_moments,
     to_post_processing_convention,
 )
 from rfx.probes.probes import init_dft_plane_probe

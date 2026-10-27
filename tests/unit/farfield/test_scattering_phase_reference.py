@@ -11,11 +11,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import rfx.rcs as rcs
+import rfx.measurement.rcs as rcs
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0, Grid
 from rfx.simulation import ProbeSpec, run
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 from tests._x64_compat import enable_x64
 
 F0 = 6e9

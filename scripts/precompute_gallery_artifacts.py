@@ -225,6 +225,8 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
         init_tfsf,
         update_tfsf_1d_h,
         update_tfsf_1d_e,
+    )
+    from rfx.stepping.tfsf import (
         apply_tfsf_e,
         apply_tfsf_h,
     )

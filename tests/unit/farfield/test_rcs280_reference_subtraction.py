@@ -132,7 +132,7 @@ def test_subtract_reference_branch_runs_live():
     from rfx.grid import Grid
     from rfx.geometry.csg import Sphere, rasterize
     from rfx.core.yee import MaterialArrays
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
 
     f0 = 6e9
     grid = Grid(freq_max=f0 * 1.5, domain=(0.05,) * 3, dx=0.05 / 20, cpml_layers=6)

@@ -138,8 +138,13 @@ def _run_slab_field():
     from rfx.core.yee import init_state, init_materials, update_e, update_h
     from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
     from rfx.sources.tfsf import (
-        init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e,
-        apply_tfsf_e, apply_tfsf_h,
+        init_tfsf,
+        update_tfsf_1d_h,
+        update_tfsf_1d_e,
+    )
+    from rfx.stepping.tfsf import (
+        apply_tfsf_e,
+        apply_tfsf_h,
     )
 
     grid = Grid(freq_max=20e9, domain=(NX_INTERIOR * DX, 0.004, DX),
