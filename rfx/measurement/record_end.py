@@ -283,9 +283,12 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse):
         if grid is None:
             refuse(name, "unavailable", f"cannot judge: {name} needs the grid its table is built on")
             continue
+        import jax
         from rfx.floquet import floquet_port_source
-        center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps)
-        drives.append((name, np.asarray(spec.waveform), _points_reach([np.asarray(center)])))
+        with jax.ensure_compile_time_eval():  # the declared pulse is concrete under a trace
+            center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps)
+            table = np.asarray(spec.waveform)
+        drives.append((name, table, _points_reach([np.asarray(center)])))
     tf = getattr(sim, "_tfsf", None)
     if tf is not None:
         if grid is None:

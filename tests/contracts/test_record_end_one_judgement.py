@@ -252,3 +252,25 @@ def test_no_module_outside_record_end_computes_a_source_end():
         text = (REPO / caller).read_text()
         assert "from rfx.measurement.record_end import" in text, caller
         assert not re.search(r"probes\.settling import[^\n]*(source_end_step|sampled_source_end_step)", text), caller
+
+
+def test_floquet_end_is_the_same_under_an_outer_jit():
+    """The Floquet table is built from the declared pulse; under a trace it
+    must still be concrete, or the collector raised instead of judging."""
+    import jax
+    import jax.numpy as jnp
+
+    from rfx.measurement.record_end import injection_end
+
+    sim = _scene("floquet", False)
+    grid = sim._build_grid()
+    host = injection_end(N, grid.dt, records=sim._probes, grid=grid, sim=sim)
+    seen = []
+
+    @jax.jit
+    def traced(x):
+        seen.append(injection_end(N, grid.dt, records=sim._probes, grid=grid, sim=sim))
+        return x
+
+    traced(jnp.ones(2))
+    assert host is not None and seen == [host]
