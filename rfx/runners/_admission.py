@@ -1403,8 +1403,10 @@ def guard_shape_tangents(sim):
                 sim._geometry[index] = replace(entry, shape=shape)
 
 
-def admit_traced_run(sim, until_decay=None, decay_max_steps=None):
-    """Preserve the source fence, then guard shapes before run dispatch."""
+def admit_traced_run(sim, until_decay=None, decay_max_steps=None, radiated_flux_box=None):
+    """Refuse an unused flux stop and preserve source/shape fences before dispatch."""
+    from rfx.measurement.decay import refuse_radiated_flux_stop
+    refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
     _refuse_transformed_extended_tfsf(sim._tfsf, until_decay, decay_max_steps)
     guard_shape_tangents(sim)
 

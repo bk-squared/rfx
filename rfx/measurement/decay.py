@@ -325,6 +325,22 @@ class DecayStop:
         return self.stop
 
 
+def refuse_radiated_flux_stop(box, until_decay, boundary):
+    """A flux box selects an absorbing-boundary decay stop, never a fixed-run monitor."""
+    if box is None:
+        return
+    if until_decay is None or not until_decay > 0:
+        raise ValueError(
+            "radiated_flux_box selects the radiated-flux until_decay stop; use a positive "
+            "until_decay with cpml/upml, or omit the box and use add_flux_monitor() "
+            "for a fixed n_steps measurement")
+    if boundary not in ("cpml", "upml"):
+        raise ValueError(
+            "radiated_flux_box selects the radiated-flux until_decay stop and requires "
+            "cpml/upml; use an absorbing boundary, or omit the box to use the "
+            "closed-box point-field stop on the uniform mesh")
+
+
 @dataclass
 class FluxStop:
     """Radiated-power envelope, with its peak tracked from the first check."""
