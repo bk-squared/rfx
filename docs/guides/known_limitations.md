@@ -22,6 +22,19 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Traced full-tensor CPU builds on older jaxlib issue pieces serially
+
+Tracker: #2095
+
+On CPU with jaxlib < 0.11.1, `forward(subpixel_smoothing="full_tensor")` with traced geometry or permittivity
+could hang. When one linear-algebra call holds more than 2^20 matrices (grids above about 1 M nodes), rfx now
+issues its pieces one after another. At 1.48 M nodes the measured runs hung 0 of 8 times, against 6 of 11
+before, at about 1.5× the build time and about 1.24× host memory. Smaller grids keep the previous code and
+cost. This is a stopgap with an
+unproven bound: 56 independent `_linalg` sites remain concurrent in one build. If a build still hangs,
+set `PJRT_NPROC=1` before JAX starts; that workaround's cost is unmeasured. jaxlib ≥ 0.11.1 keeps full speed.
+rfx's dependency range now installs jaxlib 0.11.1 on Python 3.12+; Python 3.11 installs jax 0.10.2.
+
 ### `plan_mesh` with a graded z mesh solves the board on the lower absorber, in a shorter domain than it reports
 
 Tracker: #1941
