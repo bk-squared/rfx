@@ -225,8 +225,9 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
     xp = jnp if traced or spread else np
     # A concrete sigma keeps concrete extremes when only eps is traced (the passive-Debye skip reads them).
-    xs = np if not (abstract_masks or is_tracer(materials.sigma)
-                    or not getattr(materials.sigma, "is_fully_addressable", True)) else xp
+    sigma = values[1]
+    xs = np if not (abstract_masks or is_tracer(sigma)
+                    or not getattr(sigma, "is_fully_addressable", True)) else xp
     records = []
     for index, (pattern, count) in enumerate(zip(patterns, counts)):
         if not np.any(pattern):
