@@ -1,4 +1,4 @@
-### Fixed — `estimate_ad_memory` raised `KeyError: 'num_consts'` on jax 0.11
+### Fixed — `estimate_ad_memory` raised `KeyError: 'num_consts'` on jax 0.11 (#PR)
 
 On Python 3.12, rfx's dependency range installs jax 0.11, whose `scan` no longer
 carries the `num_consts`/`num_carry` parameters. `estimate_ad_memory`,
