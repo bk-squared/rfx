@@ -1439,3 +1439,28 @@ def test_the_conjunction_is_load_bearing(monkeypatch):
     assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
     assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
                                                      inset_cells=2)) == []
+
+
+# --------------------------------------------------------------------- #
+# Every absorbing kind (#1961): the check keyed on boundary == "cpml" and
+# said nothing for the same box drawn into a UPML pad.
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("boundary,label", [("cpml", "CPML"), ("upml", "UPML")])
+def test_geometry_in_the_pad_is_reported_for_every_absorbing_kind(boundary, label):
+    sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
+                     cpml_layers=8, boundary=boundary)
+    sim.add_material("ro4003c", eps_r=3.55)
+    sim.add(_x_overshoot_box(0.0013), material="ro4003c")
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1
+    assert f"extends into {label} region along x-axis" in str(issues[0])
+    assert "1.3mm past the x-hi absorber boundary" in str(issues[0])
+
+
+def test_a_pec_face_has_no_pad_to_report():
+    sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
+                     boundary=BoundarySpec(x=Boundary(lo="upml", hi="pec"), y="upml", z="upml"))
+    sim.add_material("ro4003c", eps_r=3.55)
+    sim.add(_x_overshoot_box(0.0013), material="ro4003c")
+    assert _absorber_issues(sim) == []
