@@ -724,13 +724,13 @@ class TestDistributedSources:
         self._closed_tfsf_probe_parity("forward")
 
     @pytest.mark.parametrize("entry", ["run", "forward"])
-    def test_closed_tfsf_on_three_devices_refused_by_name(self, entry):
-        if len(jax.devices()) < 3:
-            pytest.skip("requires 3 devices")
-        kw = dict(n_steps=50, devices=jax.devices()[:3])
+    def test_closed_tfsf_on_five_devices_refused_by_name(self, entry):
+        if len(jax.devices()) < 5:
+            pytest.skip("requires 5 devices")
+        kw = dict(n_steps=50, devices=jax.devices()[:5])
         if entry == "forward":
             kw["distributed"] = True
-        with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
+        with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 5 devices.*5 or more are refused"):
             getattr(self.scene(True), entry)(**kw)
 
     def test_waveguide_port_refused_by_name(self):

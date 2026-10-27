@@ -550,9 +550,9 @@ def test_closed_box_device_limit_without_mesh():
     from types import SimpleNamespace
     from rfx.runners._admission import refuse_slab_tfsf_devices
     declaration = SimpleNamespace(closed_box=True)
-    refuse_slab_tfsf_devices(declaration, 2)
-    with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
-        refuse_slab_tfsf_devices(declaration, 3)
+    refuse_slab_tfsf_devices(declaration, 4)
+    with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 5 devices.*5 or more are refused"):
+        refuse_slab_tfsf_devices(declaration, 5)
 
 
 def test_uniform_forward_user_jit_refuses_port_s():
