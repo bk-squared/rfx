@@ -77,8 +77,12 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from openems_power_waves import power_wave_s  # noqa: E402
 
 # Fix numpy deprecation in openEMS v0.0.35 (must be BEFORE openEMS import;
 # matches research/microwave-energy/openems_simulation/msl_thru_reference.py).
@@ -244,7 +248,9 @@ def _run(*, dx_mm: float, sim_path: str, threads: int, nrts: int,
     s11 = np.asarray(port0.uf_ref, dtype=complex) / np.asarray(port0.uf_inc, dtype=complex)
     # port1 propagates -x; its uf_ref channel carries the +x-going
     # transmitted wave (same convention as msl_thru_reference.py).
-    s21 = np.asarray(port1.uf_ref, dtype=complex) / np.asarray(port0.uf_inc, dtype=complex)
+    # Each MSL port's waves are split at its own measured line impedance, so
+    # the transmission carries sqrt(Re Z_ref0 / Re Z_ref1) (#1059).
+    s21 = power_wave_s(port1.uf_ref, port0.uf_inc, port1.Z_ref, port0.Z_ref)
 
     z0_port0 = np.asarray(port0.Z_ref, dtype=complex)
     z0_port1 = np.asarray(port1.Z_ref, dtype=complex)

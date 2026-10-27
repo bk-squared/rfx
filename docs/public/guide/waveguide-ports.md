@@ -226,6 +226,8 @@ graded mesh it is a target segment count.
 - **Graded meshes** refuse `normalize=False`; use `"flux"` (or `True`). Graded-mesh waveguide results
   outside the published WR-90 comparisons are experimental.
 - **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
-  uniform mesh and no material override.
+  uniform mesh and no material override. Each reference's port sections are
+  admitted as on a direct entry: a port inside a PEC block is refused (give it a
+  closed air pocket instead), and so is a dispersive material.
 - Full scope, with the comparisons behind it, is in the
   [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).

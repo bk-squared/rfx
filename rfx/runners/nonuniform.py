@@ -20,12 +20,12 @@ from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
 from rfx.nonuniform import (
     NonUniformGrid,
-    interior_cells,
     make_nonuniform_grid,
     run_nonuniform,
     run_nonuniform_until_decay,
     make_current_source,
 )
+from rfx.model.graded_grid import interior_cells
 
 
 INTERFACE_EPS_RULES = ("sampled", "dual_average")
@@ -255,7 +255,7 @@ def _range_to_slice_nu(grid, axis, value_range):
     lo, hi = value_range
     # Each end on the node pos_to_nu_index names (the #1295 tie rule),
     # as the uniform builder puts it on round(lo/dx).
-    from rfx.nonuniform import _axis_position_to_index
+    from rfx.model.graded_grid import _axis_position_to_index
     lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
     hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
     if hi_local <= lo_local:

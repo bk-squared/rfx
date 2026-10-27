@@ -60,7 +60,7 @@ def _scans(jaxpr):
 
 
 def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
-               checkpoint_every, checkpoint_segments, n_warmup):
+               checkpoint_every, checkpoint_segments, n_warmup, replay_tables=None):
     """Trace the requested forward with abstract overrides, without executing it."""
     try:
         if grid is None:
@@ -76,6 +76,8 @@ def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
                 checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments,
                 n_warmup=n_warmup, design_box=design_box, skip_preflight=True,
                 **dict(zip(names, values)))
+            if replay_tables is not None:
+                replay_tables.extend(replay_table_accounting(result))
             return result.time_series, result.ntff_data
 
         traced = jax.make_jaxpr(forward)(*inputs)
@@ -99,3 +101,23 @@ def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
         return saved, excluded, warnings
     except Exception as error:
         raise ADMemoryUnavailable(f"AD memory carry could not be read: {error}") from error
+
+
+def replay_table_accounting(result):
+    """Read post-scan replay sizes from the configs realized by forward.
+
+    extract_waveguide_sparams replays reference and probe V/I separately.
+    Each replay keeps its own weight table, including the two E-stamped
+    records and the two H-stamped records; equal stamps do not share leaves.
+    Plane/flux DFTs and requested lumped/wire spectra accumulate in-scan.
+    """
+    from rfx.measurement.dft import _BLOCK
+
+    size = 0
+    for cfg in (result.waveguide_ports or {}).values():
+        for name in ("v_ref_t", "i_ref_t", "v_probe_t", "i_probe_t"):
+            record = getattr(cfg, name)
+            padded = math.ceil(record.shape[0] / _BLOCK) * _BLOCK
+            dtype = jnp.result_type(record.dtype, jnp.complex64)
+            size += padded * cfg.freqs.size * dtype.itemsize
+    return [("waveguide_port", size)] if result.waveguide_ports else []

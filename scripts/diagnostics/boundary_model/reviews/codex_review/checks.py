@@ -16,7 +16,7 @@ import rfx.stepping.uniform_loop as uniform_loop
 import rfx.materials.debye as de
 import rfx.materials.lorentz as lo
 from rfx.grid import Grid
-from rfx.nonuniform import _profile_to_inv_arrays
+from rfx.model.graded_grid import _profile_to_inv_arrays
 OUT=Path(__file__).parent
 start=time.monotonic()
 res={'head':subprocess.check_output(['git','-C','/root/workspace/bk-workspace/rfx','rev-parse','HEAD'],text=True).strip(), 'backend':jax.default_backend()}

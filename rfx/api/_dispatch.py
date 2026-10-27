@@ -161,6 +161,16 @@ def _dispatch_plan(
                 "reach the uniform lane, where this knob is honoured."
             )
 
+    # One refusal for both entries (census: one raising line per refusal):
+    # forward() selects the multi-device lanes with distributed=True, run()
+    # with more than one device.
+    multi_device = (distributed if mode == "forward"
+                    else devices is not None and len(devices) > 1)
+    if multi_device and self._solver == "adi":
+        raise ValueError("solver='adi' does not support distributed execution")
+    if multi_device and self._boundary == "upml":
+        raise ValueError("boundary='upml' does not support distributed execution")
+
     if mode == "forward":
         if isinstance(checkpoint_segments, tuple):
             raise ValueError("forward checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
@@ -184,10 +194,6 @@ def _dispatch_plan(
         # Phase 3: distributed dispatch (V3 lines 842-847).
         if distributed:
             if not is_nonuniform:
-                if self._solver == "adi":
-                    raise ValueError("solver='adi' does not support distributed execution")
-                if self._boundary == "upml":
-                    raise ValueError("boundary='upml' does not support distributed execution")
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
@@ -197,8 +203,6 @@ def _dispatch_plan(
             # f3cab7c) has been removed. The single-device PMC runtime
             # hook lives in rfx/simulation.py:703-705 and the sharded
             # PMC helpers live in each runner next to their PEC analog.
-            self._reject_upml_on_nonuniform(
-                "distributed non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_distributed_nu")
             return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
@@ -245,11 +249,7 @@ def _dispatch_plan(
         return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
 
     # mode == "run"
-    distributed_run = devices is not None and len(devices) > 1
-    if self._solver == "adi" and distributed_run:
-        raise ValueError("solver='adi' does not support distributed execution")
-    if self._boundary == "upml" and distributed_run:
-        raise ValueError("boundary='upml' does not support distributed execution")
+    distributed_run = multi_device
 
     # Distributed graded meshes share forward's NU runner and staging.
     if distributed_run and is_nonuniform:

@@ -32,8 +32,11 @@ import pytest
 
 from rfx.auto_config import _make_dz_profile
 from rfx.nonuniform import (
-    interior_cells, make_band_profile, make_nonuniform_grid, make_z_profile,
+    make_band_profile,
+    make_nonuniform_grid,
+    make_z_profile,
 )
+from rfx.model.graded_grid import interior_cells
 
 ATOL = 1e-12          # I1 / I3: metres, never widened
 RTOL_RATIO = 1e-9     # I2: absolute slack on the ratio, never widened

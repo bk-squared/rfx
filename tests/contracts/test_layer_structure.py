@@ -297,9 +297,10 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     assert "run_nonuniform" in {name for name, _, _ in gate.units(real_tree("rfx/stepping/graded_loop.py"))}
     assert "run_nonuniform" in gate.public_names(gate.Sources(REPO), "rfx.stepping")
     # Graded-grid construction (NonUniformGrid, its module-level tables) moved to
-    # rfx/model/ in #1643; nonuniform.py now only imports it, counted under I.
+    # rfx/model/ in #1643; nonuniform.py now imports it from the package top, not counted under I.
     assert "NonUniformGrid.node_of" not in all_units
-    assert "rfx.model.graded_grid:make_nonuniform_grid" in nonuniform["I"]
+    assert "rfx.model.graded_grid:make_nonuniform_grid" not in nonuniform["I"]
+    assert "make_nonuniform_grid" in gate.public_names(gate.Sources(REPO), "rfx.model")
     assert "rfx.model.materials:_design_box_edge_coeffs" not in generated["files"][SIM]["I"]
 
 

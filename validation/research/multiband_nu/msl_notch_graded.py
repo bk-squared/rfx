@@ -123,7 +123,7 @@ from rfx import Box, Simulation                                    # noqa: E402
 from rfx.boundaries.pec import realized_wall_planes                # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec             # noqa: E402
 from rfx.mesh_edges import EDGE_OFFSET                             # noqa: E402
-from rfx.nonuniform import node_positions_from_profile             # noqa: E402
+from rfx.model.graded_grid import node_positions_from_profile       # noqa: E402
 from rfx.sources.msl_port import (                                 # noqa: E402
     compute_msl_mode_profile, msl_cell, msl_cross_section_span,
     msl_port_from_entry, msl_probe_x_coords_n,

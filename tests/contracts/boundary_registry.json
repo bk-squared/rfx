@@ -73,7 +73,7 @@
       "function": "_update_e_nu_dispersive"
     },
     {
-      "file": "rfx/nonuniform.py",
+      "file": "rfx/measurement/graded_wire.py",
       "function": "wire_port_current"
     },
     {
@@ -512,12 +512,12 @@
       "kind": "difference"
     },
     {
-      "file": "rfx/nonuniform.py",
+      "file": "rfx/measurement/graded_wire.py",
       "function": "_bwd_neighbor",
       "kind": "neighbour"
     },
     {
-      "file": "rfx/nonuniform.py",
+      "file": "rfx/measurement/graded_wire.py",
       "function": "wire_port_current",
       "kind": "neighbour",
       "count": 6

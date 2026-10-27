@@ -32,44 +32,7 @@
       "D2": []
     },
     "rfx/nonuniform.py": {
-      "I": [
-        "rfx.boundaries.axes:resolve_cpml_axes",
-        "rfx.core.yee:h_neighbor",
-        "rfx.model.graded_grid:_append_bounding_node",
-        "rfx.model.graded_grid:_assert_declared_floor_at_runtime",
-        "rfx.model.graded_grid:_assert_traced_index_matches_realized",
-        "rfx.model.graded_grid:_axis_position_to_index",
-        "rfx.model.graded_grid:_nearest_on_line",
-        "rfx.model.graded_grid:_pad_profile",
-        "rfx.model.graded_grid:_pinned_dt",
-        "rfx.model.graded_grid:_profile_to_inv_arrays",
-        "rfx.model.graded_grid:assert_cells_span_declared_profile",
-        "rfx.model.graded_grid:e_node_dual_spacing_at",
-        "rfx.model.graded_grid:e_node_dual_spacings",
-        "rfx.model.graded_grid:interior_cells",
-        "rfx.model.graded_grid:make_nonuniform_grid",
-        "rfx.model.graded_grid:node_positions_from_profile",
-        "rfx.model.graded_grid:position_to_index",
-        "rfx.model.graded_grid:z_position_to_index",
-        "rfx.model.graded_profile:_Anchor",
-        "rfx.model.graded_profile:_BandSeg",
-        "rfx.model.graded_profile:_EDGE_TOL",
-        "rfx.model.graded_profile:_MAX_PROFILE_CELLS",
-        "rfx.model.graded_profile:_RATIO_FLOOR",
-        "rfx.model.graded_profile:_STEP_TOL",
-        "rfx.model.graded_profile:_band_realize_free",
-        "rfx.model.graded_profile:_band_realize_protected",
-        "rfx.model.graded_profile:_build_band_profile",
-        "rfx.model.graded_profile:_ramp_cells",
-        "rfx.model.graded_profile:_ramp_spec",
-        "rfx.model.graded_profile:_ramp_steps",
-        "rfx.model.graded_profile:_ramp_sum",
-        "rfx.model.graded_profile:make_band_profile",
-        "rfx.model.graded_profile:make_z_profile",
-        "rfx.model.materials:e_update_coefficient_at",
-        "rfx.model.materials:electric_materials_traced",
-        "rfx.model.source_coefficients:source_table"
-      ],
+      "I": [],
       "S": [],
       "M": [],
       "A": [],
@@ -379,20 +342,13 @@
     },
     "rfx/model/materials.py": {
       "R": [
-        "rfx.nonuniform:NonUniformGrid",
-        "rfx.nonuniform:current_source_cb",
-        "rfx.nonuniform:e_node_dual_spacings"
+        "rfx.nonuniform:current_source_cb"
       ]
     },
     "rfx/model/source_coefficients.py": {
       "R": [
         "rfx.nonuniform:current_source_cb",
         "rfx.simulation:_uniform_cell_volume"
-      ]
-    },
-    "rfx/model/thin_conductors.py": {
-      "R": [
-        "rfx.nonuniform:e_node_dual_spacings"
       ]
     },
     "rfx/stepping/adjoint_scan.py": {
@@ -438,8 +394,7 @@
     },
     "rfx/stepping/slab_setup.py": {
       "R": [
-        "rfx.nonuniform:current_source_cb",
-        "rfx.nonuniform:resolve_cpml_axes"
+        "rfx.nonuniform:current_source_cb"
       ]
     },
     "rfx/stepping/uniform.py": {

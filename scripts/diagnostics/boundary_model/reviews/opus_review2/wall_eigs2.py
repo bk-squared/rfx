@@ -15,7 +15,7 @@ jax.config.update("jax_enable_x64", True)  # scratch script, not a test module
 import jax.numpy as jnp
 
 import rfx.core.yee as Y
-from rfx.nonuniform import _profile_to_inv_arrays
+from rfx.model.graded_grid import _profile_to_inv_arrays
 
 C0 = 299_792_458.0
 PER = (False, True, True)

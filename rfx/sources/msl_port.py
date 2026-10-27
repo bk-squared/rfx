@@ -1318,7 +1318,7 @@ def _msl_coord_for_index(grid, axis: str, target_i: int) -> float:
         return float(u * grid.dx)
     # NonUniformGrid — cumulative interior cell-edge positions.
     pad_hi = int(getattr(grid, f"pad_{axis}_hi", 0))
-    from rfx.nonuniform import interior_cells
+    from rfx.model.graded_grid import interior_cells
     interior = interior_cells(np.asarray(per_cell, dtype=float), pad, pad_hi)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
     u_c = max(0, min(u, len(edges) - 1))

@@ -53,7 +53,7 @@ import jax.numpy as jnp
 
 from rfx import Simulation, flux_spectrum
 from rfx.sources.sources import ModulatedGaussian
-from rfx.nonuniform import interior_cells
+from rfx.model.graded_grid import interior_cells
 
 try:  # jax >= 0.8.0
     from jax import enable_x64

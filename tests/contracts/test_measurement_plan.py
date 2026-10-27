@@ -144,7 +144,7 @@ def judge(plan, actual, row, nu):
             fields = SimpleNamespace(**{c: np.random.default_rng(i).normal(size=actual['grid'].shape)
                                         for i, c in enumerate(('ex', 'ey', 'ez', 'hx', 'hy', 'hz'))})
             if nu:
-                from rfx.nonuniform import wire_port_current
+                from rfx.measurement.graded_wire import wire_port_current
                 duals = [e_node_dual_spacing_at(w, p) for w, p in zip(widths, mid)]
                 oracle = wire_port_current(fields.hx, fields.hy, fields.hz, comp, *mid, *duals)
             else:

@@ -362,7 +362,7 @@ def test_g3c_x2_algebra_uniform_and_nu_transition():
 
     # NU 0.5/1.5 mm grading-transition node
     from rfx.runners.nonuniform import assemble_materials_nu
-    from rfx.nonuniform import e_node_dual_spacings
+    from rfx.model.graded_grid import e_node_dual_spacings
     from tests.unit.materials.test_thin_conductor import _nu_graded_grid, _nu_graded_sim
     sim = _nu_graded_sim(zc=4.0e-3, sigma_bulk=1e4, thickness=35e-6,
                          surface_impedance_f0=F0)
@@ -1858,7 +1858,7 @@ def test_box_and_equivalent_mask_shape_fold_bit_identically(lane):
         d_norm = np.full(1, grid.dx)
         ks = [0]
     else:
-        from rfx.nonuniform import e_node_dual_spacings
+        from rfx.model.graded_grid import e_node_dual_spacings
         ks = sorted({int(k) for k in np.argwhere(sig_msk > 0)[:, 2]})
         assert len(ks) == 1, ks
         d_norm = np.asarray(e_node_dual_spacings(grid.dz))[ks]

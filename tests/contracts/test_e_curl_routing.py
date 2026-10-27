@@ -20,6 +20,7 @@ from rfx.boundaries import upml
 import rfx.simulation as uniform
 import rfx.stepping.uniform_setup as uniform_setup
 import rfx.nonuniform as nu
+import rfx.measurement.graded_wire as graded_wire
 from tests.contracts.curl_cases import model
 
 
@@ -333,7 +334,7 @@ def test_each_port_sample_reads_two_neighbors(component, idx, periodic):
 @pytest.mark.parametrize("idx", [(0, 0, 0), (2, 1, 1), (4, 3, 2)])
 def test_each_graded_port_sample_reads_two_neighbors(component, idx):
     state, _, boundary = kernel_inputs()
-    require_shared(lambda: nu.wire_port_current(
+    require_shared(lambda: graded_wire.wire_port_current(
         state.hx, state.hy, state.hz, component, *idx,
         .9e-3, 1.1e-3, 1.3e-3, boundary=boundary),
         helper="h_neighbor", indexed=True, expected_calls=2)
