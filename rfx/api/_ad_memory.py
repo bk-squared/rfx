@@ -8,6 +8,8 @@ from typing import Any
 
 import jax
 
+from rfx.api._ad_memory_compiled import compiled_estimate
+
 from rfx.stepping.remat import active_levels, checkpoint_lengths, checkpoint_memory, plan_checkpoint_lengths, validate_cotangents
 
 from rfx.api._ad_memory_model import (
@@ -200,6 +202,7 @@ class _AdMemoryMixin:
         checkpoint: bool = True,
         distributed: bool = False,
         cotangents: int = 1,
+        compiled: bool = False,
     ) -> "AD_MemoryEstimate":
         """Estimate saved carry, per-step tape, and calibrated AD working set.
 
@@ -222,6 +225,7 @@ class _AdMemoryMixin:
         heuristic remains for compatibility; use ad_full_gb or the requested
         ad_segmented_gb for planning. These are estimates, not certificates.
         """
+        if compiled: return compiled_estimate(self, n_steps, available_memory_gb=available_memory_gb, checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup, design_box=design_box, design=design, checkpoint=checkpoint, distributed=distributed, cotangents=cotangents)
         cotangents = validate_cotangents(cotangents)
         n_steps_i = _require_integral_param("n_steps", n_steps)
         n_warmup_i = _require_integral_param("n_warmup", n_warmup)

@@ -71,6 +71,15 @@ class AD_MemoryEstimate(NamedTuple):
     replay_table_bytes_by_kind: tuple[tuple[str, int], ...] = ()
     #: Per-extra-cotangent working arrays, excluding the boundary carry.
     working_bytes: int = 0
+    #: Opt-in compile-only device peak; analytic estimates leave these None.
+    compiled_bytes: int | None = None
+    #: Live device memory after compilation, including trace-time constants
+    #: and arrays the process already holds. The run includes those existing
+    #: arrays only if they are still live when it runs.
+    resident_bytes: int | None = None
+    allocator_rounding_bytes: int | None = None
+    allocator_rounding_max_bytes: int | None = None
+    compiled_total_bytes: int | None = None
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -80,6 +89,10 @@ class AD_MemoryEstimate(NamedTuple):
     def to_dict(self) -> dict[str, float | int | None | str]:
         """Return a stable JSON-serializable AD memory artifact."""
         return {
+            **({name: getattr(self, name) for name in (
+                "compiled_bytes", "resident_bytes", "allocator_rounding_bytes",
+                "allocator_rounding_max_bytes", "compiled_total_bytes",
+            )} if self.compiled_total_bytes is not None else {}),
             "saved": list(self.saved),
             "excluded_linear": list(self.excluded_linear),
             "modelled": self.modelled,
