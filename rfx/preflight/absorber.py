@@ -818,7 +818,9 @@ def _validate_cfg_geometry_in_cpml(
     entry count, the worst offender and its overshoot distance, instead of
     one message per geometry entry that named neither.
     """
-    if cpml_thickness > 0 and self._boundary == "cpml":
+    # Every absorbing kind pads exterior to the domain; the per-face depths
+    # above are the realized ones (0 on PEC/PMC/periodic faces).
+    if cpml_thickness > 0:
         # Issue #660: collect every crossing first, warn ONCE per axis.
         # The pre-#660 loop warned inside the entry loop with a message
         # carrying only the material name and the axis, so a 61-solid CAD
@@ -875,7 +877,7 @@ def _validate_cfg_geometry_in_cpml(
             over, idx, mat, kind, side, coord, bound = max(recs, key=lambda r: r[0])
             msg = (
                 f"Material '{mat}' (geometry entry #{idx}, {kind}) extends "
-                f"into CPML region along {axis}-axis: bbox {side} face at "
+                f"into {absorber_label} region along {axis}-axis: bbox {side} face at "
                 f"{_fmt_len(coord)} is {_fmt_len(over)} past the "
                 f"{axis}-{side} absorber boundary at {_fmt_len(bound)}."
             )
