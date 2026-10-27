@@ -329,7 +329,7 @@ class Instrument:
                     "_KERNEL_MODULES",
                     B._KERNEL_MODULES
                     + (
-                        "rfx/core/jax_utils.py",
+                        "rfx/stepping/scan.py",
                         "rfx/stepping/slab_wrap.py",
                         "rfx/stepping/remat.py",
                     ),

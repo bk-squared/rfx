@@ -6,7 +6,7 @@ series-RL element and lossy thin sheet. Refused kinds are omitted explicitly
 by the disposition table. Model W has only one wire port and one probe. Both use the default S request.
 Material blocks use separate names; neither model has a plain source.
 
-Per-lane contents (P; W), measured on 8f992ab4e:
+Per-lane contents (P; W), measured on 1937630f6:
   run_uniform: P=_materials/eps, _materials/sigma, _materials/mu, _materials/debye, _materials/lorentz, _materials/drude, _ports/lumped_port, _probes/probe, _dft_planes/dft_plane, _flux_monitors/flux, _ntff/ntff_box, _lumped_rlc/series_RL, _thin_conductors/lossy_sheet; W=_ports/wire_port, _probes/probe
   run_nonuniform: P=_materials/eps, _materials/sigma, _materials/mu, _materials/debye, _materials/lorentz, _materials/drude, _ports/lumped_port, _probes/probe, _dft_planes/dft_plane, _flux_monitors/flux, _ntff/ntff_box, _lumped_rlc/series_RL, _thin_conductors/lossy_sheet; W=_ports/wire_port, _probes/probe
   run_subgridded: P=_materials/eps, _materials/sigma, _materials/mu, _ports/lumped_port, _probes/probe; W=_ports/wire_port, _probes/probe
@@ -23,7 +23,7 @@ Per-lane contents (P; W), measured on 8f992ab4e:
   fwd_uniform: P=_materials/eps, _materials/sigma, _materials/mu, _materials/debye, _materials/lorentz, _materials/drude, _ports/lumped_port, _probes/probe, _dft_planes/dft_plane, _flux_monitors/flux, _ntff/ntff_box, _lumped_rlc/series_RL, _thin_conductors/lossy_sheet; W=_ports/wire_port, _probes/probe
   fwd_nonuniform: P=_materials/eps, _materials/sigma, _materials/mu, _materials/debye, _materials/lorentz, _materials/drude, _ports/lumped_port, _probes/probe, _dft_planes/dft_plane, _flux_monitors/flux, _ntff/ntff_box, _lumped_rlc/series_RL, _thin_conductors/lossy_sheet; W=_ports/wire_port, _probes/probe
   fwd_distributed_nu: P=_materials/eps, _materials/sigma, _materials/mu, _materials/debye, _materials/lorentz, _materials/drude, _ports/lumped_port, _probes/probe, _dft_planes/dft_plane, _flux_monitors/flux, _ntff/ntff_box, _thin_conductors/lossy_sheet; W=_ports/wire_port, _probes/probe
-    P omitted: _lumped_rlc/series_RL: lumped RLC refused
+    P omitted: _lumped_rlc/series_RL: lumped RLC refused by the shared multi-device check (#1239, #2076)
   fwd_adi: P=_probes/probe; W=_probes/probe
     P omitted: _materials/eps: ADI refuses a material interface (#1373); a homogeneous fill is carried (LANE_GATES); _materials/sigma: ADI refuses a material interface (#1373); a homogeneous fill is carried (LANE_GATES); _materials/mu: refused by lane admission; before it, the ADI kernel took ε and σ only (#1308); _materials/debye: ADI refuses dispersive materials; _materials/lorentz: ADI refuses dispersive materials; _materials/drude: ADI refuses dispersive materials; _ports/lumped_port: ADI refuses every port but add_source() soft sources; _dft_planes/dft_plane: ADI refuses DFT planes; _flux_monitors/flux: refused by lane admission; before it, forward() returned flux_monitors=None; _ntff/ntff_box: ADI refuses NTFF; _lumped_rlc/series_RL: ADI refuses lumped RLC; _thin_conductors/lossy_sheet: ADI refuses thin-conductor corrections
     W omitted: _ports/wire_port: ADI refuses every port but add_source() soft sources
@@ -44,7 +44,7 @@ from tests.contracts import path_disposition as T
 from tests.contracts.declaration_reads import Instrument
 from tests.unit.runners import test_path_disposition_cells as B
 
-BASELINE = Path(__file__).with_name("fixtures") / "declaration_reads_baseline.json"
+BASELINE = Path(__file__).resolve().parents[1] / "fixtures" / "declaration_reads_baseline.json"
 DESIGN = "rfx-archive rfx/plans/acceleration/20261021-declaration-stepA-SPEC.md §A1"
 FEATURES = (
     ("_materials", "eps"),
