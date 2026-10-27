@@ -1,0 +1,49 @@
+"""The jax 0.11 xfail list marks only on jax 0.11 and names tests that exist (tests/_jax_version_xfails.py)."""
+
+import ast
+from pathlib import Path
+
+from tests import _jax_version_xfails as plugin
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_the_plugin_is_loaded_by_the_root_conftest():
+    tree = ast.parse((ROOT / "conftest.py").read_text(encoding="utf-8"))
+    plugins = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                   and [t.id for t in node.targets if isinstance(t, ast.Name)] == ["pytest_plugins"])
+    assert "tests._jax_version_xfails" in ast.literal_eval(plugins)
+
+
+def test_marks_only_from_jax_011():
+    nodeid = plugin.JAX_011_XFAILS[2114][1][0]
+    assert plugin.reason_for(nodeid, (0, 10, 2)) is None
+    assert plugin.reason_for(nodeid, (0, 10)) is None
+    assert plugin.reason_for(nodeid, (0, 11, 0)).startswith("#2114 ")
+    assert plugin.reason_for(nodeid, (0, 12)).startswith("#2114 ")
+    assert plugin.reason_for("tests/unit/autodiff/test_estimate_ad_memory.py::not_listed", (0, 11)) is None
+
+
+def test_every_listed_id_names_an_existing_test_function():
+    missing = []
+    defined = {}
+    for issue, (reason, ids) in plugin.JAX_011_XFAILS.items():
+        assert reason and ids, issue
+        for nodeid in ids:
+            path, *names = nodeid.split("[", 1)[0].split("::")
+            if path not in defined:
+                file = ROOT / path
+                defined[path] = (
+                    {f"{c.name}.{f.name}" for c in ast.walk(ast.parse(file.read_text(encoding="utf-8")))
+                     if isinstance(c, ast.ClassDef) for f in c.body if isinstance(f, ast.FunctionDef)}
+                    | {f.name for f in ast.parse(file.read_text(encoding="utf-8")).body
+                       if isinstance(f, ast.FunctionDef)}
+                ) if file.is_file() else set()
+            if ".".join(names) not in defined[path]:
+                missing.append(nodeid)
+    assert not missing, missing
+
+
+def test_no_id_is_listed_twice():
+    ids = [nodeid for _, (_, listed) in plugin.JAX_011_XFAILS.items() for nodeid in listed]
+    assert len(ids) == len(set(ids))

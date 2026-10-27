@@ -44,7 +44,7 @@ import pytest  # noqa: E402
 # which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
 # With RFX_DURATIONS_LOG set, every test phase's duration is appended as it ends
 # (the weekly lane; tests/_durations_log.py).
-pytest_plugins = ("tests._prose_reads", "tests._durations_log", "tests._module_cache_clear")
+pytest_plugins = ("tests._prose_reads", "tests._durations_log", "tests._module_cache_clear", "tests._jax_version_xfails")
 
 
 def pytest_configure(config):

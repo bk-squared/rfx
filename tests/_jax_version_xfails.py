@@ -1,0 +1,210 @@
+"""tests/_jax_version_xfails.py -- strict xfails for tests that fail on jax 0.11 for a known cause.
+
+The weekly Python 3.12 / jax 0.11 job (validation.yml, ``latest-jax``) ran red on its first run
+(run 40468718500: 160 failing tests, three causes). Each cause has an issue; each listed node id gets
+``xfail(strict=True, reason="#N ...")`` on jax 0.11 or later and nothing on older jax, where these tests
+pass. The fix for an issue deletes that issue's entry: a fixed test still listed turns red (XPASS strict).
+
+Ids are exact node ids, parameters included, because several parametrized tests fail for some cases only.
+"""
+import pytest
+
+FROM_VERSION = (0, 11)
+
+JAX_011_XFAILS = {
+    2114: (
+        "jax 0.11 renamed the scan parameters the AD-memory reader reads (num_consts, num_carry)",
+        (
+            "tests/contracts/test_ad_memory_tape_terms.py::test_ad_memory_tape_terms",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[core-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[core-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[debye-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[debye-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[dft-plane-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[dft-plane-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[flux-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[flux-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[lorentz-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[lorentz-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[method-b-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[monitors-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[monitors-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[ntff-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[ntff-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[pec-face-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[pec-face-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[periodic-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[periodic-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[ports-rlc-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[ports-rlc-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[tfsf-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[tfsf-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[waveguide-graded]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_carry_contract[waveguide-uniform]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_closed_box_record_memory_slope[line-carried]",
+            "tests/contracts/test_ad_memory_tape_terms.py::test_closed_box_record_memory_slope[record-chosen]",
+            "tests/contracts/test_closed_box_incident_carry.py::test_closed_box_carry_shapes_do_not_depend_on_step_bound",
+            "tests/unit/autodiff/test_ad_diagnostics.py::test_ad_memory_preflight_composes_residual_diagnostic",
+            "tests/unit/autodiff/test_ad_diagnostics.py::test_ad_memory_preflight_propagates_residual_trace_errors",
+            "tests/unit/autodiff/test_ad_diagnostics.py::test_ad_memory_preflight_residual_context_rejects_nonfinite_values",
+            "tests/unit/autodiff/test_ad_diagnostics.py::test_ad_memory_preflight_residual_context_rejects_unsupported_values",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_backend_query_failure_remains_best_effort",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_device_limit_is_used[cuda]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_device_limit_is_used[gpu]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_device_limit_is_used[mps]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_device_limit_is_used[rocm]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_explicit_budget_skips_device_query",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_device_query_failure_is_advised",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[None]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[missing-method]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats10]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats1]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats2]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats3]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats4]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats5]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats6]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats7]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats8]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_mps_unknown_limit_has_one_advisory[stats9]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_no_device_budget_query_or_new_advisory[cpu]",
+            "tests/unit/autodiff/test_ad_memory_backend.py::test_no_device_budget_query_or_new_advisory[tpu-unknown]",
+            "tests/unit/autodiff/test_ad_memory_cotangents.py::test_extra_cotangent_adds_one_carry_on_the_calibrated_term[False-options2]",
+            "tests/unit/autodiff/test_ad_memory_cotangents.py::test_extra_cotangent_adds_one_carry_on_the_calibrated_term[True-options0]",
+            "tests/unit/autodiff/test_ad_memory_cotangents.py::test_extra_cotangent_adds_one_carry_on_the_calibrated_term[True-options1]",
+            "tests/unit/autodiff/test_ad_memory_cotangents.py::test_extra_cotangent_adds_one_carry_on_the_calibrated_term[True-options3]",
+            "tests/unit/autodiff/test_ad_memory_cotangents.py::test_plan_and_explain_carry_the_cotangent_count[2]",
+            "tests/unit/autodiff/test_ad_memory_cotangents.py::test_plan_and_explain_carry_the_cotangent_count[None]",
+            "tests/unit/autodiff/test_ad_memory_grid_and_sheet.py::test_accounting_matches_the_nonuniform_grid_the_solve_builds",
+            "tests/unit/autodiff/test_ad_memory_grid_and_sheet.py::test_explain_lists_the_sheet_component",
+            "tests/unit/autodiff/test_ad_memory_grid_and_sheet.py::test_f0_sheet_operator_is_counted",
+            "tests/unit/autodiff/test_ad_memory_grid_and_sheet.py::test_report_and_estimate_describe_the_same_grid",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[dft_plane-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[dft_plane-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[flux-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[flux-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[lumped-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[lumped-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[point-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[point-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[tfsf-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[tfsf-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[wire-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_other_forward_measurements_have_no_replay_tables[wire-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_replay_uses_realized_shared_port_bins[graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_replay_uses_realized_shared_port_bins[uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[False-257-3-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[False-257-3-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[False-8-2-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[False-8-2-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[True-257-3-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[True-257-3-uniform]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[True-8-2-graded]",
+            "tests/unit/autodiff/test_ad_memory_replay_tables.py::test_waveguide_replay_bytes_match_pullback[True-8-2-uniform]",
+            "tests/unit/autodiff/test_design_mask_removed.py::test_ad_memory_estimate_has_no_active_design_fraction_field",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_ad_memory_compiled_certificate_preflight_snapshot_and_mismatch",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_ad_memory_preflight_full_fit_branch",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_ad_memory_preflight_nonuniform_checkpoint_branch",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_ad_memory_preflight_unfit_branch_is_diagnostic_only",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_ad_memory_preflight_uniform_checkpoint_branch",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_checkpoint_every_active_count_honors_unaligned_warmup",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_checkpoint_every_none_leaves_segmented_null",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_checkpoint_segments_accounting_matches_uniform_segment_count",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_checkpoint_segments_rejects_unadmitted_uniform_warmup",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_current_memory_artifacts_keep_evidence_classes_separate",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_explain_ad_memory_covers_ntff_and_segmented_warmup_paths",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_explain_ad_memory_decomposes_selected_estimate",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_explain_ad_memory_records_warmup_reduces_full_tape",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_live_segment_term_invariance_witness_277",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_n_warmup_reduces_reverse_tape_only",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_nonfinite_artifacts_refuse_json_serialization",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_ntff_dft_bytes_contribute_to_ad_estimates",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_checkpoint_every_handles_unaligned_warmup",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_recommends_checkpoint_every_for_budget",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_recommends_checkpoint_segments_for_uniform_budget",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_records_warmup_metadata",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_reports_unfit_budget",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_reports_uniform_unfit_budget",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_returns_none_when_full_ad_fits",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_serializes_artifact",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_plan_ad_memory_uses_valid_custom_target_fraction",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_public_imports_and_json_roundtrip",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_segmented_estimate_within_tolerance[100-10000-5.84]",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_segmented_estimate_within_tolerance[64-2000-2.56]",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_segmented_plan_clears_resolved_graded_flux_warning[False-0.006]",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_segmented_plan_clears_resolved_graded_flux_warning[True-1e-06]",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_u_shaped_in_chunk_with_minimum_near_balanced_size",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_warning_has_no_false_positive_at_boundary",
+            "tests/unit/autodiff/test_estimate_ad_memory.py::test_warning_uses_realistic_selected_estimate",
+            "tests/unit/autodiff/test_graded_nested_checkpoint.py::test_clamped_outer_level_keeps_inner_levels[None]",
+            "tests/unit/autodiff/test_graded_nested_checkpoint.py::test_clamped_outer_level_keeps_inner_levels[design_box1]",
+            "tests/unit/autodiff/test_graded_nested_checkpoint.py::test_estimate_tuple_matches_checkpoint_memory",
+            "tests/unit/autodiff/test_graded_nested_checkpoint.py::test_planner_uses_main_tape_terms",
+            "tests/unit/autodiff/test_graded_nested_checkpoint.py::test_report_cpu_tape_and_compiled_memory[16]",
+            "tests/unit/autodiff/test_graded_nested_checkpoint.py::test_report_cpu_tape_and_compiled_memory[8]",
+            "tests/unit/autodiff/test_jacobian_fwd.py::test_g3_primal_carry_is_independent_of_n_t",
+            "tests/unit/autodiff/test_memory_reduction_planning_artifact.py::test_memory_reduction_artifact_cli_writes_json",
+            "tests/unit/autodiff/test_memory_reduction_planning_artifact.py::test_memory_reduction_artifact_covers_budget_and_cell_savings",
+        ),
+    ),
+    2115: (
+        "a closed-box plane-wave run() raises: get_opaque_trace_state() asserts outside a trace on jax 0.11",
+        (
+            "tests/contracts/test_backing_wall_one_rule.py::test_uniform_boundary_inputs_equal[closed_box]",
+            "tests/contracts/test_backing_wall_one_rule.py::test_wall_matrix[distributed-uniform-run-closed_box]",
+            "tests/contracts/test_backing_wall_one_rule.py::test_wall_matrix[uniform-run-closed_box]",
+            "tests/contracts/test_closed_box_incident_carry.py::test_nonpaying_requests_build_no_face_record",
+            "tests/contracts/test_closed_box_incident_carry.py::test_only_a_paying_forward_builds_a_face_record",
+            "tests/contracts/test_film_one_plane.py::test_c4_tfsf_refusals[closed]",
+            "tests/contracts/test_ntff_boundary_admission.py::test_ntff_boundary_table[uniform-closed-run]",
+            "tests/contracts/test_ntff_boundary_admission.py::test_ntff_boundary_table[uniform-closed-run_skip]",
+            "tests/contracts/test_run_forward_one_pipeline.py::test_assembly[PW-closed-multi-device-uniform]",
+            "tests/contracts/test_run_forward_one_pipeline.py::test_assembly[PW-closed-uniform]",
+            "tests/contracts/test_run_forward_one_pipeline.py::test_fields[PW-closed-multi-device-uniform]",
+            "tests/contracts/test_tfsf_boundary_admission.py::test_closed_box_keeps_finite_scatterer[False]",
+            "tests/contracts/test_tfsf_boundary_admission.py::test_closed_box_keeps_finite_scatterer[True]",
+            "tests/contracts/test_tfsf_boundary_override.py::test_uniform_entry_points_use_tfsf_boundary_policy[closed-expected3-run]",
+            "tests/contracts/test_tfsf_closed_box_transforms.py::test_run_keeps_its_refusal[jit]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-drude]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-kerr]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-pec_sheet]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-pec_volume]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-pec_wire]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-pinned_sheet]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-series_RL]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-surface_impedance]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_closed_box_distributed_injection_plane[run_distributed-thin_pec_sheet]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_other_injection_kinds[drude-box]",
+            "tests/contracts/test_tfsf_injection_plane_operands.py::test_other_injection_kinds[pec_sheet-box]",
+        ),
+    ),
+    2116: (
+        "the compiled RLC step holds 26 domain copies on jax 0.11 against 8 on jax 0.10.2",
+        (
+            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[parallel-graded]",
+            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[parallel-uniform]",
+            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[series-graded]",
+            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[series-uniform]",
+        ),
+    ),
+}
+
+
+_REASONS = {nodeid: f"#{issue} {reason}" for issue, (reason, ids) in JAX_011_XFAILS.items() for nodeid in ids}
+
+
+def reason_for(nodeid, jax_version):
+    """The xfail reason for this node id under this jax version (a tuple), or None."""
+    if tuple(jax_version[:2]) < FROM_VERSION:
+        return None
+    return _REASONS.get(nodeid)
+
+
+def pytest_collection_modifyitems(config, items):
+    import jax
+
+    version = tuple(int(part) for part in jax.__version_info__[:2])
+    for item in items:
+        reason = reason_for(item.nodeid, version)
+        if reason is not None:
+            item.add_marker(pytest.mark.xfail(strict=True, reason=reason))
