@@ -551,7 +551,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
 def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
                     _source_port_indices=None, _record_probes=None, preflight=None, assembly=None,
-                    snapshot=None, **kwargs):
+                    snapshot=None, _pre_injection_probes=(), _record_vref=True, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -579,6 +579,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         The numerical step is shared with the main run.
     _record_probes : tuple or None
         Optional global-cell probes in place of the model probes.
+    _pre_injection_probes : tuple
+        Private S-driver E probes; append their pre-injection samples to the
+        probe output. _record_vref=False is the bit-identity test control.
 
     Returns
     -------
@@ -962,6 +965,16 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             reduce_devices=False,
             ranks=ranks)
 
+    def _sample_pre_injection(st, *, ranks):
+        if not _pre_injection_probes:
+            return None  # no reference sampler: the step output stays main's
+        if not _record_vref:
+            return jnp.zeros((n_devices, len(_pre_injection_probes)), dtype=st.ex.dtype)
+        return sample_probes_shmap(
+            st, mesh, len(_pre_injection_probes),
+            [(layout.local_index(p.i), p.j, p.k, p.component) for p in _pre_injection_probes],
+            [layout.owner(p.i) for p in _pre_injection_probes], reduce_devices=False, ranks=ranks)
+
     # ------------------------------------------------------------------
     # H and E local updates via shard_map
     # ------------------------------------------------------------------
@@ -1173,6 +1186,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             ranks=ranks, grid=cpml_grid, high_wall=high_wall,
             e_curl_coeff=absorber, boundary=curl_boundary)
 
+        reference_out = _sample_pre_injection(st, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 6b. Realized conductor edges, distinct from domain walls. The
@@ -1232,7 +1246,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        return updated, probe_out
+        if reference_out is None:
+            return updated, probe_out
+        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1281,6 +1297,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         st, incident = slab_tfsf.apply_e(
             st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
+        reference_out = _sample_pre_injection(st, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), BEFORE the domain faces and
@@ -1329,7 +1346,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        return updated, probe_out
+        if reference_out is None:
+            return updated, probe_out
+        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
 
     # ------------------------------------------------------------------
     # Build step indices and waveform scan inputs
@@ -1471,7 +1490,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Probe time series: summed across devices after the scan inside jit
     # probe_ts shape: (n_steps, n_probes) or (n_steps, 0)
     # ------------------------------------------------------------------
-    if n_prb > 0:
+    if n_prb > 0 or _pre_injection_probes:
         time_series = jnp.array(probe_ts)  # (n_steps, n_probes)
     else:
         time_series = jnp.zeros((n_steps, 0), dtype=jnp.float32)

@@ -580,17 +580,37 @@ def _distributed_port_cells(grid, ports, pec_edge_masks=None):
 
 
 def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, drive,
-                                    live_cells=None):
+                                    live_cells=None, *, _main_options=None, _main_dfts=False):
     from rfx.runners.distributed_v2 import run_distributed
+    from rfx.simulation import ProbeSpec, make_probe
 
     if live_cells is None:
         live_cells = _distributed_port_cells(grid, ports)
     probes, zeros = _lumped_recording_probes(grid, ports, live_cells)
+    reference_probes = tuple(ProbeSpec(*cell, pe.component)
+                             for pe, cells in zip(ports, live_cells) for cell in cells)
+    user_probes = (() if _main_options is None else tuple(
+        make_probe(grid, pe.position, pe.component) for pe in sim._probes))
     result = run_distributed(sim, n_steps=n_steps, devices=devices,
                              _source_port_indices=None if drive is None else (drive,),
-                             _record_probes=probes)
-    samples = np.array(result.time_series)
-    samples[:, zeros] = 0
+                             _record_probes=probes + user_probes,
+                             _pre_injection_probes=reference_probes,
+                             **(_main_options or {}))
+    main_record = _main_options is not None
+    if main_record:
+        # Main-record mode may run under an outer trace: form the records
+        # with jax.numpy; host DFTs only when S is requested (never traced).
+        records = jnp.asarray(result.time_series[:, :len(probes)])
+        if zeros:
+            records = records.at[:, jnp.asarray(zeros)].set(0)
+        if not _main_dfts:
+            return _with_distributed_port_records(None, sim, grid, ports, live_cells, freqs,
+                                                  records, result, len(probes), user_probes,
+                                                  main_record=True)
+        samples = np.array(records)
+    else:
+        records = samples = np.array(result.time_series[:, :len(probes)])
+        samples[:, zeros] = 0
     # The cell width along each port's own E component, asked per cell.
     axis_of = {"ex": 0, "ey": 1, "ez": 2}
     dx_ports = np.array([
@@ -617,9 +637,102 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
                 raw["wire"].append((None, (v[0], i[0], np.zeros_like(v[0]),
                                           vp[0], np.zeros_like(v[0]))))
             offset += n + 4
-        return raw
+        return _with_distributed_port_records(raw, sim, grid, ports, live_cells, freqs,
+                                              records, result, len(probes), user_probes,
+                                              main_record=main_record)
     v, i = _lumped_recording_dfts(samples, freqs, grid.dt, dx_ports)
-    # The current decomposer uses ONLY presence of v_ref to select the
-    # post-injection convention. These zeros are NOT measured pre-injection V.
-    return {"lumped": [(None, (vp, ip, np.zeros_like(vp)))
-                       for vp, ip in zip(v, i)]}
+    # Keep the physical DFT computation unchanged; the record packer fills
+    # the reference slot from the extra pre-injection samples below.
+    raw = {"lumped": [(None, (vp, ip, np.zeros_like(vp))) for vp, ip in zip(v, i)]}
+    return _with_distributed_port_records(raw, sim, grid, ports, live_cells, freqs,
+                                          records, result, len(probes), user_probes,
+                                          main_record=main_record)
+
+
+def _with_distributed_port_records(raw, sim, grid, ports, live_cells, freqs,
+                                   samples, result, n_probes, user_probes, *, main_record=False):
+    """Publish the same owners and stamps as the uniform main record."""
+    from rfx.core.yee import CurlBoundary
+    from rfx.measurement.dft import transform
+    from rfx.measurement.port_records import pack_port_records
+    from rfx.measurement.projector import port_owners
+    from rfx.measurement.time_records import from_owners
+    from rfx.probes.probes import _ampere_loop_values, _port_voltage_value
+    from rfx.simulation import WirePortSParamSpec, LumpedPortSParamSpec
+
+    port_ids = [next(i for i, entry in enumerate(sim._ports) if entry is pe) for pe in ports]
+    specs = [(pe.component, cells, 'wire' if pe.extent is not None else 'lumped',
+              cells[len(cells) // 2], port_id)
+             for pe, cells, port_id in zip(ports, live_cells, port_ids)]
+    boundary = CurlBoundary(frozenset(sim._boundary_spec.pec_faces()),
+                            frozenset(sim._boundary_spec.pmc_faces()), sim._periodic_flags())
+    owners = port_owners(grid, specs, nu=False, boundary=boundary)
+    # raw is None in main-record mode without S: no host read, trace-safe.
+    xp = jnp if main_record else np
+    references = xp.asarray(result.time_series[:, n_probes + len(user_probes):])
+    records, metadata, accumulators = [], [], []
+    offsets = dict(wire=0, lumped=0)
+    offset = ref_offset = 0
+    bins = jnp.asarray(freqs, dtype=jnp.float32)
+    for pe, cells, spec, owner in zip(ports, live_cells, specs, owners):
+        n = len(cells)
+        axis = 'xyz'.index(pe.component[1])
+        dx = float(grid.cells(axis)[spec[3][axis]])
+        line, h = samples[:, offset:offset+n], samples[:, offset+n:offset+n+4]
+        v = _port_voltage_value(line[:, n // 2], dx)
+        i = _ampere_loop_values(*(h[:, k] for k in range(4)), dx)
+        ref = _port_voltage_value(references[:, ref_offset + n // 2], dx)
+        channels = [v, i]
+        if owner.kind == 'wire':
+            channels.append(_port_voltage_value(xp.sum(line, axis=1), dx))
+        channels.append(ref)
+        records.append(xp.column_stack(channels))
+        if raw is not None:
+            meta = (WirePortSParamSpec(*spec[3], pe.component, bins, pe.impedance, cells, pe.excite)
+                    if owner.kind == 'wire' else
+                    LumpedPortSParamSpec(*spec[3], pe.component, bins, pe.impedance, pe.excite))
+            # Preserve every pre-existing physical DFT bit; fill only the reference slot.
+            accs = raw[owner.kind][offsets[owner.kind]][1]
+            ref_channel = owner.channels[-1]
+            accs = (*accs[:-1], np.asarray(transform(
+                np.asarray(ref), bins, grid.dt, ref_channel.kind, time_shift=ref_channel.e_time_offset)))
+            raw[owner.kind][offsets[owner.kind]] = (meta, accs)
+            metadata.append(meta)
+            accumulators.append(accs)
+            offsets[owner.kind] += 1
+        offset += n + 4
+        ref_offset += n
+    if raw is None:
+        raw = {}
+    order = sorted(range(len(owners)), key=lambda k: owners[k].kind != 'wire')
+    raw['sparam_time_records'] = from_owners(
+        [records[k] for k in order], [owners[k] for k in order])
+    if main_record:
+        wire = (pack_port_records([o.kind for o in owners], accumulators, metadata)[0]
+                if accumulators else None)
+        raw['result'] = result._replace(
+            time_series=result.time_series[:, n_probes:n_probes + len(user_probes)],
+            sparam_time_records=raw['sparam_time_records'], wire_port_sparams=wire)
+    raw['dt'] = grid.dt
+    return raw
+
+
+def run_distributed_with_port_records(sim, *, n_steps, devices, s_param_freqs=None,
+                                      compute_s_params=False, **options):
+    """Main declared drive, including records when S is disabled."""
+    from rfx.measurement import default_frequency_grid
+    grid = sim._build_grid()
+    ports = [pe for pe in sim._ports if pe.impedance != 0]
+    edges = None
+    if any(pe.extent is not None for pe in ports):
+        from rfx.model.conductors import realized_conductors
+        edges = realized_conductors(sim, grid).pec_edges
+    cells = _distributed_port_cells(grid, ports, edges)
+    del edges
+    freqs = (s_param_freqs if compute_s_params and s_param_freqs is not None else
+             default_frequency_grid(sim._freq_max, 50))
+    raw = _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices,
+                                          None, cells, _main_options=options,
+                                          _main_dfts=bool(compute_s_params))
+    result = raw['result']
+    return result if compute_s_params else result._replace(wire_port_sparams=None)

@@ -10,18 +10,16 @@ def _unrecorded(field):
 
 
 class _PortForwardResult(ForwardResult):
-    """Keep incomplete raw records out of the public port fields.
+    """Keep incomplete raw port spectra out of the public port fields.
 
-    The driver's reference phasors are placeholders, and its port time
-    records are absent. The underlying tuple keeps these fields at None;
-    attribute reads explicitly refuse them. Settling still scores the
-    recorded user probes, as it did before packing the port diagonal.
+    The driver's reference phasors are placeholders and forward's record
+    run forms no spectra, so the port spectrum field of the port's kind
+    refuses on read. ``sparam_time_records`` is the main forward run's
+    port time record, as run(devices=...) returns it. Settling still
+    scores the recorded user probes, as it did before packing the port
+    diagonal.
     """
     __slots__ = ()
-
-    @property
-    def sparam_time_records(self):
-        return _unrecorded("sparam_time_records")
 
     @property
     def settling_db(self):
