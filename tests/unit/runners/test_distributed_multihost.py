@@ -18,6 +18,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.runners import distributed_v2
+from rfx.stepping import slab_uniform_loop
 
 # Included in pr-tests.yml's ubuntu fast suite: no slow/gpu marker. The
 # subprocess test has its own shared deadline instead of a pytest plugin.
@@ -65,16 +66,16 @@ def _relative_error(actual, expected):
 def _scan_body_captures(monkeypatch, run):
     """Run normally, then inspect every scan body seen through the runner's lax."""
     bodies = []
-    scan = distributed_v2.lax.scan
+    scan = slab_uniform_loop.lax.scan
 
     def traced_scan(f, *args, **kwargs):
         bodies.append(f)
         return scan(f, *args, **kwargs)
 
     # Replace only the runner's namespace; leave JAX's internal lax uses alone.
-    runner_lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": traced_scan})
+    runner_lax = SimpleNamespace(**{**vars(slab_uniform_loop.lax), "scan": traced_scan})
     with monkeypatch.context() as patch:
-        patch.setattr(distributed_v2, "lax", runner_lax)
+        patch.setattr(slab_uniform_loop, "lax", runner_lax)
         run()
     assert bodies, "the run must trace a scan body for the capture check to bind"
 
@@ -125,7 +126,7 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
         return entry
 
     runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
-    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    monkeypatch.setattr(slab_uniform_loop, "jax", runner_jax)
     gather = Mock(wraps=multihost_utils.process_allgather)
     monkeypatch.setattr(multihost_utils, "process_allgather", gather)
     captured = _scan_body_captures(
@@ -186,9 +187,9 @@ def test_v2_direct_non_uniform_grid_is_refused(monkeypatch):
     assert distributed_v2._spans_other_processes(devices)
     # Profiles are constructor arguments; Simulation has no set_dz_profile API.
     sim = _build_box("pec", dz_profile=[1e-3] * 7)
-    scan = Mock(wraps=distributed_v2.lax.scan)
-    runner_lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": scan})
-    monkeypatch.setattr(distributed_v2, "lax", runner_lax)
+    scan = Mock(wraps=slab_uniform_loop.lax.scan)
+    runner_lax = SimpleNamespace(**{**vars(slab_uniform_loop.lax), "scan": scan})
+    monkeypatch.setattr(slab_uniform_loop, "lax", runner_lax)
     with pytest.raises(NotImplementedError, match="non-uniform grid") as exc:
         distributed_v2.run_distributed(sim, n_steps=3, devices=devices)
     assert "use sim.run(devices=...)" in str(exc.value)

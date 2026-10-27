@@ -122,6 +122,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 import rfx.runners.distributed_v2 as _v2  # noqa: E402
+import rfx.stepping.slab_uniform_loop as _loop  # noqa: E402
 from rfx import Box, Simulation  # noqa: E402
 
 DX = 1e-3
@@ -197,9 +198,9 @@ def _run(boundary, body_x, *, distributed, drop_stage=False, nu=False):
     if key in _TRACE_CACHE:
         return _TRACE_CACHE[key]
 
-    saved_stage = _v2.apply_pec_mask_shmap
+    saved_stage = _loop.apply_pec_mask_shmap
     if drop_stage:
-        _v2.apply_pec_mask_shmap = lambda st, *a, **k: st
+        _loop.apply_pec_mask_shmap = lambda st, *a, **k: st
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -208,7 +209,7 @@ def _run(boundary, body_x, *, distributed, drop_stage=False, nu=False):
                 _build(boundary, body_x, nu=nu).run(
                     n_steps=N_STEPS, **kw).time_series)
     finally:
-        _v2.apply_pec_mask_shmap = saved_stage
+        _loop.apply_pec_mask_shmap = saved_stage
 
     _TRACE_CACHE[key] = ts
     return ts

@@ -22,7 +22,7 @@ from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import FDTDState
 from rfx.materials.lorentz import lorentz_pole
-from rfx.runners import distributed_v2 as runner
+from rfx.stepping import slab_uniform_loop as runner
 from rfx.runners import _distributed_common as common
 
 pytestmark = pytest.mark.distributed
