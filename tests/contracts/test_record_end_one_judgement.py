@@ -388,6 +388,26 @@ def test_s2_direct_loop_refuses_a_closed_box_flux_box(monkeypatch):
         original(*args, **{**kwargs, "radiated_flux_box": S2_BOX})
 
 
+@pytest.mark.parametrize("change", [{"decay_by": 0.0}, {"cpml_axes": ""}], ids=["no_stop", "closed"])
+def test_s2_direct_graded_loop_refuses_an_unused_flux_box(change, monkeypatch):
+    """The public graded loop called directly: a box with no flux stop, or with no absorber, is refused."""
+    import rfx.runners.nonuniform as graded_runner
+
+    original = graded_runner.run_nonuniform_until_decay
+
+    def stop(*args, **kwargs):
+        raise _Loop(args, kwargs)
+
+    monkeypatch.setattr(graded_runner, "run_nonuniform_until_decay", stop)
+    with pytest.raises(_Loop) as entry:
+        _s2_scene(True).run(until_decay=1e-3, decay_max_steps=60, radiated_flux_box=S2_BOX,
+                            skip_preflight=True)
+    args, kwargs = entry.value.call
+    assert kwargs["radiated_flux_box"] == S2_BOX and kwargs["decay_by"] > 0
+    with pytest.raises(ValueError, match="radiated_flux_box selects the radiated-flux until_decay stop"):
+        original(*args, **{**kwargs, **change})
+
+
 @pytest.mark.parametrize("flux", [False, True])
 def test_s2_direct_constructor_and_still_on_cap(flux, monkeypatch):
     from rfx.measurement.decay import make_field_decay_stop, finish_decay

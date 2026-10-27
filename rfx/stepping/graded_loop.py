@@ -9,7 +9,7 @@ import jax.numpy as jnp
 
 from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import MaterialArrays
-from rfx.measurement.decay import make_field_decay_stop
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop
 from rfx.measurement import (
     AUTO_END, finish_decay, init_graded_records, make_decay_stop, one_step_xs,
 )
@@ -326,6 +326,10 @@ def run_nonuniform_until_decay(
             f"check_interval must be >= 1, got {check_interval}")
     if max_steps < 1:
         raise ValueError(f"max_steps must be >= 1, got {max_steps}")
+    # A direct caller gets run()'s refusal too; the absorber is the setup's own (#2030 S2a).
+    from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
+    absorbing = grid.cpml_layers > 0 and padded_axes(grid, resolve_cpml_axes(grid, cpml_axes))
+    refuse_radiated_flux_stop(radiated_flux_box, decay_by, "cpml" if absorbing else "pec")
 
     setup = _build_nu_scan(
         grid, materials, max_steps,
