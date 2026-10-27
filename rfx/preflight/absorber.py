@@ -909,6 +909,73 @@ def _validate_cfg_geometry_in_cpml(
             )
 
 
+def _validate_cfg_body_flush_on_absorber(
+    self, _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label,
+) -> None:
+    """Warn when an absorber continues a body's thin dimension as a half-space.
+
+    Static eps_r/sigma/mu_r are copied at
+    ``rfx/geometry/rasterize_grid.py:1582`` (``_extend_lo``), called by
+    ``rfx/model/materials.py:353``. PEC masks are not passed or continued;
+    pole masks are not extended either. PEC is excluded from this warning.
+    Face distances and half-cell windows use the realized interior cells.
+    """
+    if cpml_thickness <= 0 or not self._geometry:
+        return
+    grid = self._build_realized_grid()
+    faces = []
+    for ax, axis in enumerate("xyz"):
+        cells = grid.cells(axis)
+        if is_tracer(cells):
+            continue
+        start = getattr(grid, f"pad_{axis}_lo")
+        stop = grid.shape[ax] - getattr(grid, f"pad_{axis}_hi") - 1
+        interior = np.asarray(cells)[start:stop]
+        if not len(interior):
+            continue
+        length = float(np.sum(interior))
+        for side, depth, bound, width in (
+                ("lo", cpml_thick_lo[ax], 0.0, interior[0]),
+                ("hi", cpml_thick_hi[ax], length, interior[-1])):
+            if depth > 0:
+                faces.append((ax, side, bound, float(width) / 2))
+    per_face = {}
+    for idx, entry in enumerate(self._geometry):
+        mat = self._resolve_material(entry.material_name)
+        values = (mat.eps_r, mat.sigma, mat.mu_r)
+        if any(is_tracer(v) for v in values):
+            continue
+        if mat.sigma >= 1e6 or (values == (1.0, 0.0, 1.0)
+                                and not (mat.debye_poles or mat.lorentz_poles)):
+            continue
+        try:
+            lo, hi = entry.shape.bounding_box()
+        except (AttributeError, NotImplementedError):
+            continue
+        if any(is_tracer(v) for v in (*lo, *hi)):
+            continue
+        extents = [abs(float(hi[a]) - float(lo[a])) for a in range(3)]
+        for ax, side, bound, half_cell in faces:
+            if extents[ax] > (1 + 1e-9) * min(extents):
+                continue
+            coord = min(lo[ax], hi[ax]) if side == "lo" else max(lo[ax], hi[ax])
+            if abs(float(coord) - bound) <= half_cell:
+                per_face.setdefault((ax, side), []).append(
+                    (extents[ax], idx, type(entry.shape).__name__, entry.material_name))
+    for (ax, side), entries in sorted(per_face.items()):
+        _, idx, kind, material = min(entries)
+        face = f"{'xyz'[ax]}-{side}"
+        _w.warn(PreflightWarning(
+            f"{len(entries)} geometry entries lie flush on the {face} "
+            f"{absorber_label} face; thinnest is geometry entry #{idx}, "
+            f"{kind}, material '{material}': the absorber continues this body's "
+            "material into its layers, so the run models a half-space of it "
+            "beyond the face; leave free space between the body and the face, "
+            "or declare that half-space on purpose",
+            code="body_flush_on_absorber", loc=f"geometry[{idx}] {face}",
+            source="_validate_cfg_body_flush_on_absorber"), stacklevel=3)
+
+
 def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     """A dielectric reaches an absorber seam in a shape nothing can continue.
 

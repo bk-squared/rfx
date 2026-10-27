@@ -255,6 +255,10 @@ class MeshPlan:
     ``MeshPlan`` is an advisory artifact. It serializes the derived mesh,
     CFL basis, memory estimate, support rows, and intended artifact paths
     without writing files or claiming deterministic solver replay.
+
+    ``offset`` translates drawn geometry into the planned domain: add each
+    shape translated by ``plan.offset``. It is ``None`` for an already
+    configured simulation, whose geometry is already placed.
     """
 
     schema_version: str
@@ -272,6 +276,7 @@ class MeshPlan:
     support_checks: list[dict[str, Any]]
     memory: dict[str, Any]
     artifact_declarations: dict[str, dict[str, Any]]
+    offset: tuple[float, float, float] | None = None
     warnings: tuple[str, ...] = ()
     recommendation: str = ""
     _sim_config: SimConfig | None = field(default=None, repr=False, compare=False)
@@ -289,6 +294,7 @@ class MeshPlan:
                 "grid_shape": self.grid_shape,
                 "domain": self.domain,
                 "margin": self.margin,
+                "offset": self.offset,
                 "cfl": self.cfl,
                 "absorber": self.absorber,
                 "resolution_basis": self.resolution_basis,
@@ -514,6 +520,8 @@ def plan_mesh(
     the mesh preset math. The returned ``MeshPlan`` adds structured audit rows,
     artifact declarations, and serialization helpers. ``artifact_root`` only
     declares intended paths; it never creates directories or writes files.
+    Add each shape translated by ``plan.offset`` after constructing the
+    simulation with ``plan.to_sim_kwargs()``.
     """
     material_map = {} if materials is None else materials
     config = auto_configure(
@@ -545,6 +553,7 @@ def plan_mesh(
         grid_shape=tuple(int(v) for v in grid_shape),
         domain=tuple(float(v) for v in config.domain),
         margin=float(config.margin),
+        offset=config.offset,
         cfl=_cfl_from_config(config),
         absorber=_absorber_from_config(config),
         resolution_basis=_resolution_basis_from_config(
