@@ -63,6 +63,26 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
         jax.block_until_ready(checked(left, left))
 
 
+@pytest.mark.parametrize("delta_eps, sigma, refused", [(2., 0., False), (-2., 0., True), (1., -1., True)])
+def test_out_of_program_debye_only_under_jit_is_skipped_only_when_passive(delta_eps, sigma, refused):
+    """#1934: a passive Debye-only set cannot fail the check, so a jit-traced one runs; an active one is refused."""
+    from rfx.materials.debye import DebyePole
+    dt = 1e-12
+    sigma_cells = np.full((2, 2, 2), sigma, np.float32)   # concrete: only eps is traced
+
+    def checked(eps):
+        materials = MaterialArrays(jnp.full((2, 2, 2), eps), sigma_cells, None)
+        refuse_unstable_cells(materials, None, dt, .5 * 4. / dt ** 2, grid_kind="Grid",
+                              debye_spec=([DebyePole(delta_eps, 100 * dt)], None), in_program=False)
+        return eps * 2.
+
+    if refused:
+        with pytest.raises(ValueError, match=r"traced by an outer jax\.jit"):
+            jax.jit(checked)(4.)
+    else:
+        assert float(jax.jit(checked)(4.)) == 8.
+
+
 @pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap", "grad_vmap"])
 def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(transform):
     def checked(eps):

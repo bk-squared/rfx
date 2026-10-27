@@ -224,6 +224,9 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
     xp = jnp if traced or spread else np
+    # A concrete sigma keeps concrete extremes when only eps is traced (the passive-Debye skip reads them).
+    xs = np if not (abstract_masks or is_tracer(materials.sigma)
+                    or not getattr(materials.sigma, "is_fully_addressable", True)) else xp
     records = []
     for index, (pattern, count) in enumerate(zip(patterns, counts)):
         if not np.any(pattern):
@@ -239,8 +242,8 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
         chosen = tuple(p for p, present in zip(lp, pattern) if present)
         debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
         eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
-        sigma_low = xp.min(xp.where(selected, materials.sigma, xp.inf))
-        sigma_high = xp.max(xp.where(selected, materials.sigma, -xp.inf))
+        sigma_low = xs.min(xs.where(selected, materials.sigma, xs.inf))
+        sigma_high = xs.max(xs.where(selected, materials.sigma, -xs.inf))
 
         occupied = tuple((jnp if abstract_masks else np).any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
                          for axis in range(selected.ndim))
@@ -320,6 +323,15 @@ def _eager_batch_members(args):
     return [tuple(member(v, i) for v in args) for i in range(size)]
 
 
+def _passive_debye(record):
+    """Concrete Debye poles with delta_eps >= 0, tau > 0 and a concrete sigma_low >= 0."""
+    values = [_concrete(record.sigma_low)] + [_concrete(v) for p in record.debye for v in p]
+    if any(_is_abstract(v) for v in values):
+        return False
+    sigma, *flat = (float(v) for v in values)
+    return sigma >= 0 and all(de >= 0 and tau > 0 for de, tau in zip(flat[::2], flat[1::2]))
+
+
 def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
     """Judge concrete values; stage checks only in single-device programs.
 
@@ -372,9 +384,9 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
-            if not record.poles:
-                # Debye-only: inside the Courant pre-filter its growth is at most 1 (4000 sampled cells,
-                # largest 1.000000000000), so the check cannot refuse it; nothing to judge.
+            if not record.poles and _passive_debye(record):
+                # A passive Debye-only set (delta_eps >= 0, tau > 0, sigma >= 0) grows at most 1 inside the
+                # check's Courant pre-filter (trapezoidal update), so the check cannot refuse it.
                 continue
             members = _eager_batch_members(args)
             if members is None:
