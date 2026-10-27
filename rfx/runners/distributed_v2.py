@@ -964,6 +964,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             ranks=ranks)
 
     def _sample_pre_injection(st, *, ranks):
+        if not _pre_injection_probes:
+            return None  # no reference sampler: the step output stays main's
         if not _record_vref:
             return jnp.zeros((n_devices, len(_pre_injection_probes)), dtype=st.ex.dtype)
         return sample_probes_shmap(
@@ -1242,7 +1244,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        return updated, jnp.concatenate((probe_out, reference_out), axis=1)
+        if reference_out is None:
+            return updated, probe_out
+        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1340,7 +1344,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        return updated, jnp.concatenate((probe_out, reference_out), axis=1)
+        if reference_out is None:
+            return updated, probe_out
+        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
 
     # ------------------------------------------------------------------
     # Build step indices and waveform scan inputs

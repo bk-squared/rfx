@@ -261,7 +261,7 @@ def test_mutations(monkeypatch, mutation):
                     return materials if cell[0] == 11 else original_stamp(materials, cell, sigma, component)
                 patch.setattr(sources, "stamp_lumped_sigma", stamp)
             result = original_run(*args, **kwargs)
-            if mutation == "own_slab" and kwargs.get("_record_probes") is not None:
+            if mutation == "own_slab" and kwargs.get("_source_port_indices") is not None:
                 # Ex line x=8,9,10,11 belongs to slabs 0,0,0,1. Drop
                 # precisely the E contribution outside each port's own slab.
                 assert len(kwargs["_record_probes"]) == 16
