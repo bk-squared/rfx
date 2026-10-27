@@ -315,7 +315,7 @@ def _eager_batch_members(args):
     def member(v, i):
         if not isinstance(v, BatchTracer):
             return v
-        value = np.asarray(v.val)
+        value = np.asarray(_concrete(v.val))   # an eager grad/jvp around the vmap wraps the batch
         return value if v.batch_dim is None else np.take(value, i, axis=v.batch_dim)
     return [tuple(member(v, i) for v in args) for i in range(size)]
 

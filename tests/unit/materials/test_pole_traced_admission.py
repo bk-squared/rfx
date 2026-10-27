@@ -63,7 +63,7 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
         jax.block_until_ready(checked(left, left))
 
 
-@pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap"])
+@pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap", "grad_vmap"])
 def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(transform):
     def checked(eps):
         materials = MaterialArrays(jnp.full((2, 2, 2), eps), jnp.zeros((2, 2, 2)), None)
@@ -82,11 +82,15 @@ def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(tra
             return jax.jit(checked)(eps)
         if transform == "vmap":
             return jax.vmap(checked)(jnp.full((2,), eps))
+        if transform == "grad_vmap":
+            # eager grad around an eager vmap: members are JVP-wrapped concrete values
+            return jax.grad(lambda e: jax.vmap(checked)(e).sum())(jnp.full((2,), eps))
         return checked(eps)
 
     if transform != "jit":
         np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else
-                                      np.full((2,), 9.) if transform == "vmap" else 9.)
+                                      np.full((2,), 9.) if transform == "vmap" else
+                                      np.full((2,), 6.) if transform == "grad_vmap" else 9.)
     if transform != "jit":
         # An eager vmap carries concrete members; each is judged (#1934).
         with pytest.raises(ValueError, match="unstable at this model's time step"):
