@@ -13,6 +13,7 @@ import jaxlib
 import numpy as np
 
 from rfx._precision import HIGHEST
+from rfx.backend import backend_class
 
 SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
 PAIRS = ((0, 1), (0, 2), (1, 2))
@@ -26,7 +27,7 @@ def _serial_pieces():
     # Stopgap against the jaxlib < 0.11.1 CPU deadlock (#2095); remove when
     # the jax floor reaches 0.11.1. The bound is not proven: 56 independent
     # _linalg sites stay concurrent in one build.
-    return jax.default_backend() == "cpu" and _JAXLIB_VERSION < (0, 11, 1)
+    return backend_class().name == "cpu" and _JAXLIB_VERSION < (0, 11, 1)
 
 
 def _linalg(xp, operation, matrix):
