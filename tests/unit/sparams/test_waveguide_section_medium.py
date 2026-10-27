@@ -144,13 +144,16 @@ def test_axes_and_h_index(graded, axis, direction):
     execute(sim)
 
 
-@pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("profile", ["analytic", "discrete"])
-def test_profiles_and_multimode(graded, profile):
-    sim = guide(graded, n_modes=2, mode_profile=profile)
+def test_profiles_and_multimode(profile):
+    # Several modes reach the fill check only on the uniform waveguide S calculator:
+    # run()/forward() and the graded calculator refuse the mode count first (#2070).
+    sim = guide(n_modes=2, mode_profile=profile)
     fill(sim, 0, L)
-    with pytest.raises(ValueError, match="launch.*eps"):
-        execute(sim, "forward")
+    sim.add_waveguide_port(.10, direction="-x", f0=9e9, freqs=np.array([8e9, 10e9]),
+                           n_modes=2, mode_profile=profile)
+    with pytest.raises(ValueError, match="launch.*eps.*multimode filled ports are unsupported"):
+        execute(sim, "compute_waveguide_s_matrix")
 
 
 def test_traced_override_retains_callback():
