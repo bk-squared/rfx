@@ -33,8 +33,9 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
     if getattr(cfg, "closed_box", False):
         from rfx.sources.tfsf_discrete_plane_wave import apply_tables
         return apply_tables(state, cfg, tfsf_st, magnetic=False)
-    coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0
+    coeff_lo = dt / (EPS_0 * cfg.e_face_widths[0])
+    coeff_hi = dt / (EPS_0 * cfg.e_face_widths[1])
 
     # ---- Normal incidence: direct 1D grid lookup ----
     # Hy_inc at position x_lo - 0.5 → h1d[i0 - 1]
@@ -47,8 +48,8 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
 
     e_field = getattr(state, cfg.electric_component)
     # Sign flips for Ey/Hz because Ampere carries -dH/dx there.
-    e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff * h_inc_lo)
-    e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff * h_inc_hi)
+    e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff_lo * h_inc_lo)
+    e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff_hi * h_inc_hi)
 
     return state._replace(**{cfg.electric_component: e_field})
 
@@ -73,8 +74,9 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     if getattr(cfg, "closed_box", False):
         from rfx.sources.tfsf_discrete_plane_wave import apply_tables
         return apply_tables(state, cfg, tfsf_st, magnetic=True)
-    coeff = dt / (mu_abs * dx)
     i0 = cfg.i0
+    coeff_lo = dt / (mu_abs * cfg.h_face_widths[0])
+    coeff_hi = dt / (mu_abs * cfg.h_face_widths[1])
 
     # ---- Normal incidence: direct 1D grid lookup ----
     # Ez_inc at position x_lo → e1d[i0]
@@ -85,8 +87,8 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
 
     h_field = getattr(state, cfg.magnetic_component)
     # Sign flips for Ey/Hz because Faraday carries -dE/dx there.
-    h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff * e_inc_lo)
-    h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff * e_inc_hi)
+    h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff_lo * e_inc_lo)
+    h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff_hi * e_inc_hi)
 
     return state._replace(**{cfg.magnetic_component: h_field})
 

@@ -1029,7 +1029,7 @@ def _validate_cfg_nonuniform_limitations(
     if self._uses_nonuniform_mesh:
         # P2.3: TFSF on nonuniform mesh — narrowed scope.
         # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
-        # auxiliary along x and is supported only when x is uniform. The
+        # auxiliary along the realized x cells. The
         # z-directed and oblique cases would need a z-nonuniform 1D
         # aux (resp. nonuniform 2D aux) and are deferred.
         if self._tfsf is not None:
@@ -1048,15 +1048,12 @@ def _validate_cfg_nonuniform_limitations(
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
-            # Normal incidence along a GRADED propagation axis is refused
-            # (#2078): the incident line is built on one cell size, the
-            # boundary cell, while the 3-D axis is graded (G14). The builder
-            # every entry calls refuses it too, so skip_preflight cannot
-            # reach the solve.
+            # The closed box still uses its uniform discrete plane wave.
             _tfsf_ax = self._tfsf.direction[-1]
             _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
                           "z": self._dz_profile}[_tfsf_ax]
-            if (_tfsf_prof is not None and not is_tracer(_tfsf_prof)
+            if (self._tfsf.closed_box
+                    and _tfsf_prof is not None and not is_tracer(_tfsf_prof)
                     and not is_one_cell_size(_tfsf_prof)):
                 _tp = np.asarray(_tfsf_prof, dtype=float)
                 raise PreflightConfigError(
