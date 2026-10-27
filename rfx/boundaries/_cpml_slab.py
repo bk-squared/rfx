@@ -202,4 +202,8 @@ def apply_ordered(field, terms):
         if owner is not None:
             updated = jnp.where(owner, updated, field[sl])
         field = jax.lax.dynamic_update_slice(field, updated, starts)
+        # From jaxlib 0.11.2 XLA's CPU compile copies the whole field between
+        # chained slab updates (openxla/xla#50977; #2125); the barrier, an
+        # identity on values, keeps each update in place.
+        field = jax.lax.optimization_barrier(field)
     return field
