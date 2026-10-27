@@ -171,6 +171,18 @@ carries on the device; `cotangents=` counts 1. Leave 15 % above the estimate for
 With several outputs at once, budget 2.2 times the estimate, measure one short run, or pull back one output at a time.
 An estimate read from the compiled whole gradient (within 3 % of every peak measured) is the planned replacement.
 
+### On GPU, jax 0.11.2 runs the time step slower than jax 0.10.2 on a large grid
+
+Tracker: #2116
+
+Measured on one RTX A6000 at two grid sizes, with and without one lumped RLC element. This is not a trend over grid size.
+At 3.05 M cells (CPML included), jax 0.11.2 takes 1.18 times as long per time step as jax 0.10.2.
+At 0.53 M cells, the two versions take the same time (1.00).
+The ratio is the same with and without the lumped element, so it comes from the compiler version, not from rfx.
+Peak device memory is the same on both versions.
+`estimate_ad_memory` still reads 1.007 to 1.009 of the measured gradient peak with `checkpoint=True`.
+jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
+
 ### A finite flux box closes only when it is centred on its source
 
 Tracker: #1628
