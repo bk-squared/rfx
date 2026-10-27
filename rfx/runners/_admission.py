@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import threading
 from dataclasses import fields, is_dataclass, replace
 from typing import Callable
 
@@ -1303,20 +1304,26 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
             "the unsupported input.") from error
 
 
+def _eager_trace_state(get_opaque_trace_state):
+    """The trace state of a thread no transformation has entered (state is per thread)."""
+    state = []
+    thread = threading.Thread(target=lambda: state.append(get_opaque_trace_state()))
+    thread.start()
+    thread.join()
+    return state[0]
+
+
 def _under_external_jax_transform() -> bool:
-    """Read the public trace-state API across the supported JAX versions."""
+    """Compare the caller's trace state with an untransformed thread's (jax 0.10 and 0.11)."""
     try:
-        from jax.extend.core import get_opaque_trace_state, take_current_trace
+        from jax.extend.core import get_opaque_trace_state
     except ImportError:
-        try:  # JAX 0.6, including the Python 3.10 CI environment.
-            from jax.core import get_opaque_trace_state, take_current_trace
-        except ImportError:  # The declared JAX 0.4.20 floor.
+        try:  # JAX 0.6 export layout.
+            from jax.core import get_opaque_trace_state
+        except ImportError:  # The JAX 0.4.20 export layout.
             from jax.core import trace_state_clean
             return not trace_state_clean()
-    caller = get_opaque_trace_state()
-    with take_current_trace():
-        eager = get_opaque_trace_state()
-    return caller != eager
+    return get_opaque_trace_state() != _eager_trace_state(get_opaque_trace_state)
 
 
 def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=None) -> None:

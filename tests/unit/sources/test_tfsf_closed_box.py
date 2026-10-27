@@ -468,10 +468,9 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
         old_core.get_opaque_trace_state = get_state
         old_core.take_current_trace = take_trace
     else:
-        def clean():
-            caller = get_state()
-            with take_trace():
-                return caller == get_state()
+        def clean():  # an untransformed thread's state (take_trace asserts on jax 0.11)
+            from rfx.runners._admission import _eager_trace_state
+            return get_state() == _eager_trace_state(get_state)
         old_core.trace_state_clean = clean
     monkeypatch.setitem(sys.modules, "jax.extend.core", old_extension)
     monkeypatch.setitem(sys.modules, "jax.core", old_core)
