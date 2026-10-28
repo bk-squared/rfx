@@ -764,7 +764,9 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     decaying, growing = [], []
     for k in range(len(model.s)):
         p = model.pole(k)
-        if _static_pole(p, n_record * model.dt, unit_tol):
+        # Static poles are exempt; non-decaying sinusoids keep the caller's in-window rule.
+        if (_static_pole(p, n_record * model.dt, unit_tol)
+                or abs(model.s[k].real * model.dt) < 1e-12):
             continue
         if p.abs_lambda < 1.0:
             decaying.append(k)

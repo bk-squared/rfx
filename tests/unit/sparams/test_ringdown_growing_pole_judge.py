@@ -192,8 +192,8 @@ def test_issue_2158_seed_1_rounding_record_passes():
     y = y/np.max(np.abs(y), axis=0)+6e-8*rng.normal(size=y.shape)
     y = y.astype(np.float32).astype(np.float64)
     model = rd.identify(y, DT, round(.4*n), n, freq_max=13e9)
-    grow, _ = rd.growing_poles(model, n*DT, UNIT_TOL)
-    assert len(grow) == 2
+    # How many rounding poles land in the kept band depends on the platform's
+    # rounding (2 on an arm64 Mac); test_c4 pins "counted, yet passes" exactly.
     judge = rd.judge_growing_poles(model, n, BINS, np.abs(rd.plain_dft(y, DT, BINS)))
     assert judge.status == 'pass' and judge.ok
     witness = tail_share_witness([('rounding', y)], DT, 0, BINS, freq_max=13e9)
