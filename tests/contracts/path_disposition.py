@@ -740,10 +740,25 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                 "a plane wave needs CPML, which production validation refuses"),
         run_adi=ADI_ABSORBER,
-        run_distributed=carries("closed boxes only; open slab, Method B, Bloch and face_record refuse before stepping"),
+        run_distributed=refuses("open slabs require periodic transverse faces",
+                                raises="open-slab normal-incidence TFSF"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=refuses("no graded TF/SF slab carrier", raises="TFSF plane-wave sources"),
+        fwd_adi=ADI_ABSORBER,
+    ), "closed_box": lanes(
+        run_uniform=carries(),
+        run_nonuniform=refuses("closed boxes require a uniform mesh", declared=True,
+                               raises="CustomWaveform and closed_box TFSF require a uniform"),
+        run_subgridded=refuses("closed boxes require no subgrids",
+                               raises="CustomWaveform and closed_box TFSF require a uniform"),
+        run_adi=ADI_ABSORBER,
+        run_distributed=carries("normal incidence; oblique and face_record refuse before stepping"),
+        fwd_uniform=carries(),
+        fwd_nonuniform=refuses("closed boxes require a uniform mesh", declared=True,
+                               raises="CustomWaveform and closed_box TFSF require a uniform"),
+        fwd_distributed_nu=refuses("closed boxes require a uniform mesh", declared=True,
+                                  raises="CustomWaveform and closed_box TFSF require a uniform"),
         fwd_adi=ADI_ABSORBER,
     )},
     "_refinement": {
@@ -1684,6 +1699,7 @@ CALCULATOR_CELLS = {
         'material_fit': ignorable('observer: existing calculator handling retained; no observer field returned'),
     },
 }
+CALCULATOR_CELLS["_tfsf", "closed_box"] = dict(CALCULATOR_CELLS["_tfsf", "plane_wave"])
 for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
     TABLE[_attr][_feature].update(_cells)
 
@@ -1709,6 +1725,7 @@ TABLE["_cpml_kappa_max"]["kappa"]["run_distributed_nu"] = admission(
     "cpml_kappa_max != 1", "graded multi-device run(devices=...)", "the NU runner has no kappa carrier")
 TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = refuses(
     "no graded TF/SF slab carrier", raises="TFSF plane-wave sources")
+TABLE["_tfsf"]["closed_box"]["run_distributed_nu"] = TABLE["_tfsf"]["closed_box"]["fwd_distributed_nu"]
 TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = refuses(
     "no graded waveguide slab carrier", raises="waveguide ports")
 

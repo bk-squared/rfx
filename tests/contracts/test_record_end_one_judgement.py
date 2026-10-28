@@ -33,8 +33,10 @@ ROWS = {
     "waveguide": ("_waveguide_ports", "waveguide_port"),
     "floquet": ("_floquet_ports", "floquet_port"),
     "tfsf": ("_tfsf", "plane_wave"),
+    "tfsf_closed_box": ("_tfsf", "closed_box"),
 }
 NOT_REACHABLE = {
+    ("tfsf_closed_box", True): "CustomWaveform and closed_box TFSF require a uniform",
     ("floquet", True): "Floquet ports do not support non-uniform z mesh",
     ("coax", True): "compute_coaxial_two_port() supports only a uniform Yee grid",
 }
@@ -167,7 +169,8 @@ def test_end_is_the_latest_end_of_the_applied_tables(kind, graded, monkeypatch):
     from rfx.measurement.record_end import drive_end, injection_end
 
     if (kind, graded) in NOT_REACHABLE:
-        with pytest.raises(ValueError, match=re.escape(NOT_REACHABLE[kind, graded])):
+        error = NotImplementedError if kind == "tfsf_closed_box" else ValueError
+        with pytest.raises(error, match=re.escape(NOT_REACHABLE[kind, graded])):
             _loop_call(monkeypatch, _scene(kind, graded), kind)
         return
     sim = _scene(kind, graded)
