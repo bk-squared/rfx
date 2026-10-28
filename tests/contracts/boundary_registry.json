@@ -703,11 +703,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/stepping/slab_walls.py",
-      "function": "apply_pmc_face_shmap._pmc",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/stepping/slab_exchange.py",
       "function": "exchange_e_yee_shmap._exchange",
       "kind": "boundary"

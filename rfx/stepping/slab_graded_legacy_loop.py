@@ -35,7 +35,6 @@ from rfx.stepping.slab_update import update_e_nu_shmap
 from rfx.stepping.slab_update import update_h_nu_shmap
 from rfx.stepping.slab_walls import apply_pec_face_shmap as _apply_pec_face_nu_shmap
 from rfx.stepping.slab_walls import apply_pec_mask_shmap as _apply_pec_mask_nu_shmap
-from rfx.stepping.slab_walls import apply_pmc_face_shmap as _apply_pmc_face_nu_shmap
 from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
@@ -76,7 +75,6 @@ def run_graded_legacy_slab_loop(
     nx_per,
     nx_real,
     pad_x,
-    pmc_faces,
     prb_device_ids,
     prb_local_specs,
     rep,
@@ -608,9 +606,6 @@ def run_graded_legacy_slab_loop(
             st, cs = _apply_cpml_h_shmap(st, cs, cpml_params, sharded_materials.mu_r,
                                         spacings[6:], ranks=ranks)
 
-        # Canonicalize PMC high ghosts after the final H update/correction.
-        st = _apply_pmc_face_nu_shmap(
-            st, mesh, n_devices, nx_local, pmc_faces, pad_x=pad_x, ranks=ranks)
 
         # 3. Ghost exchange of H so the upcoming E update sees the
         #    neighbour rank's H at the seam.

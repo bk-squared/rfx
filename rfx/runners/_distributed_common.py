@@ -313,8 +313,6 @@ from rfx.stepping.slab_exchange import exchange_e_yee_shmap
 
 from rfx.stepping.slab_walls import apply_pec_face_shmap
 
-from rfx.stepping.slab_walls import apply_pmc_face_shmap
-
 
 # #1053 leg 2. The realized-PEC cell-mask kernel, moved here BY VALUE from
 # ``distributed_nu.py`` so ``distributed_v2`` can call the same object rather

@@ -43,7 +43,7 @@ import numpy as np
 material_drive_scales = partial(_material_drive_scales, reduce_devices=False)
 
 
-def _update_h_local(state, materials, dt, dx, *, high_wall: tuple[bool, bool, bool]):
+def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None), *, high_wall: tuple[bool, bool, bool]):
     """H update on a local slab (including ghost cells).
 
     Identical to yee.update_h but without jit decorator and always
@@ -72,6 +72,9 @@ def _update_h_local(state, materials, dt, dx, *, high_wall: tuple[bool, bool, bo
     hx = state.hx - ch_x * curl_x
     hy = state.hy - ch_y * curl_y
     hz = state.hz - ch_z * curl_z
+
+    from rfx.boundaries.pmc import magnetic_update_fields
+    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 

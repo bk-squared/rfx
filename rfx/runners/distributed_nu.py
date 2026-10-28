@@ -953,7 +953,6 @@ def run_nonuniform_distributed_pec(
         nx_per=nx_per,
         nx_real=nx_real,
         pad_x=pad_x,
-        pmc_faces=pmc_faces,
         prb_device_ids=prb_device_ids,
         prb_local_specs=prb_local_specs,
         rep=rep,
