@@ -130,6 +130,33 @@ def test_static_exemption_and_inactive_channel():
     assert judge.horizon_steps == 1024 and judge.decay_horizon_steps == 0
 
 
+def test_no_growing_pole_passes_even_where_a_channel_dft_is_zero():
+    # run(ringdown=) passes the raw |plain|: a zero there must not refuse a record nothing grows in.
+    model = _model([(-.001+2j*np.pi*10e9*DT)/DT], [[1.]])
+    denom = np.full((len(BINS), 1), 1e-10)
+    denom[3, 0] = 0.
+    judge = rd.judge_growing_poles(model, 1024, BINS, denom)
+    assert judge.status == 'pass' and judge.n_kept_growing == 0
+
+
+def test_any_positive_rate_is_judged_and_an_exact_sinusoid_is_not():
+    # A growth of 1e-13 per step is below the in-window rule's sinusoid test but still a
+    # growing pole: on a read bin its tail bound is large, so it is refused.
+    slow = (1e-13 + 2j*np.pi*10e9*DT) / DT
+    exact = (2j*np.pi*10e9*DT) / DT
+    denom = np.full((len(BINS), 1), 1e-10)
+    slow_judge = rd.judge_growing_poles(_model([slow], [[1e-3]]), 1024, BINS, denom)
+    expected = _bound(slow, np.array([1e-3]), 1024, 321, 1024, denom)[:, 0]
+    assert slow_judge.status == 'refused'
+    # On its own bin 1 - lambda z is ~1e-13 and the product form above loses digits there.
+    off = np.arange(len(BINS)) != 10
+    np.testing.assert_allclose(slow_judge.share_per_bin[off], expected[off], rtol=1e-9)
+    assert slow_judge.share_per_bin[10] > 1e6
+    exact_judge = rd.judge_growing_poles(_model([exact], [[1e-3]]), 1024, BINS, denom)
+    assert exact_judge.status == 'pass'
+    np.testing.assert_array_equal(exact_judge.share_per_bin, np.zeros(len(BINS)))
+
+
 @pytest.mark.parametrize('bad', ['residue', 'denominator', 'overflow'])
 def test_nonfinite_values_cannot_judge(bad):
     model, n, _, denom = _c2()

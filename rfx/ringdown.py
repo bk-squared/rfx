@@ -763,29 +763,34 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
         return result("cannot judge", "non-finite poles, residues, bins or denominator")
     decaying, growing = [], []
     for k in range(len(model.s)):
-        p = model.pole(k)
-        # Static poles are exempt; non-decaying sinusoids keep the caller's in-window rule.
-        if (_static_pole(p, n_record * model.dt, unit_tol)
-                or abs(model.s[k].real * model.dt) < 1e-12):
+        # Classed by the decay rate's sign, not by a rounded |lambda|: any growth is
+        # judged here; a pole with |rate| < 1e-12 that does not grow is a non-decaying
+        # sinusoid and keeps the caller's in-window rule. Static poles are exempt.
+        if _static_pole(model.pole(k), n_record * model.dt, unit_tol):
             continue
-        if p.abs_lambda < 1.0:
-            decaying.append(k)
-        elif p.abs_lambda > 1.0:
+        rate = model.s[k].real * model.dt
+        if rate > 0.0:
             growing.append(k)
+        elif rate <= -1e-12:
+            decaying.append(k)
+    none_growing = "no kept non-static growing pole"
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         if decaying:
             dec = _dc_replace(model, s=model.s[decaying], c=model.c[decaying])
             own = np.abs(_pole_tails(dec, n_record - 1, freqs)) / denominator[:, None, :]
             if not np.isfinite(own).all():
-                return result("cannot judge", "non-finite decaying pole tail share")
+                # The horizon only bounds a growing pole's tail; without one there is nothing to judge.
+                return (result("cannot judge", "non-finite decaying pole tail share") if growing
+                        else result("pass", none_growing))
             significant = np.any(own >= significance, axis=(0, 2))
             if np.any(significant):
                 Hd = float(np.max(np.log(100.0) / (-dec.s.real[significant] * model.dt)))
                 if not np.isfinite(Hd):
-                    return result("cannot judge", "non-finite decay horizon")
+                    return (result("cannot judge", "non-finite decay horizon") if growing
+                            else result("pass", none_growing))
                 H = max(H, math.ceil(Hd))
         if not growing:
-            return result("pass", "no kept non-static growing pole")
+            return result("pass", none_growing)
         band = float(np.exp(2.0 * H / model.D * np.log1p(unit_tol)))
         s, c = model.s[growing], model.c[growing]
         rate = s.real * model.dt
