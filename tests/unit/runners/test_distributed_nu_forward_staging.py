@@ -33,6 +33,7 @@ from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
 from rfx.runners import distributed_nu as nu
 from rfx.runners import _distributed_common as common
+from rfx.stepping import slab_update, slab_graded_legacy_loop
 from rfx.runners._distributed_common import _split_materials
 from rfx.runners._distributed_common import shard_stacked
 from rfx.simulation import ProbeSpec, SourceSpec
@@ -229,7 +230,7 @@ def _bit_case(case, checkpoint, warmup, transform):
                       MethodType(_legacy_forward, sim))
         # The oracle must consume its eagerly formed E coefficients; the
         # current runner otherwise rebuilds them from the shared means too.
-        patch.setattr(nu, "slab_dispersion_coeffs", lambda coeffs, *args, **kwargs: coeffs)
+        patch.setattr(slab_graded_legacy_loop, "slab_dispersion_coeffs", lambda coeffs, *args, **kwargs: coeffs)
         expected = evaluate()
     for i, (a, b) in enumerate(zip(actual, expected)):
         if case != "lossy":
@@ -494,8 +495,9 @@ def _zero_cc_pad(original):
 
 def _mutation_cc():
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(common, "_pad_slab_dispersion_coeffs",
-                      _zero_cc_pad(common._pad_slab_dispersion_coeffs))
+        mutant = _zero_cc_pad(slab_update._pad_slab_dispersion_coeffs)
+        for owner in (slab_update, common):
+            patch.setattr(owner, "_pad_slab_dispersion_coeffs", mutant)
         try:
             _per_shard()
         except AssertionError as error:

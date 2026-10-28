@@ -80,7 +80,7 @@ BUILDERS = {
         "the resistive sheet's exponential-stepping A/B",
     ("rfx/lumped.py", "edge_update_denominator"):
         "a lumped element's D0 = eps/dt + sigma/2 (traced branch)",
-    ("rfx/runners/_distributed_common.py", "component_e_coeffs"):
+    ("rfx/stepping/slab_update.py", "component_e_coeffs"):
         "both multi-device lanes' slab Ca/Cb (#1303: e_update_coeffs per component)",
     ("rfx/materials/debye.py", "init_debye"): "Debye initialization",
     ("rfx/materials/debye.py", "debye_e_coeffs"):

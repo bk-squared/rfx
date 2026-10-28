@@ -201,7 +201,7 @@ def capture(sim, entry, path, invoke=None):
         # handing the driver to jit. Stop at that builder boundary, before
         # even tracing a field update. The recorded free variable is the
         # actual pec_faces argument of the CPML step's wall application.
-        if fun is not None and fun.__module__ == 'rfx.runners.distributed_v2' and fun.__name__ in ('_run_cpml', '_run_pec'):
+        if fun is not None and fun.__module__ == 'rfx.stepping.slab_uniform_loop' and fun.__name__ in ('_run_cpml', '_run_pec'):
             driver = closure_values(fun)
             step = driver['step_fn_cpml' if fun.__name__ == '_run_cpml' else 'step_fn_pec']
             bound = closure_values(step)
@@ -210,13 +210,13 @@ def capture(sim, entry, path, invoke=None):
                             faces=bound['e_wall_faces'] if fun.__name__ == '_run_cpml' else bound['_pec_faces_frozen'],
                             backend='distributed-uniform')
             raise Captured
-        if fun is not None and fun.__module__ == 'rfx.runners.distributed_nu' and fun.__name__ == 'run_fn':
+        if fun is not None and fun.__module__ == 'rfx.stepping.slab_graded_legacy_loop' and fun.__name__ == 'run_fn':
             frame = inspect.currentframe().f_back
             # The step passes the runner's e_wall_faces (#1221 B4). Resolve it inside
             # the unmodified wall factory and stop at its shard-map builder;
             # no state is read and no field operation is traced or executed.
             from rfx.runners.distributed_nu import _apply_pec_face_nu_shmap
-            from rfx.runners import _distributed_common as walls
+            from rfx.stepping import slab_walls as walls
             assert 'grid' in captured
             captured['backend'] = 'distributed-graded'
 

@@ -91,6 +91,7 @@ from rfx.core.yee import (  # noqa: E402
 )
 from rfx.runners import _distributed_common as common  # noqa: E402
 from rfx.runners import distributed_nu, distributed_v2  # noqa: E402
+from rfx.stepping import slab_update, slab_cpml, slab_graded_legacy_loop  # noqa: E402
 from rfx.runners._distributed_common import (  # noqa: E402
     _split_materials, slab_e_component_materials,
 )
@@ -376,7 +377,7 @@ def test_a_mutated_slab_view_is_caught(kind):
 
 def _install(patch, kind):
     helper = _mutant(kind)
-    for module in (common, distributed_v2, distributed_nu):
+    for module in (common, slab_update, slab_cpml):
         patch.setattr(module, "slab_e_component_materials", helper)
 
 
@@ -488,7 +489,7 @@ def _matrix(n_dev, boundaries, cases, mutation=None):
 def _matrix_main(n_dev, boundaries, cases, mutation):
     if mutation != "none":
         helper = _mutant(mutation)
-        for module in (common, distributed_v2, distributed_nu):
+        for module in (common, slab_update, slab_cpml):
             setattr(module, "slab_e_component_materials", helper)
     for boundary in boundaries:
         for case in cases:
@@ -540,7 +541,7 @@ def _fwd_never_reaches(patch, boundary, case, watched):
     assert setups and not calls, (boundary, case, len(setups), calls)
 
 
-_SLAB_HELPER = tuple((m, "slab_e_component_materials") for m in (common, distributed_v2, distributed_nu))
+_SLAB_HELPER = tuple((m, "slab_e_component_materials") for m in (common, slab_update, slab_cpml))
 
 
 @pytest.mark.slow
@@ -594,14 +595,14 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
 
     # The uniform runner's CPML wrapper calls the name bound in its own module;
     # its E update reads _distributed_common's, which keeps the real helper.
-    monkeypatch.setattr(distributed_v2, "slab_e_component_materials", cell)
+    monkeypatch.setattr(slab_cpml, "slab_e_component_materials", cell)
     # The forward lane hands its CPML the means built before the loop; the
     # correction is given the cell array; all mean-builder calls stay in place.
     sim = _box("cpml", "fwd", "faces", 2)
     grid = sim._build_nonuniform_grid()
     slabs, _ = _staged(sim._assemble_materials_nu(grid)[0], 2)
     eps_cells = jnp.stack([m.eps_r for m in slabs])
-    real_cpml = distributed_nu.apply_cpml_e
+    real_cpml = slab_graded_legacy_loop.apply_cpml_e
 
     def cell_cpml(*args, **kwargs):
         # Keep every material helper call and replace only CPML's eps read.
@@ -610,13 +611,13 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
         kwargs["inv_eps_r_update"] = (1 / cells,) * 3
         return real_cpml(*args, **kwargs)
 
-    monkeypatch.setattr(distributed_nu, "apply_cpml_e", cell_cpml)
+    monkeypatch.setattr(slab_graded_legacy_loop, "apply_cpml_e", cell_cpml)
     got, _ = _parity("cpml", "run", "faces", 2)
     gate = _gate(floors["run"])
     print(f"[mutation psi cpml/faces/run] {['%.2e' % g for g in got]}")
     assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, ("run", got, gate)
     _fwd_never_reaches(monkeypatch, "cpml", "faces",
-                       ((distributed_nu, "apply_cpml_e"), (distributed_v2, "slab_e_component_materials")))
+                       ((slab_graded_legacy_loop, "apply_cpml_e"), (slab_cpml, "slab_e_component_materials")))
 
 
 # --------------------------------------------------------------------------
@@ -668,7 +669,7 @@ def test_vacuum_and_homogeneous_models_keep_mains_bits(monkeypatch, lane, eps_r,
         return cell_owned_component_materials(materials)
 
     with monkeypatch.context() as patch:
-        for module in (common, distributed_v2, distributed_nu):
+        for module in (common, slab_update, slab_cpml):
             patch.setattr(module, "slab_e_component_materials", main_rule)
         old = _filled_record(lane, eps_r, sigma)
     for a, b in zip(new, old):

@@ -32,11 +32,12 @@ def test_cpml_rejects_absent_rank(graded, monkeypatch):
     assert len(devices) == 2
     jax.clear_caches()
     from rfx.boundaries import cpml
-    from rfx.stepping import absorber
+    from rfx.stepping import absorber, slab_cpml
     # The graded wrapped step reaches the kernel through rfx.boundaries.cpml
     # and rfx.stepping.absorber (H, bound when the slab setup is built); the
-    # legacy runners through their own names.
-    modules = (nu, cpml, absorber) if graded else (uniform,)
+    # legacy graded runner through its own names; the uniform slab loop through
+    # rfx.stepping.slab_cpml's.
+    modules = (nu, cpml, absorber) if graded else (slab_cpml,)
     calls = []
     for module, name in [(m, n) for m in modules for n in ("apply_cpml_e", "apply_cpml_h")]:
         original = getattr(module, name)

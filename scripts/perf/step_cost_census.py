@@ -353,7 +353,7 @@ def injected_control(footprint, path):
     import jax.numpy as jnp
     module = importlib.import_module(
         "rfx.stepping.graded" if path == "multi-graded" else
-        "rfx.runners._distributed_common" if path.startswith("multi") else
+        "rfx.stepping.slab_update" if path.startswith("multi") else
         "rfx.stepping.graded" if "graded" in path else "rfx.core.drives")
     original = module.inject_drives
 
@@ -406,7 +406,7 @@ class Program:
         if fun is None:
             return lambda f: self._capture_jit(f, **kwargs)
         compiled_fn = self.original_jit(fun, **kwargs)
-        legacy_runner = (fun.__module__ in ("rfx.runners.distributed_v2", "rfx.runners.distributed_nu")
+        legacy_runner = (fun.__module__ in ("rfx.stepping.slab_uniform_loop", "rfx.stepping.slab_graded_legacy_loop")
                          and fun.__name__ in ("_run_cpml", "_run_pec", "run_fn"))
         wrapped_graded_runner = (fun.__module__, fun.__name__) == ("rfx.stepping.slab_wrap", "run_fn")
         if not (legacy_runner or wrapped_graded_runner):

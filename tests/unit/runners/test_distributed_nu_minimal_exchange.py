@@ -34,7 +34,7 @@ from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.materials.lorentz import lorentz_pole
 from rfx.nonuniform import position_to_index
-from rfx.runners import distributed_nu as runner
+from rfx.stepping import slab_graded_legacy_loop as runner
 # These are frozen test-local copies, independent of production exchange and
 # sampling helpers. Share #1222's oracle rather than freezing a second version.
 from tests.unit.runners.test_distributed_minimal_exchange import (

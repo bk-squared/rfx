@@ -560,7 +560,7 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
                 # arrays before tracing, just as distributed_step does for NU.
                 jit = original('distributed_uniform_jit')
                 def native_jit(fun, *args, **kwargs):
-                    if (getattr(fun, '__module__', None) == 'rfx.runners.distributed_v2'
+                    if (getattr(fun, '__module__', None) == 'rfx.stepping.slab_uniform_loop'
                             and fun.__name__ in ('_run_cpml', '_run_pec')):
                         return stop_at(fun, 'arguments')
                     return jit(fun, *args, **kwargs)
