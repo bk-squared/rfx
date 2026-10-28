@@ -20,6 +20,7 @@ from rfx import _realized, _grid_metric
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop
 from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.model import with_edge_keep
@@ -1087,12 +1088,13 @@ def run_until_decay(
     # energy criterion, and near-Nyquist grid buzz) because neither carries net radiated power.
     # It is the right stop for radiation / S-parameter measurements; it is opt-in (default
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
-    use_flux_stop = radiated_flux_box is not None and use_absorbing
+    # A direct caller gets run()'s refusal too: on a closed box the box was dropped (#2030 S2a).
+    refuse_radiated_flux_stop(radiated_flux_box, decay_by, boundary)
+    use_flux_stop = radiated_flux_box is not None
     from rfx.measurement import flux_box_bounds, radiated_power
     if use_flux_stop:
         _bl = flux_box_bounds(grid, radiated_flux_box)
 
-    peak_sq = 0.0          # closed/PEC point-field running peak
     # The absorbing-boundary energy stop (rfx.measurement.decay), read at k * check_interval.
     energy_stop, energy = make_decay_stop(
         grid, _setup.ctx_kwargs["materials"], thr=decay_by, min_steps=min_steps,
@@ -1101,9 +1103,13 @@ def run_until_decay(
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
         periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
             cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))
-    peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope
-    flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
-    flux_hist: list[float] = []   # recent |P| samples for the max-envelope
+    stop_rule = energy_stop
+    if use_flux_stop or not use_absorbing:
+        stop_rule = make_field_decay_stop(
+            grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            max_steps=max_steps, flux=use_flux_stop, consecutive=decay_energy_consecutive,
+            env_checks=flux_env_checks, n_end=n_end, sources=sources,
+            mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports)
     decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
     probe_chunks = []
     actual_steps = 0
@@ -1170,45 +1176,16 @@ def run_until_decay(
             jax.block_until_ready(carry["fdtd"])
             _reporter.report(actual_steps)
 
-        if use_absorbing and use_flux_stop:
-            # #388 opt-in: RADIATED-FLUX stop. Compute the net outgoing Poynting flux at each
-            # check; smooth the 2f0 oscillation with a max-envelope over the last
-            # ``flux_env_checks`` checks; stop when the envelope decays below the threshold.
-            # The flux PEAK is during the source drive, so track it from the FIRST check (unlike
-            # the interior energy, whose peak is post-source); only the STOP check waits for
-            # min_steps.
-            if actual_steps % check_interval == 0:
-                flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
-                env = max(flux_hist[-flux_env_checks:])
-                if env > peak_flux:
-                    peak_flux = env
-                if actual_steps >= min_steps and peak_flux > 0.0 and env < decay_by * peak_flux:
-                    flux_below += 1
-                    if flux_below >= decay_energy_consecutive:
-                        decayed_fired = True
-                        break
-                else:
-                    flux_below = 0
+        if use_flux_stop:
+            stopped = stop_rule.check(
+                actual_steps, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
         elif use_absorbing:
-            if energy_stop.check(actual_steps, lambda: energy(carry, actual_steps)) is not None:
-                decayed_fired = True
-                break
+            stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
         else:
-            # Closed/PEC fallback with the same point-field decision.
-            # Decay check
-            # One transfer per chunk; square in host float64 just as
-            # float(monitor_val) ** 2 did for EVERY step of the old loop.
-            # Reading only the final sample loses peaks between checks.
-            values_sq = np.asarray(monitor_vals, dtype=np.float64) ** 2
-            chunk_peak = np.max(values_sq, where=~np.isnan(values_sq), initial=0.0)
-            if chunk_peak > peak_sq:
-                peak_sq = float(chunk_peak)
-            val_sq = float(values_sq[-1])
-
-            if actual_steps >= min_steps and actual_steps % check_interval == 0 and peak_sq > 0.0:
-                if val_sq < decay_by * peak_sq:
-                    decayed_fired = True
-                    break
+            stopped = stop_rule.check(actual_steps, monitor_vals)
+        if stopped is not None:
+            decayed_fired = True
+            break
 
     if _reporter is not None and _reporter.last_reported != actual_steps:
         # The decay stop lands on an arbitrary step, so without this line the
@@ -1219,9 +1196,8 @@ def run_until_decay(
 
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
     decay_stop = finish_decay(
-        energy_stop, actual_steps, fired=decayed_fired, reporter=_reporter,
-        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
-        point=None if use_absorbing else (val_sq, peak_sq), state=carry["fdtd"],
+        stop_rule, actual_steps, fired=decayed_fired, reporter=_reporter,
+        state=carry["fdtd"],
         materials=materials, grid=grid, advisory=advisory, sources=sources)
 
     # ---- assemble result ----

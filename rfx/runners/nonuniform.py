@@ -582,6 +582,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx.measurement.decay import refuse_radiated_flux_stop
+    refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
+
     # run()'s S for the port sets uniform run() scans: one drive per port through
     # the shared driver (compute_lumped_wire_s_matrix_via_scan), not this record.
     from rfx.runners._admission import _s_matrix_ports, graded_lumped_default_s
@@ -1218,7 +1221,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
-                 if until_decay > 0 and radiated_flux_box is None else None)
+                 if until_decay > 0 else None)
         # #383: chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored

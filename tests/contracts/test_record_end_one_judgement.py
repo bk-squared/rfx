@@ -274,3 +274,176 @@ def test_floquet_end_is_the_same_under_an_outer_jit():
 
     traced(jnp.ones(2))
     assert host is not None and seen == [host]
+
+
+# S2a: flux and point start at the same applied-drive end as energy.
+S2_BOX = ((.012, .012, .012), (.028, .028, .028))
+
+
+def _s2_scene(graded=False, boundary="cpml"):
+    from rfx import Simulation
+
+    mesh = {"dz_profile": np.full(25, .0016)} if graded else {}
+    sim = Simulation(domain=(.04, .04, .04), freq_max=10e9, dx=.0016,
+                     boundary=boundary, **mesh)
+    sim.add_source((.0193, .0207, .0211), "ez", amplitude_kind="current")
+    sim.add_probe((.0251, .0172, .0222), "ez")
+    return sim
+
+
+@pytest.mark.parametrize("kind", ["energy", "flux", "point"])
+@pytest.mark.parametrize("min_steps,n_d", [(50, 0), (300, 0), (50, 320)])
+def test_s2_rule_first_eligible_check(kind, min_steps, n_d, monkeypatch):
+    from rfx.measurement.decay import DecayStop, FluxStop, PointStop, finish_decay
+
+    # Realized default pulse; the expected end uses this file's independent sum-free
+    # table inspection, never record_end or a decay constructor/helper.
+    with monkeypatch.context() as patch:
+        _, kw = _loop_call(patch, _s2_scene(), "source")
+    n_end = max(_off(_table(src)) for src in kw["sources"])
+    assert n_end == 183
+    interval, consecutive = 50, 2
+    # thr=2 makes every positive level below threshold from the first check,
+    # isolating the start gate from the physical ringdown time.
+    common = dict(thr=2., min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
+    if kind == "energy":
+        rule = DecayStop(**common, consecutive=consecutive)
+    elif kind == "flux":
+        rule = FluxStop(**common, consecutive=consecutive)
+    else:
+        rule = PointStop(**common)
+    ceil_check = lambda n: math.ceil(n / interval) * interval
+    first = ceil_check(max(min_steps, n_end, n_d))
+    expected = (max(ceil_check(n_end) + (consecutive - 1) * interval,
+                    ceil_check(max(min_steps, n_d))) if kind == "energy"
+                else first + (consecutive - 1) * interval if kind == "flux" else first)
+    for count in range(interval, 501, interval):
+        stopped = rule.check(count, np.ones(interval) if kind == "point" else lambda: 1.)
+        if count < expected:
+            assert stopped is None
+        else:
+            assert stopped == expected
+            break
+    else:
+        pytest.fail(f"{kind} never stopped at its first eligible check {expected}")
+    diagnostic = finish_decay(rule, stopped)
+    assert diagnostic.values["drive_end_step"] == n_end
+    assert diagnostic.values["stop_step"] == expected
+
+
+@pytest.mark.parametrize("graded,boundary", [(False, "cpml"), (True, "cpml"), (False, "pec")])
+def test_s2_run_waits_for_applied_drive(graded, boundary, monkeypatch, record_property):
+    import rfx.runners.nonuniform as graded_runner
+    import rfx.simulation as simulation
+
+    owner = graded_runner if graded else simulation
+    name = "run_nonuniform_until_decay" if graded else "run_until_decay"
+    original, ends = getattr(owner, name), []
+
+    def observed(*args, **kwargs):
+        ends.append(max(_off(_table(src)) for src in kwargs["sources"]))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(owner, name, observed)
+    flux = boundary == "cpml"
+    result = _s2_scene(graded, boundary).run(
+        until_decay=2., decay_min_steps=50, decay_max_steps=350,
+        **({"radiated_flux_box": S2_BOX} if flux else {}), skip_preflight=True)
+    (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
+    values = diagnostic.values
+    assert ends == [183]
+    assert values["stop_step"] >= ends[0]
+    assert values["drive_end_step"] == ends[0]
+    assert values["criterion"] == "threshold"
+    assert values["quantity"] == ("radiated_flux" if flux else "point_field")
+    assert values["stop_step"] == (250 if flux else 200)
+    record_property("s2_stop", dict(values))
+
+
+@pytest.mark.parametrize("graded,boundary,decay", [
+    (False, "pec", 1e-3), (False, "cpml", None), (True, "cpml", None),
+    (False, "pec", None), (True, "pec", None), (False, "cpml", 0.),
+])
+def test_s2_refuses_a_flux_box_without_a_flux_stop(graded, boundary, decay):
+    with pytest.raises(ValueError, match="radiated_flux_box selects the radiated-flux until_decay stop"):
+        _s2_scene(graded, boundary).run(n_steps=20, until_decay=decay,
+                                      radiated_flux_box=S2_BOX, skip_preflight=True)
+
+
+def test_s2_direct_loop_refuses_a_closed_box_flux_box(monkeypatch):
+    """The public loop called directly, not through run(): the box was dropped there too."""
+    import rfx.simulation as simulation
+
+    original = simulation.run_until_decay
+
+    def stop(*args, **kwargs):
+        raise _Loop(args, kwargs)
+
+    monkeypatch.setattr(simulation, "run_until_decay", stop)
+    with pytest.raises(_Loop) as entry:
+        _s2_scene(False, "pec").run(until_decay=1e-3, decay_max_steps=60, skip_preflight=True)
+    args, kwargs = entry.value.call
+    assert kwargs["boundary"] == "pec"
+    with pytest.raises(ValueError, match="radiated_flux_box selects the radiated-flux until_decay stop"):
+        original(*args, **{**kwargs, "radiated_flux_box": S2_BOX})
+
+
+@pytest.mark.parametrize("change", [{"decay_by": 0.0}, {"cpml_axes": ""}], ids=["no_stop", "closed"])
+def test_s2_direct_graded_loop_refuses_an_unused_flux_box(change, monkeypatch):
+    """The public graded loop called directly: a box with no flux stop, or with no absorber, is refused."""
+    import rfx.runners.nonuniform as graded_runner
+
+    original = graded_runner.run_nonuniform_until_decay
+
+    def stop(*args, **kwargs):
+        raise _Loop(args, kwargs)
+
+    monkeypatch.setattr(graded_runner, "run_nonuniform_until_decay", stop)
+    with pytest.raises(_Loop) as entry:
+        _s2_scene(True).run(until_decay=1e-3, decay_max_steps=60, radiated_flux_box=S2_BOX,
+                            skip_preflight=True)
+    args, kwargs = entry.value.call
+    assert kwargs["radiated_flux_box"] == S2_BOX and kwargs["decay_by"] > 0
+    with pytest.raises(ValueError, match="radiated_flux_box selects the radiated-flux until_decay stop"):
+        original(*args, **{**kwargs, **change})
+
+
+@pytest.mark.parametrize("flux", [False, True])
+def test_s2_direct_constructor_and_still_on_cap(flux, monkeypatch):
+    from rfx.measurement.decay import make_field_decay_stop, finish_decay
+
+    with monkeypatch.context() as patch:
+        args, kw = _loop_call(patch, _s2_scene(), "source")
+    grid, sources = args[0], kw["sources"]
+    expected = max(_off(_table(src)) for src in sources)
+    rule = make_field_decay_stop(grid, thr=2., min_steps=50, interval=50,
+                                max_steps=350, flux=flux, sources=sources)
+    assert rule.n_end == expected
+    # A shorter cap cuts the pulse while it is still injecting. Peak tracking
+    # remains live, but neither rule may stop; the diagnostic names the drive.
+    capped = make_field_decay_stop(grid, thr=2., min_steps=0, interval=50,
+                                  max_steps=100, flux=flux, sources=sources)
+    assert capped.n_end is None
+    for count in (50, 100):
+        assert capped.check(count, (lambda: 1.) if flux else np.ones(50)) is None
+    diagnostic = finish_decay(capped, 100)
+    assert diagnostic.values["criterion"] == "cap"
+    assert math.isnan(diagnostic.values["drive_end_step"])
+    assert "source[0]" in diagnostic.message and "still injecting" in diagnostic.message
+
+
+def test_s2_peaks_keep_drive_checks_and_between_check_samples():
+    from rfx.measurement.decay import FluxStop, PointStop
+
+    flux = FluxStop(.1, 0, 10, 2, 40, env_checks=2)
+    for count, value in [(10, 100.), (20, 1.), (30, 1.), (40, 1.)]:
+        assert flux.check(count, lambda: value) is None
+    assert flux.peak == 100. and flux.below == 1
+    assert flux.check(45, lambda: pytest.fail("off-interval flux read")) is None
+    assert flux.check(50, lambda: 1.) == 50
+    point = PointStop(.1, 0, 10, 40)
+    assert point.check(10, [10., 1.]) is None
+    assert point.check(30, [1., 1.]) is None
+    assert point.check(39, [1.]) is None
+    assert point.peak == 100.
+    assert point.check(40, [1., 1.]) == 40

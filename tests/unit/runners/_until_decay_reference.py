@@ -359,7 +359,8 @@ def run_until_decay_reference(
                 env = max(flux_hist[-flux_env_checks:])
                 if env > peak_flux:
                     peak_flux = env
-                if actual_steps >= min_steps and peak_flux > 0.0 and (env < decay_by * peak_flux):
+                if (n_end is not None and actual_steps >= max(min_steps, n_end)
+                        and peak_flux > 0.0 and (env < decay_by * peak_flux)):
                     flux_below += 1
                     if flux_below >= decay_energy_consecutive:
                         decayed_fired = True
@@ -383,7 +384,8 @@ def run_until_decay_reference(
             val_sq = float(monitor_val) ** 2
             if val_sq > peak_sq:
                 peak_sq = val_sq
-            if actual_steps >= min_steps and actual_steps % check_interval == 0 and (peak_sq > 0.0):
+            if (n_end is not None and actual_steps >= max(min_steps, n_end)
+                    and actual_steps % check_interval == 0 and (peak_sq > 0.0)):
                 if val_sq < decay_by * peak_sq:
                     break
     if _reporter is not None and _reporter.last_reported != actual_steps:

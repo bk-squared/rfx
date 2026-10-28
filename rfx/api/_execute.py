@@ -2049,7 +2049,7 @@ class _ExecuteMixin:
         Result
         """
         self._resolve_field_dtype()
-        admit_traced_run(self, until_decay, decay_max_steps)
+        admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
         if until_decay is not None and self._tfsf is not None:

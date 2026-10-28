@@ -21,7 +21,7 @@ from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
 from rfx.measurement.oblique import reconstruct_oblique_physical
-from rfx.measurement.decay import drive_steps
+from rfx.measurement.decay import drive_steps, refuse_radiated_flux_stop
 
 
 
@@ -111,6 +111,8 @@ def run_uniform(
     Result
     """
     from rfx.api import Result
+
+    refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
 
     # Step-count-sized builds (drive tables, DFT and flux accumulators, port
     # records): on the decay path the loop runs up to decay_max_steps, so they
@@ -669,8 +671,7 @@ def run_uniform(
         from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
                            tfsf=tfsf, waveguide_ports=waveguide_ports)
-                 if until_decay > 0 and sim._boundary in ("cpml", "upml")
-                 and radiated_flux_box is None else None)
+                 if until_decay > 0 else None)
         sim_result = _simulation.run_until_decay(
             grid, materials,
             decay_by=until_decay,

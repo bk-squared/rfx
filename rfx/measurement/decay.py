@@ -325,6 +325,103 @@ class DecayStop:
         return self.stop
 
 
+def refuse_radiated_flux_stop(box, until_decay, boundary):
+    """A flux box selects an absorbing-boundary decay stop, never a fixed-run monitor."""
+    if box is None:
+        return
+    if until_decay is None or not until_decay > 0:
+        raise ValueError(
+            "radiated_flux_box selects the radiated-flux until_decay stop; use a positive "
+            "until_decay with cpml/upml, or omit the box and use add_flux_monitor() "
+            "for a fixed n_steps measurement")
+    if boundary not in ("cpml", "upml"):
+        raise ValueError(
+            "radiated_flux_box selects the radiated-flux until_decay stop and requires "
+            "cpml/upml; use an absorbing boundary, or omit the box to use the "
+            "closed-box point-field stop on the uniform mesh")
+
+
+@dataclass
+class FluxStop:
+    """Radiated-power envelope, with its peak tracked from the first check."""
+
+    thr: float
+    min_steps: int
+    interval: int
+    consecutive: int
+    n_end: int | None
+    n_d: int = 0
+    env_checks: int = 4
+    peak: float = 0.0
+    below: int = 0
+    stop: int | None = None
+    history: list = field(default_factory=list)
+    drive_reason: str | None = None
+
+    def check(self, count, power):
+        if count % self.interval:
+            return self.stop
+        self.history.append(abs(float(power())))
+        env = max(self.history[-self.env_checks:])
+        self.peak = max(self.peak, env)
+        if (self.n_end is not None and count >= max(self.min_steps, self.n_end, self.n_d)
+                and self.peak > 0.0 and env < self.thr * self.peak):
+            self.below += 1
+            if self.stop is None and self.below >= self.consecutive and self.thr > 0:
+                self.stop = count
+        else:
+            self.below = 0
+        return self.stop
+
+
+@dataclass
+class PointStop:
+    """Closed-box last-sample rule; every step contributes to the peak."""
+
+    thr: float
+    min_steps: int
+    interval: int
+    n_end: int | None
+    n_d: int = 0
+    peak: float = 0.0
+    value: float = 0.0
+    stop: int | None = None
+    drive_reason: str | None = None
+
+    def check(self, count, samples):
+        # One transfer per chunk; float64 squaring preserves the old point rule.
+        values_sq = np.asarray(samples, dtype=np.float64) ** 2
+        chunk_peak = np.max(values_sq, where=~np.isnan(values_sq), initial=0.0)
+        self.peak = max(self.peak, float(chunk_peak))
+        self.value = float(values_sq[-1])
+        if (self.n_end is not None and count % self.interval == 0
+                and count >= max(self.min_steps, self.n_end, self.n_d)
+                and self.peak > 0.0 and self.value < self.thr * self.peak and self.thr > 0
+                and self.stop is None):
+            self.stop = count
+        return self.stop
+
+
+def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
+                          flux=False, consecutive=2, env_checks=4, n_end=AUTO_END,
+                          sources=(), mag_sources=(), tfsf=None, waveguide_ports=()):
+    """Resolve the same applied-drive end for flux and closed-box point stops."""
+    drives = dict(sources=sources, mag_sources=mag_sources, tfsf=tfsf,
+                  waveguide_ports=waveguide_ports)
+    if n_end is AUTO_END:
+        n_end = drive_end(grid, max_steps, **drives) if thr > 0 else None
+    n_d = known_drive_ready_step(waveguide_ports, interval) if thr > 0 else 0
+    common = dict(thr=thr, min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
+    rule = (FluxStop(**common, consecutive=consecutive, env_checks=env_checks) if flux
+            else PointStop(**common))
+    if n_end is None and thr > 0:
+        from rfx.measurement.record_end import injection_end
+        _, rule.drive_reason, _ = injection_end(
+            max_steps, grid.dt, grid=grid, **dict(drives, tfsf=None if tfsf is None else tfsf[0]),
+            return_detail=True)
+    return rule
+
+
 def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
                     criterion, max_steps, side_step, n_end=AUTO_END, rows=False, dx=None,
                     sources=(), mag_sources=(), tfsf=None, waveguide_ports=(),
@@ -385,7 +482,7 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
            state=None, materials=None, grid=None, advisory=None, sources=()):
     """One ``until_decay.stop`` Diagnostic for a run that ended at ``steps``.
 
-    ``rule`` is the loop's DecayStop. ``flux`` = (|P| history, envelope
+    ``rule`` is the loop's DecayStop, FluxStop or PointStop. ``flux`` = (|P| history, envelope
     checks, peak) when the radiated-flux criterion was the stop rule;
     ``point`` = (last squared sample, peak) for the closed-box point stop;
     ``fired`` says whether either of them stopped the run. Data:
@@ -406,6 +503,12 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
 
     if not rule.thr > 0:
         return None
+    if isinstance(rule, FluxStop):
+        flux = (rule.history, rule.env_checks, rule.peak)
+        fired = rule.stop is not None
+    elif isinstance(rule, PointStop):
+        point = (rule.value, rule.peak)
+        fired = rule.stop is not None
     quantity, criterion, reached, floor_ratio = _stop_record(
         rule, steps, fired=fired, flux=flux, point=point)
     nan = float("nan")
@@ -422,6 +525,10 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
     elif quantity == "conserved_energy" and rule.n_end is None:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    "a drive was still on at decay_max_steps, so the energy stop could not fire")
+    elif rule.n_end is None:
+        message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
+                   f"{getattr(rule, 'drive_reason', None) or 'a drive was still on at decay_max_steps'}, "
+                   f"so the {quantity} stop could not fire")
     else:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    f"last level reached {reached:.3g}")

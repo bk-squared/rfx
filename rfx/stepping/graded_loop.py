@@ -9,6 +9,7 @@ import jax.numpy as jnp
 
 from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import MaterialArrays
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop
 from rfx.measurement import (
     AUTO_END, finish_decay, init_graded_records, make_decay_stop, one_step_xs,
 )
@@ -325,6 +326,10 @@ def run_nonuniform_until_decay(
             f"check_interval must be >= 1, got {check_interval}")
     if max_steps < 1:
         raise ValueError(f"max_steps must be >= 1, got {max_steps}")
+    # A direct caller gets run()'s refusal too; the absorber is the setup's own (#2030 S2a).
+    from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
+    absorbing = grid.cpml_layers > 0 and padded_axes(grid, resolve_cpml_axes(grid, cpml_axes))
+    refuse_radiated_flux_stop(radiated_flux_box, decay_by, "cpml" if absorbing else "pec")
 
     setup = _build_nu_scan(
         grid, materials, max_steps,
@@ -402,9 +407,13 @@ def run_nonuniform_until_decay(
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf,
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
-    peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope (from first check)
-    flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
-    flux_hist: list = []   # recent |P| samples for the max-envelope
+    stop_rule = energy_stop
+    if use_flux_stop:
+        stop_rule = make_field_decay_stop(
+            grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            max_steps=max_steps, flux=use_flux_stop, consecutive=decay_energy_consecutive,
+            env_checks=flux_env_checks, n_end=n_end, sources=sources,
+            tfsf=tfsf, waveguide_ports=waveguide_ports)
     decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
     ys_chunks = []
     steps_done = 0
@@ -437,20 +446,11 @@ def run_nonuniform_until_decay(
         # Stop check at the chunk boundary (check-step-only — the whole-domain
         # reduction / surface integral is the expensive part).
         if use_flux_stop:
-            # RADIATED-FLUX stop: track the flux peak from the FIRST check (radiation peaks
-            # during the source drive), gate only the STOP on min_steps.
-            flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
-            env = max(flux_hist[-flux_env_checks:])
-            if env > peak_flux:
-                peak_flux = env
-            if steps_done >= min_steps and peak_flux > 0.0 and env < decay_by * peak_flux:
-                flux_below += 1
-                if flux_below >= decay_energy_consecutive:
-                    decayed_fired = True
-                    break
-            else:
-                flux_below = 0
-        elif energy_stop.check(steps_done, lambda: energy(carry, steps_done)) is not None:
+            stopped = stop_rule.check(
+                steps_done, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
+        else:
+            stopped = stop_rule.check(steps_done, lambda: energy(carry, steps_done))
+        if stopped is not None:
             decayed_fired = True
             break
 
@@ -466,8 +466,7 @@ def run_nonuniform_until_decay(
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
     # decay_by == 0.0 is the forced-N escape (fixed-step progress route): none.
     decay_stop = finish_decay(
-        energy_stop, steps_done, fired=decayed_fired, reporter=reporter,
-        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
+        stop_rule, steps_done, fired=decayed_fired, reporter=reporter,
         state=carry["fdtd"], materials=materials, grid=grid, advisory=advisory,
         sources=sources)
 
