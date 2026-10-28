@@ -194,7 +194,7 @@ the solver path checks that it implements every face (refusals, below).
 |---|---|---|---|
 | an axis closed by walls on both faces (PEC, PMC or zero-depth faces), without a cell profile, whose length is more than 1 % off a whole number of cells | uniform and graded mesh | refused under the default `snap="strict"`; the message names the nearest `dx` that fits | that `dx`, or `snap="declared"` to run with a warning |
 | `"pmc"` face | ADI, subgridded | refused | a uniform or graded mesh, on one device or several |
-| `"pmc"` face with lumped or wire ports | several devices, either mesh | refused | run on one device |
+| `"pmc"` face with a wire port or lumped-port S (on a graded mesh, with any port or frequency-domain record) | several devices, either mesh | refused | run on one device |
 | `"periodic"` axis | multi-device, ADI, subgridded | refused | run on one device |
 | on a periodic axis: a graded cell profile along it, a plane wave, `interface_eps="dual_average"` or Bloch phases | graded mesh | refused | keep the cell size constant along the axis; run plane waves on a periodic cell on a uniform mesh |
 | `extract_s_matrix` or `extract_s_matrix_wire` on a model with a periodic axis | all | refused: they solved six PEC walls | `run(compute_s_params=True)` |
