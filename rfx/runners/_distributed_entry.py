@@ -81,8 +81,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         if _forward_port_s11:
             raise NotImplementedError(
                 "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "
-                "(or another JAX trace that stages it): port S-parameter result assembly on this "
-                "path is outside the trace. Omit port_s11_freqs for the fields and probe records, "
+                "(or another JAX trace that stages it): on this path the port S-parameters are assembled "
+                "on the host from the main run's port records. Omit port_s11_freqs for the fields and probe records, "
                 "call forward() directly, or run on one device (omit distributed=True).")
         raise NotImplementedError(
             "run(devices=...) on a uniform mesh cannot compute port S-parameters inside jax.jit "
