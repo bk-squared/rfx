@@ -272,6 +272,10 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     assert len(records) == 1 and "if" not in records[0]
     for package in ("jax", "jaxlib", "numpy"):
         assert f"{package}.__version__" in records[0]["run"]
+    # Each shard records its CPU model and AVX-512 support (#2166: outcomes changed between runners).
+    cpu = [s for s in steps if s.get("name", "") == "Record the runner CPU"]
+    assert len(cpu) == 1 and "if" not in cpu[0], cpu
+    assert "model name" in cpu[0]["run"] and "avx512f" in cpu[0]["run"], cpu[0]["run"]
     tests = [str(step["run"]) for step in steps if "pytest " in str(step.get("run", ""))]
     assert len(tests) == 1, tests
     assert tests[0].split()[1:3] == ["tests/unit/autodiff", "tests/contracts"], tests[0]

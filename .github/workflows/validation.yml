@@ -399,6 +399,13 @@ jobs:
       - name: Record the resolved Python/JAX/numpy versions
         run: python -c "import sys, jax, jaxlib, numpy; print('python', sys.version.split()[0], 'jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
+      # The CPU of each shard: on jax 0.12 two tests changed outcome between runs of identical code (#2166);
+      # the model and AVX-512 support show whether the runner's instruction set decides it.
+      - name: Record the runner CPU
+        run: |
+          grep -m1 '^model name' /proc/cpuinfo
+          if grep -q -m1 -w avx512f /proc/cpuinfo; then echo 'avx512f: yes'; else echo 'avx512f: no'; fi
+
       - name: Gradients and contracts on Python 3.12 / jax 0.11 — shard ${{ matrix.group }} of 6
         env:
           JAX_PLATFORMS: cpu
