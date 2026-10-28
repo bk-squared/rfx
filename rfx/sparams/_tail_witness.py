@@ -55,26 +55,26 @@ def _rounding_only_records(records, groups):
 
 
 _POLE_RULE = (
-    "For each discarded growing, kept non-static growing, or non-decaying "
+    "Kept non-static growing poles use judge_growing_poles: tail share through "
+    "twice the model decay horizon (at least the record length), bar 1e-2, "
+    "with (1 + unit_tol)^(2H/D) <= 2. For each discarded growing or non-decaying "
     "sinusoidal pole: abs(DFT of its fitted term inside the identification "
     "window) / abs(whole-record plain DFT), per read bin and channel; "
     "> 1e-2 is undetermined. Static poles are exempt from these checks."
 )
 
 
-def _pole_contributions(model, series, bins, denominator, record_s):
+def _pole_contributions(model, series, bins, denominator, record_s, *, growth=None):
     """Return per-bin maxima over fitted pole terms and channels by rule."""
-    from rfx.ringdown import RingdownPole, _fit_residues, _static_pole, plain_dft
+    from rfx.ringdown import (RingdownPole, _fit_residues, _static_pole,
+                              plain_dft, judge_growing_poles)
 
     window = series[model.n_ref:model.n_ref + model.n_window]
-    indices = {'discarded growing': [], 'kept non-static growing': [],
-               'non-decaying sinusoidal': []}
+    indices = {'discarded growing': [], 'non-decaying sinusoidal': []}
     for k in range(len(model.s)):
         pole = model.pole(k)
         if _static_pole(pole, record_s, 1e-6):
             continue
-        if model.s[k].real > 0:
-            indices['kept non-static growing'].append(k)
         if abs(model.s[k].real * model.dt) < 1e-12:
             indices['non-decaying sinusoidal'].append(k)
     for k, pole_s in enumerate(model.s_growing):
@@ -87,7 +87,9 @@ def _pole_contributions(model, series, bins, denominator, record_s):
         joint = _fit_residues(window, np.concatenate([model.s, model.s_growing]),
                               model.dt, column_reference=True)[len(model.s):]
     time = np.arange(len(window)) * model.dt
-    values = {}
+    if growth is None:
+        growth = judge_growing_poles(model, round(record_s / model.dt), bins, denominator)
+    values = {"kept non-static growing": growth.share_per_bin}
     for rule, selected in indices.items():
         value = np.zeros(len(bins))
         for k in selected:
@@ -126,7 +128,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
     from dataclasses import replace
 
     from rfx.core.jax_utils import is_tracer
-    from rfx.ringdown import identify, plain_dft, tail_dft, _static_pole
+    from rfx.ringdown import identify, plain_dft, tail_dft, _static_pole, judge_growing_poles
 
     records = tuple(records)
     skipped = _rounding_only_records(records, rounding_groups or {})
@@ -233,8 +235,13 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                                                  (other, other_series, other_denom)):
                 if not len(model.s):
                     reasons.append(f"{label}: no kept poles identified")
-                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt).items():
+                growth = judge_growing_poles(model, n, bins, window_denom)
+                if not growth.ok:
+                    reasons.append(f"{label}: growing-pole judge {growth.status}: {growth.reason}")
+                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, growth=growth).items():
                     contributions[rule] = np.maximum(contributions.get(rule, np.zeros(len(bins))), value)
+                    if rule == "kept non-static growing":
+                        continue
                     for k in np.flatnonzero((value > 1e-2) | ~np.isfinite(value)):
                         comparison = '> 1e-2' if np.isfinite(value[k]) else 'is non-finite'
                         reasons.append(
