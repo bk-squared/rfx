@@ -99,6 +99,9 @@ class VmapSweepResult:
     param_values: np.ndarray
     final_fields: dict | None = None
     dft_planes: dict | None = None
+    settling_db: np.ndarray | None = None
+    settling_witness: tuple | None = None
+    dt: np.ndarray | None = None
 
     def peak_field(self) -> np.ndarray:
         """Return peak |probe value| per batch element."""
@@ -678,6 +681,7 @@ def _build_full_scan_fn(
                 pec_wires=pec_wires,
                 dft_probes=dft_probes,
             )
+        run_one_fn.dft_probes = tuple(dft_probes)
         return run_one_fn, dft_names
 
     # Fallback: for complex sims, run sequentially (not vmapped)
@@ -902,11 +906,15 @@ def vmap_material_sweep(
                 for name, acc in zip(dft_names, dft_accs)
             }
 
+        from rfx.measurement.sweep_settling import sweep_member_witnesses
+        dbs, witnesses = sweep_member_witnesses(
+            sim, grid, time_series_np, dft_names, run_one_fn.dft_probes, dft_planes_out)
         return VmapSweepResult(
             time_series=time_series_np,
             param_name=param_name,
             param_values=param_values,
-            dft_planes=dft_planes_out,
+            dft_planes=dft_planes_out, settling_db=dbs,
+            settling_witness=witnesses, dt=np.full(len(param_values), grid.dt),
         )
     else:
         # Fallback: sequential execution for complex simulations
@@ -953,7 +961,7 @@ def _sequential_fallback(
     """
     mat_name, field = _parse_param_name(param_name)
 
-    all_ts = []
+    all_ts, all_db, all_witness, all_dt = [], [], [], []
     dft_acc_lists: dict[str, list] = {}
     for _i, val in enumerate(param_values):
         # Clone the simulation and modify the material
@@ -980,6 +988,9 @@ def _sequential_fallback(
         # preflight noise.
         result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
         all_ts.append(np.asarray(result.time_series))
+        all_db.append(result.settling_db)
+        all_witness.append(result.settling_witness)
+        all_dt.append(result.dt)
 
         if result.dft_planes:
             for name, probe in result.dft_planes.items():
@@ -1000,5 +1011,6 @@ def _sequential_fallback(
         time_series=time_series,
         param_name=param_name,
         param_values=param_values,
-        dft_planes=dft_planes_out,
+        dft_planes=dft_planes_out, settling_db=np.asarray(all_db, dtype=float),
+        settling_witness=tuple(all_witness), dt=np.asarray(all_dt),
     )

@@ -569,10 +569,17 @@ def compute_rcs(
     monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
 
     from rfx.measurement.record_end import injection_end
-    source_end = injection_end(n_steps, grid.dt, grid=grid, tfsf=tfsf_cfg)
+    from types import SimpleNamespace
+    from rfx.measurement.coverage import accumulator_coverage, with_coverage, warn_uncovered
+    coverage = accumulator_coverage(SimpleNamespace(
+        time_series=np.empty((n_steps, 0)), grid=grid, ntff_box=ntff_box), tfsf=tfsf_cfg)
+    source_end = coverage.max_end()
     settling_db = None
     settling_witness = {"status": "absent", "source_end_index": source_end, "reason":
                         "no time-domain record; add an identification probe"}
+
+    settling_db, settling_witness = with_coverage(settling_db, settling_witness, coverage)
+    warn_uncovered(settling_witness)
 
     rcs = RCSResult(
         freqs=freqs_arr,

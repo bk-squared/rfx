@@ -186,26 +186,36 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     """Attach the value witness and warn for requested spectral outputs."""
     from rfx.api._spec import ForwardResult
 
+    from rfx.measurement.coverage import accumulator_coverage, warn_uncovered, with_coverage
     forward_result = isinstance(result, ForwardResult)
+    if not forward_result and (not hasattr(result, "_replace") or not hasattr(result, "settling_witness")):
+        return result
+    coverage = accumulator_coverage(result, sim=sim, n_steps=n_steps)
     if forward_result:
         from rfx.core.jax_utils import is_tracer
         from rfx.sparams._record_selection import s_read_records
         result = result._replace(
             settling_probe_info=sim._settling_probe_selection(result),
             settling_freq_max=sim._freq_max,
+            settling_accumulator_end_index=coverage.max_end(),
+            settling_coverage=coverage,
             settling_source_end_index=sim._settling_source_end(
                 result, records=sim._ports if s_read_records(result) else None),
             settling_probe_source_end_index=sim._settling_source_end(result))
         if is_tracer(result.time_series):
             return result
-    elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
-        return result
     from rfx.measurement import decay_stop_first
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
+    tail_status = witness["status"]
+    settling_db, witness = with_coverage(settling_db, witness, coverage)
     if not forward_result:
         result = result._replace(settling_db=settling_db,
                                  settling_witness=witness)
     if getattr(sim, "_internal_probe_indices", None):
+        return result
+    # The coverage warning stands in for the absent advisory or a passing
+    # record; a tail check that failed keeps its own warning below.
+    if tail_status in {"pass", "absent"} and warn_uncovered(witness):
         return result
 
     from rfx.api._sparams import (
@@ -282,7 +292,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
 
 
 def tfsf_source_drive(cfg, grid):
-    """TF/SF source waveform and transit across its box diagonal."""
+    """TF/SF waveform and reach from its realized launch through the box."""
     import jax.numpy as jnp
 
     def waveform(t):
@@ -301,13 +311,9 @@ def tfsf_source_drive(cfg, grid):
             return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
         return cfg.src_amp * (-2 * arg) * env
 
-    lengths = []
-    for axis in "xyz":
-        lo = getattr(cfg, axis + "_lo", 0)
-        hi = getattr(cfg, axis + "_hi", grid.shape["xyz".index(axis)] - 1)
-        # A slab has no transverse box indices (both default to zero),
-        # but the illumination spans the transverse domain.
-        if axis != "x" and hi == lo and grid.shape["xyz".index(axis)] > 1:
-            lo, hi = 0, grid.shape["xyz".index(axis)] - 1
-        lengths.append(grid.node_of(axis, hi) - grid.node_of(axis, lo))
-    return waveform, float(np.linalg.norm(lengths))
+    is_traced = getattr(grid, "is_traced", None)
+    if is_traced is not None and any(is_traced(axis) for axis in "xyz"):
+        from rfx.measurement.record_end import TRACED
+        return None, ("traced", TRACED)   # the box corners sit on traced nodes
+    from rfx.measurement.tfsf_reach import tfsf_reach
+    return waveform, tfsf_reach(cfg, grid)

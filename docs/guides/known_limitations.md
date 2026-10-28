@@ -454,31 +454,15 @@ A weak record still ringing above −71 dB is scored like any other record. The 
 `result.settling_witness["skipped_records"]` with their `tail_ratio`.
 What to do: to judge a component that weak, put a probe of its own at a neighbouring cell, or run in float64.
 
-### The end-of-run decay check does not compare the record with the field's transit through an NTFF box, a DFT plane or a flux monitor, and a plane wave's source end is too early for a probe in the scattered region.
-
-Tracker: #1237
-
-NTFF boxes, field-DFT planes and flux monitors keep no time series, so the end-of-run decay check (`settling_db`,
-`settling_witness`) cannot read them. Nothing compares the record with the time the field from the source needs to
-cross them. Measured on a soft source with an NTFF box 112 mm long at 2 mm cells: a 196-step record ends 45 steps
-before that field reaches the box's far corners. The check still reports pass (-94.6 dB) and nothing warns.
-`compute_rcs` reports `settling_witness["status"] == "absent"` and never compares `n_steps` with the transit.
-With a plane wave, every probe's source end is the waveform's end plus the total-field box diagonal. A probe in the
-scattered region receives a target's first echo later: measured, the echo peaks 42 steps after that end and stays
-above 1 % of its peak for 86 steps more, so the check reads the echo as free ringing.
-What to do: record at least the waveform's end plus the time light takes from the plane-wave source line to the far
-corner of the total-field box, then from that corner to the farthest corner of the NTFF box, plane or probe.
-
-### `vmap_material_sweep` returns no decay check per swept value, and with an automatic mesh each value covers a different duration.
+### With an automatic mesh, `vmap_material_sweep`'s sequential fallback runs every swept value for the first value's step count.
 
 Tracker: #1293
 
-`VmapSweepResult` carries the time series and DFT planes but no `settling_db` or `settling_witness`. This holds on
-both paths: the batched one computes none, and the sequential fallback runs `run()` per value and drops its check.
 Without `dx=`, the fallback meshes each swept value on its own grid but runs every value for the first grid's step
 count. Measured with `num_periods=2`: eps_r = 2 covers 200 ps and eps_r = 10 covers 80 ps, stacked on one time axis.
-What to do: pass `dx=` so every value shares one grid and time step, and judge a value's record with `run()` on that
-value; or use `parametric_sweep()`, which returns each value's full `Result` with its check.
+Each value's `settling_db`, `settling_witness` and `dt` come back per value and judge that value's own record.
+What to do: pass `dx=` so every value shares one grid and time step; or use `parametric_sweep()`, which returns each
+value's full `Result`.
 
 ## Absorbing boundaries
 

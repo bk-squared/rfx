@@ -23,7 +23,7 @@ MSL and point waveforms, the Floquet table its runner builds, a driven
 waveguide port's ``e_inc_table`` (never the analytic ``v_inc_t``; its H
 companion does not set the end, its beyond-record part is
 ``drive_tail_share``'s), coaxial E and H tables, and TF/SF's waveform plus
-its box diagonal.
+its launch-to-box reach.
 """
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
                   return_detail=False):
     """The step after which every applied drive has ended, plus transit.
 
-    ``records=None`` is a whole-domain reader (distance 0). Otherwise each
+    ``records=None`` reads incident transit through TF/SF boxes (zero for other drives). Each
     drive adds the free-space transit from its farthest injecting point to
     the farthest record (an object with ``position`` and optional ``extent``,
     a low-level probe with ``i, j, k``, or a point). Drives:
@@ -134,7 +134,7 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
     * ``waveguide_ports`` (sequence or mapping of configs): a driven port's
       ``e_inc_table``, held at its last entry past its end, from its source
       plane;
-    * ``tfsf``: a built TF/SF config, its waveform plus the box diagonal;
+    * ``tfsf``: a built TF/SF config, its waveform plus launch and scattered transit;
     * ``sim``: what a run builds from the declarations: port and MSL
       waveforms sampled as the runners sample them (a port without one gets
       the default pulse), each Floquet port's table from its runner's builder,
@@ -144,7 +144,9 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
 
     Returns the step, or None when it cannot be judged. ``return_detail``
     returns ``(step, reason, rows)``, a row ``(name, kind, value)`` per drive,
-    kind "ok", "still_on", "traced" or "unavailable".
+    kind "ok", "still_on", "traced" or "unavailable". On a traced mesh (a
+    design variable) a record at a realized node and the TF/SF box cannot be
+    judged; declared positions still can.
     """
     from rfx.core.jax_utils import is_tracer
 
@@ -188,7 +190,10 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
 
     rows, reasons = [], []
     points = None if records is None else _record_points(records, grid)
-    if records is not None and not points:
+    if points is TRACED:
+        reasons.append(TRACED)
+        points = None
+    elif records is not None and not points:
         reasons.append("cannot judge: a record has no position")
     end = 0
     for name, samples, reach in drives:
@@ -197,7 +202,8 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
             reasons.append(reach[1])
             continue
         distance = (reach if not callable(reach) else
-                    0.0 if points is None else reach(points) if points else None)
+                    (reach(None) if name == "TF/SF source" else 0.0)
+                    if points is None else reach(points) if points else None)
         value, detail = source_end_step([(samples, distance)], n_steps, dt, return_detail=True)
         if value is not None:
             rows.append((name, "ok", value))
@@ -223,12 +229,12 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
 
 def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
               waveguide_ports=()):
-    """The until_decay reader of ``injection_end``: distance zero.
+    """The until_decay reader: incident TF/SF transit, zero for other drives.
 
     Point, port and Floquet drives (``sources``, ``mag_sources``) and a
     driven waveguide port's applied incident table (``cfg.e_inc_table``,
     held at its last entry past its end, as the port reads it) are read at
-    distance zero; TF/SF uses its waveform and the total-field box diagonal
+    distance zero; TF/SF uses its waveform and incident transit through the box
     (``tfsf`` is the runner's (config, state) pair). Returns None when a
     drive has not ended by ``max_steps`` (the stop then never fires). Raises
     ValueError naming a drive whose end cannot be computed before the loop.
@@ -305,7 +311,10 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse):
 
 
 def _record_points(records, grid):
-    """Physical points of the named records (extents add their far end), or None."""
+    """Physical points of the named records (extents add their far end), None
+    when one has no position, TRACED when a realized node is on a traced mesh."""
+    from rfx.core.jax_utils import is_tracer
+
     points = []
     for record in records:
         if hasattr(record, "position"):
@@ -317,10 +326,12 @@ def _record_points(records, grid):
                 end = point.copy()
                 end[_COMPONENT_AXIS[record.component]] += record.extent
                 points.append(end)
-        elif all(hasattr(record, index) for index in "ijk"):
-            points.append(_node(grid, record))
-        else:
-            points.append(np.asarray(record, dtype=float))
+            continue
+        values = ([grid.node_of(axis, getattr(record, index)) for axis, index in zip("xyz", "ijk")]
+                  if all(hasattr(record, index) for index in "ijk") else list(record))
+        if any(is_tracer(value) for value in values):
+            return TRACED
+        points.append(np.asarray(values, dtype=float))
     return points
 
 

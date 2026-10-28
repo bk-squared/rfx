@@ -98,7 +98,7 @@ def test_forward_result_preserves_source_end_through_jit():
     assert result.settling_db == pytest.approx(expected)
 
 
-def test_tfsf_uses_its_waveform_and_box_diagonal():
+def test_tfsf_uses_its_waveform_and_launch_to_box_reach():
     from rfx.grid import Grid
     from rfx.measurement.settling import tfsf_source_drive
     from rfx.sources.tfsf import init_tfsf
@@ -107,9 +107,8 @@ def test_tfsf_uses_its_waveform_and_box_diagonal():
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=4,
                       ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300)
     waveform, distance = tfsf_source_drive(cfg, grid)
-    expected_distance = np.linalg.norm([
-        (getattr(cfg, a+'_hi')-getattr(cfg, a+'_lo'))*grid.dx for a in 'xyz'])
-    assert distance == pytest.approx(expected_distance)
+    expected_distance = (cfg.x_hi - cfg.source_p) * grid.dx
+    assert distance(None) == pytest.approx(expected_distance)
     time = jnp.arange(300, dtype=jnp.float32)*grid.dt
     arg = (time-cfg.src_t0)/cfg.src_tau
     expected = np.asarray(cfg.src_amp*(-2*arg)*jnp.exp(-arg**2))
