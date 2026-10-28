@@ -79,7 +79,13 @@ def layer_numbers(repo: Path, sha: str) -> dict:
 
 
 def contract_numbers(repo: Path, sha: str) -> dict:
-    """Entry count of each literal exception table; None when the commit has no such table."""
+    """Per literal exception table: its entries and the distinct cells they mark known-failing.
+
+    A KNOWN_ROWS entry is (declaration, path, level, ident, reason); one cell can carry several idents, so
+    the cell is its first three fields. A TWO_GUARD_REFUSALS key is one (declaration, path) refusal cell.
+    A cell of a ported declaration runs in both equal-request directions; that expansion is not made here.
+    KNOWN_DIRECTIONS only narrows KNOWN_ROWS entries and marks no cell itself. None: the commit has no table.
+    """
     source = committed(repo, sha, CONTRACT)
     found = dict.fromkeys(TABLES)
     if source is None:
@@ -87,10 +93,19 @@ def contract_numbers(repo: Path, sha: str) -> dict:
     for node in ast.parse(source).body:
         if (isinstance(node, ast.Assign) and len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in TABLES):
-            value = node.value
+            name, value = node.targets[0].id, node.value
             if not isinstance(value, (ast.Tuple, ast.List, ast.Dict)):
-                raise SystemExit(f"{CONTRACT}: {node.targets[0].id} is not a literal table")
-            found[node.targets[0].id] = len(value.keys if isinstance(value, ast.Dict) else value.elts)
+                raise SystemExit(f"{CONTRACT}: {name} is not a literal table")
+            entries = value.keys if isinstance(value, ast.Dict) else value.elts
+            if name == "KNOWN_ROWS":
+                if not all(isinstance(e, ast.Tuple) and len(e.elts) >= 3 for e in entries):
+                    raise SystemExit(f"{CONTRACT}: a KNOWN_ROWS entry is not a literal row")
+                cells = {tuple(ast.unparse(x) for x in e.elts[:3]) for e in entries}
+            elif name == "TWO_GUARD_REFUSALS":
+                cells = {ast.unparse(e) for e in entries}
+            else:
+                cells = None
+            found[name] = {"entries": len(entries), "cells": None if cells is None else len(cells)}
     return found
 
 
@@ -116,9 +131,17 @@ def report(sha: str, header: str, layers: dict, contract: dict) -> None:
         print(f"  {path}: S={v['S']} M={v['M']}")
     print(f"reverse imports from layers to callers: R={shown(layers['reverse'])} "
           f"(of them names another caller defines: {shown(layers['defined_other'])})")
-    print(f"run()/forward() contract literal exceptions ({CONTRACT}):")
-    for table, count in contract.items():
-        print(f"  {table}: {'absent' if count is None else count}")
+    print(f"run()/forward() contract known failures ({CONTRACT}; a ported declaration's cell runs in both "
+          "equal-request directions, not expanded here):")
+    cells = [contract[t]["cells"] for t in ("KNOWN_ROWS", "TWO_GUARD_REFUSALS") if contract[t] is not None]
+    print(f"  known-failing cells: {sum(cells) if cells else 'absent'}")
+    for table in ("KNOWN_ROWS", "TWO_GUARD_REFUSALS"):
+        n = contract[table]
+        text = "absent" if n is None else f"{n['entries']} entries on {n['cells']} cells"
+        print(f"  {table}: {text}")
+    n = contract["KNOWN_DIRECTIONS"]
+    text = "absent" if n is None else n["entries"]
+    print(f"  KNOWN_DIRECTIONS (narrows KNOWN_ROWS, marks no cell): {text}")
 
 
 def main(argv: list[str] | None = None) -> int:
