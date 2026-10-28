@@ -156,6 +156,7 @@ reference run without the slab. The
 With absorbing boundaries, `until_decay` watches the total energy inside the
 domain, which is a reliable stop for spectra, flux and S-parameters. A closed
 PEC box never loses energy, so there it falls back to a single field sample
+read after the drive ends
 (on a graded mesh, a closed-boundary `until_decay` is refused instead).
 That fallback is only reliable for lossy or radiating ring-down, so use a fixed
 `n_steps` in a closed structure. Also use a fixed `n_steps` when you compare

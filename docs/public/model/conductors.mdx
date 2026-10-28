@@ -112,6 +112,12 @@ and `run()` refuses it (`sheet_effective_size`; see
 | `sigma_bulk < 1e6` (resistive film, ink) | lossy sheet with conductivity `sigma_bulk * thickness / d`, preserving the sheet resistance 1/(σ·t) |
 | `surface_impedance_f0=f0` | resistive sheet with Rs = √(π f0 μ0 / σ_bulk), same footprint and edges as the PEC sheet |
 
+A lossy film takes the cells of its plane whose centres lie inside its
+drawing, so it is solved where it is drawn. Two lossy films with a drawn gap
+narrower than about one cell are joined unless a cell centre lies in the gap;
+draw such a gap at least one cell wide, or with its edges on mesh lines
+([known limitations](/rfx/support/known-limitations/)).
+
 On every sheet `eps_r` stays 1: a PEC or surface-impedance sheet and a pinned
 sheet refuse any other value, or a traced one, when you declare them, and a lossy
 film refuses it when the run starts. Declare the dielectric around a sheet with
