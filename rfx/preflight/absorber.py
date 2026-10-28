@@ -1212,6 +1212,10 @@ _validate_cfg_pec_boundary_open_structure.__qualname__ = (
 _validate_cfg_dielectric_at_absorber_seam.__qualname__ = (
     "_PreflightMixin._validate_cfg_dielectric_at_absorber_seam"
 )
+# Added beside P1.9 (#1941), never in the class: same reason as the body above.
+_validate_cfg_body_flush_on_absorber.__qualname__ = (
+    "_PreflightMixin._validate_cfg_body_flush_on_absorber"
+)
 
 
 #: #801's two measured points, and they are MEASUREMENTS, not a derived bound.

@@ -165,6 +165,9 @@ def build_nonuniform_grid(
                 raise ValueError(
                     f"periodic axis {axis!r}: declared period {length:.12g} m differs "
                     f"from realized period {len(profile) * spacing:.12g} m")
+    # #1941 judges a caller's z profile against the declared z; a column
+    # synthesised here rounds up to whole cells as the uniform grid does.
+    snap = snap if dz_profile is not None else "declared"
     if dz_profile is None:
         # Synthesise the uniform dz profile LOCALLY (pure) when only
         # dx/dy are non-uniform. This used to be done at every
