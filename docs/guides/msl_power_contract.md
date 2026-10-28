@@ -9,9 +9,13 @@ positive real analytic reference R for each port, its wave definitions are
     B = S A
 
 `result.reference_impedances` contains these R values in `port_names` order.
-They are the analytic Hammerstad–Jensen references used by the extractor,
-not `result.Z0` (a fitted diagnostic) or `add_msl_port(impedance=...)`
-(source/load resistance). This API currently supports positive real
+They are each port's declared `add_msl_port(impedance=...)` (default 50 Ω).
+The waves are formed at the analytic Hammerstad–Jensen line impedances,
+reported in `result.line_impedances`, and referred to R once with the
+real-reference power-wave transform; `result.Z0` is a fitted diagnostic and
+enters neither (`tests/unit/sparams/test_port_reference_impedance.py`).
+`rfx.renormalize_power_waves(S, reference_impedances, line_impedances)` takes S
+back to the line reference. This API currently supports positive real
 references; it does not implement complex-reference renormalization.
 
 For a passive network expressed in power-consistent port variables,
