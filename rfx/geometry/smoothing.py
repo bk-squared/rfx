@@ -913,13 +913,18 @@ def smoothed_shape_pairs(sim, grid):
     pole-carrying column's promoted statics are a material no declared model
     has).
 
+    Conductors leave the dielectric average: the field inside metal is
+    zero, and the realized PEC edge masks / ``pec_shapes`` carry the metal.
+
     Returns ``(pairs, unextendable)``; ``unextendable`` is empty whenever
     nothing reaches a padded face.
     """
-    pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
-             for entry in sim._geometry]
+    from rfx.model.materials import assembled_as_pec
+
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
+        pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
+                 for entry in sim._geometry if not assembled_as_pec(sim, entry)]
         return pairs, []
 
     if hasattr(grid, "dx_arr"):
@@ -946,25 +951,24 @@ def smoothed_shape_pairs(sim, grid):
     # is rebuilt position for position rather than partitioned and rejoined.
     out = []
     unextendable = []
-    # 1e6, the value every other reader of this threshold defaults to
-    # (rfx/surrogate.py, rfx/fidelity.py, rfx/pcb.py). An ``inf``
-    # default fails OPEN: a sim without the attribute would classify a
-    # PEC material as a dielectric and miss its port-entry exception.
-    pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
-    for idx, (entry, (shape, eps_r)) in enumerate(zip(sim._geometry, pairs)):
+    for idx, entry in enumerate(sim._geometry):
+        shape = entry.shape
         mat = sim._resolve_material(entry.material_name)
-        if (getattr(mat, "debye_poles", None)
-                or getattr(mat, "lorentz_poles", None)):
-            out.append((shape, eps_r))
-            continue
+        has_poles = (getattr(mat, "debye_poles", None)
+                     or getattr(mat, "lorentz_poles", None))
         # Both lanes realize conductors through the same geometry helper.
-        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
+        if assembled_as_pec(sim, entry):
             unext = []
-            solved = continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
-            out.append((solved, eps_r))
-            unextendable.extend(u._replace(entry_index=idx,
-                                          material_name=entry.material_name)
-                                for u in unext)
+            continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
+            # Pole-carrying entries previously bypassed the pad report.
+            if not has_poles:
+                unextendable.extend(u._replace(entry_index=idx,
+                                              material_name=entry.material_name)
+                                    for u in unext)
+            continue
+        eps_r = mat.eps_r
+        if has_poles:
+            out.append((shape, eps_r))
             continue
         one, unext = extend_shapes_into_cpml_pad(
             [(shape, eps_r)], node_coords, pads,
