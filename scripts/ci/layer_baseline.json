@@ -121,44 +121,8 @@
     }
   },
   "reverse": {
-    "rfx/boundaries/upml.py": {
-      "R": [
-        "rfx.simulation:resolve_periodic"
-      ]
-    },
-    "rfx/measurement/declared.py": {
-      "R": [
-        "rfx.api:WaveguideSParamResult",
-        "rfx.sources.waveguide_port:extract_waveguide_sparams",
-        "rfx.sources.waveguide_port:waveguide_plane_positions"
-      ]
-    },
-    "rfx/measurement/flux_weights.py": {
-      "R": [
-        "rfx.nonuniform:NonUniformGrid"
-      ]
-    },
-    "rfx/measurement/modal.py": {
-      "R": [
-        "rfx.sources.waveguide_port:WaveguidePortConfig",
-        "rfx.sources.waveguide_port:modal_current",
-        "rfx.sources.waveguide_port:modal_voltage"
-      ]
-    },
-    "rfx/measurement/plan.py": {
-      "R": [
-        "rfx.nonuniform:NonUniformGrid",
-        "rfx.nonuniform:position_to_index"
-      ]
-    },
-    "rfx/measurement/ports.py": {
-      "R": [
-        "rfx.nonuniform:NonUniformGrid"
-      ]
-    },
     "rfx/measurement/ringdown_port_s.py": {
       "R": [
-        "rfx.nonuniform:_assemble_nu_result",
         "rfx.ringdown:_assemble",
         "rfx.ringdown:_cmul"
       ]
@@ -170,52 +134,15 @@
         "rfx.ringdown:_cmul"
       ]
     },
-    "rfx/measurement/waveguide_planes.py": {
-      "R": [
-        "rfx.nonuniform:position_to_index"
-      ]
-    },
-    "rfx/measurement/waveguide_s.py": {
-      "R": [
-        "rfx.simulation:run"
-      ]
-    },
-    "rfx/model/distributed_ports.py": {
-      "R": [
-        "rfx.simulation:SourceSpec"
-      ]
-    },
-    "rfx/model/graded_ports.py": {
-      "R": [
-        "rfx.nonuniform:e_node_dual_spacing_at",
-        "rfx.nonuniform:position_to_index"
-      ]
-    },
     "rfx/stepping/adjoint_scan.py": {
       "R": [
-        "rfx.adjoint:_plane_slice",
-        "rfx.simulation:core_step_invariants",
-        "rfx.simulation:make_core_step"
-      ]
-    },
-    "rfx/stepping/graded.py": {
-      "R": [
-        "rfx.nonuniform:NonUniformGrid",
-        "rfx.sources.waveguide_port:apply_waveguide_port_e",
-        "rfx.sources.waveguide_port:apply_waveguide_port_h",
-        "rfx.sources.waveguide_port:update_waveguide_port_probe"
+        "rfx.adjoint:_plane_slice"
       ]
     },
     "rfx/stepping/graded_loop.py": {
       "R": [
         "rfx.progress:ProgressReporter",
         "rfx.progress:concat_chunks"
-      ]
-    },
-    "rfx/stepping/probe_loop.py": {
-      "R": [
-        "rfx.simulation:_StepContext",
-        "rfx.simulation:make_core_step"
       ]
     },
     "rfx/stepping/progress_scan.py": {
@@ -230,15 +157,6 @@
       "R": [
         "rfx.ringdown:_PortMeta",
         "rfx.ringdown:_port_vi"
-      ]
-    },
-    "rfx/stepping/uniform.py": {
-      "R": [
-        "rfx.simulation",
-        "rfx.simulation:_StepContext",
-        "rfx.sources.waveguide_port:apply_waveguide_port_e",
-        "rfx.sources.waveguide_port:apply_waveguide_port_h",
-        "rfx.sources.waveguide_port:update_waveguide_port_probe"
       ]
     },
     "rfx/stepping/uniform_loop.py": {
@@ -258,14 +176,6 @@
         "rfx.progress:concat_chunks",
         "rfx.progress:scan_with_progress",
         "rfx.progress:validate_report_every"
-      ]
-    },
-    "rfx/stepping/vmap_scan.py": {
-      "R": [
-        "rfx.simulation:ProbeSpec",
-        "rfx.simulation:SourceSpec",
-        "rfx.simulation:_StepContext",
-        "rfx.simulation:make_core_step"
       ]
     }
   }

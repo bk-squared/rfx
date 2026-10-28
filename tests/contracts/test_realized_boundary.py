@@ -179,8 +179,8 @@ def test_declared_face(case, entry, face, code):
 
 
 def test_wrapped_wall_keeps_field_classification():
-    import rfx.simulation as simulation
-    original = simulation.apply_pec_faces
+    import rfx.boundaries.pec as walls
+    original = walls.apply_pec_faces
     baseline = measured("pec", "run")
     calls = []
 
@@ -189,7 +189,7 @@ def test_wrapped_wall_keeps_field_classification():
         return original(*args, **kwargs)
 
     jax.clear_caches()
-    with patch.object(simulation, "apply_pec_faces", renamed_operation):
+    with patch.object(walls, "apply_pec_faces", renamed_operation):
         sim, grid, _, records = measure("pec", "run")
     fields, psi, reference = measured_fields(records, grid, "run")
     assert calls, "the wrapped wall did not run"

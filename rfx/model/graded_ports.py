@@ -13,9 +13,7 @@ from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
 from rfx.model.conductors import lumped_port_stage, publish_port_release
-from rfx.nonuniform import (
-    e_node_dual_spacing_at, position_to_index,
-)
+from rfx.model.graded_grid import e_node_dual_spacing_at, position_to_index
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 

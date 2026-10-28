@@ -107,6 +107,9 @@ _KERNELS = {
     "run_adi_3d", "run_nonuniform", "run_uniform_loop",
 }
 _SIMULATION_KERNELS = {"run", "run_until_decay"}  # rfx.simulation, under any alias
+# rfx.simulation re-exports run from the module that defines it; a read there is the same kernel.
+_KERNEL_MODULES = {"rfx.simulation", "rfx.stepping.uniform_loop"}
+_KERNEL_FILES = {"rfx/simulation.py", "rfx/stepping/uniform_loop.py"}
 _FIELD_UPDATES = {
     "update_e", "update_h", "update_e_nu", "update_h_nu", "update_he_fast",
     "update_e_fast", "update_h_fast", "update_e_aniso", "update_e_aniso_inv",
@@ -134,14 +137,14 @@ def _aliases(tree):
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             for a in node.names:
-                if node.module == "rfx.simulation" and a.name in _SIMULATION_KERNELS:
+                if node.module in _KERNEL_MODULES and a.name in _SIMULATION_KERNELS:
                     bound[a.asname or a.name] = f"rfx.simulation.{a.name}"
                 elif a.name in _KERNELS | _FIELD_UPDATES:
                     bound[a.asname or a.name] = a.name
-                elif node.module == "rfx" and a.name == "simulation":
+                elif (node.module, a.name) in (("rfx", "simulation"), ("rfx.stepping", "uniform_loop")):
                     modules.add(a.asname or a.name)
         elif isinstance(node, ast.Import):
-            modules |= {a.asname for a in node.names if a.name == "rfx.simulation" and a.asname}
+            modules |= {a.asname for a in node.names if a.name in _KERNEL_MODULES and a.asname}
     return bound, modules
 
 
@@ -174,7 +177,7 @@ def _referenced(node, aliases):
 def _references_a_kernel(rel, node, aliases):
     name = _referenced(node, aliases)
     if name.startswith("rfx.simulation."):
-        return rel != "rfx/simulation.py"
+        return rel not in _KERNEL_FILES
     return name in _KERNELS
 
 

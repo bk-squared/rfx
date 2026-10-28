@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from rfx.boundaries.cpml import CPMLAxisParams
     from rfx.current_moments import CurrentMomentMonitor
     from rfx.farfield import NTFFBox
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     from rfx.sources.tfsf import TFSFConfig
 
 
@@ -202,7 +202,7 @@ def make_graded_step(
             from rfx.sources.tfsf import apply_tfsf_h
             frame.st = apply_tfsf_h(frame.st, ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_nu
+            from rfx.stepping.waveguide_source import apply_waveguide_port_h as _apply_wg_h_nu
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_h_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[0])
@@ -267,7 +267,7 @@ def make_graded_step(
             from rfx.sources.tfsf import apply_tfsf_e
             frame.st = apply_tfsf_e(frame.st, ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt)
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_nu
+            from rfx.stepping.waveguide_source import apply_waveguide_port_e as _apply_wg_e_nu
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_e_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[1])
@@ -346,7 +346,7 @@ def make_graded_step(
         # no recorded number moves either way.
         frame.new_waveguide_port_accs = None
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
+            from rfx.measurement.waveguide_modal import (
                 update_waveguide_port_probe,
             )
             frame.new_waveguide_port_accs = []

@@ -27,13 +27,13 @@ from rfx.core.dft_utils import port_dft_phase
 from .sequence import HookPoint, Kernel, compose
 
 if TYPE_CHECKING:
-    from rfx.simulation import _StepContext
+    from rfx._uniform_specs import _StepContext
 
 
 def apply_pec_faces(state, faces):
-    """Retain both the lane and simulation-module wall observation points."""
-    from rfx import simulation
-    return simulation.apply_pec_faces(state, faces)
+    """Retain both the lane and boundary-module wall observation points."""
+    from rfx.boundaries import pec as pec_walls
+    return pec_walls.apply_pec_faces(state, faces)
 
 
 @dataclass
@@ -91,7 +91,8 @@ def make_uniform_step(
     consume the same transient frame after the built-in attachments at each
     point. The returned callable retains the simulation runner's signature.
     """
-    from rfx import simulation
+    from rfx.boundaries import pec as pec_walls
+    from rfx.core import drives as core_drives
     from rfx.stepping.yee import update_h, update_e_box
     from rfx.stepping.uniform_loop import _update_e_with_optional_dispersion
     drives = None if ctx.drives is None else ctx.drives.electric
@@ -161,7 +162,7 @@ def make_uniform_step(
             if ctx.use_tfsf:
                 frame.st = ctx.apply_tfsf_h(frame.st, ctx.tfsf_cfg, frame.carry["tfsf"], dx, dt)
             if ctx.use_waveguide_ports:
-                from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h
+                from rfx.stepping.waveguide_source import apply_waveguide_port_h as _apply_wg_h
                 for cfg_meta in ctx.waveguide_meta:
                     frame.st = _apply_wg_h(frame.st, cfg_meta, frame.step_idx, dt, dx)
             if ctx.use_cpml:
@@ -214,7 +215,7 @@ def make_uniform_step(
         # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
         # pre-baked into the waveform values at construction time.
         if mag_drives is not None:
-            frame.st = simulation.inject_drives(frame.st, mag_drives, frame.mag_src_vals)
+            frame.st = core_drives.inject_drives(frame.st, mag_drives, frame.mag_src_vals)
 
     def e_update(frame: UniformFrame):
         """Advance E to n+1, including dispersive and design-box updates."""
@@ -288,7 +289,7 @@ def make_uniform_step(
             if ctx.use_tfsf:
                 frame.st = ctx.apply_tfsf_e(frame.st, ctx.tfsf_cfg, frame.tfsf_h_state, dx, dt)
             if ctx.use_waveguide_ports:
-                from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e
+                from rfx.stepping.waveguide_source import apply_waveguide_port_e as _apply_wg_e
                 for cfg_meta in ctx.waveguide_meta:
                     frame.st = _apply_wg_e(frame.st, cfg_meta, frame.step_idx, dt, dx)
             if ctx.use_cpml:
@@ -338,7 +339,7 @@ def make_uniform_step(
                 # the ``elif`` dropped it outright — measured on the
                 # conformal PEC-short battery, min|S11| 0.2296 against a
                 # gate of 0.99, restored to 0.9942 by applying both.
-                frame.st = simulation.apply_pec_edges(frame.st, ctx.pec_edge_masks)
+                frame.st = pec_walls.apply_pec_edges(frame.st, ctx.pec_edge_masks)
 
             # #1183: the design occupancy REDOES the scaling at its window
             # from the field BEFORE the grid-wide one, for the same reason
@@ -443,7 +444,7 @@ def make_uniform_step(
         # Soft sources — cast source value to field dtype to avoid
         # mixed-precision scatter warnings (float32 -> float16).
         if drives is not None:
-            inject = ctx.electric_injector or simulation.inject_drives
+            inject = ctx.electric_injector or core_drives.inject_drives
             frame.st = inject(frame.st, drives, frame.src_vals)
 
     from rfx.measurement.projector import port_table, project
@@ -498,7 +499,7 @@ def make_uniform_step(
                     v_ref_new_l))
 
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
+            from rfx.measurement.waveguide_modal import (
                 update_waveguide_port_probe,
             )
 

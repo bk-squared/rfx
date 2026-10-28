@@ -525,7 +525,7 @@ def test_c8_consumers(consumer, monkeypatch):
         sweep._build_full_scan_fn(sim, grid, sim._assemble_materials(grid)[0], 2)
         assert seen == [(19, 9, 6, 'ex')]
     elif consumer == 'eager_port':
-        import rfx.simulation as stepping
+        import rfx.stepping.uniform_setup as stepping
         from rfx.stepping.probe_loop import make_probe_step
         monkeypatch.setattr(stepping, 'make_core_step', lambda ctx, **kwargs: ctx)
         ctx, _ = make_probe_step(grid, sim._assemble_materials(grid)[0], [port], 0,

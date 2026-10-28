@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rfx.sources.waveguide_port import WaveguidePortConfig
+    from rfx.model.waveguide_modes import WaveguidePortConfig
 
 import jax.numpy as jnp
 
@@ -21,7 +21,7 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
     in-scan windowed/gated path silently integrated partially-decayed
     standing waves and produced ``|S11| → ∞`` as the gate widened.
     """
-    from rfx.sources.waveguide_port import modal_voltage, modal_current
+    from rfx.measurement.waveguide_modal import modal_voltage, modal_current
     t = state.step * dt
 
     v_ref = modal_voltage(state, cfg, cfg.ref_x, dx)

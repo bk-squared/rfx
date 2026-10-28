@@ -7,8 +7,8 @@ from rfx.core.jax_utils import is_tracer
 
 def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs, waveguide_reference_only=False):
     """Return named declared monitors, port records and reported-plane S."""
-    from rfx.api import WaveguideSParamResult
-    from rfx.sources.waveguide_port import (
+    from rfx.api._spec import WaveguideSParamResult
+    from rfx.measurement.waveguide_s import (
         extract_waveguide_sparams, waveguide_plane_positions,
     )
     from rfx.sparams._waveguide_planes import resolve_reported_planes

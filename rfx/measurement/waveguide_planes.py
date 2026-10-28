@@ -18,7 +18,7 @@ def admit_waveguide_planes(sim, *, axis_idx, x_position, direction,
     pos_vec[axis_idx] = x_position
     step_sign = 1 if direction.startswith("+") else -1
     if sim._uses_nonuniform_mesh:
-        from rfx.nonuniform import position_to_index
+        from rfx.model.graded_grid import position_to_index
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
         grid = sim._build_nonuniform_grid()
         x_index = position_to_index(grid, tuple(pos_vec))[axis_idx]

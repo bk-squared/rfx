@@ -216,7 +216,7 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
     The plane indices must come from the selected calculator's setup because
     reflection, two-port and transition calculators choose different planes.
     """
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     if isinstance(grid, NonUniformGrid) or any(not grid.is_constant(a) for a in range(3)):
         raise ValueError('coax calculators require a uniform grid')
     coords = [np.asarray([grid.node_of(a, i) for i in range(grid.shape[a])]) for a in (0, 1)]
@@ -262,7 +262,7 @@ def build_msl_owners(sim, grid, *, frequencies):
         msl_h_plane_stencil, msl_physical_point, _msl_position_to_index,
     )
     from rfx.probes.msl_wave_decomp import realized_trace_planes_on_column
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     from .plan import _pec_edges
     edges = _pec_edges(sim, grid)
     result = []
