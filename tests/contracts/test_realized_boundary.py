@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import jax
+import numpy as np
 import pytest
 
 from tests.contracts.boundary_compare import BoundaryDeparture, classify, compare_values, departures
@@ -198,28 +199,25 @@ def test_wrapped_wall_keeps_field_classification():
 
 def test_worse_magnetic_wall_value_is_rejected():
     import rfx.boundaries.pmc as pmc
-    original = pmc.apply_pmc_faces
+    original = pmc.magnetic_update_factors
     calls = []
 
-    def worse(state, faces, **kwargs):
+    def worse(faces, shape, periodic=(False, False, False)):
         calls.append(1)
-        state = original(state, faces, **kwargs)
-        values = {name: getattr(state, name) for name in ("hx", "hy", "hz")}
+        factors = list(original(faces, shape, periodic))
         for face in faces:
             axis = "xyz".index(face[0])
-            selection = [slice(None)] * 3
-            selection[axis] = 1 if face.endswith("lo") else -3
-            for component, name in enumerate(values):
-                if component != axis:
-                    values[name] = values[name].at[tuple(selection)].set(0.0)
-        return state._replace(**values)
+            if factors[axis] is None:
+                factors[axis] = np.ones(shape[axis], dtype=np.float32)
+            factors[axis][1 if face.endswith("lo") else -3] = 0.
+        return tuple(factors)
 
     jax.clear_caches()
     try:
-        with patch.object(pmc, "apply_pmc_faces", worse):
+        with patch.object(pmc, "magnetic_update_factors", worse):
             sim, grid, _, records = measure("pmc-pec", "run")
         fields, psi, reference = measured_fields(records, grid, "run")
-        assert calls, "the original magnetic wall helper must still run"
+        assert calls, "the magnetic coefficient builder must run"
         faces = classify(fields, grid, psi, reference)
         baseline = BY_CELL["pmc-pec", "run"]
         with pytest.raises(AssertionError, match="away from the declared plane") as exc:
@@ -279,3 +277,29 @@ def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
     defaults = [w for w in caught if issubclass(w.category, WaveguideBoundaryWarning)]
     assert len(defaults) == 1
     assert all(face in str(defaults[0].message) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
+
+
+@pytest.mark.parametrize("case", ("pmc-pec", "pmc-cpml"))
+@pytest.mark.parametrize("steps", (1, 2))
+def test_nonuniform_pmc_high_hold(case, steps):
+    """Hold from the first step, with physical face fields still seeded."""
+    from tests.contracts.boundary_fields import seed_fields
+
+    # Independent seed witness: the three physical components on x_hi must
+    # retain the original variant-0 pattern, not silently become zero.
+    seed_shape = (5, 4, 3)
+    seed = seed_fields(tuple(np.zeros(seed_shape, np.float32) for _ in range(6)), 0, ('x_hi',))
+    xyz = np.indices(seed_shape, dtype=np.float32)
+    pattern = 1 + .01 * xyz[0] + .013 * xyz[1] + .017 * xyz[2]
+    for ci in (1, 2, 3):
+        expected = pattern * (1.0 if ci < 3 else 1 / 376.730313668) * (ci + 1)
+        np.testing.assert_array_equal(np.asarray(seed[ci])[-1], expected[-1])
+    for ci in (0, 4, 5):
+        np.testing.assert_array_equal(np.asarray(seed[ci])[-1], np.zeros(seed_shape[1:], np.float32))
+    sim, grid, _, records = measure(case, "nonuniform", n_steps=steps)
+    fields, psi, reference = measured_fields(records, grid, "nonuniform")
+    # Whole tangential ghost row, all twelve original seed variants; exact zero.
+    np.testing.assert_array_equal(fields[:, 4:6, -1], np.zeros_like(fields[:, 4:6, -1]))
+    if steps == 2:
+        faces = classify(fields, grid, psi, reference)
+        compare_values(sim.boundary_model(), grid, faces, BY_CELL[case, "nonuniform"]["faces"])

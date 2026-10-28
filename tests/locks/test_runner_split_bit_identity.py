@@ -922,16 +922,6 @@ _SHARED_HELPER_BINDINGS = (
      "_apply_pec_shmap"),
     ("apply_pec_face_shmap", "rfx.runners.distributed_nu",
      "_apply_pec_face_nu_shmap"),
-    # #1038 leg 3 -- the domain-face PMC kernel (inventory §2.3(d)). Same story
-    # as the PEC row above and the same single token of difference; after the
-    # rename the two inner bodies were byte-identical, not merely
-    # AST-equivalent. NOTE the kernel is shared but the HOOK POINT is not: v2
-    # calls it after the H ghost exchange, the NU runner before it. That
-    # divergence is leg 5 / inventory §3.2 and these rows do not speak to it.
-    ("apply_pmc_face_shmap", "rfx.runners.distributed_v2",
-     "_apply_pmc_shmap"),
-    ("apply_pmc_face_shmap", "rfx.runners.distributed_nu",
-     "_apply_pmc_face_nu_shmap"),
     # #1053 leg 2 -- the realized-PEC CELL-MASK kernel, as opposed to the
     # domain-face one two rows up. Moved out of distributed_nu.py by value so
     # v2 could stop refusing declared PEC volumes; it was already

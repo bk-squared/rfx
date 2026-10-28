@@ -281,6 +281,17 @@ jobs:
           tests/contracts/path_equivalence/test_slab_view_producers.py
           tests/contracts/test_slab_cut.py
 
+      - name: Run three-device PMC hold-entry cases (graded slab, padded short last slab, jvp/vjp)
+        # Only the 3-device cases (32); the 1- and 2-device cases run in the PR lane.
+        # 18.5 min for all 102 cases on a 16-CPU cluster node (job dist-pmc-r3-ts2k8).
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/contracts/test_pmc_hold_entry.py -k "-3- or jvp-3 or vjp-3"
+
       - name: Run three-device uniform record cases (DFT planes, flux, snapshots, NTFF, current moments)
         if: ${{ !cancelled() }}
         env:

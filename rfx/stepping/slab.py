@@ -50,6 +50,7 @@ FILL = {
     'pec_cell': Fill(True, False),  # Legacy incident-cell PEC rule uses the same ghost-False convention.
     'pec_occupancy': Fill(0., 0.),  # No soft conductor outside the domain (#689/#931).
     'inv_dx': Fill(0., 1.),  # Inert alignment (#622); historical E inverse-spacing physical ghost is 1.
+    'pmc_h_factor': Fill(0., 0.),  # Inert exterior/alignment H rows; preserve the real PMC high ghost zero.
     'inv_dx_h': Fill(0., 0.),  # Inert alignment and H ghosts; retain the real high-boundary H zero (#622).
     'width': Fill('edge', 'edge'),  # Primal lengths replicate endpoints, retaining true seam neighbours.
 }

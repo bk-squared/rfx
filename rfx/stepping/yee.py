@@ -20,7 +20,8 @@ from rfx.core.yee import (
 def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
-             bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+             bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool],
+             magnetic_factors=(None, None, None)) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -88,6 +89,9 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
     hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
     hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
+
+    from rfx.boundaries.pmc import magnetic_update_fields
+    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 

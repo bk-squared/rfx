@@ -59,7 +59,6 @@ __all__ = [
     "unstack_and_gather",
     "exchange_component_shmap",
     "apply_pec_face_shmap",
-    "apply_pmc_face_shmap",
     "apply_pec_mask_shmap",
     "shard_stacked",
     "shard_stacked_poles",
@@ -524,44 +523,6 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
     ex, ey, ez = _pec(ranks, state.ex, state.ey, state.ez)
     return state._replace(ex=ex, ey=ey, ez=ez)
-
-
-def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
-                         nx_local_with_ghost: int,
-                         pmc_faces: frozenset, pad_x: int = 0, *, ranks) -> FDTDState:
-    """Canonicalize only owned PMC high ghosts; retain every physical H row.
-
-    The image path zeroes only the global high ghost, which no exchange sends,
-    so the order relative to the exchange does not change any value.
-    """
-    if not pmc_faces:
-        return state
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"),  # hx
-            P("x"),  # hy
-            P("x"),  # hz
-        ),
-        out_specs=(
-            P("x"),
-            P("x"),
-            P("x"),
-        ),
-        check_rep=False,
-    )
-    def _pmc(hx, hy, hz, *, rank):
-        from rfx.boundaries.pmc import apply_pmc_faces
-        local = FDTDState(hx, hx, hx, hx, hy, hz, 0)
-        local = apply_pmc_faces(
-            local, pmc_faces, image=True, frame=cpml_slab_frame(hx.shape, 1, pad_x),
-            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
-        return local.hx, local.hy, local.hz
-
-    hx, hy, hz = _pmc(ranks, state.hx, state.hy, state.hz)
-    return state._replace(hx=hx, hy=hy, hz=hz)
 
 
 # #1053 leg 2. The realized-PEC cell-mask kernel, moved here BY VALUE from
@@ -1178,7 +1139,7 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
 # Local update functions (operate on per-device slab with ghosts)
 # ---------------------------------------------------------------------------
 
-def _update_h_local(state, materials, dt, dx, *, high_wall: tuple[bool, bool, bool]):
+def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None), *, high_wall: tuple[bool, bool, bool]):
     """H update on a local slab (including ghost cells).
 
     Identical to yee.update_h but without jit decorator and always
@@ -1207,6 +1168,9 @@ def _update_h_local(state, materials, dt, dx, *, high_wall: tuple[bool, bool, bo
     hx = state.hx - ch_x * curl_x
     hy = state.hy - ch_y * curl_y
     hz = state.hz - ch_z * curl_z
+
+    from rfx.boundaries.pmc import magnetic_update_fields
+    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -1406,10 +1370,10 @@ def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
                                  pmc_faces=None, cpml_layers=None):
     """Keep absorbers and walls on owned rows, including boxes without CPML.
 
-    PEC writes the end E row: one owned row. PMC-hi writes H one row
-    inside it: two owned rows, otherwise the next H exchange replaces it.
-    Two rows also keep PMC-lo away from the H row sent before the uniform
-    runner applies the wall. An L-layer absorber needs L owned rows and
+    PEC writes the end E row: one owned row. The PMC image reads the
+    adjacent interior H row and holds the high ghost with a zero update
+    coefficient. Two owned rows retain the image stencil on its owner.
+    An L-layer absorber needs L owned rows and
     the exchanged curl neighbour. Return the active depths for sizing.
     """
     pec_faces = set(getattr(grid, "pec_faces", None) or ()) if pec_faces is None else set(pec_faces)

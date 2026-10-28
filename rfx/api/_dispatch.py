@@ -200,12 +200,14 @@ def _dispatch_plan(
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
-            # T8 (2026-04): PMC is now wired across all three sharded
-            # runners (distributed_nu, distributed_v2, distributed).
-            # The reject guard that used to live here (introduced in
-            # f3cab7c) has been removed. The single-device PMC runtime
-            # hook lives in rfx/simulation.py:703-705 and the sharded
-            # PMC helpers live in each runner next to their PEC analog.
+            # Uniform and graded distributed runners admit PMC faces.
+            # The curl reads the declared magnetic image; no separate
+            # post-H face write is dispatched here. Uniform slabs use
+            # assembled magnetic update factors, while graded slabs
+            # retain zero-padded inverse H spacings. Both preserve a
+            # zero-initialized stored high ghost at zero.
+            self._reject_upml_on_nonuniform(
+                "distributed non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_distributed_nu")
             return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)

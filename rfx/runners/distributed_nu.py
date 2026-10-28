@@ -79,7 +79,7 @@ from rfx.runners._distributed_common import (
     magnetic_low_ghost,
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
-    apply_pmc_face_shmap, _slab_curl_kwargs,
+    _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
     exchange_e_yee_shmap,
@@ -378,13 +378,6 @@ _exchange_e_ghosts_nu = exchange_e_yee_shmap
 _apply_pec_face_nu_shmap = apply_pec_face_shmap
 
 
-# #1038 leg 3. ``_apply_pmc_face_nu_shmap``'s body now lives as
-# ``apply_pmc_face_shmap`` in ``_distributed_common.py``; once the slab-length
-# parameter was spelled the same on both runners the two kernels were byte
-# identical. Kept as a module-local alias so the existing call sites are
-# unchanged.
-_apply_pmc_face_nu_shmap = apply_pmc_face_shmap
-
 
 # #1053 leg 2. ``_apply_pec_mask_nu_shmap``'s body now lives as
 # ``apply_pec_mask_shmap`` in ``_distributed_common.py``, so ``distributed_v2``
@@ -603,8 +596,8 @@ def run_nonuniform_distributed_pec(
         9. Ghost exchange of E                       via lax.ppermute
        10. Probe accumulation (rank-conditional sum) via lax.psum
 
-    Exchange E after all electric writes. PMC canonicalization follows CPML H and changes only the global
-    high ghost, which no exchange sends. Only Hy/Hz left and Ey/Ez right ghosts are refreshed from owners.
+    Exchange E after all electric writes. Zero high H inverse spacings retain the global
+    PMC high ghost at zero, which no exchange sends. Only Hy/Hz left and Ey/Ez right ghosts are refreshed from owners.
     Other field, CPML and dispersion ghost entries are locally updated
     scratch values, can grow, and are never read by real cells. Exclude them
     from physical energy calculations; ``forward()`` discards this state.
@@ -1477,9 +1470,6 @@ def run_nonuniform_distributed_pec(
             st, cs = _apply_cpml_h_shmap(st, cs, cpml_params, sharded_materials.mu_r,
                                         spacings[6:], ranks=ranks)
 
-        # Canonicalize PMC high ghosts after the final H update/correction.
-        st = _apply_pmc_face_nu_shmap(
-            st, mesh, n_devices, nx_local, pmc_faces, pad_x=pad_x, ranks=ranks)
 
         # 3. Ghost exchange of H so the upcoming E update sees the
         #    neighbour rank's H at the seam.

@@ -141,8 +141,37 @@ def write_baseline(baseline, old_markdown, target):
     (target / "MATRIX.md").write_text(markdown)
 
 
+# #2043, contact L:d47ac6 (2026-10-27): graded PMC high face, impose -> hold.
+# Route (b) gives the graded PMC high-face ghost row zero inverse H spacing,
+# so the row HOLDS its entry value instead of being forced to zero each step.
+# The plane is unchanged. The uniform lane still imposes zero each step, except
+# with UPML (next entry).
+# The realized-boundary contract retains its interior seed and zeros the high
+# ghost subsystem at entry; its exact zero-plane checks and tolerances stay unchanged.
+# Any future initial-state or resume entry must impose zero on the whole ghost subsystem of a held PMC face (tangential H ghost row, exterior normal E row, transverse CPML H psi on that row) or refuse a nonzero one
+GRADED_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchanged",
+    cases=("pmc-pec", "pmc-cpml"), entry="nonuniform", face="x_hi",
+    precondition="Zero tangential H ghost row, exterior normal E row, and transverse CPML H psi on that row at entry; no in-scan writer may seed them.")
+
+
+# #2043, contact L:6daae7 (2026-10-27): uniform UPML PMC high face, impose -> hold.
+# The PMC factor is folded into db_h only (rfx/boundaries/upml.py, init_upml), so
+# the ghost row updates as da*H_old and HOLDS its entry value. From the only entry
+# (init_state zeros; UPML is one-device only) the fields are bit-identical to main.
+# The same entry precondition as the graded hold applies.
+UNIFORM_UPML_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchanged",
+    pinned_by=("tests/contracts/test_pmc_hold_entry.py::test_upml_builder_scan_entry",
+               "tests/unit/runners/test_pmc_ghost_coefficient.py::test_pmc_high_ghost_with_transverse_upml"),
+    entry="run, forward (one device)", face="x_hi, y_hi, z_hi",
+    precondition="Zero tangential H ghost row and exterior normal E row at entry; no in-scan writer may seed them.")
+
+
 def validate_class_changes(previous, cells):
-    """Permit the TFSF backing, B2 periods and B3b magnetic image migrations."""
+    """Permit declared migrations, including #2043's graded high hold-class seed.
+
+    #2043 changes the entry seed, not any recorded plane: no value allowance
+    is needed here. The existing comparison still rejects every moved plane.
+    """
     old_lookup = {(r["case"], r["entry"]): r for r in previous["cells"]}
     for row in cells:
         cell = row["case"], row["entry"]

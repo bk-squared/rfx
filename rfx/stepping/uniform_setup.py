@@ -888,6 +888,8 @@ def core_step_invariants(ctx: _StepContext) -> dict:
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
     from rfx.stepping.absorber import cpml_context
     ctx, e_loss = cpml_context(ctx)
-    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
+    from rfx.boundaries.pmc import magnetic_update_factors
+    magnetic_factors = magnetic_update_factors(ctx.pmc_faces_frozen, ctx.grid.shape, ctx.periodic)
+    return {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
             "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
             "conformal_zero_masks": conformal_zero_masks}
