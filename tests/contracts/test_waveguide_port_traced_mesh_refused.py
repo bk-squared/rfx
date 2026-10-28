@@ -1,4 +1,4 @@
-"""A waveguide port on a graded mesh whose cell widths are traced is refused by name (#2183).
+"""A waveguide port on a mesh whose cell widths are traced is refused by name (#2183).
 
 A WR-90 section (a = 22.86 mm, b = 10.16 mm, dx = 2.54 mm: 9 x 4 whole cells),
 PEC walls, CPML on x, an eps_r 4 slab four cells long and two TE10 ports. One
@@ -8,7 +8,8 @@ cells across the aperture. The graded port reads its planes, mode aperture,
 absorber depth and flux planes from host cell widths, and the flux monitor
 refuses traced cells, so no cell-width derivative reaches S. Before the fix the
 first host read raised a raw TracerArrayConversionError; admission now refuses
-before the first time step, naming the ports and the traced axis.
+before the first time step, naming the ports and the traced axis. The same
+guide on the uniform mesh with its one cell size traced is refused the same way.
 
 Physical anchor: none. This file pins a refusal, not a number a user receives;
 the concrete primal still runs (row 3). Imitates
@@ -91,3 +92,25 @@ def test_concrete_primal_still_runs():
     """The refusal reads tracers only: the same section with concrete widths solves."""
     value = float(_read(_section(0.25 * DX, "x"), "s_matrix"))
     assert np.isfinite(value)
+
+
+def _uniform_guide(dx):
+    """The same guide on the uniform mesh, its one cell size traced."""
+    sim = Simulation(12e9, (.1016, .02286, .01016), dx=dx,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
+    for x, direction, name in ((.02, "+x", "left"), (.08, "-x", "right")):
+        sim.add_waveguide_port(x, direction=direction, name=name, f0=10e9, freqs=FREQS)
+    return sim
+
+
+@pytest.mark.parametrize("entry", ("s_matrix", "run"))
+def test_traced_scalar_cell_size_refused_by_port_name(monkeypatch, entry):
+    def forbidden(*args, **kwargs):
+        pytest.fail("a waveguide port with a traced cell size reached lax.scan")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    with pytest.raises(TracedStructureRefusal) as caught:
+        jax.jacfwd(lambda d: _read(_uniform_guide(d), entry))(0.00127)
+    message = str(caught.value)
+    assert "waveguide port(s) 'left', 'right'" in message
+    assert "whose dx cell widths are traced" in message

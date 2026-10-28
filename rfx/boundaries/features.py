@@ -339,13 +339,15 @@ def refuse_traced_guide_mesh(sim, lane):
     from rfx.core.jax_utils import is_tracer
     profiles = (sim._dx_profile, sim._dy_profile, sim._dz_profile)
     traced = [axis for axis, profile in zip("xyz", profiles) if is_tracer(profile)]
+    if is_tracer(sim._dx):
+        traced.insert(0, "dx")
     if not sim._waveguide_ports or not traced:
         return
     from rfx._traced_refusal import TracedStructureRefusal
     names = ", ".join(repr(entry.name or number)
                       for number, entry in enumerate(sim._waveguide_ports))
     raise TracedStructureRefusal(
-        f"{lane}: waveguide port(s) {names} on a graded mesh whose {'/'.join(traced)} cell "
+        f"{lane}: waveguide port(s) {names} on a mesh whose {'/'.join(traced)} cell "
         "widths are traced (mesh as a design variable): the port reads its planes, mode "
         "aperture and flux planes from host cell widths, so a derivative with respect to "
         "a cell width cannot reach its S. Build the mesh from concrete widths; a "
