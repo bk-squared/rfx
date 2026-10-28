@@ -1,4 +1,5 @@
-"""The jax 0.11 xfail list marks only on jax 0.11 and names tests that exist (tests/_jax_version_xfails.py)."""
+"""The newer-jax xfail list marks each entry only from its own jax version and names tests that exist
+(tests/_jax_version_xfails.py)."""
 
 import ast
 from pathlib import Path
@@ -15,21 +16,22 @@ def test_the_plugin_is_loaded_by_the_root_conftest():
     assert "tests._jax_version_xfails" in ast.literal_eval(plugins)
 
 
-def test_marks_only_from_jax_011():
-    issue, (_, ids) = next(iter(plugin.JAX_011_XFAILS.items()))
-    nodeid = ids[0]
-    assert plugin.reason_for(nodeid, (0, 10, 2)) is None
-    assert plugin.reason_for(nodeid, (0, 10)) is None
-    assert plugin.reason_for(nodeid, (0, 11, 0)).startswith(f"#{issue} ")
-    assert plugin.reason_for(nodeid, (0, 12)).startswith(f"#{issue} ")
-    assert plugin.reason_for("tests/unit/autodiff/test_estimate_ad_memory.py::not_listed", (0, 11)) is None
+def test_each_entry_marks_only_from_its_own_jax_version():
+    for issue, (since, _, ids) in plugin.JAX_XFAILS.items():
+        below = (since[0], since[1] - 1, 9)
+        for nodeid in ids:
+            assert plugin.reason_for(nodeid, (0, 10, 2)) is None, nodeid
+            assert plugin.reason_for(nodeid, below) is None, nodeid
+            assert plugin.reason_for(nodeid, (*since, 0)).startswith(f"#{issue} "), nodeid
+            assert plugin.reason_for(nodeid, (since[0], since[1] + 1)).startswith(f"#{issue} "), nodeid
+    assert plugin.reason_for("tests/unit/autodiff/test_estimate_ad_memory.py::not_listed", (0, 12)) is None
 
 
 def test_every_listed_id_names_an_existing_test_function():
     missing = []
     defined = {}
-    for issue, (reason, ids) in plugin.JAX_011_XFAILS.items():
-        assert reason and ids, issue
+    for issue, (since, reason, ids) in plugin.JAX_XFAILS.items():
+        assert since and reason and ids, issue
         for nodeid in ids:
             path, *names = nodeid.split("[", 1)[0].split("::")
             if path not in defined:
@@ -46,11 +48,11 @@ def test_every_listed_id_names_an_existing_test_function():
 
 
 def test_no_id_is_listed_twice():
-    ids = [nodeid for _, (_, listed) in plugin.JAX_011_XFAILS.items() for nodeid in listed]
+    ids = [nodeid for _, (_, _, listed) in plugin.JAX_XFAILS.items() for nodeid in listed]
     assert len(ids) == len(set(ids))
 
 
-def test_the_hook_adds_a_strict_mark_on_jax_011(monkeypatch):
+def test_the_hook_adds_a_strict_mark_from_the_entry_version(monkeypatch):
     import jax
 
     class Item:
@@ -60,14 +62,14 @@ def test_the_hook_adds_a_strict_mark_on_jax_011(monkeypatch):
         def add_marker(self, mark):
             self.marks.append(mark)
 
-    issue, (_, ids) = next(iter(plugin.JAX_011_XFAILS.items()))
-    listed, other = Item(ids[0]), Item("tests/contracts/test_jax_version_xfails.py::not_listed")
-    monkeypatch.setattr(jax, "__version_info__", (0, 11, 2))
-    plugin.pytest_collection_modifyitems(None, [listed, other])
-    assert [(m.name, m.kwargs["strict"]) for m in listed.marks] == [("xfail", True)]
-    assert listed.marks[0].kwargs["reason"].startswith(f"#{issue} ")
-    assert other.marks == []
-    monkeypatch.setattr(jax, "__version_info__", (0, 10, 2))
-    again = Item(ids[0])
-    plugin.pytest_collection_modifyitems(None, [again])
-    assert again.marks == []
+    for issue, (since, _, ids) in plugin.JAX_XFAILS.items():
+        listed, other = Item(ids[0]), Item("tests/contracts/test_jax_version_xfails.py::not_listed")
+        monkeypatch.setattr(jax, "__version_info__", (*since, 1))
+        plugin.pytest_collection_modifyitems(None, [listed, other])
+        assert [(m.name, m.kwargs["strict"]) for m in listed.marks] == [("xfail", True)], issue
+        assert listed.marks[0].kwargs["reason"].startswith(f"#{issue} ")
+        assert other.marks == []
+        monkeypatch.setattr(jax, "__version_info__", (since[0], since[1] - 1, 2))
+        again = Item(ids[0])
+        plugin.pytest_collection_modifyitems(None, [again])
+        assert again.marks == [], issue
