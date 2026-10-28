@@ -120,7 +120,7 @@ def test_h_builder_carries_component_record(path):
         if path == "fast":
             return yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
         if path == "distributed_v2":
-            return dc._update_h_local(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+            return dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         if path == "distributed_nu":
             return dc._update_h_local_nu(state, m, grid.dt, *inv, *inv, high_wall=unpadded_high_walls(grid))
         # The two public lanes share the CPML H builder; exercise both grids.
@@ -241,7 +241,7 @@ def test_realized_h_tuple_replays_and_perturbs_one_component(path, wire):
         elif path == "fast":
             result = yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
         elif path == "distributed_v2":
-            result = dc._update_h_local(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+            result = dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         else:
             result = dc._update_h_local_nu(state, m, grid.dt, *inv, *inv, high_wall=unpadded_high_walls(grid))
         return jnp.stack(result[3:6])

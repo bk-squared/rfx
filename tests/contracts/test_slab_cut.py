@@ -30,6 +30,8 @@ POLICIES = {
     'inv_dx_h': (0., 0.), 'width': ('edge', 'edge'),
     'cpml_psi': (0., 0.), 'cpml_zero': (0., 0.), 'cpml_one': (1., 1.),
     'edge_keep': (1., 1.),
+    # Uniform PMC: alignment and physical ghosts impose zero on the whole H update.
+    'pmc_h_factor': (0., 0.),
 }
 
 

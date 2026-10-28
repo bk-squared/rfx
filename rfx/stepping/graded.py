@@ -216,10 +216,6 @@ def make_graded_step(
                                          materials=frame.materials)
         else:
             frame.cpml_new = None
-        if ctx.use_pmc_faces:
-            from rfx.boundaries.pmc import apply_pmc_faces
-            frame.st = apply_pmc_faces(frame.st, ctx._pmc_faces_frozen, image=True,
-                                       frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
         if ctx.use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             frame.tfsf_h_state = update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)

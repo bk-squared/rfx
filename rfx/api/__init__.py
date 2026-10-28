@@ -561,11 +561,6 @@ class Simulation(
         # been removed; Boundary.lo_thickness / .hi_thickness are
         # consumed by _build_grid → Grid.face_layers → init_cpml.
 
-        # T7-E Phase 2 PR3: PMC runtime lands in rfx/boundaries/pmc.py
-        # and is hooked into the uniform scan body after each H update
-        # (rfx/simulation.py). The Phase 1 construction guard has been
-        # removed; PMC faces flow through Grid.pmc_faces and are applied
-        # in-trace.
 
     # ---- refinement (subgridding) ----
 

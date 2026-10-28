@@ -63,11 +63,11 @@ def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
         cpml_grid = grid
         cpml_axes_eff = padded_axes(grid, cpml_axes)
 
-    # PMC enforcement (2026-04). The NU scan body previously never
-    # zeroed H_tan on PMC faces, so a half-symmetric configuration
-    # that relied on the mirror plane was running with an effectively
-    # free boundary. Frozen set gives JIT cache a stable hash; empty
-    # set short-circuits the apply to a no-op.
+    # PMC faces select odd tangential-H images in the NU curl.
+    # The zero-padded high inverse H spacing holds the high ghost at its
+    # initial zero (one step for every device count, #2043). Frozen face sets
+    # give the JIT cache a stable hash; an empty magnetic set leaves the
+    # ordinary backward-curl operand in place.
     # The electric walls, per face, by the one rule the uniform scan uses
     # (#1164): the NU grid carries no face attributes, so the declared sets
     # threaded in from the caller stand in for them. With no magnetic face
