@@ -173,7 +173,10 @@ size of each change and the test that pins it.
   the conductance, which gives its drawn width; a lossy film acts on the one
   node plane it is declared on and takes the cells whose centres lie in its
   drawing, so a curved film or a box edge between nodes is no longer moved half
-  a cell toward +.
+  a cell toward +; a gap drawn between two films stays open at any width.
+  With subpixel smoothing on, a metal body is no longer averaged into the
+  dielectric around it: resonances of a pin or via in a dielectric move down
+  (1.7 % on a coax with 2 cells per pin radius).
 - **Coaxial lines.** The pin and shell are metal edges at their declared
   radii, the line is driven with the potential of the conductors as meshed,
   and it fills its declared length. Through loss in a matched line goes away;
