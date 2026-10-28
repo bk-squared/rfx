@@ -227,6 +227,17 @@ buffer holds it is not yet found. A third GPU therefore does not let a model fit
 What to do: size a run on three or more GPUs in one process from its two-GPU peak.
 → [#2150](https://github.com/bk-squared/rfx/issues/2150)
 
+### Many thin PEC sheets can run out of GPU memory inside run() on a small card
+
+Tracker: #1432
+
+Each thin PEC sheet keeps whole-grid footprint arrays on the device in every conductor assembly, and the results of
+`preflight()` and `realized_geometry()` stay on the device until the Simulation is deleted. With 161 sheets on 3.05 M
+cells one assembly holds 0.97 GiB. After `preflight()`, `realized_geometry()` and a second model kept in the same process,
+the device held 4.24 GiB, and `run()`'s own preflight then stopped in the allocator on an 8 GB card (5.84 GiB pool). The
+same run completed when no second model was kept (peak 5.39 GiB). The public API has no way yet to free
+those arrays before `run()`.
+
 ## Ports and extraction
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
