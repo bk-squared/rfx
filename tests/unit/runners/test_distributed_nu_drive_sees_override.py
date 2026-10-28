@@ -65,8 +65,6 @@ the E update); the mutations patch it there and fail if it is not reached.
 
 from __future__ import annotations
 
-from rfx.geometry.rasterize_grid import unpadded_high_walls
-
 from contextlib import contextmanager, nullcontext
 import functools
 import io
@@ -93,6 +91,7 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
 from rfx import Simulation  # noqa: E402
+from rfx.geometry.rasterize_grid import unpadded_high_walls  # noqa: E402
 from rfx.core.yee import (  # noqa: E402
     FDTDState, MaterialArrays, curl_h_nu, update_e_nu,
 )
