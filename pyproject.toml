@@ -52,7 +52,9 @@ dashboard = ["streamlit>=1.30", "pandas"]
 # exact contiguous-grouping behavior (PR regenerating .test_durations, #533/#545); an
 # unpinned minor bump changing either would silently invalidate the balance without a
 # code-visible signal.
-dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2"]
+# pytest below 9.2: 9.2 turns a crashed xdist worker into INTERNALERROR, which tests/contracts/test_gate_stage2_outcome.py
+# catches; lifted after 2.0 (#2143).
+dev = ["pytest>=7.0,<9.2", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2"]
 all = ["rfx-fdtd[optimization,visualization,dashboard,cad,dev]"]
 
 [project.urls]
