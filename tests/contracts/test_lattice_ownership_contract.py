@@ -1109,7 +1109,7 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
     ``kottke_fenced_edge_masks`` call in ``rfx/simulation.py`` and the probed
     edge reads zero while its inverse permittivity stays 0.0329.
     """
-    import rfx.simulation as _sm
+    import rfx.boundaries.pec as _pec
     from rfx import Simulation, Sphere
     from rfx.boundaries.spec import Boundary, BoundarySpec
     from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
@@ -1143,19 +1143,19 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
     assert 0.03 < inv_xx < 0.04, inv_xx
 
     applied = {}
-    _orig = _sm.apply_pec_edges
+    _orig = _pec.apply_pec_edges
 
     def _record(state, edge_masks):
         applied["masks"] = edge_masks
         return _orig(state, edge_masks)
 
-    _sm.apply_pec_edges = _record
+    _pec.apply_pec_edges = _record
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             result = _build().run(n_steps=60, subpixel_smoothing="kottke_pec")
     finally:
-        _sm.apply_pec_edges = _orig
+        _pec.apply_pec_edges = _orig
 
     masks = applied.get("masks")
     assert masks is not None, "the kottke lane applied no edge masks at all"

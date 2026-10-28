@@ -1245,13 +1245,14 @@ def test_attribute_read_through_a_module_import_is_refused(tmp_path, route, alia
 
 
 def test_restored_definition_read_through_the_step_module_import_is_refused(tmp_path):
-    """The defect on the real route: rfx/stepping/uniform.py reads re-exports through ``from rfx import
-    simulation``; a read of a name simulation.py defines (make_probe) through it is refused."""
+    """The defect on the route rfx/stepping/uniform.py used: a read through ``from rfx import
+    simulation`` of a name simulation.py defines (make_probe) is refused."""
     path = "rfx/stepping/uniform.py"
     reader = (REPO / path).read_text()
-    route = "    return simulation.apply_pec_faces(state, faces)\n"
+    route = "    return pec_walls.apply_pec_faces(state, faces)\n"
     assert reader.count(route) == 1
-    write(tmp_path, path, reader.replace(route, "    simulation.make_probe\n" + route))
+    write(tmp_path, path, reader.replace(
+        route, "    from rfx import simulation\n    simulation.make_probe\n" + route))
     defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
     entry = "rfx.simulation:make_probe"
     assert defined[path] == [entry]
