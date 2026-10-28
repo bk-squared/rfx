@@ -149,6 +149,31 @@ def test_pec_faces_with_finite_pec(material, expected):
     assert len(_codes(sim, "pec_faces_finite_pec")) == expected
 
 
+GUIDE_SHORTS = {
+    "volume": ((.014, 0., 0.), (.017, .023, .010)),
+    "foil": ((.015, 0., 0.), (.015, .023, .010)),
+    "slot": ((.014, 0., 0.), (.017, .023, .009)),
+    "post": ((.014, .009, 0.), (.017, .013, .010)),
+}
+
+
+@pytest.mark.parametrize("material", ["pec", "copper_lib"])
+@pytest.mark.parametrize("short,expected",
+                         [("volume", 0), ("foil", 0), ("slot", 1), ("post", 1)])
+def test_pec_faces_short_closing_the_guide_is_not_finite(material, short, expected):
+    """A 23 x 10 mm guide with PEC y and z faces. A short (thick or foil)
+    across the whole cross-section completes the PEC boundary: no finite
+    object. A short drawn one cell below the lid leaves a realized slot, and
+    a post spans only the narrow wall: both are finite objects."""
+    sim = Simulation(freq_max=12e9, domain=(.030, .023, .010), dx=.001,
+                     boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
+                                           z=Boundary(lo="pec", hi="pec")),
+                     cpml_layers=8)
+    name = _register(sim, material)
+    sim.add(Box(*GUIDE_SHORTS[short]), material=name)
+    assert len(_codes(sim, "pec_faces_finite_pec")) == expected
+
+
 @pytest.mark.parametrize("material,expected",
                          [("pec", 1), ("copper", 1), ("copper_lib", 1), ("lossy", 0)])
 def test_conductor_in_thin_absorber(material, expected):

@@ -492,19 +492,61 @@ def _preflight_face_layers(self) -> dict[str, int]:
 
     return {face.name: face.realized for face in simulation_face_depths(self)}
 
+def _pec_walls_closing_a_guide(self) -> set[str]:
+    """Labels of PEC geometry entries that close a PEC-bounded cross-section.
+
+    A body whose OWN realized edges, with the PEC domain walls, zero every
+    tangential E edge of one node plane across a cross-section bounded on
+    all four sides by pec_faces (a waveguide short) completes the boundary;
+    it is not a finite object. Read realized: a short drawn one cell below
+    the lid leaves a live slot and stays finite. Empty when the shared
+    context could not assemble, so the check keeps counting every PEC entry.
+    """
+    axes = [n for n in range(3)
+            if all(f"{'xyz'[a]}_{s}" in self._pec_faces
+                   for a in range(3) if a != n for s in ("lo", "hi"))]
+    ctx = self._campaign_ctx() if axes else None
+    if ctx is None or ctx.error is not None:
+        return set()
+    shape = tuple(ctx.grid.shape)
+    closing = set()
+    for e in ctx.pec_entries():
+        if not e.label.startswith("geometry[") or e.kind not in ("volume", "sheet"):
+            continue
+        edges = e.edges(ctx.periodic, shape)
+        for n in axes:
+            plane = tuple(a for a in range(3) if a != n)
+            closed, count = np.ones(shape[n], dtype=bool), 0
+            for c, p in (plane, plane[::-1]):
+                # E_c edges between the walls along c, on the nodes strictly
+                # inside the walls along p (the walls zero the rest).
+                sl = [slice(None)] * 3
+                sl[c], sl[p] = slice(0, shape[c] - 1), slice(1, shape[p] - 1)
+                tangential = np.asarray(edges[c][tuple(sl)], dtype=bool)
+                count += tangential.size
+                closed &= tangential.all(axis=plane)
+            if count and closed.any():
+                closing.add(e.label)
+                break
+    return closing
+
+
 def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
     """Warn about pec_faces + finite PEC objects co-existing.
 
     pec_faces creates an INFINITE PEC boundary face across the whole
     domain side. Users building antennas or finite-GP structures
     often use pec_faces thinking it's a "ground plane" — but it's
-    a full-domain boundary condition, not a finite structure.
+    a full-domain boundary condition, not a finite structure. A body
+    that closes a PEC-bounded cross-section (a waveguide short) is part
+    of that boundary, not a finite object (``_pec_walls_closing_a_guide``).
     """
     if self._pec_faces and self._geometry:
         from rfx.model.materials import assembled_as_pec
+        closing = _pec_walls_closing_a_guide(self)
         has_finite_pec = any(
-            assembled_as_pec(self, entry)
-            for entry in self._geometry
+            assembled_as_pec(self, entry) and f"geometry[{i}]" not in closing
+            for i, entry in enumerate(self._geometry)
         )
         if has_finite_pec:
             pec_face_list = ", ".join(sorted(self._pec_faces))
