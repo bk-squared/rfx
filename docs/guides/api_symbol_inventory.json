@@ -409,7 +409,8 @@
         "sheets",
         "geometry_masks",
         "geometry_key",
-        "snap"
+        "snap",
+        "film_geometry"
       ]
     },
     "apply_thirds_rule": {
