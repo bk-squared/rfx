@@ -118,9 +118,13 @@ def solve(lane, axis, boundary, row, d, side):
         sim.add_probe(tuple(wall), ea)
         sim.add_probe(tuple(center), eb)
     else:
-        src, comp = (wall, ea) if row == 'i' else (center, eb)
-        sim.add_source(tuple(src), comp, waveform=pulse,
-                       amplitude_kind='field' if lane == 'adi_run' else 'current')
+        # Row ii drives both tangential components: with one, the H column
+        # parallel to it is zero in exact arithmetic and records only
+        # rounding, which no field index can move (#2167).
+        src, comps = (wall, (ea,)) if row == 'i' else (center, (eb, 'e' + 'xyz'[(axis + 2) % 3]))
+        for comp in comps:
+            sim.add_source(tuple(src), comp, waveform=pulse,
+                           amplitude_kind='field' if lane == 'adi_run' else 'current')
         probes = [(center, eb)] if row == 'i' else [(wall, ea)] + [
             (wall, 'h' + c) for c in 'xyz' if c != 'xyz'[axis]]
         for pos, comp in probes:
@@ -166,10 +170,16 @@ def assert_identical(a, b):
     assert a.tobytes() == b.tobytes(), 'C2b requires bit-identical records'
 
 
-def mirror(a, b, signs, record_property):
+def mirror(a, b, signs, fields, record_property):
     peak_a = np.max(np.abs(a), axis=0)
     peak_b = np.max(np.abs(b), axis=0)
     assert np.all(peak_a > 0) and np.all(peak_b > 0), (peak_a, peak_b)
+    # A column far below the largest of its field is rounding (1.5e-5 for
+    # the H parallel to a lone current, #2167); 200 eps of its own peak
+    # would compare rounding with rounding.
+    for field in set(fields):
+        cols = [i for i, f in enumerate(fields) if f == field]
+        assert np.all(peak_a[cols] >= 1e-3 * np.max(peak_a[cols])), dict(fields=fields, peak=peak_a.tolist())
     residual = np.max(np.abs(b.astype(np.float64) - np.array(signs) * a.astype(np.float64)), axis=0)
     bar = 200 * np.finfo(np.float32).eps * peak_a.astype(np.float64)
     record_property('maximum_C2_fraction', float(np.max(residual / bar)))
@@ -206,7 +216,8 @@ def test_c2_c2b(lane, boundary, axis, row, record_property):
             if lane != 'adi_run' and (boundary == 'pec' or axis == 2):
                 low, spectrum_low = solve(lane, axis, boundary, row, d, 'lo')
                 signs = (-1,) if row == 'i' else (-1, -1, -1) if row == 'ii' else (1, -1)
-                mirror(low, high, signs, record_property)
+                fields = ('e',) if row == 'i' else ('e', 'h', 'h') if row == 'ii' else ('v', 'e')
+                mirror(low, high, signs, fields, record_property)
                 if row == 'iii':
                     residual = float(np.max(np.abs(spectrum_high - spectrum_low)))
                     record_property('maximum_S11_residual', residual)
