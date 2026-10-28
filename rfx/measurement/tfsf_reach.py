@@ -19,8 +19,9 @@ def tfsf_corner_paths(cfg, grid, *, inset=0):
         # Per-node window delays reference source_p on every sublattice.
         paths = (indices @ np.asarray(cfg.m) - cfg.source_p) * cfg.dx_1d / np.linalg.norm(cfg.m)
     elif hasattr(cfg, "d_aux"):
-        # init_tfsf_methodB maps projection d=0 to src_off == src_idx.
-        paths = (indices[:, 0] * cfg.cos_theta + indices[:, 1] * cfg.sin_theta) * grid.dx
+        # init_tfsf_methodB maps the projection of padded node 0 to src_idx.
+        origin = np.asarray([grid.node_of(a, 0) for a in "xy"])
+        paths = (corners[:, :2] - origin) @ np.asarray([cfg.cos_theta, cfg.sin_theta])
     elif hasattr(cfg, "i0_x"):
         # The Bloch source applies the envelope along the entire src_x plane.
         paths = (cfg.direction_sign * (cfg.i0_x + indices[:, 0] - cfg.x_lo - cfg.src_x)
