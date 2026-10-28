@@ -13,6 +13,7 @@ uses, without time stepping.
 """
 from __future__ import annotations
 
+from rfx.model.materials import assembled_as_pec
 from rfx.model.thin_conductors import conductivity_envelope
 
 import jax.numpy as jnp
@@ -70,28 +71,15 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
 def _declared_material(sim, name):
     if name == "pec":
         return dict(kind="pec")
-    spec = sim._materials.get(name)
-    if spec is None:
+    try:  # registered first, then the library (as the assembler resolves it)
+        spec = sim._resolve_material(name)
+    except KeyError:
         return dict(kind="unknown", name=name)
     return dict(kind="dielectric", name=name,
                 eps_r=float(getattr(spec, "eps_r", 1.0)),
                 sigma=float(getattr(spec, "sigma", 0.0)),
                 n_debye=len(getattr(spec, "debye_poles", None) or ()),
                 n_lorentz=len(getattr(spec, "lorentz_poles", None) or ()))
-
-
-def _assembled_as_pec(sim, entry):
-    """Does ``_assemble_materials`` route this geometry entry to the PEC
-    branch? Keyed the way the assembly keys it (rfx/api/_compile.py: the
-    RESOLVED material's ``sigma >= _PEC_SIGMA_THRESHOLD``), not on the
-    literal name "pec" — a named copper with sigma 5.8e7 is PEC there too.
-    """
-    try:
-        mat = sim._resolve_material(entry.material_name)
-    except Exception:
-        return entry.material_name == "pec"
-    thr = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
-    return float(getattr(mat, "sigma", 0.0) or 0.0) >= thr
 
 
 def _contract_coords(sim, grid, nonuniform):
@@ -118,7 +106,7 @@ def _contract_refusals(sim, grid, nonuniform):
     coords, sizes = _contract_coords(sim, grid, nonuniform)
     centres = cell_centres_from_nodes(coords, sizes)
     for i, entry in enumerate(sim._geometry):
-        if not _assembled_as_pec(sim, entry):
+        if not assembled_as_pec(sim, entry):
             continue
         try:
             # Continuation first classifies the declaration too; refusal is
@@ -361,7 +349,7 @@ def fidelity_report(sim, print_report: bool = True):
                        "bounds cannot be audited",
                 remedy="give the shape an axis-aligned bounding box")])
             report.append(nb_item)
-            if kind_src == "geometry" and _assembled_as_pec(sim, entry):
+            if kind_src == "geometry" and assembled_as_pec(sim, entry):
                 try:
                     if geometry.mask_error is not None:
                         import builtins
@@ -388,7 +376,7 @@ def fidelity_report(sim, print_report: bool = True):
                     pec_cells_by_entity[i] = np.flatnonzero(nb_mask)
             continue
         boxlike = type(entry.shape).__name__ == "Box"
-        pec_assembled = kind_src == "geometry" and _assembled_as_pec(sim, entry)
+        pec_assembled = kind_src == "geometry" and assembled_as_pec(sim, entry)
         # #931 §1.3: a SHEET owns no cell, so its realized geometry is its
         # footprint on ONE node plane — not the cells the (node-sampled)
         # entity mask happens to touch. Resolved before the per-axis rows so

@@ -721,11 +721,14 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         if not pe.excite:
             continue
         pos = pe.position
-        # Find the dielectric geometry enclosing the port cell.
-        enclosing_eps_r = None
-        enclosing_name = None
+        # Find the dielectric geometry enclosing the port cell. The
+        # assembly paints entries in order, so the LAST enclosing one is
+        # what the port cell holds (#1961); library names resolve too.
+        from rfx.core.jax_utils import is_tracer
+        from rfx.model.materials import assembled_as_pec
+        enclosing = None
         for entry in self._geometry:
-            if entry.material_name == "pec":
+            if assembled_as_pec(self, entry):
                 continue
             if not hasattr(entry.shape, "bounding_box"):
                 continue
@@ -734,15 +737,19 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
             except (NotImplementedError, TypeError):
                 continue
             inside = all(c1[ax] <= pos[ax] <= c2[ax] for ax in range(3))
-            if not inside:
-                continue
-            mspec = self._materials.get(entry.material_name)
-            if mspec is not None and float(mspec.eps_r) > 1.0 + 1e-3:
-                enclosing_eps_r = float(mspec.eps_r)
-                enclosing_name = entry.material_name
-                break
-        if enclosing_eps_r is None:
+            if inside:
+                enclosing = entry
+        if enclosing is None:
             continue
+        try:
+            mspec = self._resolve_material(enclosing.material_name)
+        except Exception:
+            continue
+        eps_r = getattr(mspec, "eps_r", 1.0)
+        if is_tracer(eps_r) or float(eps_r) <= 1.0 + 1e-3:
+            continue
+        enclosing_eps_r = float(eps_r)
+        enclosing_name = enclosing.material_name
         # Check for a PEC geometry one cell away along the port's
         # component axis (coax-style pin or microstrip feed edge).
         # Without such a pin, the port cell cannot drive a vertical
@@ -760,7 +767,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         from rfx.materials.thin_conductor import sheet_bounds as _sb
         adjacent_bounds = []
         for entry in self._geometry:
-            if entry.material_name != "pec":
+            if not assembled_as_pec(self, entry):
                 continue
             if not hasattr(entry.shape, "bounding_box"):
                 continue
@@ -1027,12 +1034,13 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
         coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,
     )
     from rfx.materials.thin_conductor import sheet_bounds
+    from rfx.model.materials import assembled_as_pec
     from rfx.nonuniform import NonUniformGrid
     ports = [pe for pe in sim._ports if float(pe.impedance) > 0]
     if not ports:
         return []
     shapes = [(e.shape, e.material_name) for e in sim._geometry
-              if e.material_name == "pec"
+              if assembled_as_pec(sim, e)
               and getattr(e.shape, "corner_lo", None) is not None
               and sum(a == b for a, b in zip(e.shape.corner_lo, e.shape.corner_hi)) == 1]
     shapes.extend((tc.shape, "thin_conductor") for tc in sim._thin_conductors)

@@ -501,8 +501,9 @@ def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
     a full-domain boundary condition, not a finite structure.
     """
     if self._pec_faces and self._geometry:
+        from rfx.model.materials import assembled_as_pec
         has_finite_pec = any(
-            entry.material_name == "pec"
+            assembled_as_pec(self, entry)
             for entry in self._geometry
         )
         if has_finite_pec:
@@ -1283,15 +1284,12 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
         # advisory has nothing to say without per-face layer counts.
         return []
 
+    from rfx.model.materials import assembled_as_pec
     findings: list[tuple] = []
     for idx, entry in enumerate(self._geometry):
         mat_name = getattr(entry, "material_name", None)
-        if mat_name != "pec":
-            try:
-                if self._resolve_material(mat_name).sigma < self._PEC_SIGMA_THRESHOLD:
-                    continue
-            except Exception:
-                continue
+        if not assembled_as_pec(self, entry):
+            continue
         if not hasattr(entry.shape, "bounding_box"):
             continue
         try:

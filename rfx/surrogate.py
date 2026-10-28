@@ -113,21 +113,6 @@ def export_training_data(
 # Geometry SDF export
 # ---------------------------------------------------------------------------
 
-def _is_pec_entry(sim, entry) -> bool:
-    """Does the assembly route this geometry entry to the PEC branch?
-
-    Keyed the way ``_assemble_materials`` keys it (the RESOLVED material's
-    ``sigma`` against the PEC threshold), not on the literal name "pec" —
-    a named copper at 5.8e7 S/m is PEC there too.
-    """
-    try:
-        mat = sim._resolve_material(entry.material_name)
-    except Exception:
-        return entry.material_name == "pec"
-    thr = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
-    return float(getattr(mat, "sigma", 0.0) or 0.0) >= thr
-
-
 def _sheet_footprint_on_samples(shape, x, y, z, *, name):
     """A declared SHEET's footprint on the SDF sample lattice (#931 §1.3).
 
@@ -238,6 +223,7 @@ def export_geometry_sdf(
     # Evaluate geometry occupancy at each grid point
     occupied = np.zeros((nx, ny, nz), dtype=bool)
 
+    from rfx.model.materials import assembled_as_pec
     for gi, entry in enumerate(sim._geometry):
         shape = entry.shape
         # A PEC Box with exactly one zero-extent axis IS a sheet
@@ -245,7 +231,7 @@ def export_geometry_sdf(
         # than relying on its plane coinciding with a sample point.
         lo_b = getattr(shape, "corner_lo", None)
         hi_b = getattr(shape, "corner_hi", None)
-        if lo_b is not None and hi_b is not None and _is_pec_entry(sim, entry):
+        if lo_b is not None and hi_b is not None and assembled_as_pec(sim, entry):
             zero = [i for i in range(3)
                     if float(hi_b[i]) - float(lo_b[i]) == 0.0]
             if len(zero) == 1:

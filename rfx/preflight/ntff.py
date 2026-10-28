@@ -342,9 +342,10 @@ def _validate_ntff_small_ground_plane(
     # (add_thin_conductor / zero-thickness Box), so PEC thin
     # conductors are in the census beside PEC geometry entries.
     from rfx.materials.thin_conductor import sheet_bounds as _sheet_bounds
+    from rfx.model.materials import assembled_as_pec
     candidates = []
     for entry in self._geometry:
-        if entry.material_name != "pec":
+        if not assembled_as_pec(self, entry):
             continue
         try:
             c1, c2 = entry.shape.bounding_box()
