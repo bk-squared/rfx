@@ -912,13 +912,17 @@ def _validate_cfg_geometry_in_cpml(
 def _validate_cfg_body_flush_on_absorber(
     self, _w, cpml_thickness, cpml_thick_lo, cpml_thick_hi, absorber_label,
 ) -> None:
-    """Warn when an absorber continues a body's thin dimension as a half-space.
+    """Warn when an absorber continues a static body's thin dimension as a half-space.
 
-    Static eps_r/sigma/mu_r are copied at
-    ``rfx/geometry/rasterize_grid.py:1582`` (``_extend_lo``), called by
-    ``rfx/model/materials.py:353``. PEC masks are not passed or continued;
-    pole masks are not extended either. PEC is excluded from this warning.
-    Face distances and half-cell windows use the realized interior cells.
+    The pad continues a body's static eps_r/sigma/mu_r at a lo face
+    (``_extend_lo``, ``rfx/geometry/rasterize_grid.py:1579``) and, for a body
+    ending at a hi face, through the #638/#655 promotion (``_extend_hi``,
+    ``:1587``); ``rfx/model/materials.py:353`` calls them. PEC is not
+    continued and no field lies behind it, so PEC is skipped. A pole-carrying
+    body is skipped too: its hi pad stays background (#808) and its lo pad
+    carries the statics without the poles, which
+    ``dispersive_pole_at_absorber_face`` reports with that mechanism. Face
+    distances and half-cell windows use the realized interior cells.
     """
     if cpml_thickness <= 0 or not self._geometry:
         return
@@ -945,8 +949,8 @@ def _validate_cfg_body_flush_on_absorber(
         values = (mat.eps_r, mat.sigma, mat.mu_r)
         if any(is_tracer(v) for v in values):
             continue
-        if values[1] >= 1e6 or (values == (1.0, 0.0, 1.0)
-                                and not (mat.debye_poles or mat.lorentz_poles)):
+        if (values[1] >= 1e6 or values == (1.0, 0.0, 1.0)
+                or mat.debye_poles or mat.lorentz_poles):
             continue
         try:
             lo, hi = entry.shape.bounding_box()

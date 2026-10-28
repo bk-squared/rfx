@@ -70,3 +70,21 @@ def test_msl_substrate_through_x_absorber_is_silent():
     sim.add(Box((0, 0, 0), (.02, .02, .0016)), material="board")
     sim.add(Box((.002, .008, .0016), (.018, .012, .0016)), material="pec")
     assert not [i for i in sim.preflight() if i.code == "body_flush_on_absorber"]
+
+
+@pytest.mark.parametrize("family", ["debye", "lorentz"])
+def test_a_pole_carrying_board_on_the_absorber_is_left_to_the_dispersive_advisory(family):
+    # Its hi pad stays background (#808) and its lo pad drops the poles, so
+    # "continues this body's material" would misstate the pad; the dispersive
+    # advisory reports that face with the real mechanism.
+    from rfx.materials.debye import DebyePole
+    from rfx.materials.lorentz import LorentzPole
+    poles = (dict(debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)]) if family == "debye"
+             else dict(lorentz_poles=[LorentzPole(omega_0=2e10, delta=1e9, kappa=2e10 ** 2)]))
+    sim = Simulation(freq_max=3.5e9, domain=(.02, .02, .01), dx=.0004,
+                     boundary="cpml", cpml_layers=2)
+    sim.add_material("board", eps_r=4.4, **poles)
+    sim.add(Box((0, 0, 0), (.02, .02, .0016)), material="board")
+    codes = [i.code for i in sim.preflight()]
+    assert "dispersive_pole_at_absorber_face" in codes
+    assert "body_flush_on_absorber" not in codes
