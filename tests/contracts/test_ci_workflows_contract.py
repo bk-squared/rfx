@@ -276,6 +276,12 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     cpu = [s for s in steps if s.get("name", "") == "Record the runner CPU"]
     assert len(cpu) == 1 and "if" not in cpu[0], cpu
     assert "model name" in cpu[0]["run"] and "avx512f" in cpu[0]["run"], cpu[0]["run"]
+    # Every process runs XLA capped at AVX2, set before pytest (#2166: outcomes changed with the runner's CPU).
+    cap = [i for i, s in enumerate(steps) if s.get("name", "").startswith("Cap XLA's CPU instruction set at AVX2")]
+    assert len(cap) == 1 and "if" not in steps[cap[0]], cap
+    cap_run = steps[cap[0]]["run"]
+    assert "sitecustomize.py" in cap_run and '_cap = "--xla_cpu_max_isa=AVX2"' in cap_run, cap_run
+    assert cap[0] < next(i for i, s in enumerate(steps) if "pytest " in str(s.get("run", "")))
     tests = [str(step["run"]) for step in steps if "pytest " in str(step.get("run", ""))]
     assert len(tests) == 1, tests
     assert tests[0].split()[1:3] == ["tests/unit/autodiff", "tests/contracts"], tests[0]

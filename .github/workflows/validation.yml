@@ -406,6 +406,27 @@ jobs:
           grep -m1 '^model name' /proc/cpuinfo
           if grep -q -m1 -w avx512f /proc/cpuinfo; then echo 'avx512f: yes'; else echo 'avx512f: no'; fi
 
+      # XLA compiles its CPU code for the runner's own CPU, and GitHub's runners differ (AMD EPYC 9V45 and 7763,
+      # Intel Xeon 8573C): on jax 0.12 two tests changed outcome with the CPU (#2166). Cap every process at AVX2,
+      # as the local gate does (rfx-core-desk L:3c69f6). A sitecustomize.py in site-packages appends the cap to a
+      # child's own XLA_FLAGS too (about 25 tests start a child with XLA_FLAGS replaced).
+      - name: Cap XLA's CPU instruction set at AVX2 in every process
+        run: |
+          site=$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
+          test ! -e "$site/sitecustomize.py"
+          cat > "$site/sitecustomize.py" <<'PY'
+          import os
+          _cap = "--xla_cpu_max_isa=AVX2"
+          _flags = os.environ.get("XLA_FLAGS", "")
+          if not _flags.strip():
+              os.environ["XLA_FLAGS"] = _cap
+          elif "--xla_cpu_max_isa=" not in _flags and _flags.lstrip().startswith("--"):
+              os.environ["XLA_FLAGS"] = _flags.rstrip() + " " + _cap
+          os.environ.setdefault("ONEDNN_MAX_CPU_ISA", "AVX2")
+          PY
+          env -u XLA_FLAGS python -c 'import os; f = os.environ["XLA_FLAGS"]; assert f == "--xla_cpu_max_isa=AVX2", f'
+          XLA_FLAGS=--xla_force_host_platform_device_count=2 python -c 'import os; f = os.environ["XLA_FLAGS"]; assert f == "--xla_force_host_platform_device_count=2 --xla_cpu_max_isa=AVX2", f'
+
       - name: Gradients and contracts on Python 3.12 / jax 0.11 — shard ${{ matrix.group }} of 6
         env:
           JAX_PLATFORMS: cpu
