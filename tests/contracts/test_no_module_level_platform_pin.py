@@ -1,4 +1,4 @@
-"""No test module, and no script a test can import, pins the JAX platform in the environment at import time.
+"""No test module, and no script or example a test can import, pins the JAX platform in the environment at import time.
 
 The sibling of `test_no_module_level_x64.py`, for `JAX_PLATFORMS` and
 `JAX_PLATFORM_NAME`. Under pytest the root `conftest.py` starts JAX before any
@@ -11,9 +11,12 @@ from `dict(os.environ)` then runs on the CPU. That is how the GPU suite on main
 `tests/oracle/test_patch_cavity_eps_oracle.py` carried such lines.
 
 The scan is the x64 file's AST walk over `tests/` and the root conftest, plus
-every module under `scripts/`: tests import scripts by module path or after
-putting a scripts folder on `sys.path`, and two diagnostic scripts imported by
-`tests/contracts/test_line_stub_volume_coverage_1512.py` carried such a line.
+every module under `scripts/`, `examples/` and `validation/`: tests import
+scripts by module path or after putting a scripts folder on `sys.path`, and the
+example-fidelity library loads examples and validation harnesses in-process.
+Two diagnostic scripts imported by
+`tests/contracts/test_line_stub_volume_coverage_1512.py` and the thru
+de-embedding harnesses under `validation/research/` carried such a line.
 A script that wants the CPU when run by hand sets it under
 `if __name__ == "__main__":`, which an import does not run. A write inside a
 function, fixture or `monkeypatch` passes; a module-level read passes; a write
@@ -87,17 +90,23 @@ def _module_level_platform_pins(tree: ast.Module) -> list[int]:
     return sorted(found)
 
 
+SCRIPT_ROOTS = ("scripts", "examples", "validation")
+
+
 def _script_files() -> list[Path]:
-    return sorted(p for p in (REPO_ROOT / "scripts").rglob("*.py") if p.is_file())
+    return sorted(p for root in SCRIPT_ROOTS for p in (REPO_ROOT / root).rglob("*.py") if p.is_file())
 
 
 def test_the_scan_sees_the_scripts_tests_import():
     """A scripts set that matched nothing would pass forever."""
     scripts = {p.relative_to(REPO_ROOT).as_posix() for p in _script_files()}
-    assert len(scripts) > 100, f"expected the whole scripts/ tree, found {len(scripts)} files"
+    for root in SCRIPT_ROOTS:
+        found = sum(s.startswith(root + "/") for s in scripts)
+        assert found > 10, f"expected the whole {root}/ tree, found {found} files"
     for imported in ("scripts/diagnostics/patch_edgefed_production_verify.py",
                      "scripts/diagnostics/patch_edgefed_match_vs_resonance_witness.py",
-                     "scripts/perf/step_cost_census.py"):
+                     "scripts/perf/step_cost_census.py",
+                     "validation/research/thru_feedpost_deembed.py"):
         assert imported in scripts, f"{imported} (imported by a test) is not scanned"
 
 
