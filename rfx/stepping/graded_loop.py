@@ -419,7 +419,7 @@ def run_nonuniform_until_decay(
     steps_done = 0
     reporter = None
     if report_every:
-        from rfx.progress import ProgressReporter
+        from rfx.stepping.progress import ProgressReporter
         # decay_by == 0.0 is the documented forced-N escape: max_steps is then
         # the exact run length, not a cap, and the line should not say "(cap)".
         reporter = ProgressReporter(max_steps, label=report_label,
@@ -456,7 +456,7 @@ def run_nonuniform_until_decay(
 
         # #1254: the caller's stop check at the chunk boundary.
         if stop_fn is not None:
-            from rfx.progress import concat_chunks
+            from rfx.stepping.progress import concat_chunks
             if stop_fn(steps_done, lambda: _assemble_nu_result(
                     setup, carry, concat_chunks(ys_chunks), n_record=steps_done)):
                 if reporter is not None and reporter.last_reported != steps_done:

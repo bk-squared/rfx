@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from rfx.ringdown import RingdownModel, _as_2d, _cmul
+from rfx.measurement.ringdown_model import RingdownModel, _as_2d, _cmul
 
 
 def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:

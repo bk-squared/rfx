@@ -6,8 +6,17 @@ from dataclasses import replace
 import jax
 import jax.numpy as jnp
 from rfx._precision import HIGHEST
-from rfx.adjoint import _plane_slice
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
+
+
+def _plane_slice(meta, shape):
+    _, axis, index, _, region = meta
+    transverse = [d for d in range(3) if d != axis]
+    if region is None:
+        region = (0, shape[transverse[0]], 0, shape[transverse[1]])
+    out = [slice(region[0], region[1]), slice(region[2], region[3])]
+    out.insert(axis, index)
+    return tuple(out)
 
 
 def design_adjoint_scan(ctx, initial, xs):

@@ -31,7 +31,8 @@ from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary
 from rfx.stepping.yee import update_e, update_e_aniso, update_e_aniso_inv
 from rfx.boundaries.pec import resolve_wall_faces, kottke_fenced_edge_masks, realized_pec_edge_masks
-from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, scan_with_progress, validate_report_every
+from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
+from rfx.stepping.progress_scan import scan_with_progress
 from rfx.snapshots import plan_snapshot_pieces, snapshot_axes, snapshot_extractor, validate_snapshot_spec
 from rfx.model import design_box_bounds, resolve_design_box
 
@@ -484,7 +485,7 @@ def run(
         if snapshot is not None or stop_fn is not None or report_every is not None:
             raise NotImplementedError(
                 "gradient='adjoint' does not support snapshots, stopping or progress")
-        from rfx.adjoint import design_adjoint_scan
+        from rfx.stepping.adjoint_scan import design_adjoint_scan
         final_carry, outputs = design_adjoint_scan(_step_ctx, carry_init, xs)
     elif checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
@@ -496,7 +497,7 @@ def run(
             # through, and the caller's stop check after each chunk.
             from types import SimpleNamespace
 
-            from rfx.progress import concat_chunks
+            from rfx.stepping.progress import concat_chunks
 
             def _after_chunk(done, carry, chunk_outputs):
                 def peek():

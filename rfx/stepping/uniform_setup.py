@@ -30,7 +30,8 @@ from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary, precompute_coeffs
 from rfx.stepping.yee import update_e, update_e_aniso, update_e_aniso_inv
 from rfx.boundaries.pec import resolve_wall_faces, kottke_fenced_edge_masks, realized_pec_edge_masks
-from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, scan_with_progress, validate_report_every
+from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
+from rfx.stepping.progress_scan import scan_with_progress
 from rfx.snapshots import plan_snapshot_pieces, snapshot_axes, snapshot_extractor, validate_snapshot_spec
 from rfx.model import design_box_bounds, resolve_design_box
 

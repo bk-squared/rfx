@@ -1,5 +1,28 @@
 """Port completion assembly and measured-column witness projections."""
+from typing import NamedTuple
+
 import numpy as np
+
+
+class _PortMeta(NamedTuple):
+    """One wire port as the run realized it (read from the run's own metadata)."""
+
+    mid: tuple
+    component: str
+    z0: object
+    excite: bool
+    live_cells: tuple
+    k_mid: int
+    accs: tuple          # rfx's (v, i, v_port) accumulators
+    freqs: object        # jnp float32 bins the accumulators used
+    meta: object         # the run's own metadata entry
+    owner: object        # shared realized sampling owner
+
+
+def _port_vi(lane: str, pm: _PortMeta, metrics: dict, e, hx, hy, hz):
+    """Evaluate recorded probe samples with the same table as the live scan."""
+    from rfx.measurement.port_records import recorded_port_vi
+    return recorded_port_vi(pm, e, hx, hy, hz)
 
 
 def _assemble(lane: str, pms, spectra_vp, spectra_i, freqs32, dt, v_mid=None):
@@ -73,7 +96,7 @@ def _s_observable(lane: str, pms, freqs32, dt):
     carry it. :meth:`RingdownRun._complete` and the early stop's check
     (:class:`RingdownStop`) both judge ``WE`` through this one map.
     """
-    from rfx.ringdown import _assemble, _cmul
+    from rfx.measurement.ringdown_model import _cmul
     from rfx.core.dft_utils import half_step_current_phase
 
     f_bins = np.asarray(freqs32, dtype=np.float32).astype(np.float64)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 import numpy as np
-from rfx.ringdown import _PortMeta, _port_vi
+from rfx.measurement.ringdown_port_s import _PortMeta, _port_vi
 
 
 def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):

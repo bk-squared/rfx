@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
+from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
 
 
 def scan_with_progress(

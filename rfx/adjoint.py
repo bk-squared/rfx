@@ -95,18 +95,9 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         raise NotImplementedError(f"gradient='adjoint' does not support {reason}")
 
 
-def _plane_slice(meta, shape):
-    _, axis, index, _, region = meta
-    transverse = [d for d in range(3) if d != axis]
-    if region is None:
-        region = (0, shape[transverse[0]], 0, shape[transverse[1]])
-    out = [slice(region[0], region[1]), slice(region[2], region[3])]
-    out.insert(axis, index)
-    return tuple(out)
-
-
 # Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
+    "_plane_slice": "rfx.stepping.adjoint_scan",
     "design_adjoint_scan": "rfx.stepping.adjoint_scan",
 }
 
