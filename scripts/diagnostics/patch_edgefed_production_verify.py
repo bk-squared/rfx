@@ -11,7 +11,8 @@ from __future__ import annotations
 import os, sys, warnings
 import numpy as np
 
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 import jax.numpy as jnp  # noqa: E402
 from rfx import Box, Simulation  # noqa: E402

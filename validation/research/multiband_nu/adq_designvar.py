@@ -15,7 +15,8 @@ from pathlib import Path
 import subprocess
 import time
 
-os.environ['JAX_PLATFORMS'] = 'cpu'
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ['JAX_PLATFORMS'] = 'cpu'
 import jax
 import jax.numpy as jnp
 import numpy as np

@@ -17,7 +17,8 @@ Run: ``python scripts/diagnostics/probe_wr90_lane_one_cell_slab_faces.py``
 (~15 s CPU). Exits nonzero on failure.
 """
 import os, sys, time
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
 import numpy as np
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 from rfx.api import Simulation

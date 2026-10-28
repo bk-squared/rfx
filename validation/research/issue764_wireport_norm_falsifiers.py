@@ -26,7 +26,8 @@ import os
 import sys
 import warnings
 
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 import numpy as np
 import jax.numpy as jnp
