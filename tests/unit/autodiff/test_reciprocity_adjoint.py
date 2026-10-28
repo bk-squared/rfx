@@ -372,7 +372,8 @@ def _raw_coefficient_results(n_steps):
 
     with enable_x64():
         sim, eps = fixture("float64", True)
-        with patch.object(adjoint, "design_adjoint_scan", capture):
+        import rfx.stepping.adjoint_scan as adjoint_scan
+        with patch.object(adjoint_scan, "design_adjoint_scan", capture):
             with pytest.raises(Captured):
                 objective(sim, steps=n_steps, mode="adjoint")(eps, None)
         ctx, initial, xs = (captured[k] for k in ("ctx", "initial", "xs"))

@@ -613,6 +613,8 @@ def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
 
     monkeypatch.setattr(rd, "two_window_witness", two_window)
     monkeypatch.setattr(rd, "_assemble", assemble)
+    import rfx.measurement.ringdown_port_s as ringdown_port_s
+    monkeypatch.setattr(ringdown_port_s, "_assemble", assemble)
     with pytest.warns(UserWarning, match="witness failed -- passivity"):
         r = _box("uniform", cells=3).run(
             n_steps=1500, compute_s_params=True, s_param_freqs=FREQS,

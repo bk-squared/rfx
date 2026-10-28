@@ -1188,10 +1188,10 @@ def test_layer_import_of_a_five_file_definition_is_refused(tmp_path, five, code,
 def test_reexport_and_other_callers_are_not_refused(tmp_path):
     path = "rfx/stepping/__init__.py"
     write(tmp_path, path, (REPO / path).read_text() + "\ndef local():\n"
-          "    from rfx.nonuniform import NonUniformGrid\n    from rfx.progress import ProgressReporter\n")
+          "    from rfx.nonuniform import NonUniformGrid\n    from rfx.ringdown import RingdownSpec\n")
     result = gate.count(CopiedSources(tmp_path))
     assert "rfx.nonuniform:NonUniformGrid" in result["baseline"]["reverse"][path]["R"]
-    assert result["caller_definitions"][path] == ["rfx.progress:ProgressReporter"]
+    assert result["caller_definitions"][path] == ["rfx.ringdown:RingdownSpec"]
     assert gate.five_file_definitions(result["caller_definitions"]) == []
 
 
