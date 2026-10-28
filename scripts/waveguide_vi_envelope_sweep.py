@@ -75,7 +75,7 @@ import rfx  # noqa: E402
 from rfx import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.geometry.csg import Box  # noqa: E402
-import rfx.sources.waveguide_port as _wgp
+import rfx.stepping.waveguide_source as _wgp
 import rfx.boundaries.cpml as _cpml_mod  # noqa: E402
 
 import tests._waveguide_chain_battery_fixture as F  # noqa: E402

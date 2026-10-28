@@ -94,9 +94,12 @@ def test_combination_refused_before_step(monkeypatch, entry, source):
     from rfx import simulation
     from rfx.model import tensor_operands
     from rfx.runners import nonuniform
+    from rfx.stepping import uniform_loop
 
     monkeypatch.setattr(tensor_operands, "form_tensor_operands", _no_step)
+    # The uniform runner reads run from rfx.simulation, the waveguide S extractors from uniform_loop.
     monkeypatch.setattr(simulation, "run", _no_step)
+    monkeypatch.setattr(uniform_loop, "run", _no_step)
     monkeypatch.setattr(nonuniform, "run_nonuniform", _no_step)
     # The graded lane already rejects conformal_pec before considering smoothing.
     # All other reachable rows name both inputs; no implementation text is imported.
