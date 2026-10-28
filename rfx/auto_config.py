@@ -12,6 +12,8 @@ Usage
 ...     accuracy="standard",
 ... )
 >>> sim = Simulation(**config.to_sim_kwargs())
+>>> # add every shape translated by config.offset: the domain holds one
+>>> # margin below and one above the geometry (#1941)
 """
 
 from __future__ import annotations

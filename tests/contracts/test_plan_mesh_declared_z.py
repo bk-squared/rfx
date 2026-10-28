@@ -88,3 +88,19 @@ def test_a_pole_carrying_board_on_the_absorber_is_left_to_the_dispersive_advisor
     codes = [i.code for i in sim.preflight()]
     assert "dispersive_pole_at_absorber_face" in codes
     assert "body_flush_on_absorber" not in codes
+
+
+@pytest.mark.parametrize("face, z_lo, fires", [
+    # ends 0.7 cell short of the z-hi face: the node one cell in is the board's,
+    # and the hi-face promotion (#638/#655) continues it into the pad
+    ("z-hi", .01 - .0016 - .7 * .0004, True),
+    # starts 0.3 cell above the z-lo face: the face node is vacuum, so is the pad
+    ("z-lo", .3 * .0004, False),
+])
+def test_a_box_face_window_follows_its_node_sampling(face, z_lo, fires):
+    sim = Simulation(freq_max=3.5e9, domain=(.02, .02, .01), dx=.0004,
+                     boundary="cpml", cpml_layers=2)
+    sim.add_material("board", eps_r=4.4)
+    sim.add(Box((0, 0, z_lo), (.02, .02, z_lo + .0016)), material="board")
+    locs = [i.loc for i in sim.preflight() if i.code == "body_flush_on_absorber"]
+    assert any(face in loc for loc in locs) is fires

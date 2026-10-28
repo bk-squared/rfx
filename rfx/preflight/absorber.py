@@ -78,7 +78,9 @@ import math
 
 import numpy as np
 
+from rfx._grid_metric import NODE_TIE_REL
 from rfx.core.jax_utils import is_tracer
+from rfx.geometry.csg import Box
 from rfx.preflight._common import (
     _ABSORBER_PROXIMITY_CELLS,
     _absorber_boundary_for_axis,
@@ -942,7 +944,7 @@ def _validate_cfg_body_flush_on_absorber(
                 ("lo", cpml_thick_lo[ax], 0.0, interior[0]),
                 ("hi", cpml_thick_hi[ax], length, interior[-1])):
             if depth > 0:
-                faces.append((ax, side, bound, float(width) / 2))
+                faces.append((ax, side, bound, float(width)))
     per_face = {}
     for idx, entry in enumerate(self._geometry):
         mat = self._resolve_material(entry.material_name)
@@ -959,11 +961,20 @@ def _validate_cfg_body_flush_on_absorber(
         if any(is_tracer(v) for v in (*lo, *hi)):
             continue
         extents = [abs(float(hi[a]) - float(lo[a])) for a in range(3)]
-        for ax, side, bound, half_cell in faces:
+        box = isinstance(entry.shape, Box)
+        for ax, side, bound, width in faces:
             if extents[ax] > (1 + 1e-9) * min(extents):
                 continue
             coord = min(lo[ax], hi[ax]) if side == "lo" else max(lo[ax], hi[ax])
-            if abs(float(coord) - bound) <= half_cell:
+            offset = float(coord) - bound
+            # A Box rasterizes half-open on nodes (csg.Box): it holds the lo face node
+            # when it starts at the face, and at a hi face the node one cell in, which
+            # the #638/#655 promotion continues. Other shapes sample cell centres.
+            # Farther out than half a cell is P1.9's crossing.
+            tie = NODE_TIE_REL * width
+            if (abs(offset) <= width / 2 if not box else
+                    -width / 2 <= offset <= tie if side == "lo" else
+                    -width + tie < offset <= width / 2):
                 per_face.setdefault((ax, side), []).append(
                     (extents[ax], idx, type(entry.shape).__name__, entry.material_name))
     for (ax, side), entries in sorted(per_face.items()):
