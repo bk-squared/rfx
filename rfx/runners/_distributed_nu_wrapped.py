@@ -71,7 +71,7 @@ def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
         from rfx.stepping.slab_cpml import export_state
         cpml_state = export_state(final['cpml'], setup.step_fn_inv.context.cpml_grid, layout,
                                   native=True)
-    from rfx.stepping.slab_ports import sum_partials
+    from rfx.stepping.slab_measurements import sum_partials
     from rfx.measurement.port_s import assemble_graded_ports_result
     final = sum_partials(final, mesh, mesh_ranks(mesh))
     port_result = assemble_graded_ports_result(final.get('wire_sparams'),

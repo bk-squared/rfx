@@ -14,6 +14,7 @@ from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
 from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
+from rfx.stepping.slab_measurements import _nodes, cut_probe_table
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -48,27 +49,6 @@ def runner_step_kind(grid, **flags):
 
 def _place(value, mesh):
     return place(value, NamedSharding(mesh, P('x')))
-
-
-def _nodes(indices, layout):
-    owners = np.asarray(indices[0]) // layout.nx_per_rank
-    rows = []
-    for rank in range(layout.n_devices):
-        keep = np.flatnonzero(owners == rank)
-        rows.append(keep)
-    width = max(map(len, rows), default=0)
-    nodes, selections, valid = [], [], []
-    for rank, keep in enumerate(rows):
-        n = len(keep)
-        local = np.zeros((3, width), np.int32)
-        local[0] = layout.ghost_width
-        for axis in range(3):
-            local[axis, :n] = np.asarray(indices[axis])[keep]
-        local[0, :n] += layout.ghost_width - rank * layout.nx_per_rank
-        nodes.append(local)
-        selections.append(np.pad(keep, (0, width-n)))
-        valid.append(np.arange(width) < n)
-    return np.asarray(nodes), np.asarray(selections), np.asarray(valid)
 
 
 def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
@@ -131,22 +111,6 @@ def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
                             jnp.zeros((), waveforms.dtype))
     samples = place(samples, NamedSharding(mesh, P(None, 'x')))
     return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
-
-
-def cut_probe_table(table, layout, mesh):
-    """Array payload; component names and channel count stay static in wrap."""
-    terms, all_ids = [], []
-    for term in table.components:
-        local, ids, valid = _nodes(term.indices, layout)
-        channels = np.where(valid, term.channel_ids[ids], table.n_channels)
-        weights = jnp.where(valid, term.weights[ids], 0)
-        terms.append((tuple(local[:, axis] for axis in range(3)), channels, weights))
-        all_ids.append(channels)
-    ids = np.concatenate(all_ids, axis=1) if all_ids else np.empty((layout.n_devices, 0), np.int32)
-    order = np.argsort(ids, axis=1, kind='stable').astype(np.int32)
-    sorted_ids = np.take_along_axis(ids, order, axis=1)
-    assert np.all(np.diff(sorted_ids, axis=1) >= 0), 'slab segment ids must be sorted'
-    return jax.tree.map(lambda a: _place(a, mesh), (tuple(terms), order, sorted_ids))
 
 
 def split(invariants, carry, layout, mesh, *, waveforms, dt=None):

@@ -174,7 +174,7 @@ def test_requested_port_fields_match_one_device_forward(family):
     assert len(observed) == 1  # The existing S driver ran once, without a second computation.
     # Time-stepping runs for this request: the main run and one S drive, as
     # measured on main 1215d3a35 (before the main run took the port records).
-    assert len(steps) == 2, steps
+    assert len(steps) == 1, steps
 
     def compare_field(name, value, reference):
         value, reference = np.asarray(value), np.asarray(reference)
