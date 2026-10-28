@@ -78,13 +78,50 @@ def layer_numbers(repo: Path, sha: str) -> dict:
     }
 
 
+def _value(node: ast.expr):
+    """A literal, or an expression of literals and comprehensions over literals; nothing else is evaluated."""
+    tree = ast.fix_missing_locations(ast.Expression(node))
+    return eval(compile(tree, CONTRACT, "eval"), {"__builtins__": {}})
+
+
+def _entries(node: ast.expr, head: int | None = None) -> list:
+    """The entries of a table written as a literal, with ``*``/``**`` parts and comprehensions expanded.
+
+    For a tuple or list the entries are its rows (only the first ``head`` fields when given); for a dict
+    its keys. Raises when a part is not of literals (a name, a call), which the caller reports as not counted.
+    """
+    def row(element):
+        if head is not None and isinstance(element, ast.Tuple):
+            return tuple(_value(x) for x in element.elts[:head])
+        value = _value(element)
+        return tuple(value[:head]) if head is not None else value
+
+    if isinstance(node, (ast.Tuple, ast.List)):
+        out = []
+        for element in node.elts:
+            out += _entries(element.value, head) if isinstance(element, ast.Starred) else [row(element)]
+        return out
+    if isinstance(node, ast.Dict):
+        out = []
+        for key, value in zip(node.keys, node.values):
+            out += _entries(value) if key is None else [_value(key)]
+        return out
+    if isinstance(node, ast.DictComp):
+        return _value(ast.ListComp(elt=node.key, generators=node.generators))
+    if isinstance(node, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+        return [row(ast.Constant(v)) if head is None else tuple(v[:head])
+                for v in _value(ast.ListComp(elt=node.elt, generators=node.generators))]
+    raise ValueError(f"not a table: {ast.unparse(node)[:60]}")
+
+
 def contract_numbers(repo: Path, sha: str) -> dict:
-    """Per literal exception table: its entries and the distinct cells they mark known-failing.
+    """Per exception table: its entries and the distinct cells they mark known-failing.
 
     A KNOWN_ROWS entry is (declaration, path, level, ident, reason); one cell can carry several idents, so
     the cell is its first three fields. A TWO_GUARD_REFUSALS key is one (declaration, path) refusal cell.
     A cell of a ported declaration runs in both equal-request directions; that expansion is not made here.
-    KNOWN_DIRECTIONS only narrows KNOWN_ROWS entries and marks no cell itself. None: the commit has no table.
+    KNOWN_DIRECTIONS only narrows KNOWN_ROWS entries and marks no cell itself. None: the commit has no table;
+    a table that is not written from literals is {"unread": why}.
     """
     source = committed(repo, sha, CONTRACT)
     found = dict.fromkeys(TABLES)
@@ -93,19 +130,14 @@ def contract_numbers(repo: Path, sha: str) -> dict:
     for node in ast.parse(source).body:
         if (isinstance(node, ast.Assign) and len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in TABLES):
-            name, value = node.targets[0].id, node.value
-            if not isinstance(value, (ast.Tuple, ast.List, ast.Dict)):
-                raise SystemExit(f"{CONTRACT}: {name} is not a literal table")
-            entries = value.keys if isinstance(value, ast.Dict) else value.elts
-            if name == "KNOWN_ROWS":
-                if not all(isinstance(e, ast.Tuple) and len(e.elts) >= 3 for e in entries):
-                    raise SystemExit(f"{CONTRACT}: a KNOWN_ROWS entry is not a literal row")
-                cells = {tuple(ast.unparse(x) for x in e.elts[:3]) for e in entries}
-            elif name == "TWO_GUARD_REFUSALS":
-                cells = {ast.unparse(e) for e in entries}
-            else:
-                cells = None
-            found[name] = {"entries": len(entries), "cells": None if cells is None else len(cells)}
+            name = node.targets[0].id
+            try:
+                entries = _entries(node.value, 3 if name == "KNOWN_ROWS" else None)
+            except Exception as exc:  # a name, a call or another form this reader does not evaluate
+                found[name] = {"unread": f"{type(exc).__name__}: {exc}"}
+                continue
+            cells = None if name == "KNOWN_DIRECTIONS" else len(set(entries))
+            found[name] = {"entries": len(entries), "cells": cells}
     return found
 
 
@@ -133,15 +165,23 @@ def report(sha: str, header: str, layers: dict, contract: dict) -> None:
           f"(of them names another caller defines: {shown(layers['defined_other'])})")
     print(f"run()/forward() contract known failures ({CONTRACT}; a ported declaration's cell runs in both "
           "equal-request directions, not expanded here):")
-    cells = [contract[t]["cells"] for t in ("KNOWN_ROWS", "TWO_GUARD_REFUSALS") if contract[t] is not None]
-    print(f"  known-failing cells: {sum(cells) if cells else 'absent'}")
+    def text(n, cells=True):
+        if n is None:
+            return "absent"
+        if "unread" in n:
+            return f"not counted at this commit (not a table of literals: {n['unread']})"
+        return f"{n['entries']} entries on {n['cells']} cells" if cells else str(n["entries"])
+
+    tables = [contract[t] for t in ("KNOWN_ROWS", "TWO_GUARD_REFUSALS")]
+    if any(n is not None and "unread" in n for n in tables):
+        total = "not counted at this commit"
+    else:
+        cells = [n["cells"] for n in tables if n is not None]
+        total = sum(cells) if cells else "absent"
+    print(f"  known-failing cells: {total}")
     for table in ("KNOWN_ROWS", "TWO_GUARD_REFUSALS"):
-        n = contract[table]
-        text = "absent" if n is None else f"{n['entries']} entries on {n['cells']} cells"
-        print(f"  {table}: {text}")
-    n = contract["KNOWN_DIRECTIONS"]
-    text = "absent" if n is None else n["entries"]
-    print(f"  KNOWN_DIRECTIONS (narrows KNOWN_ROWS, marks no cell): {text}")
+        print(f"  {table}: {text(contract[table])}")
+    print(f"  KNOWN_DIRECTIONS (narrows KNOWN_ROWS, marks no cell): {text(contract['KNOWN_DIRECTIONS'], False)}")
 
 
 def main(argv: list[str] | None = None) -> int:

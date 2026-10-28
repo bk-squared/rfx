@@ -77,3 +77,23 @@ def test_five_file_numbers_at_head_equal_the_committed_baseline():
         assert got["files"][path]["units"] == len(set().union(*(rules[r] for r in "SMAG"))), path
     assert got["reverse"] == sum(len(r["R"]) for r in committed.get("reverse", {}).values())
     assert got["outside"] == {p: {r: len(v[r]) for r in ("S", "M")} for p, v in committed["outside"].items()}
+
+
+def test_tables_built_from_unpacked_comprehensions_are_expanded_and_names_are_not_counted(tmp_path, capsys):
+    write(tmp_path, numbers.CONTRACT, "KNOWN_ROWS = (\n    *[(d, 'uniform', 'L2', 'D1', 'why') for d in ('P-a', 'P-b')],\n)\n"
+          "TWO_GUARD_REFUSALS = {\n    **{('P-coax', p): 'why' for p in ('uniform', 'graded')},\n"
+          "    **{(d, 'multi-device-graded'): 'why' for d in ('P-msl',)},\n    ('R-rlc', 'uniform'): 'why',\n}\n"
+          "KNOWN_DIRECTIONS = {key: ('a',) for key in KNOWN_ROWS}\n")
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "add", "-A")
+    git(tmp_path, "commit", "-q", "-m", "tables")
+    found = numbers.contract_numbers(tmp_path, "HEAD")
+    assert found["KNOWN_ROWS"] == {"entries": 2, "cells": 2}
+    assert found["TWO_GUARD_REFUSALS"] == {"entries": 4, "cells": 4}
+    assert "unread" in found["KNOWN_DIRECTIONS"]
+    write(tmp_path, numbers.CONTRACT, "TWO_GUARD_REFUSALS = {(d, 'uniform'): 'why' for d in DECLARATIONS}\n")
+    git(tmp_path, "commit", "-q", "-am", "a table read through a name")
+    found = numbers.contract_numbers(tmp_path, "HEAD")
+    assert "unread" in found["TWO_GUARD_REFUSALS"]
+    numbers.report("sha", "header", numbers.layer_numbers(REPO, "HEAD"), found)
+    assert "  known-failing cells: not counted at this commit\n" in capsys.readouterr().out
