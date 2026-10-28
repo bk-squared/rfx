@@ -311,5 +311,9 @@ def tfsf_source_drive(cfg, grid):
             return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
         return cfg.src_amp * (-2 * arg) * env
 
+    is_traced = getattr(grid, "is_traced", None)
+    if is_traced is not None and any(is_traced(axis) for axis in "xyz"):
+        from rfx.measurement.record_end import TRACED
+        return None, ("traced", TRACED)   # the box corners sit on traced nodes
     from rfx.measurement.tfsf_reach import tfsf_reach
     return waveform, tfsf_reach(cfg, grid)

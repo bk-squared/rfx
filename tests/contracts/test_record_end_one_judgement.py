@@ -691,6 +691,60 @@ def test_traced_and_still_on_read_one_text_on_every_path():
     traced(jnp.ones(50))
 
 
+TRACED_DZ = [0.5e-3] * 6 + [0.3e-3] * 5
+# Below the Courant limit of the 0.5 x 0.5 x 0.3 mm cell and fixed, so only the mesh is traced.
+TRACED_DT = 0.9 / (C0 * math.sqrt(2 / 0.5e-3 ** 2 + 1 / 0.3e-3 ** 2))
+TRACED_N = 900   # past the pulse end, so a judgeable record has a concrete end
+
+
+def _traced_dz_scene(kind, dz):
+    from rfx import Simulation
+    mm, depth = 1e-3, float(np.sum(TRACED_DZ))
+    fixed = dict(dt=TRACED_DT, dt_min_cell=0.3e-3, dz_profile=dz, dx=0.5 * mm, freq_max=20e9)
+    if kind == "plane":
+        sim = Simulation(domain=(6 * mm, 6 * mm, depth), boundary="pec", **fixed)
+        sim.add_source((3 * mm, 3 * mm, 1.5 * mm), "ez")
+        sim.add_dft_plane_probe(axis="z", coordinate=1.0 * mm, component="ez",
+                                freqs=np.array([5e9, 10e9]), name="p")
+    else:
+        sim = Simulation(domain=(12 * mm, 6 * mm, depth), boundary="cpml", cpml_layers=4, **fixed)
+        sim.add_tfsf_source(f0=10e9, bandwidth=0.5, polarization="ez", direction="+x", margin=2)
+    sim.add_probe((3 * mm, 3 * mm, 1.0 * mm), "ez")
+    return sim
+
+
+def _traced_dz_forward(kind, dz):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return _traced_dz_scene(kind, dz).forward(n_steps=TRACED_N, skip_preflight=True)
+
+
+@pytest.mark.parametrize("kind", ["plane", "tfsf"])
+def test_s2b_traced_mesh_judges_declared_positions_only(kind):
+    """A mesh that is a design variable puts realized nodes on tracers: a DFT
+    plane's corners and the TF/SF box (a transverse z profile; the diagonal
+    reach before S2b converted it too) read "cannot judge: traced". A probe
+    and a source at declared positions, with a fixed dt, keep the end the
+    concrete mesh gives. forward() still returns a finite gradient."""
+    import jax
+    import jax.numpy as jnp
+    from rfx.measurement.record_end import TRACED
+
+    def loss(dz):
+        r = _traced_dz_forward(kind, dz)
+        return jnp.sum(r.time_series ** 2), (r.settling_coverage, r.settling_probe_source_end_index)
+
+    (_, (coverage, probe_end)), grad = jax.value_and_grad(loss, has_aux=True)(
+        jnp.asarray(TRACED_DZ))
+    assert np.all(np.isfinite(np.asarray(grad)))
+    if kind == "plane":
+        concrete = _traced_dz_forward(kind, np.asarray(TRACED_DZ)).settling_probe_source_end_index
+        assert concrete is not None and probe_end == concrete
+        assert coverage.entries == (("DFT plane p", None, TRACED_N, TRACED),)
+    else:
+        assert probe_end is None and coverage.entries == ()
+
+
 SOURCE_END_NAMES = {"source_end_step", "simulation_source_end_step", "sampled_source_end_step",
                     "drive_end", "injection_end"}
 CALLERS = ("rfx/api/_settling.py", "rfx/probes/sparam_driver.py", "rfx/sparams/msl.py",
