@@ -468,8 +468,8 @@ def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
 
     With N cells, physical H indices are 0..N-1 and the stored high ghost
     is N. PMC requires D_H[0]=2H[0] and D_H[N]=-2H[N-1]. The high operand
-    includes H[N] to cancel the stored ghost at consumption, including any
-    source/absorber change since canonicalization. No physical H is zeroed.
+    includes H[N] to cancel the stored ghost at consumption. The zero update
+    coefficient holds that ghost at zero; no physical H is zeroed.
     Periodic and indexed invariant-axis conventions take precedence.
     ``frame`` bounds this axis's physical rows; ``owned`` selects global faces.
     Neither argument applies to an indexed read.

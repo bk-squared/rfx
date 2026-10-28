@@ -88,7 +88,6 @@ from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-
 from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-exports
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
-    apply_pmc_face_shmap,
     _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
@@ -185,12 +184,6 @@ _exchange_e_ghosts_shmap = exchange_e_yee_shmap
 # unchanged.
 _apply_pec_shmap = apply_pec_face_shmap
 
-
-# #1038 leg 3. ``_apply_pmc_shmap``'s body now lives as
-# ``apply_pmc_face_shmap`` in ``_distributed_common.py`` (the NU runner carried
-# a byte-identical copy once the slab-length parameter was spelled the same).
-# Kept as a module-local alias so the existing call sites are unchanged.
-_apply_pmc_shmap = apply_pmc_face_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -979,6 +972,12 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # H and E local updates via shard_map
     # ------------------------------------------------------------------
 
+    from rfx.boundaries.pmc import magnetic_update_factors
+    magnetic_factors = magnetic_update_factors(_pmc_faces_frozen, grid.shape)
+    magnetic_factors = tuple(
+        cut(factor, layout, "pmc_h_factor", mesh=mesh) if axis == 0 and factor is not None
+        else factor for axis, factor in enumerate(magnetic_factors))
+
     def _update_h_shmap(st, mat, *, ranks):
 
         @partial(
@@ -989,20 +988,21 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 P("x"), P("x"), P("x"),  # hx, hy, hz
                 P(),                     # step (replicated)
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
+                (P("x"), P(), P()),       # optional PMC axis factors
             ),
             out_specs=(P("x"), P("x"), P("x"), P()),  # hx, hy, hz, step
             check_rep=False,
         )
-        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, *, rank):
+        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, factors, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
                                  mu_r=magnetic_low_ghost(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall))
-            new_st = _update_h_local(_st, _mat, dt, dx, high_wall=(False, *high_wall[1:]))
+            new_st = _update_h_local(_st, _mat, dt, dx, factors, high_wall=(False, *high_wall[1:]))
             return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
         hx, hy, hz, step = _h(
             ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r)
+            mat.eps_r, mat.sigma, mat.mu_r, magnetic_factors)
         return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
     def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials, *, ranks):
@@ -1126,15 +1126,15 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         Stage order (#1041)::
 
-            H -> TF/SF-H -> CPML-H -> exch H -> PMC face -> E -> TF/SF-E -> CPML-E
+            H -> TF/SF-H -> CPML-H -> exch H -> E -> TF/SF-E -> CPML-E
               -> sources -> PEC face -> PEC mask -> exch E -> probes
 
         The E ghost exchange is the LAST stage of the E half-step, so a
         ghost row is always a copy of the owner's FINISHED real row -- a
         row the realized-PEC mask stage has already zeroed where the
         geometry says metal (#1053). This is ``distributed_nu.py``'s order
-        since ``ac782d4f`` (#931 T3). The PMC image canonicalizes only
-        the global high H ghost, which no exchange sends. Until #1041
+        since ``ac782d4f`` (#931 T3). The PMC coefficient holds the global
+        high H ghost at zero; no exchange sends it. Until #1041
         this body exchanged BEFORE injecting, which lagged a seam-cell
         source by one step in the neighbour's copy -- see the comment on
         stage 7 for the measurement that moved it.
@@ -1164,9 +1164,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # Canonicalize PMC high ghosts after the final H update/correction.
-        st = _apply_pmc_shmap(
-            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
         # 4. E update
         st, db_st, lr_st, absorber = _update_e_shmap(
@@ -1259,7 +1256,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         Stage order (#1041)::
 
-            H -> TF/SF-H -> exch H -> PMC face -> E -> TF/SF-E -> sources -> PEC face
+            H -> TF/SF-H -> exch H -> E -> TF/SF-E -> sources -> PEC face
               -> PEC mask -> exch E -> probes
 
         Same invariant as ``step_fn_cpml``: the E ghost exchange is last,
@@ -1285,9 +1282,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # 2. Exchange H ghost cells
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # Canonicalize PMC high ghosts after the final H update/correction.
-        st = _apply_pmc_shmap(
-            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
         # 3. E update
         st, db_st, lr_st, absorber = _update_e_shmap(

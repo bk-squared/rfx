@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from rfx.boundaries.pec import apply_pec_faces
-from rfx.boundaries.pmc import apply_pmc_faces
+from rfx.boundaries.pmc import magnetic_update_factors
 from rfx.core.yee import init_state
 from rfx.stepping.slab import FILL, Slab, cut
 
@@ -38,10 +38,10 @@ def _state(shape=(11, 4, 5)):
 def _operator(kind):
     if kind == "pec":
         return apply_pec_faces
-    return lambda state, faces, **kwargs: apply_pmc_faces(state, faces, image=True, **kwargs)
+    raise ValueError(kind)
 
 
-@pytest.mark.parametrize('kind', ('pec', 'pmc'))
+@pytest.mark.parametrize('kind', ('pec',))
 @pytest.mark.parametrize('subset', range(64))
 def test_framed_all_face_subsets_equal_default_on_random_state(kind, subset):
     _live_check()
@@ -55,7 +55,7 @@ def test_framed_all_face_subsets_equal_default_on_random_state(kind, subset):
     _check_bits(call(state, {face: jnp.bool_(True) for face in faces}), op(state, faces))
 
 
-@pytest.mark.parametrize("kind", ("pec", "pmc"))
+@pytest.mark.parametrize("kind", ("pec",))
 def test_t2_face_ownership_and_static_frame(kind):
     _live_check()
     op = _operator(kind)
@@ -92,7 +92,7 @@ def test_t2_face_ownership_and_static_frame(kind):
                     state, jnp.bool_(owner)), state)
 
 
-@pytest.mark.parametrize("kind", ("pec", "pmc"))
+@pytest.mark.parametrize("kind", ("pec",))
 @pytest.mark.parametrize("devices", (1, 2, 3))
 def test_t2_slab_rows_equal_global_operator(kind, devices):
     _live_check()
@@ -115,7 +115,7 @@ def test_t2_slab_rows_equal_global_operator(kind, devices):
         _check_bits(result, local._replace(**expected))
 
 
-@pytest.mark.parametrize("kind", ("pec", "pmc"))
+@pytest.mark.parametrize("kind", ("pec",))
 @pytest.mark.parametrize("axis", ("y", "z"))
 def test_t2_nondefault_transverse_frame_refuses(kind, axis):
     _live_check()
@@ -123,8 +123,22 @@ def test_t2_nondefault_transverse_frame_refuses(kind, axis):
         _operator(kind)(_state(), FACES, frame={axis: (1, 3)})
 
 
-@pytest.mark.parametrize("kwargs", ({"frame": {}}, {"owned": {}}))
-def test_t2_legacy_pmc_refuses_new_arguments(kwargs):
-    _live_check()
-    with pytest.raises(ValueError, match="image=True"):
-        apply_pmc_faces(_state(), FACES, **kwargs)
+@pytest.mark.parametrize("subset", range(64))
+@pytest.mark.parametrize("devices", (1, 2, 3))
+def test_pmc_coefficient_owned_rows(subset, devices):
+    shape = (11, 4, 5)
+    faces = frozenset(face for index, face in enumerate(sorted(FACES)) if subset & (1 << index))
+    factors = magnetic_update_factors(faces, shape)
+    layout = Slab(shape[0], devices)
+    for axis, factor in enumerate(factors):
+        if f"{'xyz'[axis]}_hi" not in faces:
+            assert factor is None
+            continue
+        expected = np.array([1.] * (shape[axis] - 1) + [0.], dtype=np.float32)
+        np.testing.assert_array_equal(factor, expected)
+        if axis == 0:
+            slabs = cut(factor, layout, "pmc_h_factor")
+            for rank in range(devices):
+                indices = rank * layout.nx_per_rank + np.arange(layout.nx_local) - 1
+                want = ((indices >= 0) & (indices < shape[0] - 1)).astype(np.float32)
+                np.testing.assert_array_equal(slabs[rank], want)

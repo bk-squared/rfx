@@ -66,7 +66,6 @@
         "_update_h_local_nu",
         "apply_pec_face_shmap",
         "apply_pec_mask_shmap",
-        "apply_pmc_face_shmap",
         "exchange_e_yee_shmap",
         "exchange_h_yee_shmap",
         "inject_sources_shmap",

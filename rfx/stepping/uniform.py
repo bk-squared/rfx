@@ -152,10 +152,11 @@ def make_uniform_step(
                 frame.st = ctx.apply_upml_h(frame.st, ctx.upml_coeffs, periodic=periodic)
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
-                    high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch)
+                    high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch,
+                    magnetic_factors=invariants["magnetic_factors"])
 
     def h_boundary(frame: UniformFrame):
-        """Correct incident H, absorb outgoing H, and enforce magnetic walls."""
+        """Correct incident H, absorb outgoing H, and damp conductor cells."""
         if not ctx.use_fast_he:
             if ctx.use_tfsf:
                 frame.st = ctx.apply_tfsf_h(frame.st, ctx.tfsf_cfg, frame.carry["tfsf"], dx, dt)
@@ -200,9 +201,6 @@ def make_uniform_step(
                         mask_hy=_xx0 & _zz0,
                         mask_hz=_xx0 & _yy0,
                     )
-            if ctx.use_pmc_faces:
-                from rfx.boundaries.pmc import apply_pmc_faces
-                frame.st = apply_pmc_faces(frame.st, ctx.pmc_faces_frozen, image=True)
             if ctx.use_tfsf:
                 if ctx.tfsf_is_2d:
                     frame.tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, frame.carry["tfsf"], dx, dt)

@@ -102,11 +102,6 @@ def test_crossing_flux_face_has_half_dual_area(cells):
     np.testing.assert_array_equal(2 * half, full)
 
 
-def test_collapsed_axis_has_no_high_ghost_to_canonicalize():
-    from rfx.boundaries.pmc import apply_pmc_faces
-    from rfx.core.yee import FDTDState
-    fields = [jnp.full((3, 4, 1), i + 1.) for i in range(6)]
-    state = FDTDState(*fields, jnp.array(0))
-    result = apply_pmc_faces(state, frozenset({"z_hi"}), image=True)
-    for before, after in zip(state, result):
-        np.testing.assert_array_equal(before, after)
+def test_collapsed_axis_has_no_high_ghost_coefficient():
+    from rfx.boundaries.pmc import magnetic_update_factors
+    assert magnetic_update_factors({"z_hi"}, (3, 4, 1)) == (None, None, None)
