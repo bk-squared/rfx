@@ -98,6 +98,7 @@ if TYPE_CHECKING:
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
+from rfx._ringdown_growth_judge import GrowingPoleJudgement, judge_growing_poles
 from rfx._ringdown_pencil import (
     IdentificationMemoryRefused,
     _check_run_identification_memory,
@@ -1053,9 +1054,6 @@ def _rebuild_channels(lane: str, pms, e_cols, h_cols) -> np.ndarray:
 
 from rfx.measurement.ringdown_port_s import (
     _assemble, _assemble_core, _s_observable, measured_s,
-)
-from rfx.measurement.ringdown_growth_judge import (
-    GrowingPoleJudgement, judge_growing_poles,
 )
 
 
