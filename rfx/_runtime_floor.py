@@ -4,8 +4,9 @@ import re
 
 MIN_PYTHON = (3, 11)
 MIN_JAX = "0.10.2"
-# Install-time cap only (#2116): from jaxlib 0.11.2 the CPU time step runs 2.3-3x slower; import does not refuse newer jax.
-JAX_BELOW = "0.11.2"
+# Install-time cap only (#2116, #2125): jax 0.12 takes 1.24-1.29x as long per step at 0.53 M cells on CPU and GPU;
+# import does not refuse newer jax. (jaxlib 0.11.2's CPU field copies are removed by the CPML write-back barrier.)
+JAX_BELOW = "0.12"
 
 
 def _version_key(version: str) -> tuple[tuple[int, ...], int]:

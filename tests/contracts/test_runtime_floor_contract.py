@@ -20,7 +20,7 @@ def test_runtime_floor_contract():
     config = tomllib.loads((ROOT / "pyproject.toml").read_text())
     assert floor.MIN_PYTHON == (3, 11)
     assert floor.MIN_JAX == "0.10.2"
-    assert floor.JAX_BELOW == "0.11.2"
+    assert floor.JAX_BELOW == "0.12"
     assert config["project"]["requires-python"] == ">=3.11"
     assert config["tool"]["mypy"]["python_version"] == "3.11"
     deps = {r.name: r for r in map(Requirement, config["project"]["dependencies"])}
