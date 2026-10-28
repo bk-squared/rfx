@@ -345,7 +345,6 @@ SIGMA_READS = {
     ('rfx/fidelity.py', '_declared_material', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/geometry/port_termination.py', 'conductor_entries', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/geometry/rasterize_grid.py', 'rasterize_geometry', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/geometry/smoothing.py', 'smoothed_shape_pairs', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/interop/_design.py', 'simulation_from_design', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/io.py', 'export_geometry_json', 'm'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/materials/__init__.py', 'set_material', 'materials'): (1, 'passing on: where(mask,new_sigma,old_sigma)'),

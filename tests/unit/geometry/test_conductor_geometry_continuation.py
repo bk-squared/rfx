@@ -264,8 +264,10 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
     assert mask.sum() == (32 if sheet else 128)
     conductor = np.asarray(sheets[0].footprint if sheet else result[3])
     assert conductor[:2].any() and conductor[-3:-1].any()
+    # Assembled as PEC (the mask above), so it leaves the dielectric average
+    # (#1778): no continued copy, and no declared one either.
     pairs, _ = smoothed_shape_pairs(sim, grid)
-    assert pairs[0][0] is declared
+    assert not pairs
 
 
 @pytest.mark.parametrize("axis", range(3))
