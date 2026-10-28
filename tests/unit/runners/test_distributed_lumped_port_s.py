@@ -206,32 +206,15 @@ def test_parity_detects_mutations(monkeypatch, mutation):
             return original(sim, freqs, **kwargs)
 
         monkeypatch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan", disabled)
-    elif mutation == "own_slab":
-        original = runner.sample_probes_shmap
-
-        def wrong_owner(st, mesh, count, specs, owners, **kwargs):
-            if count == 10:
-                # Keep each sample's local index, but incorrectly read all
-                # four H samples from the port's slab, including seam H(i-1).
-                owners = [owners[(k // 5) * 5] for k in range(count)]
-            return original(st, mesh, count, specs, owners, **kwargs)
-
-        monkeypatch.setattr(runner, "sample_probes_shmap", wrong_owner)
     else:
-        original = driver._lumped_recording_dfts
-
-        def no_half_step(*args):
-            # Only mutate replay; the single-device reference keeps its phase.
-            with monkeypatch.context() as patch:
-                # S2 M2: the half step is the H stamp of the one DFT kernel.
-                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
-                              kernel_transform(r, f, dt, "E", **k))
-                return original(*args)
-
-        monkeypatch.setattr(driver, "_lumped_recording_dfts", no_half_step)
+        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
+        mutate_port_sampler(monkeypatch, mutation)
     with pytest.raises(AssertionError, match="S parity max_delta"):
         _parity(channel=True)
     print(f"mutation={mutation}: parity RED")
+    monkeypatch.undo()
+    _parity(channel=True)
+    print(f"mutation={mutation}: restored GREEN")
 
 
 @pytest.mark.parametrize("explicit", [False, True])

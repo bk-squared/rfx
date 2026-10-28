@@ -506,9 +506,23 @@ def test_c8_consumers(consumer, monkeypatch):
         assert set(port._drive_stamps) == {cell}
         assert float(materials.sigma[cell]) > 0
     elif consumer == 'sparam_recording':
-        from rfx.probes.sparam_driver import _lumped_recording_probes
-        probes, _ = _lumped_recording_probes(grid, [entry])
-        assert (probes[0].i, probes[0].j, probes[0].k) == cell
+        from rfx.runners.distributed_v2 import run_distributed
+        from rfx.stepping import uniform_slab_ports
+        seen = []
+
+        class CellsCaptured(Exception):
+            pass
+
+        def capture(grid, entries, specs, *args, **kwargs):
+            seen.extend(specs)
+            raise CellsCaptured
+
+        # Stop after run_distributed resolves its port cells with field_index,
+        # before measurement setup or any stepping can obscure that consumer.
+        monkeypatch.setattr(uniform_slab_ports, 'UniformSlabPorts', capture)
+        with pytest.raises(CellsCaptured):
+            run_distributed(sim, n_steps=2, devices=jax.devices('cpu')[:2])
+        assert seen[0][3] == cell
     elif consumer == 'realized_geometry':
         assert sim.realized_geometry().ports[0].edges == (cell,)
     elif consumer == 'vmap_source':
