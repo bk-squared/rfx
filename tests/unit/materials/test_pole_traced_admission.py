@@ -63,6 +63,29 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
         jax.block_until_ready(checked(left, left))
 
 
+def test_concrete_records_of_a_set_spanning_two_slabs_combine_concrete_under_jit():
+    # A Lorentz set on two slabs, closed over by an outer jax.jit: its concrete
+    # records must combine on the host, or the judge sees a traced count and
+    # refuses a run it can judge (3 devices refused where 2 ran).
+    from rfx.core.jax_utils import is_tracer
+    from rfx.model.pole_stability import PoleSetExtremes, combine_pole_extremes
+
+    def record(eps, sigma, count, rows):
+        return PoleSetExtremes(1, ((0., 0., 9.),), jnp.asarray(eps), jnp.asarray(sigma), jnp.asarray(sigma),
+                               jnp.asarray(count), (jnp.asarray(rows), jnp.asarray([True])))
+    slabs = [(record(2., .125, 3, [True, False]),), (record(1.5, .25, 4, [False, True]),)]
+    combined = []
+
+    def under_jit():
+        combined.extend(combine_pole_extremes(slabs))
+        return 0.
+    jax.make_jaxpr(under_jit)()
+    (out,) = combined
+    assert not any(is_tracer(v) for v in (out.eps_low, out.sigma_low, out.sigma_high, out.count, *out.occupied))
+    assert (float(out.eps_low), float(out.sigma_low), float(out.sigma_high), int(out.count)) == (1.5, .125, .25, 7)
+    assert np.array_equal(out.occupied[0], [True, True]) and np.array_equal(out.occupied[1], [True])
+
+
 @pytest.mark.parametrize("delta_eps, sigma, refused", [(2., 0., False), (-2., 0., True), (1., -1., True)])
 def test_out_of_program_debye_only_under_jit_is_skipped_only_when_passive(delta_eps, sigma, refused):
     """#1934: a passive Debye-only set cannot fail the check, so a jit-traced one runs; an active one is refused."""
