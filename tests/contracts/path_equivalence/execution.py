@@ -297,7 +297,7 @@ def execute(cell):
             try:
                 sim = build(cell.row, cell.refused, graded=cell.graded)
             except (ValueError, NotImplementedError) as exc:
-                targeted = (cell.row[0] in ('_dt_pin', '_dt_min_cell') and 'dt= pins' in str(exc)) or (cell.row[0] == '_floquet_ports' and 'Floquet ports do not support' in str(exc))
+                targeted = (cell.row[0] in ('_dt_pin', '_dt_min_cell') and 'dt= pins' in str(exc)) or (cell.row[0] == '_floquet_ports' and 'Floquet ports do not support' in str(exc)) or (cell.row == ('_tfsf', 'closed_box') and 'CustomWaveform and closed_box TFSF require a uniform' in str(exc))
                 if not targeted:
                     raise
                 report['refusal'] = str(exc)

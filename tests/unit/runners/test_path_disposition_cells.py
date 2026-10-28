@@ -239,8 +239,7 @@ def _guide(lane, on, ref=False, n_modes=1):
     return sim
 
 
-def _plane_wave(lane, on, ref=False):
-    closed = lane in {"run_distributed", "fwd_distributed"}
+def _plane_wave(lane, on, ref=False, *, closed=False):
     sim = _simulation(lane, (24, 12, 14) if closed else (24, 6, 6), ref=ref, boundary="cpml")
     if on:
         sim.add_tfsf_source(f0=5e9, bandwidth=0.5, margin=3, closed_box=closed)
@@ -392,8 +391,8 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_floquet_ports", "scan_angle"): Feature(_floquet_cell(30.0)),
     ("_lumped_rlc", "R"): _plus(lambda s, _: s.add_lumped_rlc(mm(6, 6, 6), "ez", R=10.0)),
     ("_lumped_rlc", "series_RL"): _plus(lambda s, _: s.add_lumped_rlc(mm(6, 6, 6), "ez", R=10.0, L=1e-9)),
-    ("_tfsf", "plane_wave"): Feature(
-        _plane_wave, variant=lambda lane: "closed" if lane in {"run_distributed", "fwd_distributed"} else ""),
+    ("_tfsf", "plane_wave"): Feature(_plane_wave),
+    ("_tfsf", "closed_box"): Feature(lambda lane, on, ref=False: _plane_wave(lane, on, ref, closed=True)),
     ("_refinement", "slab"): Feature(_refinement, parity=False),
     ("_boundary", "cpml"): _boundary({"boundary": "cpml"}, adi_layers=4,
                                      boundary={lane: ("cpml", "adi") for lane in ADI}),

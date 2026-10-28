@@ -102,6 +102,7 @@ BUILDERS = {
     ('_lumped_rlc', 'R'): _add('add_lumped_rlc', point(5, 3, 3), 'ez', R=10.),
     ('_lumped_rlc', 'series_RL'): _add('add_lumped_rlc', point(5, 3, 3), 'ez', R=10., L=1e-9),
     ('_tfsf', 'plane_wave'): _add('add_tfsf_source', f0=5e9, bandwidth=0.5, margin=1),
+    ('_tfsf', 'closed_box'): _add('add_tfsf_source', f0=5e9, bandwidth=0.5, margin=1, closed_box=True),
     ('_refinement', 'slab'): _add('add_refinement', z_range=(0., 4*DX), ratio=2),
     ('_refinement', 'relaxed_validation'): _add('add_refinement', z_range=(0., 4*DX), ratio=2, validation='research'),
     ('_boundary', 'cpml'): ({}, _nothing),
@@ -138,7 +139,9 @@ def build(row, lane, *, graded=False, dt=None):
         # Modal aperture dimensions are declarations, not inferred rounded
         # box lengths. Put both transverse walls exactly on grid nodes.
         kwargs['domain'] = point(10.3, 8, 7)
-    if row[0] == '_tfsf':
+    if row == ('_tfsf', 'closed_box'):
+        kwargs['domain'] = point(14, 12, 12)
+    if row == ('_tfsf', 'plane_wave'):
         # One request on both meshes: uniform refuses explicit non-periodic
         # side faces (#1945), so the plane wave takes the shorthand.
         kwargs['boundary'] = 'cpml'
@@ -172,7 +175,10 @@ def build(row, lane, *, graded=False, dt=None):
             y='pec', z='pec')
     sim = Simulation(**kwargs)
     sim.add_material('block', eps_r=2.5)
-    if row[0] == '_tfsf':
+    if row == ('_tfsf', 'closed_box'):
+        # Keep every scatterer face strictly inside the total-field box.
+        sim.add(Box(point(4, 4, 4), point(7, 7, 7)), material='block')
+    elif row == ('_tfsf', 'plane_wave'):
         # Addendum 5b: same x slab and eps, invariant through transverse pads.
         sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
     elif row[0] == '_waveguide_ports':

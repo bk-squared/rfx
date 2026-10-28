@@ -33,6 +33,7 @@ import functools
 import inspect
 import threading
 from dataclasses import fields, is_dataclass, replace
+from types import SimpleNamespace
 from typing import Callable
 
 import jax
@@ -88,6 +89,27 @@ _PEC_SIGMA = 1e6   # Simulation._PEC_SIGMA_THRESHOLD
 # lumped element); the adjacent admission tests require a collected invariant
 # witness for every name. Curl/CPML-H already update the ghost like its owner.
 SLAB_OWNER_ONLY_H_WRITERS = ("closed_box_tfsf",)
+
+
+def slab_tfsf_refusal(entry) -> str | None:
+    """Return the slab refusal kind for a declaration or realized config."""
+    from rfx.sources.tfsf import is_tfsf_2d, is_tfsf_methodB
+    if getattr(entry, "face_record", None) is not None:
+        kind = "TFSF face_record replay"
+    elif is_tfsf_methodB(entry) or (abs(getattr(entry, "angle_deg", 0.)) > .01
+                                    and getattr(entry, "method", None) == "methodB"):
+        kind = "TFSF Method B oblique (is_tfsf_methodB)"
+    elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
+        kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
+    elif getattr(entry, "closed_box", False) and (
+        getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
+    ):
+        kind = "oblique closed-box TFSF (theta_deg or phi_deg != 0)"
+    elif not getattr(entry, "closed_box", False):
+        kind = "open-slab normal-incidence TFSF (periodic y/z is not on slabs)"
+    else:
+        return None
+    return kind
 
 
 # ----------------------------------------------------------------- helpers
@@ -330,7 +352,8 @@ DETECTORS: dict[Row, Callable] = {
         not _series_with_inductor(e) for e in sim._lumped_rlc),
     ("_lumped_rlc", "series_RL"): lambda sim: any(
         _series_with_inductor(e) for e in sim._lumped_rlc),
-    ("_tfsf", "plane_wave"): lambda sim: sim._tfsf is not None,
+    ("_tfsf", "plane_wave"): lambda sim: sim._tfsf is not None and not sim._tfsf.closed_box,
+    ("_tfsf", "closed_box"): lambda sim: sim._tfsf is not None and sim._tfsf.closed_box,
     ("_refinement", "slab"): lambda sim: sim._refinement is not None,
     ("_refinement", "relaxed_validation"): _relaxed_validation,
     # boundaries
@@ -400,6 +423,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_lumped_rlc", "R"): "a lumped RLC element (add_lumped_rlc)",
     ("_lumped_rlc", "series_RL"): "a series lumped RLC element with an inductance",
     ("_tfsf", "plane_wave"): "a TFSF plane-wave source (add_tfsf_source)",
+    ("_tfsf", "closed_box"): "a TFSF plane-wave source (add_tfsf_source)",
     ("_refinement", "slab"): "a subgrid refinement (add_refinement)",
     ("_refinement", "relaxed_validation"): (
         "validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
@@ -483,7 +507,8 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS,
     ("_lumped_rlc", "series_RL"): _NO_SHEETS,
-    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform", "run_distributed", "fwd_distributed"}),
+    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
+    ("_tfsf", "closed_box"): frozenset({"run_uniform", "fwd_uniform"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
     ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
@@ -616,6 +641,7 @@ _CALCULATOR_ROWS = {
         ('_lumped_rlc', 'R'),
         ('_lumped_rlc', 'series_RL'),
         ('_tfsf', 'plane_wave'),
+        ('_tfsf', 'closed_box'),
         ('_boundary', 'cpml'),
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
@@ -702,6 +728,7 @@ _CALCULATOR_ROWS = {
         ('_lumped_rlc', 'R'),
         ('_lumped_rlc', 'series_RL'),
         ('_tfsf', 'plane_wave'),
+        ('_tfsf', 'closed_box'),
         ('_boundary', 'cpml'),
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
@@ -822,6 +849,14 @@ _CALCULATOR_ROWS = {
 for _calculator, _rows in _CALCULATOR_ROWS.items():
     for _row in _rows:
         _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {_calculator}
+
+# Canonical normal-incidence rows use the runner's own refusal classification.
+for _kind in ("plane_wave", "closed_box"):
+    _entry = SimpleNamespace(closed_box=_kind == "closed_box", angle_deg=0.,
+                             theta_deg=0., phi_deg=0., face_record=None)
+    if slab_tfsf_refusal(_entry) is None:
+        _row = ("_tfsf", _kind)
+        _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {"run_distributed"}
 
 # Both uniform distributed entries reach the same runner and admission.
 for _row, _lanes in _ADMITTED_ON.items():
@@ -983,6 +1018,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 ("_lumped_rlc", "R"): "add_lumped_rlc()",
                 ("_lumped_rlc", "series_RL"): "add_lumped_rlc()",
                 ("_tfsf", "plane_wave"): "add_tfsf_source()",
+                ("_tfsf", "closed_box"): "add_tfsf_source()",
                 ("_waveguide_ports", "waveguide_port"): "add_waveguide_port()",
                 ("_coaxial_ports", "coax_port"): "add_coaxial_port()",
                 ("_floquet_ports", "floquet_port"): "add_floquet_port()",
@@ -1081,23 +1117,9 @@ def refuse_distributed_sources(sim, lane):
 
 def refuse_slab_tfsf(entry, lane="uniform multi-device"):
     """Accept declarations or realized configs; face replays never enter a slab scan."""
-    from rfx.sources.tfsf import is_tfsf_2d, is_tfsf_methodB
-    if getattr(entry, "face_record", None) is not None:
-        kind = "TFSF face_record replay"
-    elif is_tfsf_methodB(entry) or (abs(getattr(entry, "angle_deg", 0.)) > .01
-                                    and getattr(entry, "method", None) == "methodB"):
-        kind = "TFSF Method B oblique (is_tfsf_methodB)"
-    elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
-        kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
-    elif getattr(entry, "closed_box", False) and (
-        getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
-    ):
-        kind = "oblique closed-box TFSF (theta_deg or phi_deg != 0)"
-    elif not getattr(entry, "closed_box", False):
-        kind = "open-slab normal-incidence TFSF (periodic y/z is not on slabs)"
-    else:
-        return
-    raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
+    kind = slab_tfsf_refusal(entry)
+    if kind is not None:
+        raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
 
 
 #: Closed-box TF/SF validation covers three seams, a padded last slab, a box face
