@@ -164,10 +164,12 @@ array) is not set on the boundary itself but by the source that needs it:
   with a warning, and on a graded mesh you declare them explicitly.
 - **Plane wave from a slab source.** On each axis across the beam, the two
   faces must be periodic, or both the matching wall (PEC on the faces normal to
-  E, PMC on the faces normal to H), or both absorbing, which is the default.
-  Walls and absorbers there are solved as periodic, absorber layers included,
-  and preflight warns (`tfsf_transverse_periodic`): along that axis you model
-  an infinite array of your structure. A structure that is not uniform along
+  E, PMC on the faces normal to H), or both absorbing. On the uniform mesh
+  those faces are solved as periodic: leave `boundary` out or pass
+  `boundary="cpml"`, and preflight warns (`tfsf_transverse_periodic`); along
+  that axis you model an infinite array of your structure. CPML, PMC or PEC
+  declared on such a face is refused there, naming the faces (z only for
+  `method="methodB"`). The graded mesh solves the declared faces as declared. A structure that is not uniform along
   such an axis is refused; declare the axis `"periodic"` to solve an array on
   purpose, or use `closed_box=True` for a finite scatterer. A mixed pair is
   refused. This uniformity check applies at normal incidence. At an angle, the

@@ -16,7 +16,8 @@ page lists them by what you see. The full list of changes is the
 
 ## Before you start
 
-- **Python 3.11 or newer**, with JAX and jaxlib 0.10.2 or newer. Python 3.10
+- **Python 3.11 or newer**, with JAX and jaxlib from 0.10.2 up to, not including,
+  0.11.2: pip installs 0.11.1 on Python 3.12 or newer and 0.10.2 on Python 3.11. Python 3.10
   users stay on rfx 1.x: 1.7.0 from PyPI, or 1.8.0 from the GitHub releases.
 - **`pip install "rfx-fdtd>=2.0.0rc1"`** while 2.0 is a release candidate. A plain
   `pip install rfx-fdtd` installs the latest stable release, 1.7.0.
@@ -100,7 +101,7 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 | A waveguide port aperture with a bare edge (no PEC wall or PEC domain face on it) | Draw PEC walls on every aperture edge, or make the domain cross-section equal to the aperture and declare its transverse faces PEC. |
 | A waveguide port filling a guide whose side faces are declared absorbing, or left undeclared on a graded mesh | Declare PEC side walls, e.g. `boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an x-directed port. Left undeclared on a uniform mesh, the side faces are walls, with a warning. |
 | A waveguide port whose section, from its H-correction cell through its reference plane, holds anything but one homogeneous, isotropic, lossless medium: a partial, lossy, dispersive or anisotropic fill, a PEC volume, a sheet, wire, film or lumped element, a design box, or a traced override (also one that puts another medium at a port's S21 probe plane). 1.x launched and read such a port as an empty guide. | Start the structure beyond the port's reference plane. A fill that spans the guide wall to wall with one lossless medium runs: the port uses the fill's cutoff, propagation constant and impedance. |
-| A plane wave (`add_tfsf_source`) along a graded x axis: its incident wave is built on one cell size and does not match the graded cells | Keep x uniform; grade y or z. |
+| An open plane wave (`add_tfsf_source` without `closed_box`) on the uniform mesh with CPML, PMC or PEC declared on a side face it solves as periodic (y and z; z only for `method="methodB"`) | Declare those faces `periodic`, or leave `boundary` out (or pass `boundary="cpml"`) for periodic side faces with a preflight warning; `closed_box=True` for a finite scatterer, or a graded mesh to keep the declared faces. |
 | A plane wave (`add_tfsf_source`) with a structure that is not uniform across its side faces (a finite scatterer, a lumped element). Those faces are solved as periodic. | Declare `periodic` side faces for an array, or use `add_tfsf_source(..., closed_box=True)` for one object. |
 | `waveform="differentiated_gaussian"` on an oblique plane wave with `method="bloch"`, in Python or in a saved interop document (1.x launched a modulated Gaussian instead) | Declare `waveform="modulated_gaussian"` or leave `waveform` unset; for an open domain around one scatterer, `method="methodB"` takes the differentiated Gaussian. An interop document is refused on load: replace its waveform string with `"modulated_gaussian"`; the field is required, so do not remove it. |
 | A far-field (NTFF) box whose faces are not at least one cell inside the grid, or that touches the plane-wave injection region | Move each face at least one cell inside the domain and outside the injection region. |

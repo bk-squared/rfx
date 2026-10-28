@@ -99,9 +99,10 @@ outside is the structure's response alone.
 | `margin` | 3 | cells between the injection planes and the absorber |
 
 The injection planes must lie in vacuum. With `closed_box=False` the planes
-span the domain, and the faces across the beam are solved as periodic, so the
-structure is repeated along them; a structure that is not uniform across them
-is refused unless you declare those faces periodic. See
+span the domain. On the uniform mesh the faces across the beam are solved as
+periodic, so the structure is repeated along them; CPML, PMC or PEC declared
+on those faces is refused. A structure that is not uniform across them is
+refused unless you declare those faces periodic. See
 [Boundaries](/rfx/model/boundaries/#rules-that-ports-and-plane-waves-put-on-the-boundary)
 for the rule. For a single scatterer use `closed_box=True`.
 
@@ -159,7 +160,7 @@ checks that it implements the source (below).
 | `method="methodB"` at normal incidence, with `"ey"`, along `"-x"`, or with a waveform other than the two Gaussians | all | refused | `method="bloch"` |
 | a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
 | anything other than vacuum on or next to an injection plane: a dielectric (even a near-vacuum one), a dispersive or Kerr medium, a PEC volume, a sheet, a wire, a lumped element or a design region | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
-| a plane wave at an angle, with `closed_box=True`, with a `CustomWaveform`, or along a graded x axis | graded mesh | refused | use a uniform mesh, or keep x uniform and grade y or z |
+| a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
 | a plane wave on several devices, other than a closed box (`closed_box=True`) at normal incidence on a uniform mesh | several devices, either mesh | refused by name; nothing runs on one device in its place | one device, or the closed box as [Multiple devices](/rfx/run/multi-device/) describes |
 | a plane wave at an angle with an NTFF box, DFT planes, flux monitors, `snapshot=` or `until_decay=` | uniform mesh | refused | probes and the final `state`, a fixed `n_steps`, or `compute_rcs` for scattering |
 | a soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire), or tangential in a declared PEC wall face | all | refused | move the source off the metal and at least one cell inside the domain, or use a port |
