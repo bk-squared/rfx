@@ -14,6 +14,7 @@ import dataclasses
 import math
 import pathlib
 import re
+import sys
 import warnings
 from itertools import product
 
@@ -61,8 +62,17 @@ def _hand_tfsf_geometry(cfg, grid, inside=False):
         sign = 1 if cfg.direction == "+x" else -1
         paths = sign * (cfg.i0_x + indices[:, 0] - cfg.x_lo - cfg.src_x) * cfg.dx_1d / cfg.cos_theta
     else:
-        sign = 1 if cfg.direction == "+x" else -1
-        paths = sign * (cfg.i0 + indices[:, 0] - cfg.x_lo - cfg.src_idx) * cfg.dx_1d
+        # Slab line: the source margin continues the end cell beside the box and
+        # the mapped part is the realized x cells, so the path to a corner is the
+        # node distance on the grid plus the margin cells (graded x admitted).
+        cells = np.asarray(grid.cells("x"), dtype=float)
+        nodes = np.array([grid.node_of("x", int(i)) for i in indices[:, 0]])
+        if cfg.direction == "+x":
+            paths = ((cfg.i0 - cfg.src_idx) * cells[cfg.x_lo - 1]
+                     + nodes - grid.node_of("x", cfg.x_lo))
+        else:
+            paths = (grid.node_of("x", cfg.x_hi + 1) - nodes
+                     + (cfg.src_idx - cfg.i0 - cfg.x_hi + cfg.x_lo - 1) * cells[cfg.x_hi + 1])
     return indices, corners, paths
 
 
@@ -81,10 +91,19 @@ def _hand_tfsf_samples(cfg, grid, n):
     return np.asarray(cfg.src_amp * samples)
 
 
+# 40 mm graded x lines; the end cells equal dx (CPML rule). "-graded-wide" is the
+# separate review's case: 1 mm cells beside the box and 2 mm across it.
+GRADED_X = {"-graded": (.002, np.array([.002] * 5 + [.001] * 20 + [.002] * 5)),
+            "-graded-wide": (.001, np.array([.001] * 10 + [.002] * 10 + [.001] * 10))}
+
+
 def _s2b_tfsf(kind):
     from rfx import Simulation
-    sim = Simulation(freq_max=10e9, domain=(.040, .024, .024), dx=.002,
-                     boundary="cpml", cpml_layers=8)
+    suffix = next((g for g in ("-graded-wide", "-graded") if kind.endswith(g)), "")
+    dx, profile = GRADED_X.get(suffix, (.002, None))
+    sim = Simulation(freq_max=10e9, domain=(.040, .024, .024), dx=dx, boundary="cpml",
+                     cpml_layers=8, **({"dx_profile": profile} if suffix else {}))
+    kind = kind.removesuffix(suffix)
     options = {"slab+x": {}, "slab-x": {"direction": "-x"},
                "closed": {"closed_box": True},
                "closed-oblique": {"closed_box": True, "theta_deg": 45., "polarization": "s"},
@@ -96,7 +115,8 @@ def _s2b_tfsf(kind):
     return sim
 
 
-TF_KINDS = ("slab+x", "slab-x", "closed", "closed-oblique", "bloch", "methodB")
+TF_KINDS = ("slab+x", "slab-x", "slab+x-graded", "slab-x-graded", "slab+x-graded-wide", "closed",
+            "closed-oblique", "bloch", "methodB")
 
 
 @pytest.mark.parametrize("kind", TF_KINDS)
@@ -104,7 +124,7 @@ def test_s2b_r1_tfsf_hand_reach(kind):
     from rfx.measurement.record_end import injection_end
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _s2b_tfsf(kind)
-    grid = sim._build_grid()
+    grid = sim._build_realized_grid()
     cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=1200)
     from rfx.measurement.tfsf_reach import tfsf_corner_paths
     for inset in (0, 1):
@@ -179,7 +199,7 @@ def test_s2b_r1_envelope_estimator_self_check(check, delay, record_property):
 def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _s2b_tfsf(kind)
-    grid = sim._build_grid()
+    grid = sim._build_realized_grid()
     n = 1200
     cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n)
     from rfx.measurement.tfsf_reach import tfsf_corner_paths
@@ -216,8 +236,15 @@ def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
             "measured_envelope_end": int(np.flatnonzero(envelope > 1e-3 * envelope.max())[-1]),
         })
     record_property("R1", repr(measurements))
-    print(f"R1 {kind}: {measurements}")
+    print(f"R1 {kind}: {measurements}", file=sys.stderr)
     for row in measurements:
+        if "graded" in kind:
+            # Safe side only (design amendments 8 and 9): a graded slab line arrives
+            # up to 1.3 steps before its node path, and an entry-face floor up to
+            # 3.7e-4 lifts the 1e-3 end; the computed end must not be early.
+            assert row["measured_peak"] <= row["predicted_peak"] + 1, (kind, row)
+            assert row["measured_envelope_end"] <= row["predicted_envelope_end"] + 2, (kind, row)
+            continue
         assert abs(row["measured_peak"] - row["predicted_peak"]) <= 1, (kind, row)
         assert abs(row["measured_envelope_end"] - row["predicted_envelope_end"]) <= 2, (kind, row)
     if kind in ("closed", "closed-oblique"):
@@ -326,6 +353,22 @@ def test_s2b_r3_internal_driver_run_attaches_rows_without_warning():
     assert [r["name"] for r in rows] == ["NTFF box"] and rows[0]["end_step"] == 241
     assert result.settling_witness["status"] == "undetermined"
     assert not [w for w in caught if "cannot judge" in str(w.message)]
+
+
+def test_s2b_r3_coverage_without_a_time_series():
+    """A result with no time series (graded multi-device forward, emit_time_series=False)
+    takes the record length from n_steps; with neither, every row cannot judge."""
+    from rfx.measurement.coverage import accumulator_coverage
+    sim = _s2b_scene_c(("ntff", "flux"))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.run(n_steps=196, skip_preflight=True)
+    full = accumulator_coverage(result, sim=sim).rows()
+    bare = result._replace(time_series=None)
+    assert accumulator_coverage(bare, sim=sim, n_steps=196).rows() == full
+    rows = accumulator_coverage(bare, sim=sim).rows()
+    assert [r["name"] for r in rows] == [r["name"] for r in full]
+    assert all(r["verdict"].startswith("cannot judge: the record length is not available") for r in rows)
 
 
 @pytest.mark.parametrize("n", [180, 350])

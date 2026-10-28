@@ -190,7 +190,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     forward_result = isinstance(result, ForwardResult)
     if not forward_result and (not hasattr(result, "_replace") or not hasattr(result, "settling_witness")):
         return result
-    coverage = accumulator_coverage(result, sim=sim)
+    coverage = accumulator_coverage(result, sim=sim, n_steps=n_steps)
     if forward_result:
         from rfx.core.jax_utils import is_tracer
         from rfx.sparams._record_selection import s_read_records

@@ -60,14 +60,25 @@ def accumulator_records(result):
     return tuple(rows)
 
 
-def accumulator_coverage(result, *, sim=None, tfsf=None):
-    """Collect the same drives as the probe witness, at accumulator corners."""
+def accumulator_coverage(result, *, sim=None, tfsf=None, n_steps=None):
+    """Collect the same drives as the probe witness, at accumulator corners.
+
+    The record length is the time series' length, else ``n_steps`` (a run
+    that emits no time series, e.g. the graded multi-device forward with
+    ``emit_time_series=False``); with neither, every row cannot judge.
+    """
     from rfx.measurement.record_end import injection_end
 
     records = accumulator_records(result)
     if not records:
         return AccumulatorCoverage()
-    n_record = result.time_series.shape[0]
+    series = getattr(result, "time_series", None)
+    n_record = series.shape[0] if series is not None else n_steps
+    if n_record is None:
+        return AccumulatorCoverage(tuple(
+            (name, None, None, "cannot judge: the record length is not available "
+             "(no time series and no n_steps)") for name, _ in records))
+    n_record = int(n_record)
     dt = getattr(result, "dt", None)
     if dt is None:
         dt = result.grid.dt
