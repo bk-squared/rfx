@@ -98,7 +98,8 @@ if TYPE_CHECKING:
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
-from rfx._ringdown_growth_judge import GrowingPoleJudgement, judge_growing_poles
+from rfx._ringdown_growth_judge import (
+    GROWING_POLE_RULE, GrowingPoleJudgement, growing_poles, judge_growing_poles)
 from rfx._ringdown_pencil import (
     IdentificationMemoryRefused,
     _check_run_identification_memory,
@@ -704,36 +705,6 @@ def _static_pole(p: RingdownPole, record_s: float, unit_tol: float) -> bool:
     """
     return (_zero_frequency(p.f_hz, record_s)
             and abs(p.abs_lambda - 1.0) < float(unit_tol))
-
-
-def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
-    """Kept poles with ``|lambda| > 1`` per step, split into (growing, exempt).
-
-    The verdict is :func:`judge_growing_poles`; this helper only counts.
-    Exempt: a static field (:func:`_static_pole`) -- a pole within rounding
-    of zero frequency, ``|f| < 1 / record`` (the record cannot tell it from
-    DC) and ``|lambda| - 1 < unit_tol`` per step. A static field left behind
-    in a closed box identifies as such a pole (rfx #1254, the Q 533 cavity).
-    """
-    grow, exempt = [], []
-    for p in model.poles():
-        if not p.abs_lambda > 1.0:
-            continue
-        if _static_pole(p, record_s, unit_tol):
-            exempt.append(p)
-        else:
-            grow.append(p)
-    return tuple(grow), tuple(exempt)
-
-
-GROWING_POLE_RULE = (
-    "kept non-static growing poles are judged by their tail share S_k through "
-    "twice the judge horizon H (bar 1e-2); H is the larger of the record length "
-    "and the hundredfold decay horizon of significant kept decaying poles. "
-    "The band condition (1 + unit_tol)^(2H/D) <= 2 must hold. The count is "
-    "reported and never judged; static poles are exempt. A pole the pencil "
-    "resolves as growing is discarded and judged where the caller judges "
-    "discarded poles")
 
 
 # ---------------------------------------------------------------------------

@@ -4,9 +4,43 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from rfx.ringdown import RingdownModel
+
+
+def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
+    """Kept poles with ``|lambda| > 1`` per step, split into (growing, exempt).
+
+    The verdict is :func:`judge_growing_poles`; this helper only counts.
+    Exempt: a static field (:func:`_static_pole`) -- a pole within rounding
+    of zero frequency, ``|f| < 1 / record`` (the record cannot tell it from
+    DC) and ``|lambda| - 1 < unit_tol`` per step. A static field left behind
+    in a closed box identifies as such a pole (rfx #1254, the Q 533 cavity).
+    """
+    from rfx.ringdown import _static_pole
+    grow, exempt = [], []
+    for p in model.poles():
+        if not p.abs_lambda > 1.0:
+            continue
+        if _static_pole(p, record_s, unit_tol):
+            exempt.append(p)
+        else:
+            grow.append(p)
+    return tuple(grow), tuple(exempt)
+
+
+GROWING_POLE_RULE = (
+    "kept non-static growing poles are judged by their tail share S_k through "
+    "twice the judge horizon H (bar 1e-2); H is the larger of the record length "
+    "and the hundredfold decay horizon of significant kept decaying poles. "
+    "The band condition (1 + unit_tol)^(2H/D) <= 2 must hold. The count is "
+    "reported and never judged; static poles are exempt. A pole the pencil "
+    "resolves as growing is discarded and judged where the caller judges "
+    "discarded poles")
 
 
 class GrowingPoleJudgement(NamedTuple):
@@ -32,7 +66,7 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     infinity marks an inactive channel.
     """
     from rfx.measurement.ringdown_tail import _pole_tails
-    from rfx.ringdown import _static_pole, growing_poles
+    from rfx.ringdown import _static_pole
     freqs = np.asarray(freqs, dtype=np.float64)
     denominator = np.asarray(denominator, dtype=np.float64)
     if denominator.ndim == 1:
