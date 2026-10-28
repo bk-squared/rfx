@@ -226,8 +226,7 @@ def _film_rows(graded, intervals, rows):
 
 
 @pytest.mark.parametrize('graded', [False, True])
-@pytest.mark.parametrize('case', [0, pytest.param(1, marks=_FILM_JOIN),
-                                  pytest.param(2, marks=_FILM_JOIN), 3, 4])
+@pytest.mark.parametrize('case', [0, 1, 2, 3, 4])
 def test_k7_dc_film(graded, case):
     values = _film_rows(graded, named_intervals(graded, case), (9, 10))
     # Survey's five rows: the first three have a gap at row 10; last two touch. A touching
@@ -251,6 +250,207 @@ def test_k7_dc_film_mirrored(graded, case):
     values = _film_rows(graded, mirrored_intervals(graded, case), (8, 9, 10))
     assert values[0] > 0. and values[2] > 0.
     assert values[1] == 0.
+
+
+@pytest.mark.parametrize('intervals', [((.005, .0097), (.0103, .015)),
+                                     ((.005, .0100), (.0102, .015))])
+def test_k7_dc_film_extra_gaps(intervals):
+    values = _film_rows(False, intervals, (8, 9, 10, 11))
+    assert values[0] > 0 and values[-1] > 0
+    assert 0. in values[1:-1]
+
+
+def film_pair(graded, intervals=None, *, periodic=False):
+    # A genuinely graded mesh with min(dy)=1 mm keeps 1 nm inside the
+    # existing sheet tie tolerance on BOTH sweep meshes.
+    profile = np.r_[.001, np.tile([.0011, .0013], 9), .001]
+    sim = Simulation(domain=(.008, float(profile.sum()) if graded else .020, .008), dx=.001,
+        freq_max=5e9, snap='declared',
+        boundary=BoundarySpec(x='pec', y='periodic' if periodic else 'pec', z='pec'),
+        **({'dy_profile': profile} if graded else {}))
+    grid = sim._build_realized_grid()
+    nodes = np.asarray(grid.node_coords(1)) if hasattr(grid, 'node_coords') else np.array(
+        [grid.node_of(1, j) for j in range(grid.shape[1])])
+    if callable(intervals):
+        intervals = intervals(nodes)
+    for lo, hi in intervals:
+        sim.add_thin_conductor(Box((.002, lo, .004), (.006, hi, .004)),
+                               sigma_bulk=1000., thickness=1e-5)
+    root = C.realized_conductors(sim, grid, nonuniform=graded)
+    masks = [np.asarray(root.geometry_masks[id(tc)]).any(axis=2) for tc in sim._thin_conductors]
+    return sim, grid, nodes, root, masks
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('gap', GAPS)
+def test_k7_dc_film_gap_sweep(graded, gap, tmp_path):
+    import json
+    intervals = lambda y: ((y[5], y[10] + .4*(y[11]-y[10])),
+                          (y[10] + .4*(y[11]-y[10]) + gap, y[16]))
+    sim, grid, y, root, actual = film_pair(graded, intervals)
+    intervals = intervals(y)
+    widths = np.diff(y)
+    centres = (y[:-1] + y[1:]) / 2
+    original = [(centres >= lo) & (centres < hi) for lo, hi in intervals]
+    expected = [m.copy() for m in original]
+    if gap > 1e-9:
+        left, right = np.flatnonzero(expected[0])[-1], np.flatnonzero(expected[1])[0]
+        if right - left <= 1:
+            cover = [(min(y[k+1], hi) - max(y[k], lo))/widths[k]
+                     for k, (lo, hi) in zip((left, right), intervals)]
+            loser = 0 if cover[0] < cover[1] - 1e-12 else 1
+            expected[loser][(left, right)[loser]] = False
+    report = []
+    for index, (mask, before, after) in enumerate(zip(actual, original, expected)):
+        want = np.zeros_like(mask)
+        want[2:6, :-1] = after
+        np.testing.assert_array_equal(mask, want)
+        lost = before & ~after
+        report.append(dict(film=index, before_cells=int(4*before.sum()),
+                           lost_cells=int(4*lost.sum()),
+                           lost_area_percent=float(100*np.sum(widths[lost])/np.sum(widths[before]))))
+    occupied = (actual[0] | actual[1]).any(axis=0)
+    limits = np.flatnonzero(occupied)
+    assert bool(occupied[limits[0]:limits[-1]+1].all()) == (gap <= 1e-9)
+    # The public record and the solve collector must publish the same cells.
+    record = sim.realized_geometry()
+    for entity, mask in zip(record.entities, actual):
+        np.testing.assert_array_equal(np.asarray(entity.mask).any(axis=2), mask)
+    data = dict(graded=graded, gap=gap, films=report)
+    (tmp_path / 'film-area-loss.json').write_text(json.dumps(data))
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_k7_dc_film_coverage_owner(reverse):
+    # Later film's first row is 0.2 empty / 0.8 drawn, versus 0.9
+    # drawn in the earlier film's last row. Reversing declaration order
+    # must retain the same physical winner.
+    intervals = [(.005, .0099), (.0102, .015)]
+    if reverse:
+        intervals.reverse()
+    _, _, _, _, actual = film_pair(False, intervals)
+    left, right = actual[::-1] if reverse else actual
+    assert left[2:6, 9].all()
+    assert not right[:, 10].any()
+    assert right[2:6, 11:15].all()
+
+
+def test_k7_dc_film_coverage_owner_fraction():
+    # Pin the rule's literal 0.8/0.2 input contract. A centre-sampled Box
+    # does not retain a 0.2-covered boundary row, so supply these footprints
+    # directly; the assembly-level asymmetric case above tests the sampler.
+    from rfx.model.thin_conductors import FilmFootprint, separate_film_footprints
+    _, grid, y, _, _ = film_pair(False, ((.005, .0098), (.0108, .015)))
+    rows = []
+    for order, (cell, lo, hi) in enumerate(((9, y[5], y[9] + .8*(y[10]-y[9])),
+                                           (10, y[10] + .8*(y[11]-y[10]), y[15]))):
+        mask = np.zeros(grid.shape, bool)
+        mask[2:6, cell, 4] = True
+        rows.append(FilmFootprint(mask, 2, 4,
+                    ((.002, .006, 1e-9, None), (lo, hi, 1e-9, None), None), order))
+    actual = separate_film_footprints(rows, grid)
+    np.testing.assert_array_equal(actual[0].mask, rows[0].mask)
+    assert not np.asarray(actual[1].mask).any()
+
+
+@pytest.mark.parametrize('gap', [0., .0002])
+def test_k7_dc_film_periodic_images(gap):
+    _, _, _, _, actual = film_pair(False, ((.015, .020), (gap, .005)), periodic=True)
+    assert actual[0][2:6, -1].all()
+    assert bool(actual[1][:, 0].any()) == (gap == 0.)
+
+
+def test_k7_dc_film_vmap_uses_separated_masks():
+    from rfx.core.yee import init_materials
+    from rfx.vmap_sweep import _apply_batched_thin_conductors
+    sim, grid, _, root, _ = film_pair(False, ((.005, .0099), (.0102, .015)))
+    vacuum = init_materials(grid.shape)
+    batch = [jnp.stack([a, a]) for a in (vacuum.eps_r, vacuum.sigma, vacuum.mu_r)]
+    _, _, _, film = _apply_batched_thin_conductors(sim, grid, *batch)
+    for expected, actual in zip(root.materials.sigma_film, film):
+        if expected is not None:
+            np.testing.assert_array_equal(actual[0], expected)
+            np.testing.assert_array_equal(actual[1], expected)
+
+
+def test_k7_dc_film_preflight_reports_solved_area():
+    sim, _, _, _, _ = film_pair(False, ((.005, .0099), (.0102, .015)))
+    findings = sim.preflight(check_ntff=False, check_resolution=False).by_code('dc_film_area')
+    later = [f for f in findings if f.loc == 'thin_conductors[1]']
+    assert len(later) == 1
+    assert 'A_r=1.6e-05' in str(later[0])
+
+
+def test_k7_dc_film_continuation_defers_pair_area():
+    class Rectangle:
+        inner = Box((.002, .01049, .004), (.006, .01451, .004))
+
+        def bounding_box(self):
+            return self.inner.bounding_box()
+
+        def mask_on_coords(self, *coords):
+            return self.inner.mask_on_coords(*coords)
+
+        def footprint_area(self, normal):
+            assert normal == 2
+            return .004 * .00402
+
+    sim = Simulation(5e9, (.020, .020, .020), dx=.001, boundary='cpml',
+                     cpml_layers=8, snap='strict')
+    for shape in (Box((.002, .005, .004), (.006, .010, .004)), Rectangle()):
+        sim.add_thin_conductor(shape, sigma_bulk=1000., thickness=1e-5)
+    root = C.realized_conductors(sim, sim._build_realized_grid())
+    assert [int(np.asarray(root.geometry_masks[id(tc)]).sum())
+            for tc in sim._thin_conductors] == [20, 16]
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('intervals', [((.005, .015),),
+    ((.005, .010), (.010, .015)), ((.005, .011), (.010, .015)),
+    ((.003, .006), (.012, .015))])
+def test_k7_dc_film_unchanged_folds(graded, intervals):
+    from rfx.core.yee import init_materials
+    sim, grid, _, root, _ = film_pair(graded, intervals)
+    old = init_materials(grid.shape)
+    for tc in sim._thin_conductors:
+        old, _ = apply_thin_conductor(grid, tc, old, snap=sim._snap)
+    for before, after in zip(old.sigma_film, root.materials.sigma_film):
+        if before is not None:
+            np.testing.assert_array_equal(before, after)
+
+
+@pytest.mark.parametrize('normal,tangent', [(0, 1), (1, 2), (2, 0)])
+@pytest.mark.parametrize('different_plane', [False, True])
+def test_k7_dc_film_faces_and_planes(normal, tangent, different_plane):
+    sim = model(domain=(.020, .020, .020))
+    for i, (lo, hi) in enumerate(((.005, .0099), (.0102, .015))):
+        low, high = [.002]*3, [.006]*3
+        low[normal] = high[normal] = .004 + i*.001*different_plane
+        low[tangent], high[tangent] = lo, hi
+        sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=1000., thickness=1e-5)
+    root = C.realized_conductors(sim, sim._build_realized_grid())
+    actual = [np.asarray(root.geometry_masks[id(tc)]) for tc in sim._thin_conductors]
+    assert actual[0].sum() == 20
+    assert actual[1].sum() == (20 if different_plane else 16)
+
+
+@pytest.mark.parametrize('near', [False, True])
+def test_k7_dc_film_traced_pair_refused_by_name(near):
+    from rfx.model.materials import assemble_cells
+
+    def fold(profile):
+        sim = Simulation(5e9, (.008, .020, .008), dx=.001, boundary='pec',
+                         dy_profile=profile, snap='declared')
+        for lo, hi in ((.005, .0099), (.0102 if near else .013, .018)):
+            sim.add_thin_conductor(Box((.002, lo, .004), (.006, hi, .004)),
+                                   sigma_bulk=1000., thickness=1e-5)
+        return assemble_cells(sim, sim._build_realized_grid())[0].sigma_film
+
+    if near:
+        with pytest.raises(Exception, match=r'thin_conductor\[0\].*thin_conductor\[1\].*concrete'):
+            jax.block_until_ready(jax.jit(fold)(jnp.full(20, .001)))
+    else:
+        jax.block_until_ready(jax.jit(fold)(jnp.full(20, .001)))
 
 
 @pytest.mark.parametrize('graded', [False, True])

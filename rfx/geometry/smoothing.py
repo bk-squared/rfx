@@ -608,7 +608,12 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
                 return [(np.asarray(sheet.footprint), (False, False, False))]
             if not isinstance(shape, Box):
                 from rfx.model.thin_conductors import admit_dc_film
-                film = admit_dc_film(shape, grid, snap=sim._snap, emit=False)
+                # Pair area admission belongs after continuation and the
+                # drawn-gap pre-pass; this read only classifies pad occupancy.
+                paired = sum(not tc.is_pec and tc.surface_impedance_f0 is None
+                             for tc in sim._thin_conductors) > 1
+                film = admit_dc_film(shape, grid, snap='declared' if paired else sim._snap,
+                                     emit=False)
                 return [(np.asarray(film.mask), (False, False, False))]
             # Continuation must see the same cell-centred Box footprint as
             # assembly, on non-periodic axes as well as across a seam.

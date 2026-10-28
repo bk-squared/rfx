@@ -512,15 +512,18 @@ def _optional_pec_mask(mask, has_pec_cells):
 def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets,
                           sheet_specs, geometry_masks, assembly_entries, findings):
     """Continue declarations and apply the one model fold in declared order."""
-    for declared in sim._thin_conductors:
+    from rfx.model.film_geometry import prepare_film_footprints
+    conductors = [replace(tc, shape=continued_conductor_shape(
+        sim, grid, tc.shape, entry=tc, unextendable=findings)) for tc in sim._thin_conductors]
+    films = prepare_film_footprints(conductors, grid)
+    for i, (declared, tc) in enumerate(zip(sim._thin_conductors, conductors)):
         from rfx.model.thin_conductors import admit_dc_plane
         admit_dc_plane(declared, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
         key = id(declared)
-        tc = replace(declared, shape=continued_conductor_shape(
-            sim, grid, declared.shape, entry=declared, unextendable=findings))
         materials, pec_mask = apply_thin_conductor(
             grid, tc, materials, pec_mask=pec_mask, sheet_specs=sheet_specs,
-            sheets=pec_sheets, geometry_masks=geometry_masks, geometry_key=key, snap=sim._snap)
+            sheets=pec_sheets, geometry_masks=geometry_masks, geometry_key=key, snap=sim._snap,
+            film_geometry=films.get(i))
         if assembly_entries is not None:
             assembly_entries.append((key, None, pec_sheets[-1] if tc.is_pec else None,
                                      None, tc.shape))

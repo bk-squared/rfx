@@ -266,10 +266,12 @@ def _apply_batched_thin_conductors(
                        for tc in sim._thin_conductors)
     if not conductors:
         return eps_r, sigma, mu_r, None
+    from rfx.model.film_geometry import prepare_film_footprints
+    films = prepare_film_footprints(conductors, grid)
 
     def _one(e, s, m):
         mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m, sigma_film=None)
-        for tc in conductors:
+        for i, tc in enumerate(conductors):
             # #677: an f0 (surface-impedance) conductor is a no-op on the
             # material arrays by design — the sheet is a per-step operator
             # ctx now, and sims carrying one never reach the fast path
@@ -280,7 +282,7 @@ def _apply_batched_thin_conductors(
             # off the full assembly, so the collector here is deliberately
             # discarded (it would be a per-batch-element duplicate).
             mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None,
-                                           sheets=[], snap=sim._snap)
+                                           sheets=[], snap=sim._snap, film_geometry=films.get(i))
         return mats.eps_r, mats.sigma, mats.mu_r, mats.sigma_film
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)

@@ -824,8 +824,14 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         dc_film = tc.surface_impedance_f0 is None and not isinstance(tc.shape, Box)
         if dc_film:
             from rfx.model.thin_conductors import admit_dc_film
+            from rfx.model.film_geometry import diagnostic_film_footprints
             grid = self._build_realized_grid()
-            film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False)
+            _, films = diagnostic_film_footprints(self, grid)
+            declaration = next(j for j, declared in enumerate(self._thin_conductors)
+                               if declared is tc)
+            film = films.get(declaration)
+            if film is None:
+                film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False)
             hit = np.flatnonzero(np.asarray(film.mask).any(axis=_other))
             hit = hit - int(getattr(grid, f'pad_{"xyz"[n_axis]}_lo'))
         else:

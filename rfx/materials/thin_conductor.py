@@ -452,6 +452,7 @@ def apply_thin_conductor(
     geometry_masks: list | None = None,
     geometry_key: int | None = None,
     snap: str = 'strict',
+    film_geometry=None,
 ) -> tuple[MaterialArrays, jnp.ndarray | None]:
     """Apply thin conductor subcell correction to material arrays.
 
@@ -488,7 +489,8 @@ def apply_thin_conductor(
     from rfx.model.thin_conductors import fold_thin_conductor
     return fold_thin_conductor(
         grid, conductor, materials, pec_mask, sheet_specs=sheet_specs,
-        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key, snap=snap)
+        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key, snap=snap,
+        film_geometry=film_geometry)
 
 
 # ---------------------------------------------------------------------------
