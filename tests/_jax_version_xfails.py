@@ -29,13 +29,15 @@ JAX_XFAILS = {
     ),
     2166: (
         (0, 12),
-        "on jax 0.12 the CPML curl-coefficient owner check is one float32 step off and cross-trace checks reach 13-72 ULP",
+        "on jax 0.12 the CPML curl-coefficient owner check is one float32 step off, cross-trace checks reach 13-72 ULP "
+        "and 2-device DFT planes are not bit-equal to one device",
         (
             *(f"{_CURL}[{mesh}-{medium}]" for mesh in ("uniform", "graded")
               for medium in ("plain", "dielectric", "lorentz")),
             *(f"{_CURL_PATHS}[{face}-distributed_{mesh}-{medium}]" for face in ("x_lo", "y_lo")
               for mesh in ("uniform", "graded") for medium in ("plain", "dielectric", "lorentz")),
             "tests/unit/autodiff/test_forward_jit_contract.py::test_the_fallback_probe_record_equals_the_plain_call",
+            "tests/unit/autodiff/test_observables_dft_field.py::test_run_distributed_dft_planes_match_native",
             "tests/contracts/test_padded_writeback_cpu_cross_trace.py::test_padded_writeback_cpu_plain_vs_jit[120]",
             "tests/contracts/test_padded_writeback_cpu_cross_trace.py::test_padded_writeback_cpu_plain_vs_jit[240]",
             "tests/contracts/test_soft_source_one_drive.py::test_graded_current_forward_stays_within_nine_ulp[240-2.65-0]",
