@@ -459,7 +459,8 @@
         "n_steps_override",
         "max_memory_mb",
         "waveform",
-        "thin_conductors"
+        "thin_conductors",
+        "domain"
       ]
     },
     "auto_refine": {
@@ -1411,7 +1412,8 @@
         "nominal_profiles",
         "periodic_axes",
         "domain",
-        "boundary_depths"
+        "boundary_depths",
+        "snap"
       ]
     },
     "make_ntff_box": {
