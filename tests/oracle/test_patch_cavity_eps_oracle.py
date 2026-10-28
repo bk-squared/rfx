@@ -23,13 +23,11 @@ Two claims, with HONEST oracle labelling (per the review's B-Q2 correction):
 
 Closed PEC cavity ⇒ energy-conserving, sharp modes, fast (no CPML/settling).
 """
-import os
 import warnings
 
 import numpy as np
 import pytest
 
-os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 from rfx import Simulation, Box  # noqa: E402
 from rfx.sources.sources import GaussianPulse  # noqa: E402
 from rfx.harminv import matrix_pencil  # noqa: E402

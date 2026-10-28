@@ -320,6 +320,13 @@ def test_n3_gpu_fresh_process():
         pytest.skip("N3 requires GPU memory_stats; never run the FDTD measurement on CPU")
     env = dict(os.environ, XLA_PYTHON_CLIENT_PREALLOCATE="false")
     env.pop("PYTHONPATH", None)
+    # The child chooses its platform as this process did at import: a module collected later
+    # may have pinned JAX_PLATFORMS in os.environ after this process had picked the GPU.
+    env.pop("JAX_PLATFORM_NAME", None)
+    if jax.config.jax_platforms:
+        env["JAX_PLATFORMS"] = jax.config.jax_platforms
+    else:
+        env.pop("JAX_PLATFORMS", None)
     # Import only the row builder below in a fresh interpreter; never run pytest recursively.
     code = (
         "import runpy; "
