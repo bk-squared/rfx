@@ -235,6 +235,17 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field near 1e-2 of the peak that does not decay (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
+### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
+
+Tracker: #2150
+
+In one process, `sim.run(devices=...)` needs about as much memory per GPU on three GPUs as on two. On three RTX A6000
+GPUs a 1024 x 21 x 192-cell box peaks at 552.5 MB on one GPU and at 270.5 MB per GPU on both two and three, although
+the compiled time step falls from 233.2 MB to 156.1 MB. The peak is reached on every GPU after the time loop; which
+buffer holds it is not yet found. A third GPU therefore does not let a model fit that two GPUs cannot hold.
+What to do: size a run on three or more GPUs in one process from its two-GPU peak.
+→ [#2150](https://github.com/bk-squared/rfx/issues/2150)
+
 ## Ports and extraction
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
@@ -484,6 +495,17 @@ an adjacent cell of a magnetic face when the smoother would need the
 material's even extension; extending the material at least a cell beyond
 the face is supported. No issue plans these kernels or the smoothing
 extension for 2.0; they stay refusals.
+
+### A PMC wall on two x86 CPU devices moves H by up to 30 float32 ULP from one device.
+
+Tracker: #2086
+
+A closed box on a uniform mesh with one PMC face, run with `run(devices=...)` on 2 x86 CPU devices, gives H that
+differs from the one-device run by at most 30 float32 ULP of the H peak and E by at most 5 ULP of the E peak. The
+difference stays bounded over 400 steps and does not grow with the record. With a PEC wall in the same place the two
+runs are bit-identical, and on arm64 CPUs both walls give bit-identical runs. The cause on x86 is undetermined.
+What to do: for a bit-for-bit comparison with one device on x86, use a PEC wall or one device.
+→ [#2086](https://github.com/bk-squared/rfx/issues/2086)
 
 ### With the mesh as a design variable, a ground plane still ends at the absorber.
 
