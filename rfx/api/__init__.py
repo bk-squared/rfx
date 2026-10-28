@@ -209,9 +209,9 @@ class Simulation(
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
     snap : {"strict", "declared"}
-        Strict (default) refuses PEC sheets solved more than 1% off their
-        drawn in-plane size. "declared" accepts the difference as a warning
-        and records the choice in realized geometry; no solved numbers change.
+        Strict refuses PEC sheet sizes or a concrete dz_profile sum more than 1%
+        off the declaration; "declared" warns and keeps it. Traced dz_profile is
+        judged only with nominal_profiles (1e-9); without it the sum is unjudged.
     dt : float or None
         Concrete time step (s) for the NON-UNIFORM lane, used instead of
         the Courant step derived from the smallest cell. ``None`` (the
@@ -390,7 +390,7 @@ class Simulation(
         # Caps come from _PreflightMixin (single source of truth; preflight's
         # _validate_cfg_multiband_grading reads the same two attributes).
         domain, self._nominal_profiles = admit_graded_profiles(
-            domain, dx_profile, dy_profile, dz_profile, dt=dt,
+            domain, dx_profile, dy_profile, dz_profile, dt=dt, snap=snap,
             dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles,
             multiband_ratio_cap=self._MULTIBAND_RATIO_CAP,
             inplane_ratio_cap=self._INPLANE_RATIO_CAP)

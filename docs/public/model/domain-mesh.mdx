@@ -190,26 +190,38 @@ features:
 ```python
 from rfx import auto_configure
 
+board = Box((0, 0, 0), (0.10, 0.08, 1.6e-3))
 cfg = auto_configure(
-    geometry=[(Box((0, 0, 0), (0.10, 0.08, 1.6e-3)), "fr4")],
+    geometry=[(board, "fr4")],
     freq_range=(1e9, 4e9),
     materials={"fr4": {"eps_r": 4.4, "sigma": 0.025}},
     accuracy="standard",
 )
 print(cfg.summary())
 auto_sim = Simulation(**cfg.to_sim_kwargs())
+auto_sim.add_material("fr4", eps_r=4.4, sigma=0.025)
+lo = tuple(v + d for v, d in zip(board.corner_lo, cfg.offset))
+hi = tuple(v + d for v, d in zip(board.corner_hi, cfg.offset))
+auto_sim.add(Box(lo, hi), material="fr4")
 ```
 
-`cfg.uses_nonuniform` tells you whether it chose a graded z mesh. Its profile
-can step by more than the 1.4 ratio (it does here, and the `Simulation`
-constructor warns), so treat it as a starting point. It plans from the
-dielectrics you pass. Add conductors to the simulation afterwards, as
-sheets or as volumes at least one cell thick.
+`cfg.uses_nonuniform` tells you whether it chose a graded z mesh. The profile
+spans `cfg.domain[2]`; `cfg.offset` places the board with free space below and
+above it. Translate every shape, source and probe by that offset. The profile
+can step by more than the 1.4 ratio, so treat it as a starting point. It plans
+from the dielectrics you pass. Add conductors afterwards as sheets or as
+volumes at least one cell thick.
 
 If you create a `Simulation` without `dx`, rfx picks a mesh from the
-registered geometry automatically; see
-[Materials and Geometry](/rfx/model/materials/#freeze-the-mesh-before-placing-geometry-from-it)
+registered geometry within the declared domain, keeping the drawn positions.
+See [Materials and Geometry](/rfx/model/materials/#freeze-the-mesh-before-placing-geometry-from-it)
 for placing geometry on an automatic mesh.
+
+For a concrete `dz_profile`, a positive declared z differing from the profile
+sum by more than 1% is refused under `snap="strict"`. Declare the sum as z,
+use z = 0 to infer it, or choose `snap="declared"` to keep the declaration with
+a warning. A traced profile is checked only when `nominal_profiles` supplies
+the concrete widths (relative tolerance 1e-9); otherwise its sum is unjudged.
 
 ## Time step and cost
 

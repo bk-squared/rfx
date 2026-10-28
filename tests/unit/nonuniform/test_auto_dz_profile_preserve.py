@@ -148,7 +148,7 @@ def test_generic_two_layer_blocks_bit_identical():
         )
 
 
-def test_no_features_path_unchanged():
-    """With no z-features the uniform early-return path is untouched."""
+def test_no_features_path_spans_declared_length():
+    """#1941: the empty column divides its declared span across all cells."""
     dz = np.asarray(_make_dz_profile([], 3.0e-3, 0.3e-3), dtype=float)
-    assert np.array_equal(dz, np.full(10, 0.3e-3))
+    assert np.array_equal(dz, np.full(10, 3.0e-3 / 10))

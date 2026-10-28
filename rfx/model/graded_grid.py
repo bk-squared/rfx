@@ -791,6 +791,7 @@ def make_nonuniform_grid(
     periodic_axes: str = "",
     domain: tuple | None = None,
     boundary_depths: tuple | None = None,
+    snap: str = "strict",
 ) -> NonUniformGrid:
     """Create a non-uniform Yee grid.
 
@@ -844,7 +845,16 @@ def make_nonuniform_grid(
         point (see ``Simulation``); a metre coordinate on that axis resolves
         on this profile's node line. Validated by
         :func:`rfx.model.graded_admission.admit_nominal_profiles`.
+    domain, snap : declared extents and the ``Simulation`` snap choice
+        A positive declared z must equal a concrete ``dz_profile``'s sum within
+        1 %, or the build is refused (#1941): ``grid.domain`` is what periodic
+        z and flux regions read. ``snap="declared"`` keeps a declared z the
+        caller was already warned about.
     """
+    if (domain is not None and len(domain) >= 3 and float(domain[2]) > 0
+            and not is_tracer(dz_profile) and snap != "declared"):
+        from rfx.model.graded_admission import judge_declared_z
+        judge_declared_z(float(domain[2]), float(np.sum(dz_profile)))
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
     boundary_depths = boundary_depths if boundary_depths is not None else resolve_face_depths(

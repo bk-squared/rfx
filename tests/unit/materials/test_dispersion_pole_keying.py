@@ -481,7 +481,7 @@ def test_nonuniform_run_preserves_geometry_rasterize_function():
 
     assert callable(rfx.geometry.rasterize), "precondition: rasterize function present"
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-    sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01),
+    sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, float(dz.sum())),
                      dx=0.5e-3, dz_profile=dz, cpml_layers=8)
     sim.add_source((0.01, 0.01, 0.001), "ez")
     sim.add_probe((0.01, 0.01, 0.001), "ez")

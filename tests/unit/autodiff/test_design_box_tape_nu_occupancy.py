@@ -101,7 +101,7 @@ BOX_HI = (14e-3, 12e-3, 10e-3)
 # ---------------------------------------------------------------------------
 
 def _nu_sim(domain=DOMAIN, **kwargs):
-    sim = Simulation(freq_max=2 * F0, domain=domain, dx=DX, boundary="cpml",
+    sim = Simulation(freq_max=2 * F0, domain=(domain[0], domain[1], float(np.sum(DZ_PROFILE))), dx=DX, boundary="cpml",
                      cpml_layers=CPML, dz_profile=DZ_PROFILE, **kwargs)
     sim.add_source((4e-3, 10e-3, 6e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.8))
@@ -477,7 +477,7 @@ def test_nu_fence_subpixel_anisotropic_permittivity():
 
 
 def test_nu_fence_box_holding_the_source_cell():
-    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="cpml",
+    sim = Simulation(freq_max=2 * F0, domain=(DOMAIN[0], DOMAIN[1], float(np.sum(DZ_PROFILE))), dx=DX, boundary="cpml",
                      cpml_layers=CPML, dz_profile=DZ_PROFILE)
     sim.add_source((12e-3, 10e-3, 6e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.8))

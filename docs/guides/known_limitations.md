@@ -35,18 +35,6 @@ unproven bound: 56 independent `_linalg` sites remain concurrent in one build. I
 set `PJRT_NPROC=1` before JAX starts; that workaround's cost is unmeasured. jaxlib ≥ 0.11.1 keeps full speed.
 rfx's dependency range now installs jaxlib 0.11.1 on Python 3.12+; Python 3.11 installs jax 0.10.2.
 
-### `plan_mesh` with a graded z mesh solves the board on the lower absorber, in a shorter domain than it reports
-
-Tracker: #1941
-
-When `plan_mesh(...)` grades z (a thin dielectric layer), its z cell profile runs from z = 0 to the top of the geometry
-plus one margin, but the domain it reports is the geometry height plus two margins. The planner does not move the
-geometry, so `to_sim_kwargs()` builds a model with the board's bottom face on the z-lo absorber and only the upper margin
-of air: a 1.6 mm FR4 board planned for 1.5–3.5 GHz reports a 101.5 mm z domain and is solved over about 53.5 mm. The
-lower margin, meant to keep the absorber away from the board, is missing. Until the fix lands, raise the geometry by
-the margin before planning (about 50 mm in this example; the profile then spans the lower margin and matches the
-reported domain), or build the model with a uniform z mesh and an explicit domain.
-
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373

@@ -98,6 +98,13 @@ reaches: the two remaining ``precision_*`` guards,
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
 
+SNAPSHOT CHANGE, 2026-10-28 (#1941). Written before the regeneration. ``guards_msl_sheet_probe`` gains one
+``body_flush_on_absorber`` line. That fixture lays its 254 um RO4350B substrate on z = 0 with the default boundary,
+so the z-lo face is an absorber and the substrate's thinnest axis is z: the absorber continues the substrate's
+material into its layers, and the run models a half-space of it below the board. It is a true positive by the new
+check's definition; the fixture is a guards demo, not a claims-bearing run. Only that fixture's snapshot is
+regenerated; on main and on the branch every other fixture's report is identical (#1941 moved-value runs).
+
 SNAPSHOT CHANGE, 2026-10-12 (#1662). The below-cutoff advisory now evaluates
 the default bins a waveguide port declared without freqs is run with.
 ``conformal_fine_dx`` uses default bins starting at 1 GHz, below its WR-90
@@ -881,6 +888,8 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_port_conductor_continues",
         "_validate_cfg_dispersive_pole_at_absorber_face",
         "_validate_cfg_geometry_in_cpml",
+        # #1941: written in the family module beside P1.9 and bound the same way.
+        "_validate_cfg_body_flush_on_absorber",
         "_validate_cfg_lossless_resonator_in_absorber",
         "_validate_cfg_pec_boundary_open_structure",
         "_validate_cfg_pec_faces_with_finite_pec",
@@ -1565,7 +1574,7 @@ def _nonuniform_tfsf_oblique_sim():
     from rfx import Simulation
 
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, 0.006),
+    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, float(np.sum(dz))),
                      boundary="cpml", cpml_layers=8, dx=0.001, dz_profile=dz)
     sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
                         angle_deg=30.0)

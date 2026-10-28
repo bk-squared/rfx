@@ -52,7 +52,7 @@ def model(nu, wire, dx=.001, *, graded=False):
             profiles['dz_profile'] = np.r_[dz[:start],
                 np.tile([1.25 * dx, 1.5 * dx, 1.25 * dx], groups),
                 dz[start + 4 * groups:]]
-    sim = Simulation(freq_max=20e9, domain=DOMAIN, dx=dx,
+    sim = Simulation(freq_max=20e9, domain=(DOMAIN[0], DOMAIN[1], float(np.sum(profiles["dz_profile"]))) if nu else DOMAIN, dx=dx,
         cpml_layers=int(round(.003 / dx)),
         boundary=BoundarySpec(x=Boundary('pec', 'cpml'),
             y=Boundary('cpml', 'cpml'), z=Boundary('cpml', 'cpml')),

@@ -127,6 +127,7 @@ def build_nonuniform_grid(
     periodic_axes: str = "",
     automatic: bool | None = None,
     boundary_depths: tuple | None = None,
+    snap: str = "strict",
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -164,6 +165,9 @@ def build_nonuniform_grid(
                 raise ValueError(
                     f"periodic axis {axis!r}: declared period {length:.12g} m differs "
                     f"from realized period {len(profile) * spacing:.12g} m")
+    # #1941 judges a caller's z profile against the declared z; a column
+    # synthesised here rounds up to whole cells as the uniform grid does.
+    snap = snap if dz_profile is not None else "declared"
     if dz_profile is None:
         # Synthesise the uniform dz profile LOCALLY (pure) when only
         # dx/dy are non-uniform. This used to be done at every
@@ -187,6 +191,7 @@ def build_nonuniform_grid(
             face_layers=face_layers, boundary_depths=depths,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
             nominal_profiles=nominal_profiles, periodic_axes=periodic_axes, domain=tuple(map(float, domain)),
+            snap=snap,
         )
 
 

@@ -252,6 +252,11 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
                     c.warn, c.cpml_thickness, c.cpml_thick_lo, c.cpml_thick_hi,
                     c.absorber_label),
                 "absorber"),
+    ConfigCheck("_validate_cfg_body_flush_on_absorber",
+                lambda sim, c: sim._validate_cfg_body_flush_on_absorber(
+                    c.warn, c.cpml_thickness, c.cpml_thick_lo, c.cpml_thick_hi,
+                    c.absorber_label),
+                "absorber"),
     ConfigCheck("_validate_cfg_port_inside_pec",
                 lambda sim, c: sim._validate_cfg_port_inside_pec(c.warn, c.dx),
                 "ports"),

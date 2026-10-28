@@ -519,7 +519,8 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
     the extra edge below the span would lie in the absorber pad, where the
     graded lane's positions cannot reach; it is not probed, and the run
     completes with W0 holding."""
-    sim = Simulation(freq_max=12e9, domain=(24 * MM, 20 * MM, 7.5 * MM), dx=1.0 * MM,
+    # z is the profile sum, 8.5 mm, the length the grid solves (#1941).
+    sim = Simulation(freq_max=12e9, domain=(24 * MM, 20 * MM, 8.5 * MM), dx=1.0 * MM,
                      boundary="cpml", cpml_layers=6,
                      dz_profile=np.array([0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 1, 1]) * MM)
     sim.add_material("sub", eps_r=3.5)

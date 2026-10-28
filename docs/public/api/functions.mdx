@@ -15,7 +15,7 @@ to grade a mesh at all, see [Non-Uniform Mesh](/rfx/model/domain-mesh/).
 | Helper | Signature | Returns |
 |---|---|---|
 | `plan_mesh` | `plan_mesh(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None, artifact_root=None)` | `MeshPlan` |
-| `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None, waveform=None, thin_conductors=())` | `SimConfig` |
+| `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None, waveform=None, thin_conductors=(), domain=None)` | `SimConfig` |
 
 - `geometry`: a list of `(shape, material_name)` pairs.
 - `freq_range`: `(f_min, f_max)` in Hz. `f_max` sets the cell size, `f_min`
@@ -47,32 +47,34 @@ print(plan.to_markdown())
 
 kwargs = plan.to_sim_kwargs()   # freq_max, domain, boundary, cpml_layers, dx (+ dz_profile)
 sim = Simulation(**kwargs)
+sim.add_material("fr4", **materials["fr4"])
+for shape, material in geometry:
+    lo = tuple(v + d for v, d in zip(shape.corner_lo, plan.offset))
+    hi = tuple(v + d for v, d in zip(shape.corner_hi, plan.offset))
+    sim.add(Box(lo, hi), material=material)
 print(sorted(kwargs))
 ```
 
-When the plan grades z, its z profile starts at the board's bottom face and
-covers only the board and the upper margin: for this board the plan reports a
-101.5 mm z domain, but the model is solved over about half of it, with the
-board on the lower absorber, and with neighbouring cells up to 2:1 (above the
-1.4 limit below). Until the planner is fixed, raise the geometry by the margin
-before planning, or build the model with a uniform z mesh and an explicit
-domain; see the
-[known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).
+The z profile spans the returned domain, with a margin below and above the
+board. `plan.offset` is the translation to add to every drawn coordinate;
+this example places the board between 49.9654 and 51.5654 mm in a 101.5308 mm
+column. Sources and probes on the board need the same translation.
 
-`MeshPlan` holds the derived `domain`, `cell_sizes`, `cfl`, `absorber`,
+`MeshPlan` holds the derived `domain`, `offset`, `cell_sizes`, `cfl`, `absorber`,
 `memory`, `grid_shape`, `support_checks` and `warnings`. Export it with
 `to_dict()`, `to_json()` or `to_markdown()`. Values rfx could not determine are
 `None`, not missing. `artifact_root` only records intended output paths; it
 writes nothing.
 
 `to_sim_kwargs()` gives the constructor arguments only. It does not add your
-geometry or move it into the new domain. Add the shapes yourself, a few cells
-in from the domain edges (where the absorber begins) and with thin layers aligned to the final profile's cell
-edges, then run `sim.preflight()` and resolve what it reports.
+geometry or move it into the new domain. Add each shape translated by
+`plan.offset`, as above, then run `sim.preflight()` and resolve what it reports.
+`auto_configure(domain=...)` instead keeps the given domain and drawn
+coordinates, with zero offset; its z profile spans that declared column.
 `SimConfig.summary()` prints the same choices as text.
 
 `sim.plan_mesh(...)` is the equivalent for a simulation you have already built.
-It also runs preflight and can check an S-parameter calculator; see
+Its `offset` is `None`, because it places no geometry. It also runs preflight and can check an S-parameter calculator; see
 [Simulation](/rfx/api/simulation/#checking-before-you-run).
 `Simulation.auto(freq_range, ...)` builds a simulation from the frequency
 range alone, with no geometry; see

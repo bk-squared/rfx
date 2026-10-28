@@ -628,6 +628,8 @@ def _filled(lane, eps_r, sigma):
               boundary="cpml", cpml_layers=4)
     if lane == "fwd":
         kw["dz_profile"] = np.array([1.0, 0.8, 0.8, 1.0, 1.2, 1.0, 1.0, 0.8, 1.0, 1.0]) * 1e-3
+    if "dz_profile" in kw:
+        kw["domain"] = (*kw["domain"][:2], float(np.sum(kw["dz_profile"])))
     sim = Simulation(**kw)
     if eps_r != 1.0 or sigma:
         sim.add_material("d", eps_r=eps_r, sigma=sigma)

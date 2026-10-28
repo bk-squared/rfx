@@ -129,6 +129,55 @@ class _MeshMixin:
             warnings.warn(message, AutoMeshWarning, stacklevel=3)
         return resolved
 
+    def _auto_configure_mesh(self):
+        """Compute the host-side auto-mesh proposal; _resolve_mesh owns it."""
+        from rfx.auto_config import auto_configure
+        from rfx.materials.library import MATERIAL_LIBRARY
+
+        geometry_pairs = [
+            (entry.shape, entry.material_name)
+            for entry in self._geometry
+        ]
+        materials_dict = {}
+        for name, spec in self._materials.items():
+            materials_dict[name] = {
+                "eps_r": spec.eps_r,
+                "sigma": spec.sigma,
+            }
+        # Include library materials used by geometry but not explicitly registered
+        for entry in self._geometry:
+            mname = entry.material_name
+            if mname not in materials_dict and mname in MATERIAL_LIBRARY:
+                materials_dict[mname] = MATERIAL_LIBRARY[mname]
+
+        # Thin conductors are PEC/lossy sheets absent from self._geometry
+        # (issue #371 Bug 2). They add no wavelength constraint, but their
+        # IN-PLANE feature size must feed the feature-based dx. Register each
+        # under a synthetic material so analyze_features() folds its bbox dims
+        # into min_thickness while classifying it by sigma (PEC vs lossy), NOT
+        # as a dielectric: sigma_bulk>=1e6 => has_pec (kept out of max_eps_r),
+        # and a sheet's zero z-extent (< 1e-12, plus the sigma<pec_threshold
+        # guard) keeps it out of z_features (no false non-uniform-z). The
+        # zero z-extent is dropped by the nonzero-dims filter, so min_thickness
+        # resolves to the in-plane extent.
+        for i, tc in enumerate(self._thin_conductors):
+            tc_mat = f"__thin_conductor_{i}__"
+            materials_dict[tc_mat] = {"eps_r": tc.eps_r, "sigma": tc.sigma_bulk}
+            geometry_pairs.append((tc.shape, tc_mat))
+
+        config = auto_configure(
+            geometry=geometry_pairs,
+            freq_range=(self._freq_max / 10, self._freq_max),
+            materials=materials_dict,
+            boundary=self._boundary,
+            domain=self._declared_mesh["_domain"],
+            # #931 §1.9: a sheet's PLANE is a z feature even though its zero
+            # thickness is not — the profile must leave a mesh line there.
+            thin_conductors=self._thin_conductors,
+        )
+
+        return config
+
     def _freeze_mesh(self):
         """Own a resolved snapshot for the public construction boundary."""
         if "_frozen_mesh" not in self.__dict__:

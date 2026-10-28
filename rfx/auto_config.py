@@ -12,6 +12,8 @@ Usage
 ...     accuracy="standard",
 ... )
 >>> sim = Simulation(**config.to_sim_kwargs())
+>>> # add every shape translated by config.offset: the domain holds one
+>>> # margin below and one above the geometry (#1941)
 """
 
 from __future__ import annotations
@@ -247,6 +249,7 @@ class SimConfig:
     warnings: list[str] = field(default_factory=list)
     dz_profile: np.ndarray | None = None
     boundary: str = "cpml"
+    offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
     @property
     def grid_shape(self) -> tuple[int, int, int]:
@@ -325,6 +328,7 @@ class SimConfig:
             f"SimConfig (accuracy={self.accuracy!r}):",
             f"  dx = {self.dx*1e3:.3f} mm ({self.cells_per_wavelength:.0f} cells/λ_min)",
             f"  domain = {self.domain[0]*1e3:.1f} × {self.domain[1]*1e3:.1f} × {self.domain[2]*1e3:.1f} mm",
+            f"  offset = {self.offset[0]*1e3:.3f} × {self.offset[1]*1e3:.3f} × {self.offset[2]*1e3:.3f} mm",
             f"  cpml = {self.cpml_layers} layers ({self.cpml_layers*self.dx*1e3:.1f} mm)",
             f"  n_steps = {self.n_steps} ({self.sim_time_ns:.1f} ns)",
             f"  freq = {self.freq_range[0]/1e9:.2f} – {self.freq_range[1]/1e9:.2f} GHz",
@@ -354,6 +358,7 @@ def auto_configure(
     max_memory_mb: float | None = None,
     waveform=None,
     thin_conductors=(),
+    domain: tuple[float, float, float] | None = None,
 ) -> SimConfig:
     """Derive all simulation parameters from geometry + frequency range.
 
@@ -397,6 +402,11 @@ def auto_configure(
         Declared sheets. Their planes (and any zero-thickness PEC box in
         ``geometry``) become z FEATURES: the non-uniform z profile puts a
         mesh line on each, so a sheet is realized where it was declared.
+
+    domain : (Lx, Ly, Lz) or None
+        Keep these positive extents and the drawn coordinates. Without a
+        domain, add each shape translated by the returned ``offset`` so
+        the geometry has free-space margins on both sides.
 
     Returns
     -------
@@ -493,12 +503,20 @@ def auto_configure(
         margin = margin_override
 
     bbox_lo, bbox_hi = features.bbox
-    domain = tuple(
-        (bbox_hi[i] - bbox_lo[i]) + 2 * margin
-        for i in range(3)
-    )
-    # Ensure minimum domain > 4*dx per dimension
-    domain = tuple(max(d, 8 * dx) for d in domain)
+    declared_domain = None if domain is None else tuple(domain)
+    if declared_domain is not None and (
+            len(declared_domain) != 3 or any(d <= 0 for d in declared_domain)):
+        raise ValueError(f"domain dimensions must be positive, got {domain}")
+    offset = (tuple(margin - lo for lo in bbox_lo) if domain is None
+              else (0.0, 0.0, 0.0))
+    phys_extent = tuple(bbox_hi[i] - bbox_lo[i] + 2 * margin for i in range(3))
+    domain = (tuple(max(d, 8 * dx) for d in phys_extent)
+              if declared_domain is None else declared_domain)
+    z_features = [(max(0.0, lo + offset[2]), min(domain[2], hi + offset[2]), eps)
+                  for lo, hi, eps in features.z_features
+                  if hi + offset[2] > 0 and lo + offset[2] < domain[2]]
+    sheet_planes = [z + offset[2] for z in features.z_sheet_planes
+                    if 0 <= z + offset[2] <= domain[2]]
 
     # 3. CPML layers — evidence-based from reflectivity sweep (2026-04-07).
     # 56-run sweep (7 layers × 4 freqs × 2 kappa): ALL achieve < -40 dB.
@@ -515,19 +533,9 @@ def auto_configure(
     # cell count changes as dx grows.  The 8*dx floor prevents
     # degenerate tiny grids but is re-applied each iteration.
     if max_memory_mb is not None and dx_override is None:
-        # Store the fixed physical extent so it doesn't inflate with dx.
-        _phys_extent = tuple(
-            (bbox_hi[i] - bbox_lo[i]) + 2 * margin for i in range(3)
-        )
-        # #696: the z extent the profile spans. ``margin`` and the geometry
-        # are already fixed here, so this is dx-independent and the profile
-        # below is a pure function of the candidate dx — the same call
-        # step 4 makes with the dx this loop settles on.
-        _phys_z = (max([f[1] for f in features.z_features]
-                       + features.z_sheet_planes) + margin
-                   if needs_nonuniform_z else None)
         for _ in range(20):  # safety limit on iterations
-            _domain = tuple(max(d, 8 * dx) for d in _phys_extent)
+            _domain = (tuple(max(d, 8 * dx) for d in phys_extent)
+                       if declared_domain is None else declared_domain)
             _cpml_cells_now = int(np.ceil(min_cpml_thickness / dx))
             _cpml = max(_cpml_cells_now, cpml_cells)
             # #696: measure the candidate against the grid this config
@@ -537,8 +545,8 @@ def auto_configure(
             # number ``estimated_memory_mb`` never reproduced, so the
             # documented postcondition failed on non-uniform-z boards.
             _dz_prof = (_make_dz_profile(
-                            features.z_features, _phys_z, dx,
-                            sheet_planes=features.z_sheet_planes)
+                            z_features, _domain[2], dx,
+                            sheet_planes=sheet_planes)
                         if needs_nonuniform_z else None)
             _nx, _ny, _nz = _auto_grid_shape(_domain, dx, _cpml, _dz_prof)
             _cells = _nx * _ny * _nz
@@ -570,12 +578,8 @@ def auto_configure(
     # 4. Non-uniform z profile
     dz_profile = None
     if needs_nonuniform_z:
-        # Physical z domain = geometry extent + margin above for radiation
-        geo_z_max = max([f[1] for f in features.z_features]
-                        + features.z_sheet_planes)
-        phys_z = geo_z_max + margin
-        dz_profile = _make_dz_profile(features.z_features, phys_z, dx,
-                                      sheet_planes=features.z_sheet_planes)
+        dz_profile = _make_dz_profile(z_features, domain[2], dx,
+                                      sheet_planes=sheet_planes)
         warnings.append(
             f"Non-uniform z mesh enabled: {len(dz_profile)} cells, "
             f"dz={np.min(dz_profile)*1e3:.3f}–{np.max(dz_profile)*1e3:.3f} mm"
@@ -642,6 +646,7 @@ def auto_configure(
         warnings=warnings,
         dz_profile=dz_profile,
         boundary=boundary,
+        offset=offset,
     )
 
 
@@ -791,7 +796,7 @@ def _make_dz_profile(
     if not z_features:
         n = max(1, int(round(domain_z / dx)))
         if not sheet_pts:
-            return np.ones(n) * dx
+            return np.full(n, domain_z / n)
         return np.asarray(_uniform_run(domain_z, dx, sheet_pts), dtype=float)
 
     # Partition the column into sub-intervals at every feature boundary

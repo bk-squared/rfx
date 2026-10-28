@@ -1920,7 +1920,7 @@ def test_auto_msl_spacing_is_frozen_resolved_in_the_document():
 
 def _nu_offset_fixture(**profiles):
     DX = 2e-4
-    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=DX,
+    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, float(np.sum(profiles["dz_profile"])) if "dz_profile" in profiles else 0.0038), dx=DX,
                      boundary="cpml", cpml_layers=8, **profiles)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.020, 0.02632, 0.000794)), material="sub")

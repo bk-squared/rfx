@@ -456,7 +456,7 @@ def test_static_remnant_advisory_silent_on_settled_run():
 def test_static_remnant_advisory_fires_on_nonuniform_lane():
     """The NU (dz_profile) lane floors the same way (#388 measured both lanes)."""
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 6)
-    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.01), dx=1e-3, dz_profile=dz,
+    sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, float(np.sum(dz))), dx=1e-3, dz_profile=dz,
                      cpml_layers=4, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.003), "ez",
                    waveform=ModulatedGaussian(f0=2.2e9, bandwidth=1.2))

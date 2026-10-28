@@ -137,6 +137,9 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_settling_witness_present", ("warn",)),
     ("_validate_cfg_geometry_in_cpml",
      ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")),
+    # #1941: the flush-body advisory runs beside the crossing check.
+    ("_validate_cfg_body_flush_on_absorber",
+     ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")),
     ("_validate_cfg_port_inside_pec", ("warn", "dx")),
     ("_validate_cfg_floating_single_cell_port", ("warn",)),
     ("_validate_cfg_pec_boundary_open_structure", ("warn",)),

@@ -485,7 +485,11 @@ def _enumerate_emission_sites():
 # new code ``thin_conductor_thickness_unmodelled`` -- a metal sheet's declared
 # thickness is not in the model.
 # 139 -> 140 (#1887): judge_wall_axes emits wall_axis_off_node once per tuple.
-_FROZEN_TOTAL_SITES = 140
+# 140 -> 141 (#1941): ``_validate_cfg_body_flush_on_absorber``
+# (rfx/preflight/absorber.py), new code ``body_flush_on_absorber`` -- a static
+# body lying flush on an absorbing face along its thinnest axis, which the
+# absorber pad continues as a half-space.
+_FROZEN_TOTAL_SITES = 141
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -524,7 +528,8 @@ _FROZEN_TOTAL_SITES = 140
 # #1913: waveguide_port_obstacle_before_reference.
 # 92 -> 93 (#1953): thin_conductor_thickness_unmodelled.
 # 93 -> 94 (#1887): wall_axis_off_node.
-_FROZEN_LITERAL_CODE_COUNT = 94
+# 94 -> 95 (#1941): body_flush_on_absorber.
+_FROZEN_LITERAL_CODE_COUNT = 95
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

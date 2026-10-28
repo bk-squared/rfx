@@ -1675,7 +1675,7 @@ class _PreflightMixin:
     # moved VERBATIM to ``rfx/preflight/absorber.py``, bound back at its
     # original position for the reason the blocks above give.
     # ------------------------------------------------------------------
-    from rfx.preflight.absorber import _validate_cfg_geometry_in_cpml
+    from rfx.preflight.absorber import _validate_cfg_geometry_in_cpml, _validate_cfg_body_flush_on_absorber
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 6: the port/source/probe-frozen-by-realized-PEC

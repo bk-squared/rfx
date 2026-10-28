@@ -8,6 +8,7 @@ keeps what it returns; the messages are the ones the constructor raised.
 """
 from __future__ import annotations
 
+import warnings
 from collections.abc import Mapping
 from typing import NamedTuple
 
@@ -46,13 +47,43 @@ class NominalProfile(NamedTuple):
     traced_cells: tuple | None = None
 
 
+class DeclaredZWarning(UserWarning):
+    """The caller explicitly keeps a declared z different from the solved length."""
+
+
+#: A concrete z profile may miss a positive declared z by this fraction (#1941).
+DECLARED_Z_RTOL = 0.01
+
+
+def judge_declared_z(declared_z, dz_total, snap="strict", *, stacklevel=2):
+    """Refuse (``snap="strict"``) or warn (``"declared"``) when a concrete z
+    profile's sum, the length the grid solves, misses the declared z by more
+    than :data:`DECLARED_Z_RTOL`. Every reader of the declared extent
+    (periodic z, flux regions, thin conductors, RCS) would read a length the
+    grid does not solve. ``stacklevel`` names the caller's line."""
+    rel = abs(dz_total - declared_z) / declared_z
+    if rel <= DECLARED_Z_RTOL:
+        return
+    message = (
+        f"Declared domain z = {declared_z:.12g} m differs from "
+        f"dz_profile sum (solved length) = {dz_total:.12g} m "
+        f"(rel = {rel:.12g}, greater than {DECLARED_Z_RTOL}). "
+        "Declare z equal to the profile sum, give 0 for z to "
+        'take it from the profile, or use snap="declared".')
+    if snap == "declared":
+        warnings.warn(message, DeclaredZWarning, stacklevel=stacklevel)
+    else:
+        raise ValueError(message)
+
+
 def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
-                          dt=None, dt_min_cell=None, nominal_profiles=None,
+                          dt=None, dt_min_cell=None, nominal_profiles=None, snap="strict",
                           multiband_ratio_cap=None, inplane_ratio_cap=None):
     """Return ``(domain, nominal_cells)`` for the declared graded mesh.
 
-    ``domain`` is the declared extent with every CONCRETE profile's sum put in
-    its axis; a traced profile needs the caller's concrete extent. The dt pin
+    Concrete x/y profiles set their extents. A concrete z profile checks a
+    positive declared z, or supplies it when absent; a traced profile needs
+    the caller's concrete extent. The dt pin
     is refused without a profile and ``dt_min_cell`` without a pin.
     Nominal widths are float64 arrays; windowed axes retain their
     :class:`NominalProfile` declaration so admission is idempotent.
@@ -98,6 +129,8 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
             dz_total = float(np.sum(dz_profile))
             if len(domain) < 3 or domain[2] <= 0:
                 domain = (domain[0], domain[1], dz_total)
+            else:
+                judge_declared_z(domain[2], dz_total, snap, stacklevel=4)
     elif any(d <= 0 for d in domain):
         raise ValueError(f"domain dimensions must be positive, got {domain}")
 

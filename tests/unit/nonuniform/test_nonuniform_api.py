@@ -95,7 +95,7 @@ class TestSimulationNonUniform:
     def test_dz_profile_stored(self):
         dz = np.array([0.4e-3]*4 + [0.5e-3]*5)
         sim = Simulation(
-            freq_max=5e9, domain=(0.05, 0.05, 0.01),
+            freq_max=5e9, domain=(0.05, 0.05, float(np.sum(dz))),
             dz_profile=dz, cpml_layers=8,
         )
         assert sim._dz_profile is not None
@@ -105,7 +105,7 @@ class TestSimulationNonUniform:
         """Smoke test: non-uniform sim runs without error."""
         dz = np.array([0.4e-3]*4 + [0.5e-3]*5)
         sim = Simulation(
-            freq_max=5e9, domain=(0.02, 0.02, 0.01),
+            freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
             dx=0.5e-3, dz_profile=dz, cpml_layers=8,
         )
         sim.add_source((0.01, 0.01, 0.001), "ez")
@@ -134,7 +134,7 @@ class TestSimulationNonUniform:
         """
         dz = np.array([0.4e-3] * 4 + [0.6e-3] * 6)
         sim = Simulation(
-            freq_max=5e9, domain=(0.02, 0.02, 0.01),
+            freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
             dx=0.5e-3, dz_profile=dz, cpml_layers=8,
             boundary="cpml",
         )
@@ -164,10 +164,12 @@ class TestSimulationNonUniform:
         """
         from rfx.measurement.farfield import compute_far_field
 
-        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+        # the box top lay outside the solved column; it now spans 10.1 mm.
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
         sim = Simulation(
             freq_max=5e9,
-            domain=(0.02, 0.02, 0.01),
+            domain=(0.02, 0.02, float(np.sum(dz))),
             dx=0.5e-3,
             dz_profile=dz,
             boundary="cpml",
@@ -216,12 +218,14 @@ class TestSimulationNonUniform:
         |DFT| magnitude at 200 steps must exceed the magnitude at 100
         steps. Also asserts the plane is finite and non-zero.
         """
-        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
+        # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+        # the source and plane at 5 mm lay outside it; it now spans 10.1 mm.
+        dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
 
         def _run(n_steps: int):
             sim = Simulation(
                 freq_max=5e9,
-                domain=(0.02, 0.02, 0.01),
+                domain=(0.02, 0.02, float(np.sum(dz))),
                 dx=0.5e-3,
                 dz_profile=dz,
                 boundary="cpml",
@@ -262,7 +266,7 @@ class TestSimulationNonUniform:
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
             freq_max=8e9,
-            domain=(0.08, 0.006, 0.006),
+            domain=(0.08, 0.006, float(np.sum(dz))),
             boundary="cpml",
             cpml_layers=8,
             dx=0.001,
@@ -286,7 +290,7 @@ class TestSimulationNonUniform:
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         sim = Simulation(
             freq_max=8e9,
-            domain=(0.08, 0.006, 0.006),
+            domain=(0.08, 0.006, float(np.sum(dz))),
             boundary="cpml",
             cpml_layers=8,
             dx=0.001,
@@ -402,7 +406,7 @@ class TestSimulationNonUniform:
         def _build(with_r: bool):
             sim = Simulation(
                 freq_max=5e9,
-                domain=domain,
+                domain=(domain[0], domain[1], float(np.sum(dz))),
                 dx=0.5e-3,
                 dz_profile=dz,
                 boundary="cpml",
@@ -573,7 +577,7 @@ class TestNonUniformDispersive:
         """Debye on non-uniform grid should not blow up (energy bounded)."""
         from rfx.materials.debye import DebyePole
         dz = np.array([0.2e-3]*4 + [0.5e-3]*6)
-        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.005),
+        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
                          boundary="cpml", dz_profile=dz, dx=0.5e-3)
         sim.add_material("dispersive", eps_r=4.0,
                          debye_poles=[DebyePole(delta_eps=2.0, tau=5e-12)])
