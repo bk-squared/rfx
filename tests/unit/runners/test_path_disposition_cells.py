@@ -63,7 +63,7 @@ N_STEPS = 40
 EFFECT_FLOOR = 1e-3
 PARITY_TOL = 1e-4
 PARITY_LANES = ("run_nonuniform", "run_distributed", "run_distributed_nu", "fwd_uniform",
-                "fwd_nonuniform", "fwd_distributed_nu", "fwd_adi")
+                "fwd_nonuniform", "fwd_distributed", "fwd_distributed_nu", "fwd_adi")
 GRADED = ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu")
 ADI = ("run_adi", "fwd_adi")
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)

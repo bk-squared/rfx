@@ -12,9 +12,18 @@ from rfx.probes.probes import flux_spectrum
 from tests.unit.runners.test_distributed_record_planes import model
 
 
+def _pair(sim, n_steps, n_devices, entry):
+    """One device, then ``n_devices``, through the same entry."""
+    call = getattr(sim, entry)
+    kwargs = dict(n_steps=n_steps, skip_preflight=True, **({"checkpoint": False} if entry == "forward" else {}))
+    return call(**kwargs), call(**kwargs, devices=host_devices(n_devices),
+                                **({"distributed": True} if entry == "forward" else {}))
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("n_devices", [2, 3])
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_flux(boundary, n_devices, monkeypatch, tmp_path):
+def test_flux(boundary, n_devices, entry, monkeypatch, tmp_path):
     sim, grid, seam = model(boundary, n_devices)
     for axis, index in ((0, seam - 1), (0, seam), (1, grid.shape[1] // 2)):
         coordinate = (index - (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]) * grid.dx
@@ -30,8 +39,7 @@ def test_flux(boundary, n_devices, monkeypatch, tmp_path):
 
     monkeypatch.setattr(accumulators, "flux", observe)
     start = perf_counter()
-    reference = sim.run(n_steps=40, skip_preflight=True)
-    actual = sim.run(n_steps=40, devices=host_devices(n_devices), skip_preflight=True)
+    reference, actual = _pair(sim, 40, n_devices, entry)
     jax.block_until_ready(actual.flux_monitors)
     jax.effects_barrier()
     differences = {}
@@ -45,7 +53,7 @@ def test_flux(boundary, n_devices, monkeypatch, tmp_path):
                 max_abs=float(np.max(np.abs(a - b))), peak=float(np.max(np.abs(b))))
     native_clock = sorted({(n, s) for width, n, s in clocks if width == grid.shape[0]})
     slab_clock = sorted({(n, s) for width, n, s in clocks if width != grid.shape[0]})
-    report = dict(boundary=boundary, devices=n_devices, grid_shape=grid.shape, n_steps=40,
+    report = dict(boundary=boundary, devices=n_devices, entry=entry, grid_shape=grid.shape, n_steps=40,
                   seconds=perf_counter() - start, flux=differences,
                   native_clock=native_clock, slab_clock=slab_clock)
     (tmp_path / "measurements.json").write_text(json.dumps(report))
@@ -69,16 +77,17 @@ def test_flux_mutations(mutation, monkeypatch, tmp_path):
             return original(state, accs, metadata, dt, step, window_step=window_step)
         monkeypatch.setattr(accumulators, "flux", shifted)
     with pytest.raises(AssertionError, match="flux array_equal") as failure:
-        test_flux("pec", 2, monkeypatch, tmp_path)
+        test_flux("pec", 2, "run", monkeypatch, tmp_path)
     measured = json.loads((tmp_path / "measurements.json").read_text())["flux"]
     assert any(not row["equal"] for name, row in measured.items() if name.startswith("0_7/")), "seam flux must turn red"
     (tmp_path / "mutation.json").write_text(json.dumps(dict(mutation=mutation, assertion=str(failure.value))))
     print(f"mutation={mutation}: RED {failure.value}")
 
 
+@pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("n_devices", [2, 3])
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_finite_flux(boundary, n_devices, tmp_path):
+def test_finite_flux(boundary, n_devices, entry, tmp_path):
     from tests.unit.runners.test_distributed_record_planes import finite_model
     sim, grid, seam = finite_model(boundary, n_devices)
     freqs = [2.5e9, 6.1e9, 11.7e9]
@@ -89,8 +98,7 @@ def test_finite_flux(boundary, n_devices, tmp_path):
                          size=(11.1e-3, 6.2e-3), center=(7.9e-3, 5.3e-3),
                          name="finite_z", dft_window="hann")
     start = perf_counter()
-    reference = sim.run(n_steps=47, skip_preflight=True)
-    actual = sim.run(n_steps=47, devices=host_devices(n_devices), skip_preflight=True)
+    reference, actual = _pair(sim, 47, n_devices, entry)
     jax.block_until_ready(actual.flux_monitors)
     differences = {}
     for name, mon in reference.flux_monitors.items():
@@ -107,7 +115,7 @@ def test_finite_flux(boundary, n_devices, tmp_path):
             differences[f"{name}/{component}"] = dict(equal=bool(np.array_equal(a, b)),
                 max_abs=float(np.max(np.abs(a - b))), peak=float(np.max(np.abs(b))))
         assert np.max(np.abs(mon.e1_dft)) + np.max(np.abs(mon.e2_dft)) > 0
-    report = dict(boundary=boundary, devices=n_devices, grid_shape=grid.shape, n_steps=47,
+    report = dict(boundary=boundary, devices=n_devices, entry=entry, grid_shape=grid.shape, n_steps=47,
                   seam=seam, seconds=perf_counter() - start, flux=differences)
     (tmp_path / "measurements.json").write_text(json.dumps(report))
     print(report)
