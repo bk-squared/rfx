@@ -354,7 +354,7 @@ def injected_control(footprint, path):
     module = importlib.import_module(
         "rfx.stepping.graded" if path == "multi-graded" else
         "rfx.runners._distributed_common" if path.startswith("multi") else
-        "rfx.stepping.graded" if "graded" in path else "rfx.simulation")
+        "rfx.stepping.graded" if "graded" in path else "rfx.core.drives")
     original = module.inject_drives
 
     def inject(state, drives, values):
