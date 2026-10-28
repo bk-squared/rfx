@@ -23,7 +23,7 @@ MSL and point waveforms, the Floquet table its runner builds, a driven
 waveguide port's ``e_inc_table`` (never the analytic ``v_inc_t``; its H
 companion does not set the end, its beyond-record part is
 ``drive_tail_share``'s), coaxial E and H tables, and TF/SF's waveform plus
-its box diagonal.
+its launch-to-box reach.
 """
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
                   return_detail=False):
     """The step after which every applied drive has ended, plus transit.
 
-    ``records=None`` is a whole-domain reader (distance 0). Otherwise each
+    ``records=None`` reads incident transit through TF/SF boxes (zero for other drives). Each
     drive adds the free-space transit from its farthest injecting point to
     the farthest record (an object with ``position`` and optional ``extent``,
     a low-level probe with ``i, j, k``, or a point). Drives:
@@ -134,7 +134,7 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
     * ``waveguide_ports`` (sequence or mapping of configs): a driven port's
       ``e_inc_table``, held at its last entry past its end, from its source
       plane;
-    * ``tfsf``: a built TF/SF config, its waveform plus the box diagonal;
+    * ``tfsf``: a built TF/SF config, its waveform plus launch and scattered transit;
     * ``sim``: what a run builds from the declarations: port and MSL
       waveforms sampled as the runners sample them (a port without one gets
       the default pulse), each Floquet port's table from its runner's builder,
@@ -197,7 +197,8 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
             reasons.append(reach[1])
             continue
         distance = (reach if not callable(reach) else
-                    0.0 if points is None else reach(points) if points else None)
+                    (reach(None) if name == "TF/SF source" else 0.0)
+                    if points is None else reach(points) if points else None)
         value, detail = source_end_step([(samples, distance)], n_steps, dt, return_detail=True)
         if value is not None:
             rows.append((name, "ok", value))
@@ -223,12 +224,12 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
 
 def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
               waveguide_ports=()):
-    """The until_decay reader of ``injection_end``: distance zero.
+    """The until_decay reader: incident TF/SF transit, zero for other drives.
 
     Point, port and Floquet drives (``sources``, ``mag_sources``) and a
     driven waveguide port's applied incident table (``cfg.e_inc_table``,
     held at its last entry past its end, as the port reads it) are read at
-    distance zero; TF/SF uses its waveform and the total-field box diagonal
+    distance zero; TF/SF uses its waveform and incident transit through the box
     (``tfsf`` is the runner's (config, state) pair). Returns None when a
     drive has not ended by ``max_steps`` (the stop then never fires). Raises
     ValueError naming a drive whose end cannot be computed before the loop.

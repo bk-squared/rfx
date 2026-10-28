@@ -939,18 +939,16 @@ class Result(NamedTuple):
 class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
 
-    Carries only the observables needed by gradient-based objectives,
-    avoiding the broader stateful surface of :class:`Result`. The
-    ``settling_db`` and ``settling_witness`` properties score the concrete
+    Carries the observables needed by gradient-based objectives.
+    ``settling_db`` and ``settling_witness`` score the concrete
     user-probe record using the same host diagnostic as ``run()``. They
     report absence while records are traced; read them on the returned
     concrete result, not as gradient objectives. Numeric
     ``settling_probe_info`` preserves the selected columns, component
     labels and the source-dominated flag as integers, without
     inserting strings into a JAX result tree. ``settling_source_end_index``
-    carries the first post-source sample, including free-space transit;
-    missing timing or insufficient post-source samples yields no witness.
-    These lazy properties are not stored fields in ``_asdict()``.
+    carries the first post-source sample, including free-space transit.
+    ``settling_accumulator_end_index`` is the max accumulator end (None if unavailable).
     ``wire_port_sparams`` contains only wire ``(meta, accs)`` pairs on both meshes;
     the lane-specific type of ``meta`` and the accumulator channels are
     documented on :class:`Result`, as are ``flux_monitors``,
@@ -1014,6 +1012,8 @@ class ForwardResult(NamedTuple):
     current_moment_monitor: object = None
     adjoint_settling: object = None
     settling_source_end_index: object = None
+    settling_accumulator_end_index: int | None = None
+    settling_coverage: object = None
     #: First post-source sample at the user probes (None: settling_source_end_index).
     settling_probe_source_end_index: object = None
     settling_freq_max: object = None

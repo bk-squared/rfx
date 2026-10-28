@@ -15,6 +15,7 @@ import math
 import pathlib
 import re
 import warnings
+from itertools import product
 
 import numpy as np
 import pytest
@@ -38,6 +39,343 @@ NOT_REACHABLE = {
     ("floquet", True): "Floquet ports do not support non-uniform z mesh",
     ("coax", True): "compute_coaxial_two_port() supports only a uniform Yee grid",
 }
+
+
+def _hand_tfsf_geometry(cfg, grid, inside=False):
+    spans = []
+    for axis, size in zip("xyz", grid.shape):
+        lo, hi = getattr(cfg, axis + "_lo", 0), getattr(cfg, axis + "_hi", size - 1)
+        if axis != "x" and hi == lo and size > 1:
+            lo, hi = 0, size - 1
+        spans.append((lo + int(inside), hi - int(inside)))
+    indices = np.array(list(product(*spans)))
+    corners = np.array([[grid.node_of(a, int(i)) for a, i in zip("xyz", c)] for c in indices])
+    if hasattr(cfg, "m"):
+        paths = (indices @ cfg.m - cfg.source_p) * grid.dx / np.linalg.norm(cfg.m)
+    elif hasattr(cfg, "d_aux"):
+        # Builder idx_E = (i*cos + j*sin)*dx/d_aux + src_idx.
+        mapped = ((indices[:, 0]*cfg.cos_theta + indices[:, 1]*cfg.sin_theta)
+                  * grid.dx / cfg.d_aux + cfg.src_idx)
+        paths = (mapped - cfg.src_idx) * cfg.d_aux
+    elif hasattr(cfg, "src_x"):
+        sign = 1 if cfg.direction == "+x" else -1
+        paths = sign * (cfg.i0_x + indices[:, 0] - cfg.x_lo - cfg.src_x) * cfg.dx_1d / cfg.cos_theta
+    else:
+        sign = 1 if cfg.direction == "+x" else -1
+        paths = sign * (cfg.i0 + indices[:, 0] - cfg.x_lo - cfg.src_idx) * cfg.dx_1d
+    return indices, corners, paths
+
+
+def _hand_tfsf_samples(cfg, grid, n):
+    import jax.numpy as jnp
+    t = jnp.arange(n, dtype=jnp.float32) * grid.dt
+    arg = (t - cfg.src_t0) / cfg.src_tau
+    env = jnp.exp(-arg**2)
+    kind = getattr(cfg, "src_waveform", "analytic")
+    if kind == "analytic":
+        samples = env * jnp.exp(-1j * 2*jnp.pi*cfg.src_fcen*(t-cfg.src_t0))
+    elif kind == "modulated_gaussian":
+        samples = env * jnp.cos(2*jnp.pi*cfg.src_fcen*(t-cfg.src_t0))
+    else:
+        samples = (-2*arg) * env
+    return np.asarray(cfg.src_amp * samples)
+
+
+def _s2b_tfsf(kind):
+    from rfx import Simulation
+    sim = Simulation(freq_max=10e9, domain=(.040, .024, .024), dx=.002,
+                     boundary="cpml", cpml_layers=8)
+    options = {"slab+x": {}, "slab-x": {"direction": "-x"},
+               "closed": {"closed_box": True},
+               "closed-oblique": {"closed_box": True, "theta_deg": 45., "polarization": "s"},
+               "bloch": {"angle_deg": 20., "waveform": "modulated_gaussian", "bandwidth": .2},
+               "methodB": {"angle_deg": 20., "method": "methodB"}}[kind]
+    # Use modulated Gaussian: the default pulse leaves a near-DC field (#1839).
+    sim.add_tfsf_source(f0=5e9, **({"bandwidth": .8, "margin": 3,
+                                  "waveform": "modulated_gaussian"} | options))
+    return sim
+
+
+TF_KINDS = ("slab+x", "slab-x", "closed", "closed-oblique", "bloch", "methodB")
+
+
+@pytest.mark.parametrize("kind", TF_KINDS)
+def test_s2b_r1_tfsf_hand_reach(kind):
+    from rfx.measurement.record_end import injection_end
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim = _s2b_tfsf(kind)
+    grid = sim._build_grid()
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=1200)
+    _, corners, paths = _hand_tfsf_geometry(cfg, grid)
+    off = _off(_hand_tfsf_samples(cfg, grid, 1200))
+    probe = np.array([grid.node_of(a, 9) for a in "xyz"])
+    for records in (None, [probe]):
+        reach = max(paths) if records is None else max(
+            path + np.linalg.norm(c - probe) for c, path in zip(corners, paths))
+        expected = off + _transit(reach, grid.dt)
+        assert injection_end(1200, grid.dt, records=records, grid=grid, tfsf=cfg) == expected
+
+
+@pytest.mark.parametrize("kind", TF_KINDS)
+def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim = _s2b_tfsf(kind)
+    grid = sim._build_grid()
+    n = 1200
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n)
+    indices, corners, paths = _hand_tfsf_geometry(cfg, grid, inside=True)
+    for point in corners:
+        sim.add_probe(tuple(point), "ez")
+    waveform = np.abs(_hand_tfsf_samples(cfg, grid, n))
+    off = _off(waveform)
+    peak_w = int(waveform.argmax())
+    last_w = int(np.flatnonzero(waveform > 1e-3 * waveform.max())[-1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.run(n_steps=n, skip_preflight=True)
+    measurements = []
+    for c, raw, path in zip(indices, np.asarray(result.time_series).T, paths):
+        trace = np.abs(raw)
+        end = off + _transit(path, grid.dt) + 2
+        assert trace.max() > 0 and end < n
+        last = int(np.flatnonzero(trace > 1e-6 * trace.max())[-1])
+        ratio = float(trace[end:].max() / trace.max())
+        transit = float(path / (C0 * grid.dt))
+        measurements.append({
+            "corner": tuple(map(int, c)), "end": end,
+            "last_above_1e-6": last, "post_bound_ratio": ratio, "margin": end-last,
+            "predicted_peak": peak_w + transit, "measured_peak": int(trace.argmax()),
+            "predicted_envelope_end": last_w + transit,
+            "measured_envelope_end": int(np.flatnonzero(trace > 1e-3 * trace.max())[-1]),
+        })
+    record_property("R1", repr(measurements))
+    print(f"R1 {kind}: {measurements}")
+    for row in measurements:
+        assert abs(row["measured_peak"] - row["predicted_peak"]) <= 1, (kind, row)
+        assert abs(row["measured_envelope_end"] - row["predicted_envelope_end"]) <= 2, (kind, row)
+    if kind in ("closed", "closed-oblique"):
+        assert all(row["post_bound_ratio"] <= 1e-6 for row in measurements), (kind, measurements)
+
+
+def test_s2b_r2_scene_b_echo():
+    from rfx import Box, Simulation
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim = Simulation(freq_max=20e9, domain=(.080, .016, .016), dx=.001,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_tfsf_source(f0=10e9, bandwidth=.8, polarization="ez", margin=3, closed_box=True)
+    sim.add(Box((.0655, .0055, .0045), (.0705, .0105, .0115)), material="pec")
+    sim.add_probe((.0011, .0093, .0071), "ez")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.run(n_steps=900, skip_preflight=True)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, result.grid, sim._freq_max, line_steps=900)
+    _, corners, paths = _hand_tfsf_geometry(cfg, result.grid)
+    probe = np.array(sim._probes[0].position)
+    expected = _off(_hand_tfsf_samples(cfg, result.grid, 900)) + _transit(
+        max(path + np.linalg.norm(c - probe) for c, path in zip(corners, paths)), result.dt)
+    assert expected == 423
+    assert sim._settling_source_end(result) == expected
+    trace = np.abs(np.asarray(result.time_series)[:, 0])
+    assert trace[expected:].max() / trace.max() <= 1e-2
+
+
+def _s2b_scene_c(accumulators):
+    from rfx import Simulation
+    sim = Simulation(freq_max=10e9, domain=(.120, .030, .030), dx=.002,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_source((.0101, .0149, .0153), "ez", amplitude_kind="current")
+    sim.add_probe((.0141, .0161, .0139), "ez")
+    if "ntff" in accumulators:
+        sim.add_ntff_box((.004,)*3, (.116, .026, .026), freqs=np.array([5e9]))
+    if "dft" in accumulators:
+        sim.add_dft_plane_probe(axis="x", coordinate=.116, name="far", freqs=np.array([5e9]))
+    if "flux" in accumulators:
+        sim.add_flux_monitor(axis="x", coordinate=.116, name="out", freqs=np.array([5e9]))
+    return sim
+
+
+def _hand_accumulator_ends(result, sim):
+    grid = result.grid
+    spans_by_name = {}
+    box = result.ntff_box
+    if box is not None:
+        spans_by_name["NTFF box"] = [(getattr(box, a+"_lo"), getattr(box, a+"_hi")) for a in "ijk"]
+    for attr, label in (("dft_planes", "DFT plane"), ("flux_monitors", "flux monitor")):
+        for name, plane in (getattr(result, attr) or {}).items():
+            spans = [(0, n-1) for n in grid.shape]
+            spans[plane.axis] = (plane.index,)
+            spans_by_name[f"{label} {name}"] = spans
+    source = np.asarray(sim._ports[0].position)
+    import jax
+    import jax.numpy as jnp
+    wave = sim._ports[0].waveform or GaussianPulse(f0=sim._freq_max/2, bandwidth=.8)
+    off = _off(jax.vmap(wave)(jnp.arange(300, dtype=jnp.float32)*result.dt))
+    return {name: off + _transit(max(np.linalg.norm(
+        np.array([grid.node_of(a, int(i)) for a, i in zip("xyz", c)]) - source)
+        for c in product(*spans)), result.dt) for name, spans in spans_by_name.items()}
+
+
+@pytest.mark.parametrize("accumulators", [("ntff",), ("dft",), ("flux",), ("ntff", "dft", "flux")])
+@pytest.mark.parametrize("n", [196, 300])
+def test_s2b_r3_accumulator_coverage_and_forward(accumulators, n):
+    sim = _s2b_scene_c(accumulators)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=n, skip_preflight=True)
+    expected = _hand_accumulator_ends(result, sim)
+    rows = result.settling_witness["coverage"]
+    assert {r["name"]: r["end_step"] for r in rows} == expected
+    assert all(r["n_record"] == n for r in rows)
+    if "ntff" in accumulators:
+        assert expected["NTFF box"] == 241
+    coverage_warnings = [w for w in caught if "cannot judge" in str(w.message)]
+    if n == 196:
+        assert result.settling_witness["status"] == "undetermined"
+        reason = rows[0]["verdict"]
+        assert reason == (f"cannot judge: the record ends at step {n} before the field leaves "
+                          f"{rows[0]['name']} (step {rows[0]['end_step']})")
+        assert result.settling_witness["reason"] == reason
+        assert len(coverage_warnings) == 1 and coverage_warnings[0].category is UserWarning
+        assert reason in str(coverage_warnings[0].message)
+    else:
+        assert all(r["verdict"] == "covered" for r in rows)
+        assert not coverage_warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        forward = sim.forward(n_steps=n)
+    assert forward.settling_accumulator_end_index == max(expected.values())
+    assert forward.settling_witness["coverage"] == rows
+    assert forward.settling_witness["status"] == result.settling_witness["status"]
+
+
+@pytest.mark.parametrize("n", [180, 350])
+def test_s2b_r4_rcs_ntff_coverage(n, monkeypatch):
+    from time import monotonic
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+    from rfx.measurement.rcs import compute_rcs
+    import rfx.measurement.rcs as rcs_module
+    captured = {}
+    original_run = rcs_module.run
+
+    def capture(*args, **kwargs):
+        captured.update(kwargs)
+        return original_run(*args, **kwargs)
+
+    monkeypatch.setattr(rcs_module, "run", capture)
+    grid = Grid(freq_max=10e9, domain=(.024,)*3, dx=.002, cpml_layers=6)
+    materials = init_materials(grid.shape)
+    materials = materials._replace(sigma=materials.sigma.at[11:14, 11:14, 11:14].set(1e7))
+    started = monotonic()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_rcs(grid, materials, n, f0=5e9, bandwidth=.8, cpml_layers=6,
+                             theta_obs=np.array([np.pi/2]), phi_obs=np.array([np.pi]))
+    print(f"R4 {n} steps: {monotonic() - started:.3f} s")
+    cfg, box = captured["tfsf"][0], captured["ntff"]
+    _, corners, paths = _hand_tfsf_geometry(cfg, grid)
+    records = [np.array([grid.node_of(a, i) for a, i in zip("xyz", c)])
+               for c in product(*[(getattr(box, a+"_lo"), getattr(box, a+"_hi")) for a in "ijk"])]
+    expected = _off(_hand_tfsf_samples(cfg, grid, n)) + _transit(
+        max(p + max(np.linalg.norm(c-r) for r in records) for c, p in zip(corners, paths)), grid.dt)
+    witness = result.settling_witness
+    row, = witness["coverage"]
+    assert row["end_step"] == expected
+    assert witness["source_end_index"] == row["end_step"]
+    assert row["n_record"] == n and row["name"] == "NTFF box"
+    if n == 180:
+        assert row["end_step"] >= n
+        assert witness["status"] == "undetermined" and witness["reason"] == row["verdict"]
+        warns = [w for w in caught if "cannot judge" in str(w.message)]
+        assert len(warns) == 1 and row["verdict"] in str(warns[0].message)
+    else:
+        assert witness["status"] == "absent" and row["verdict"] == "covered"
+        assert witness["reason"] == "no time-domain record; add an identification probe"
+        assert not [w for w in caught if "cannot judge" in str(w.message)]
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+def test_s2b_r5_sweep_member_witnesses(fallback):
+    import copy
+    from rfx import Box, Simulation
+    from rfx.vmap_sweep import vmap_material_sweep
+    mesh = {} if fallback else {"dx": .002}
+    sim = Simulation(freq_max=10e9, domain=(.03,)*3, boundary="cpml", cpml_layers=6, **mesh)
+    sim.add_material("slab", eps_r=2.)
+    sim.add(Box((.012, .004, .004), (.018, .026, .026)), material="slab")
+    if fallback:
+        sim.add_port((.0071, .0149, .0121), "ez", impedance=50., extent=.006)
+    else:
+        sim.add_source((.0071, .0149, .0153), "ez", amplitude_kind="current")
+        sim.add_dft_plane_probe(axis="x", coordinate=.023, freqs=np.array([5e9]), name="read")
+    sim.add_probe((.0231, .0161, .0139), "ez")
+    values = [2., 10.] if fallback else [2., 6.]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sweep = vmap_material_sweep(sim, "slab.eps_r", values, **(
+            {"num_periods": 2} if fallback else {"n_steps": 400}))
+        members = []
+        for value in values:
+            member = copy.deepcopy(sim)
+            member._materials["slab"] = dataclasses.replace(member._materials["slab"], eps_r=value)
+            members.append(member.run(n_steps=sweep.time_series.shape[1], skip_preflight=True))
+    assert sweep.dt.shape == sweep.settling_db.shape == (2,)
+    assert len(sweep.settling_witness) == 2
+    for i, result in enumerate(members):
+        np.testing.assert_array_equal(sweep.time_series[i], result.time_series)
+        assert sweep.dt[i] == result.dt
+        np.testing.assert_equal(sweep.settling_db[i], np.asarray(result.settling_db, dtype=float))
+        for key in ("status", "db", "share_per_bin", "coverage", "reason"):
+            np.testing.assert_equal(sweep.settling_witness[i][key], result.settling_witness[key])
+    if fallback:
+        assert sweep.dt[0] != sweep.dt[1]
+        assert sweep.time_series.shape[1] == 105
+    else:
+        assert not np.array_equal(sweep.settling_witness[0]["share_per_bin"],
+                                  sweep.settling_witness[1]["share_per_bin"])
+
+
+@pytest.mark.parametrize("kind", ["crop", "flux", "moment"])
+def test_s2b_realized_accumulator_corners_and_forward_jit(kind):
+    from types import SimpleNamespace
+    import jax
+    import jax.numpy as jnp
+    from rfx.api._spec import ForwardResult
+    from rfx.measurement.coverage import accumulator_coverage
+
+    # Unequal node spacings expose both index/physical-coordinate confusion
+    # and half-open crop endpoints; the drive is off after sample 2.
+    nodes = [np.array([0., 1., 3., 6., 10.])*C0,
+             np.array([0., 2., 5., 9., 14.])*C0,
+             np.array([0., 3., 7., 12., 18.])*C0]
+    grid = SimpleNamespace(shape=(5, 5, 5), dt=1.,
+                           node_of=lambda a, i: nodes["xyz".index(a)][i])
+    result = ForwardResult(time_series=np.zeros((40, 0)), grid=grid, dt=1.)
+    if kind == "crop":
+        result = result._replace(dft_planes={"cropped": SimpleNamespace(axis=0, index=2,
+            region=(1, 3, 1, 4))})
+        far = np.array([3., 5., 12.])
+    elif kind == "flux":
+        result = result._replace(flux_monitors={"finite": SimpleNamespace(axis=1, index=2,
+            lo1=1, hi1=3, lo2=1, hi2=-1)})
+        far = np.array([6., 5., 18.])
+    else:
+        result = result._replace(current_moment_monitor=SimpleNamespace(
+            i_lo=1, i_hi=4, j_lo=1, j_hi=4, k_lo=1, k_hi=4))
+        far = np.array([6., 9., 18.])
+    drive = SimpleNamespace(impedance=0., position=(0., 0., 0.),
+                            waveform=lambda t: jnp.where(t < 2., 1., 0.))
+    sim = SimpleNamespace(_ports=[drive], _msl_ports=[], _tfsf=None)
+    coverage = accumulator_coverage(result, sim=sim)
+    row, = coverage.rows()
+    assert row["end_step"] == 2 + math.ceil(np.linalg.norm(far))
+    assert row["verdict"] == "covered"
+    # Forward preserves named rows/reasons as static metadata, not string leaves.
+    carried = jax.jit(lambda x: ForwardResult(time_series=x,
+        settling_accumulator_end_index=coverage.max_end(), settling_coverage=coverage))(
+            jnp.zeros((40, 0)))
+    assert carried.settling_witness["coverage"] == coverage.rows()
+    assert int(carried.settling_accumulator_end_index) == row["end_step"]
 
 
 class _Loop(Exception):
@@ -117,8 +455,6 @@ def _analytic_v_inc(cfg, dt):
 
 def _expected(kind, sim, grid, call):
     """(whole-domain end, end with transit to sim's probes), from the applied tables."""
-    from rfx.measurement.settling import tfsf_source_drive
-
     _, kw = call
     dt = float(grid.dt)
     probes = [np.asarray(p.position, dtype=float) for p in sim._probes]
@@ -147,13 +483,14 @@ def _expected(kind, sim, grid, call):
         reach = max(abs(p[axis] - float(cfg.source_x_m)) for p in probes)
         probed.append(off + _transit(reach, dt))
     if kw.get("tfsf") is not None:
-        import jax
-        import jax.numpy as jnp
-        waveform, diagonal = tfsf_source_drive(kw["tfsf"][0], grid)
-        with jax.ensure_compile_time_eval():
-            samples = np.asarray(jax.vmap(waveform)(jnp.arange(N, dtype=jnp.float32) * dt))
-        whole.append(_off(samples) + _transit(diagonal, dt))
-        probed = list(whole)
+        cfg = kw["tfsf"][0]
+        indices, corners, paths = _hand_tfsf_geometry(cfg, grid)
+        off = _off(_hand_tfsf_samples(cfg, grid, N))
+        whole.append(off + _transit(max(paths), dt))
+        probed.append(off + _transit(max(path + max(np.linalg.norm(c - p) for p in probes)
+                                        for path, c in zip(paths, corners)), dt))
+        old = off + _transit(np.linalg.norm(np.ptp(corners, axis=0)), dt)
+        print(f"S1 TF/SF {type(grid).__name__}: diagonal={old}, whole={whole[-1]}, probe={probed[-1]}")
     assert None not in whole and None not in probed, (whole, probed)
     return max(whole), max(probed)
 
@@ -192,7 +529,7 @@ def test_end_is_the_latest_end_of_the_applied_tables(kind, graded, monkeypatch):
     whole, probed = _expected(kind, sim, grid, call)
     tfsf = kw.get("tfsf")
     configs = list(kw.get("waveguide_ports") or ())
-    # until_decay's reader: distance zero (TF/SF keeps its box diagonal).
+    # until_decay's reader: TF/SF incident transit through its realized box.
     assert drive_end(grid, N, sources=kw.get("sources") or (), mag_sources=kw.get("mag_sources") or (),
                      tfsf=tfsf, waveguide_ports=configs) == whole
     if configs:
@@ -447,3 +784,16 @@ def test_s2_peaks_keep_drive_checks_and_between_check_samples():
     assert point.check(39, [1.]) is None
     assert point.peak == 100.
     assert point.check(40, [1., 1.]) == 40
+
+
+@pytest.mark.parametrize("status", ["pass", "absent", "undetermined", "fail"])
+@pytest.mark.parametrize("db", [None, -80., float("nan"), -10.])
+def test_s2b_coverage_preserves_tail_value_and_nonpass_reason(status, db):
+    from rfx.measurement.coverage import AccumulatorCoverage, with_coverage
+    coverage = AccumulatorCoverage((("NTFF box", 241, 196, "cannot judge: coverage"),))
+    original = {"status": status, "reason": "tail reason", "db": db}
+    value, witness = with_coverage(db, original, coverage)
+    assert value is db and witness["db"] is db
+    assert witness["coverage"] == coverage.rows()
+    assert witness["status"] == ("undetermined" if status in {"pass", "absent"} else status)
+    assert witness["reason"] == ("cannot judge: coverage" if status in {"pass", "absent"} else "tail reason")

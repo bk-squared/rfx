@@ -1,0 +1,37 @@
+"""Travel from the realized TF/SF launch to its box and recorded points."""
+from itertools import product
+
+import numpy as np
+
+
+def tfsf_reach(cfg, grid):
+    """Return a reach callable; None reads incident transit through the box."""
+    spans = []
+    for axis, size in zip("xyz", grid.shape):
+        lo, hi = getattr(cfg, axis + "_lo", 0), getattr(cfg, axis + "_hi", size - 1)
+        if axis != "x" and lo == hi and size > 1:
+            lo, hi = 0, size - 1
+        spans.append((lo, hi))
+    indices = np.asarray(list(product(*spans)))
+    corners = np.asarray([[grid.node_of(a, int(i)) for a, i in zip("xyz", c)]
+                          for c in indices])
+    if hasattr(cfg, "source_p"):
+        # Per-node window delays reference source_p on every sublattice.
+        paths = (indices @ np.asarray(cfg.m) - cfg.source_p) * cfg.dx_1d / np.linalg.norm(cfg.m)
+    elif hasattr(cfg, "d_aux"):
+        # init_tfsf_methodB maps projection d=0 to src_off == src_idx.
+        paths = (indices[:, 0] * cfg.cos_theta + indices[:, 1] * cfg.sin_theta) * grid.dx
+    elif hasattr(cfg, "i0_x"):
+        # The Bloch source applies the envelope along the entire src_x plane.
+        paths = (cfg.direction_sign * (cfg.i0_x + indices[:, 0] - cfg.x_lo - cfg.src_x)
+                 * cfg.dx_1d / cfg.cos_theta)
+    else:
+        paths = cfg.direction_sign * (cfg.i0 + indices[:, 0] - cfg.x_lo - cfg.src_idx) * cfg.dx_1d
+
+    def reach(points):
+        if points is None:
+            return float(np.max(paths))
+        distances = np.linalg.norm(corners[:, None, :] - np.asarray(points)[None, :, :], axis=-1)
+        return float(np.max(paths + np.max(distances, axis=1)))
+
+    return reach
