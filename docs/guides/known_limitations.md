@@ -110,14 +110,18 @@ disc of radius 3 mm in a 40 × 15 × 30 mm metal cavity changed the cavity's dec
 from 0.5 to 0.25 mm, with its realized area right to 1 % on both meshes. The change comes from the staircased rim; its
 mechanism is not measured. Check a curved film's loss on three meshes before using it as a converged number.
 
-### Two lossy films with a sub-cell drawn gap can be joined
+### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
-Tracker: #2146
+Tracker: #1958
 
-Metal sheets join only where their drawn extents touch, so a gap drawn between two sheets stays open at any width. Lossy
-films (`add_thin_conductor` below 1e6 S/m) do not follow that rule yet: a gap of less than about one cell between two films
-on one plane stays open only when a cell centre lies inside it. Otherwise the edge across the gap carries the film's
-conductance and the two films are solved as one. Draw such a gap at least one cell wide, or with its edges on mesh lines.
+Metal sheets and lossy films (`add_thin_conductor`) on one plane join only where their drawn extents touch, so a gap drawn
+between two of them stays open at any width (a sub-cell gap is solved as one empty cell row). The rule decides per pair of
+declarations, by bounding intervals, and across shared faces. Three cases are outside it:
+- two conductors that touch at one place and are gapped at another along the same axis (two halves of a period meeting
+  through a periodic seam; curved or non-convex shapes whose bounding boxes touch) are joined at both places;
+- one conductor's gap to its own periodic image (a seam slot) is not a pair, so the rule does not cover it;
+- two films whose cells meet only at a diagonal corner node are not separated.
+Draw such gaps as separate declarations that do not touch anywhere along the gap's axis, at least one cell wide.
 
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 
