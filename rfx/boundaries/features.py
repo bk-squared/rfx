@@ -275,6 +275,7 @@ def admit_waveguide(sim, *, lane="dispatch", edges=True):
     multi-device refusal ends anyway."""
     if not sim._waveguide_ports:
         return
+    refuse_traced_guide_mesh(sim, lane)
     if sim._uses_nonuniform_mesh:
         _admit_graded_guide(sim, lane, edges)
         return
@@ -324,6 +325,33 @@ def _admit_graded_guide(sim, lane, edges=True):
     if edges:
         from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
         refuse_bare_waveguide_edges(sim, grid, lane=lane)
+
+
+def refuse_traced_guide_mesh(sim, lane):
+    """Refuse a waveguide port on a mesh whose cell widths are traced.
+
+    The port's planes, aperture, mode, absorber depth and flux planes are all
+    read from host cell widths, and the flux monitor refuses traced cells, so
+    no derivative with respect to a cell width reaches its S. Both waveguide
+    admissions call this first, so the refusal names the ports before any
+    host read raises a raw JAX error.
+    """
+    from rfx.core.jax_utils import is_tracer
+    profiles = (sim._dx_profile, sim._dy_profile, sim._dz_profile)
+    traced = [axis for axis, profile in zip("xyz", profiles) if is_tracer(profile)]
+    if is_tracer(sim._dx):
+        traced.insert(0, "dx")
+    if not sim._waveguide_ports or not traced:
+        return
+    from rfx._traced_refusal import TracedStructureRefusal
+    names = ", ".join(repr(entry.name or number)
+                      for number, entry in enumerate(sim._waveguide_ports))
+    raise TracedStructureRefusal(
+        f"{lane}: waveguide port(s) {names} on a mesh whose {'/'.join(traced)} cell "
+        "widths are traced (mesh as a design variable): the port reads its planes, mode "
+        "aperture and flux planes from host cell widths, so a derivative with respect to "
+        "a cell width cannot reach its S. Build the mesh from concrete widths; a "
+        "permittivity can still be differentiated through eps_override.")
 
 
 def _refuse_periodic_guide(sim, faces):
