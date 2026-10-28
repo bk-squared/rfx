@@ -99,11 +99,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
                         s_param_n_steps, n_steps, until_decay),
                 }, instead=None,
                 reason_overrides={"s_param_n_steps":
-                    "this lane reads S11 from the main run's wire-port record"
-                    if _graded or _forward_port_s11 else
-                    "this lane computes S11 from a second distributed "
-                    "wire-port recording run using the main run's n_steps "
-                    "and the port's declared excitation"})
+                    "this lane reads S11 from the main run's wire-port record"})
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
         refuse_distributed_lumped_s_pmc(self, entry=entry)
 
@@ -182,19 +178,28 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             s_param_freqs=s_param_freqs, compute_s_params=compute_s_params,
         )
     if compute_s_params and not _forward_port_s11 and plan.lane != "run_distributed_nu":
-        from rfx.measurement import default_frequency_grid
-        from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
-        if s_param_freqs is None:
-            s_param_freqs = default_frequency_grid(self._freq_max, 50)
-        _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
-            self, s_param_freqs, skip_preflight=True,
-            n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
-            devices=devices,
-            **({"_main_wire_record": True} if len(_dist_ports) == 1
-               and _dist_ports[0].extent is not None else {}),
-            **({"_forward_port_s11": True} if _forward_port_s11 else {}),
-        )
-        _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
+        from rfx.measurement.port_s import main_record_port_s
+        main_s = main_record_port_s(
+            self, _res, compute_s_params=compute_s_params,
+            s_param_freqs=s_param_freqs,
+            off_record=self._s_param_n_steps_off_record(s_param_n_steps, n_steps, until_decay))
+        if main_s is not None:
+            _s_params, _freqs, _read_ids = main_s
+            _res = _res._replace(s_params=_s_params, freqs=_freqs, sparam_read_ids=_read_ids)
+        else:
+            from rfx.measurement import default_frequency_grid
+            from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+            if s_param_freqs is None:
+                s_param_freqs = default_frequency_grid(self._freq_max, 50)
+            _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
+                self, s_param_freqs, skip_preflight=True,
+                n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
+                devices=devices,
+                **({"_main_wire_record": True} if len(_dist_ports) == 1
+                   and _dist_ports[0].extent is not None else {}),
+                **({"_forward_port_s11": True} if _forward_port_s11 else {}),
+            )
+            _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
     _res = self._attach_run_settling_witness(
         _res, n_steps=n_steps, num_periods=num_periods, context=entry)
     _warn_if_nonfinite_result(_res, context=entry)

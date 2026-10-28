@@ -1,4 +1,4 @@
-"""C1/C2: independent one-device main records and one forward scan."""
+"""C1/C2/D1: independent main records, one scan, and identical distributed S."""
 from unittest.mock import patch
 
 import jax
@@ -56,12 +56,18 @@ def test_main_record_and_s(kind, entry, boundary):
 
     # All expected samples, accumulator values and S come from a public
     # one-device solve. No cut, reduction, sampler or DFT helper is the oracle.
-    expected = call(False)
     with patch.object(distributed_v2, 'run_distributed', wraps=distributed_v2.run_distributed) as runs:
         actual = call(True)
-    if entry == 'forward':
-        print(f'{entry}/{kind}/{boundary}: runs={runs.call_count}', flush=True)
-        assert runs.call_count == 1
+    print(f'{entry}/{kind}/{boundary}: runs={runs.call_count}', flush=True)
+    assert runs.call_count == 1
+    if entry == 'run':
+        fwd = scene(kind, boundary).forward(
+            **options, distributed=True, devices=devices, checkpoint=False,
+            port_s11_freqs=actual.freqs)
+        equal = np.array_equal(actual.s_params, fwd.s_params)
+        print(f'D1/{kind}/{boundary}: run/forward array_equal={equal}', flush=True)
+        assert equal, (kind, boundary, actual.s_params, fwd.s_params)
+    expected = call(False)
     assert len(actual.sparam_time_records) == len(expected.sparam_time_records) == 1
     for got, want in zip(actual.sparam_time_records, expected.sparam_time_records, strict=True):
         assert (got.id, got.kind, got.channels) == (want.id, want.kind, want.channels)
