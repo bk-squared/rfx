@@ -384,9 +384,9 @@ Below f/fc = 1.2 the guide's slow group velocity rings long after the source
 ends. At a/45 cells the run's settling check passes from about 16 000 steps
 (−51.6 dB); there |S11|²+|S21|² is within 1.8e-3 of a 64 000-step record, inside
 the check's own per-bin bound. On 8 000 steps the sum moves by up to 9e-3 per bin
-and the settling check fails that record (−39.7 dB against −40 dB). The
-remaining 1.2e-3 to 1.3e-3 of |1 − |S11|² − |S21|²| does not fall with record
-length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
+and the settling check fails that record (−39.7 dB against −40 dB). From
+32 000 steps on, the remaining 1.2e-3 to 1.3e-3 of |1 − |S11|² − |S21|²| does
+not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
 
