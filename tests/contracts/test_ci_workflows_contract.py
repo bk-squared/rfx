@@ -234,6 +234,62 @@ def test_cpu_suite_python_and_jax_pins(
     assert {r.name: str(r.specifier) for r in requirements} == expected_pins, installs[0]
 
 
+def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
+    """jax 0.11 broke estimate_ad_memory on Python 3.12 while every other lane ran 3.11/jax 0.10.2.
+
+    The weekly job installs the newest release of both wheels, with no upper bound, on 3.12, records what it got, runs the
+    gradient and contract tests over all of its shards, and the lane's verdict waits for it.
+    """
+    jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
+    assert "if" not in jobs["latest-jax"]
+    steps = jobs["latest-jax"]["steps"]
+    versions = [step.get("with", {}).get("python-version") for step in steps
+                if str(step.get("uses", "")).startswith("actions/setup-python@")]
+    assert versions == ["3.12"]
+    installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
+    assert len(installs) == 2, installs
+    assert shlex.split(installs[0], comments=True) == ["pip", "install", "-e", ".[dev]"], installs[0]
+    # The pair goes in over pyproject's cap with its own dependencies (acceleration D:996c06), then pip check.
+    over, *check = installs[1].strip().splitlines()
+    over = shlex.split(over)
+    assert over[:3] == ["pip", "install", "-U"] and "--no-deps" not in over, installs[1]
+    pins = {r.name: str(r.specifier) for r in map(Requirement, over[3:])}
+    assert pins == {"jax": ">=0.11", "jaxlib": ">=0.11"}, installs[1]
+    # pip check runs; only rfx's own jax/jaxlib bound is exempt from failing the job.
+    assert check[0].startswith("pip check > pip-check.txt"), installs[1]
+    fail = re.search(r"if grep -vE '([^']+)' pip-check.txt; then [^;]*; exit 1; fi", installs[1])
+    assert fail, installs[1]
+    allowed = re.compile(fail.group(1))
+    # pip check names the distribution as pyproject declares it, not the import name.
+    dist = re.search(r'^name = "([^"]+)"$', (REPO / "pyproject.toml").read_text(), re.M).group(1)
+    assert allowed.match(f"{dist} 1.9.0 has requirement jax<0.11.2,>=0.10.2, but you have jax 0.11.3.")
+    assert allowed.match("No broken requirements found.")
+    for broken in ("jax 0.11.3 has requirement ml_dtypes>=0.6, but you have ml_dtypes 0.5.0.",
+                   f"{dist} 1.9.0 has requirement numpy<3, but you have numpy 3.0.0.",
+                   f"{dist} 1.9.0 requires h5py, which is not installed."):
+        assert not allowed.match(broken), broken
+    records = [s for s in steps if s.get("name", "").startswith("Record the resolved")]
+    assert len(records) == 1 and "if" not in records[0]
+    for package in ("jax", "jaxlib", "numpy"):
+        assert f"{package}.__version__" in records[0]["run"]
+    # Each shard records its CPU model and AVX-512 support (#2166: outcomes changed between runners).
+    cpu = [s for s in steps if s.get("name", "") == "Record the runner CPU"]
+    assert len(cpu) == 1 and "if" not in cpu[0], cpu
+    assert "model name" in cpu[0]["run"] and "avx512f" in cpu[0]["run"], cpu[0]["run"]
+    # Every process runs XLA capped at AVX2, set before pytest (#2166: outcomes changed with the runner's CPU).
+    cap = [i for i, s in enumerate(steps) if s.get("name", "").startswith("Cap XLA's CPU instruction set at AVX2")]
+    assert len(cap) == 1 and "if" not in steps[cap[0]], cap
+    cap_run = steps[cap[0]]["run"]
+    assert "sitecustomize.py" in cap_run and '_cap = "--xla_cpu_max_isa=AVX2"' in cap_run, cap_run
+    assert cap[0] < next(i for i, s in enumerate(steps) if "pytest " in str(s.get("run", "")))
+    tests = [str(step["run"]) for step in steps if "pytest " in str(step.get("run", ""))]
+    assert len(tests) == 1, tests
+    assert tests[0].split()[1:3] == ["tests/unit/autodiff", "tests/contracts"], tests[0]
+    assert re.findall(r"--splits\s+(\d+)", tests[0]) == [str(len(jobs["latest-jax"]["strategy"]["matrix"]["group"]))]
+    assert "--group ${{ matrix.group }}" in tests[0]
+    assert "latest-jax" in jobs["notify"]["needs"]
+
+
 def test_fast_suite_records_the_resolved_versions() -> None:
     steps = load(PR_TESTS)["jobs"]["fast-suite"]["steps"]
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved JAX/numpy versions")]
@@ -1187,7 +1243,7 @@ def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, ba
 
 @pytest.mark.parametrize("workflow,jobs", [
     (PR_TESTS, ("guards-and-preflight", "fast-suite")),
-    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device")),
+    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device", "latest-jax")),
     (WORKFLOW_DIR / "regen-durations.yml", ("fast", "slow")),
 ])
 def test_test_jobs_raise_the_mapping_limit_before_pytest(workflow, jobs) -> None:

@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 6 * * 1'  # Every Monday 06:00 UTC
   workflow_dispatch:  # Manual trigger
+    inputs:
+      only_latest_jax:
+        # The latest-jax job alone (its timing runs), without the 16 slow shards or the tracking issue.
+        description: "Run only the Python 3.12 / newest jax 0.11 job"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,6 +79,7 @@ jobs:
   # which plus setup fits the 153-min budget; 14 do not. The contract test bounds the largest group
   # on recorded prices (it passes from 12, as it cannot see stale prices); a contract pins 16.
   slow-tests:
+    if: ${{ !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
     # suite grows weekly; the 60-min ceiling left <15% headroom.
@@ -212,6 +219,7 @@ jobs:
   # 180-min limit, and on run 39748623375 shard 1 was cut at 180 min with no test failed,
   # its runner taking 1.42x as long as the green run's for the same 8,225 tests.
   three-device:
+    if: ${{ !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     # The limit stops a hung run before GitHub's 6 h. 75 min = about 34 min (these steps
     # plus install on run 39698601854) x 1.42 (the slowest runner seen, run 39748623375)
@@ -355,6 +363,95 @@ jobs:
           echo "three-device job: $(( used / 60 )) min of a 75 min limit"
           test "$used" -le $(( 75 * 60 * 85 / 100 ))
 
+  # Python 3.12 with the newest jax release, no upper bound (rfx-core-desk 2026-10-27): jax 0.11 renamed scan parameters and
+  # estimate_ad_memory raised KeyError for every Python 3.12 user while all other lanes ran 3.11 with jax 0.10.2
+  # (record rfx-archive 20261027-jax-floor-options). Gradients and the contracts only; weekly, never a PR check.
+  # Six shards balanced on .test_durations (recorded 3.11/jax 0.10.2: about 189 min single-process).
+  latest-jax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Record shard start time
+        run: echo "SHARD_T0=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Raise the memory-mapping limit for the test process
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the package
+        run: pip install -e ".[dev]"
+
+      # Over pyproject's jax cap on purpose: this job exists to see the newest jax release, with no upper bound,
+      # because an upstream fix lands on the newest line first (rfx-core-desk L:5bac96, acceleration D:996c06; the 2.0
+      # cap below 0.11.2 is for the CPU step slowdown, openxla/xla#50977). pip's resolver does not hold a requested
+      # package to an installed package's bounds, so -U installs the newest pair and upgrades what it needs, as a
+      # user's `pip install -U jax` would. pip check then fails the job on any broken requirement except rfx's own
+      # jax/jaxlib bound, which this step breaks deliberately.
+      - name: Install the newest jax over the cap
+        run: |
+          pip install -U "jax>=0.11" "jaxlib>=0.11"
+          pip check > pip-check.txt || true
+          cat pip-check.txt
+          if grep -vE '^(No broken requirements found\.|rfx-fdtd [^ ]+ has requirement (jax|jaxlib)[<>=!~][^ ]*, but you have (jax|jaxlib) [^ ]+)$' pip-check.txt; then echo 'pip check: broken requirements above'; exit 1; fi
+
+      - name: Record the resolved Python/JAX/numpy versions
+        run: python -c "import sys, jax, jaxlib, numpy; print('python', sys.version.split()[0], 'jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
+
+      # The CPU of each shard: on jax 0.12 two tests changed outcome between runs of identical code (#2166);
+      # the model and AVX-512 support show whether the runner's instruction set decides it.
+      - name: Record the runner CPU
+        run: |
+          grep -m1 '^model name' /proc/cpuinfo
+          if grep -q -m1 -w avx512f /proc/cpuinfo; then echo 'avx512f: yes'; else echo 'avx512f: no'; fi
+
+      # XLA compiles its CPU code for the runner's own CPU, and GitHub's runners differ (AMD EPYC 9V45 and 7763,
+      # Intel Xeon 8573C): on jax 0.12 two tests changed outcome with the CPU (#2166). Cap every process at AVX2,
+      # as the local gate does (rfx-core-desk L:3c69f6). A sitecustomize.py in site-packages appends the cap to a
+      # child's own XLA_FLAGS too (about 25 tests start a child with XLA_FLAGS replaced).
+      - name: Cap XLA's CPU instruction set at AVX2 in every process
+        run: |
+          site=$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
+          test ! -e "$site/sitecustomize.py"
+          cat > "$site/sitecustomize.py" <<'PY'
+          import os
+          _cap = "--xla_cpu_max_isa=AVX2"
+          _flags = os.environ.get("XLA_FLAGS", "")
+          if not _flags.strip():
+              os.environ["XLA_FLAGS"] = _cap
+          elif "--xla_cpu_max_isa=" not in _flags and _flags.lstrip().startswith("--"):
+              os.environ["XLA_FLAGS"] = _flags.rstrip() + " " + _cap
+          os.environ.setdefault("ONEDNN_MAX_CPU_ISA", "AVX2")
+          PY
+          env -u XLA_FLAGS python -c 'import os; f = os.environ["XLA_FLAGS"]; assert f == "--xla_cpu_max_isa=AVX2", f'
+          XLA_FLAGS=--xla_force_host_platform_device_count=2 python -c 'import os; f = os.environ["XLA_FLAGS"]; assert f == "--xla_force_host_platform_device_count=2 --xla_cpu_max_isa=AVX2", f'
+
+      - name: Gradients and contracts on Python 3.12 / jax 0.11 — shard ${{ matrix.group }} of 6
+        env:
+          JAX_PLATFORMS: cpu
+          RFX_CLEAR_JAX_CACHES_PER_MODULE: "1"
+        run: >
+          pytest tests/unit/autodiff tests/contracts -v -ra -p no:cacheprovider
+          -m "not gpu and not slow and not slow_physics and not docs_consistency"
+          --splits 6 --group ${{ matrix.group }}
+
+      - name: Shard wall time
+        if: always()
+        run: |
+          echo "latest-jax shard ${{ matrix.group }}: $(( $(date +%s) - SHARD_T0 )) s including install"
+
   # The weekly external-solver job (crossval-external: Meep legs of the scheduled
   # cross-validation cases) was removed on 2026-09-21 with the last scheduled case.
   # CI does not run external solvers: a cross-validation case compares rfx with
@@ -390,8 +487,9 @@ jobs:
   # hand-cancelled scheduled run also gets a comment.
   #
   # `skipped` also counts as not-green (issue #717 review, 2026-09-13). No job
-  # in this workflow is supposed to skip on either trigger: neither slow-tests
-  # nor three-device carries a job-level `if:`. So a skip here means the
+  # in this workflow is supposed to skip on either trigger. The one job-level `if:`
+  # is the dispatch switch only_latest_jax, which skips slow-tests, three-device
+  # and this job together, so that run writes no verdict. So a skip here means the
   # lane quietly stopped covering something — the exact silent-gap class #717
   # exists to close — and the notifier must say so instead of printing "all
   # green". tests/contracts/test_validation_workflow_signal.py pins both halves
@@ -406,8 +504,8 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests, three-device]
-    if: always()
+    needs: [slow-tests, three-device, latest-jax]
+    if: ${{ always() && !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
