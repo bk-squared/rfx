@@ -279,7 +279,8 @@ use a fixed `n_steps` there.
   validated range. Preflight warns.
 - **TFSF along a graded x axis:** normal incidence runs. The incident line
   uses the realized x cells, and with no scatterer the scattered-field region
-  reads at most 7×10⁻⁶ of the total-field peak, as on uniform cells
+  reads within 1×10⁻⁵ of the total-field peak (measured 7×10⁻⁶), as on
+  uniform cells
   (`tests/unit/preflight/test_graded_axis_findings.py`). A closed
   box or an oblique wave on a graded x is refused.
 - **Microstrip probes on a graded feed:** the automatic probe offset and

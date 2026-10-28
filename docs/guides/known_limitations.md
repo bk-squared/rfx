@@ -376,16 +376,18 @@ outside the accuracy bar.
 
 The field increment a source adds on its edge is the update's coefficient times the drive. One place still computes that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
 
-### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
+### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)
 
 Below f/fc = 1.2 the guide's slow group velocity rings long after the source
-ends. At a/45 cells, |S11|²+|S21|² settles within 1e-3 from about 32 000 steps;
-on 8 000 steps it moves by up to 1.2e-2 per bin, and the run's settling check
-reports that record (−39.7 dB against −40 dB) and passes from 12 000 steps. Complex S11
-and S21 move by at most 1e-2 from 8 000 steps on. Measured on an empty WR-90 at
-7.0–7.9 GHz (f/fc 1.07–1.20) on 2026-10-27; record kept with the project.
+ends. At a/45 cells the run's settling check passes from about 16 000 steps
+(−51.6 dB); there |S11|²+|S21|² is within 1.8e-3 of a 64 000-step record, inside
+the check's own per-bin bound. On 8 000 steps the sum moves by up to 9e-3 per bin
+and the settling check fails that record (−39.7 dB against −40 dB). The
+remaining 1.2e-3 to 1.3e-3 of |1 − |S11|² − |S21|²| does not fall with record
+length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
+(f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
 
 ## Ring-down completion and the early stop
