@@ -85,11 +85,14 @@ def test_pmc_high_ghost_with_transverse_cpml(axis, graded, devices):
 
 
 def tfsf_scene(*, axis='x', graded=False):
-    boundary = dict.fromkeys('xyz', 'cpml')
-    boundary[axis] = Boundary('pec', 'pmc')
+    # The uniform TF/SF lane solves its side faces periodic and refuses declared ones (#2127).
+    boundary = dict.fromkeys('xyz', 'cpml') if graded else {'x': 'cpml', 'y': 'periodic', 'z': 'periodic'}
+    # The uniform +x plane wave needs its absorber on x_lo (a closed x axis leaves it none).
+    boundary[axis] = Boundary('pec' if graded or axis != 'x' else 'cpml', 'pmc')
     profiles = {'dx_profile': np.array([.001] * 8 + [.0013] + [.001] * 8)} if graded else {}
     # A vacuum scene meets TF/SF's transverse and injection-plane conditions.
-    return Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001,
+    # Periodic y and z need whole cells: 0.9 mm divides 8.1 and 7.2 mm (x stays a fractional count).
+    return Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001 if graded else .0009,
                       boundary=BoundarySpec(**boundary), snap='declared', cpml_layers=2,
                       **profiles)
 
@@ -105,9 +108,10 @@ def test_pmc_high_ghost_with_tfsf(graded):
 @pytest.mark.parametrize('graded', (False, True))
 @pytest.mark.parametrize('axis', ('y', 'z'))
 def test_tfsf_refuses_mixed_transverse_pmc_pair(axis, graded):
-    sim = tfsf_scene(axis=axis, graded=graded)
-    sim.add_tfsf_source(f0=5e9, bandwidth=.8, polarization='ez', margin=2)
-    with pytest.raises(ValueError, match=f'TF/SF {axis}_lo, {axis}_hi must be a pair'):
+    reason = f'TF/SF {axis}_lo, {axis}_hi must be a pair' if graded else 'TF/SF on the uniform mesh solves axes'
+    with pytest.raises(ValueError, match=reason):
+        sim = tfsf_scene(axis=axis, graded=graded)
+        sim.add_tfsf_source(f0=5e9, bandwidth=.8, polarization='ez', margin=2)
         record(sim, 1)
 
 
