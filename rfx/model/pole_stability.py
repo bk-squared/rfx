@@ -270,15 +270,18 @@ def combine_pole_extremes(records_from_all_slabs):
                 combined[record.code] = record
                 continue
             previous = combined[record.code]
+            # Counts and occupancy follow the extremes: a jax operator on concrete
+            # records under an outer jit would stage them, and the judge would refuse.
             values = (previous.eps_low, previous.sigma_low, previous.sigma_high,
-                      record.eps_low, record.sigma_low, record.sigma_high)
+                      record.eps_low, record.sigma_low, record.sigma_high,
+                      previous.count, record.count, *previous.occupied, *record.occupied)
             xp = jnp if any(is_tracer(v) for v in values) else np
             combined[record.code] = previous._replace(
                 eps_low=xp.minimum(previous.eps_low, record.eps_low),
                 sigma_low=xp.minimum(previous.sigma_low, record.sigma_low),
                 sigma_high=xp.maximum(previous.sigma_high, record.sigma_high),
-                count=previous.count + record.count,
-                occupied=tuple(a | b for a, b in zip(previous.occupied, record.occupied)))
+                count=xp.add(previous.count, record.count),
+                occupied=tuple(xp.logical_or(a, b) for a, b in zip(previous.occupied, record.occupied)))
     return tuple(combined[code] for code in sorted(combined))
 
 
