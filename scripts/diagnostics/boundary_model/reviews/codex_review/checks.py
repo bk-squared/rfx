@@ -2,7 +2,8 @@
 These local one-step diagnostics do not measure cavity frequencies or S parameters.
 """
 import os
-os.environ.update(JAX_PLATFORMS='cpu', PYTHONDONTWRITEBYTECODE='1')
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.update(JAX_PLATFORMS='cpu', PYTHONDONTWRITEBYTECODE='1')
 import json, time, resource, subprocess, hashlib
 from pathlib import Path
 from functools import partial

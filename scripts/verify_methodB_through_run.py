@@ -19,7 +19,8 @@ Gate (b): through run(), theta_eff ~= requested within 1.5 deg AND leak < -25 dB
 fields real float32.
 """
 import os
-os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 import sys
 # Verify THIS checkout's rfx (the repo the script ships in), not whatever rfx
 # happens to be installed — plain `python scripts/...` puts scripts/ (not the

@@ -32,7 +32,8 @@ import json
 
 import numpy as np
 
-os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 from rfx import Simulation, Box  # noqa: E402
 from rfx.boundaries.spec import BoundarySpec  # noqa: E402
 from rfx.sources.sources import GaussianPulse  # noqa: E402

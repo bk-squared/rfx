@@ -140,7 +140,8 @@ import warnings
 from pathlib import Path
 
 # float32 is the regime of study; no module-level x64 flip (scoped-x64 only).
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
 os.environ.setdefault("JAX_ENABLE_X64", "0")
 os.environ.setdefault("SMOKE", "1")  # taper example reads this at import
 
