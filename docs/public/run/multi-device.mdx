@@ -11,9 +11,10 @@ A model too large for one GPU, or too slow on one, can be split over several
 devices. rfx cuts the domain into slabs along x, gives each device one slab,
 and exchanges the fields on the faces between slabs after every time step. The
 result is the one-device model to within float32 rounding. The
-[support page](/rfx/support/) lists multi-device runs as not documented: rfx
-makes no accuracy statement for them beyond the comparisons with one device
-under [How rfx checks it](#how-rfx-checks-it).
+[support page](/rfx/support/) lists multi-device runs as supported within the
+limits below: each result is compared with a one-device run of the same model
+(see [How rfx checks it](#how-rfx-checks-it)), and an input the split run does
+not carry is refused by name.
 
 ## How to use it
 
