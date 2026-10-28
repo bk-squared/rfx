@@ -57,6 +57,8 @@ def admit_waveguide_planes(sim, *, axis_idx, x_position, direction,
 
 def admit_waveguide_entries(sim):
     """Admit every declared waveguide port against the completed mesh."""
+    from rfx.boundaries.features import refuse_traced_guide_mesh
+    refuse_traced_guide_mesh(sim, "waveguide port admission")
     for entry in sim._waveguide_ports:
         admit_waveguide_planes(
             sim, axis_idx="xyz".index(entry.direction[1]),
