@@ -206,13 +206,16 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             return result
     from rfx.measurement import decay_stop_first
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
+    tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
     if not forward_result:
         result = result._replace(settling_db=settling_db,
                                  settling_witness=witness)
-    if warn_uncovered(witness):
-        return result
     if getattr(sim, "_internal_probe_indices", None):
+        return result
+    # The coverage warning stands in for the absent advisory or a passing
+    # record; a tail check that failed keeps its own warning below.
+    if tail_status in {"pass", "absent"} and warn_uncovered(witness):
         return result
 
     from rfx.api._sparams import (

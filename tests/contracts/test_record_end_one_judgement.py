@@ -315,6 +315,19 @@ def test_s2b_r3_accumulator_coverage_and_forward(accumulators, n):
     assert forward.settling_witness["status"] == result.settling_witness["status"]
 
 
+def test_s2b_r3_internal_driver_run_attaches_rows_without_warning():
+    """A library-internal driver run (#470) carries the coverage rows but stays silent."""
+    sim = _s2b_scene_c(("ntff",))
+    sim._internal_probe_indices = (0,)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=196, skip_preflight=True)
+    rows = result.settling_witness["coverage"]
+    assert [r["name"] for r in rows] == ["NTFF box"] and rows[0]["end_step"] == 241
+    assert result.settling_witness["status"] == "undetermined"
+    assert not [w for w in caught if "cannot judge" in str(w.message)]
+
+
 @pytest.mark.parametrize("n", [180, 350])
 def test_s2b_r4_rcs_ntff_coverage(n, monkeypatch):
     from time import monotonic
