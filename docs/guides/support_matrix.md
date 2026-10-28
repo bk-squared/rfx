@@ -524,6 +524,13 @@ matched reference run per port (`2 * n_ports` simulations).
   empty guide the `normalize=False` path reads a column power slightly above 1
   that falls with each mesh halving; it is a stated accuracy of that path, not
   a defect.
+- **Gradient accuracy on a uniform mesh** (`normalize="flux"`, forward-mode
+  d|S21|/dεr of a dielectric insert, against a closed form): the gradient's
+  discretization error converges at the same order as |S21|'s, but is about
+  6 times the |S21| error on a full-cross-section slab and 1.6 to 3.4 times on
+  an iris-coupled cavity with Q about 100. Both are dominated by the shift of
+  the resonance on the mesh. On the cavity the gradient needs about twice the
+  record |S21| needs (measured; record kept with the project).
 - **Near cutoff, empty WR-90, `normalize=False`, settled record**: |S11|²+|S21|²
   is 0.05–0.15 % below 1 at f/fc 1.07–1.2, on one mesh; the cause is not
   measured.
