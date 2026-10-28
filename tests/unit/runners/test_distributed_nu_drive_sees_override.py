@@ -57,7 +57,10 @@ e. Slow, Linux only: the x-sharded override across two processes gives the
 
 Mutations (slow): the drive handed the arrays as drawn, every builder call
 kept, sends a, b and c red; the drive reading the seam edge's own row for its
-i-1 cells sends a red.
+i-1 cells sends a red. Since #2045 concrete drive materials are realized on
+the whole grid from owned rows, so the seam mutation replaces the owned
+i-1 row in the drive's input slabs; a halo-only change is discarded. The E
+update keeps the real slabs.
 Since #1813 the graded forward builds the drive in the wrapped slab step
 (``rfx.stepping.slab_setup.slab_drive_columns``, from the slabs it stages for
 the E update); the mutations patch it there and fail if it is not reached.
@@ -541,18 +544,21 @@ def _drive_from_drawn(sim):
 
 
 def _seam_reads_its_own_row():
-    """The drive reads the override, at the wrong cells: the seam owner's
-    halo row replaced by its own first real row, so an Ey/Ez edge on rank 1's
-    first real cell replicates its own row where its i-1 cells (rank 0's)
-    belong."""
+    """The drive reads the override at the wrong owned cells: replace rank
+    0's last real row (global i-1) by rank 1's first real row (global i).
+    Cut input row n on rank r maps to r * nx_per_rank + n - ghost_width - 1
+    (one extra low row). Changing the owner's row survives the whole-grid
+    rebuild, so seam Ey/Ez replicate their own row for their i-1 cells.
+    Only the drive's realization receives these slabs; the E update keeps
+    the real ones."""
     i = nu.build_sharded_nu_grid(_edge_board()._build_nonuniform_grid(), N_DEVICES).nx_per_rank
 
     def own_row(materials, layout, mesh):
-        # The slabs arrive cut, (device, row, y, z): rank r's row n is global
-        # cell r * nx_per_rank + n - 2 (rfx.stepping.slab_view.uniform_from_cut).
-        rank = i // layout.nx_per_rank
-        n = i - rank * layout.nx_per_rank + 2
-        return materials._replace(**{name: getattr(materials, name).at[rank, n - 1].set(
+        # Owned input rows include the low ghost and the extra producer row.
+        rank, previous_rank = layout.owner(i), layout.owner(i - 1)
+        n = i - layout.owned[rank][0] + layout.ghost_width + 1
+        previous_n = i - 1 - layout.owned[previous_rank][0] + layout.ghost_width + 1
+        return materials._replace(**{name: getattr(materials, name).at[previous_rank, previous_n].set(
             getattr(materials, name)[rank, n]) for name in ("eps_r", "sigma")})
     return _drive_reads(own_row)
 
