@@ -178,6 +178,13 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 | `static_action_hint` | yes | `ad_memory_preflight(...)` | a deterministic next action, such as `use_checkpoint_every` |
 | `bounded_certificate` | yes | `ad_memory_compiled_certificate(...)` | the compiler's memory estimate for one exact compiled executable and scope |
 
+On a graded single-device run, `estimate_ad_memory(..., compiled=True)` also
+compiles (does not run) the differentiated program and reports the GPU memory
+peak it will need in `compiled_total_bytes`, at the cost of one compile. It
+refuses the paths where it was not measured: uniform, multi-device and
+subgridded runs, other backends, and `XLA_PYTHON_CLIENT_PREALLOCATE` other than
+`"false"`, among others; the message names the reason.
+
 ## Explain an estimate
 
 `explain_ad_memory(...)` breaks the selected estimate (`ad_full_gb` or

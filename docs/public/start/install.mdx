@@ -18,8 +18,10 @@ rfx 2.0 is a release candidate, so name its version: a plain
 `pip install rfx-fdtd` installs the latest stable release, 1.7.0, which these
 pages do not describe.
 
-This installs JAX and jaxlib 0.10.2 or newer (CPU), NumPy, SciPy, matplotlib
-and h5py.
+This installs JAX and jaxlib (CPU), NumPy, SciPy, matplotlib and h5py. rfx
+asks for JAX from 0.10.2 up to, not including, 0.11.2: pip picks 0.11.1 on
+Python 3.12 or newer and 0.10.2 on Python 3.11. jaxlib 0.11.2 and 0.12.0 run
+the CPU time step 2.3–3× slower; a newer JAX installed by hand still imports.
 
 ### GPU
 
