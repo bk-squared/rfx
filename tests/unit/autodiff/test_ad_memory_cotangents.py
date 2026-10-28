@@ -10,7 +10,8 @@ from rfx.stepping.remat import checkpoint_memory, plan_checkpoint_lengths
 
 def scene(graded=True):
     profile = dict(dz_profile=np.array([.001] * 4 + [.0008] * 4 + [.00064] * 4)) if graded else {}
-    sim = Simulation(freq_max=5e9, domain=(.0123, .0137, .0101), dx=.001,
+    z = float(np.sum(profile["dz_profile"])) if graded else .0101
+    sim = Simulation(freq_max=5e9, domain=(.0123, .0137, z), dx=.001,
                      boundary="cpml", cpml_layers=3, **profile)
     sim.add_material("lossy", eps_r=40, sigma=1.)
     sim.add(Box((.0023, .0031, .0022), (.0072, .0093, .0061)), material="lossy")

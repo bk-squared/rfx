@@ -34,7 +34,8 @@ SHEET_HI = (5e-3, 5e-3, 1.5e-3)
 
 
 def _sheet_sim(**kw):
-    sim = Simulation(freq_max=F0, domain=(6e-3, 6e-3, 3e-3), dx=0.25e-3,
+    z = float(np.sum(kw["dz_profile"])) if "dz_profile" in kw else 3e-3
+    sim = Simulation(freq_max=F0, domain=(6e-3, 6e-3, z), dx=0.25e-3,
                      boundary="cpml", cpml_layers=6, **kw)
     with pytest.warns(UserWarning, match="Leontovich"):
         sim.add_thin_conductor(
