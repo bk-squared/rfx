@@ -111,6 +111,26 @@ preflight. Its drawn rectangle is clipped to the sampled tangential extent, incl
 on periodic axes). Non-Box films retain their existing admission rule. Surface-impedance sheets use the same
 `sheet_effective_size` check and solved-edge model as PEC sheets.
 
+### A curved lossy film's absorption still changes with the mesh at its rim
+
+Tracker: #1958
+
+A lossy film (`add_thin_conductor` below 1e6 S/m) is now placed where it is drawn (cell-centre footprint), and a film that
+fills the whole cross-section converges at second order to the resistive-sheet closed form (absorbed fraction 4/9 at
+377 Ω/sq, error 6e-4 / 1.5e-4 / 4.5e-5 at 1 / 0.5 / 0.25 mm). A finite curved film does not yet converge that way: a 377 Ω/sq
+disc of radius 3 mm in a 40 × 15 × 30 mm metal cavity changed the cavity's decay rate by −1 % from 1 to 0.5 mm and by −16 %
+from 0.5 to 0.25 mm, with its realized area right to 1 % on both meshes. The change comes from the staircased rim; its
+mechanism is not measured. Check a curved film's loss on three meshes before using it as a converged number.
+
+### Two lossy films with a sub-cell drawn gap can be joined
+
+Tracker: #2146
+
+Metal sheets join only where their drawn extents touch, so a gap drawn between two sheets stays open at any width. Lossy
+films (`add_thin_conductor` below 1e6 S/m) do not follow that rule yet: a gap of less than about one cell between two films
+on one plane stays open only when a cell centre lies inside it. Otherwise the edge across the gap carries the film's
+conductance and the two films are solved as one. Draw such a gap at least one cell wide, or with its edges on mesh lines.
+
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 
 Tracker: #1523

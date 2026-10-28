@@ -17,7 +17,8 @@ from rfx.model.thin_conductors import (
 
 def film(*, snap='strict', aligned=False):
     sim = Simulation(10e9, (.024, .016, .012), dx=.001, boundary='pec', snap=snap)
-    # T1: 3.5 x 7 mm drawn; the half-cell low edge selects 3 x 7 cells.
+    # T1: 3.5 x 7 mm drawn; cells are sampled at their centres and the low edge
+    # at 3.5 mm meets cell 3's centre, kept by Box's inclusive low face: 4 x 7 cells.
     lo, hi = (.003, .006) if aligned else (.0035, .007)
     shape = Box((lo, .003, .005), (hi, .010, .005))
     sim.add_thin_conductor(shape, sigma_bulk=100., thickness=35e-6)
@@ -31,8 +32,9 @@ def test_t1_box_area_strict_refusal_and_declared_warning():
     assert caught.value.code == 'dc_film_area'
     message = str(caught.value)
     assert float(re.search(r'A_d=([^ ]+)', message)[1]) == pytest.approx(2.45e-5, abs=1e-18)
-    assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(2.1e-5, abs=1e-18)
-    assert 'e=sqrt(A_r/A_d)-1=-0.0741799002274' in message
+    assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(2.8e-5, abs=1e-18)
+    # By hand: sqrt(28/24.5) - 1 = sqrt(8/7) - 1 = +0.0690449676497.
+    assert 'e=sqrt(A_r/A_d)-1=+0.0690449676497' in message
     assert 0 in dc_film_refusals(sim, grid)
     report = sim.preflight(check_ntff=False, check_resolution=False)
     assert any(i.code == 'dc_film_area' and i.severity == 'error' for i in report)
@@ -41,7 +43,7 @@ def test_t1_box_area_strict_refusal_and_declared_warning():
         warnings.simplefilter('always')
         admitted = admit_dc_film(shape, grid, snap='declared')
     assert admitted.declared_area == pytest.approx(2.45e-5, abs=1e-18)
-    assert admitted.realized_area == pytest.approx(2.1e-5, abs=1e-18)
+    assert admitted.realized_area == pytest.approx(2.8e-5, abs=1e-18)
     assert any(getattr(w.message, 'code', '') == 'dc_film_area'
                and w.message.severity == 'warning' for w in caught)
 
@@ -126,7 +128,8 @@ def test_t5a_2d_whole_line_is_admitted_under_strict():
 def test_t5b_2d_half_cell_end_is_refused_under_strict():
     sim = Simulation(15e9, (.024, .010, .0005), dx=.0005,
                      boundary='pec', mode='2d_tmz', snap='strict')
-    # y=3.25..7 mm draws 3.75 mm; selected cells 3.5..7 mm span 3.5 mm.
+    # y=3.25..7 mm draws 3.75 mm; cell centres 3.25..6.75 mm lie in [3.25, 7):
+    # cells 3.0..7.0 mm span 4 mm.
     shape = Box((.012, .00325, -1.), (.0125, .007, 1.))
     sim.add_thin_conductor(shape, sigma_bulk=(2. / 376.730) / 35e-6, thickness=35e-6)
     grid = sim._build_realized_grid()
@@ -135,6 +138,6 @@ def test_t5b_2d_half_cell_end_is_refused_under_strict():
     assert caught.value.code == 'dc_film_area'
     message = str(caught.value)
     assert float(re.search(r'A_d=([^ ]+)', message)[1]) == pytest.approx(.00375, abs=1e-18)
-    assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(.0035, abs=1e-18)
-    # By hand: 3.5/3.75 - 1 = -1/15 (one tangential dimension).
-    assert 'e=(A_r/A_d)^(1/1)-1=-0.0666666666667' in message
+    assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(.004, abs=1e-18)
+    # By hand: 4/3.75 - 1 = +1/15 (one tangential dimension).
+    assert 'e=(A_r/A_d)^(1/1)-1=+0.0666666666667' in message
