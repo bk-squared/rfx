@@ -4,14 +4,14 @@ from itertools import product
 import numpy as np
 
 
-def tfsf_reach(cfg, grid):
-    """Return a reach callable; None reads incident transit through the box."""
+def tfsf_corner_paths(cfg, grid, *, inset=0):
+    """Physical box corners and launch paths; inset samples interior corner nodes."""
     spans = []
     for axis, size in zip("xyz", grid.shape):
         lo, hi = getattr(cfg, axis + "_lo", 0), getattr(cfg, axis + "_hi", size - 1)
         if axis != "x" and lo == hi and size > 1:
             lo, hi = 0, size - 1
-        spans.append((lo, hi))
+        spans.append((lo + inset, hi - inset))
     indices = np.asarray(list(product(*spans)))
     corners = np.asarray([[grid.node_of(a, int(i)) for a, i in zip("xyz", c)]
                           for c in indices])
@@ -27,6 +27,13 @@ def tfsf_reach(cfg, grid):
                  * cfg.dx_1d / cfg.cos_theta)
     else:
         paths = cfg.direction_sign * (cfg.i0 + indices[:, 0] - cfg.x_lo - cfg.src_idx) * cfg.dx_1d
+
+    return corners, paths
+
+
+def tfsf_reach(cfg, grid):
+    """Return a reach callable; None reads incident transit through the box."""
+    corners, paths = tfsf_corner_paths(cfg, grid)
 
     def reach(points):
         if points is None:

@@ -106,6 +106,12 @@ def test_s2b_r1_tfsf_hand_reach(kind):
     sim = _s2b_tfsf(kind)
     grid = sim._build_grid()
     cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=1200)
+    from rfx.measurement.tfsf_reach import tfsf_corner_paths
+    for inset in (0, 1):
+        _, hand_corners, hand_paths = _hand_tfsf_geometry(cfg, grid, inside=bool(inset))
+        actual_corners, actual_paths = tfsf_corner_paths(cfg, grid, inset=inset)
+        np.testing.assert_allclose(actual_corners, hand_corners, rtol=0, atol=0)
+        np.testing.assert_allclose(actual_paths, hand_paths, rtol=1e-12, atol=0)
     _, corners, paths = _hand_tfsf_geometry(cfg, grid)
     off = _off(_hand_tfsf_samples(cfg, grid, 1200))
     probe = np.array([grid.node_of(a, 9) for a in "xyz"])
@@ -116,6 +122,59 @@ def test_s2b_r1_tfsf_hand_reach(kind):
         assert injection_end(1200, grid.dt, records=records, grid=grid, tfsf=cfg) == expected
 
 
+def _analytic_envelope(samples):
+    """Unwindowed analytic signal: retain DC/Nyquist, double positive bins."""
+    samples = np.asarray(samples)
+    n = len(samples)
+    weights = np.zeros(n)
+    weights[0] = 1
+    weights[1:(n + 1)//2] = 2
+    if n % 2 == 0:
+        weights[n//2] = 1
+    return np.abs(np.fft.ifft(np.fft.fft(samples) * weights))
+
+
+def _envelope(x, dt, f0, bw, pad=8):
+    """|analytic signal| through a Gaussian window on the pulse band, zero-padded (no wrap)."""
+    x = np.asarray(x)
+    n = x.shape[0]
+    f = np.fft.fftfreq(pad * n, dt)
+    band = (f < 0) if np.iscomplexobj(x) else (f > 0)   # applied analytic waveform is exp(-j w t)
+    g = np.where(band, np.exp(-((np.abs(f) - f0) / (f0 * bw / 2)) ** 2), 0.0)
+    return np.abs(np.fft.ifft(2 * g * np.fft.fft(x, pad * n))[:n])
+
+
+def _envelope_steps(envelope):
+    return (int(envelope.argmax()),
+            int(np.flatnonzero(envelope > 1e-3 * envelope.max())[-1]))
+
+
+@pytest.mark.parametrize("check,delay", [("delay", 14.), ("delay", 37.4),
+                                          ("delay", 100.6), ("phase", 0.)])
+def test_s2b_r1_envelope_estimator_self_check(check, delay, record_property):
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim = _s2b_tfsf("closed" if check == "delay" else "bloch")
+    grid = sim._build_grid()
+    n, f0 = 1200, 5e9
+    bandwidth = .8 if check == "delay" else .2
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n)
+    t = np.arange(n)*grid.dt - cfg.src_t0
+    waveform = cfg.src_amp * np.exp(-(t/cfg.src_tau)**2) * np.cos(2*np.pi*f0*t)
+    delayed_t = t - delay*grid.dt
+    phase = .3*2*np.pi if check == "phase" else 0.
+    shifted = (cfg.src_amp * np.exp(-(delayed_t/cfg.src_tau)**2) *
+               np.cos(2*np.pi*f0*delayed_t + phase))
+    tolerances = (1., 2.) if check == "delay" else (1., 1.)
+    original_steps = _envelope_steps(_envelope(waveform, grid.dt, f0, bandwidth))
+    shifted_steps = _envelope_steps(_envelope(shifted, grid.dt, f0, bandwidth))
+    errors = tuple(after-before-delay for before, after in zip(original_steps, shifted_steps))
+    detail = {"original": original_steps, "shifted": shifted_steps,
+              "expected_shift": delay, "errors": errors, "tolerances": tolerances}
+    record_property("estimator", repr(detail))
+    print(f"R1 estimator {check}: {detail}")
+    assert all(abs(error) <= tolerance for error, tolerance in zip(errors, tolerances)), detail
+
+
 @pytest.mark.parametrize("kind", TF_KINDS)
 def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
     from rfx.sources.tfsf import tfsf_from_declaration
@@ -123,19 +182,24 @@ def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
     grid = sim._build_grid()
     n = 1200
     cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n)
-    indices, corners, paths = _hand_tfsf_geometry(cfg, grid, inside=True)
+    from rfx.measurement.tfsf_reach import tfsf_corner_paths
+    indices, _, _ = _hand_tfsf_geometry(cfg, grid, inside=True)
+    corners, paths = tfsf_corner_paths(cfg, grid, inset=1)
     for point in corners:
         sim.add_probe(tuple(point), "ez")
-    waveform = np.abs(_hand_tfsf_samples(cfg, grid, n))
+    waveform = _hand_tfsf_samples(cfg, grid, n)
     off = _off(waveform)
-    peak_w = int(waveform.argmax())
-    last_w = int(np.flatnonzero(waveform > 1e-3 * waveform.max())[-1])
+    bandwidth = .2 if kind == "bloch" else .8
+    env_w = _envelope(waveform, grid.dt, 5e9, bandwidth)
+    peak_w = int(env_w.argmax())
+    last_w = int(np.flatnonzero(env_w > 1e-3 * env_w.max())[-1])
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         result = sim.run(n_steps=n, skip_preflight=True)
     measurements = []
     for c, raw, path in zip(indices, np.asarray(result.time_series).T, paths):
         trace = np.abs(raw)
+        envelope = _envelope(raw, grid.dt, 5e9, bandwidth)
         end = off + _transit(path, grid.dt) + 2
         assert trace.max() > 0 and end < n
         last = int(np.flatnonzero(trace > 1e-6 * trace.max())[-1])
@@ -144,9 +208,12 @@ def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
         measurements.append({
             "corner": tuple(map(int, c)), "end": end,
             "last_above_1e-6": last, "post_bound_ratio": ratio, "margin": end-last,
-            "predicted_peak": peak_w + transit, "measured_peak": int(trace.argmax()),
+            "predicted_peak": peak_w + transit, "measured_peak": int(envelope.argmax()),
+            "carrier_argmax": int(trace.argmax()),
+            "unfiltered_analytic_peak": int(_analytic_envelope(raw).argmax()),
+            "carrier_difference": int(trace.argmax()) - (peak_w + transit),
             "predicted_envelope_end": last_w + transit,
-            "measured_envelope_end": int(np.flatnonzero(trace > 1e-3 * trace.max())[-1]),
+            "measured_envelope_end": int(np.flatnonzero(envelope > 1e-3 * envelope.max())[-1]),
         })
     record_property("R1", repr(measurements))
     print(f"R1 {kind}: {measurements}")
@@ -294,12 +361,12 @@ def test_s2b_r4_rcs_ntff_coverage(n, monkeypatch):
         assert not [w for w in caught if "cannot judge" in str(w.message)]
 
 
-@pytest.mark.parametrize("fallback", [False, True])
+@pytest.mark.parametrize("fallback", [False, True, "spectral"])
 def test_s2b_r5_sweep_member_witnesses(fallback):
     import copy
     from rfx import Box, Simulation
     from rfx.vmap_sweep import vmap_material_sweep
-    mesh = {} if fallback else {"dx": .002}
+    mesh = {} if fallback is True else {"dx": .002}
     sim = Simulation(freq_max=10e9, domain=(.03,)*3, boundary="cpml", cpml_layers=6, **mesh)
     sim.add_material("slab", eps_r=2.)
     sim.add(Box((.012, .004, .004), (.018, .026, .026)), material="slab")
@@ -308,11 +375,16 @@ def test_s2b_r5_sweep_member_witnesses(fallback):
     else:
         sim.add_source((.0071, .0149, .0153), "ez", amplitude_kind="current")
         sim.add_dft_plane_probe(axis="x", coordinate=.023, freqs=np.array([5e9]), name="read")
+    if fallback == "spectral":
+        # D2's short, bin-free witnesses coincide; retain D2 and add a
+        # spectral fallback record whose member witnesses are distinguishable.
+        sim.add_dft_plane_probe(axis="x", coordinate=.023, freqs=np.array([5e9]), name="read")
     sim.add_probe((.0231, .0161, .0139), "ez")
     values = [2., 10.] if fallback else [2., 6.]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sweep = vmap_material_sweep(sim, "slab.eps_r", values, **(
+            {"n_steps": 800} if fallback == "spectral" else
             {"num_periods": 2} if fallback else {"n_steps": 400}))
         members = []
         for value in values:
@@ -327,7 +399,7 @@ def test_s2b_r5_sweep_member_witnesses(fallback):
         np.testing.assert_equal(sweep.settling_db[i], np.asarray(result.settling_db, dtype=float))
         for key in ("status", "db", "share_per_bin", "coverage", "reason"):
             np.testing.assert_equal(sweep.settling_witness[i][key], result.settling_witness[key])
-    if fallback:
+    if fallback is True:
         assert sweep.dt[0] != sweep.dt[1]
         assert sweep.time_series.shape[1] == 105
     else:
