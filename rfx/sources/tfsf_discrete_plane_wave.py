@@ -526,16 +526,20 @@ def add_tfsf_source(
     Nonzero theta requires s or p polarization. direction_tol_deg is a
     refusal threshold; max_component bounds the exhaustive integer search.
 
-    Current scope is intentionally narrow: x-directed propagation,
-    ``ez``/``ey`` polarization, 3D mode, and CPML boundaries. For
-    oblique incidence, only the single transverse-axis plane implied
-    by the chosen polarization is supported.
+    The slab (``closed_box=False``) keeps a narrow scope: x-directed
+    propagation, ``ez``/``ey`` polarization, 3D mode and CPML along x;
+    ``angle_deg`` tilts it only in the transverse plane implied by the
+    chosen polarization.
 
     Parameters
     ----------
     closed_box : bool
-        Use a finite six-face total-field box with CPML on all three
-        axes. Normal incidence, uniform 3D Yee only. The default keeps
+        Use a finite six-face total-field box with CPML on all six
+        faces, uniform 3D Yee with cubic cells only. Normal or oblique
+        incidence (``theta_deg``/``phi_deg``, ``s`` or ``p``): the box
+        carries the lattice plane wave along the realized rational
+        direction. No incident spectrum is formed for an oblique box
+        (``measure_normal_incident_spectrum`` refuses it). The default keeps
         the historical x slab with periodic y/z. Read the realized
         inclusive node bounds with :meth:`tfsf_box_indices`.
     waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
