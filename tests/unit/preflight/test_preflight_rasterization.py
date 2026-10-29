@@ -914,13 +914,15 @@ class TestWiring:
         and rebuilt after an add(): a cache keyed on the entries, not a
         stale instance attribute (the add_box-after-preflight lesson)."""
         sim = _stack_sim(5.0)
-        c1 = sim._campaign_ctx()
-        assert sim._campaign_ctx() is c1
-        sim.add(Box((2 * MM, 2 * MM, 6 * MM), (8 * MM, 8 * MM, 6 * MM)),
-                material="pec")
-        c2 = sim._campaign_ctx()
-        assert c2 is not c1
-        assert sum(1 for e in c2.entry_realizations() if e.kind == "sheet") == 2
+        from rfx.preflight.call_scope import call_scope
+        with call_scope(sim):
+            c1 = sim._campaign_ctx()
+            assert sim._campaign_ctx() is c1
+            sim.add(Box((2 * MM, 2 * MM, 6 * MM), (8 * MM, 8 * MM, 6 * MM)),
+                    material="pec")
+            c2 = sim._campaign_ctx()
+            assert c2 is not c1
+            assert sum(1 for e in c2.entry_realizations() if e.kind == "sheet") == 2
 
 
 # ===========================================================================

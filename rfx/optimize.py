@@ -18,6 +18,7 @@ Example
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
@@ -284,6 +285,7 @@ def _adam_multistart(
     )
 
 
+@public_call
 def optimize(
     sim,
     region: DesignRegion,
@@ -581,6 +583,7 @@ class GradientCheckResult:
     relative_error: float
 
 
+@public_call
 def gradient_check(
     sim,
     design_params: jnp.ndarray,

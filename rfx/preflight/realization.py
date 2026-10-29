@@ -68,6 +68,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from rfx.preflight.call_scope import __init_subclass__, scope_open
 
 import jax
 import jax.numpy as jnp
@@ -845,11 +846,12 @@ def _campaign_ctx(self):
         id(getattr(sim, "_refinement", None)),
         tuple(sorted((name, id(spec)) for name, spec in sim._materials.items())),
     )
-    cached = getattr(self, "_pf_campaign_ctx", None)
+    cached = getattr(self, "_pf_campaign_ctx", None) if scope_open(self) else None
     if cached is not None and cached[0] == key:
         return cached[1]
     ctx = _CampaignStaticsContext(self)
-    self._pf_campaign_ctx = (key, ctx)
+    if scope_open(self):
+        self._pf_campaign_ctx = (key, ctx)
     return ctx
 
 

@@ -1951,7 +1951,7 @@ class _PreflightMixin:
     # composed ``Simulation``, so not one call site changes and none of those
     # modules imports this one.
     # ------------------------------------------------------------------
-    from rfx.preflight.realization import _campaign_ctx, _validate_cfg_assembly
+    from rfx.preflight.realization import _campaign_ctx, _validate_cfg_assembly, __init_subclass__
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 2: the #703 campaign-statics umbrella, its four
     # checks and the #931 per-declaration realization findings moved

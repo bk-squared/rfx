@@ -30,6 +30,7 @@ Limitations
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from rfx._precision import resolve_field_dtype
 from rfx.stepping.vmap_scan import _build_vmap_scan_fn
@@ -694,6 +695,7 @@ def _build_full_scan_fn(
 # Public API
 # ---------------------------------------------------------------------------
 
+@public_call
 def vmap_material_sweep(
     sim,
     param_name: str,

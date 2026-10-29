@@ -137,7 +137,10 @@ def test_original_exception_is_reported(monkeypatch, exc_type, stage, capsys):
         raise exc
 
     monkeypatch.setattr(sim, '_build_grid' if stage == 'grid' else '_assemble_realized', fail)
-    report = sim.preflight()
+    from rfx.preflight.call_scope import call_scope
+    with call_scope(sim):
+        report = sim.preflight()
+        assert sim._campaign_ctx()._assembly_exception is exc
     refusal = issubclass(exc_type, (ValueError, NotImplementedError))
     code = 'assembly_refusal' if refusal else 'assembly_fault'
     findings = report.by_code(code)
@@ -146,7 +149,6 @@ def test_original_exception_is_reported(monkeypatch, exc_type, stage, capsys):
     expected = ('The model cannot be assembled: ' + str(exc) if refusal else
                 f'The model assembly raised {exc_type.__name__}: {exc}; this is a defect, please report it.')
     assert str(findings[0]) == expected
-    assert sim._campaign_ctx()._assembly_exception is exc
     assert not report.ok
     assert 'All checks passed' not in capsys.readouterr().out
     assert len(calls) == 1

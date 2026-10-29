@@ -35,6 +35,7 @@ Key concepts
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from rfx._precision import resolve_field_dtype
 
@@ -345,6 +346,7 @@ def _get_beta(iteration: int, schedule: list[tuple[int, float]]) -> float:
 # Main optimizer
 # ---------------------------------------------------------------------------
 
+@public_call
 def topology_optimize(
     sim,
     design_region: TopologyDesignRegion,

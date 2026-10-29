@@ -361,6 +361,8 @@ def test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge():
 #: preflight share one realization instead of rebuilding it per check.
 _PREFLIGHT_WRITES_WITH_A_READER = {
     "_pf_campaign_ctx": "rfx/preflight/realization.py (keyed memo, same file)",
+    "_realized_geometry_record": "rfx/realized_geometry.py (released at call exit)",
+    "_coax_geometry": "rfx/realized_geometry.py (released at call exit)",
 }
 
 

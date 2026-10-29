@@ -12,6 +12,7 @@ Everything here reuses the SAME grid build and material assembly the solve
 uses, without time stepping.
 """
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from rfx.model.materials import assembled_as_pec
 from rfx.model.thin_conductors import conductivity_envelope
@@ -138,6 +139,7 @@ def _max_run_length(mask, axis):
     return best
 
 
+@public_call
 def fidelity_report(sim, print_report: bool = True):
     """Per-entity declared-vs-realized audit; returns a list of dicts.
 

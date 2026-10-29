@@ -8,6 +8,7 @@ traces.
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -616,6 +617,7 @@ def _provenance(extra: dict[str, Any] | None = None) -> tuple[dict[str, Any], di
     return prov, repro
 
 
+@public_call
 def build_runtime_report(
     sim: Any,
     result: Any = None,
@@ -864,6 +866,7 @@ def _manifest(root: Path, files: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+@public_call
 def export_artifact_bundle(
     path: str | Path,
     sim: Any,

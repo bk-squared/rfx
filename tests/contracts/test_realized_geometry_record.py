@@ -67,7 +67,13 @@ def _compare(sim, record, report):
 
 @pytest.mark.parametrize("nonuniform", [False, True])
 def test_one_record_many_readers(nonuniform):
+    from rfx.preflight.call_scope import call_scope
     sim = _model(nonuniform)
+    with call_scope(sim):
+        _one_record_many_readers(sim)
+
+
+def _one_record_many_readers(sim):
     record = sim.realized_geometry()
     assert sim.realized_geometry() is record
     _compare(sim, record, sim.fidelity_report(print_report=False))
@@ -144,14 +150,16 @@ def test_cached_record_builds_once_across_readers(monkeypatch):
         return build(*args, **kwargs)
 
     monkeypatch.setattr(records, "_build_record", counted)
-    record = sim.realized_geometry()
-    sim.fidelity_report(print_report=False)
-    assert realized(sim).edge_masks is record.edge_masks
-    assert sim.realized_geometry() is record
-    assert calls == [sim]
-    sim.add_material("slab", eps_r=4.0)
-    assert sim.realized_geometry() is not record
-    assert calls == [sim, sim]
+    from rfx.preflight.call_scope import call_scope
+    with call_scope(sim):
+        record = sim.realized_geometry()
+        sim.fidelity_report(print_report=False)
+        assert realized(sim).edge_masks is record.edge_masks
+        assert sim.realized_geometry() is record
+        assert calls == [sim]
+        sim.add_material("slab", eps_r=4.0)
+        assert sim.realized_geometry() is not record
+        assert calls == [sim, sim]
 
 
 def test_refused_occupancy_is_diagnostic_and_cached(monkeypatch):
@@ -166,6 +174,12 @@ def test_refused_occupancy_is_diagnostic_and_cached(monkeypatch):
     monkeypatch.setattr(products, "realized_conductors", build)
     sim = _model()
     sim.add(Box((0.001, 0.001, 0.001), (0.0011, 0.0011, 0.002)), material="pec")
+    from rfx.preflight.call_scope import call_scope
+    with call_scope(sim):
+        _refused_occupancy_is_diagnostic_and_cached(sim, modes)
+
+
+def _refused_occupancy_is_diagnostic_and_cached(sim, modes):
     record = sim.realized_geometry()
     refused = record.entities[-1]
     assert refused.kind == "refused"
@@ -195,7 +209,7 @@ def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_firs
         report = sim.fidelity_report(print_report=False)
         assert any(f["kind"] == "refused-by-contract"
                    for row in report for f in row.get("findings", ()))
-        assert sim.realized_geometry() is record
+        assert sim.realized_geometry() is not record
     with pytest.raises(ValueError, match="volume|sub.cell|thickness"):
         if entry == "realized":
             realized(sim)
@@ -249,10 +263,10 @@ def _assert_runner_sheet(record, captured, grid):
 def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poison_context):
     import rfx.runners.nonuniform as nu
     sim, before = _terminated_trace(nonuniform)
-    before_ctx = sim._pf_campaign_ctx
+    assert sim._pf_campaign_ctx is None
     after = sim.realized_geometry()
     assert after is not before
-    assert sim._pf_campaign_ctx[1] is not before_ctx[1]
+    assert sim._pf_campaign_ctx is None
     # The unheld line extends into the pad; the port holds the declaration.
     assert int(before.sheets[0].footprint.sum()) > int(after.sheets[0].footprint.sum())
     assembly_calls = []

@@ -477,6 +477,7 @@ def _ports(sim, ctx, assembled):
 
 def realized_geometry(sim):
     """Build once per preflight context and port configuration, without stepping."""
+    from rfx.preflight.call_scope import scope_open
     ctx = sim._campaign_ctx()
     key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
                      ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports",
@@ -484,14 +485,15 @@ def realized_geometry(sim):
            *(id(getattr(sim, attr, None)) for attr in ("_tfsf", "_ntff", "_current_moments")),
            repr(sorted(getattr(sim, "_dft_plane_regions", {}).items())), sim._freq_max,
            tuple(sorted(getattr(sim, "_internal_probe_indices", ()) or ())))
-    cached = getattr(sim, '_realized_geometry_record', None)
+    cached = getattr(sim, '_realized_geometry_record', None) if scope_open(sim) else None
     if cached is not None and cached[0] == key:
         return cached[1]
     from rfx.model.conductors import RealizedConductors, preview_port_stages
-    stamped = getattr(sim, '_coax_geometry', None)
+    stamped = getattr(sim, '_coax_geometry', None) if scope_open(sim) else None
     if stamped is not None and stamped[0] is ctx:
         record = _record_from_conductors_impl(sim, stamped[1], lane='coax', compact=False)
-        sim._realized_geometry_record = key, record
+        if scope_open(sim):
+            sim._realized_geometry_record = key, record
         return record
     assembled = ctx.realized()
     if isinstance(assembled, RealizedConductors):
@@ -499,7 +501,8 @@ def realized_geometry(sim):
             sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
     else:
         record = _build_record(sim, ctx)
-    sim._realized_geometry_record = key, record
+    if scope_open(sim):
+        sim._realized_geometry_record = key, record
     return record
 
 

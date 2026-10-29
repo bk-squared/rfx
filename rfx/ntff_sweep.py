@@ -14,6 +14,7 @@ a 1-frequency NTFF box.
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from rfx._precision import resolve_field_dtype
 
@@ -38,6 +39,7 @@ def _concat_faces(per_batch: list[NTFFData]) -> NTFFData:
     )
 
 
+@public_call
 def ntff_sweep(sim, freqs, *, batch_size: int | None = None,
                run_kwargs: dict | None = None) -> tuple[NTFFData, np.ndarray]:
     """Accumulate NTFF data over ``freqs`` in memory-bounded batches.

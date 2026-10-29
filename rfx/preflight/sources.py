@@ -256,7 +256,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     # Never create a context, grid or assembly state here (admit() calls
     # this outside preflight, and a failed assembly must not be retried);
     # without one, keep the dx-based estimate.
-    cached = getattr(self, "_pf_campaign_ctx", None)
+    from rfx.preflight.call_scope import scope_open
+    cached = getattr(self, "_pf_campaign_ctx", None) if scope_open(self) else None
     grid = getattr(cached[1], "grid", None) if cached is not None else None
     if grid is not None:
         dt = float(grid.dt)

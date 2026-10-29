@@ -197,7 +197,8 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
         except Exception as exc:
             root = replace(root, stamp_check_findings=root.stamp_check_findings + (
                 ('read-failed', (type(exc).__name__, str(exc))),))
-        if ctx is not None:
+        from rfx.preflight.call_scope import scope_open
+        if ctx is not None and scope_open(sim):
             sim._coax_geometry = (ctx, root)
     return root
 

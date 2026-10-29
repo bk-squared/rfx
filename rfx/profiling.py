@@ -17,6 +17,7 @@ Typical usage::
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 import time
 from typing import Any
@@ -30,6 +31,7 @@ def _sync(x):
     jax.block_until_ready(x)
 
 
+@public_call
 def profile_forward(sim, *, n_steps: int, warmup_trace: bool = True,
                     **forward_kwargs) -> dict:
     """Time the phases of ``sim.forward(n_steps=...)``.

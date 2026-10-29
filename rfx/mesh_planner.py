@@ -7,6 +7,7 @@ The planner intentionally reuses existing mesh derivation and validation APIs:
 """
 
 from __future__ import annotations
+from rfx.preflight.call_scope import public_call
 
 from dataclasses import dataclass, field
 import contextlib
@@ -27,6 +28,7 @@ from rfx.core.jax_utils import is_tracer
 SCHEMA_VERSION = "mesh-plan/v1"
 
 
+@public_call
 def mesh_intelligence_report(
     sim,
     *,
@@ -660,6 +662,7 @@ def _support_rows(source: str, issues: Any) -> list[dict[str, Any]]:
     return rows
 
 
+@public_call
 def plan_simulation_mesh(
     sim: Any,
     *,
