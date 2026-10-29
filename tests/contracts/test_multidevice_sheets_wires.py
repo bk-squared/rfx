@@ -228,7 +228,6 @@ def _port_model():
 
 
 def test_b3_sheet_contact_wire_port(monkeypatch):
-    from rfx.probes import sparam_driver
     from tests.unit.runners.test_distributed_wire_ports import FREQS
     expected_sim = _port_model()
     grid = expected_sim._build_grid()
@@ -244,7 +243,6 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     kwargs = dict(n_steps=300, s_param_n_steps=320, s_param_freqs=FREQS,
                   compute_s_params=True, skip_preflight=True)
     single = expected_sim.run(**kwargs)
-    counts = []
     reader_counts = []
     from rfx.sources import sources as port_sources
     original_live = port_sources._wire_port_live_cells
@@ -255,19 +253,9 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
         return result
 
     monkeypatch.setattr(port_sources, '_wire_port_live_cells', capture_live)
-    original = sparam_driver._distributed_port_cells
-
-    def capture(g, ports, pec_edge_masks=None):
-        counts.append([_wire_port_live_cells(g, wire_port_from_entry(pe), pec_edge_masks)[2]
-                       for pe in ports])
-        return original(g, ports, pec_edge_masks)
-
-    monkeypatch.setattr(sparam_driver, '_distributed_port_cells', capture)
     multi = _port_model().run(devices=_devices(), **kwargs)
-    # One batch per call (main-run records, S driver); each call is one reader.
-    assert counts
-    for batch in counts:
-        assert batch == expected_counts, (batch, expected_counts)
+    # The slab port sampler reads the live cells resolved inside run_distributed
+    # (#2175): every resolution, main run and S-driver drives, is one reader.
     by_position = {tuple(pe.position): n for pe, n in zip(expected_sim._ports, expected_counts)}
     assert reader_counts
     for position, live_count in reader_counts:

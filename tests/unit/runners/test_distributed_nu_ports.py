@@ -399,10 +399,10 @@ def restored_defect(monkeypatch):
     defect = os.environ.get('RFX_STEP2_MUTATION')
     if not defect:
         return
-    from rfx.stepping import slab_ports, slab_setup, slab_wrap
+    from rfx.stepping import slab_measurements, slab_setup, slab_wrap
     from rfx.model import distributed_ports
     if defect in ('M1', 'M1b', 'M1c'):
-        original = slab_ports.sum_partials
+        original = slab_measurements.sum_partials
         def broken(final, mesh, ranks):
             totals = original(final, mesh, ranks)
             for key in ('wire_sparams', 'sparam_time_records'):
@@ -419,7 +419,7 @@ def restored_defect(monkeypatch):
                         totals[key] = rank_shard_map(again, mesh=mesh, in_specs=P(),
                             out_specs=P(), check_rep=False)(ranks, totals[key])
             return totals
-        monkeypatch.setattr(slab_ports, 'sum_partials', broken)
+        monkeypatch.setattr(slab_measurements, 'sum_partials', broken)
     elif defect in ('M2', 'M7'):
         from rfx.measurement import projector
         from rfx.stepping.sequence import HookPoint

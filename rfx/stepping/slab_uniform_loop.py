@@ -36,8 +36,6 @@ def run_uniform_slab_loop(
     *,
     SlabRecords,
     _pmc_faces_frozen,
-    _pre_injection_probes,
-    _record_vref,
     cpml_params,
     cpml_state_sharded,
     curl_boundary,
@@ -65,6 +63,7 @@ def run_uniform_slab_loop(
     nx_local,
     nx_per,
     pad_x,
+    ports,
     prb_device_ids,
     prb_local_specs,
     rep,
@@ -120,16 +119,6 @@ def run_uniform_slab_loop(
             st, mesh, n_prb, prb_local_specs, prb_device_ids,
             reduce_devices=False,
             ranks=ranks)
-
-    def _sample_pre_injection(st, *, ranks):
-        if not _pre_injection_probes:
-            return None  # no reference sampler: the step output stays main's
-        if not _record_vref:
-            return jnp.zeros((n_devices, len(_pre_injection_probes)), dtype=st.ex.dtype)
-        return sample_probes_shmap(
-            st, mesh, len(_pre_injection_probes),
-            [(layout.local_index(p.i), p.j, p.k, p.component) for p in _pre_injection_probes],
-            [layout.owner(p.i) for p in _pre_injection_probes], reduce_devices=False, ranks=ranks)
 
     # ------------------------------------------------------------------
     # H and E local updates via shard_map
@@ -281,7 +270,7 @@ def run_uniform_slab_loop(
 
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg,
+        cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg, port_table_arg,
         *, ranks,
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
@@ -345,7 +334,7 @@ def run_uniform_slab_loop(
             ranks=ranks, grid=cpml_grid, high_wall=high_wall,
             e_curl_coeff=absorber, boundary=curl_boundary)
 
-        reference_out = _sample_pre_injection(st, ranks=ranks)
+        reference_out = ports.references(st, port_table_arg, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 6b. Realized conductor edges, distinct from domain walls. The
@@ -405,13 +394,13 @@ def run_uniform_slab_loop(
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        if reference_out is None:
-            return updated, probe_out
-        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
+        updated['ports'] = ports.update(carry['ports'], st, reference_out, _step_idx,
+                                         port_table_arg, ranks=ranks)
+        return updated, probe_out
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        pec_mask_arg, e_materials, tfsf_tables_arg,
+        pec_mask_arg, e_materials, tfsf_tables_arg, port_table_arg,
         *, ranks,
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
@@ -453,7 +442,7 @@ def run_uniform_slab_loop(
         st, incident = slab_tfsf.apply_e(
             st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
-        reference_out = _sample_pre_injection(st, ranks=ranks)
+        reference_out = ports.references(st, port_table_arg, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), BEFORE the domain faces and
@@ -502,9 +491,9 @@ def run_uniform_slab_loop(
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
-        if reference_out is None:
-            return updated, probe_out
-        return updated, jnp.concatenate((probe_out, reference_out), axis=-1)
+        updated['ports'] = ports.update(carry['ports'], st, reference_out, _step_idx,
+                                         port_table_arg, ranks=ranks)
+        return updated, probe_out
 
     # ------------------------------------------------------------------
     # Build step indices and waveform scan inputs
@@ -529,9 +518,10 @@ def run_uniform_slab_loop(
         }
         carry_init["tfsf"] = tfsf_line
         carry_init["records"] = records.initial()
+        carry_init['ports'] = ports.initial
         def _run_cpml(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-            cpml_params_arg, pec_mask_arg, tfsf_tables_arg,
+            cpml_params_arg, pec_mask_arg, tfsf_tables_arg, port_table_arg,
             *, ranks,
         ):
             e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall)
@@ -540,7 +530,7 @@ def run_uniform_slab_loop(
                 lambda scan_carry, scan_inputs: step_fn_cpml(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg,
+                    cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg, port_table_arg,
                     ranks=ranks,
                 ),
                 carry,
@@ -552,13 +542,14 @@ def run_uniform_slab_loop(
             # including when the mesh spans multiple processes.
             probe_ts = lax.with_sharding_constraint(
                 jnp.sum(local_probe_ts, axis=1), rep)
+            final_carry['ports'] = ports.reduce(final_carry['ports'], ranks=ranks)
             return final_carry, probe_ts
 
         run_fn = jax.jit(_run_cpml)
         final_carry, probe_ts = run_fn(
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
-            cpml_params, sharded_pec_mask, tfsf_tables,
+            cpml_params, sharded_pec_mask, tfsf_tables, ports.payload,
             ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
     else:
@@ -569,9 +560,10 @@ def run_uniform_slab_loop(
         }
         carry_init["tfsf"] = tfsf_line
         carry_init["records"] = records.initial()
+        carry_init['ports'] = ports.initial
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-            pec_mask_arg, tfsf_tables_arg,
+            pec_mask_arg, tfsf_tables_arg, port_table_arg,
             *, ranks,
         ):
             e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall)
@@ -580,7 +572,7 @@ def run_uniform_slab_loop(
                 lambda scan_carry, scan_inputs: step_fn_pec(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    pec_mask_arg, e_materials, tfsf_tables_arg,
+                    pec_mask_arg, e_materials, tfsf_tables_arg, port_table_arg,
                     ranks=ranks,
                 ),
                 carry,
@@ -592,13 +584,14 @@ def run_uniform_slab_loop(
             # including when the mesh spans multiple processes.
             probe_ts = lax.with_sharding_constraint(
                 jnp.sum(local_probe_ts, axis=1), rep)
+            final_carry['ports'] = ports.reduce(final_carry['ports'], ranks=ranks)
             return final_carry, probe_ts
 
         run_fn = jax.jit(_run_pec)
         final_carry, probe_ts = run_fn(
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
-            sharded_pec_mask, tfsf_tables,
+            sharded_pec_mask, tfsf_tables, ports.payload,
             ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
 

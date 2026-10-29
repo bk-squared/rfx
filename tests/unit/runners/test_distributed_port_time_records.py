@@ -36,8 +36,8 @@ def test_reference_read_preserves_fields_and_s(kind, boundary):
 
         def capture(*args, **kwargs):
             result = runner(*args, **kwargs, _record_vref=sample)
-            # Expected arrays come from the actual unsampled run, including
-            # each isolated S drive; no record/DFT helper constructs them.
+            # Expected arrays come from the actual unsampled run; no
+            # record/DFT helper constructs them.
             states.append({name: np.array(getattr(result.state, name)) for name in fields})
             return result
 
@@ -48,7 +48,7 @@ def test_reference_read_preserves_fields_and_s(kind, boundary):
 
     expected, baseline = run(False)
     actual, sampled = run(True)
-    assert len(baseline) == len(sampled) == 2  # main run and S driver
+    assert len(baseline) == len(sampled) == 1  # S comes from the main run's record
     differences = []
     for drive, (old, new) in enumerate(zip(baseline, sampled, strict=True)):
         for name in fields:
@@ -82,7 +82,7 @@ def test_reference_read_preserves_fields_and_s(kind, boundary):
             for name in meta._fields:
                 assert np.array_equal(getattr(meta, name), getattr(one_meta, name)), name
             assert [a.shape for a in accs] == [a.shape for a in one_accs]
-    print(f'{kind}/{boundary}: main and S-drive six fields and S array_equal; '
+    print(f'{kind}/{boundary}: main-run six fields and S array_equal; '
           f'records={_signature(actual)}', file=sys.stderr)
 
 

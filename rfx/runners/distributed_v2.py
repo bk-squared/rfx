@@ -340,7 +340,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
 def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
                     _source_port_indices=None, _record_probes=None, preflight=None, assembly=None,
-                    snapshot=None, _pre_injection_probes=(), _record_vref=True, **kwargs):
+                    snapshot=None, _record_vref=True, s_param_freqs=None, compute_s_params=False, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -368,9 +368,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         The numerical step is shared with the main run.
     _record_probes : tuple or None
         Optional global-cell probes in place of the model probes.
-    _pre_injection_probes : tuple
-        Private S-driver E probes; append their pre-injection samples to the
-        probe output. _record_vref=False is the bit-identity test control.
+    s_param_freqs : array or None
+        Frequency bins for in-loop main-record port accumulators.
+    _record_vref : bool
+        Test control: suppress only the published reference time channel.
 
     Returns
     -------
@@ -505,10 +506,12 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     # Build sources and probes
     # ------------------------------------------------------------------
+    from rfx._grid_metric import field_index
     sources = PortSourceQueue()
     probes = []
     port_idx = -1
     wire_edges = None
+    port_entries, port_specs = [], []
     from rfx.model.conductors import lumped_port_stage, publish_port_release
     for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
@@ -519,6 +522,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 position=pe.position, component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
             )
+            mid = tuple(int(i) for i in field_index(grid, pe.position, pe.component))
+            port_entries.append(pe)
+            port_specs.append((pe.component, (mid,), 'lumped', mid, _port_index))
             materials = setup_lumped_port(grid, lp, materials)
             conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
@@ -531,6 +537,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             wire_edges = conductors.pec_edges
             from rfx.sources.sources import _wire_port_live_cells
             cells, live, _ = _wire_port_live_cells(grid, wp, wire_edges)
+            live_cells = tuple(c for c, on in zip(cells, live) if on)
+            port_entries.append(pe)
+            port_specs.append((pe.component, live_cells, 'wire',
+                               live_cells[len(live_cells) // 2], _port_index))
             conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
                 component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
@@ -554,6 +564,16 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     else:
         # Global cells enter the ordinary owner mapping below independently.
         probes.extend(_record_probes)
+
+    from rfx.stepping.uniform_slab_ports import UniformSlabPorts
+    order = sorted(range(len(port_specs)), key=lambda k: port_specs[k][2] != 'wire')
+    if compute_s_params and s_param_freqs is None:
+        from rfx.measurement import default_frequency_grid
+        s_param_freqs = default_frequency_grid(sim._freq_max, 50)
+    ports = UniformSlabPorts(
+        grid, [port_entries[k] for k in order], [port_specs[k] for k in order],
+        CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags()), layout, mesh, n_steps, jnp.float32,
+        s_param_freqs if compute_s_params else None, record_vref=_record_vref)
 
     # All port loads must be present before any drive reads its E operands.
     # No whole-domain realization here: the slab kernels form their own edge
@@ -716,8 +736,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     final_carry, probe_ts, final_state_sharded, records = run_uniform_slab_loop(
         SlabRecords=SlabRecords,
         _pmc_faces_frozen=_pmc_faces_frozen,
-        _pre_injection_probes=_pre_injection_probes,
-        _record_vref=_record_vref,
         cpml_params=cpml_params,
         cpml_state_sharded=cpml_state_sharded,
         curl_boundary=curl_boundary,
@@ -745,6 +763,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         nx_local=nx_local,
         nx_per=nx_per,
         pad_x=pad_x,
+        ports=ports,
         prb_device_ids=prb_device_ids,
         prb_local_specs=prb_local_specs,
         rep=rep,
@@ -803,7 +822,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Probe time series: summed across devices after the scan inside jit
     # probe_ts shape: (n_steps, n_probes) or (n_steps, 0)
     # ------------------------------------------------------------------
-    if n_prb > 0 or _pre_injection_probes:
+    if n_prb > 0:
         time_series = jnp.array(probe_ts)  # (n_steps, n_probes)
     else:
         time_series = jnp.zeros((n_steps, 0), dtype=jnp.float32)
@@ -814,6 +833,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         diagnostics=diagnostics,
         realized_geometry=geometry_record,
         **record_result,
+        **ports.assemble(final_carry['ports'], multi_process=multi_process),
         state=final_state,
         time_series=time_series,
         s_params=None,

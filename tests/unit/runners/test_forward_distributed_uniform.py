@@ -171,10 +171,9 @@ def test_requested_port_fields_match_one_device_forward(family):
             patch.object(distributed_v2, "run_distributed", count_steps):
         actual = port_scene().forward(n_steps=150, distributed=True, devices=devices(),
                                      port_s11_freqs=freqs, skip_preflight=True)
-    assert len(observed) == 1  # The existing S driver ran once, without a second computation.
-    # Time-stepping runs for this request: the main run and one S drive, as
-    # measured on main 1215d3a35 (before the main run took the port records).
-    assert len(steps) == 2, steps
+    assert len(observed) == 0  # Forward reads S from its main record.
+    # Only the main time-stepping run is needed.
+    assert len(steps) == 1, steps
 
     def compare_field(name, value, reference):
         value, reference = np.asarray(value), np.asarray(reference)
@@ -188,17 +187,13 @@ def test_requested_port_fields_match_one_device_forward(family):
     compare_field("freqs", actual.freqs, expected.freqs)
     field = f"{family}_port_sparams"
     native_accs = getattr(expected, field)[0][1]
-    driver_accs = observed[0][family][0][1]
+    driver_accs = getattr(actual, field)[0][1]
     for index, name in ((0, "v_dft"), (1, "i_dft")):
         compare_field(name, driver_accs[index], native_accs[index])
     if family == "wire":
         compare_field("v_port_dft", driver_accs[3], native_accs[3])
-    # Raw tuples include unmeasured reference channels, so the whole public
-    # quantity refuses rather than masquerading as a native accumulator tuple.
-    reason = "does not record this port quantity; run on one device"
     assert getattr(expected, field) is not None
-    with pytest.raises(NotImplementedError, match=reason):
-        getattr(actual, field)
+    assert getattr(actual, field) is not None
     # The port time records are the main forward run's, as run(devices=) returns
     # them: within 9 float32 ULP of each channel's peak of the run() records.
     reference = port_scene().run(n_steps=150, devices=devices(), compute_s_params=False,

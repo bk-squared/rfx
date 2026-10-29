@@ -81,8 +81,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         if _forward_port_s11:
             raise NotImplementedError(
                 "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "
-                "(or another JAX trace that stages it): the S-parameters are measured from a second "
-                "multi-device run outside the trace. Omit port_s11_freqs for the fields and probe records, "
+                "(or another JAX trace that stages it): on this path the port S-parameters are assembled "
+                "on the host from the main run's port records. Omit port_s11_freqs for the fields and probe records, "
                 "call forward() directly, or run on one device (omit distributed=True).")
         raise NotImplementedError(
             "run(devices=...) on a uniform mesh cannot compute port S-parameters inside jax.jit "
@@ -99,11 +99,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
                         s_param_n_steps, n_steps, until_decay),
                 }, instead=None,
                 reason_overrides={"s_param_n_steps":
-                    "this lane reads S11 from the main run's wire-port record"
-                    if _graded else
-                    "this lane computes S11 from a second distributed "
-                    "wire-port recording run using the main run's n_steps "
-                    "and the port's declared excitation"})
+                    "this lane reads S11 from the main run's wire-port record"})
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
         refuse_distributed_lumped_s_pmc(self, entry=entry)
 
@@ -170,14 +166,6 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         )
     else:
         from rfx.runners.distributed_v2 import run_distributed
-        record_options = {}
-        if any(pe.impedance != 0 for pe in self._ports):
-            # run() and forward() take the same main-run port records; forward's
-            # port S stays on the driver call below (records only here).
-            from rfx.probes.sparam_driver import run_distributed_with_port_records
-            run_distributed = run_distributed_with_port_records
-            record_options = dict(s_param_freqs=s_param_freqs,
-                                  compute_s_params=False if _forward_port_s11 else compute_s_params)
         _res = run_distributed(
             self,
             n_steps=n_steps,
@@ -187,22 +175,31 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             assembly=_solve_assembly,
             conformal_pec=conformal_pec,
             snapshot=snapshot,
-            **record_options,
+            s_param_freqs=s_param_freqs, compute_s_params=compute_s_params,
         )
-    if compute_s_params and plan.lane != "run_distributed_nu":
-        from rfx.measurement import default_frequency_grid
-        from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
-        if s_param_freqs is None:
-            s_param_freqs = default_frequency_grid(self._freq_max, 50)
-        _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
-            self, s_param_freqs, skip_preflight=True,
-            n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
-            devices=devices,
-            **({"_main_wire_record": True} if len(_dist_ports) == 1
-               and _dist_ports[0].extent is not None else {}),
-            **({"_forward_port_s11": True} if _forward_port_s11 else {}),
-        )
-        _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
+    if compute_s_params and not _forward_port_s11 and plan.lane != "run_distributed_nu":
+        from rfx.measurement.port_s import main_record_port_s
+        main_s = main_record_port_s(
+            self, _res, compute_s_params=compute_s_params,
+            s_param_freqs=s_param_freqs,
+            off_record=self._s_param_n_steps_off_record(s_param_n_steps, n_steps, until_decay))
+        if main_s is not None:
+            _s_params, _freqs, _read_ids = main_s
+            _res = _res._replace(s_params=_s_params, freqs=_freqs, sparam_read_ids=_read_ids)
+        else:
+            from rfx.measurement import default_frequency_grid
+            from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+            if s_param_freqs is None:
+                s_param_freqs = default_frequency_grid(self._freq_max, 50)
+            _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
+                self, s_param_freqs, skip_preflight=True,
+                n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
+                devices=devices,
+                **({"_main_wire_record": True} if len(_dist_ports) == 1
+                   and _dist_ports[0].extent is not None else {}),
+                **({"_forward_port_s11": True} if _forward_port_s11 else {}),
+            )
+            _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
     _res = self._attach_run_settling_witness(
         _res, n_steps=n_steps, num_periods=num_periods, context=entry)
     _warn_if_nonfinite_result(_res, context=entry)
@@ -264,11 +261,13 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
             _diagnostics=assembly.diagnostics,
             devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
             conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
+        if port_s11_freqs is not None:
+            from rfx.runners._uniform_forward_result import require_concrete_port_records
+            require_concrete_port_records(result)
     except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
         if port_s11_freqs is not None:
-            # Measured: jax.grad or jax.vmap over a traced declaration with
-            # port_s11_freqs fails inside the S driver, which reads its records
-            # as concrete arrays (jax.jit is refused before the solve).
+            # Preserve the refusal when a traced declaration reaches a host
+            # operation (jax.jit is refused before the solve).
             raise NotImplementedError(
                 "forward(distributed=True) on a uniform mesh cannot trace this request "
                 "(jax.grad or jax.vmap over a traced declaration): its port S-parameters from "
@@ -286,6 +285,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         ntff_data=result.ntff_data, ntff_box=result.ntff_box,
         s_params=result.s_params, freqs=result.freqs,
         wire_port_sparams=result.wire_port_sparams,
+        lumped_port_sparams=result.lumped_port_sparams,
         sparam_time_records=result.sparam_time_records,
         dft_time_records=result.dft_time_records,
         current_moment_data=result.current_moment_data,
@@ -295,7 +295,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     ports = [pe for pe in sim._ports if pe.impedance != 0]
     if port_s11_freqs is not None and ports:
         from rfx.runners._uniform_forward_result import pack_port_result
-        packed = pack_port_result(packed, wire=ports[0].extent is not None)
+        packed = pack_port_result(packed)
     return packed
 
 

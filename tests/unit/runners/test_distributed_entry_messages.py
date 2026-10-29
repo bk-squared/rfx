@@ -130,7 +130,7 @@ def test_pmc_wire_refusal_names_entry(entry, option):
     "graded, path, reason",
     [
         (False, "uniform single-wire-port S-parameter",
-         "this lane computes S11 from a second distributed wire-port recording run"),
+         "this lane reads S11 from the main run's wire-port record"),
         (True, "graded single-wire-port S-parameter",
          "this lane reads S11 from the main run's wire-port record"),
     ],

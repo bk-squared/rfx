@@ -261,24 +261,11 @@ def test_mutations(monkeypatch, mutation):
                     return materials if cell[0] == 11 else original_stamp(materials, cell, sigma, component)
                 patch.setattr(sources, "stamp_lumped_sigma", stamp)
             result = original_run(*args, **kwargs)
-            if mutation == "own_slab" and kwargs.get("_source_port_indices") is not None:
-                # Ex line x=8,9,10,11 belongs to slabs 0,0,0,1. Drop
-                # precisely the E contribution outside each port's own slab.
-                assert len(kwargs["_record_probes"]) == 16
-                samples = np.array(result.time_series)
-                samples[:, [3, 11]] = 0
-                result = result._replace(time_series=samples)
             return result
     monkeypatch.setattr(runner, "run_distributed", mutated_run)
-    if mutation == "half_step":
-        original_dft = driver._lumped_recording_dfts
-        def dft(*args):
-            with monkeypatch.context() as patch:
-                # S2 M2: the half step is the H stamp of the one DFT kernel.
-                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
-                              kernel_transform(r, f, dt, "E", **k))
-                return original_dft(*args)
-        monkeypatch.setattr(driver, "_lumped_recording_dfts", dft)
+    if mutation in ("own_slab", "half_step"):
+        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
+        mutate_port_sampler(monkeypatch, mutation)
     # Without the load stamp a port has no source impedance to drive behind
     # (#1463: the drive is the stamped conductance times the source field), so
     # that mutation is refused before stepping instead of reaching the parity.
@@ -287,6 +274,9 @@ def test_mutations(monkeypatch, mutation):
     with pytest.raises(expected[0], match=expected[1]):
         _parity("ex")
     print(f"wire mutation={mutation}: RED")
+    monkeypatch.undo()
+    _parity("ex")
+    print(f"wire mutation={mutation}: restored GREEN")
 
 
 if __name__ == "__main__":

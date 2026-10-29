@@ -578,6 +578,6 @@ def test_uniform_forward_user_jit_refuses_port_s():
             skip_preflight=True, port_s11_freqs=np.array([3e9, 5e9, 7e9])).s_params)()
     assert str(failure.value) == (
         "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "
-        "(or another JAX trace that stages it): the S-parameters are measured from a second "
-        "multi-device run outside the trace. Omit port_s11_freqs for the fields and probe records, "
+        "(or another JAX trace that stages it): on this path the port S-parameters are assembled "
+        "on the host from the main run's port records. Omit port_s11_freqs for the fields and probe records, "
         "call forward() directly, or run on one device (omit distributed=True).")

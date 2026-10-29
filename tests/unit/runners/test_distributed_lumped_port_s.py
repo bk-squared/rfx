@@ -206,32 +206,15 @@ def test_parity_detects_mutations(monkeypatch, mutation):
             return original(sim, freqs, **kwargs)
 
         monkeypatch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan", disabled)
-    elif mutation == "own_slab":
-        original = runner.sample_probes_shmap
-
-        def wrong_owner(st, mesh, count, specs, owners, **kwargs):
-            if count == 10:
-                # Keep each sample's local index, but incorrectly read all
-                # four H samples from the port's slab, including seam H(i-1).
-                owners = [owners[(k // 5) * 5] for k in range(count)]
-            return original(st, mesh, count, specs, owners, **kwargs)
-
-        monkeypatch.setattr(runner, "sample_probes_shmap", wrong_owner)
     else:
-        original = driver._lumped_recording_dfts
-
-        def no_half_step(*args):
-            # Only mutate replay; the single-device reference keeps its phase.
-            with monkeypatch.context() as patch:
-                # S2 M2: the half step is the H stamp of the one DFT kernel.
-                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
-                              kernel_transform(r, f, dt, "E", **k))
-                return original(*args)
-
-        monkeypatch.setattr(driver, "_lumped_recording_dfts", no_half_step)
+        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
+        mutate_port_sampler(monkeypatch, mutation)
     with pytest.raises(AssertionError, match="S parity max_delta"):
         _parity(channel=True)
     print(f"mutation={mutation}: parity RED")
+    monkeypatch.undo()
+    _parity(channel=True)
+    print(f"mutation={mutation}: restored GREEN")
 
 
 @pytest.mark.parametrize("explicit", [False, True])
@@ -307,7 +290,7 @@ def test_one_scan_per_drive_and_shared_replay_bundle(monkeypatch):
     actual = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=320,
                                                   return_vi_dump=True,
                                                   devices=jax.devices("cpu")[:2])
-    assert calls == [((0,), 10, 320), ((1,), 10, 320)]
+    assert calls == [((0,), 0, 320), ((1,), 0, 320)]
     assert isinstance(actual, PortVIReplayBundle)
     assert actual.port_names == expected.port_names
     assert actual.driven_port_indices == expected.driven_port_indices
@@ -373,44 +356,37 @@ def test_drive_only_order_mutation(monkeypatch):
     print("mutation=drive_only_order: numerical parity GREEN; shared step check RED")
 
 
-def test_host_dft_is_the_float64_sum_of_the_recorded_v_and_i(monkeypatch):
-    """The distributed driver's S against the same driver fed an independent
-    host DFT of the recorded V and I: NumPy float64, E at (n+1) dt and H at
+def test_host_dft_is_the_float64_sum_of_the_recorded_v_and_i():
+    """Published in-loop spectra against an independent host DFT of the
+    main-record V and I: NumPy float64, E at (n+1) dt and H at
     (n+1/2) dt. Cross-trace bar for a quantity summed over the record, 1e-4
-    of the peak. (Until S2 M2 this test swapped in the old float32 phase
-    helpers; the driver no longer calls them.) The driver must still not ask
+    of the peak. The driver must still not ask
     for float64 on a float32 run."""
     import warnings
-    from rfx.probes import sparam_driver as driver
-    from rfx.probes.probes import _ampere_loop_values, _port_voltage_value
-    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     sim = _model()
-    kwargs = dict(n_steps=320, devices=jax.devices("cpu")[:2])
     with warnings.catch_warnings(record=True) as caught:
-        actual, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
+        actual = sim.run(n_steps=320, devices=jax.devices("cpu")[:2],
+                         compute_s_params=True, s_param_freqs=FREQS)
     assert not any("float64 requested" in str(w.message) for w in caught)
-    calls = []
-
-    def host_dfts(samples, freqs, dt, dx):
-        fields = np.asarray(samples).reshape(len(samples), -1, 5)
-        v = np.asarray(_port_voltage_value(fields[:, :, 0], dx), dtype=np.float64)
-        i = np.asarray(_ampere_loop_values(*(fields[:, :, k] for k in range(1, 5)), dx),
-                       dtype=np.float64)
-        n = np.arange(len(v), dtype=np.float64)
-        w = -2j * np.pi * np.asarray(freqs, dtype=np.float64)[:, None] * float(dt)
-        calls.append(len(v))
-        return ((np.exp(w * (n + 1.0)) @ v).T * float(dt),
-                (np.exp(w * (n + 0.5)) @ i).T * float(dt))
-
-    monkeypatch.setattr(driver, "_lumped_recording_dfts", host_dfts)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        reference, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
-    assert calls and all(length == 320 for length in calls)
-    delta = float(np.max(np.abs(np.asarray(actual) - np.asarray(reference)))
-                  / np.max(np.abs(np.asarray(reference))))
-    print(f"host float64 DFT of the records: {np.size(actual)} S entries, max_delta/peak={delta:.3g}")
-    assert delta <= 1e-4, delta
+    assert len(actual.sparam_time_records) == len(actual.lumped_port_sparams) == 2
+    dt = float(actual.dt)
+    n = np.arange(320, dtype=np.float64)
+    for port, (record, (meta, accs)) in enumerate(zip(
+            actual.sparam_time_records, actual.lumped_port_sparams, strict=True)):
+        freqs = np.asarray(meta.freqs)
+        np.testing.assert_array_equal(freqs, FREQS.astype(freqs.dtype))
+        w = -2j * np.pi * freqs.astype(np.float64)[:, None] * dt
+        assert len(record.samples) == 320
+        for index, (channel, offset) in enumerate((("V", 1.0), ("I", 0.5))):
+            samples = np.asarray(record.samples[:, record.channels.index(channel)], dtype=np.float64)
+            reference = (np.exp(w * (n + offset)) @ samples) * dt
+            spectrum = np.asarray(accs[index])
+            assert spectrum.shape == reference.shape
+            peak = float(np.max(np.abs(reference)))
+            error = float(np.max(np.abs(spectrum.astype(np.complex128) - reference)))
+            print(f"host float64 DFT port={port} channel={channel}: "
+                  f"error={error:.12g} peak={peak:.12g} bar={1e-4 * peak:.12g}")
+            assert error <= 1e-4 * peak, (port, channel, error, peak)
 
 
 def test_explicit_opt_out_keeps_s_options_inert(monkeypatch):
