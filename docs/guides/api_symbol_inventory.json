@@ -1933,14 +1933,6 @@
         "pec_edge_masks"
       ]
     },
-    "run_batch": {
-      "kind": "function",
-      "params": [
-        "sim_factory",
-        "sweep",
-        "run_kwargs"
-      ]
-    },
     "run_batch_with_manifest": {
       "kind": "function",
       "params": [

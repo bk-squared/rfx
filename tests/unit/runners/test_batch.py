@@ -3,9 +3,10 @@
 import os
 import tempfile
 import numpy as np
+import pytest
 
 from rfx import Simulation, GaussianPulse
-from rfx.batch import ParameterSweep, run_batch, SimulationDataset
+from rfx.batch import ParameterSweep, SimulationDataset
 
 
 def test_parameter_sweep_combinations():
@@ -20,7 +21,7 @@ def test_parameter_sweep_combinations():
     assert combos[-1] == {"a": 3.0, "b": 20.0}
 
 
-def test_run_batch_produces_results():
+def test_parameter_sweep_produces_results():
     """Small batch run should produce correct number of results."""
     sweep = ParameterSweep(eps_r=[1.0, 4.0])
 
@@ -34,7 +35,7 @@ def test_run_batch_produces_results():
         sim.add_port((0.005, 0.01, 0.01), "ez", waveform=GaussianPulse(f0=3e9))
         return sim
 
-    results = run_batch(factory, sweep, run_kwargs={"n_steps": 30})
+    results = [(p, factory(**p).run(n_steps=30)) for p in sweep.combinations()]
     assert len(results) == 2
     assert results[0][0]["eps_r"] == 1.0
     assert results[1][0]["eps_r"] == 4.0
@@ -82,3 +83,17 @@ def test_dataset_export_hdf5():
             assert list(hf.attrs["input_keys"]) == ["x"]
     finally:
         os.unlink(path)
+
+
+def test_legacy_batch_and_animation_removed():
+    import rfx
+    import rfx.batch
+    import rfx.visualize3d
+
+    for module, name in (
+        (rfx, "run_batch"),
+        (rfx.batch, "run_batch"),
+        (rfx.visualize3d, "save_field_animation"),
+    ):
+        with pytest.raises(AttributeError):
+            getattr(module, name)

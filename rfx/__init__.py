@@ -147,7 +147,7 @@ from rfx.io import (
 )
 from rfx.batch import (
     BATCH_MANIFEST_SCHEMA, BatchCaseResult, ParameterSweep,
-    case_id_from_params, run_batch, run_batch_with_manifest,
+    case_id_from_params, run_batch_with_manifest,
     summarize_batch_manifest,
 )
 from rfx.artifacts import (
@@ -173,7 +173,6 @@ from rfx.visualize import (
 from rfx.smith import plot_smith
 from rfx.visualize3d import (
     plot_geometry_3d, plot_field_3d, save_field_vtk, save_screenshot,
-    save_field_animation as _save_field_animation_legacy,
 )
 from rfx.animation import save_field_animation
 from rfx.simulation import SnapshotSpec
@@ -342,7 +341,7 @@ __all__ = [
     # sweeps / batch
     "parametric_sweep", "SweepResult", "plot_sweep",
     "vmap_material_sweep", "VmapSweepResult",
-    "ParameterSweep", "BatchCaseResult", "run_batch", "run_batch_with_manifest",
+    "ParameterSweep", "BatchCaseResult", "run_batch_with_manifest",
     "summarize_batch_manifest",
     # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",

@@ -527,38 +527,6 @@ def run_batch_with_manifest(
     return returned
 
 
-def run_batch(
-    sim_factory: Callable[..., Any],
-    sweep: ParameterSweep,
-    *,
-    run_kwargs: dict | None = None,
-) -> list[tuple[dict, Any]]:
-    """Run simulations for all parameter combinations.
-
-    Parameters
-    ----------
-    sim_factory : callable
-        Function that takes keyword args from the sweep and returns
-        a configured Simulation object (or any object with a .run() method).
-    sweep : ParameterSweep
-        Parameter sweep definition.
-    run_kwargs : dict or None
-        Extra keyword arguments passed to sim.run().
-
-    Returns
-    -------
-    list of (params_dict, result) tuples
-    """
-    if run_kwargs is None:
-        run_kwargs = {}
-    results = []
-    for i, params in enumerate(sweep.combinations()):
-        sim = sim_factory(**params)
-        result = sim.run(**run_kwargs)
-        results.append((params, result))
-    return results
-
-
 class SimulationDataset:
     """Structured dataset from batch simulation results.
 
@@ -582,7 +550,11 @@ class SimulationDataset:
         input_keys: list[str],
         output_fn: Callable,
     ) -> "SimulationDataset":
-        """Build dataset from run_batch() results.
+        """Build dataset from a list of (params, result) pairs.
+
+        For example, use ``[(p, factory(**p).run(**kw)) for p in
+        sweep.combinations()]`` or ``[(c.params, c.result) for c in
+        run_batch_with_manifest(...)]``.
 
         Parameters
         ----------

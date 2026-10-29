@@ -58,7 +58,7 @@ physics paths.
 
 - `rfx.batch.ParameterSweep` defines Cartesian sweeps while preserving
   JSON-compatible scalar types such as strings, booleans, ints, and floats.
-- `run_batch()` executes cases sequentially and returns in-memory tuples.
+- `run_batch_with_manifest()` executes cases sequentially with a resumable manifest.
 - `SimulationDataset` can export compact arrays to HDF5 or CSV.
 
 ### Gap vs repeatable simulation workflows

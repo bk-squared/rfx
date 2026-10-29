@@ -13,7 +13,7 @@ tools and when to use each.
 | Tool | Use it for |
 |---|---|
 | `rfx.parametric_sweep(factory, name, values)` | one parameter, any change (geometry, mesh, sources) |
-| `rfx.batch.ParameterSweep` + `run_batch` | a Cartesian grid of several parameters |
+| `ParameterSweep` + a loop, or `run_batch_with_manifest` for a resumable record | a Cartesian grid of several parameters |
 | `rfx.vmap_material_sweep(sim, "material.eps_r", values)` | material values only, run as one batched simulation |
 | `rfx.batch.run_batch_with_manifest` | long sweeps you want to resume and reproduce |
 
@@ -76,16 +76,16 @@ runs with S-parameters) and `"peak_field"`.
 ## A grid of parameters
 
 `ParameterSweep` holds the Cartesian product of several parameter lists.
-`run_batch` calls `factory(**params)` for each combination and returns a list of
+Call `factory(**params).run(...)` for each combination to build a list of
 `(params, result)` pairs:
 
 ```python
-from rfx.batch import ParameterSweep, SimulationDataset, run_batch
+from rfx.batch import ParameterSweep, SimulationDataset
 
 grid = ParameterSweep(insert_width=[0.008, 0.016], eps_r=[3.0, 6.0])
 print(grid.keys, grid.total)      # ['insert_width', 'eps_r'] 4
 
-results = run_batch(make_insert_sim, grid, run_kwargs={"n_steps": 300})
+results = [(p, make_insert_sim(**p).run(n_steps=300)) for p in grid.combinations()]
 for params, result in results:
     print(params, f"{peak_probe(result):.3e}")
 ```
