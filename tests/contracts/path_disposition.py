@@ -436,6 +436,9 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_boundary_model": {"": every_path(ignorable(
         "derived from the boundary declaration; the _boundary, _boundary_spec, _pec_faces "
         "and _periodic_axes rows decide it"))},
+    "_boundary_scalar_spec": {"": every_path(ignorable(
+        "boundary declaration provenance (the spec an absorber scalar expanded to); read only "
+        "by constructor rebuilds and the Floquet/TF-SF side-face check, never by a field update"))},
 
     # ----------------------------------------------------------- materials
     "_materials": {
@@ -1013,7 +1016,8 @@ ROW_CLASS: dict[str, str] = {
         "_solver", "_adi_cfl_factor", "_stencil_order", "_mode")},
     **{attr: BOOKKEEPING for attr in (
         "_internal_probe_indices", "_msl_auto_offset_min",
-        "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model", "_boundary_explicit", "_snap")},
+        "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model", "_boundary_explicit", "_snap",
+        "_boundary_scalar_spec")},
     **{attr: OBSERVER for attr in (
         "_probes", "_dft_planes", "_flux_monitors", "_ntff", "_current_moments")},
     **{attr: PHYSICS for attr in (

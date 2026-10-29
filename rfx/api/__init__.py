@@ -508,7 +508,7 @@ class Simulation(
 
         # Canonical BoundarySpec, with scalar boundary compatibility.
         if _explicit_spec:
-            self._boundary_spec = spec
+            self._boundary_spec, self._boundary_scalar_spec = spec, None
             self._periodic_axes = spec.periodic_axes()
         else:
             self._boundary_spec = self._build_spec_from_legacy()

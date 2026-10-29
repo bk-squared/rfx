@@ -15,6 +15,7 @@ import jax
 from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
 from rfx.boundaries.depths import FACES, Kind, resolve_face_depths, grid_face_depths
+from rfx.boundaries.serialization import scalar_spec
 
 
 class _DefaultBoundary(str):
@@ -259,7 +260,7 @@ def with_requirements(model: BoundaryModel, requirements: tuple[Requirement, ...
 
 def declared_nonperiodic_faces(sim, axes: str) -> list[str]:
     """Name explicit faces a feature would replace with periodic faces."""
-    explicit = sim._boundary_spec is not getattr(sim._boundary, "spec", None)
+    explicit = sim._boundary_spec is not scalar_spec(sim)
     return [
         f"{a}_{side}={kind!r}"
         for a, side, kind in sim._boundary_spec.faces()

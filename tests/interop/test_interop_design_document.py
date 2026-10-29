@@ -491,8 +491,15 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The #810
     # registration lengths follow the same rule: the rebuilt port's are
     # re-derived by add_msl_port from the rebuilt geometry.
+    # _boundary_scalar_spec (#2214) is the constructor's record that the
+    # spec came from the "cpml"/"upml" scalar. It is read only with a Floquet
+    # port or open TF/SF, and those documents rebuild from the scalar
+    # (design_constructor_boundary), so the rebuild records it again; other
+    # documents rebuild from the spec and carry None. Before #2214 the same
+    # record rode inside _boundary and was lost the same way, unseen here.
     skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
-                  "_msl_auto_probe_lengths", "_msl_ports"} | diagnostic_attrs
+                  "_msl_auto_probe_lengths", "_msl_ports",
+                  "_boundary_scalar_spec"} | diagnostic_attrs
     for name in sorted(set(vars(original)) - skip_attrs):
         left = _canonical(getattr(original, name))
         right = _canonical(getattr(rebuilt, name))
