@@ -8,7 +8,7 @@ from rfx.sparams._tail_witness import _pole_contributions
 from tests.unit.sparams.test_ringdown_oracles import _model
 
 
-def test_each_pole_rule_uses_the_fitted_window_dft():
+def test_kept_growing_uses_tail_bound_and_other_rules_use_window_dft():
     dt, start, count = .1, 100, 80
     bins = np.array([.7, .9, 1.3])
     poles = np.array([.03+2j*np.pi*.7, 2j*np.pi*1.3, .5+2j*np.pi*.9])
@@ -22,8 +22,13 @@ def test_each_pole_rule_uses_the_fitted_window_dft():
     denominator = np.abs(plain_dft(record, dt, bins))
     actual = _pole_contributions(model, record, bins, denominator, len(record)*dt)
     kernel = np.exp(-2j*np.pi*bins[:, None]*(start*dt+t)[None, :])
-    for rule, k in [('kept non-static growing', 0),
-                    ('non-decaying sinusoidal', 1), ('discarded growing', 2)]:
+    H = len(record)
+    lam = np.exp(poles[0]*dt)
+    expected = ((1+abs(lam)**(2*H))*dt*abs(coefficients[0])
+                * abs(lam)**(len(record)-start)
+                / abs(1-lam*np.exp(-2j*np.pi*bins*dt)) / denominator[:, 0])
+    np.testing.assert_allclose(actual['kept non-static growing'], expected, rtol=1e-12)
+    for rule, k in [('non-decaying sinusoidal', 1), ('discarded growing', 2)]:
         expected = np.abs(kernel @ terms[:, k])*dt/denominator[:, 0]
         np.testing.assert_allclose(actual[rule], expected, rtol=1e-12, atol=1e-13)
 

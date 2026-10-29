@@ -98,6 +98,8 @@ if TYPE_CHECKING:
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
+from rfx._ringdown_growth_judge import (
+    GROWING_POLE_RULE, GrowingPoleJudgement, growing_poles, judge_growing_poles)
 from rfx._ringdown_pencil import (
     IdentificationMemoryRefused,
     _check_run_identification_memory,
@@ -703,31 +705,6 @@ def _static_pole(p: RingdownPole, record_s: float, unit_tol: float) -> bool:
     """
     return (_zero_frequency(p.f_hz, record_s)
             and abs(p.abs_lambda - 1.0) < float(unit_tol))
-
-
-def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
-    """Kept poles with ``|lambda| > 1`` per step, split into (growing, exempt).
-
-    Exempt: a static field (:func:`_static_pole`) -- a pole within rounding
-    of zero frequency, ``|f| < 1 / record`` (the record cannot tell it from
-    DC) and ``|lambda| - 1 < unit_tol`` per step. A static field left behind
-    in a closed box identifies as such a pole (rfx #1254, the Q 533 cavity).
-    """
-    grow, exempt = [], []
-    for p in model.poles():
-        if not p.abs_lambda > 1.0:
-            continue
-        if _static_pole(p, record_s, unit_tol):
-            exempt.append(p)
-        else:
-            grow.append(p)
-    return tuple(grow), tuple(exempt)
-
-
-GROWING_POLE_RULE = (
-    "a kept pole with |lambda| > 1 per step fails the check unless |f| < "
-    "1/record length and |lambda| - 1 < unit_tol (a zero-frequency pole within "
-    "rounding of the unit circle)")
 
 
 # ---------------------------------------------------------------------------
@@ -1588,8 +1565,8 @@ class RingdownRun:
         S = to_s(w2.spectra)
         model = w2.model
 
-        record_s = self.n_steps * dt
-        grow, exempt = growing_poles(model, record_s, spec.unit_tol)
+        growth = judge_growing_poles(model, self.n_steps, f_bins, np.abs(plain),
+                                     unit_tol=spec.unit_tol)
         g = np.asarray(model.growing_amplitude, dtype=np.float64)
         if g.size:
             kg = int(np.argmax(g))
@@ -1607,17 +1584,20 @@ class RingdownRun:
         src_ratio = max((r for _l, r in self.source_off), default=0.0)
         witnesses += self._error_witnesses(Y, dt, f_bins, ref_hz, to_s.measured, plain, w2, state)
         witnesses += [
-            RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
+            RingdownWitness("growing_poles", float(np.max(growth.share_per_bin)),
+                            1e-2, growth.ok,
                             GROWING_POLE_RULE + ". Poles the pencil discarded as "
                             "growing are sized and reported (the largest, with its "
                             "frequency: its size at the record's end relative to "
                             "its channel's RMS over the window) but not judged",
-                            f"{len(exempt)} zero-frequency exempt; {g.size} "
+                            f"{growth.status}: {growth.reason}; "
+                            f"{growth.n_kept_growing} kept growing; "
+                            + (f"{growth.n_exempt} zero-frequency exempt; {g.size} "
                             f"discarded as growing, the largest {g_max:.3g} at "
                             f"{g_f / 1e9:.4g} GHz (reported, not judged)"
                             if g.size else
-                            f"{len(exempt)} zero-frequency exempt; none discarded "
-                            "as growing"),
+                            f"{growth.n_exempt} zero-frequency exempt; none discarded "
+                            "as growing")),
             RingdownWitness("passivity", s_diag, p_bar, s_diag <= p_bar,
                             "max |S_kk| over the driven ports", p_note),
             RingdownWitness("source_off", src_ratio, float(spec.source_off_tol),
@@ -1739,6 +1719,8 @@ class RingdownStopCheck(NamedTuple):
     passive_ok: bool = False
     n_growing: int = 0
     growing_ok: bool = False
+    growing_status: str = "cannot judge"
+    growing_reason: str = "not reached"
 
 
 def _stop_decision(consecutive_before: int, sources_off: bool, we_ok: bool,
@@ -1749,7 +1731,7 @@ def _stop_decision(consecutive_before: int, sources_off: bool, we_ok: bool,
     ``consecutive`` counts the checks in a row, this one included, with the
     sources off and WE within its bar; the run stops when that count reaches
     :data:`STOP_CONSECUTIVE`, the record is past the floor, and this check's
-    completion reads passive with no kept growing pole.
+    completion reads passive and the growing-pole judge passes.
     """
     run = int(consecutive_before) + 1 if (sources_off and we_ok) else 0
     return run, bool(run >= STOP_CONSECUTIVE and floor_ok and passive_ok
@@ -1867,13 +1849,15 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
     influence, peak = _tail_influence(model, n_record, f_bins, spectra, observable)
     tau, pole, static, below = _floor_pole(model, record_s, influence, peak, spec)
     passivity = _passivity_value(observable(spectra), driven)
-    grow, _exempt = growing_poles(model, record_s, spec.unit_tol)
+    growth = judge_growing_poles(model, n_record, f_bins, np.abs(plain),
+                                 unit_tol=spec.unit_tol)
     return dict(we=float(we), we_ok=bool(we <= float(spec.witness_tol)),
                 tau_own_s=tau, own_pole=pole, zero_frequency_poles=static,
                 n_below_bar=int(below), note=note,
                 passivity=float(passivity),
                 passive_ok=bool(passivity <= 1.0 + float(spec.passivity_tol)),
-                n_growing=len(grow), growing_ok=len(grow) == 0)
+                n_growing=growth.n_kept_growing, growing_ok=growth.ok,
+                growing_status=growth.status, growing_reason=growth.reason)
 
 
 def _first_check_record(n_off: int, window_start: float, chunk: int) -> int:
@@ -1913,7 +1897,8 @@ class _StopSchedule:
                  we_ok=False, tau_own_s=math.nan, own_pole=None,
                  zero_frequency_poles=(), n_below_bar=0, note="",
                  passivity=math.nan, passive_ok=False, n_growing=0,
-                 growing_ok=False)
+                 growing_ok=False, growing_status="cannot judge",
+                 growing_reason="not reached")
         f.update(fields)
         before = self.checks[-1].consecutive if self.checks else 0
         run, _ = _stop_decision(before, f["sources_off"], f["we_ok"], False)
@@ -1937,7 +1922,8 @@ class _StopSchedule:
             zero_frequency_poles=f["zero_frequency_poles"], tau_own_s=f["tau_own_s"],
             own_pole=f["own_pole"], floor_from=frm, n_below_bar=f["n_below_bar"],
             passivity=f["passivity"], passive_ok=f["passive_ok"],
-            n_growing=f["n_growing"], growing_ok=f["growing_ok"])
+            n_growing=f["n_growing"], growing_ok=f["growing_ok"],
+            growing_status=f["growing_status"], growing_reason=f["growing_reason"])
         self.checks.append(check)
         self.next = max(int(n_record) + 1, int(math.ceil(STOP_GROWTH * n_record)))
         return check
@@ -1995,7 +1981,7 @@ class RingdownStopReport:
                    if c.zero_frequency_poles else "")
                 + f"; {c.n_below_bar} below the bar), max|S_kk| {c.passivity:.4g}"
                 + ("" if c.passive_ok else " (not passive)")
-                + ("" if c.growing_ok else f", {c.n_growing} growing pole(s)")
+                + f", growing-pole judge {c.growing_status} ({c.n_growing} kept growing)"
                 + f", {c.seconds * 1e3:.0f} ms" + (f" -- {c.note}" if c.note else ""))
         return "\n".join(lines)
 
@@ -2225,7 +2211,8 @@ class RingdownStop:
                 f"of the slowest pole that moves S by the bar "
                 f"({_pole_text(c.floor_pole)}, {c.tau_slowest_s * 1e9:.4g} ns{frm}), "
                 f"past the floor of {STOP_FLOOR_DECAY_TIMES:g}, and the completion "
-                f"reads passive (max|S_kk| {c.passivity:.4g}) with no growing pole"
+                f"reads passive (max|S_kk| {c.passivity:.4g}), growing-pole judge "
+                f"{c.growing_status} ({c.n_growing} kept growing)"
                 + (f"; {len(c.zero_frequency_poles)} static-field pole(s) left out "
                    "of the floor" if c.zero_frequency_poles else ""))
         elif not checks:
@@ -2255,8 +2242,9 @@ class RingdownStop:
                 failed.append(f"(e) the completion reads non-passive, max|S_kk| "
                               f"{c.passivity:.4g} above "
                               f"{1.0 + float(spec.passivity_tol):g}")
-            if c.sources_off and not c.growing_ok and c.n_growing:
-                failed.append(f"(e) {c.n_growing} kept growing pole(s)")
+            if c.sources_off and not c.growing_ok:
+                failed.append(f"(e) growing-pole judge {c.growing_status} "
+                              f"({c.n_growing} kept growing): {c.growing_reason}")
             reason = (f"did not stop: the record reached the maximum of "
                       f"{self.n_max} steps; at the last check ({c.n_record} "
                       f"steps) " + "; ".join(failed))
