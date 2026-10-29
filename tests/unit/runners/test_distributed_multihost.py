@@ -266,3 +266,19 @@ def test_two_processes_return_identical_global_results(tmp_path, record_property
             # the repo's distributed parity tolerance (test_distributed.py).
             print(f"{name}: max abs diff={max_diff:.9e}, relative={relative:.9e}")
             assert relative <= 1e-4, f"{name}: {max_diff=:.9e}, {relative=:.9e}"
+
+
+def test_v2_direct_non_uniform_grid_is_refused(monkeypatch):
+    devices = _cpu_devices()
+    runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
+    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
+    assert distributed_v2._spans_other_processes(devices)
+    # Profiles are constructor arguments; Simulation has no set_dz_profile API.
+    sim = _build_box("pec", dz_profile=[1e-3] * 7)
+    scan = Mock(wraps=slab_uniform_loop.lax.scan)
+    runner_lax = SimpleNamespace(**{**vars(slab_uniform_loop.lax), "scan": scan})
+    monkeypatch.setattr(slab_uniform_loop, "lax", runner_lax)
+    with pytest.raises(NotImplementedError, match="non-uniform grid") as exc:
+        distributed_v2.run_distributed(sim, n_steps=3, devices=devices)
+    assert "use sim.run(devices=...)" in str(exc.value)
+    scan.assert_not_called()
