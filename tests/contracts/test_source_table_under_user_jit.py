@@ -1,5 +1,6 @@
 """Concrete source samples agree across plain and user-jitted entry points."""
 
+import sys
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -68,6 +69,9 @@ def test_a_port_table_under_user_jit():
     assert_same_bits(jax.jit(table)(), expected)
 
 
+@pytest.mark.xfail(sys.platform == "darwin", strict=True,
+                   reason="#2241 compiled graded step differs under a user jit on macOS CPU "
+                          "(loop inputs identical; Linux x86 CPU bit-identical)")
 def test_b_graded_current_run_under_user_jit():
     sim = scene()
     pulse = sim._ports[0].waveform
