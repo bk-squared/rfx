@@ -247,19 +247,6 @@ the device held 4.24 GiB, and `run()`'s own preflight then stopped in the alloca
 same run completed when no second model was kept (peak 5.39 GiB). The public API has no way yet to free
 those arrays before `run()`.
 
-### Reverse mode on CPU takes about 2.6 times v1.8.0's time per gradient
-
-Tracker: #2198
-
-On CPU, one gradient through `forward(..., eps_override=..., checkpoint=True)` takes 27.0 s, against 10.2 s in v1.8.0
-(2.64 times). The model is a 531,441-cell uniform CPML box with one point source and one probe, run for 400 steps on 8
-cores with jax 0.10.2. The extra time is in the reverse pass of each time step: 65.8 ms per step against 20.8 ms.
-Compilation is not the cause: it takes 2 to 3 s in both versions. The checkpoint policy is not the cause: without
-`checkpoint=True` the ratio is 3.0. Which operation in the reverse step costs the time is not measured. The forward step
-itself is 2.5 times faster than v1.8.0 on CPU (1.87 against 4.70 ms per step), and on a GPU (RTX 4090) the same gradient
-is 2.3 times faster than v1.8.0 (0.13 s against 0.30 s). Peak host memory is about equal (7.6 against 7.2 GiB). Run
-gradient work on a GPU; on CPU there is no workaround.
-
 ## Ports and extraction
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
