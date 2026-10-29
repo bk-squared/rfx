@@ -185,6 +185,19 @@ def test_ntff_solve_releases_inspection(entry, graded, contexts):
     _released(sim, contexts)
 
 
+def test_topology_optimize_releases_inspection(contexts):
+    # Review P2: the optimization's solves bypass _dispatch_plan.
+    pytest.importorskip('optax', reason='topology_optimize requires the optional optimization extra')
+    from rfx.topology import TopologyDesignRegion, topology_optimize
+    sim = _model()
+    _prime(sim)
+    region = TopologyDesignRegion((.002, .002, .002), (.006, .006, .006), material_fg='design')
+    result = topology_optimize(sim, region, lambda r: jax.numpy.sum(r.time_series ** 2),
+                               n_iterations=1, verbose=False, jit=False)
+    del result
+    _released(sim, contexts)
+
+
 @pytest.mark.parametrize('name', CALCULATORS)
 def test_calculator_releases_inspection(name, contexts):
     sim, kwargs = _calculator(name)
