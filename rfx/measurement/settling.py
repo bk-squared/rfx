@@ -140,7 +140,7 @@ def warn_postrun_energy_witness(
             warnings.warn(
                 "no field energy was recorded — the source may not have "
                 "coupled (position off-grid, wrong component, or zero "
-                "amplitude) (issue #336)", AccuracyWarning,
+                "amplitude)", AccuracyWarning,
                 stacklevel=4,
             )
             return
@@ -159,8 +159,8 @@ def warn_postrun_energy_witness(
                 warnings.warn(
                     f"run ended at {tail_db:.1f} dB of peak — ring-down "
                     "truncated; Harminv/DFT/NTFF quantities may carry "
-                    "transient error; consider until_decay or more periods "
-                    "(issue #332)", AccuracyWarning,
+                    "transient error; consider until_decay or more periods"
+                    "", AccuracyWarning,
                     stacklevel=4,
                 )
         return
@@ -176,7 +176,7 @@ def warn_postrun_energy_witness(
         warnings.warn(
             "no field energy was recorded — the source may not have "
             "coupled (position off-grid, wrong component, or zero "
-            "amplitude) (issue #336)", AccuracyWarning,
+            "amplitude)", AccuracyWarning,
             stacklevel=4,
         )
 
@@ -267,7 +267,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         warnings.warn(
             f"no ring-down settling witness on this {operation}: "
             f"{witness['reason']}. This {operation} requests NTFF and/or "
-            "field-DFT output, so its truncation is unguarded (#885); "
+            "field-DFT output, so its truncation is unguarded; "
             "settling_db is None, which is not a pass.", AccuracyWarning,
             stacklevel=4,
         )

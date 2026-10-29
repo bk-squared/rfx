@@ -313,10 +313,10 @@ def read_band(sim, freqs=None):
     try:
         values = np.asarray(freqs, dtype=float)
     except Exception as exc:
-        raise diagnostic_refusal(RfxRefusal("#1512: line-port read frequencies must be concrete")) from exc
+        raise diagnostic_refusal(RfxRefusal("line-port read frequencies must be concrete")) from exc
     if not values.size or not np.isfinite(values).all() or (values < 0).any():
         raise diagnostic_refusal(
-            RfxRefusal("#1512: line-port read frequencies must be finite, nonnegative and nonempty")
+            RfxRefusal("line-port read frequencies must be finite, nonnegative and nonempty")
         )
     return float(values.min()), float(values.max())
 

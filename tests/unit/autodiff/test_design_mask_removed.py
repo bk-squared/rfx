@@ -84,7 +84,7 @@ def test_forward_rejects_design_mask_kwarg_with_a_readable_message():
         f"error message leaks the internal mixin class name: {message!r}"
     )
     assert "design_mask" in message
-    assert "#625" in message or "625" in message
+    assert "save ZERO reverse-mode AD memory" in message
     assert "checkpoint_every" in message or "checkpoint_segments" in message, (
         "message should point at the memory-relief replacement"
     )

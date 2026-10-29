@@ -59,7 +59,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
     """Refuse inputs outside the first implementation before lane dispatch."""
     if design_sigma is not None:
         raise NotImplementedError(
-            "gradient='adjoint' refuses design_sigma_override (#1424): "
+            "gradient='adjoint' refuses design_sigma_override: "
             "on lossless design cells the gradient with respect to conductivity has no "
             "settled value in a finite record (a static sensitivity remains although "
             "the field decays), and this adjoint returns settled-spectrum gradients only")

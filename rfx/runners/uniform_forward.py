@@ -96,10 +96,10 @@ def _forward_from_materials(
     if subpixel_smoothing and sheet_impedance is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
-            "supported with subpixel_smoothing / conformal_pec "
-            "(#677 v1): the sheet operator assumes the plain isotropic "
+            "supported with subpixel_smoothing / conformal_pec"
+            ": the sheet operator assumes the plain isotropic "
             "E update at its edges (Stage-1/2 conformal and Kottke "
-            "lanes are untouched by #677).")
+            "lanes do not apply the sheet operator).")
     from rfx.model.tensor_operands import (
         refuse_tensor_conflicts, form_tensor_operands, finish_tensor_operands)
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,

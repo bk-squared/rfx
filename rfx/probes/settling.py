@@ -16,8 +16,8 @@ _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 SOURCE_DOMINATED_QUALIFIER = (
     "SOURCE-DOMINATED: every scored record sits on a registered "
     "source/port drive cell; not an independent ring-down witness. Add a "
-    "probe away from every drive cell, somewhere the field is live "
-    "(issue #1090)."
+    "probe away from every drive cell, somewhere the field is live"
+    "."
 )
 
 
@@ -169,7 +169,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     advice = ("add a point probe (sim.add_probe(position, component)) away "
               "from every source/port drive cell — a record on the drive "
               "cell measures source turn-off, not ring-down, and is not an "
-              "independent witness (#1090) — and retain its time series, or "
+              "independent witness — and retain its time series, or "
               "use run(until_decay=...) to bound the ring-down through its "
               "stop criterion")
     if is_tracer(source_end_index) or is_tracer(time_series) or any(is_tracer(leaf) for leaf in jax.tree_util.tree_leaves(probe_info)):

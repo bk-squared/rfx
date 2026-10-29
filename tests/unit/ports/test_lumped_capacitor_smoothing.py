@@ -257,7 +257,7 @@ def _waveguide_model(lane, *, capacitor=False):
 @pytest.mark.parametrize("lane", ["uniform", "smooth", "kottke", "conformal"])
 def test_waveguide_s_matrix_refuses_rlc(lane):
     sim = _waveguide_model(lane, capacitor=True)
-    with pytest.raises(NotImplementedError, match=r"lumped RLC.*#1263.*run\(\)"):
+    with pytest.raises(NotImplementedError, match=r"lumped RLC.*run\(\)"):
         sim.compute_waveguide_s_matrix(
             n_steps=120, subpixel_smoothing=("kottke_pec" if lane == "kottke"
                                            else lane == "smooth"))
@@ -267,7 +267,7 @@ def test_waveguide_reference_refuses_rlc():
     sim = _waveguide_model("uniform")
     references = [_waveguide_model("uniform", capacitor=True),
                   _waveguide_model("uniform")]
-    with pytest.raises(NotImplementedError, match=r"lumped RLC.*#1263.*run\(\)"):
+    with pytest.raises(NotImplementedError, match=r"lumped RLC.*run\(\)"):
         sim.compute_waveguide_s_matrix(
             n_steps=120, normalize="flux", port_reference_sims=references)
 

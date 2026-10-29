@@ -393,7 +393,7 @@ def init_tfsf(
                 f"{_given} are not supported with method='methodB': that path's "
                 "auxiliary absorber is built inside "
                 "rfx/sources/tfsf_oblique_open.py and is not derived from a "
-                "reflection target (#888 covers the normal-incidence and Bloch "
+                "reflection target (reflection targets cover the normal-incidence and Bloch "
                 "oblique paths only)"
             )
         from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
@@ -609,7 +609,7 @@ def refuse_graded_propagation_axis(entry, grid):
         f"grades {axis} from {sizes.min() * 1e3:.4g} to {sizes.max() * 1e3:.4g} mm. "
         f"The incident line is built on one cell size, so the injected wave "
         f"does not match the arriving one and leaks into the scattered-field "
-        f"region (0.72 of the peak measured on a 1 / 0.5 / 1 mm line, rfx#2078). "
+        f"region (0.72 of the peak measured on a 1 / 0.5 / 1 mm line). "
         f"Keep the {axis} cells uniform and grade a transverse axis instead.")
 
 

@@ -15,8 +15,8 @@ DG_REFUSAL = (
     "band-limited incident table is built with a zero-phase filter whose "
     "precursor wraps circularly to the end of the record, so the port "
     "re-injects at the record end (an empty matched WR-90 guide read S21 off "
-    "by up to 11 dB). Use waveform='modulated_gaussian' (the default). "
-    "Tracked in #1942."
+    "by up to 11 dB). Use waveform='modulated_gaussian' (the default)."
+    ""
 )
 
 
@@ -77,7 +77,7 @@ def test_declaration_refuses_dg(monkeypatch):
         sim.add_waveguide_port(.008, waveform="differentiated_gaussian")
     assert str(caught.value) == DG_REFUSAL
     assert "modulated_gaussian" in str(caught.value)
-    assert "#1942" in str(caught.value)
+    assert "precursor wraps circularly" in str(caught.value)
 
 
 @pytest.mark.parametrize("graded", [False, True])

@@ -1353,7 +1353,7 @@ class Simulation(
                     "reference_plane_cells is only supported on wire ports "
                     "(extent=...): the plane V/I method needs a gap-voltage "
                     "line integral and a PEC signal trace. Single-cell "
-                    "lumped ports have no Phase-0 evidence (issue #313)."
+                    "lumped ports have no Phase-0 evidence."
                 )
             if int(reference_plane_cells) != reference_plane_cells \
                     or int(reference_plane_cells) < 1:
@@ -1555,7 +1555,7 @@ class Simulation(
                 "x-axis TFSF correction pair and rides on the FDFD eigenmode "
                 "solver, which is a documented dead-end kept under a strict "
                 "xfail. Use mode='laplace' (the default) for a y-directed "
-                "port (issue #661)."
+                "port."
             )
         from rfx.preflight._msl_probe_rules import msl_auto_probe_declaration
         (_, _near_field_m, span_total, _eps_eff_hj,
@@ -1580,7 +1580,7 @@ class Simulation(
         if n_probes < 3:
             raise ValueError(
                 f"n_probes must be >= 3 for the N-probe least-squares "
-                f"wave-decomposition extractor (issue #80 Fix C), got "
+                f"wave-decomposition extractor, got "
                 f"{n_probes}"
             )
 

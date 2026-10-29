@@ -171,7 +171,7 @@ def lumped_components(record):
     if isinstance(record, (tuple, list)) and len(record) == 3:
         return tuple(record)
     raise TypeError(
-        "a lumped record is per E component since #1236: None or a 3-tuple "
+        "a lumped record is per E component: None or a 3-tuple "
         "(x, y, z) of arrays / None, one entry per component the stamp loads; "
         f"got {type(record).__name__}. Stamp through "
         "rfx.sources.sources.stamp_lumped_sigma / stamp_lumped_eps with the "

@@ -399,7 +399,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
         f"were NOT continued into it -- {faces}. Those pads are solved at "
         "eps_r = 1.0, so each structure is terminated by an end facet at the "
         "interior/pad seam and the guided/standing field sees a reflector "
-        "there (issue #1043). Draw the structure as a Box or an "
+        "there. Draw the structure as a Box or an "
         "axis-aligned Cylinder, or move it clear of the face.", AccuracyWarning,
         stacklevel=stacklevel,
     )
@@ -896,7 +896,7 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
                 "permittivity keeps only its diagonal, so a resonance converges first order and "
                 "can be further off than with subpixel_smoothing=False. Check a mesh series "
                 "against the unsmoothed run, or use subpixel_smoothing='full_tensor' on a uniform "
-                "single-device mesh; see docs/guides/known_limitations.md (rfx #1632).",
+                "single-device mesh; see docs/guides/known_limitations.md.",
                 CurvedSmoothingWarning, stacklevel=3)
 
 

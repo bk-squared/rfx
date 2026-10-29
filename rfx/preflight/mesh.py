@@ -246,9 +246,9 @@ def _validate_mesh_quality(self) -> None:
                 hint = (
                     " A PEC shape passed to sim.add() is a VOLUME "
                     "(realized with both faces and a shorted interior, "
-                    "lattice ownership contract #931 §1.2), and a "
+                    "lattice ownership contract), and a "
                     "volume thinner than one local cell is refused at "
-                    "assembly (§1.5) rather than snapped to a plane. "
+                    "assembly rather than snapped to a plane. "
                     "If this is foil (a ground plane, patch, trace), "
                     "declare a SHEET: a zero-thickness Box via add(), "
                     "or add_thin_conductor(shape) — realized on the "
@@ -513,7 +513,7 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
                         f"({_fmt_len(d_below)} below, {_fmt_len(d_above)} "
                         f"above, ratio {ratio:.2f}). Meep/OpenEMS require "
                         f"equal cell sizes across a metal plane; "
-                        f"radiation pattern may be corrupted (issue #48). "
+                        f"radiation pattern may be corrupted. "
                         f"Put the metal plane on a preserved-region "
                         f"boundary or refine the neighbouring cell.",
                         code="thin_metal_nu_mesh",
@@ -600,8 +600,8 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
                     f"[{_fmt_len(z_lo)}, {_fmt_len(z_hi)}). "
                     "smooth_grading transition cells may have shifted the "
                     "fine band — derive z coordinates from the actual "
-                    "fine-band edges and assert the rasterized cell count "
-                    "(issue #325)",
+                    "fine-band edges and assert the rasterized cell count"
+                    "",
                     code="graded_box_rasterization",
                     loc=f"z=[{z_lo}, {z_hi})",
                     source="_validate_cfg_graded_box_rasterization",
@@ -952,8 +952,8 @@ def _validate_cfg_source_on_graded_node(self, _w) -> None:
                     f"primal cell {_fmt_len(d_above)} — and the realized "
                     f"current moment would be off by "
                     f"{d_above / dual:.3f}x "
-                    f"on this axis alone if the primal cell were used "
-                    f"(issue #672). That IS handled, but a source on a "
+                    f"on this axis alone if the primal cell were used"
+                    f". That IS handled, but a source on a "
                     f"grading step is where the injected amplitude is "
                     f"most mesh-sensitive: move it onto a locally "
                     f"uniform node if its amplitude is claims-bearing.",
@@ -1008,8 +1008,8 @@ def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
                     f"above). {'xyz'[a]} is one of the port's two "
                     f"Ampere-loop axes, so the DUAL spacing "
                     f"{_fmt_len(dual)} weights BOTH that leg of the loop "
-                    f"that measures I (issue #672) and the termination "
-                    f"conductance that realizes Z0 (issue #688). The "
+                    f"that measures I and the termination "
+                    f"conductance that realizes Z0. The "
                     f"extracted Z_in = -V/I, and every S-parameter built "
                     f"on it, is most mesh-sensitive here: move the port "
                     f"onto a locally uniform node (or flatten the "
@@ -1077,7 +1077,7 @@ def _validate_cfg_nonuniform_limitations(
                     f"as a spurious field: 0.72 of the total-field peak "
                     f"with no scatterer on a 60-cell +x line graded "
                     f"1 / 0.5 / 1 mm, against 1e-5 or less on uniform 1 mm "
-                    f"cells and with only y graded (rfx#2078). Keep the "
+                    f"cells and with only y graded. Keep the "
                     f"{_tfsf_ax} cells uniform, grading y or z instead, "
                     f"or run on the uniform lane.",
                     code="nonuniform_tfsf",

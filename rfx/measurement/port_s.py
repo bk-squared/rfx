@@ -70,7 +70,7 @@ def port_s_from_record(channels, metas, *, wire_mode):
     genuinely_excited = [idx for idx, meta in enumerate(metas) if meta[7]]
     if len(genuinely_excited) > 1:
         raise NotImplementedError(
-            "Port S extraction requires at most one driven port per record (#1660).")
+            "Port S extraction requires at most one driven port per record.")
     if wire_mode and not graded and n_wp == 1 and genuinely_excited:
         # run()'s one-wire main-record path uses this unnormalized wave pair.
         return driven_port_reflection(

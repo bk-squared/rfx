@@ -44,7 +44,7 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         raise NotImplementedError("wire-port radius requires the second-order Yee stencil")
     if bloch is not None and so != 2:
         raise ValueError(
-            f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
+            f"bloch phase (oblique-periodic BC) requires stencil_order=2, got {so}"
         )
 
     # Compute dtype: the oblique-periodic Bloch path carries a complex field
@@ -221,7 +221,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
     if bloch is not None and so != 2:
         raise ValueError(
-            f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
+            f"bloch phase (oblique-periodic BC) requires stencil_order=2, got {so}"
         )
 
     # Compute dtype: complex for the Bloch envelope path, ``max(state dtype,

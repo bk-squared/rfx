@@ -329,7 +329,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                     "1e-6 of its amplitude. GaussianPulse / ModulatedGaussian "
                     "bandwidth, and the bandwidth of a TF/SF source, "
                     "waveguide or Floquet port, is FRACTIONAL (e.g. 0.8), "
-                    "not in Hz (issue 1668).",
+                    "not in Hz.",
                     code="undriven_pulse", loc=loc,
                     source="_validate_cfg_unresolved_pulse")
         _w.warn(
@@ -339,8 +339,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                 "unresolved by the time step — an absolute-Hz "
                 "bandwidth was likely passed where a FRACTIONAL "
                 "one is expected; the discrete DC residue leaves "
-                "a static charge field CPML cannot absorb "
-                "(issue #386)",
+                "a static charge field CPML cannot absorb"
+                "",
                 code="unresolved_pulse",
                 loc=loc,
                 source="_validate_cfg_unresolved_pulse",

@@ -213,7 +213,7 @@ def msl_line_permittivity(eps_override, *, port_name: str, direction: str,
             "that length with one closed-form line, which a varying "
             "permittivity does not have. Keep the override uniform under each "
             "port line from the feed to probe 0, or move the probes with "
-            "n_probe_offset (#2199).")
+            "n_probe_offset.")
     return eps[msl_cell(direction, i_feed, j_centre, (int(k_lo) + int(k_hi)) // 2)]
 
 

@@ -25,7 +25,7 @@ def update_rlc_elements(state, rlc_states, metas, e_prevs):
             if cell in indices:
                 raise NotImplementedError(
                     f"two solved RLC elements share the {meta.component} edge "
-                    f"of cell {cell}; refuse_stacked_solved_elements (#1245) "
+                    f"of cell {cell}; refuse_stacked_solved_elements "
                     "must run before the step is built.")
             indices.append(cell)
             values.append(value.astype(field.dtype))

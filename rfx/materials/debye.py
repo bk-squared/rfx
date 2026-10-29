@@ -95,7 +95,7 @@ def per_component(field, name="coefficient"):
         return field
     raise TypeError(
         f"dispersive {name} must be a per-E-component 3-tuple (x, y, z) "
-        f"built by init_debye / init_lorentz (#1260); got "
+        f"built by init_debye / init_lorentz; got "
         f"{type(field).__name__}")
 
 

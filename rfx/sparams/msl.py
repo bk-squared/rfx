@@ -586,10 +586,10 @@ def compute_msl_s_matrix(
                 "compute_msl_s_matrix: no realized PEC trace conductor "
                 "found above the substrate top for MSL port "
                 f"{entries[p_idx].name!r}; the closed Ampere-loop "
-                "current (issue #80 stage S1) needs the trace. Declare "
+                "current needs the trace. Declare "
                 "the microstrip trace as a Box(material='pec') (a "
                 "volume) or as a zero-thickness Box / add_thin_conductor "
-                "(a sheet, #931). A surface_impedance_f0 thin conductor "
+                "(a sheet). A surface_impedance_f0 thin conductor "
                 "is NOT a trace conductor here — it realizes no PEC "
                 "edge, and the Ampere-loop current and V span anchor on "
                 "realized PEC wall planes. Keep the trace PEC and use f0 "
@@ -751,7 +751,7 @@ def compute_msl_s_matrix(
                         "that channel routes through forward(), which is "
                         "the differentiable (traced) path, and host-side "
                         "wall-clock progress reporting cannot run under a "
-                        "trace (issue #667).",
+                        "trace.",
                         ConfigurationWarning, stacklevel=2,
                     )
                 fwd_result = self.forward(
@@ -1075,8 +1075,8 @@ def compute_msl_s_matrix(
                 )))
                 if _bad:
                     _w507.warn(
-                        "compute_msl_s_matrix: the multi-drive S solve "
-                        f"(issue #507) produced non-finite entries with "
+                        "compute_msl_s_matrix: the multi-drive S solve"
+                        f" produced non-finite entries with "
                         f"cond(A) up to {float(np.max(cond_a)):.3g}; "
                         "keeping the single-ratio S for this run, which "
                         "carries the far port's echo in S11 (so expect "
@@ -1088,8 +1088,8 @@ def compute_msl_s_matrix(
                     )
                 elif float(np.max(cond_a)) > 1.0e3:
                     _w507.warn(
-                        "compute_msl_s_matrix: the multi-drive S solve "
-                        f"(issue #507) has cond(A) up to "
+                        "compute_msl_s_matrix: the multi-drive S solve"
+                        f" has cond(A) up to "
                         f"{float(np.max(cond_a)):.3g}. That bounds "
                         "DEGENERACY of the drive system, not accuracy: "
                         "the drive columns are nearly dependent, so S is "
@@ -1331,7 +1331,7 @@ def compute_msl_s_matrix(
                     "board (h_sub/W snapped to the lattice; see "
                     "sim.fidelity_report()) differs from the "
                     "declared one — not necessarily an extraction "
-                    "fault (issue #752). Fitted Z0/beta are not used in "
+                    "fault. Fitted Z0/beta are not used in "
                     "S11/S21, which use measured V/I and the analytic "
                     "Z0 anchor; this does not certify those inputs."
                     + _clearance_clause +

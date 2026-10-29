@@ -366,7 +366,7 @@ def test_the_measured_evidence_carries_its_witness_and_every_number():
     assert "compliant" in effect[compliant - 40:compliant + 80], effect
     assert "51/51" in effect[:near] and "near-reflector arm" in effect[:near]
     # Neither raw value may be presented as physics: both are above unity.
-    for token in ("ABOVE unity", "0.31 %", "0.21 %", "#838",
+    for token in ("ABOVE unity", "0.31 %", "0.21 %", "coherent power excess",
                   "NOT a bound on S", "one fixture", "one bin",
                   "arm-to-arm difference",
                   "same source, load and DUT"):
@@ -469,7 +469,7 @@ def test_the_guard_only_tells_the_clearance_story_when_it_applies(monkeypatch):
     assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT not in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE not in text
     # The remaining causes are the ones that actually apply.
-    assert "issue #752" in text and "refine the mesh" in text.lower()
+    assert "rasterized board" in text and "refine the mesh" in text.lower()
 
 
 def test_the_guard_tells_it_when_the_clearance_is_insufficient(monkeypatch):

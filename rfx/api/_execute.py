@@ -375,7 +375,7 @@ class _ExecuteMixin:
                 "add_port(reference_plane_cells=...) S-parameters are only "
                 f"supported on the uniform single-device run() lane, not "
                 f"the {path_name} lane. Drop the opt-in or use a uniform "
-                "mesh (issue #313)."
+                "mesh."
             )
 
     @staticmethod
@@ -456,7 +456,7 @@ class _ExecuteMixin:
             "s_param_n_steps":
                 "S-matrix assembly is not plumbed through this lane",
             "report_every":
-                "host-side progress chunking (issue #667) is wired on the "
+                "host-side progress chunking is wired on the "
                 "uniform and non-uniform lanes only",
         }
         remedies = {
@@ -622,7 +622,7 @@ class _ExecuteMixin:
                     f"non-uniform grid is {tuple(_grid.shape)}. Grid-shaped "
                     f"arrays are one sample larger per axis than the cell "
                     f"counts / profile lengths you requested: N cells are "
-                    f"bounded by N+1 field nodes (#562). Build the array from "
+                    f"bounded by N+1 field nodes. Build the array from "
                     f"the grid shape rather than from the profile length."
                 )
 
@@ -791,8 +791,8 @@ class _ExecuteMixin:
             raise ValueError(
                 "forward(design_box=...) and one of "
                 "forward(design_eps_override=...) / "
-                "forward(design_occupancy_override=...) are used together "
-                "(#1179/#1183): the box says WHICH cells and the array says "
+                "forward(design_occupancy_override=...) are used together"
+                ": the box says WHICH cells and the array says "
                 "what the design variable is there. Got design_box="
                 f"{'set' if design_box is not None else 'None'}, "
                 f"design_eps_override={'set' if _want_eps else 'None'}, "
@@ -801,7 +801,7 @@ class _ExecuteMixin:
             raise NotImplementedError(
                 "forward(design_eps_override=...) and "
                 "forward(design_occupancy_override=...) in one call are not "
-                "supported (#1183). Each is exact on its own against its "
+                "supported. Each is exact on its own against its "
                 "whole-grid counterpart; the two together have no equality "
                 "gate, and the permittivity box is fenced against an "
                 "occupancy anyway. Differentiate one at a time, or use "
@@ -809,7 +809,7 @@ class _ExecuteMixin:
         if design_sigma_override is not None and not _want_eps:
             raise ValueError(
                 "forward(design_sigma_override=...) is the conductivity of a "
-                "PERMITTIVITY design box (#1179) and needs "
+                "PERMITTIVITY design box and needs "
                 "design_eps_override with it.")
 
         bounds = self._design_box_bounds_from_corners(grid, design_box)
@@ -835,7 +835,7 @@ class _ExecuteMixin:
         if _collides:
             raise ValueError(
                 "forward(design_box=...) does not combine with "
-                + " / ".join(_collides) + " (#1179). The design box exists to "
+                + " / ".join(_collides) + ". The design box exists to "
                 "keep the whole-grid material arrays CONSTANT; a traced "
                 "override puts them back on the AD tape, which is the cost "
                 "the box removes. Put the design values in "
@@ -845,19 +845,19 @@ class _ExecuteMixin:
         if debye_spec is not None or lorentz_spec is not None:
             raise NotImplementedError(
                 "forward(design_box=...) does not support Debye/Lorentz "
-                "dispersive materials (#1179): the dispersive E update runs "
+                "dispersive materials: the dispersive E update runs "
                 "its own ADE coefficients, which the box redo would "
                 "overwrite. Use eps_override.")
         if kerr_chi3 is not None:
             raise NotImplementedError(
                 "forward(design_box=...) does not support Kerr chi3 "
-                "materials (#1179): the reactive Kerr correction rescales "
+                "materials: the reactive Kerr correction rescales "
                 "the E increment using the background eps_r. Use "
                 "eps_override.")
         if pec_occupancy_override is not None:
             raise NotImplementedError(
                 "forward(design_box=...) does not combine with "
-                "pec_occupancy_override (#1179): the relaxed-conductor lane "
+                "pec_occupancy_override: the relaxed-conductor lane "
                 "can route the E update through a Kottke inverse-eps tensor "
                 "built from the background permittivity. Use eps_override "
                 "for a design region that is itself the conductor.")
@@ -942,7 +942,7 @@ class _ExecuteMixin:
                     f"port's impedance fold and its drive coefficient are "
                     f"built from the background permittivity before the time "
                     f"loop starts, so the design permittivity would not reach "
-                    f"them (#1179). Move the box off the port, pass "
+                    f"them. Move the box off the port, pass "
                     f"design_box_holds_ports=True to keep the port inside on "
                     f"its own drawn coefficients (its edges then take no "
                     f"design value), or use eps_override.")
@@ -1593,13 +1593,13 @@ class _ExecuteMixin:
                 raise NotImplementedError(
                     "forward(design_box=...) is supported on the "
                     + " / ".join(_design_lanes)
-                    + f" forward lane(s), not {plan.lane!r} "
-                    "(#1179 permittivity, #1183 graded mesh and occupancy). "
+                    + f" forward lane(s), not {plan.lane!r}"
+                    ". "
                     "Use eps_override / pec_occupancy_override there.")
             if self._solver != "yee":
                 raise NotImplementedError(
                     "forward(design_box=...) is supported only on the Yee "
-                    f"solver, not solver={self._solver!r} (#1179): the ADI "
+                    f"solver, not solver={self._solver!r}: the ADI "
                     "lane builds its own implicit update coefficients from "
                     "``materials``. Use eps_override there.")
 
@@ -1714,7 +1714,7 @@ class _ExecuteMixin:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets are not "
                 "supported with boundary='upml' on the uniform forward() / "
-                "eps_override lane (#677 v1): UPML replaces the whole E "
+                "eps_override lane: UPML replaces the whole E "
                 "update with its split-field form, which the sheet operator "
                 "would silently override at its edges. Use boundary='cpml' "
                 "or 'pec'.")
@@ -1723,7 +1723,7 @@ class _ExecuteMixin:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported (#677 v1): the sheet operator would "
+                "not supported: the sheet operator would "
                 "silently override the ADE dispersion update at its edges.")
 
         _design_spec = None
@@ -2135,8 +2135,8 @@ class _ExecuteMixin:
                         "the interior-energy decay stop needs absorbing "
                         "boundaries (cpml/upml); a closed non-uniform "
                         "domain's energy does not decay, and the "
-                        "non-uniform lane has no point-field fallback "
-                        "(issue #383)",
+                        "non-uniform lane has no point-field fallback"
+                        "",
                     "s_param_n_steps":
                         "this lane matches the S-parameter record to the main "
                         "run's port record, whose length is n_steps, or the decay stop under until_decay",
@@ -2267,7 +2267,7 @@ class _ExecuteMixin:
             if _run_pec_sheets or _run_pec_wires:
                 raise NotImplementedError(
                     "solver='subgridded' (SBP-SAT) does not realize PEC "
-                    "sheets or wires (#931): the coarse/fine SBP-SAT "
+                    "sheets or wires: the coarse/fine SBP-SAT "
                     "operators apply PEC from a cell mask on two grids "
                     "and a sheet owns no cell, so a declared sheet would "
                     "be silently absent. Draw the conductor as a volume "

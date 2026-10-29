@@ -41,7 +41,7 @@ def test_pole_plus_drive_over_budget_reads_fail_and_names_the_remedy():
     text = str(caught[0].message)
     assert 'NOT PASSED' in text and 'known drive beyond the record' in text, text
     # What to do: a longer fixed record; until_decay does not judge the budget; until_identified once #2030 admits ports.
-    assert 'longer fixed record' in text and 'until_decay' in text and 'until_identified' in text and '#2030' in text, text
+    assert 'longer fixed record' in text and 'until_decay' in text and 'until_identified' in text and 'per-bin budget' in text, text
 
 
 def _step_port(n, **change):

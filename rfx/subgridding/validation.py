@@ -702,8 +702,8 @@ def validate_subgrid_setup(
                 "subgrid_pec_sheet_or_wire_unsupported",
                 f"{len(list(sheets))} PEC sheet(s) and {len(list(wires))} PEC "
                 "wire(s) are declared: the SBP-SAT subgrid lane applies PEC "
-                "from a cell mask on two grids and a sheet owns no cell "
-                "(#931), so run(solver='subgridded') refuses this model. "
+                "from a cell mask on two grids and a sheet owns no cell"
+                ", so run(solver='subgridded') refuses this model. "
                 "Draw the conductor as a volume (a Box at least one cell "
                 "thick) or use the uniform or non-uniform lane.",
             )

@@ -653,7 +653,7 @@ def test_w7_waveguide_mutations(monkeypatch, mutation):
     if mutation == 'removed':
         # Unreleased PEC occupancy now sits in the port's guide segment: the
         # setup refuses it (rfx#1994) before the source record can differ.
-        with pytest.raises(ValueError, match=r'rfx#1994'):
+        with pytest.raises(ValueError, match=r'one homogeneous'):
             test_w3_waveguide_source_record()
     else:
         test_w3_waveguide_source_record()

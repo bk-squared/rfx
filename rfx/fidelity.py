@@ -433,7 +433,7 @@ def fidelity_report(sim, print_report: bool = True):
                     f"{_shortfall['pad_cells']}-cell absorber filled by "
                     f"replicating the interior edge — so the pad is vacuum "
                     f"and the structure ends in a facet inside its own "
-                    f"absorber (#1070, #831). One node short is the "
+                    f"absorber. One node short is the "
                     f"documented half-open [lo, hi) shortfall and is "
                     f"repaired; "
                     f"{_shortfall['empty_interior_nodes']} is not"),

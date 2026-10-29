@@ -175,7 +175,7 @@ def require_probe_medium(cfg):
         raise ValueError(
             f"Waveguide port {cfg.port_name!r}: probe plane {cfg.probe_x_m} m "
             f"has {cfg.probe_medium_description}; port medium is {cfg.medium}. "
-            "S21 requires a matching probe medium (rfx#1994).")
+            "S21 requires a matching probe medium.")
 
 
 def extract_waveguide_sparams(

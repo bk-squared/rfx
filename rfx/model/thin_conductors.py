@@ -92,9 +92,9 @@ def admit_thin_conductor(
             f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
             f"eps_r. Every metal is above this threshold — a lower "
             f"sigma_bulk would be a different material, not thinner "
-            f"copper (issue #504). For conductor loss pass "
-            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
-            f"issue #669).", ConfigurationWarning,
+            f"copper. For conductor loss pass "
+            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet"
+            f").", ConfigurationWarning,
             stacklevel=3,
         )
     if surface_impedance_f0 is not None:
@@ -591,7 +591,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 if sheets is None:
                     raise ValueError(
                         "PEC thin conductor (add_thin_conductor with sigma_bulk >= "
-                        "1e6 and no surface_impedance_f0) is a SHEET (#931) and this "
+                        "1e6 and no surface_impedance_f0) is a SHEET and this "
                         "lane collects no sheets (apply_thin_conductor(sheets=None)); "
                         "refusing to drop it silently.")
                 sheets.append(spec)

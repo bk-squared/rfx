@@ -222,7 +222,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
             "is not in the model. A microstrip on it reads electrically long by "
             f"{shift}, so a stub, resonator or filter edge built from it sits low "
             "in frequency by about the same fraction. This shift was measured on "
-            "a 50 Ω-class microstrip on εr ≈ 3.4 at 20–40 GHz (#1523). "
+            "a 50 Ω-class microstrip on εr ≈ 3.4 at 20–40 GHz. "
             "Widening the strip does not correct it. See "
             'docs/guides/known_limitations.md, "Conductor thickness is not solved".'
             + coverage,
@@ -320,11 +320,11 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
 def _warn_campaign_statics_unavailable(_w, error) -> None:
     """Explain why conductor checks could not evaluate their context."""
     _w.warn(PreflightWarning(
-        "the conductor-realization checks (#931 realization "
-        "findings; issue-#703 congruent-conductor parity, "
+        "the conductor-realization checks ("
+        "congruent-conductor parity, "
         "sheet-cavity electrical thickness, off-lattice design-edge "
         f"census) could NOT run: {error}. Their silence on this "
-        "run means 'not evaluated', not 'clean' (#685 class: a guard "
+        "run means 'not evaluated', not 'clean' (a guard "
         "that cannot see the model must say so).",
         code="campaign_statics_unavailable",
         source="_validate_cfg_campaign_statics",
@@ -387,7 +387,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         _w.warn(PreflightWarning(
             "the sheet-slot and sheet-cavity checks could NOT run (the "
             f"production assembly failed: {ctx.assembly_error}); their "
-            "silence means 'not evaluated', not 'clean' (#685 class).",
+            "silence means 'not evaluated', not 'clean'.",
             code="campaign_statics_unavailable",
             source="_validate_cfg_campaign_statics",
         ))
@@ -447,7 +447,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
         text = (
             f"{e.label} '{e.name}' cannot be realized on this lattice "
             f"and run()/forward() will raise: {msg} (lattice ownership "
-            "contract #931 §1.5; preflight reports it here so the whole "
+            "contract; preflight reports it here so the whole "
             "configuration is audited before the raise).")
         # Three literal constructions on purpose: the emission-site
         # freeze (test_preflight_advisory_emission_contract) reads
@@ -499,7 +499,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             f"{len(one_cell)} PEC volume(s) are exactly ONE cell thick "
             f"along some axis and are realized as a filled slab with "
             f"walls on BOTH faces (every E edge between the two faces "
-            f"is shorted; lattice ownership contract #931 §1.2): "
+            f"is shorted; lattice ownership contract): "
             + "; ".join(desc)
             + ". If this is foil (a ground plane, patch or trace), "
             "declare it as a SHEET — add_thin_conductor(shape), or a "
@@ -561,7 +561,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
     if rows:
         _w.warn(PreflightWarning(
           f"{len(sheets)} PEC sheet(s) realized (lattice ownership "
-          f"contract #931 §1.3: one node plane each, closed footprint, "
+          f"contract: one node plane each, closed footprint, "
           f"normal E through the plane live), {n_off} of them off their "
           f"declared mid-plane; worst first: {desc}. A sheet snaps to the "
           "node plane nearest its declared mid-plane (an exact half-cell "
@@ -666,9 +666,9 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
         "dielectric above starts at its top face), the node sampler "
         "is half-open [lo, hi) so neither box reaches the sheet's node "
         "plane, and a sheet owns no cell and writes no material "
-        "(lattice ownership contract #931 §1.3) — so the one cell "
+        "(lattice ownership contract) — so the one cell "
         "whose normal edge reads that node is vacuum in series with "
-        "the cavity (the #702 measurement: 17% on a 127um stack). "
+        "the cavity (the measurement: 17% on a 127um stack). "
         "REMEDY: extend the dielectric boxes to the sheet plane (draw "
         "the laminates edge-to-edge at the foil's plane; a foil has no "
         "thickness on this lattice). Nothing is re-sampled for you. "
@@ -751,11 +751,11 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         "of cells (snap='declared' accepts one more than 1 % off), so the "
         "wall stands where the mesh puts it, not at the declared "
         "number; a volume's face rounds to the NEAREST node (lattice "
-        "ownership contract #931 §1.1), so a body drawn to the "
+        "ownership contract), so a body drawn to the "
         "DECLARED cross-section realizes short of the realized wall. "
         "The vacuum cell left between them is a parallel-plate line "
-        "along that wall, open at both ends (measured on the WR-90 waveguide case on "
-        "2026-09-07: |S21| 0.22-0.33 past a PEC short, and the "
+        "along that wall, open at both ends (measured on the WR-90 waveguide case in the verification"
+        ": |S21| 0.22-0.33 past a PEC short, and the "
         "pec-short |S11| deficit 0.0146 -> 0.0560). REMEDY: draw the "
         "face to the REALIZED wall plane quoted above, not to the "
         "declared dimension (tests/_realized_geometry."
@@ -954,7 +954,7 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         "node sets (sheet footprint), so the mesh invents an asymmetry "
         "the design does not have — a mirror pair whose mirror plane "
         "is off-lattice realizes asymmetrically with the same sign in "
-        "every pair. COST (measured, issue #703): mirror pairs 173 vs "
+        "every pair. COST (measured): mirror pairs 173 vs "
         "183 cells (5.6%) from a mirror plane 0.26 cells off the "
         "lattice; an A/B run pair differing ONLY by a 13um "
         "lattice-origin slide moved |S11| up to 3.5 dB per bin and "
@@ -1366,7 +1366,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
             "thickness as cavity — the sheet model's honest cost) plus any "
             "vacuum cell the drawing left at a sheet plane. WHY BOTH "
             "MEASURES: the same defect class measured 17.3% as a series "
-            "capacitance and 3.2% as phase length (#703) — a bare "
+            "capacitance and 3.2% as phase length — a bare "
             "percentage invites 'correcting' a right number into a wrong "
             "one, so both are printed and the governing one is named. "
             "REMEDY: put the declared faces on mesh nodes (dx = h/N, or "
@@ -1380,8 +1380,8 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
             f"conductor(s) on the {ctx.lane} lane (a sheet's normal plane, "
             "a volume's two faces per axis; coplanar sheet rims are not "
             "paired); physical stack computed from Box entries only — "
-            f"{nonbox_diel} non-Box dielectric entr(y/ies) ignored (said "
-            f"so, per #703); {n_skipped_pec_between} pair(s) skipped "
+            f"{nonbox_diel} non-Box dielectric entr(y/ies) ignored (reported "
+            f"explicitly); {n_skipped_pec_between} pair(s) skipped "
             "(conductor cell between). STALE IF: re-summing the printed "
             "column disagrees with these numbers, or realized_wall_planes "
             "on the named entries does not return the printed planes.",
@@ -1572,13 +1572,13 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
         "to its nearest E-node on this run's own node coordinates; a "
         "PEC volume's face realizes on the nearest node plane and a "
         "sheet footprint on the nodes it covers (lattice ownership "
-        "contract #931 §1.1/§1.3). Reported residuals describe "
+        "contract). Reported residuals describe "
         "declared-face alignment only. A sheet's extent can change "
         "by more than this nearest-node residual, and an extent "
         "change involves both faces. Read the realized bounds from "
         "fidelity_report(); frequency sensitivity depends on the "
         "mode and the affected dimension. "
-        "COST (measured, #703): a uniform-mesh sweep rounded ONE "
+        "COST (measured): a uniform-mesh sweep rounded ONE "
         "substrate thickness by 8-10% across three 'convergence' "
         "points — three different boards solved under one name; the "
         "same campaign's board survived at dx=50um only because every "

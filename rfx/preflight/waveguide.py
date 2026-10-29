@@ -760,8 +760,8 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 " This axis has no explicit range: the None-range "
                 "branch of _range_to_slice reports the declared domain "
                 "rather than the rasterized span its own explicit "
-                "branch computes (issue #729 site 2, still open — not "
-                "a new defect)."
+                "branch computes (declared/rasterized span mismat"
+                "ch)."
             )
             if reading is None:
                 reading = _waveguide_port_cutoff_reading(

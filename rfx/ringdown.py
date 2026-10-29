@@ -646,7 +646,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
     if getattr(sim, "_periodic_axes", ""):
         raise RfxUnsupported(
             f"{caller}(ringdown=...) is not supported with periodic axes: rfx refuses "
-            "wire-port S-parameters there (#206).")
+            "wire-port S-parameters there.")
     if getattr(sim, "_tfsf", None) is not None:
         wf = getattr(sim._tfsf, "waveform", "")
         raise RfxUnsupported(
@@ -1322,8 +1322,8 @@ class RingdownRun:
                 RingdownWitness("W2", w2.value, tol, w2.value <= tol, w2_rule,
                                 f"judged in place of WE, which could not be formed "
                                 f"({why}); on the research boards W2 read the "
-                                "actual error low by up to several times (rfx "
-                                "#1254, R-i)"),
+                                "actual error low by up to several times"
+                                ""),
             ]
         try:
             we = early_start_witness(

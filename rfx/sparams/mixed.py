@@ -242,7 +242,7 @@ def compute_mixed_s_matrix(
         raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
             "waveguide/Floquet ports are not part of the validated "
-            "mixed method (issue #488)."
+            "mixed method."
         ), _diagnostics)
     _mixed_non_x = [
         pe.name for pe in self._msl_ports
@@ -252,8 +252,8 @@ def compute_mixed_s_matrix(
         raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 covers '+x'/'-x' MSL ports "
             f"only; {_mixed_non_x} are not x-directed. The y-directed "
-            "MSL support landed in issue #661 for compute_msl_s_matrix(); "
-            "this mixed method is itself EXPERIMENTAL (issue #488) with "
+            "MSL support is available for compute_msl_s_matrix(); "
+            "this mixed method is itself EXPERIMENTAL with "
             "both diagonals unverified, so it is fenced rather than "
             "extended untested. Use compute_msl_s_matrix() for a pure "
             "MSL multiport."
@@ -290,8 +290,8 @@ def compute_mixed_s_matrix(
     ):
         raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 supports the uniform mesh "
-            "only (issue #488 scope: NU is explicitly out until the "
-            "first pair ships)."
+            "only (non-uniform meshes are outside the validated scope"
+            ")."
         ), _diagnostics)
     if self._refinement is not None:
         raise diagnostic_refusal(RfxUnsupported(
@@ -493,8 +493,8 @@ def compute_mixed_s_matrix(
                 f"{entries[p_idx].name!r}; the closed Ampere-loop "
                 "current needs the trace. Declare the microstrip trace "
                 "as a Box(material='pec') (a volume) or as a "
-                "zero-thickness Box / add_thin_conductor (a sheet, "
-                "#931)."
+                "zero-thickness Box / add_thin_conductor (a sheet"
+                ")."
             )
         trace_k_per_port.append((_k_lo_tr, _k_hi_tr))
 
@@ -551,7 +551,7 @@ def compute_mixed_s_matrix(
                 f"{sorted(_pec_faces) or 'not PEC'}, so the box would "
                 "not be closed and P_net would be wrong. Use "
                 "BoundarySpec(z=Boundary(lo='pec', ...)), or pass "
-                "magnitude_channel='wave' (which carries the #313 "
+                "magnitude_channel='wave' (which carries the "
                 "port-cell deflation instead)."
             ), _diagnostics)
         _bad = [pe for pe in lw_entries if pe.component != "ez"]
@@ -765,7 +765,7 @@ def compute_mixed_s_matrix(
             if not planes:
                 raise RuntimeError(
                     "compute_mixed_s_matrix: the production scan "
-                    "returned no DFT planes — the issue-#488 raw hook "
+                    "returned no DFT planes — the raw hook "
                     "is out of sync with _forward_from_materials."
                 )
 
@@ -775,7 +775,7 @@ def compute_mixed_s_matrix(
                 if not fmon:
                     raise RuntimeError(
                         "compute_mixed_s_matrix: the production scan "
-                        "returned no flux monitors — the issue-#488 "
+                        "returned no flux monitors — the "
                         "flux hook is out of sync with "
                         "_forward_from_materials."
                     )

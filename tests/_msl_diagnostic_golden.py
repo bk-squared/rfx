@@ -24,7 +24,7 @@ TEXT_2 = (
     'dx ≤ 61.0µm and align the declared ground z=0.0µm and trace z=244.1µm with nodes; on '
     'a profiled mesh, place sufficient nodes between those faces. Geometry screening does '
     'not quantify Z0 error. The historical sweep and its realized-board Hammerstad-Jensen '
-    'anchor are pre-#802 records; a new matched-geometry measurement is needed before '
+    'anchor are historical float32-coordinate records; a new matched-geometry measurement is needed before '
     'quoting a current accuracy bound.'
 )
 
@@ -38,15 +38,15 @@ TEXT_3 = (
 TEXT_4 = (
     "MSL port 'checked' (direction='+x'): n_probe_offset=3 puts probe 0 366.2µm "
     "(1.50·h_sub) from this port's OWN feed plane, inside the source near-field standoff "
-    "of 10 cells (1.221mm = 5·h_sub, the issue-#80 Fix B constant add_msl_port's auto "
+    "of 10 cells (1.221mm = 5·h_sub, the source near-field standoff constant add_msl_port's auto "
     'offset already floors to). Within a few substrate thicknesses of the feed the '
     'launched field is not the guided mode yet: the evanescent content decays with the '
     "substrate's own transverse-resonance length 2·h_sub/π = 155.4µm for THIS board (on "
-    'the issue-#823 fixture, h_sub=300µm, that length measured 0.1932mm against a '
+    'the coax-to-MSL fixture, h_sub=300µm, that length measured 0.1932mm against a '
     'predicted 0.19099mm — 1.1%). The decay LENGTH is a property of the substrate; the '
     'near-feed AMPLITUDE is not, so no error magnitude is predicted for your port here — '
     'read result diagnostics (the two-wave fit residual, and on the coax<->MSL lane the '
-    'ladder-split witness) rather than trusting this offset. For reference, the #823 '
+    'ladder-split witness) rather than trusting this offset. For reference, the coax-to-MSL '
     "fixture's own measured amplitude (11.3 at the feed plane) put 5·h_sub at 4.4e-3 "
     'against the 0.02 two-wave residual bar this family holds itself to, and 1.50·h_sub at'
     ' 1.1e+00. Set n_probe_offset >= 10, or leave it None: the automatic offset counts '
@@ -80,7 +80,7 @@ TEXT_7 = (
     'dx ≤ 68.7µm and align the declared ground z=0.0µm and trace z=274.7µm with nodes; on '
     'a profiled mesh, place sufficient nodes between those faces. Geometry screening does '
     'not quantify Z0 error. The historical sweep and its realized-board Hammerstad-Jensen '
-    'anchor are pre-#802 records; a new matched-geometry measurement is needed before '
+    'anchor are historical float32-coordinate records; a new matched-geometry measurement is needed before '
     'quoting a current accuracy bound.'
 )
 
@@ -90,11 +90,11 @@ TEXT_8 = (
     'cell danger zone of the existing declared-face alignment heuristic. The fraction '
     'alone does not establish material/PEC overlap. Historical substrate-air/trace mixed-'
     'cell runs with AD-traceable ``pec_occupancy_override`` reported unphysical |S21|² > 1'
-    ' (cited, not remeasured on this checkout: runs #563/#567, 2026-05-08, dx∈[75,82]µm '
+    ' (cited, not remeasured on this checkout: historical runs, dx∈[75,82]µm '
     "h_sub=254µm). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT "
     'RUN PATH (subpixel_smoothing=False and no conformal PEC face — the shipped defaults):'
     ' a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces '
-    '(lattice ownership contract #931), and a foil trace declared as a SHEET (zero-'
+    '(lattice ownership contract), and a foil trace declared as a SHEET (zero-'
     'thickness Box / add_thin_conductor) is one node plane; neither enters '
     '``pec_occupancy_override``. That is NOT a blanket exemption — two opt-in lanes DO '
     "give a hard PEC box fractional cell occupancy: subpixel_smoothing='kottke_pec' (the "
@@ -123,15 +123,15 @@ TEXT_9 = (
 TEXT_10 = (
     "MSL port 'checked' (direction='+x'): n_probe_offset=3 puts probe 0 366.2µm "
     "(1.33·h_sub) from this port's OWN feed plane, inside the source near-field standoff "
-    "of 11 cells (1.343mm = 5·h_sub, the issue-#80 Fix B constant add_msl_port's auto "
+    "of 11 cells (1.343mm = 5·h_sub, the source near-field standoff constant add_msl_port's auto "
     'offset already floors to). Within a few substrate thicknesses of the feed the '
     'launched field is not the guided mode yet: the evanescent content decays with the '
     "substrate's own transverse-resonance length 2·h_sub/π = 174.9µm for THIS board (on "
-    'the issue-#823 fixture, h_sub=300µm, that length measured 0.1932mm against a '
+    'the coax-to-MSL fixture, h_sub=300µm, that length measured 0.1932mm against a '
     'predicted 0.19099mm — 1.1%). The decay LENGTH is a property of the substrate; the '
     'near-feed AMPLITUDE is not, so no error magnitude is predicted for your port here — '
     'read result diagnostics (the two-wave fit residual, and on the coax<->MSL lane the '
-    'ladder-split witness) rather than trusting this offset. For reference, the #823 '
+    'ladder-split witness) rather than trusting this offset. For reference, the coax-to-MSL '
     "fixture's own measured amplitude (11.3 at the feed plane) put 5·h_sub at 4.4e-3 "
     'against the 0.02 two-wave residual bar this family holds itself to, and 1.33·h_sub at'
     ' 1.4e+00. Set n_probe_offset >= 11, or leave it None: the automatic offset counts '
@@ -176,15 +176,15 @@ TEXT_14 = (
 TEXT_15 = (
     "MSL port 'checked' (direction='+x'): n_probe_offset=3 puts probe 0 366.2µm "
     "(0.67·h_sub) from this port's OWN feed plane, inside the source near-field standoff "
-    "of 22 cells (2.686mm = 5·h_sub, the issue-#80 Fix B constant add_msl_port's auto "
+    "of 22 cells (2.686mm = 5·h_sub, the source near-field standoff constant add_msl_port's auto "
     'offset already floors to). Within a few substrate thicknesses of the feed the '
     'launched field is not the guided mode yet: the evanescent content decays with the '
     "substrate's own transverse-resonance length 2·h_sub/π = 345.8µm for THIS board (on "
-    'the issue-#823 fixture, h_sub=300µm, that length measured 0.1932mm against a '
+    'the coax-to-MSL fixture, h_sub=300µm, that length measured 0.1932mm against a '
     'predicted 0.19099mm — 1.1%). The decay LENGTH is a property of the substrate; the '
     'near-feed AMPLITUDE is not, so no error magnitude is predicted for your port here — '
     'read result diagnostics (the two-wave fit residual, and on the coax<->MSL lane the '
-    'ladder-split witness) rather than trusting this offset. For reference, the #823 '
+    'ladder-split witness) rather than trusting this offset. For reference, the coax-to-MSL '
     "fixture's own measured amplitude (11.3 at the feed plane) put 5·h_sub at 4.4e-3 "
     'against the 0.02 two-wave residual bar this family holds itself to, and 0.67·h_sub at'
     ' 3.9e+00. Set n_probe_offset >= 22, or leave it None: the automatic offset counts '
@@ -243,7 +243,7 @@ TEXT_21 = (
     ' the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. '
     'Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never '
     'reported here as physics - they are raw, unprojected values carrying the coherent '
-    'power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is '
+    'power excess measured on the coax-to-MSL transition. Their 0.009 dB difference is '
     'one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that '
     "comparison's producer verdict was not_read. What it does show is that S11/S21 move "
     'far less than the fit does, because they normalize with the analytic Hammerstad-'
@@ -268,7 +268,7 @@ TEXT_22 = (
     'unsatisfiable on this feed (upstream needs n_probe_offset >= 10 cells = max(λ/4π, '
     '5·h_sub)/dx; downstream needs <= -11 cells to keep the deepest of 3 probes ≥ 1676µm '
     '(λ_g/4 at f_max) clear of the reflector 0.73mm from the feed). The feed line is too '
-    'short for a clean N-probe measurement (issue #469) — keeping the upstream-priority '
+    'short for a clean N-probe measurement — keeping the upstream-priority '
     "offset 10, which puts the deep probes inside the reflector's near field. Measured on "
     'ONE fixture (VESSL 369367260508, microstrip open-stub notch fixed-source, same '
     "source, load and DUT; only p1's observation offset varied; both arms settled below "
@@ -278,8 +278,8 @@ TEXT_22 = (
     'near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB '
     'that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, '
     'by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, '
-    'unprojected values carrying the coherent power excess recorded in #838 (closed as not'
-    ' planned). Their 0.009 dB difference is one fixture, one bin, an arm-to-arm '
+    'unprojected values carrying the coherent power excess measured on the coax-to-MSL t'
+    'ransition. Their 0.009 dB difference is one fixture, one bin, an arm-to-arm '
     "difference, NOT a bound on S, and that comparison's producer verdict was not_read. "
     'What it does show is that S11/S21 move far less than the fit does, because they '
     'normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither '
@@ -307,7 +307,7 @@ TEXT_23 = (
     ' the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. '
     'Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never '
     'reported here as physics - they are raw, unprojected values carrying the coherent '
-    'power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is '
+    'power excess measured on the coax-to-MSL transition. Their 0.009 dB difference is '
     'one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that '
     "comparison's producer verdict was not_read. What it does show is that S11/S21 move "
     'far less than the fit does, because they normalize with the analytic Hammerstad-'
@@ -359,7 +359,7 @@ TEXT_27 = (
     'refine to dx ≤ 61.0µm and align the declared ground z=0.0µm and trace z=244.1µm with '
     'nodes; on a profiled mesh, place sufficient nodes between those faces. Geometry '
     'screening does not quantify Z0 error. The historical sweep and its realized-board '
-    'Hammerstad-Jensen anchor are pre-#802 records; a new matched-geometry measurement is '
+    'Hammerstad-Jensen anchor are historical float32-coordinate records; a new matched-geometry measurement is '
     'needed before quoting a current accuracy bound.'
 )
 
@@ -438,7 +438,7 @@ TEXT_38 = (
     'arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-'
     'wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and '
     '0.21 %; that is never reported here as physics - they are raw, unprojected values '
-    'carrying the coherent power excess recorded in #838 (closed as not planned). Their '
+    'carrying the coherent power excess measured on the coax-to-MSL transition. Their '
     '0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on'
     " S, and that comparison's producer verdict was not_read. What it does show is that "
     'S11/S21 move far less than the fit does, because they normalize with the analytic '
@@ -471,7 +471,7 @@ TEXT_41 = (
     'frequencies 21.7003 GHz (order 1), inside/near the band you read. Read band 0..20 '
     "GHz; eps_eff=2.83269; port 'checked'. The port's realized grid node is x=1.953125 mm."
     " Fix: start the signal strip at that coordinate (the port's grid node), so it covers "
-    'the port node and nothing behind it (#1512).'
+    'the port node and nothing behind it.'
 )
 
 TEXT_42 = (
@@ -480,11 +480,11 @@ TEXT_42 = (
     'cell danger zone of the existing declared-face alignment heuristic. The fraction '
     'alone does not establish material/PEC overlap. Historical substrate-air/trace mixed-'
     'cell runs with AD-traceable ``pec_occupancy_override`` reported unphysical |S21|² > 1'
-    ' (cited, not remeasured on this checkout: runs #563/#567, 2026-05-08, dx∈[75,82]µm '
+    ' (cited, not remeasured on this checkout: historical runs, dx∈[75,82]µm '
     "h_sub=254µm). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT "
     'RUN PATH (subpixel_smoothing=False and no conformal PEC face — the shipped defaults):'
     ' a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces '
-    '(lattice ownership contract #931), and a foil trace declared as a SHEET (zero-'
+    '(lattice ownership contract), and a foil trace declared as a SHEET (zero-'
     'thickness Box / add_thin_conductor) is one node plane; neither enters '
     '``pec_occupancy_override``. That is NOT a blanket exemption — two opt-in lanes DO '
     "give a hard PEC box fractional cell occupancy: subpixel_smoothing='kottke_pec' (the "

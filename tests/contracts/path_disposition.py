@@ -364,14 +364,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_precision": {"": lanes(
         run_uniform=carries("field dtype. Without jax x64, 'float64' runs float32 with JAX's "
                             "truncation warning"),
-        run_nonuniform=refuses("non-float32 refused (#630)", raises="(issue #630)"),
-        run_subgridded=refuses("non-float32 refused (#630)", raises="(issue #630)"),
+        run_nonuniform=refuses("non-float32 refused (#630)", raises="does not thread field_dtype"),
+        run_subgridded=refuses("non-float32 refused (#630)", raises="does not thread field_dtype"),
         run_adi=admission(PREC, RUN_ADI, "'mixed' and 'float64' ran float32 without a word; with "
                           "x64 on, 'float64' died in the ADI scan with a TypeError (#1308)"),
-        run_distributed=refuses("non-float32 refused (#630)", raises="(issue #630)"),
+        run_distributed=refuses("non-float32 refused (#630)", raises="does not thread field_dtype"),
         fwd_uniform=carries("field dtype"),
-        fwd_nonuniform=refuses("non-float32 refused (#630)", raises="(issue #630)"),
-        fwd_distributed_nu=refuses("non-float32 refused (#630)", raises="(issue #630)"),
+        fwd_nonuniform=refuses("non-float32 refused (#630)", raises="does not thread field_dtype"),
+        fwd_distributed_nu=refuses("non-float32 refused (#630)", raises="does not thread field_dtype"),
         fwd_adi=admission(PREC, FWD_ADI, "it ran float32 without a word (#1308)"),
     )},
     "_solver": {"": lanes(

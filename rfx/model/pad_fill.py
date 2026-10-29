@@ -30,5 +30,5 @@ def report_pad_fill(sim, issues):
         issues.append(PreflightIssue(
             f"{row['entity']!r} is declared out to the {row['face']} face but "
             f"its rasterized mask stops {row['empty_interior_nodes']} interior "
-            "nodes short; the absorber pad would hold vacuum (#1070).",
+            "nodes short; the absorber pad would hold vacuum.",
             severity="error", code="declared-span-short-of-padded-face"))

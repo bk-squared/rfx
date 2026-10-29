@@ -66,7 +66,7 @@ def _nu_cell_arrays(grid):
             "(mesh-as-design-variable), which is not supported on this path. "
             "Differentiate with respect to the port/material values on a "
             "concrete mesh instead.\n\n"
-            "Before issue #691 this did not raise: it silently used the "
+            "Before this check, the path did not raise: it silently used the "
             "BOUNDARY cell size for the two transverse axes and returned a "
             "gradient of exactly 0.0 w.r.t. the mesh. Raising is intentional."
         ) from exc
@@ -656,7 +656,7 @@ def _wire_port_live_cells(grid, port, pec_edge_masks=None):
             f"WirePort {port.start} -> {port.end} ({port.component}): all "
             f"{len(cells)} extent cells have their {port.component} edge "
             "shorted by realized PEC, so the "
-            "port has no live cell to terminate or drive (issue #318). "
+            "port has no live cell to terminate or drive. "
             "Shorten the extent or move the port so at least one of its "
             "rasterized cells is not PEC (per the assembled geometry -- "
             "not a cell-center guess)."

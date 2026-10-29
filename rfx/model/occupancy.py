@@ -224,7 +224,7 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
         pec_occupancy_for_run = None
         if design_occupancy is not None:
             raise NotImplementedError(
-                "a design occupancy box (#1183) does not combine with "
+                "a design occupancy box does not combine with "
                 "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1). That "
                 "lane turns the occupancy into an inverse-eps tensor "
                 "inside the E update and sets pec_occupancy_for_run to "

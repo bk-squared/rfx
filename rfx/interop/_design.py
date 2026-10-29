@@ -1185,7 +1185,7 @@ def _refuse_removed_coaxial_terminations(excitations: dict[str, Any]) -> None:
             raise _refuse(
                 f"excitations.{key} holds {len(entries)} entr"
                 f"{'y' if len(entries) == 1 else 'ies'} from Simulation."
-                f"{builder}(), which was removed in #1212 together with the "
+                f"{builder}(), which was removed together with the "
                 "single-plane coaxial S-matrix lane that was its only "
                 "consumer. For a coaxial one-port with a short, open or "
                 "matched load use compute_coaxial_line_reflection("
@@ -1303,8 +1303,8 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
     if document["refinement"] is not None:
         note(
             "refinement",
-            "SBP-SAT subgridding is an rfx research prototype, falsified in 3D "
-            "(PR #90) and outside the public support scope; it must not be "
+            "SBP-SAT subgridding is an rfx research prototype, falsified in 3D"
+            " and outside the public support scope; it must not be "
             "exported to another solver, where its presence would read as a "
             "validated capability",
         )
@@ -1712,8 +1712,8 @@ def simulation_from_design(document: Any) -> Any:
         legacy = ""
         if schema == "rfx-design-ir/v1":
             legacy = (
-                "; v1 geometry entries carried the #706 per-entry 'two-plane' "
-                "realization flag, which the lattice ownership contract (#931) "
+                "; v1 geometry entries carried the per-entry 'two-plane' "
+                "realization flag, which the lattice ownership contract "
                 "removed — a "
                 "one-cell PEC Box is a volume with both faces now, and a "
                 "zero-thickness Box is a sheet. Re-export the design from "

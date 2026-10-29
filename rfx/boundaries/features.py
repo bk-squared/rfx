@@ -547,7 +547,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                 raise RfxRefusal(
                     f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
                     f"{record.label} ({record.name}) at cell {index}; "
-                    "the port has no model for a thin element in its section (rfx#2047); "
+                    "the port has no model for a thin element in its section; "
                     "draw it beyond the reference plane.")
 
     traced_check("waveguide port", "section thin elements", check,
@@ -612,7 +612,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                     array = array * jnp.where(weight > 0, weight, 1.0)
                 operands.append((name, array, None, "anisotropic permittivity"))
     reason = ("waveguide sections require one homogeneous, isotropic, lossless, "
-              "non-dispersive medium (rfx#1994)")
+              "non-dispersive medium")
 
     def section(array, bounds):
         trailing = 0

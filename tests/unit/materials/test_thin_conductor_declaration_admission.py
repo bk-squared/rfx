@@ -84,9 +84,9 @@ def test_pec_warning(kwargs, thickness_text):
         'add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m '
         'PEC threshold, so this is a LOSSLESS PEC sheet.' + thickness_text +
         ' here, and neither is eps_r. Every metal is above this threshold — a lower '
-        'sigma_bulk would be a different material, not thinner copper (issue #504). '
+        'sigma_bulk would be a different material, not thinner copper. '
         'For conductor loss pass surface_impedance_f0=<band centre Hz> '
-        '(Leontovich sheet, issue #669).'
+        '(Leontovich sheet).'
     )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')

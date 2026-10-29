@@ -42,7 +42,7 @@ def _findings(sim):
 def _segment_refused(sim):
     call = sim.compute_waveguide_s_matrix if len(sim._waveguide_ports) > 1 else sim.run
     kwargs = {"normalize": "flux"} if len(sim._waveguide_ports) > 1 and sim._uses_nonuniform_mesh else {}
-    with pytest.raises(ValueError, match=r"(left|right).*(eps|PEC).*rfx#1994"):
+    with pytest.raises(ValueError, match=r"(left|right).*(eps|PEC).*one homogeneous"):
         call(n_steps=2, skip_preflight=True, **kwargs)
 
 
@@ -85,7 +85,7 @@ def test_visible_short_has_closed_form_reflection(cells, record_property):
 def test_one_port_entry_refuses(method):
     with pytest.raises(ValueError, match="right.*face at 87 mm"):
         getattr(_guide(1, one_port=True), method)(n_steps=4)
-    with pytest.raises(ValueError, match="right.*PEC.*rfx#1994"):
+    with pytest.raises(ValueError, match="right.*PEC.*one homogeneous"):
         getattr(_guide(1, one_port=True), method)(n_steps=2, skip_preflight=True)
 
 

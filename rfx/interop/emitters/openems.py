@@ -694,7 +694,7 @@ def _plan_ports(
         _get(document, "excitations", "document"), "excitations"
     )
     removed_in_1212 = (
-        "the builder was removed from rfx in #1212 with the single-plane "
+        "the builder was removed from rfx with the single-plane "
         "coaxial S-matrix lane it fed, and rfx itself refuses this entry on "
         "import; its offset was also in *cells*, which means nothing on "
         "another solver's mesh. For a coaxial one-port with a short, open or "
@@ -1134,8 +1134,8 @@ def plan_openems_projection(
     if _get(document, "refinement", "document") is not None:
         raise _refuse(
             "add_refinement(...) (SBP-SAT subgrid)",
-            "the subgrid path is an rfx research prototype, falsified in 3D "
-            "(PR #90) and outside the public support scope. The design note is "
+            "the subgrid path is an rfx research prototype, falsified in 3D"
+            " and outside the public support scope. The design note is "
             "explicit: round-trip it for rfx, never project it outward, because "
             "its presence in a foreign setup would read as a validated capability",
         )
@@ -1166,7 +1166,7 @@ def plan_openems_projection(
         raise _refuse(
             f"interface_eps={_get(solver, 'interface_eps', 'solver')!r}",
             "openEMS samples materials on its own mesh; the rfx non-uniform "
-            "dual-cell-area interface rule (#949) has no counterpart",
+            "dual-cell-area interface rule has no counterpart",
         )
 
     domain = _require_mapping(_get(document, "domain", "document"), "domain")
@@ -1200,7 +1200,7 @@ def plan_openems_projection(
                 "expressible in principle — but rfx's absorber padding on a "
                 "non-uniform axis, and the transition cells smooth_grading "
                 "inserts, decide where the material stack actually rasterises "
-                "(the #325 class of defect). Emitting a cumulative-sum guess "
+                "(material-stack misregistration). Emitting a cumulative-sum guess "
                 "would compare a differently-graded structure. v1 refuses; the "
                 "fix is a pinned NonUniformGrid coordinate comparison, not a "
                 "wider emitter",

@@ -928,7 +928,7 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
         f"but the DFT accumulators are healthy and a float64 recompute of "
         f"the same sum gives nonzero flux (peak |flux| = {peak:.3e}). The "
         f"per-cell E x H* products underflowed the float32 minimum normal "
-        f"(~1.18e-38) and were flushed to zero (issue #304). Remedies: "
+        f"(~1.18e-38) and were flushed to zero. Remedies: "
         f"enable x64 in a scoped context for the flux computation, increase "
         f"the source amplitude, or recompute from the (healthy) "
         f"accumulators in float64 as done for this check.",

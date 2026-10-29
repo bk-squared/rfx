@@ -138,22 +138,22 @@ def run_uniform(
         if sim._boundary == "upml":
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets are not "
-                "supported with boundary='upml' (#677 v1): UPML replaces "
+                "supported with boundary='upml': UPML replaces "
                 "the whole E update with its split-field form, which the "
                 "sheet operator would silently override at its edges. Use "
                 "boundary='cpml' or 'pec'.")
         if subpixel_smoothing or conformal_pec:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets are not "
-                "supported with subpixel_smoothing / conformal_pec "
-                "(#677 v1): the sheet operator assumes the plain isotropic "
+                "supported with subpixel_smoothing / conformal_pec"
+                ": the sheet operator assumes the plain isotropic "
                 "E update at its edges (Stage-1/2 conformal and Kottke "
-                "lanes are untouched by #677).")
+                "lanes do not apply the sheet operator).")
         if debye_spec is not None or lorentz_spec is not None:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported (#677 v1): the sheet operator would "
+                "not supported: the sheet operator would "
                 "silently override the ADE dispersion update at its "
                 "edges. Remove the dispersive material or the f0 sheet.")
 
@@ -517,7 +517,7 @@ def run_uniform(
                 _ob_unsup.append("until_decay= (use a fixed n_steps)")
             if _ob_unsup:
                 raise NotImplementedError(
-                    "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch "
+                    "Oblique (angle_deg != 0) TFSF uses the complex Bloch "
                     "path; not yet supported on it: " + "; ".join(_ob_unsup)
                     + ". Supported: final `state` and `add_probe` time series "
                     "(returned as physical fields), or `compute_rcs` for "

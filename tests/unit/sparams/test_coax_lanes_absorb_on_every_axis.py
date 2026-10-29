@@ -105,7 +105,7 @@ def test_absorbing_on_fewer_axes_is_refused(monkeypatch, lane, axes):
         raise AssertionError(f"{lane} reached the runner with cpml_axes={axes!r}")
 
     monkeypatch.setattr(rfx.simulation, "run", _must_not_run)
-    with pytest.raises(ValueError, match=r"accepts only cpml_axes='xyz'.*issue 1218"):
+    with pytest.raises(ValueError, match=r"accepts only cpml_axes='xyz'.*closed metal can"):
         _call(_sim(lane), lane, cpml_axes=axes)
 
 

@@ -219,7 +219,7 @@ class NonUniformGrid(NamedTuple):
             warnings.warn(
                 f"NonUniformGrid axis {_axis_name(ax)!r} has no float64 "
                 "cell spine; cells() widened the float32 store instead. Node "
-                "positions derived from it carry the pre-#802 quantization "
+                "positions derived from it carry the float32 quantization "
                 "(~1e-10 m), which flips half-open inclusion at node-aligned "
                 "faces. Build the grid with make_nonuniform_grid.",
                 ExactNodeSpineMissingWarning, stacklevel=2)
@@ -521,7 +521,7 @@ def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
             f"{axis} axis: the padded cell array realizes "
             f"{interior.shape[0]} interior cells but {declared.shape[0]} "
             "were declared. The interior of a padded array ends one entry "
-            "before len - pad_hi (the bounding-node duplicate, #562); a "
+            "before len - pad_hi (the bounding-node duplicate); a "
             "count that disagrees means the padding or that duplicate was "
             "applied differently than interior_cells reads it."
         )

@@ -62,7 +62,7 @@ CONFORMAL_MODEL_ADVISORY = (
     "(not the edge's open fraction): a high-permittivity skin about one cell thick that makes "
     "a metal body electrically larger; on a PEC sphere it is further from the converged "
     "answer than the staircase at every mesh measured. Do not use it for accuracy until "
-    "the fix lands (docs/guides/known_limitations.md, tracker #1651).")
+    "the fix lands (docs/guides/known_limitations.md).")
 
 
 def warn_conformal_model():

@@ -1305,7 +1305,7 @@ def _scan_source_fences():
                             and isinstance(exc.args[0].value, str)):
                         continue
                     msg = exc.args[0].value
-                    if "(#677 v1)" not in msg:
+                    if "surface-impedance (surface_impedance_f0) sheets" not in msg:
                         continue
                     func = _enclosing_function(spans, node.lineno)
                     disc = [k for (_r, _f, k) in FENCE_REGISTRY

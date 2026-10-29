@@ -1006,7 +1006,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
         lines = ([] if lane == "material_fit" else
                  [f"  - {ROW_WORDS[row]}" for row in message_rows])
         if ("_refinement", "slab") in rows and lane != "material_fit":
-            lines.append("  - add_refinement(): this calculator has no subgridded lane (#1240).")
+            lines.append("  - add_refinement(): this calculator has no subgridded lane.")
             if sim._uses_nonuniform_mesh:
                 lines.append("  - subgridding on a non-uniform mesh is not supported.")
         if lane == "material_fit":
@@ -1032,17 +1032,17 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 ("_precision", ""): "Use precision='float32'.",
                 ("_stencil_order", ""): "Use stencil_order=2.",
                 ("_interface_eps", "dual_average"): "Use interface_eps='sampled'.",
-                ("_refinement", "slab"): "This calculator has no subgridded lane (#1240). Remove the refinement.",
+                ("_refinement", "slab"): "This calculator has no subgridded lane. Remove the refinement.",
             }
             lines.extend(f"  - {ROW_WORDS[row]}"
                          + (f" — {names[row]}" if row in names else "")
-                         + " (#1290). "
+                         + ". "
                          + remedies.get(row, "Remove this input from sim_factory.")
                          for row in message_rows)
         if lane == "waveguide_s_matrix" and ("_solver", "") in rows:
-            lines.append("  - solver='adi' (#1300). Use solver='yee'.")
+            lines.append("  - solver='adi'. Use solver='yee'.")
         if lane == "waveguide_s_matrix" and any(row[0] == "_lumped_rlc" for row in rows):
-            lines.append("  - lumped RLC elements are not implemented (#1263). Use run() / forward().")
+            lines.append("  - lumped RLC elements are not implemented. Use run() / forward().")
         return (f"{CALCULATOR_WORDS[lane]} does not carry these declared inputs "
                 "and refuses them before the first time step:\n"
                 + "\n".join(lines)
@@ -1074,7 +1074,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                   "conformal_pec=False for a staircase S-matrix.")
     if ("_waveguide_ports", "n_modes") in rows:
         where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
-                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port (#2070).")
+                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port.")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
@@ -1504,7 +1504,7 @@ def _reject_upml_on_nonuniform(self, lane: str) -> None:
         "non-uniform runner implements CPML only (rfx/nonuniform.py "
         "dispatches on cpml_layers > 0 and never reads the boundary "
         "type), so this configuration used to run CPML while "
-        "sim._boundary kept reporting 'upml' (issue #680). Pass "
+        "sim._boundary kept reporting 'upml'. Pass "
         "boundary='cpml' to run the absorber that is actually "
         "implemented here, or drop the mesh profile(s) to use the "
         "uniform lane, which does implement UPML."

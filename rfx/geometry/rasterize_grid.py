@@ -191,8 +191,8 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             f"{', '.join(spine_missing)} (dx_arr_f64 / dy_arr_f64 / dz_f64 "
             "is None or not float64): node positions were widened from the "
             "float32 store and can sit ~1e-10 m off the exact node line, "
-            "which flips half-open inclusion at node-aligned faces (#802 "
-            "class). Build the grid with make_nonuniform_grid, or set the "
+            "which flips half-open inclusion at node-aligned faces"
+            ". Build the grid with make_nonuniform_grid, or set the "
             "spine fields from the float64 profile.",
             ExactNodeSpineMissingWarning, stacklevel=2)
 
@@ -508,7 +508,7 @@ def _refuse_zero_cells(shape, name, what: str):
     raise RfxRefusal(
         f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells "
         "on this grid: no primal-cell centre lies inside it, so it would "
-        "silently vanish (the #369 vaporized-metal class, now an error). A "
+        "silently vanish (the vaporized-metal class, now an error). A "
         "legacy radius=0 filament is a PolylineWire. A positive PEC wire "
         "radius must be resolved as a volume, a >= 0.5*d; a volume needs "
         "a radius of at least ~0.87 of the "
@@ -618,7 +618,7 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
         raise ValueError(
             f"sheet {name!r}: the footprint rasterizes to ZERO nodes on this "
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
-            f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
+            f"{'xyz'[a]}={plane}; it would silently vanish. "
             "Widen the footprint to reach a node line or refine the mesh.")
     end_rows = sheet_end_rows(shape, coords, a, grid=grid)
     unwrapped = None
@@ -723,8 +723,8 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
             f"this grid{(' (' + lane + ' lane)') if lane else ''}: its whole "
             f"footprint ({len(group)} declaration(s): {names}) reaches node "
             "line(s) but never two ADJACENT ones, so the metal carries no "
-            "current and would silently vanish (#369 class; the volume side "
-            "refuses the same drawing, #931 §1.5). Widen the footprint to span "
+            "current and would silently vanish (the volume side "
+            "refuses the same drawing). Widen the footprint to span "
             "at least one cell in an in-plane direction, or refine the mesh.")
 
 
@@ -1426,10 +1426,10 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             f"rasterized mask stops {empty_tail} interior nodes short of it, "
             f"and that face carries a {hi_pad}-cell absorber pad which is "
             f"filled by replicating from the interior edge. One node short is "
-            f"the documented half-open [lo, hi) Box shortfall and is repaired "
-            f"(#627a); {empty_tail} is not, so the pad would be filled with "
+            f"the documented half-open [lo, hi) Box shortfall and is repaired"
+            f"; {empty_tail} is not, so the pad would be filled with "
             f"vacuum and the structure would end in a facet inside its own "
-            f"absorber (#1070, #831).\n"
+            f"absorber.\n"
             f"  declared {axis_name} extent: {declared * 1e6:.4f} um "
             f"= {declared_cells!r} cells on this axis\n"
             f"  interior nodes on {axis_name}: {n_int}; "

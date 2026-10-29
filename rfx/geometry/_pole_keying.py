@@ -74,8 +74,8 @@ def _pole_key(pole):
             f"non-float-coercible scalars, e.g. a complex 0-d array); "
             f"keying its geometry mask by object identity. "
             f"Value-equal duplicates of this pole will NOT dedupe and "
-            f"can double-apply delta_eps on overlapping geometry "
-            f"(issue #274).",
+            f"can double-apply delta_eps on overlapping geometry"
+            f".",
             AccuracyWarning,
             stacklevel=3,
         )

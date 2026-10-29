@@ -137,7 +137,7 @@ def _sheet_footprint_on_samples(shape, x, y, z, *, name):
             f"SDF sample lattice — {exc} A sheet is zero-thickness, so it is "
             "exported as ONE sample layer; if it falls between samples or "
             "its footprint covers none, pass a finer `resolution=`. It is "
-            "not dropped silently (the #369 vanished-metal class)."
+            "not dropped silently (the vanished-metal class)."
         ) from exc
     return np.asarray(spec.footprint, dtype=bool)
 

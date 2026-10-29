@@ -50,8 +50,8 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
             f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; the multi-device main run "
             "zeroes tangential E on a declared PMC face, so nearby wire loads "
-            "and drives would be wrong even with compute_s_params=False "
-            f"(rfx #1221, B3b). Use one device (omit {option})."
+            "and drives would be wrong even with compute_s_params=False"
+            f". Use one device (omit {option})."
         )
     if faces and any(pe.impedance != 0 for pe in sim._ports):
         raise RfxUnsupported(
@@ -428,7 +428,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 "return_vi_dump=True is not supported together with "
                 "add_port(reference_plane_cells=...): the midpoint V/I "
                 "replay bundle cannot reproduce the plane-wave "
-                "off-diagonals (issue #313)."
+                "off-diagonals."
             )
         from rfx.probes.refplane import (
             decompose_wire_s_matrix_with_reference_planes,

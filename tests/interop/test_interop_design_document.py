@@ -1443,7 +1443,7 @@ def test_removed_coaxial_termination_entry_is_refused_naming_1212(key):
     """A document carrying an entry for a builder removed in #1212 is refused."""
     document = design_to_dict(_coax_cavity())
     document["excitations"][key] = [dict(_REMOVED_COAXIAL_TERMINATIONS[key])]
-    with pytest.raises(UnsupportedDesignFeature, match=r"#1212") as exc:
+    with pytest.raises(UnsupportedDesignFeature, match=r"removed") as exc:
         simulation_from_design(document)
     assert f"excitations.{key}" in str(exc.value)
     assert "compute_coaxial_line_reflection" in str(exc.value)
@@ -1459,7 +1459,7 @@ def test_non_portable_annotation_flags_subgridding():
     notes = design_to_dict(_subgrid_research_design())["non_portable"]
     refinement = [note for note in notes if note["path"] == "refinement"]
     assert refinement, f"refinement not annotated: {notes}"
-    assert "#90" in refinement[0]["reason"]
+    assert "falsified in 3D" in refinement[0]["reason"]
 
 
 def test_non_portable_annotation_flags_graded_mesh_and_absorber():
@@ -1996,7 +1996,7 @@ def test_auto_offset_dump_keeps_stored_edge_when_propagation_axis_is_graded():
     assert port_doc["n_probe_offset"] == 20
     assert port_doc["n_probe_offset"] == _driver_offset(sim)
     # and the skip is no longer silent
-    assert any("interval solve (issue #469) SKIPPED" in str(w.message)
+    assert any("interval solve SKIPPED" in str(w.message)
                for w in caught), [str(w.message) for w in caught]
 
 

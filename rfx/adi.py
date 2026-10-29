@@ -56,7 +56,7 @@ def _validate_interior_pec(mask):
 
 ADI_INTERFACE_MESSAGE = (
     "adi_material_interface_unsupported: solver='adi' refuses a dielectric "
-    "or conductivity interface (#1373). The ADI update gives each E "
+    "or conductivity interface. The ADI update gives each E "
     "component its own cell's eps_r and sigma, where every Yee lane gives "
     "each E edge the mean of its four cells, so a material face sits half a "
     "cell from where the Yee lanes put it. Measured on a slab-loaded PEC "
@@ -103,7 +103,7 @@ def adi_material_interface_refusal(eps_r, sigma=None):
 ADI_TRACED_OVERRIDE_MESSAGE = (
     "adi_traced_material_array_unsupported: solver='adi' refuses a traced "
     "eps_r/sigma array (from add_material with a traced value, or an "
-    "eps_override / sigma_override array) (#1373). A traced array cannot be "
+    "eps_override / sigma_override array). A traced array cannot be "
     "read before the solve, and the ADI lane puts any interface it holds "
     "half a cell from where the Yee lanes put it (+2.2 % on a slab-loaded "
     "PEC cavity's first resonance at 12 cells per loaded wavelength). The "

@@ -635,7 +635,7 @@ def plot_rasterized_slice(
         ax.pcolormesh(xe, ye, np.where(wall2, 1.0, np.nan).T, shading="flat",
                       cmap=_wall_cmap(), vmin=0.0, vmax=1.0,
                       alpha=0.65, zorder=4.5)
-        wall_note = ("realized PEC wall (#931) on THIS plane -- a body's "
+        wall_note = ("realized PEC wall on THIS plane -- a body's "
                     "far face: an electric wall, not a conductor cell")
 
     absorber_rects = _absorber_rects(grid, keep, xe, ye)
@@ -696,7 +696,7 @@ def plot_rasterized_slice(
                                  label="conductor cell"))
         if wall_note:
             handles.append(Patch(facecolor="#5533cc", alpha=0.65,
-                                 label="realized PEC wall (#931)"))
+                                 label="realized PEC wall"))
         if drawn:
             handles.append(Patch(fill=False, edgecolor="#d55e00", lw=1.4,
                                  ls="--", label="declared outline (analytic box)"))
@@ -958,7 +958,7 @@ def plot_stack_profile(
                                  hatch="////", label="conductor cell"))
         if wall_present:
             handles.append(Patch(facecolor="#5533cc", alpha=0.5,
-                                 label="realized PEC wall (#931)"))
+                                 label="realized PEC wall"))
         if absorber_spans:
             handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
                                  label="CPML absorber"))

@@ -297,7 +297,7 @@ class SheetSpec:
                     f"sheet {name!r}: the node range on {'xyz'[t]} is "
                     f"({lo}, {hi}) — a single node line, which has no E edge "
                     "between two adjacent nodes, so the metal would carry no "
-                    "current and vanish silently (#369 class). A sheet needs "
+                    "current and vanish silently. A sheet needs "
                     "at least two adjacent node lines on BOTH in-plane axes; "
                     "widen the range or refine the mesh.")
             if lo < 0 or hi >= shape3[t]:
@@ -1116,7 +1116,7 @@ def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
     """
     if any(periodic):
         raise NotImplementedError(
-            "a design occupancy box (#1183) does not support periodic axes: "
+            "a design occupancy box does not support periodic axes: "
             f"periodic={tuple(bool(p) for p in periodic)}. The incident rule "
             "wraps across the seam there, so the box's one-cell window is no "
             "longer the whole set of cells its occupancy can move. Use "

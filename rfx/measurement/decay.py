@@ -688,7 +688,7 @@ def warn_dc_floor(sim, *, dt, n_table):
                 f"decay_max_steps window ends inside the source pulse (table "
                 f"{n_table * float(dt):.3e} s < pulse completion t0+4.5*tau ~ {t_done:.3e} s) "
                 "— the DC estimate is truncation-dominated, not intrinsic waveform DC; "
-                "until_decay may cap-hit (issue #388). Increase decay_max_steps (or run "
+                "until_decay may cap-hit. Increase decay_max_steps (or run "
                 "with a fixed n_steps) so the table covers the full pulse; raising the "
                 "waveform cutoff makes this WORSE (it lengthens the onset).",
                 AccuracyWarning, stacklevel=3)
@@ -698,7 +698,7 @@ def warn_dc_floor(sim, *, dt, n_table):
                 f"(|sum s*dt| = {abs(s_int):.3e} over the planned {int(n_table)}-step "
                 "table): it deposits a static charge whose field neither decays nor is "
                 "absorbed by CPML, so the energy left after the drive may never fall to "
-                "the until_decay threshold and the run may cap-hit (issue #388); thin "
+                "the until_decay threshold and the run may cap-hit; thin "
                 "source cells make a small charge's field large, so this warns from "
                 f"relative DC {DC_ADVISE:g}. Remedies: {REMEDIES}.",
                 AccuracyWarning, stacklevel=3)
@@ -793,7 +793,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
             "remnant is quasi-static charge left by the drive, or charge relaxing in a lossy "
             "medium (relaxation time eps/sigma). Lossy materials: "
             f"{'; '.join(media) if media else 'none (no sigma > 0 in the model)'}. Its field is "
-            "out of band and the record stays correct (issue #388). Remedies: a fixed n_steps, "
+            "out of band and the record stays correct. Remedies: a fixed n_steps, "
             "radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator, or a larger "
             "until_decay threshold.",
             AccuracyWarning, stacklevel=3)
@@ -802,7 +802,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
         f"run(until_decay=...) cap-hit at max_steps without the energy criterion firing, "
         f"and {100 * (1 - h_share):.1f}% of the final interior energy is electrostatic "
         f"(H-share {h_share:.1e}): a static charge left by a soft drive holds the energy "
-        "above the threshold; it neither radiates nor is absorbed by CPML (issue #388). "
+        "above the threshold; it neither radiates nor is absorbed by CPML. "
         "Soft drives with relative DC above "
         f"{DC_ADVISE:g}: {'; '.join(named) if named else 'none found'}. "
         f"Remedies: {REMEDIES}.",

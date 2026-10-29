@@ -243,7 +243,7 @@ def _no_lane_message(c: dict) -> str:
             "coaxial method is built from EXACTLY ONE add_coaxial_port() "
             "(compute_coaxial_line_reflection, compute_coaxial_two_port and "
             "compute_coax_msl_transition each raise otherwise). No method "
-            "accepts several; compute_coaxial_s_matrix() did (removed, #1212)."
+            "accepts several; compute_coaxial_s_matrix() did (removed)."
         )
 
     singles = []
@@ -343,7 +343,7 @@ def s_matrix_lane(self, *, method: str | None = None, lane: str | None = None) -
         raise ValueError(
             f"method={method!r} is not a method compute_s_matrix() can select. "
             f"Valid: {', '.join(repr(n) for n in _SELECTABLE_LANES)}. "
-            "(compute_coaxial_s_matrix was removed in #1212.)"
+            "(compute_coaxial_s_matrix was removed.)"
         )
 
     if method in COAXIAL_ONE_PORT_LANES:

@@ -29,7 +29,7 @@ HONOURS += ('optimize', 'progressive_optimize', 'compute_msl_s_matrix',
             'run_tfsf', 'forward_tfsf', 'run_window', 'forward_window', 'vmap_sweep_fallback')
 # These refusals predate #1567; preserve the original exception and message.
 MAIN_REFUSALS = {
-    'differentiable_material_fit': (NotImplementedError, "precision='float64'.*#1290"),
+    'differentiable_material_fit': (NotImplementedError, "precision='float64'.*Use precision='float32'"),
     **{name: (ValueError, "requires precision='float32'") for name in (
         'compute_coaxial_line_reflection', 'compute_coaxial_two_port', 'compute_coax_msl_transition')},
     **{name: (NotImplementedError, "precision|float32") for name in (

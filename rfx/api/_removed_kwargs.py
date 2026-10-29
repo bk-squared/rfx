@@ -20,7 +20,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 _REMOVED_FORWARD_KWARGS: dict = {
     "design_mask": (
-        "removed entirely in issue #625, not deprecated: it was measured "
+        "removed entirely, not deprecated: it was measured "
         "to save ZERO reverse-mode AD memory (partial-eval residuals have "
         "whole-array granularity) while corrupting the gradient in every "
         "configuration tested. For memory relief use checkpoint_every / "

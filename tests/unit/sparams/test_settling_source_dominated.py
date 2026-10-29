@@ -172,7 +172,7 @@ def test_the_preflight_advice_names_the_drive_cell():
               report.by_code("settling_witness_will_be_absent")]
     assert len(spoken) == 1, [issue.code for issue in report]
     assert "NOT on a source/port drive cell" in spoken[0]
-    assert "#1090" in spoken[0]
+    assert "does not count as an independent witness" in spoken[0]
 
 
 # --- 4. metadata ----------------------------------------------------------

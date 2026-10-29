@@ -166,7 +166,7 @@ def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         warn_dc_floor(sim, dt=DEMO_DT, n_table=n_table)
-    return [str(w.message) for w in caught if "issue #388" in str(w.message)]
+    return [str(w.message) for w in caught if "relative DC" in str(w.message)]
 
 
 @pytest.mark.parametrize(
@@ -226,7 +226,7 @@ def test_static_remnant_cap_hit_points_to_flux_stop():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _warn_static_remnant_cap_hit(state, materials, grid)
-    msgs = [str(w.message) for w in caught if "issue #388" in str(w.message)]
+    msgs = [str(w.message) for w in caught if "relative DC" in str(w.message)]
     assert msgs, "electrostatic-remnant cap-hit should warn"
     assert "radiated_flux_box" in msgs[0], (
         "the cap-hit advisory should point to the flux-stop remedy")
@@ -242,14 +242,14 @@ def test_until_decay_dc_floor_wired_into_run():
                        waveform=ModulatedGaussian(f0=30e9, bandwidth=1.2))
         return sim
 
-    with pytest.warns(UserWarning, match="issue #388"):
+    with pytest.warns(UserWarning, match="relative DC"):
         _sim().run(until_decay=1e-3, decay_min_steps=50,
                    decay_max_steps=300)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _sim().run(n_steps=20)
-    assert not [w for w in caught if "issue #388" in str(w.message)], (
+    assert not [w for w in caught if "relative DC" in str(w.message)], (
         "#388 DC-floor warning must fire only when until_decay is set"
     )
 
@@ -315,7 +315,7 @@ def test_dc_floor_covers_msl_ports():
         warnings.simplefilter("always")
         warn_dc_floor(sim, dt=DEMO_DT, n_table=50_000)
     fired = [str(w.message) for w in caught
-             if "issue #388" in str(w.message)]
+             if "relative DC" in str(w.message)]
     assert fired, "MSL-port high-DC waveform must fire the #388 warning"
     assert "relative DC" in fired[0]
 
@@ -332,7 +332,7 @@ def test_dc_floor_silent_on_passive_msl_port():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         warn_dc_floor(sim, dt=DEMO_DT, n_table=50_000)
-    assert not [w for w in caught if "issue #388" in str(w.message)], (
+    assert not [w for w in caught if "relative DC" in str(w.message)], (
         "excite=False MSL port must not fire the #388 DC-floor warning")
 
 
@@ -422,7 +422,7 @@ def _run_capture(sim, **run_kw):
         warnings.simplefilter("always")
         res = sim.run(**run_kw)
     fired = [str(w.message) for w in caught
-             if "issue #388" in str(w.message) and "H-share" in str(w.message)]
+             if "relative DC" in str(w.message) and "H-share" in str(w.message)]
     return len(res.time_series), fired
 
 
@@ -484,7 +484,7 @@ def test_static_remnant_advisory_silent_when_field_balanced():
     with warnings.catch_warnings(record=True) as c:
         warnings.simplefilter("always")
         _warn_static_remnant_cap_hit(bal, mats, grid)
-    assert not [w for w in c if "issue #388" in str(w.message)], \
+    assert not [w for w in c if "relative DC" in str(w.message)], \
         "balanced E/H (still-ringing) must NOT trigger the static-remnant advisory"
 
     # (b) pure electrostatic remnant: E only, H=0 -> H-share 0 -> FIRES
@@ -492,7 +492,7 @@ def test_static_remnant_advisory_silent_when_field_balanced():
     with warnings.catch_warnings(record=True) as c:
         warnings.simplefilter("always")
         _warn_static_remnant_cap_hit(stat, mats, grid)
-    assert [w for w in c if "issue #388" in str(w.message)], \
+    assert [w for w in c if "relative DC" in str(w.message)], \
         "an E-only (electrostatic) remnant must trigger the advisory"
 
 
@@ -602,7 +602,7 @@ def test_undriven_pulse_is_refused_for_every_drive_kind(kind):
         with pytest.raises(ValueError) as caught:
             _hz_drive_sim(kind)
         assert str(caught.value) == DG_REFUSAL
-        assert "#1942" in str(caught.value)
+        assert "precursor wraps circularly" in str(caught.value)
         return
     codes = [getattr(i, "code", None) for i in _hz_drive_sim(kind).preflight()
              if getattr(i, "severity", None) == "error"]

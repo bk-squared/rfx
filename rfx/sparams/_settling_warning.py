@@ -62,7 +62,7 @@ def _warn_if_ringdown_truncated(
         advice = (f"Up to {drive:.3g} of that share is the port's known drive beyond the record (a waveguide "
                   "port's H near cutoff decays as t^-3/2). Run a longer fixed record: until_decay stops on field "
                   "energy and does not judge this per-bin budget, and until_identified does not yet admit "
-                  "waveguide ports (#2030). " + advice)
+                  "waveguide ports. " + advice)
     warnings.warn(
         "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "

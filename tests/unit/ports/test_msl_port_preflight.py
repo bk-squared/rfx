@@ -229,7 +229,7 @@ def test_substrate_resolution_warning_names_alignment_requirement():
     assert "63.5µm" in hit  # h_sub/4, not a rounded64um grid recommendation
     assert "gap=300.0µm over 3 normal interval(s)" in hit
     assert "3 same-permittivity sample slot(s), extent 300.0µm" in hit
-    assert "pre-#802" in hit
+    assert "historical float32-coordinate" in hit
     assert "new matched-geometry measurement" in hit
     assert "does not quantify Z0 error" in hit
     for retired in ("-3.8%", "-1.2%", "+0.7%", "-7.9%", ">5%", "<5% Z0 bias",

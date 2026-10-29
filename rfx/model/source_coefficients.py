@@ -201,7 +201,7 @@ def current_source_volume(grid, position_ijk, component):
             f"make_current_source: unknown component {component!r} "
             f"(expected one of {sorted(_axis_of)}). The control volume is "
             f"component-dependent on a non-uniform mesh, so there is no safe "
-            f"fallback (issue #672)."
+            f"fallback."
         )
     p_axis = _axis_of[component]
     grid_traced = (

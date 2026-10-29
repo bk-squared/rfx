@@ -606,7 +606,7 @@ def _build_full_scan_fn(
             assert _probe.accumulator.dtype == _expected_dtype, (
                 f"vmap DFT accumulator dtype {_probe.accumulator.dtype} != "
                 f"run()'s {_expected_dtype} "
-                f"(x64_enabled={jax.config.x64_enabled}) — #477/#484 "
+                f"(x64_enabled={jax.config.x64_enabled}) — "
                 "x64-contract pin violated"
             )
 
