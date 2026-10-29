@@ -1,1 +1,0 @@
-removed: `rfx.run_batch` (use `run_batch_with_manifest` or `parametric_sweep`, or loop over `ParameterSweep.combinations()`); removed the unexported legacy `rfx.visualize3d.save_field_animation` (use `rfx.save_field_animation`).
