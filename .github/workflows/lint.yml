@@ -45,7 +45,8 @@ jobs:
       - name: Install ruff
         # The script runs `$PYTHON -m ruff`, which this install satisfies —
         # ruff's wheel ships an importable module, not only a console script.
-        run: pip install ruff
+        # Same range as the dev extra in pyproject.toml.
+        run: pip install "ruff>=0.15,<0.16"
 
       # The scope, the selector and the ignore list live in the script.
       # tests/contracts/test_pr_body_contract.py pins the path list there.
