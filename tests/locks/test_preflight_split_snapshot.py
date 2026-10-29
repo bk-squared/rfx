@@ -922,6 +922,14 @@ _REBOUND_ON_MIXIN = {
 #: one, the same failure mode as ``_congruence_origin_shift``'s but on the
 #: RUN path rather than the preflight one, where this lock's fixtures would
 #: never see it.
+#: 2026-10-29 (#1432 Part A): the one class-scoped import that is not a moved check
+#: body. ``__init_subclass__`` is the call-scope hook from rfx/preflight/call_scope.py,
+#: re-exported by realization (the memo's owner) so that binding it adds no code line
+#: to the ratcheted rfx/api/_preflight.py. Python makes a class-body
+#: ``__init_subclass__`` a classmethod, so the identity and qualname rules for moved
+#: bodies do not apply to it; it is pinned on its own below.
+_CLASS_HOOKS_ON_MIXIN = {"rfx.preflight.realization": ("__init_subclass__",)}
+
 _REBOUND_AS_STATICMETHOD = frozenset({
     "_congruence_origin_shift", "_validate_tfsf_vacuum_boundary",
 })
@@ -1003,11 +1011,25 @@ def test_the_class_scoped_imports_are_the_declared_rebind_surface():
         f"_PreflightMixin imports {stray} from a leg module with no pinned "
         "rebind tuple; add it to _REBOUND_ON_MIXIN")
     for modname, declared in _REBOUND_ON_MIXIN.items():
-        got = bound[modname]
+        hooks = _CLASS_HOOKS_ON_MIXIN.get(modname, ())
+        assert all(h in bound[modname] for h in hooks), (
+            f"the {modname} class-scoped import lost its declared hook(s) {hooks}")
+        got = [n for n in bound[modname] if n not in hooks]
         assert sorted(got) == sorted(declared), (
             f"the {modname} class-scoped import and its pinned tuple "
             f"disagree: block-only={sorted(set(got) - set(declared))}, "
             f"pinned-only={sorted(set(declared) - set(got))}")
+
+
+
+def test_the_call_scope_hook_is_bound_on_the_mixin():
+    """#1432 Part A: _PreflightMixin carries the call-scope hook, and it is that function."""
+    from rfx.api._preflight import _PreflightMixin
+    from rfx.preflight import call_scope
+
+    hook = vars(_PreflightMixin)["__init_subclass__"]
+    assert isinstance(hook, classmethod)
+    assert hook.__func__ is call_scope.__init_subclass__
 
 
 # ===========================================================================
