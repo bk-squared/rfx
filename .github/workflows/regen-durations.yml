@@ -51,12 +51,27 @@ jobs:
           # are the times the fast lane actually sees: one empty directory per job.
           JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-compilation-cache
           JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
+        # Split with the prices pr-tests.yml splits with, so each job holds the tests of its
+        # fast-suite shard: a test that reuses a program an earlier test of the same job put in
+        # that cache is priced with the reuse only if its neighbours are the same. An empty
+        # durations path splits by test count instead: on 2026-10-28 job 10 held the heavy
+        # distributed tests together, priced several at about half their fast-suite time, and
+        # hit the 120-min limit. --clean-durations uploads only this job's measurements.
         run: >
           mkdir -p durations &&
+          cp .test_durations durations/fast_${{ matrix.group }}.json &&
+          cp .test_durations "$RUNNER_TEMP/fast-seed" &&
           pytest -v -ra -p no:cacheprovider
           --splits 12 --group ${{ matrix.group }}
-          --store-durations --durations-path durations/fast_${{ matrix.group }}.json
+          --store-durations --clean-durations --durations-path durations/fast_${{ matrix.group }}.json
           || true
+      # pytest-split writes the file only when the session ends: a killed session leaves the seed,
+      # which must not be uploaded as a measurement.
+      - name: Refuse an unmeasured price file
+        run: |
+          if cmp -s durations/fast_${{ matrix.group }}.json "$RUNNER_TEMP/fast-seed"; then
+            echo "durations file unchanged from its seed: the session did not finish"; exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: durations-fast-${{ matrix.group }}

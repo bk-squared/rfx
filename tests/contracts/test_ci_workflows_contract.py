@@ -172,6 +172,27 @@ def test_fast_suite_and_duration_regeneration_use_the_same_groups() -> None:
         assert "--group ${{ matrix.group }}" in "\n".join(blocks)
 
 
+def test_duration_regeneration_splits_with_the_prices_the_fast_suite_splits_with() -> None:
+    """Equal group counts are not enough: each regen job must hold its fast-suite shard's tests.
+
+    A test can reuse programs an earlier test of the same job compiled into the JAX disk cache, so
+    its price can depend on its neighbours. fast-suite splits with `.test_durations`; a regen job
+    split by other prices (an empty file splits by test count) measures other neighbours, and on
+    2026-10-28 priced heavy distributed tests at about half their fast-suite time.
+    """
+    fast = "\n".join(run_blocks(_physics_suite_step(load(PR_TESTS)["jobs"]["fast-suite"])))
+    assert "--durations-path" not in fast, "fast-suite no longer splits with .test_durations"
+    regen = load(WORKFLOW_DIR / "regen-durations.yml")["jobs"]["fast"]
+    (block,) = [b.replace("${{ matrix.group }}", "N") for b in run_blocks(regen) if "--store-durations" in b]
+    words = shlex.split(block)
+    path = words[words.index("--durations-path") + 1]
+    seed = re.search(rf"(?:^|\s)cp\s+\.test_durations\s+{re.escape(path)}\s", block)
+    assert seed and seed.start() < block.index("pytest "), (
+        f"regen fast does not copy .test_durations to {path} before pytest: it splits with other prices"
+    )
+    assert "--clean-durations" in words, "regen fast would upload the seeded prices as measurements"
+
+
 def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
     matrix = load(PR_TESTS)["jobs"]["fast-suite"]["strategy"]["matrix"]
     assert matrix == {"python-version": ["3.11"], "group": list(range(1, 13))}
