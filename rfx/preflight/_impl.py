@@ -5,9 +5,7 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
-
-from rfx.errors import RfxRefusal, RfxWarning
+from rfx.errors import RfxRefusal
 
 import jax
 
@@ -31,8 +29,6 @@ def _preflight_impl(
     _tfsf_material_overrides=(),
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
-    from rfx.errors import AccuracyWarning
-    from rfx.errors import ConfigurationWarning
     import warnings
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(self)
@@ -212,20 +208,20 @@ def _preflight_impl(
 
     if len(issues):              # PreflightReport refuses bool() (#980)
         for iss in issues:
-            warnings.warn(f"  [PREFLIGHT] {iss}", AccuracyWarning, stacklevel=2)
+            print(f"  [PREFLIGHT] {iss}")
     elif check_ntff is True:
-        warnings.warn("  [PREFLIGHT] All checks passed.", ConfigurationWarning, stacklevel=2)
+        print("  [PREFLIGHT] All checks passed.")
     elif check_ntff == "advisory":
-        warnings.warn("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
-              "PEC-overlap error check runs on forward()/preflight()).", ConfigurationWarning, stacklevel=2)
+        print("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
+              "PEC-overlap error check runs on forward()/preflight()).")
     else:
-        warnings.warn("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
-              "run sim.preflight() for the full set).", ConfigurationWarning, stacklevel=2)
+        print("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
+              "run sim.preflight() for the full set).")
 
     if issues.flux_regions:
         from rfx.probes.flux_region import flux_region_message
         for record in issues.flux_regions:
-            warnings.warn(f"  [FLUX REGION] {flux_region_message(record)}", ConfigurationWarning, stacklevel=2)
+            print(f"  [FLUX REGION] {flux_region_message(record)}")
 
     return issues
 
@@ -272,18 +268,6 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         )
 
 
-
-@contextmanager
-def _quiet_preflight_reports():
-    """Keep rendered report warnings quiet when the caller consumes the report."""
-    import warnings
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", r"  \[(?:SPARAM PREFLIGHT|PREFLIGHT|FLUX REGION)\]", RfxWarning,
-        )
-        yield
-
-
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
                    conductors=None, prepare=False, distributed=False, tfsf_material_overrides=()):
     """Emit a UserWarning if preflight finds issues (issue #66).
@@ -315,13 +299,12 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     if assembly is not None:
         conductors = assembly.realized()
     # A validator bug must propagate, rather than become an advisory.
-    with _quiet_preflight_reports():
-        if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
-            issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
-        else:
-            issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                         _conductors=conductors)
+    if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
+    else:
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                     _conductors=conductors)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:

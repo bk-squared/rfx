@@ -62,8 +62,6 @@ def run_subgridded(
     -------
     dict with keys: state_c, state_f, time_series, config
     """
-    import warnings
-    from rfx.errors import ConfigurationWarning
     sources_f = sources_f or []
     probe_indices_f = probe_indices_f or []
     probe_components = probe_components or []
@@ -111,8 +109,8 @@ def run_subgridded(
             rate = step / elapsed
             eta = (n_steps - step) / rate
             max_ez = float(jnp.max(jnp.abs(ez_f)))
-            warnings.warn(f"  step {step}/{n_steps} ({step/n_steps*100:.0f}%) "
-                  f"| {rate:.0f} steps/s | ETA {eta:.0f}s | max|Ez_f|={max_ez:.3e}", ConfigurationWarning, stacklevel=2)
+            print(f"  step {step}/{n_steps} ({step/n_steps*100:.0f}%) "
+                  f"| {rate:.0f} steps/s | ETA {eta:.0f}s | max|Ez_f|={max_ez:.3e}")
 
         # === Coarse grid: H update ===
         st_c = FDTDState(ex=ex_c, ey=ey_c, ez=ez_c,

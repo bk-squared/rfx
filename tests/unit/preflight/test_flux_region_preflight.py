@@ -77,8 +77,7 @@ def test_metadata_matches_consumed_windows_without_strict_findings(axis, graded,
         _add(sim, axis)
         expected_bounds = np.array([[8, 12], [6, 14]]) * U
         expected_normal = 10 * U
-    with pytest.warns(UserWarning, match=r"\[FLUX REGION\].*requested.*realized"):
-        report = _report(sim, strict=True)
+    report = _report(sim, strict=True)
     assert not len(report) and report == [] and report.ok
     assert not report.issues and not report.errors and not report.warnings and not report.infos
     assert report.raise_for_failure() is report
@@ -104,7 +103,7 @@ def test_metadata_matches_consumed_windows_without_strict_findings(axis, graded,
     assert json.loads(report.to_json())["flux_regions"] == report.flux_regions
     assert "FLUX REGION" in report.format()
     printed = capsys.readouterr().out
-    assert "[FLUX REGION]" not in printed
+    assert "[FLUX REGION]" in printed and "requested" in printed and "realized" in printed
 
 
 @pytest.mark.parametrize("graded", [False, True])

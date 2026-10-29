@@ -58,19 +58,14 @@ def test_mesh_report_ad_memory_argument_error_propagates():
 def test_mesh_intelligence_report_compares_uniform_fine_cells(capsys):
     sim = _patch_like_nonuniform_sim()
 
-    import warnings
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        report = sim.mesh_intelligence_report()
-    assert not any("[PREFLIGHT]" in str(w.message) for w in caught)
+    report = sim.mesh_intelligence_report()
 
-    # Preflight now emits warnings; neither call writes a summary to stdout. Only the
+    # The report runs preflight() and must swallow its printed summary. Only the
     # [PREFLIGHT] lines are this call's to check: another part of the process
     # may write to stdout (the CI lane's memory sampler did, run 35837183022).
     assert "[PREFLIGHT]" not in capsys.readouterr().out
-    with pytest.warns(UserWarning, match=r"\[PREFLIGHT\]"):
-        sim.preflight()
-    assert "[PREFLIGHT]" not in capsys.readouterr().out
+    sim.preflight()
+    assert "[PREFLIGHT]" in capsys.readouterr().out, "nothing to swallow here"
     assert isinstance(report, MeshIntelligenceReport)
     assert report.uses_nonuniform is True
     assert report.cells == report.grid_shape[0] * report.grid_shape[1] * report.grid_shape[2]

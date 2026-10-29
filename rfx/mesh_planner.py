@@ -9,6 +9,8 @@ The planner intentionally reuses existing mesh derivation and validation APIs:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import contextlib
+import io
 import json
 import math
 from pathlib import Path
@@ -21,7 +23,6 @@ from rfx.api._ad_memory import _format_memory_gb
 from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.api._spec import MeshIntelligenceReport
 from rfx.core.jax_utils import is_tracer
-from rfx.preflight._impl import _quiet_preflight_reports
 
 SCHEMA_VERSION = "mesh-plan/v1"
 
@@ -56,6 +57,8 @@ def mesh_intelligence_report(
         exclusive. ``n_warmup`` is forwarded as reverse-mode tape metadata
         only, matching ``estimate_ad_memory``.
         """
+    import contextlib
+    import io
 
     if any(
         p is not None and is_tracer(p)
@@ -97,9 +100,9 @@ def mesh_intelligence_report(
         float(uniform_fine_cells / cells) if cells > 0 else float("inf")
     )
 
-    # Suppress rendered preflight warnings so the
+    # preflight() prints a summary by design; suppress it so the
     # report method remains a pure information-returning API.
-    with _quiet_preflight_reports():
+    with contextlib.redirect_stdout(io.StringIO()):
         preflight_issues = tuple(
             sim.preflight(
                 strict=False,
@@ -687,7 +690,7 @@ def plan_simulation_mesh(
     )
     support_checks = _support_rows("general_preflight", report.preflight_issues)
     if sparameter_calculator is not None:
-        with _quiet_preflight_reports():
+        with contextlib.redirect_stdout(io.StringIO()):
             try:
                 sparam_issues = tuple(
                     sim.preflight_sparameters(calculator=sparameter_calculator)
