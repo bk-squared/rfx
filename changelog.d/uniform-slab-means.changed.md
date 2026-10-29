@@ -1,4 +1,4 @@
-### Changed — Uniform multi-device runs form their material means once (#952)
+### Changed — Uniform multi-device runs form their material means once (#PR)
 
 Uniform multi-device runs now form each component's material average (permittivity, conductivity, permeability) once
 before the time loop instead of on every step; the update coefficients are still formed inside the loop.
