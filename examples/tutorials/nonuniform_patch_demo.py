@@ -115,7 +115,7 @@ from rfx import (
 from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 from rfx.sources.sources import GaussianPulse
 from rfx.auto_config import smooth_grading
-from rfx.harminv import harminv
+from rfx import matrix_pencil
 from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 C0 = 2.998e8
@@ -498,7 +498,7 @@ def main() -> None:
     # =============================================================================
     skip = int(len(ts) * 0.3)
     signal = ts[skip:]
-    modes = [m for m in harminv(signal, dt_val, 1.5e9, 3.6e9)
+    modes = [m for m in matrix_pencil(signal, dt_val, 1.5e9, 3.6e9)
              if m.Q > 2 and m.amplitude > 1e-8]
     modes.sort(key=lambda m: m.freq)
 

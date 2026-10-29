@@ -40,7 +40,9 @@ BANDWIDTH = 0.5
 DOMAIN = 0.100
 DX = (C0 / F0) / 40.0
 CPML_LAYERS = 8
-N_STEPS = 500
+# The field leaves the NTFF box at step 524 (the run's record-end guard,
+# printed below); 800 steps cover it with room for the sphere's ring-down.
+N_STEPS = 800
 
 RADIUS = 15.9e-3
 CENTER = (DOMAIN / 2.0,) * 3
@@ -171,6 +173,7 @@ def main() -> None:
 
     # For +x incidence, (theta=pi/2, phi=pi) is backscatter.  It is the final
     # sample in this H-plane cut, after the empty-reference subtraction.
+    report_record_coverage("RCS run", result.settling_witness)
     backscatter = float(np.asarray(result.rcs_linear)[0, 0, -1])
     if not np.isfinite(backscatter) or backscatter <= 0.0:
         raise RuntimeError("Backscatter RCS is not finite and positive")
@@ -194,6 +197,18 @@ def main() -> None:
         "Deep-null limitation: values near a pattern null can carry larger "
         "near-field-to-far-field integration errors."
     )
+
+
+def report_record_coverage(label, witness):
+    """Print the run's record-end guard and stop if a monitor is not covered."""
+    rows = (witness or {}).get("coverage", ())
+    print(f"  {label}: settling witness {(witness or {}).get('status')}")
+    for row in rows:
+        print(f"    {row['name']}: {row['verdict']} (field leaves at step "
+              f"{row['end_step']}, record {row['n_record']} steps)")
+    uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
+    if not rows or uncovered:
+        raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
 
 
 if __name__ == "__main__":

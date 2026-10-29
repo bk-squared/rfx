@@ -11,7 +11,7 @@ The textbook cavity frequencies are
 ``f_mnp = (c/2)*sqrt((m/a)^2 + (n/b)^2 + (p/d)^2)``.
 
 This tutorial excites several modes, prints every mode returned by
-``harminv()``, and selects the one nearest the analytic TE101 frequency.
+``matrix_pencil()``, and selects the one nearest the analytic TE101 frequency.
 Source and probe positions weight each field pattern differently, so the
 loudest mode is not necessarily the requested mode.
 
@@ -31,7 +31,7 @@ import numpy as np
 
 from rfx import GaussianPulse, Simulation
 from rfx.boundaries.spec import BoundarySpec
-from rfx.harminv import HarminvMode, harminv
+from rfx import MatrixPencilMode, matrix_pencil
 
 
 C0 = 299_792_458.0
@@ -69,7 +69,7 @@ def build_cavity() -> Simulation:
     return sim
 
 
-def extract_modes(result) -> list[HarminvMode]:
+def extract_modes(result) -> list[MatrixPencilMode]:
     """Remove the drive portion and analyze the remaining ring-down."""
     if result.dt is None:
         raise RuntimeError("Simulation result did not include its timestep")
@@ -77,7 +77,7 @@ def extract_modes(result) -> list[HarminvMode]:
     trace = np.asarray(result.time_series)[:, 0]
     ring_down = trace[len(trace) // 4 :]
     ring_down = ring_down - np.mean(ring_down)
-    return harminv(
+    return matrix_pencil(
         ring_down,
         float(result.dt),
         0.70 * F_TE101,
@@ -89,7 +89,7 @@ def extract_modes(result) -> list[HarminvMode]:
     )
 
 
-def print_mode_list(label: str, modes: list[HarminvMode]) -> None:
+def print_mode_list(label: str, modes: list[MatrixPencilMode]) -> None:
     """Print every returned frequency, Q, and amplitude."""
     print(f"{label} full mode list:")
     for index, mode in enumerate(modes, start=1):
@@ -99,14 +99,14 @@ def print_mode_list(label: str, modes: list[HarminvMode]) -> None:
         )
 
 
-def nearest_te101(modes: list[HarminvMode]) -> HarminvMode:
+def nearest_te101(modes: list[MatrixPencilMode]) -> MatrixPencilMode:
     """Return the extracted mode nearest the textbook TE101 value."""
     if not modes:
         raise RuntimeError("Harminv returned no cavity modes")
     return min(modes, key=lambda mode: abs(mode.freq - F_TE101))
 
 
-def relative_error_percent(mode: HarminvMode) -> float:
+def relative_error_percent(mode: MatrixPencilMode) -> float:
     """Return absolute frequency error as a percentage."""
     return 100.0 * abs(mode.freq - F_TE101) / F_TE101
 

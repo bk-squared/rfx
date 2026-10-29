@@ -127,6 +127,9 @@ def run_one(with_slab: bool):
     return sim.run(
         n_steps=4000,
         until_decay=1e-3,  # dispersionless slab -> 1e-3 is sufficient
+        # The decay stop fired at step 600, before the field leaves the
+        # reflection plane (step 605, the run's record-end guard printed below).
+        decay_min_steps=800,
         decay_monitor_component="ez",
         decay_monitor_position=(TRANS_X, Y_CENTER, 0.0),
     )
@@ -151,11 +154,13 @@ def fresnel_slab_rt(freqs, eps_r, d):
 def main():
     print("RUN 1: reference (no slab)")
     res_ref = run_one(with_slab=False)
+    report_record_coverage("reference run", res_ref.settling_witness)
     ref_refl_fm = res_ref.flux_monitors["refl"]
     ref_trans_flux = np.asarray(flux_spectrum(res_ref.flux_monitors["trans"]))
 
     print("RUN 2: sample (with slab)")
     res_slab = run_one(with_slab=True)
+    report_record_coverage("slab run", res_slab.settling_witness)
     slab_refl_fm = res_slab.flux_monitors["refl"]
     slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
@@ -182,6 +187,18 @@ def main():
     print(f"  mean |T - T_analytic| = {np.mean(np.abs(transmittance - t_an)):.3f}")
     print(f"  mean |R - R_analytic| = {np.mean(np.abs(reflectance - r_an)):.3f}")
     print(f"  all finite: {finite}")
+
+
+def report_record_coverage(label, witness):
+    """Print the run's record-end guard and stop if a monitor is not covered."""
+    rows = (witness or {}).get("coverage", ())
+    print(f"  {label}: settling witness {(witness or {}).get('status')}")
+    for row in rows:
+        print(f"    {row['name']}: {row['verdict']} (field leaves at step "
+              f"{row['end_step']}, record {row['n_record']} steps)")
+    uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
+    if not rows or uncovered:
+        raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
 
 
 if __name__ == "__main__":

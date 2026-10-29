@@ -164,7 +164,7 @@ from rfx import (
     Simulation,
     compute_far_field_jax,
     directivity,
-    harminv,
+    matrix_pencil,
     realized_pec_edge_masks,
     realized_wall_planes,
     smooth_grading,
@@ -554,12 +554,12 @@ def main():
     # ---- Full mode list: the patch rings at more than one frequency ----
     modes = [
         m
-        for m in harminv(ts[int(len(ts) * 0.3) :], dt, 1.0e9, 3.5e9)
+        for m in matrix_pencil(ts[int(len(ts) * 0.3) :], dt, 1.0e9, 3.5e9)
         if m.Q > 2 and m.amplitude > 1e-8
     ]
     modes.sort(key=lambda m: m.freq)
     if not modes:
-        raise RuntimeError("harminv found no ring-down modes — inspect the probe trace")
+        raise RuntimeError("matrix_pencil found no ring-down modes — inspect the probe trace")
     print(f"\nharminv ring-down modes ({len(modes)}):")
     for m in modes:
         print(f"  f = {m.freq / 1e9:.4f} GHz | Q = {m.Q:6.1f} | amplitude = {m.amplitude:.3g}")

@@ -55,7 +55,7 @@ import numpy as np
 
 from rfx import GaussianPulse, Simulation
 from rfx.boundaries.spec import BoundarySpec
-from rfx.harminv import HarminvMode, harminv
+from rfx import MatrixPencilMode, matrix_pencil
 
 
 C0 = 299_792_458.0
@@ -98,7 +98,7 @@ def build_cavity(solver: str, adi_cfl_factor: float) -> Simulation:
     return sim
 
 
-def run_and_read(label: str, solver: str, adi_cfl_factor: float) -> HarminvMode:
+def run_and_read(label: str, solver: str, adi_cfl_factor: float) -> MatrixPencilMode:
     """Run one solver, quote its preflight verbatim, and read TE101."""
     sim = build_cavity(solver, adi_cfl_factor)
     print(f"\n[{label}] preflight (quoted verbatim, not suppressed):")
@@ -115,7 +115,7 @@ def run_and_read(label: str, solver: str, adi_cfl_factor: float) -> HarminvMode:
     trace = np.asarray(result.time_series)[:, 0]
     ring_down = trace[len(trace) // 4 :]
     ring_down = ring_down - np.mean(ring_down)
-    modes = harminv(
+    modes = matrix_pencil(
         ring_down, float(result.dt), 0.70 * F_TE101, 1.50 * F_TE101,
         min_Q=1.0, max_modes=12,
     )
@@ -144,7 +144,7 @@ def main() -> None:
     adi2 = run_and_read("adi cfl=2 (accuracy)", "adi", 2.0)
     adi5 = run_and_read("adi cfl=5 (explicit)", "adi", 5.0)
 
-    def e(mode: HarminvMode) -> float:
+    def e(mode: MatrixPencilMode) -> float:
         return 100.0 * (mode.freq - F_TE101) / F_TE101
 
     print("\n" + "-" * 70)
