@@ -167,9 +167,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
     ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,
     ("rfx/subgridding/disjoint_3d.py", "compute_disjoint_energy_3d"): _ENERGY,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_e_3d.face_coeffs"):
+    ("rfx/stepping/subgrid_coupling.py", "_z_slab_material_coupling_e_3d.face_coeffs"):
         _SUBGRID,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_h_3d.face_coeffs"):
+    ("rfx/stepping/subgrid_coupling.py", "_z_slab_material_coupling_h_3d.face_coeffs"):
         _SUBGRID,
     ("rfx/subgridding/sbp_sat_1d.py", "_update_e_1d"): _VACUUM,
     ("rfx/subgridding/sbp_sat_1d.py", "compute_energy"): _ENERGY,
