@@ -427,6 +427,27 @@ feed-to-probe distance and the uniform mesh were run. Workaround for the value: 
 permittivity the override sets under the port lines. The gradient still omits the plane term until the fix; keep the
 override away from the port lines when the gradient matters.
 
+### A two-stub microstrip stopband filter's group delay misses the 1 % bar against HFSS
+
+Tracker: #2203
+
+On a two-stub microstrip stopband filter, |S21|, both transmission zeros and the −3 dB stopband edges are inside the
+accuracy bar against HFSS (see the support matrix). The transmission group delay over 5–11 GHz is not. Both solvers
+converge (rfx cells h/4 to h/12, HFSS three meshes; reference the finest HFSS mesh), and rfx's reference planes are
+moved out to HFSS's ports on the box faces with rfx's own line propagation constant. On the skirts of the stopband the
+group delay differs by up to 19 % per bin; there it climbs toward each solver's own zero, and the zeros differ by up to
+0.53 % (that the zeros carry the difference is estimated, not measured). In the passband at 5.0–5.6 GHz rfx reads 2.4 %
+above HFSS on average; the offset shrinks with the mesh (4.24, 2.88, 2.43 %) but is not yet inside 1 %. Read group delay
+next to a narrow stopband as following the zero positions.
+
+### A uniform-mesh forward(distributed=True) does not return the per-port spectra
+
+Tracker: #1628
+
+On a uniform mesh, `forward(distributed=True)` returns the port S-matrix and the port V, I and V_ref time records as one
+device does, but not the per-port spectra `lumped_port_sparams` / `wire_port_sparams`: reading them raises
+`NotImplementedError`. Take the spectra from `run(devices=...)` or from one device.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
