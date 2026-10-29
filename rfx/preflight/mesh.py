@@ -671,9 +671,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                else self._INPLANE_RATIO_CAP)
         scope = ("validated multi-band grading cap"
                  if ax_name == "z" else
-                 "in-plane grading threshold (the validated 1.4 "
-                 "multi-band cap is a z-axis envelope: no witness in "
-                 "it grades an in-plane axis)")
+                 "validated in-plane grading cap")
         if max_ratio > cap + 1e-6:
             _w.warn(
                 PreflightWarning(
@@ -684,14 +682,14 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                     f"mesh'). WHY: stability is unaffected (dt is the "
                     f"global min-cell CFL, sufficient on any tensor "
                     f"grid), but per-transition accuracy is witnessed "
-                    f"only along z and only up to ratio 1.4 — the -54 dB "
+                    f"only up to ratio 1.4 — the -54 dB "
                     f"reflection class at 30 cells/wavelength (it scales "
                     f"as (dz/lambda)^2), against -44 dB measured at "
                     f"ratio 2.0. COST: an unquantified reflection and "
                     f"grading-dispersion error at that transition. "
                     f"REMEDY: split it into ratio<={cap:g} steps (e.g. "
                     f"rfx.smooth_grading) to stay inside the "
-                    f"{'validated envelope' if ax_name == 'z' else 'pre-existing in-plane threshold (no in-plane envelope is validated)'}, "
+                    f"validated envelope, "
                     f"or accept it and say so in the report. STALE-IF: "
                     f"the support-matrix row raises the cap.",
                     code="nu_grading_ratio_beyond_validated_cap",

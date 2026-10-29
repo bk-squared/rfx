@@ -98,6 +98,13 @@ reaches: the two remaining ``precision_*`` guards,
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
 
+SNAPSHOT CHANGE, 2026-10-29 (in-plane grading cap 1.3 -> 1.4). Written before the regeneration.
+``nu_wire_port_on_graded_node``'s two in-plane ``nu_grading_ratio_beyond_validated_cap`` lines (dx ratio 2.0, dy 3.0)
+now name the in-plane cap 1.4 instead of 1.3 and no longer quote the z cap in their scope, so their numbers go from
+[r, 1.4, 1.3, 1.4, -54, 30, 2, -44, 2, 1.3] to [r, 1.4, 1.4, -54, 30, 2, -44, 2, 1.4], the form of that fixture's dz
+line. Both ratios are above either cap, so the lines stay. Every other fixture's report is identical (65 of 66 matched
+before the regeneration); only that fixture's snapshot is regenerated.
+
 SNAPSHOT CHANGE, 2026-10-28 (#1941). Written before the regeneration. ``guards_msl_sheet_probe`` gains one
 ``body_flush_on_absorber`` line. That fixture lays its 254 um RO4350B substrate on z = 0 with the default boundary,
 so the z-lo face is an absorber and the substrate's thinnest axis is z: the absorber continues the substrate's

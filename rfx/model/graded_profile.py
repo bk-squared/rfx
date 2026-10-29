@@ -568,8 +568,8 @@ def make_band_profile(
         Target cell size (m) per segment, ``len(edges) - 1`` entries.
     max_ratio : float
         Cap on every adjacent-cell ratio (default 1.4 — the validated
-        z-axis multi-band cap; pass 1.3 for an in-plane profile, the
-        in-plane threshold, see docs/guides/support_matrix.md). Must be
+        cap on every axis, z and in plane, see
+        docs/guides/support_matrix.md). Must be
         finite and ``>= 1.0001`` (a 2x transition at that ratio already
         needs 6932 cells; the plateau solve's cost grows with the ramp
         length — measured 0.03 s at 1.0001 on a 40-cell profile and

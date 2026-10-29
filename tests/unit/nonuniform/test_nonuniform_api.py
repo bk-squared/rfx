@@ -663,7 +663,7 @@ class TestFluxMonitorOnNonUniform:
 
         Preflight emits one advisory on this fixture, quoted because preflight
         output is part of the result: "dy_profile max adjacent cell ratio 2.000
-        exceeds the in-plane grading threshold ... 1.3". It bounds the ACCURACY
+        exceeds the validated in-plane grading cap 1.4 ...". It bounds the ACCURACY
         of a field crossing that 2:1 transition. The assertions here are window
         bookkeeping - index mapping, face-area weights, and a restriction
         identity taken against the full plane on the SAME fields - so the

@@ -1729,10 +1729,10 @@ class _PreflightMixin:
     # What the witnesses establish for fine bands ALONG Z (small-large-
     # small-large included), witnessed only up to 3 fine bands / 4
     # transitions — the widest profile in the battery — with EVERY
-    # adjacent-cell ratio <= 1.4. Nothing below is an in-plane statement:
-    # every witness holds the transverse mesh uniform, and no witness
-    # grades dx_profile or dy_profile (adversarial review 2026-08-29,
-    # BL1; note section WP6R.1/WP6R.7 item 1). More bands are expected to
+    # adjacent-cell ratio <= 1.4. These battery witnesses hold the
+    # transverse mesh uniform; the in-plane ones are listed after F-S5
+    # (adversarial review 2026-08-29, BL1; note section WP6R.1/WP6R.7
+    # item 1). More bands are expected to
     # behave the same way (each transition is local, and the measured
     # quantity is per-transition) but are NOT witnessed:
     #   F-S1  Remis-class dual-cell discrete energy is bounded at the
@@ -1750,6 +1750,18 @@ class _PreflightMixin:
     #         reading (p = 1.95) is superseded: that fixture carried ~1 %
     #         of its error on the graded axis (note WP6R.2).
     #   F-S5  the mesh-gradient AD path is unchanged by multi-band.
+    #
+    # In plane (dx_profile, dy_profile) at an adjacent ratio of 1.40:
+    #   F-S2 on x and y (validation/research/multiband_nu/results/e5_x.json,
+    #         e5_y.json, 2026-09-13: every transition inside the same chain
+    #         window as z);
+    #   F-S1 and F-S4 on a 40 x 34 x 10 mm PEC cavity graded on x and y
+    #         (rfx-archive records/20261029-inplane-cap-1p4: conserved energy
+    #         within 5.1e-7 over 1e6 steps; TM110/TM210 at order 1.92, 1.01-
+    #         1.19 x the 1.30 error, simulation = discrete model to 3e-7;
+    #         pinned by tests/unit/nonuniform/test_inplane_grading_witness.py).
+    # F-S3 is not run in plane; E along the graded axis, materials, ports,
+    # plane waves and absorbers on an in-plane graded mesh are not covered.
     #
     # 1.4 is a CAP, not a threshold fitted to data: it is the value the
     # spec claims and the witnesses were run at, and it matches the
@@ -1772,13 +1784,12 @@ class _PreflightMixin:
     # with an absorber present, and this envelope says NOTHING about
     # grading that interacts with one. That exclusion is what the second
     # check reports (BL1 repair, review 2026-08-30; note WP6R.13).
-    # z: the witnessed multi-band envelope cap. x/y: the pre-existing
-    # in-plane threshold, deliberately NOT moved to 1.4 — every witness in
-    # the multi-band battery grades z with a uniform transverse mesh, so
-    # there is no in-plane provenance for moving an in-plane lock
-    # (SPEC-00 0.2-4; adversarial review 2026-08-29, finding BL1).
+    # z: the witnessed multi-band envelope cap. x/y: held at 1.3 from
+    # 2026-08-29 (finding BL1: no in-plane witness then), moved to 1.4 on
+    # the in-plane witnesses listed above (rfx-core-desk 2026-10-29). Two
+    # constants, so either cap can move on its own evidence.
     _MULTIBAND_RATIO_CAP = 1.4
-    _INPLANE_RATIO_CAP = 1.3
+    _INPLANE_RATIO_CAP = 1.4
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 5: the SPEC-01 WP6 multi-band grading advisories and
@@ -1788,9 +1799,9 @@ class _PreflightMixin:
     # The two CAPS above do NOT move. They are class-BODY assignments read
     # as ``self._MULTIBAND_RATIO_CAP`` / ``self._INPLANE_RATIO_CAP`` by the
     # moved body, and read OFF THE CLASS by
-    # ``tests/unit/nonuniform/test_multiband_nu_envelope.py:329``, which
-    # asserts they are DIFFERENT numbers so a single shared constant cannot
-    # silently re-couple the in-plane lock to the z one. They are not
+    # ``tests/unit/nonuniform/test_multiband_nu_envelope.py``, which pins
+    # each value, so a single shared constant cannot silently re-couple
+    # the in-plane lock to the z one. They are not
     # module-level names, so no namespace lock would see them leave; the
     # snapshot lock pins them on the mixin directly. The provenance comment
     # above stays with the values it documents.
