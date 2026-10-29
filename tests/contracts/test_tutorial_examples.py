@@ -237,3 +237,39 @@ def test_resonance_harminv_tutorial_runs():
     long_error = float(long_match.group(1))
     assert math.isfinite(short_error) and short_error < 0.5
     assert math.isfinite(long_error) and long_error < short_error
+
+
+def test_pareto_front_sweep_runs(tmp_path):
+    """Run the CPU example once, measuring startup plus solve and JSON output."""
+    import json
+    import shutil
+    import time
+
+    script = tmp_path / "pareto_front_sweep.py"
+    shutil.copyfile(REPO_ROOT / "examples/inverse_design/pareto_front_sweep.py", script)
+    env = dict(os.environ, PYTHONPATH=str(REPO_ROOT), JAX_PLATFORMS="cpu")
+    started = time.perf_counter()
+    completed = subprocess.run(
+        [sys.executable, str(script)], cwd=REPO_ROOT, env=env,
+        capture_output=True, text=True, check=True, timeout=60,
+    )
+    elapsed = time.perf_counter() - started
+    print(f"Pareto example CPU elapsed (including startup): {elapsed:.3f} s")
+    print(completed.stdout)
+    assert elapsed < 60
+    assert "Pareto front indices:" in completed.stdout
+    assert "Epsilon-constrained choice:" in completed.stdout
+    choice = re.search(r"Epsilon-constrained choice: (\d+)", completed.stdout)
+    assert choice is not None and int(choice.group(1)) in (0, 1)
+    peaks = json.loads(re.search(r"Peak probe fields: (\[.*\])", completed.stdout).group(1))
+    assert len(peaks) == 3
+    assert all(math.isfinite(value) and value > 0 for value in peaks)
+    artifact = json.loads((tmp_path / "pareto_front.json").read_text())
+    assert artifact["evidence_class"] == "pareto_front"
+    assert artifact["source_count"] == 3
+    assert artifact["objective_names"] == ["peak_field", "eps_r"]
+    assert artifact["minimize"] == [False, True]
+    assert artifact["points"]
+    assert sorted(artifact["front_indices"] + artifact["dominated_indices"]) == [0, 1, 2]
+    for point in artifact["points"]:
+        assert point["metadata"]["eps_r"] in (2.0, 3.0, 4.0)

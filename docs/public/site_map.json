@@ -81,6 +81,7 @@
         "rfx/design/design-regions",
         "rfx/design/optimization",
         "rfx/design/sweeps",
+        "rfx/design/pareto",
         "rfx/guide/gradient-behavior"
       ]
     },

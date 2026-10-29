@@ -728,6 +728,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/run/memory-and-speed.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/model/domain-mesh.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/design/sweeps.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/design/pareto.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/measure/s-parameters.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/start/first-simulation.mdx": NO_ARTIFACT_REFERENCE,
     # 2.0 documentation skeleton (#1171): pages with headings only, no artifact reference yet.

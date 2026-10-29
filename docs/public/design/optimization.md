@@ -322,3 +322,5 @@ a bounded latent variable).
   Every iteration then recompiles; remove the host read, or pass `jit=False`.
 - **Out of memory in the backward pass**: use a design box, segmented
   checkpointing or fewer steps. See [Memory Reduction](/rfx/run/memory-and-speed/).
+
+Compare several objectives with [Pareto fronts and selection rules](/rfx/design/pareto/).

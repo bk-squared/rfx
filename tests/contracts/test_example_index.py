@@ -47,6 +47,7 @@ KINDS = {".py": "script", ".yaml": "config", ".yml": "config"}
 CONFIG_BUILDER = "rfx.config.simulation_from_yaml"
 _PLACEHOLDER = re.compile(r"\{[^{}]+\}")
 PR_LANE_PATHS = {
+    "examples/inverse_design/pareto_front_sweep.py",
     "examples/quickstart/hello_world.py",
     "examples/tutorials/adi_solver_demo.py",
     "examples/tutorials/antenna_farfield_pattern.py",
