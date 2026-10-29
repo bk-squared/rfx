@@ -480,6 +480,11 @@ probes downstream of each feed.
   7.663 GHz at cells h/4, h/8, h/12; steps 0.64 % and 0.22 %) and lies 0.34 %
   above openEMS (7.637 GHz, its last refinement step 0.20 %). The depth of a
   deep null is not judged (rfx about −34 dB, openEMS about −27 dB here).
+  Along the line at 7.0 GHz, the line-voltage phase of rfx and openEMS differs
+  by up to 3.04° at the far end of the line, outside a 2° bar; at the zero, the
+  −3 dB corner (+0.90 %) and seven other frequencies (at most 1.40°) they
+  agree. No third solver ran this structure, so which solver departs is not
+  known. This compares a field along the line, not a number S reports.
 - **Two open stubs through two such junctions** (a two-stub stopband filter
   with two transmission zeros, the Sheen low-pass layout; by-hand comparison
   with HFSS, 2026-10; not a CI test). HFSS ran three tetrahedral meshes
