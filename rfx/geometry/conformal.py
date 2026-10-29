@@ -326,7 +326,7 @@ def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
     Applied ONCE at setup, not every timestep.
 
     Weights should be clamped via ``clamp_conformal_weights`` before
-    calling this function to ensure CFL stability.
+    calling this function, which bounds the permittivity at eps_r / w_min.
 
     Parameters
     ----------

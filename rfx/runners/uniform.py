@@ -89,7 +89,7 @@ def run_uniform(
         Enable conformal PEC (eps/w on cut E edges, #1651). None reads
         Boundary(conformal=True); an explicit False requests staircase PEC.
     conformal_min_weight : float
-        Minimum cut-edge weight, capping its permittivity at eps/w (default 0.1).
+        Minimum cut-edge weight; caps its permittivity at eps/conformal_min_weight (default 0.1).
     pec_shapes : list or None
         List of PEC Shape objects (needed for conformal weights).
     keep_wire_port_sparams : bool

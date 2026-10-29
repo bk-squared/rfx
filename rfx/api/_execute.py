@@ -1911,7 +1911,7 @@ class _ExecuteMixin:
             Conformal PEC (eps/w on cut E edges; first order, enlarges a curved
             body, #1651). None reads Boundary(conformal=True); False is staircase.
         conformal_min_weight : float
-            Minimum cut-edge weight, capping its permittivity at eps/w.
+            Minimum cut-edge weight; caps its permittivity at eps/conformal_min_weight.
             Default 0.1. Recommended range: 0.05-0.3.
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation
