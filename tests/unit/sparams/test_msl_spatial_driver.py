@@ -167,6 +167,15 @@ def _assert_h_registrations(records, grid, direction, graded):
             assert r["shape"] == (len(FREQS), 6, 2)
 
 
+def _knob(grid, scale):
+    """``eps_override`` as a scalar knob: the declared substrate everywhere, the
+    knob only in the one cell the manufactured forward reads, off every port
+    line. The feed-plane shift reads the override under the port lines (#2199),
+    so a knob there would move the line and the shift with it."""
+    cell = tuple(pad + 1 for pad in grid.axis_pads)
+    return jnp.full(grid.shape, EPS_R, dtype=jnp.float32).at[cell].set(scale)
+
+
 def _expected_vi(graded, scale):
     # Five width-node segments and one normal segment around the thin trace.
     # The H_width pair contributes +5U*s, H_z contributes -0.25*5U*s.
@@ -184,7 +193,7 @@ def test_public_msl_driver_centres_current_at_voltage_plane(
     calls, snapshots = _install_manufactured_backends(
         monkeypatch, sim, grid, profiles, direction, graded)
     scale = 1.25 if route == "forward" else 1.0
-    kwargs = {"eps_override": jnp.full(grid.shape, scale)} if route == "forward" else {}
+    kwargs = {"eps_override": _knob(grid, scale)} if route == "forward" else {}
     dump = tmp_path / "raw.npz"
     result = sim.compute_msl_s_matrix(
         freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
@@ -221,7 +230,7 @@ def test_public_forward_keeps_manufactured_material_sensitivity(monkeypatch, dir
     def objective(scale):
         result = sim.compute_msl_s_matrix(
             freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
-            eps_override=jnp.full(grid.shape, scale))
+            eps_override=_knob(grid, scale))
         return jnp.mean(jnp.real(probe0_s(result, line_s(result))[0, 0]))
 
     scale = 1.25

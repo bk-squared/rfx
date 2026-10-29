@@ -134,6 +134,15 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
     return sim, grid, references, calls
 
 
+def _knob(grid, theta):
+    """``eps_override`` as a scalar knob: the declared substrate everywhere, the
+    knob only in the one cell the manufactured forward reads, off both port
+    lines. The feed-plane shift reads the override under the port lines (#2199),
+    so a knob there would move the lines and the shift with them."""
+    cell = tuple(pad + 1 for pad in grid.axis_pads)
+    return jnp.full(grid.shape, 2.0, dtype=jnp.asarray(theta).dtype).at[cell].set(theta)
+
+
 def _compute(sim, **kwargs):
     return sim.compute_msl_s_matrix(freqs=FREQS, n_steps=1, num_periods=1, **kwargs)
 
@@ -164,7 +173,7 @@ def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
         return real_solve(a, b)
 
     monkeypatch.setattr(sparams, "msl_solve_s_from_waves", capture)
-    route_kwargs = {"eps_override": jnp.full(grid.shape, THETA)} if route == "forward" else {}
+    route_kwargs = {"eps_override": _knob(grid, jnp.asarray(THETA))} if route == "forward" else {}
     dump = tmp_path / "raw.npz"
     raw = _compute(sim, enforce_passivity=False, raw_3probe_dump_path=str(dump), **route_kwargs)
     default = _compute(sim, **route_kwargs)
@@ -173,7 +182,9 @@ def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
         assert result.assembly == "multi_drive_solve" and np.max(result.cond_a) < 3
         # #2014: S is referenced to the declared 50 ohm; the waves are formed
         # at the line Z0, so the wave split is checked on S brought back there.
-        np.testing.assert_allclose(result.line_impedances, references, rtol=1e-12)
+        # Under an override the line Z0 is formed from it in float32 (#2199).
+        np.testing.assert_allclose(result.line_impedances, references,
+                                   rtol=1e-12 if route == "run" else 1e-6)
         np.testing.assert_allclose(result.reference_impedances, [50.0, 50.0], rtol=1e-12)
         np.testing.assert_allclose(probe0_s(result, line_s(result)), expected, rtol=5e-6, atol=1e-6)
         np.testing.assert_allclose(result.S[0, 1], result.S[1, 0], rtol=5e-6, atol=1e-6)
@@ -241,8 +252,11 @@ def test_forward_power_objective_preserves_nonzero_material_tape_gradient(monkey
         sim, grid, references, calls = _case(monkeypatch)
 
         def objective(theta):
-            result = _compute(sim, eps_override=jnp.full(grid.shape, theta))
-            np.testing.assert_allclose(result.line_impedances, references, rtol=1e-12)
+            result = _compute(sim, eps_override=_knob(grid, theta))
+            # Under an override the line Z0 is formed from it in its own
+            # precision (#2199): float32 rounding, not a different line.
+            np.testing.assert_allclose(result.line_impedances, references,
+                                       rtol=1e-12 if x64 else 1e-6)
             np.testing.assert_allclose(result.reference_impedances, [50.0, 50.0], rtol=1e-12)
             return jnp.mean(jnp.abs(line_s(result)[1, 0])**2)
 
