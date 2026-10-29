@@ -46,38 +46,6 @@
       "D2": []
     }
   },
-  "outside": {
-    "rfx/subgridding/disjoint_3d.py": {
-      "S": [
-        "_apply_fine_pec_axes",
-        "_yee_e_step",
-        "_yee_h_step",
-        "_yee_step"
-      ],
-      "M": []
-    },
-    "rfx/subgridding/jit_runner.py": {
-      "S": [
-        "_make_step_fn",
-        "run_subgridded_jit"
-      ],
-      "M": [
-        "_make_step_fn"
-      ]
-    },
-    "rfx/subgridding/runner.py": {
-      "S": [
-        "run_subgridded"
-      ],
-      "M": []
-    },
-    "rfx/subgridding/sbp_sat_3d.py": {
-      "S": [
-        "_update_e_only",
-        "_update_h_only"
-      ],
-      "M": []
-    }
-  },
+  "outside": {},
   "reverse": {}
 }
