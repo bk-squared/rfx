@@ -12,6 +12,8 @@ non-uniform path, or the two-device uniform path where stated.
 
 No active findings remain. The three uniform two-device port cells now return
 their per-step records, and both wire cells return `wire_port_sparams`.
+The three uniform two-device `forward()` port cells return `lumped_port_sparams`
+and `wire_port_sparams` (#2175).
 
 The exact text per cell and record is in `findings.json` (`causes.*.fingerprints`, `cells`).
 
