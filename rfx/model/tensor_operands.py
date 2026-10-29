@@ -160,7 +160,7 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the
     # run's final periodic flags (after the TFSF / 2-D overrides), divided
-    # by the edge's open fraction w. On an edge no PEC touches (w == 1) it
+    # by the edge's weight w (not its open fraction, #1651). At w == 1 it
     # is the plain path's value exactly.
     if conformal_weights is not None:
         w_ex, w_ey, w_ez = conformal_weights
