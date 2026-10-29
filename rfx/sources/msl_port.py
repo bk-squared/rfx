@@ -1180,11 +1180,13 @@ def make_msl_port_sources_jm(
 
     dt = grid.dt
     dx = float(grid.dx)
-    times_e = jnp.arange(n_steps, dtype=jnp.float32) * dt
-    # H lives at half-integer steps: t_{n+1/2} = (n + 0.5) * dt
-    times_h = (jnp.arange(n_steps, dtype=jnp.float32) + 0.5) * dt
-    base_wave_e = jax.vmap(port.excitation)(times_e)
-    base_wave_h = jax.vmap(port.excitation)(times_h)
+    from rfx.sources._sampling import concrete_waveform_eval
+    with concrete_waveform_eval(port.excitation, dt):
+        times_e = jnp.arange(n_steps, dtype=jnp.float32) * dt
+        # H lives at half-integer steps: t_{n+1/2} = (n + 0.5) * dt
+        times_h = (jnp.arange(n_steps, dtype=jnp.float32) + 0.5) * dt
+        base_wave_e = jax.vmap(port.excitation)(times_e)
+        base_wave_h = jax.vmap(port.excitation)(times_h)
 
     em = eigenmode_data
     j_lo = em.j_grid_lo

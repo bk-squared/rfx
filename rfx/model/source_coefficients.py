@@ -123,9 +123,12 @@ def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
     import jax
     import jax.numpy as jnp
     from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    from rfx.sources._sampling import concrete_waveform_eval
+    with concrete_waveform_eval(waveform, grid.dt):
+        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+        samples = jax.vmap(waveform)(times)
     return source_table(
-        jax.vmap(waveform)(times), kind, native=native,
+        samples, kind, native=native,
         volume=_uniform_cell_volume(grid),
         coefficient=lambda: e_update_coefficient_at(
             materials, cell, component, grid.dt, periodic,
@@ -143,14 +146,19 @@ def field_source_samples(waveform, n_steps, dt):
     """ADI's prescribed field table, using its solver-specific timestep."""
     import jax
     import jax.numpy as jnp
-    return source_table(jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt), "field")
+    from rfx.sources._sampling import concrete_waveform_eval
+    with concrete_waveform_eval(waveform, dt):
+        samples = jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt)
+    return source_table(samples, "field")
 
 
 def current_source_samples(grid, waveform_fn, n_steps):
     """The current ``I(t)`` in amperes at the ``n_steps`` step times
     ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    return jax.vmap(waveform_fn)(times)
+    from rfx.sources._sampling import concrete_waveform_eval
+    with concrete_waveform_eval(waveform_fn, grid.dt):
+        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+        return jax.vmap(waveform_fn)(times)
 
 
 def current_source_cb(eps_r_c, sigma_c, dt):
@@ -325,14 +333,17 @@ def subgrid_source_tables(requests, grid, materials, n_steps, *, high_wall, nati
     import numpy as np
     from rfx.model.materials import e_update_coefficient_at, with_components
     from rfx.sources.port_drive import port_drive_waveform
+    from rfx.sources._sampling import concrete_waveform_eval
 
     materials = with_components(materials, grid, periodic=(False,) * 3, high_wall=high_wall)
     fine, coarse = [], []
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     for pe, cell, drive in requests:
         if drive is None:
+            with concrete_waveform_eval(pe.waveform, grid.dt):
+                times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+                samples = jax.vmap(pe.waveform)(times)
             waveform = source_table(
-                jax.vmap(pe.waveform)(times), pe.amplitude_kind, native=native,
+                samples, pe.amplitude_kind, native=native,
                 volume=volume,
                 coefficient=lambda: float(e_update_coefficient_at(
                     materials, cell, pe.component, grid.dt)))
