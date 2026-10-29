@@ -440,12 +440,6 @@ group delay differs by up to 19 % per bin; there it climbs toward each solver's 
 above HFSS on average; the offset shrinks with the mesh (4.24, 2.88, 2.43 %) but is not yet inside 1 %. Read group delay
 next to a narrow stopband as following the zero positions.
 
-### With closely spaced probes, a matched straight microstrip line reflects about −27 dB in `compute_msl_s_matrix`, and the floor does not fall with the mesh
-
-Tracker: #2239
-
-On a matched straight microstrip line, `compute_msl_s_matrix` returns |S11| of about −27 dB over 6–9 GHz that does not fall with the mesh (a commercial FEM solver: −35 dB), when the probes are placed explicitly over a short span (about 0.05 of a guided wavelength); the default placement is not yet measured. On a two-port filter, a reflection of this size can move the group delay over a 0.6 GHz window by up to about ±4 % (computed). A fix is planned for 2.1.
-
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
