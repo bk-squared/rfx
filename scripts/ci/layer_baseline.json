@@ -47,14 +47,6 @@
     }
   },
   "outside": {
-    "rfx/adi.py": {
-      "S": [
-        "run_adi_2d",
-        "run_adi_3d",
-        "thomas_solve"
-      ],
-      "M": []
-    },
     "rfx/subgridding/disjoint_3d.py": {
       "S": [
         "_apply_fine_pec_axes",
