@@ -294,7 +294,9 @@ def test_a_traced_x_profile_with_tfsf_is_refused(entry):
             kwargs["checkpoint"] = False
         return getattr(sim, entry)(**kwargs).time_series
 
-    with pytest.raises(ValueError, match="TF/SF requires host x cell widths"):
+    # #2241: graded run refuses the outer transform before the host-width fence.
+    message = r"rfx#2241.*Call forward\(\)" if entry == "run" else "TF/SF requires host x cell widths"
+    with pytest.raises(ValueError, match=message):
         jax.make_jaxpr(solve)(_X_GRADED)
 
 

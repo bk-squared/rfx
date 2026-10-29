@@ -40,6 +40,11 @@ def test_a_declared_dimension_gradient_refuses(entry, shape, dimension):
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_a_graded_shape_gradient_refuses(entry):
+    if entry == "run":
+        # #2241: graded run refuses the transformation before the shape fence.
+        with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+            jax.grad(lambda r: objective(r, entry, graded=True))(.0023)
+        return
     with pytest.raises(NotImplementedError, match="declared shape dimension"):
         jax.grad(lambda r: objective(r, entry, graded=True))(.0023)
 
@@ -75,6 +80,14 @@ def test_c_shape_value_transforms_match_plain(entry, graded, shape, transform):
     def loss(dimension):
         return objective(dimension, entry, shape, graded)
 
+    if entry == "run" and graded:
+        # #2241: graded run no longer admits either shape value transform.
+        with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+            if transform == "jit":
+                jax.jit(loss)(.0023)
+            else:
+                jax.vmap(loss)(jnp.asarray((.0023, .0027)))
+        return
     if transform == "jit":
         expected = loss(.0023)
         actual = jax.jit(loss)(.0023)
@@ -124,7 +137,11 @@ def test_d_smoothed_shape_transform_in_cpml_refuses(entry, graded, smoothing, tr
 
     match = ("continued into it" if not graded or smoothing != "kottke_pec"
              else "uniform single-device|non-uniform mesh")
-    with pytest.raises(NotImplementedError, match=match):
+    error = NotImplementedError
+    if entry == "run" and graded:
+        # #2241: transformation admission precedes smoothing/absorber admission.
+        error, match = ValueError, r"rfx#2241.*Call forward\(\)"
+    with pytest.raises(error, match=match):
         if transform == "jit":
             jax.jit(loss)(.0023)
         else:

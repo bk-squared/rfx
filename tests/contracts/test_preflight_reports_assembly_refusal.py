@@ -202,8 +202,16 @@ def test_traced_radius_refusal_with_concrete_mesh(kind, graded, capsys):
         else:
             entry = sim._thin_conductors[0]
             sim._thin_conductors[0] = replace(entry, shape=replace(entry.shape, radius=radius))
-        with pytest.raises((ValueError, NotImplementedError)) as refused:
-            sim.run(n_steps=1, compute_s_params=False)
+        if graded:
+            # #2241: run refuses tracing before assembly; forward still exposes
+            # the assembly refusal that preflight must report below.
+            with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+                sim.run(n_steps=1, compute_s_params=False)
+            with pytest.raises((ValueError, NotImplementedError)) as refused:
+                sim.forward(n_steps=1)
+        else:
+            with pytest.raises((ValueError, NotImplementedError)) as refused:
+                sim.run(n_steps=1, compute_s_params=False)
         capsys.readouterr()
         report = sim.preflight()
         findings = [issue for issue in report

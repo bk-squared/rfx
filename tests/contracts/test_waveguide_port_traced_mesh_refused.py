@@ -80,6 +80,11 @@ def test_traced_cell_widths_refused_by_port_name(monkeypatch, entry, axis):
         pytest.fail("a waveguide port on a traced mesh reached lax.scan")
 
     monkeypatch.setattr(jax.lax, "scan", forbidden)
+    if entry == "run":
+        # #2241: graded run refuses the outer transform before port assembly.
+        with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+            jax.jacfwd(lambda d: _read(_section(d, axis), entry))(0.0)
+        return
     with pytest.raises(TracedStructureRefusal) as caught:
         jax.jacfwd(lambda d: _read(_section(d, axis), entry))(0.0)
     message = str(caught.value)

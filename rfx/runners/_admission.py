@@ -1426,7 +1426,17 @@ def guard_shape_tangents(sim):
 
 
 def admit_traced_run(sim, until_decay=None, decay_max_steps=None, radiated_flux_box=None):
-    """Refuse an unused flux stop and preserve source/shape fences before dispatch."""
+    """Refuse transformed graded runs and apply flux/source/shape fences before assembly."""
+    # #2241: run() prepares its assembly before _dispatch_plan. This run-only
+    # entry knows the resolved mesh and precedes that assembly on both the
+    # single-device and distributed graded lanes. forward() remains admitted.
+    if sim._uses_nonuniform_mesh and _under_external_jax_transform():
+        raise ValueError(
+            "run() on a graded (non-uniform) mesh called inside a JAX "
+            "transformation (jax.jit, vmap, grad, ...) gives a different result "
+            "from plain run() (rfx#2241). Call forward() inside the "
+            "transformation; forward() under jax.jit is bit-identical to "
+            "plain forward() and to plain run().")
     from rfx.measurement.decay import refuse_radiated_flux_stop
     refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
     _refuse_transformed_extended_tfsf(sim._tfsf, until_decay, decay_max_steps)

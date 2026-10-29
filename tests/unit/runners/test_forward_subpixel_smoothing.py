@@ -108,6 +108,14 @@ def test_run_traced_source_amplitude(graded, transform):
         result = traced_run_sim(amplitude, graded).run(n_steps=30, skip_preflight=True)
         return jnp.sum(jnp.asarray(result.time_series) ** 2)
     plain = objective(1.0)
+    if graded:
+        # #2241: transformed graded run is refused; use forward for AD/staging.
+        call = {"grad": lambda: jax.grad(objective)(1.0),
+                "jit": lambda: jax.jit(objective)(1.0),
+                "vmap": lambda: jax.vmap(objective)(jnp.array([1.0, 2.0]))}[transform]
+        with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+            call()
+        return
     if transform == "grad":
         actual, expected = jax.grad(objective)(1.0), 2 * plain
     elif transform == "jit":
@@ -125,10 +133,15 @@ def test_run_traced_material_matches_forward(graded):
         result = getattr(traced_run_sim(1.0, graded, eps), entry)(
             n_steps=30, skip_preflight=True)
         return jnp.sum(jnp.asarray(result.time_series) ** 2)
-    actual = jax.grad(lambda eps: objective(eps, "run"))(4.0)
     expected = jax.grad(lambda eps: objective(eps, "forward"))(4.0)
-    print(f"traced material: graded={graded}, run={actual}, forward={expected}")
     assert float(expected) != 0
+    if graded:
+        # #2241: keep the forward gradient witness; graded run now refuses AD.
+        with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+            jax.grad(lambda eps: objective(eps, "run"))(4.0)
+        return
+    actual = jax.grad(lambda eps: objective(eps, "run"))(4.0)
+    print(f"traced material: graded={graded}, run={actual}, forward={expected}")
     np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=0)
 
 

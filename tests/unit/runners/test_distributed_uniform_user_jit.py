@@ -61,7 +61,7 @@ def test_uniform_user_jit_matches_eager(boundary, port):
         assert int(step) == N_STEPS
 
 
-def test_graded_user_jit_default_port_s_matches_eager():
+def test_graded_user_jit_default_port_s_is_refused():
     sim = scene('pec', port=True, graded=True)
 
     def call():
@@ -69,21 +69,26 @@ def test_graded_user_jit_default_port_s_matches_eager():
                        skip_preflight=True).s_params
 
     eager = np.asarray(call())
-    jitted = np.asarray(jax.jit(call)())
     peak = np.max(np.abs(eager))
     assert peak > 0
-    assert np.all(np.abs(jitted - eager) <= 1e-4 * peak)
+    # #2241: graded multi-device run is covered by the transformation refusal.
+    with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+        jax.jit(call)()
 
 
-def test_graded_user_jit_source_run_is_bitwise_equal():
+def test_graded_user_jit_source_run_is_refused():
     sim = scene('cpml', graded=True)
 
     def call():
         result = sim.run(n_steps=N_STEPS, devices=jax.devices('cpu')[:2], skip_preflight=True)
         return result.time_series, result.state.ez, result.state.step
 
-    for actual, expected in zip(jax.jit(call)(), call()):
-        np.testing.assert_array_equal(actual, expected)
+    eager = call()
+    assert np.any(np.asarray(eager[0]) != 0)
+    assert int(eager[2]) == N_STEPS
+    # #2241: the old cross-trace comparison is replaced by the stopgap refusal.
+    with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+        jax.jit(call)()
 
 
 def record_scene(kind, *, graded=False, freqs=None):
@@ -163,7 +168,13 @@ def test_record_user_jit_matches_eager(kind, graded):
                          skip_preflight=True, compute_s_params=False)
         return record_arrays(result, kind)
 
-    assert_record_matches(kind, call(), jax.jit(call)(), context=(kind, graded))
+    eager = call()
+    if graded:
+        # #2241: refuse the whole graded run, including every record kind.
+        with pytest.raises(ValueError, match=r"rfx#2241.*Call forward\(\)"):
+            jax.jit(call)()
+        return
+    assert_record_matches(kind, eager, jax.jit(call)(), context=(kind, graded))
 
 
 @pytest.mark.parametrize('kind,what', [('dft', 'a DFT plane probe'), ('flux', 'a flux monitor')])
