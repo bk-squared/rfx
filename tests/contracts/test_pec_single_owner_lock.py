@@ -149,6 +149,12 @@ _BARE_PEC_MASK = re.compile(r"(?<![A-Za-z_])pec_mask(?![A-Za-z_0-9])")
      "masks (3-D), not a primal-cell mask — zeroing E at the occupied cell "
      "indices was this lane's own realization and gave a one-cell body its "
      "lower face and never its far one"),
+    ("stepping/adi.py",
+     "the ADI kernels and time loops moved here from adi.py; the same "
+     "lane, the same rule"),
+    ("model/adi_admission.py",
+     "the ADI admission moved here from adi.py; the same lane, the same "
+     "rule"),
 ])
 def test_named_lanes_no_longer_carry_a_cell_mask_hook(module, why):
     """Lanes that used to realize PEC their own way keep no cell-mask hook.
