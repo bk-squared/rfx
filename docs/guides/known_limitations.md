@@ -167,16 +167,19 @@ Design boxes use the same whole-grid adjoint workspace estimate and are unmeasur
 other scenes, backends, and JAX versions are also unmeasured for this coefficient.
 Measure a representative run or pull back one output at a time when memory is tight.
 The former 2.2-times advice was exceeded by the measured 16-output row (2.25 times).
-An estimate from the compiled whole gradient is the planned replacement.
+Since rfx 2.0, on a single-device graded run on a GPU, `estimate_ad_memory(..., compiled=True)` compiles the gradient program without running it and returns its device peak in `compiled_total_bytes`: 0.992 to 1.000 of the measured peak on four graded rows on two GPU models, for one compile of 9 to 31 s.
+It refuses wherever it was not measured: uniform, multi-device and subgridded runs, other backends, a preallocated GPU memory pool (`XLA_PYTHON_CLIENT_PREALLOCATE` must be "false"), design boxes, float64, warmup steps, plans that do not segment the run, and outputs other than probe and waveguide-port records.
 
 ### jax 0.11.2 and 0.12.0 run the time step slower than jax 0.10.2, on CPU at every measured size and on GPU on a large grid
 
 Tracker: #2125
 
+rfx's install range (`jax>=0.10.2,<0.11.2`) does not install these versions; this entry applies where they are installed by hand.
+
 Measured at two grid sizes, with and without one lumped RLC element. This is not a trend over grid size.
 On one RTX A6000 at 3.05 M cells (CPML included), jax 0.11.2 takes 1.18 times as long per time step as jax 0.10.2.
 On the GPU at 0.53 M cells, the two versions take the same time (1.00).
-On both devices the slowdown appears with and without the lumped element, so it comes from the compiler version, not from rfx.
+On both devices the slowdown appears with and without the lumped element.
 Peak device memory is the same on both versions.
 `estimate_ad_memory` still reads 1.007 to 1.009 of the measured gradient peak with `checkpoint=True`.
 On CPU (one node, 8 cores, the same two grids), jax 0.11.2 takes 2.7 to 3.0 times as long per step at 0.53 M cells.
@@ -184,9 +187,12 @@ At 3.05 M cells it takes 1.6 to 2.4 times as long.
 The compiled CPU step holds 18 more domain-sized copies on jax 0.11.2, with and without the lumped element.
 Peak host memory is unchanged on CPU (0.91 to 1.01 times).
 jax 0.11.0 and 0.11.1 run the CPU step at jax 0.10.2's speed (1.00 to 1.01 times, 8 domain-sized copies); jax 0.12.0 is slower (5.6 times at 0.53 M cells, 2.4 times at 3.05 M cells).
-The release and the change in the compiled program (domain-sized fusions 85 to 98, copies 8 to 26) match openxla/xla#50977: from jaxlib 0.11.2, chains of partial array updates are recomputed. This is a match by version and operation counts, not a proven cause.
+On CPU, every domain-sized copy that jaxlib 0.11.2 adds comes from the absorber (CPML) write-back. That write-back is a chain of partial updates of each field, and from 0.11.2 the compiler recomputes such chains (openxla/xla#50977). This holds in 40 of 43 measured scenes.
+On the GPU the write-back takes another form, and the extra copies do not appear; the cause of the GPU's 1.18 times at 3.05 M cells is not measured.
+An rfx-side change, a compiler barrier after each absorber update on CPU, removed the extra copies. With it, the step on 0.11.2 took 0.98 to 1.00 times jax 0.10.2's time, and the fields stayed bit-identical. It is planned for 2.1, together with lifting the install cap.
+These step times come from a second CPU node; on it, the unchanged step on 0.11.2 took 1.5 to 1.7 times jax 0.10.2's time, so the size of the slowdown depends on the machine.
 No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
-Workaround on CPU with Python 3.12 or newer: install `jax==0.11.1 jaxlib==0.11.1`.
+Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
