@@ -25,8 +25,8 @@ ALLOWED_CALLS = {'rfx/adi.py': 3,
  # lumped stamp out of the cells before the high-wall view (the view replicates
  # cells, not edges). jit_runner.py's 2 calls moved into rfx/model/materials.py.
  'rfx/model/electric_metrics.py': 3,
- 'rfx/runners/_distributed_common.py': 4,
- 'rfx/runners/distributed_nu.py': 1,
+ 'rfx/stepping/slab_update.py': 4,
+ 'rfx/stepping/slab_graded_legacy_loop.py': 1,
  'rfx/runners/nonuniform.py': 1,
  'rfx/sources/coaxial_port.py': 1,
  'rfx/sources/msl_port.py': 1,

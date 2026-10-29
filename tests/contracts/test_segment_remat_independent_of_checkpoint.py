@@ -95,9 +95,9 @@ def test_segment_remat_independent_of_checkpoint(path):
         jax.clear_caches()
     elif path == "distributed-graded":
         # Static path proof, not a claim of measured multi-device memory.
-        from rfx.runners import distributed_nu
+        from rfx.stepping import slab_graded_legacy_loop
         from rfx.stepping import remat
-        runner = ast.parse(inspect.getsource(distributed_nu))
+        runner = ast.parse(inspect.getsource(slab_graded_legacy_loop))
         segmented = [node for node in ast.walk(runner) if isinstance(node, ast.If)
                      and isinstance(node.test, ast.Name) and node.test.id == "use_segmented"]
         assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)

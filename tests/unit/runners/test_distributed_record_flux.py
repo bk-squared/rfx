@@ -65,8 +65,8 @@ def test_flux(boundary, n_devices, entry, monkeypatch, tmp_path):
 @pytest.mark.parametrize("mutation", ["ghost_exchange", "window_clock"])
 def test_flux_mutations(mutation, monkeypatch, tmp_path):
     if mutation == "ghost_exchange":
-        from rfx.runners import distributed_v2
-        monkeypatch.setattr(distributed_v2, "_exchange_h_ghosts_shmap", lambda state, *a, **kw: state)
+        from rfx.stepping import slab_uniform_loop
+        monkeypatch.setattr(slab_uniform_loop, "_exchange_h_ghosts_shmap", lambda state, *a, **kw: state)
     else:
         original = accumulators.flux
 

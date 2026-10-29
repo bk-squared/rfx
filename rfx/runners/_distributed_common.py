@@ -169,17 +169,10 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, h
 
 
 
-def _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=None):
-    return fill_pole_rows(coeffs, dt, nx_per, nx, rank=rank)
+from rfx.stepping.slab_update import _pad_slab_dispersion_coeffs
 
 
-def slab_dispersion_coeffs(coeffs, e_materials, dt, nx_per, nx, rank=None):
-    """Finish ADE E coefficients inside the loop from the shared edge means."""
-    if isinstance(coeffs, DebyeCoeffs):
-        full = debye_e_coeffs(e_materials, dt, coeffs.alpha, coeffs.beta)
-    else:
-        full = lorentz_e_coeffs(e_materials, dt, coeffs.a, coeffs.b, coeffs.c)
-    return _pad_slab_dispersion_coeffs(full, dt, nx_per, nx, rank)
+from rfx.stepping.slab_update import slab_dispersion_coeffs
 
 
 def gather_array_x(slabs, ghost=1):
@@ -298,109 +291,13 @@ def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
 # ---------------------------------------------------------------------------
 
 
-def exchange_component_shmap(field, mesh, n_devices, *, ranks):
-    """Exchange ghost cells for one field component using ``shard_map``.
-
-    Extracted verbatim from ``distributed_v2.py::_exchange_component_shmap``
-    and ``distributed_nu.py::_exchange_component_nu_shmap`` — those two
-    bodies were byte-for-byte identical.
-
-    ``field`` has global shape ``(nx_with_ghost*n_devices, ny, nz)`` when
-    viewed from outside ``shard_map``; inside each shard sees
-    ``(nx_local_with_ghost, ny, nz)``.
-
-    Convention (also used by the retired pmap runner):
-    - ``field[0]``  = left ghost  <- left neighbour's rightmost real cell
-    - ``field[-1]`` = right ghost <- right neighbour's leftmost real cell
-    - real cells: ``field[1:-1]``
-    """
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=P("x"),
-        out_specs=P("x"),
-        check_rep=False,
-    )
-    def _exchange(f, *, rank):
-        right_boundary = f[-2:-1, :, :]   # last real cell -> right neighbour's left ghost
-        left_boundary = f[1:2, :, :]      # first real cell -> left neighbour's right ghost
-
-        perm_right = [(i, (i + 1) % n_devices) for i in range(n_devices)]
-        left_ghost_recv = lax.ppermute(right_boundary, "x", perm=perm_right)
-
-        perm_left = [(i, (i - 1) % n_devices) for i in range(n_devices)]
-        right_ghost_recv = lax.ppermute(left_boundary, "x", perm=perm_left)
-
-        device_idx = rank
-
-        left_ghost_val = jnp.where(device_idx > 0,
-                                   left_ghost_recv,
-                                   f[0:1, :, :])
-        right_ghost_val = jnp.where(device_idx < n_devices - 1,
-                                    right_ghost_recv,
-                                    f[-1:, :, :])
-
-        f = f.at[0:1, :, :].set(left_ghost_val)
-        f = f.at[-1:, :, :].set(right_ghost_val)
-        return f
-
-    return _exchange(ranks, field)
+from rfx.stepping.slab_exchange import exchange_component_shmap
 
 
-def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
-    """Send packed Hy/Hz last-real rows right into the live LEFT ghosts.
-
-    The second-order Yee E curl reads only these two x-neighbours. Keep
-    physical-boundary ghosts verbatim; there is no wraparound on this lane.
-    Refill only the Hy/Hz left ghosts consumed by the E curl.
-    """
-    if n_devices == 1:
-        return state
-
-    def _exchange(hy, hz, *, rank):
-        packed = jnp.stack((hy[-2], hz[-2]))
-        received = lax.ppermute(
-            packed, "x", perm=[(i, i + 1) for i in range(n_devices - 1)])
-        interior = rank > 0
-        hy = hy.at[0].set(jnp.where(interior, received[0], hy[0]))
-        hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
-        return hy, hz
-
-    hy, hz = rank_pair_exchange(_exchange, mesh, ranks, state.hy, state.hz, local=local)
-    return state._replace(hy=hy, hz=hz)
+from rfx.stepping.slab_exchange import exchange_h_yee_shmap
 
 
-def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
-    """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
-
-    The H curl reads only these two x-neighbours; NTFF y/z faces also read the RIGHT Hx
-    ghost, valid as every admitted H writer updates it like the owner row, except closed-box
-    TF/SF, whose module sends it (another owner-only H writer needs a ghost-invariant test).
-
-    Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
-
-    Placement contract: this is the LAST stage of the E half-step in
-    :func:`run_nonuniform_distributed_pec` — after sources and after every
-    PEC stage — so a ghost row is a copy of the owner's FINISHED real row.
-    The H update at a rank's last real cell reads ``Ey``/``Ez`` on the
-    right ghost plane; a copy taken before the owner zeroed its PEC edges
-    there is stale (#931 seam-cell divergence).
-    """
-    if n_devices == 1:
-        return state
-
-    def _exchange(ey, ez, *, rank):
-        packed = jnp.stack((ey[1], ez[1]))
-        received = lax.ppermute(
-            packed, "x", perm=[(i, i - 1) for i in range(1, n_devices)])
-        interior = rank < n_devices - 1
-        ey = ey.at[-1].set(jnp.where(interior, received[0], ey[-1]))
-        ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
-        return ey, ez
-
-    ey, ez = rank_pair_exchange(_exchange, mesh, ranks, state.ey, state.ez, local=local)
-    return state._replace(ey=ey, ez=ez)
+from rfx.stepping.slab_exchange import exchange_e_yee_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -414,115 +311,7 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
 # traced jaxpr is structurally unchanged -- the 13 baseline fixtures are
 # what says so, not this comment.
 
-def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
-                         nx_local_with_ghost: int,
-                         pad_x: int = 0, pec_faces: frozenset | None = None, *, ranks) -> FDTDState:
-    """Apply PEC on the physical domain faces (x_lo, x_hi, y, z) under
-    ``shard_map``, using device identity for the two x faces.
-
-    ``pec_faces`` selects domain walls; None retains the all-face default.
-    Y- and Z-face PEC is local to every rank.
-    X-face PEC is rank-conditional: only rank 0 zeroes x_lo, only rank
-    N-1 zeroes x_hi.
-
-    The X faces act on the **first real cell** (``ghost``) and the
-    **last real cell** (``nx_local_with_ghost - 1 - ghost - pad_x``),
-    NOT on the seam ghost cells (which belong to neighbouring ranks)
-    and NOT on the alignment-pad cells. ``pad_x`` (#622): when the last
-    rank's slab carries alignment-pad cells past the real x-hi face
-    (global node ``nx - 1``), the face must act on that real node, not
-    on the padded slab end. This is V3 bullet 7 ("Hard PEC only acts on
-    physical boundary or masked cells, not on seam ghosts") and V3
-    bullet 6 ("Hard PEC does not re-zero interior seam cells of
-    neighbouring ranks").
-
-    ``nx_local_with_ghost`` is the per-rank slab length INCLUDING both
-    ghost layers -- ``nx_padded // n_devices + 2 * ghost`` on both
-    runners; ``ShardedNUGrid.nx_local`` is that same quantity and
-    ``ShardedNUGrid.nx_per_rank`` is NOT (#1038 leg 3 derives this at
-    every call site).
-
-    Issue #1038 leg 3. This is ``distributed_v2.py::_apply_pec_shmap`` verbatim from the ``@partial`` down. ``distributed_nu.py`` carried a
-    copy whose kernel differed in exactly one token -- its own parameter
-    spelling -- plus three comments; the rename in the preceding commit
-    made the two normalised-AST hashes equal
-    (``29aeb6858fb45082...``) and the NU copy's richer face comments are
-    folded into this docstring.
-
-    **This function does not encode a hook point.** Callers own their
-    ordering; this function only applies the faces. Both runners now call
-    it AFTER source injection and BEFORE the E ghost exchange
-    (``distributed_v2.step_fn_pec`` stage 5, ``distributed_nu`` stage 7).
-    They diverged until #1041: v2 called it after its exchange. The
-    measurement (``scripts/diagnostics/issue1041_v2_step_order.py``) found
-    the ``exchange``/``face`` half of that divergence INERT on v2 -- with
-    the source away from the seam the two orderings are bit-identical on
-    every probe sample and all six final field arrays -- because the y/z
-    faces above are written on every x row INCLUDING the ghosts, and the
-    x_lo / x_hi faces act on rank 0's first and rank N-1's last real cell,
-    whose exchanged copies the receiving rank discards. What was NOT inert
-    was the ``exchange``/``source`` half, and the exchange moved for that.
-
-    The retired pmap lane had its own ``_apply_pec_local``; since #1055
-    that implementation sat at the same point in its step body, for the
-    same measured reason. The remaining shard_map runners agree on that hook.
-    """
-
-    if pec_faces is None:
-        pec_faces = frozenset(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
-    if not pec_faces:
-        return state
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"),  # ex
-            P("x"),  # ey
-            P("x"),  # ez
-        ),
-        out_specs=(
-            P("x"),
-            P("x"),
-            P("x"),
-        ),
-        check_rep=False,
-    )
-    def _pec(ex, ey, ez, *, rank):
-        ghost = 1
-
-        if "y_lo" in pec_faces:
-            ex = ex.at[:, 0, :].set(0.0)
-            ez = ez.at[:, 0, :].set(0.0)
-        if "y_hi" in pec_faces:
-            ex = ex.at[:, -1, :].set(0.0)
-            ez = ez.at[:, -1, :].set(0.0)
-        if "z_lo" in pec_faces:
-            ex = ex.at[:, :, 0].set(0.0)
-            ey = ey.at[:, :, 0].set(0.0)
-        if "z_hi" in pec_faces:
-            ex = ex.at[:, :, -1].set(0.0)
-            ey = ey.at[:, :, -1].set(0.0)
-
-        device_idx = rank
-        if "x_lo" in pec_faces:
-            is_first = (device_idx == 0)
-            ey_xlo = jnp.where(is_first, 0.0, ey[ghost, :, :])
-            ez_xlo = jnp.where(is_first, 0.0, ez[ghost, :, :])
-            ey = ey.at[ghost, :, :].set(ey_xlo)
-            ez = ez.at[ghost, :, :].set(ez_xlo)
-        if "x_hi" in pec_faces:
-            is_last = (device_idx == n_devices - 1)
-            last_real = nx_local_with_ghost - 1 - ghost - pad_x
-            ey_xhi = jnp.where(is_last, 0.0, ey[last_real, :, :])
-            ez_xhi = jnp.where(is_last, 0.0, ez[last_real, :, :])
-            ey = ey.at[last_real, :, :].set(ey_xhi)
-            ez = ez.at[last_real, :, :].set(ez_xhi)
-
-        return ex, ey, ez
-
-    ex, ey, ez = _pec(ranks, state.ex, state.ey, state.ez)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+from rfx.stepping.slab_walls import apply_pec_face_shmap
 
 
 # #1053 leg 2. The realized-PEC cell-mask kernel, moved here BY VALUE from
@@ -543,91 +332,7 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 # volume rule. The call is the point of the function.
 
 
-def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
-                         n_devices: int, nx_local: int, *, ranks) -> FDTDState:
-    """Apply geometry-defined PEC mask zeroing on x-sharded fields.
-
-    Each rank owns the PEC cells inside its real-cell range
-    ``[ghost, ghost + nx_per_rank)``.  Per V3 bullet 6, we must NOT
-    re-zero PEC cells that live in another rank's slab; per V3 bullet 7,
-    seam ghost cells must not be acted on.
-
-    For legacy cell masks (instead of precomputed edge tuples), this:
-      * computes the per-component edge masks on the local slab
-        including ghost cells by CALLING
-        ``rfx.boundaries.pec.realized_pec_edge_masks`` — the same
-        function every single-device lane calls (#931 §1.7), so the two
-        lanes cannot drift apart again (they did twice: an inlined
-        ``jnp.roll`` copy through #689, then the pre-#931 sheet rule
-        after the single-device lanes moved to the volume rule);
-      * gates the mask so ghost-cell rows are forced to ``False`` before
-        zeroing the field — interior real cells use their slab-local
-        neighbour computation, and the **first/last real cells** see the
-        ghost neighbour (which carries the seam-neighbour's PEC status
-        because ``shard_pec_mask_x_slab`` populated it).
-
-    The ghost rows are therefore NOT zeroed here.  They are refilled from
-    the owner rank's (already zeroed) real row by the E ghost exchange,
-    which the scan body runs AFTER this step (stage 9).  That order is
-    load-bearing: the next H update at a rank's last real cell reads
-    ``Ey``/``Ez`` on its right ghost plane, and when a body's cell is the
-    neighbour's first real cell those edges are PEC only in the
-    neighbour's copy.  Exchanging first handed this rank the un-zeroed
-    value (#931 seam-cell divergence, 2.107e-01 final-step error).
-    """
-    if sharded_pec_mask is None:
-        return state
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), distributed_mask_spec(sharded_pec_mask)),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pec_mask(ex, ey, ez, mask, *, rank):
-        # ONE neighbour rule for both lanes: call the shared helper rather
-        # than re-spelling it (#689 changed the rule and this copy did not
-        # follow, so the two lanes disagreed at a y/z domain face —
-        # measured on two 4x4 plates in a (6,6,10) domain, real cells only:
-        #
-        #   placement           single-device      this lane, inlined roll
-        #   z faces  k=0 & k=9  [32, 32,  0]       [32, 32, 32]
-        #   y faces  j=0 & j=5  [32,  0, 32]       [32, 32, 32]
-        #   z interior k=1,k=8  [32, 32,  0]       [32, 32,  0]   (agreed)
-        #
-        # ``periodic=(True, False, False)``: the SHARDED axis keeps the
-        # wrap, which is what the inlined copy relied on and is correct
-        # here — a slab's ghost rows carry the seam neighbour's PEC status
-        # (``shard_pec_mask_x_slab``), and the wrap only ever reaches
-        # indices 0 and nx_local-1, both ghosts, both forced False below.
-        # So no REAL cell sees the x wrap and the x behaviour is unchanged.
-        # y and z have no ghosts and no periodic BC on this lane (the NU
-        # runners install none), so they take the same zero-pad convention
-        # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
-        mask_ex, mask_ey, mask_ez = distributed_mask_edges(mask)
-
-        # Force ghost rows to False so we never touch a neighbour rank's
-        # cells.  Real cells span [ghost, nx_local - ghost).
-        ghost = 1
-        ghost_zero = jnp.zeros_like(mask_ex[0:1, :, :])
-        mask_ex = mask_ex.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])
-        mask_ex = mask_ex.at[nx_local - ghost:nx_local, :, :].set(
-            ghost_zero[0:ghost, :, :])
-        mask_ey = mask_ey.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])
-        mask_ey = mask_ey.at[nx_local - ghost:nx_local, :, :].set(
-            ghost_zero[0:ghost, :, :])
-        mask_ez = mask_ez.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])
-        mask_ez = mask_ez.at[nx_local - ghost:nx_local, :, :].set(
-            ghost_zero[0:ghost, :, :])
-
-        ex = ex * (1.0 - mask_ex.astype(ex.dtype))
-        ey = ey * (1.0 - mask_ey.astype(ey.dtype))
-        ez = ez * (1.0 - mask_ez.astype(ez.dtype))
-        return ex, ey, ez
-
-    ex, ey, ez = _pec_mask(ranks, state.ex, state.ey, state.ez, sharded_pec_mask)
-    return state._replace(ex=ex, ey=ey, ez=ez)
+from rfx.stepping.slab_walls import apply_pec_mask_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -659,106 +364,10 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
 # content is preserved in these docstrings instead.
 
 
-def inject_sources_shmap(st, src_vals_step, mesh, n_src,
-                         src_local_specs, src_device_ids, *, ranks, drives=None):
-    """Inject sources on their owning device using ``shard_map``.
-
-    ``shard_map`` gives each device its own slab; device identity inside
-    the kernel comes from the explicit sharded rank input, and a source whose owner
-    is some other device contributes ``jnp.where(... , 0.0)``.  So every
-    device runs the same grouped add and only the owner's lands.
-
-    ``in_specs`` are ``ex``, ``ey``, ``ez`` sharded on ``P("x")`` and
-    ``src_vals_step`` slab-local (``P("x")``), shape (n_devices, n_sources).
-    Each device receives its stored row, with all non-owned entries zero.
-
-    ``src_local_specs[i]`` is ``(li, lj, lk, lc)``: the LOCAL index triple
-    on the owning device plus the component name; ``src_device_ids[i]`` is
-    that owner.  Both are Python data read at trace time, so the traced
-    graph depends on their VALUES, not just their shapes.
-
-    Shared by the uniform and graded runners. Their trace-time layout uses
-    these local indices; unchanged waveform samples arrive as scan inputs.
-    """
-    if n_src == 0:
-        return st
-
-    if drives is None:
-        drives = drive_layout(src_local_specs, src_vals_step.dtype,
-                              electric_only_path="distributed")
-    device_ids = np.asarray(src_device_ids, dtype=np.int32)
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _inject(ex, ey, ez, sv, *, rank):
-        from rfx.core.yee import FDTDState
-        local = FDTDState(ex, ey, ez, None, None, None, None)
-        local = inject_drives(local, drives, jnp.where(rank == device_ids, sv[0], 0.0))
-        return local.ex, local.ey, local.ez
-
-    ex, ey, ez = _inject(ranks, st.ex, st.ey, st.ez, src_vals_step)
-    return st._replace(ex=ex, ey=ey, ez=ez)
+from rfx.stepping.slab_update import inject_sources_shmap
 
 
-def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
-                        *, reduce_devices=True, ranks):
-    """Sample probes on their owning devices, then sum across devices.
-
-    Mirror of :func:`inject_sources_shmap` on the read side: every device
-    reads at the same local index, masks with ``jnp.where`` on device
-    identity, and ``lax.psum`` over ``"x"`` leaves exactly the owner's
-    value.  ``out_specs=P()`` because the psum result is replicated.
-
-    With ``reduce_devices=False``, return masked samples of global shape
-    ``(n_devices, n_prb)`` on ``P("x")`` without a collective. A scan can
-    stack these and sum its device axis once after the time loop. The
-    default retains the per-step replicated result for the NU runner.
-
-    Extracted verbatim from
-    ``distributed_nu.py::run_nonuniform_distributed_pec._sample_probes_shmap``
-    and ``distributed_v2.py::run_distributed._sample_probes_shmap``.
-    """
-    if n_prb == 0:
-        shape = (0,) if reduce_devices else (mesh.size, 0)
-        return jnp.zeros(shape, dtype=jnp.float32)
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"),
-                  P("x"), P("x"), P("x")),
-        out_specs=P() if reduce_devices else P("x"),
-        check_rep=False,
-    )
-    def _sample(ex, ey, ez, hx, hy, hz, *, rank):
-        device_idx = rank
-        samples = []
-        for idx_p in range(n_prb):
-            li, lj, lk, lc = prb_local_specs[idx_p]
-            dev_id = prb_device_ids[idx_p]
-            if lc == "ex":
-                raw = ex[li, lj, lk]
-            elif lc == "ey":
-                raw = ey[li, lj, lk]
-            elif lc == "ez":
-                raw = ez[li, lj, lk]
-            elif lc == "hx":
-                raw = hx[li, lj, lk]
-            elif lc == "hy":
-                raw = hy[li, lj, lk]
-            else:
-                raw = hz[li, lj, lk]
-            val = jnp.where(device_idx == dev_id, raw, 0.0)
-            samples.append(val)
-        samples = jnp.stack(samples)
-        return lax.psum(samples, "x") if reduce_devices else samples[None, :]
-
-    return _sample(ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
+from rfx.stepping.slab_update import sample_probes_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -782,43 +391,7 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
 # bit-identity leg for cosmetic reasons, so the exported spelling is the
 # original one.
 
-def _update_h_local_nu(state, materials, dt,
-                      inv_dx_slab, inv_dy_full, inv_dz_full,
-                      inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full, *, high_wall, cell_sizes=None):
-    """H update on a local slab using NU inverse spacings.
-
-    Mirrors ``rfx/core/yee.py::update_h_nu`` but accepts pre-sliced
-    per-device ``inv_dx`` / ``inv_dx_h`` (length nx_local), while
-    y/z spacings are replicated (full-axis).
-    """
-    ex, ey, ez = state.ex, state.ey, state.ez
-    if cell_sizes is None:
-        cell_sizes = tuple(1 / jnp.where(v > 0, v, v[-2])
-                           for v in (inv_dx_h_slab, inv_dy_h_full, inv_dz_h_full))
-    mu = component_h_materials(materials, high_wall=high_wall, cell_sizes=cell_sizes)
-    if _realized.ACTIVE is not None:
-        mu = _realized.magnetic(materials, mu, "yee.H", cell_sizes=cell_sizes)
-    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
-    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
-
-    curl_x = (
-        (_shift_fwd(ez, 1) - ez) * inv_dy_h_full[None, :, None]
-        - (_shift_fwd(ey, 2) - ey) * inv_dz_h_full[None, None, :]
-    )
-    curl_y = (
-        (_shift_fwd(ex, 2) - ex) * inv_dz_h_full[None, None, :]
-        - (_shift_fwd(ez, 0) - ez) * inv_dx_h_slab[:, None, None]
-    )
-    curl_z = (
-        (_shift_fwd(ey, 0) - ey) * inv_dx_h_slab[:, None, None]
-        - (_shift_fwd(ex, 1) - ex) * inv_dy_h_full[None, :, None]
-    )
-
-    hx = state.hx - ch_x * curl_x
-    hy = state.hy - ch_y * curl_y
-    hz = state.hz - ch_z * curl_z
-
-    return state._replace(hx=hx, hy=hy, hz=hz)
+from rfx.stepping.slab_update import _update_h_local_nu
 
 
 from rfx.model.electric_metrics import _slab_x_lo_view, _slab_model_rows
@@ -830,85 +403,16 @@ from rfx.model.materials import slab_pole_fractions
 from rfx.model.electric_metrics import slab_e_component_materials
 
 
-def component_e_coeffs(e_materials, dt):
-    """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` from per-component
-    ``((eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z))``:
-    :func:`rfx.core.yee.e_update_coeffs` of each component."""
-    pairs = [e_update_coeffs(e, s, dt) for e, s in zip(*e_materials)]
-    return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
+from rfx.stepping.slab_update import component_e_coeffs
 
 
-def slab_e_coeffs(materials, nx_per, nx, dt, rank=None, *, high_wall: tuple[bool, bool, bool]):
-    """The E coefficients of one x slab (#1303): :func:`component_e_coeffs`
-    of :func:`rfx.model.electric_metrics.slab_e_component_materials`. With :func:`slab_e_materials_shmap`
-    the one path the multi-device E updates take to their coefficients."""
-    return component_e_coeffs(
-        slab_e_component_materials(materials, nx_per, nx, rank, high_wall=high_wall), dt)
+from rfx.stepping.slab_update import slab_e_coeffs
 
 
-def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall: tuple[bool, bool, bool], grid=None):
-    """:func:`slab_e_component_materials` of every slab, as x-sharded
-    arrays, for a runner that averages once, before its time loop, and
-    forms the coefficients (:func:`component_e_coeffs`) inside it.
-
-    Why a runner would (#1303): inside the loop the mean is loop-invariant
-    and XLA hoists it out of the loop anyway, so the forward program holds
-    the same six coefficient slabs either way. Under ``jax.grad`` it does
-    not: taken inside the loop (in the E update and again in the CPML), the
-    four-cell mean is transposed at every step -- measured on CPU, 2.2x the
-    cell-owned lane's time per step and 2.4x its backward scratch; taken
-    here, once, about the cell-owned lane's. The coefficients stay inside
-    the loop: built here instead, the permittivity gradient of a 1.5e16
-    objective came back non-finite at four cells next to the current sources
-    (``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``; the
-    mechanism was not established -- #1317 recorded a float32 overflow of
-    ``Cb``'s reverse pass in the same test). ``jax.checkpoint`` recomputes
-    this mean in the backward pass instead of keeping it on the tape.
-    """
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),
-             check_rep=False)
-    def _mean(local, *, rank):
-        return slab_e_component_materials(local, nx_per, nx, rank=rank,
-            high_wall=high_wall, cell_sizes=slab_cell_sizes(grid, rank))
-
-    return jax.checkpoint(_mean)(ranks, MaterialArrays(
-        eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,
-        sigma_film=mat.sigma_film,
-        sigma_lumped=getattr(mat, "sigma_lumped", None),
-        eps_r_lumped=getattr(mat, "eps_r_lumped", None)))
+from rfx.stepping.slab_update import slab_e_materials_shmap
 
 
-def _update_e_local_nu(state, e_coeffs,
-                      inv_dx_slab, inv_dy_full, inv_dz_full, *, boundary=None, frame=None, owned=None):
-    """E update on a local slab using NU inverse (cell-local) spacings.
-
-    Mirrors ``rfx/core/yee.py::update_e_nu``. ``e_coeffs`` is the slab's
-    per-component ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` (#1303,
-    :func:`slab_e_coeffs` / :func:`component_e_coeffs`).
-    """
-    hx, hy, hz = state.hx, state.hy, state.hz
-    def backward(h, axis):
-        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
-    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
-
-    curl_x = (
-        (hz - backward(hz, 1)) * inv_dy_full[None, :, None]
-        - (hy - backward(hy, 2)) * inv_dz_full[None, None, :]
-    )
-    curl_y = (
-        (hx - backward(hx, 2)) * inv_dz_full[None, None, :]
-        - (hz - backward(hz, 0)) * inv_dx_slab[:, None, None]
-    )
-    curl_z = (
-        (hy - backward(hy, 0)) * inv_dx_slab[:, None, None]
-        - (hx - backward(hx, 1)) * inv_dy_full[None, :, None]
-    )
-
-    ex = ca_x * state.ex + cb_x * curl_x
-    ey = ca_y * state.ey + cb_y * curl_y
-    ez = ca_z * state.ez + cb_z * curl_z
-
-    return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
+from rfx.stepping.slab_update import _update_e_local_nu
 
 
 # ---------------------------------------------------------------------------
@@ -940,134 +444,10 @@ def _update_e_local_nu(state, e_coeffs,
 # for v2's ``is_nu`` branch; fixtures 11-12 (``distributed_nu_*``) witness the
 # NU runner. Those rows staying bit-identical is the evidence, not the argument.
 
-def update_h_nu_shmap(st, mat, mesh, dt,
-                      inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks, nx_per, nx, high_wall, cell_sizes=None):
-    """H update on the NU distributed path, via ``shard_map``.
-
-    Shared by ``distributed_nu.run_nonuniform_distributed_pec`` and by the
-    ``is_nu`` branch of ``distributed_v2.run_distributed``.
-
-    Parameters
-    ----------
-    st, mat
-        The sharded :class:`FDTDState` and :class:`MaterialArrays`.
-    mesh
-        The 1-D x-axis :class:`jax.sharding.Mesh`.
-    dt
-        Timestep, closed over as a Python float by both original copies.
-    inv_dx_sharded, inv_dx_h_sharded
-        Per-device slabs of the inverse x spacings (cell-local and
-        mean-spacing), sharded over ``"x"``.
-    inv_dy_rep, inv_dz_rep, inv_dy_h_rep, inv_dz_h_rep
-        Full-axis inverse y/z spacings, replicated on every device.
-
-    Returns the state with ``hx``/``hy``/``hz``/``step`` replaced. The E-field
-    components are passed in because the H curl reads them, and returned
-    untouched by not being in ``out_specs``.
-    """
-    from rfx.sources.wire_radius import require_radius_update
-    require_radius_update(mat, lane="distributed H shard", unsupported=True)
-    if cell_sizes is None:
-        cell_sizes = tuple(1 / jnp.where(v > 0, v, v[-2]) for v in
-                           (inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep))
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"), P("x"), P("x"),  # ex, ey, ez
-            P("x"), P("x"), P("x"),  # hx, hy, hz
-            P(),                     # step
-            P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
-            P("x"), P(None), P(None),  # inv_dx, inv_dy, inv_dz
-            P("x"), P(None), P(None),  # inv_dx_h, inv_dy_h, inv_dz_h
-            (P("x"), P(None), P(None)),  # original primal cell lengths
-        ),
-        out_specs=(P("x"), P("x"), P("x"), P()),
-        check_rep=False,
-    )
-    def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-           invdx, invdy, invdz, invdxh, invdyh, invdzh, widths, *, rank):
-        _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-        _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
-                             mu_r=magnetic_low_ghost(mu_r, rank, nx_per=nx_per, nx=nx, high_wall=high_wall))
-        from rfx.model.electric_metrics import slab_wall_view
-        widths = (slab_wall_view(widths[0], nx_per, nx, rank, high_wall=high_wall), *widths[1:])
-        new_st = _update_h_local_nu(
-            _st, _mat, dt, invdx, invdy, invdz, invdxh, invdyh, invdzh,
-            cell_sizes=widths, high_wall=(False, *high_wall[1:]))
-        return new_st.hx, new_st.hy, new_st.hz, new_st.step
-
-    hx, hy, hz, step = _h(
-        ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-        mat.eps_r, mat.sigma, mat.mu_r,
-        inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-        inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
-        cell_sizes,
-    )
-    return st._replace(hx=hx, hy=hy, hz=hz, step=step)
+from rfx.stepping.slab_update import update_h_nu_shmap
 
 
-def update_e_nu_shmap(st, mat, mesh, dt,
-                      inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
-                      e_materials=None, *, ranks, high_wall, boundary=None, ghost=1, pad_x=0):
-    """E update on the NU distributed path, via ``shard_map``.
-
-    The E sibling of :func:`update_h_nu_shmap`, shared by the same two
-    runners and merged for the same reason -- inventory §2.4 measured the two
-    inner kernels at 0.947 similarity, the entire residue being the ``def``
-    name. It needs three inverse-spacing arrays rather than six because the E
-    curl reads only the cell-local spacings, not the mean-spacing ones.
-
-    Each component's eps and sigma are the mean over the four cells around
-    its edge, the single-device rule (#1303): ``e_materials``, the x-sharded
-    means :func:`slab_e_materials_shmap` built before the loop, or, when it
-    is ``None``, :func:`slab_e_component_materials` of ``mat`` on each slab,
-    from ``nx_per`` (real rows per slab) and ``nx`` (the unpadded global x
-    count). The coefficients are formed here, in the loop, either way.
-
-    Returns the state with ``ex``/``ey``/``ez``/``step`` replaced. Dispersion
-    is NOT handled here: ``distributed_v2.run_distributed`` refuses Debye and
-    Lorentz on the NU path upstream, and its caller passes the polarisation
-    state straight back out.
-    """
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(
-            P("x"), P("x"), P("x"),
-            P("x"), P("x"), P("x"),
-            P(),
-            P("x"), P("x"), P("x"),
-            P("x"), P("x"), P("x"),  # lumped and film component records
-            P("x"), P(None), P(None),
-            P("x"),                  # e_materials: None or ((eps...), (sig...))
-        ),
-        out_specs=(P("x"), P("x"), P("x"), P()),
-        check_rep=False,
-    )
-    def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-           sigma_lumped, eps_r_lumped, sigma_film, invdx, invdy, invdz, means, *, rank):
-        _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-        if means is None:
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
-                                  sigma_film=sigma_film,
-                                  sigma_lumped=sigma_lumped,
-                                  eps_r_lumped=eps_r_lumped)
-            coeffs = slab_e_coeffs(_mat, nx_per, nx, dt, rank=rank, high_wall=high_wall)
-        else:
-            coeffs = component_e_coeffs(means, dt)
-        new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz,
-            **_slab_curl_kwargs(boundary, hx.shape, ghost, pad_x, rank, mesh.size))
-        return new_st.ex, new_st.ey, new_st.ez, new_st.step
-
-    ex, ey, ez, step = _e(
-        ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-        mat.eps_r, mat.sigma, mat.mu_r,
-        getattr(mat, "sigma_lumped", None), getattr(mat, "eps_r_lumped", None),
-        mat.sigma_film, inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_materials,
-    )
-    return st._replace(ex=ex, ey=ey, ez=ez, step=step)
+from rfx.stepping.slab_update import update_e_nu_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -1093,14 +473,7 @@ def _split_state(state, n_devices, ghost=1):
                      step=jnp.broadcast_to(state.step, (n_devices,)))
 
 
-def magnetic_low_ghost(mu_r, rank, ghost=1, *, nx_per, nx, high_wall: tuple[bool, bool, bool]):
-    """Replicate the physical low-x cell; preserve inter-rank material ghosts.
-
-    Legacy staging pads outside with vacuum. That pad is not a neighbour
-    cell of the new face mean. Only rank zero's exterior ghost is replaced.
-    """
-    from rfx.model.electric_metrics import slab_wall_view
-    return slab_wall_view(mu_r, nx_per, nx, rank, high_wall=high_wall, ghost=ghost)
+from rfx.stepping.slab_update import magnetic_low_ghost
 
 
 def _split_materials(materials, n_devices, ghost=1):
@@ -1139,224 +512,23 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
 # Local update functions (operate on per-device slab with ghosts)
 # ---------------------------------------------------------------------------
 
-def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None), *, high_wall: tuple[bool, bool, bool]):
-    """H update on a local slab (including ghost cells).
-
-    Identical to yee.update_h but without jit decorator and always
-    non-periodic (ghost cells handle inter-device coupling).
-    """
-    ex, ey, ez = state.ex, state.ey, state.ez
-    mu = component_h_materials(materials, high_wall=high_wall)
-    if _realized.ACTIVE is not None:
-        mu = _realized.magnetic(materials, mu, "yee.H")
-    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
-    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
-
-    curl_x = (
-        (_shift_fwd(ez, 1) - ez) / dx
-        - (_shift_fwd(ey, 2) - ey) / dx
-    )
-    curl_y = (
-        (_shift_fwd(ex, 2) - ex) / dx
-        - (_shift_fwd(ez, 0) - ez) / dx
-    )
-    curl_z = (
-        (_shift_fwd(ey, 0) - ey) / dx
-        - (_shift_fwd(ex, 1) - ex) / dx
-    )
-
-    hx = state.hx - ch_x * curl_x
-    hy = state.hy - ch_y * curl_y
-    hz = state.hz - ch_z * curl_z
-
-    from rfx.boundaries.pmc import magnetic_update_fields
-    hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
-
-    return state._replace(hx=hx, hy=hy, hz=hz)
+from rfx.stepping.slab_update import _update_h_local
 
 
-def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=None):
-    """E update on a local slab (including ghost cells).
-
-    Identical to yee.update_e but without jit decorator and always
-    non-periodic. ``e_coeffs`` is the slab's per-component
-    ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))``, as :func:`slab_e_coeffs`
-    builds them: from the mean eps and sigma over the four cells around each
-    edge, with a lumped element on its own edge only -- the single-device
-    rule (#1210, #1236, #1303).
-    """
-    hx, hy, hz = state.hx, state.hy, state.hz
-    def backward(h, axis):
-        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
-    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
-
-    curl_x = (
-        (hz - backward(hz, 1)) / dx
-        - (hy - backward(hy, 2)) / dx
-    )
-    curl_y = (
-        (hx - backward(hx, 2)) / dx
-        - (hz - backward(hz, 0)) / dx
-    )
-    curl_z = (
-        (hy - backward(hy, 0)) / dx
-        - (hx - backward(hx, 1)) / dx
-    )
-
-    ex = ca_x * state.ex + cb_x * curl_x
-    ey = ca_y * state.ey + cb_y * curl_y
-    ez = ca_z * state.ez + cb_z * curl_z
-
-    return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
+from rfx.stepping.slab_update import _update_e_local
 
 
 # ---------------------------------------------------------------------------
 # Local dispersive E-update functions (operate on per-device slab)
 # ---------------------------------------------------------------------------
 
-def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=None, frame=None, owned=None):
-    """E update with Debye ADE on a local slab (always non-periodic).
-
-    Per E component (#1260), the single-device body's arithmetic
-    (``rfx.materials.debye.debye_e_component``) without its dtype narrowing.
-    """
-    hx, hy, hz = state.hx, state.hy, state.hz
-    def backward(h, axis):
-        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
-
-    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
-    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
-    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
-
-    ex_new, px_new = debye_e_component(debye_coeffs, 0, state.ex, curl_x,
-                                       debye_state.px)
-    ey_new, py_new = debye_e_component(debye_coeffs, 1, state.ey, curl_y,
-                                       debye_state.py)
-    ez_new, pz_new = debye_e_component(debye_coeffs, 2, state.ez, curl_z,
-                                       debye_state.pz)
-
-    new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
-    new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
-    return new_fdtd, new_debye
+from rfx.stepping.slab_update import _update_e_debye_local
 
 
-def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
-    """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
-
-    Per E component (#1260), as ``rfx.stepping.poles.update_e_lorentz``
-    without its dtype narrowing.
-    """
-    hx, hy, hz = state.hx, state.hy, state.hz
-    def backward(h, axis):
-        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
-
-    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
-    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
-    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
-
-    px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev)
-    py_new = lorentz_p_component(lorentz_coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev)
-    pz_new = lorentz_p_component(lorentz_coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev)
-
-    dpx = jnp.sum(px_new - lor_state.px, axis=0)
-    dpy = jnp.sum(py_new - lor_state.py, axis=0)
-    dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
-
-    ex_new = lorentz_e_component(lorentz_coeffs, 0, state.ex, curl_x, dpx)
-    ey_new = lorentz_e_component(lorentz_coeffs, 1, state.ey, curl_y, dpy)
-    ez_new = lorentz_e_component(lorentz_coeffs, 2, state.ez, curl_z, dpz)
-
-    new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
-    new_lor = LorentzState(
-        px=px_new, py=py_new, pz=pz_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
-    )
-    return new_fdtd, new_lor
+from rfx.stepping.slab_update import _update_e_lorentz_local
 
 
-def _update_e_local_with_dispersion(state, materials, dt, dx,
-                                     debye=None, lorentz=None, *, high_wall, slab=None, e_materials=None, rank=None, boundary=None, frame=None, owned=None):
-    """E update on a local slab with optional Debye/Lorentz dispersion.
-
-    Every model uses the per-component edge means of
-    :func:`slab_e_component_materials` (``slab = (nx_per, nx)``). Runners
-    with dispersion pass the means formed before the loop and finish the
-    material-dependent ADE coefficients here. Prebuilt coefficients remain
-    accepted by grid-level callers.
-
-    Returns (new_state, new_debye_state_or_None, new_lorentz_state_or_None).
-    """
-    if debye is None and lorentz is None:
-        return _update_e_local(
-            state, slab_e_coeffs(materials, *slab, dt, rank=rank, high_wall=high_wall), dx,
-            boundary=boundary, frame=frame, owned=owned), None, None
-
-    if e_materials is not None:
-        if debye is not None:
-            debye = (slab_dispersion_coeffs(debye[0], e_materials, dt, *slab, rank=rank), debye[1])
-        if lorentz is not None:
-            lorentz = (slab_dispersion_coeffs(lorentz[0], e_materials, dt, *slab, rank=rank), lorentz[1])
-
-    if debye is not None and lorentz is None:
-        debye_coeffs, debye_state = debye
-        new_state, new_debye = _update_e_debye_local(
-            state, debye_coeffs, debye_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
-        return new_state, new_debye, None
-
-    if lorentz is not None and debye is None:
-        lorentz_coeffs, lorentz_state = lorentz
-        new_state, new_lorentz = _update_e_lorentz_local(
-            state, lorentz_coeffs, lorentz_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
-        return new_state, None, new_lorentz
-
-    # Mixed Debye + Lorentz: the single-device combined coefficients
-    # (``mixed_e_component_coeffs``), per component (#1260). This body used to
-    # take ca/cb/cc from the Debye build and the Lorentz dP coefficient as
-    # 1/gamma_Lorentz; the combined update needs 1/gamma_total = 1/(gamma_Lorentz
-    # + sum beta) there, which differs on every edge that carries both a Debye
-    # and a Lorentz pole -- with the edge mean, every edge on a Debye|Lorentz
-    # interface.
-    debye_coeffs, debye_state = debye
-    lorentz_coeffs, lorentz_state = lorentz
-    hx, hy, hz = state.hx, state.hy, state.hz
-    def backward(h, axis):
-        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
-
-    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
-    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
-    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
-    e_old = (state.ex, state.ey, state.ez)
-    curls = (curl_x, curl_y, curl_z)
-    p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
-    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
-                lorentz_state.pz_prev)
-    p_d = (debye_state.px, debye_state.py, debye_state.pz)
-
-    p_l_new = tuple(lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c],
-                                        p_l_prev[c]) for c in range(3))
-    e_new, p_d_new = [], []
-    for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
-        ca, cb, cc_d, cc_l = mixed_e_component_coeffs(
-            debye_coeffs, lorentz_coeffs, c, dt)
-        e_c = (ca * e_old[c] + cb * curls[c]
-               + jnp.sum(cc_d * p_d[c], axis=0) - cc_l * dp_l)
-        e_new.append(e_c)
-        beta_c = per_component(debye_coeffs.beta, "beta")[c]
-        p_d_new.append(debye_coeffs.alpha * p_d[c]
-                       + beta_c * (e_c[None] + e_old[c][None]))
-
-    new_fdtd = state._replace(ex=e_new[0], ey=e_new[1], ez=e_new[2],
-                              step=state.step + 1)
-    new_debye_st = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
-    new_lor_st = LorentzState(
-        px=p_l_new[0], py=p_l_new[1], pz=p_l_new[2],
-        px_prev=lorentz_state.px, py_prev=lorentz_state.py, pz_prev=lorentz_state.pz,
-    )
-    return new_fdtd, new_debye_st, new_lor_st
+from rfx.stepping.slab_update import _update_e_local_with_dispersion
 
 
 
@@ -1439,40 +611,16 @@ def init_cpml_slabs(grid, nx_local, n_devices, *, mesh=None, **profile_options):
     return params, CPMLState(**state)
 
 
-def cpml_h_materials(mu_r, rank, ghost, *, nx_per, nx, high_wall: tuple[bool, bool, bool]):
-    """Reuse the uniform slab's component means, including its low ghost."""
-    from types import SimpleNamespace
-    if mu_r is None:
-        means = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=high_wall)
-    else:
-        mu_r = magnetic_low_ghost(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall)
-        means = component_h_materials(MaterialArrays(None, None, mu_r), high_wall=(False, *high_wall[1:]))
-    return SimpleNamespace(mu_r=mu_r, components=SimpleNamespace(mu_update=means))
+from rfx.stepping.slab_update import cpml_h_materials
 
 
-def cpml_slab_frame(shape, ghost, pad_x):
-    """The last rank's physical x end is static on every rank."""
-    return {"x": (ghost, shape[0] - ghost - pad_x)}
+from rfx.stepping.slab_update import cpml_slab_frame
 
 
-def cpml_absorbing_faces(grid):
-    """Select the realized absorbing faces of the global model."""
-    from rfx.boundaries.depths import grid_face_depths
-    return tuple(face.name for face in grid_face_depths(grid) if face.realized > 0)
+from rfx.stepping.slab_update import cpml_absorbing_faces
 
 
-def _h_backward(h, axis, *, boundary=None, frame=None, owned=None):
-    """Keep nonmagnetic slab programs unchanged; share the one magnetic image."""
-    if boundary is None or not boundary.pmc_faces:
-        return _shift_bwd(h, axis)
-    from rfx.core.yee import h_neighbor
-    return h_neighbor(h, axis, boundary=boundary,
-                      frame=None if frame is None else frame.get("xyz"[axis]), owned=owned)
+from rfx.stepping.slab_update import _h_backward
 
 
-def _slab_curl_kwargs(boundary, shape, ghost, pad_x, rank, n_devices):
-    """Only magnetic slabs trace ownership; transverse axes use the full extent."""
-    if boundary is None or not boundary.pmc_faces:
-        return {}
-    return dict(boundary=boundary, frame=cpml_slab_frame(shape, ghost, pad_x),
-                owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
+from rfx.stepping.slab_update import _slab_curl_kwargs

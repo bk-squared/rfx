@@ -25,7 +25,8 @@ from tests.unit.runners.test_distributed_nu_forward_staging import _select_legac
 def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
     """Observe the same twelve face multipliers through the shared kernel."""
     import rfx.boundaries.electric_coefficient as coefficients
-    import rfx.runners.distributed_v2 as uniform
+    # The uniform slab loop's E boundary stage calls the shared kernel from here.
+    import rfx.stepping.slab_cpml as uniform
     import rfx.runners.distributed_nu as graded
     from rfx.boundaries.depths import grid_face_depths
 
@@ -72,6 +73,9 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
         # kernel inside its E boundary stage; observe that call too.
         import rfx.boundaries.cpml as cpml
         monkeypatch.setattr(cpml, 'apply_cpml_e', step)
+        # The legacy graded loop (poles with CPML) calls it from its own import.
+        import rfx.stepping.slab_graded_legacy_loop as legacy
+        monkeypatch.setattr(legacy, 'apply_cpml_e', step)
     monkeypatch.setattr(coefficients, 'corrected_coefficient', coefficient)
     result = sim.run(n_steps=1, skip_preflight=True, devices=jax.devices('cpu')[:2])
     jax.block_until_ready(result.time_series)

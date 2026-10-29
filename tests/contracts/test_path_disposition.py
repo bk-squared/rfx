@@ -72,11 +72,11 @@ KERNEL_CALLERS = {
 FIELD_STEPPERS = {
     "rfx/adi.py:run_adi_2d": "internal to run_adi",
     "rfx/adi.py:run_adi_3d": "internal to run_adi",
-    "rfx/runners/_distributed_common.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
-    "rfx/runners/_distributed_common.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
-    "rfx/runners/_distributed_common.py:_update_e_local_with_dispersion":
+    "rfx/stepping/slab_update.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
+    "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
+    "rfx/stepping/slab_update.py:_update_e_local_with_dispersion":
         "internal to run_distributed, run_distributed_nu, fwd_distributed_nu",
-    "rfx/runners/distributed_v2.py:run_distributed": "internal to run_distributed",
+    "rfx/stepping/slab_uniform_loop.py:run_uniform_slab_loop": "internal to run_distributed",
     "rfx/stepping/uniform_setup.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",

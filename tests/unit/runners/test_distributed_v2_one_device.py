@@ -44,6 +44,7 @@ import numpy as np
 import pytest
 
 import rfx.runners.distributed_v2 as _v2
+import rfx.stepping.slab_uniform_loop as _loop
 from tests.unit.runners.test_distributed_v2_pec_body_seam import (
     N_STEPS,
     SEAM_FACE_BODY_X,
@@ -61,9 +62,9 @@ def _run(boundary, body_x, *, one_device, drop_stage=False):
     key = (boundary, body_x, one_device, drop_stage)
     if key in _CACHE:
         return _CACHE[key]
-    saved_stage = _v2.apply_pec_mask_shmap
+    saved_stage = _loop.apply_pec_mask_shmap
     if drop_stage:
-        _v2.apply_pec_mask_shmap = lambda st, *a, **k: st
+        _loop.apply_pec_mask_shmap = lambda st, *a, **k: st
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -74,7 +75,7 @@ def _run(boundary, body_x, *, one_device, drop_stage=False):
             else:
                 res = sim.run(n_steps=N_STEPS)
     finally:
-        _v2.apply_pec_mask_shmap = saved_stage
+        _loop.apply_pec_mask_shmap = saved_stage
     _CACHE[key] = res
     return res
 

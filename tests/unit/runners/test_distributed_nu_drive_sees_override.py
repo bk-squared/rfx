@@ -101,6 +101,7 @@ from rfx.core.yee import (  # noqa: E402
 from rfx.geometry import Box  # noqa: E402
 from rfx.nonuniform import position_to_index  # noqa: E402
 from rfx.runners import distributed_nu as nu  # noqa: E402
+from rfx.stepping import slab_graded_legacy_loop  # noqa: E402
 from rfx.sources import GaussianPulse  # noqa: E402
 
 pytestmark = pytest.mark.distributed
@@ -316,7 +317,7 @@ def _frozen_drive():
     """The drive's Cb read through ``stop_gradient``: what the gradient is
     without the drive's own derivative (a witness of its size)."""
     from rfx.model import source_coefficients
-    real = nu.material_drive_scales
+    real = slab_graded_legacy_loop.material_drive_scales
     columns = source_coefficients.drive_columns
 
     def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None, **film):
@@ -328,7 +329,7 @@ def _frozen_drive():
         return columns(jax.lax.stop_gradient(eps), jax.lax.stop_gradient(sigma), *args, **kwargs)
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(nu, "material_drive_scales", frozen)
+        patch.setattr(slab_graded_legacy_loop, "material_drive_scales", frozen)
         patch.setattr(source_coefficients, "drive_columns", frozen_columns)
         yield
 
