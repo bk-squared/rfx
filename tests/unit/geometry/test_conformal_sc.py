@@ -258,3 +258,21 @@ def test_conformal_run_keeps_a_filament_and_refuses_a_body_holding_no_node():
     tiny.add_source((.004, .006, .007), 'ez', amplitude_kind='current')
     with pytest.raises(NotImplementedError, match='holds no grid node'):
         tiny.run(n_steps=2, conformal_pec=True, skip_preflight=True)
+
+
+@pytest.mark.parametrize('periodic, box, refused', [
+    ('', ((.004, .004, .006), (.008, .008, .0064)), True),     # 0.4 cell thick, no node inside
+    ('', ((.004, .004, .006), (.008, .008, .007)), False),     # one cell thick, both faces on node planes
+    ('xy', ((.0043, .004, .006), (.008, .008, .006)), True),   # sheet edge 0.3 cell off on a periodic axis
+    ('xy', ((.004, .004, .006), (.008, .008, .006)), False),   # sheet on node planes, periodic
+])
+def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, box, refused):
+    """With no node strictly inside, the cut cells see nothing and the staircase faces remain: exact on node planes."""
+    from rfx.grid import Grid
+    grid = Grid(10e9, (.012, .012, .012), dx=.001, cpml_layers=0, periodic_axes=periodic)
+    if refused:
+        with pytest.raises(NotImplementedError, match='cell off the node lattice'):
+            compute_conformal_fractions(grid, [Box(*box)])
+    else:
+        lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
+        assert all(float(jnp.min(a)) == 1. for a in lengths + areas)
