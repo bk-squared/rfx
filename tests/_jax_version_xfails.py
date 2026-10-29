@@ -48,7 +48,7 @@ JAX_XFAILS = {
     ),
     2167: (
         (0, 12),
-        "on jax 0.12 a two-device graded run at a PEC high face is not the mirror of the low-face run",
+        "C2 mirror bar (200 eps of its own peak over 200 steps) is below one run's float32 rounding; holds only for identically rounding programs",
         (
             "tests/contracts/test_field_index_high_face.py::test_c2_c2b[ii-2-pec-two_graded_forward]",
         ),
