@@ -43,7 +43,7 @@ def test_faked_platform_table(monkeypatch, platform, accelerator, writeback, mem
     ("tpu-unknown", False, "slab", False),
 ])
 def test_reporting_cpml_and_rank(monkeypatch, platform, accelerator, form, gpu_mesh):
-    from rfx import diagnostics, gpu
+    from rfx import diagnostics
     from rfx.boundaries._cpml_slab import writeback_form
     from rfx.stepping.rank import _is_gpu_mesh
 
@@ -51,7 +51,6 @@ def test_reporting_cpml_and_rank(monkeypatch, platform, accelerator, form, gpu_m
     monkeypatch.setattr(jax, "devices", lambda: devices)
     monkeypatch.setattr(jax, "default_backend", lambda: platform)
     assert writeback_form() == form
-    assert gpu.device_info().gpu_available is accelerator
     report = diagnostics._Report()
     diagnostics._check_jax(report)
     backend_line = next(line for line in report.lines if "jax backend:" in line)

@@ -11,16 +11,7 @@ import warnings
 
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for visualization")
+from rfx._plotting import _pyplot
 
 
 def plot_field_slice(
@@ -51,7 +42,7 @@ def plot_field_slice(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     field = np.asarray(getattr(state, component))
 
     axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
@@ -116,7 +107,7 @@ def plot_geometry_2d_slice(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
 
     from rfx.nonuniform import NonUniformGrid
     grid = sim._build_realized_grid()
@@ -500,7 +491,7 @@ def plot_rasterized_slice(
     --------
     >>> fig = plot_rasterized_slice(sim, axis=2, position=1.6e-3)  # doctest: +SKIP
     """
-    _require_mpl()
+    plt = _pyplot()
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
     if index is not None and position is not None:
@@ -805,7 +796,7 @@ def plot_stack_profile(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
     _warn_if_refined(sim)
@@ -1032,7 +1023,7 @@ def plot_s_params(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     n_ports = s_params.shape[0]
     freqs_ghz = np.asarray(freqs) / 1e9
 
@@ -1078,7 +1069,7 @@ def plot_radiation_pattern(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     theta = ff.theta
     power = np.abs(ff.E_theta[freq_idx, :, phi_idx]) ** 2 + \
             np.abs(ff.E_phi[freq_idx, :, phi_idx]) ** 2
@@ -1124,7 +1115,7 @@ def plot_time_series(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     ts = np.asarray(time_series)
     n_steps, n_probes = ts.shape
     t_ns = np.arange(n_steps) * dt * 1e9
@@ -1170,7 +1161,7 @@ def plot_rcs(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
 
     theta = rcs_result.theta
     rcs_db = rcs_result.rcs_dbsm[freq_idx, :, phi_idx]
@@ -1211,7 +1202,7 @@ def _plotly():
     except ImportError as e:  # pragma: no cover
         raise ImportError(
             "rfx.visualize 3D functions require plotly. "
-            "Install with `pip install plotly kaleido`."
+            "Install with `pip install \"rfx-fdtd[visualization]\"`."
         ) from e
 
 

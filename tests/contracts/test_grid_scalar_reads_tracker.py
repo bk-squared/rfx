@@ -112,7 +112,6 @@ SCALAR_ATTRS = frozenset({"dx", "dy"})
 #: a ``fallback_dx`` and as a CPML cell size, and they retire with the
 #: fallback in 0b.
 ALLOWED_SCALAR_READS: dict[str, int] = {
-    "rfx/amr.py": 2,
     "rfx/api/_compile.py": 11,
     "rfx/api/_mesh.py": 1,
     "rfx/artifacts.py": 2,
@@ -122,7 +121,6 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/geometry/conformal.py": 2,
     "rfx/geometry/rasterize_grid.py": 3,
     "rfx/geometry/smoothing.py": 6,
-    "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,
     "rfx/model/source_coefficients.py": 4,  # moved, not new: rfx/simulation.py's 4 reads moved with _uniform_cell_volume (total unchanged)
     "rfx/model/graded_grid.py": 2,  # the traced-axis fallback width, read once in _traced_fallback_width (position_to_index and the ring-down host helpers)

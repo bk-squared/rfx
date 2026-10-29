@@ -1,4 +1,4 @@
-"""Tests for pre-AMR error indicator (rfx.amr) and neural surrogate export (rfx.surrogate)."""
+"""Tests for neural surrogate export (rfx.surrogate)."""
 
 import numpy as np
 import pytest
@@ -9,7 +9,6 @@ from pathlib import Path
 from rfx.api import Simulation, Result
 from rfx.geometry.csg import Box, OrientedBox, PolylineWire
 from rfx.geometry.curved import CurvedPatch
-from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
 from rfx.surrogate import export_training_data, export_geometry_sdf
 from rfx.sweep import parametric_sweep, SweepResult
 
@@ -27,90 +26,6 @@ def _make_sim(eps_r=1.0):
     sim.add_port((0.01, 0.01, 0.01), "ez")
     sim.add_probe((0.02, 0.02, 0.02), "ez")
     return sim
-
-
-# ---------------------------------------------------------------------------
-# Feature A: AMR error indicator
-# ---------------------------------------------------------------------------
-
-class TestErrorIndicator:
-    """Tests for compute_error_indicator."""
-
-    def test_error_indicator_nonzero(self):
-        """Error indicator should be nonzero after a simulation with a source."""
-        sim = _make_sim()
-        result = sim.run(n_steps=50, compute_s_params=False)
-
-        error = compute_error_indicator(result, component="ez")
-
-        assert error.shape == result.state.ez.shape
-        assert error.dtype == np.float64
-        assert np.max(error) > 0, "Error indicator must be nonzero near the source"
-        # Normalized to [0, 1]
-        assert np.max(error) == pytest.approx(1.0)
-        assert np.min(error) >= 0.0
-
-    def test_error_indicator_different_components(self):
-        """Should work for any field component."""
-        sim = _make_sim()
-        result = sim.run(n_steps=50, compute_s_params=False)
-
-        for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            error = compute_error_indicator(result, component=comp)
-            assert error.shape == result.state.ez.shape
-
-
-class TestSuggestRegions:
-    """Tests for suggest_refinement_regions."""
-
-    def test_suggest_regions_finds_source_area(self):
-        """Should find at least one refinement region near the source."""
-        sim = _make_sim()
-        result = sim.run(n_steps=50, compute_s_params=False)
-
-        error = compute_error_indicator(result, component="ez")
-        boxes = suggest_refinement_regions(error, threshold=0.3, min_region_size=2)
-
-        assert len(boxes) >= 1, "Should find at least one high-error region"
-        for b in boxes:
-            assert isinstance(b, Box)
-            # Bounding box should have non-negative extents
-            for i in range(3):
-                assert b.corner_hi[i] >= b.corner_lo[i]
-
-    def test_suggest_regions_with_grid(self):
-        """When grid is provided, boxes should be in physical coordinates."""
-        sim = _make_sim()
-        grid = sim._build_grid()
-        result = sim.run(n_steps=50, compute_s_params=False)
-
-        error = compute_error_indicator(result, component="ez")
-        boxes = suggest_refinement_regions(
-            error, grid=grid, threshold=0.3, min_region_size=2,
-        )
-
-        assert len(boxes) >= 1
-        # Physical coordinates should be in the domain range (allowing CPML offset)
-        for b in boxes:
-            for i in range(3):
-                assert b.corner_lo[i] < b.corner_hi[i] or \
-                    b.corner_lo[i] == b.corner_hi[i]
-
-    def test_suggest_regions_empty_on_high_threshold(self):
-        """A threshold of 1.0 should return no regions (max is exactly 1.0)."""
-        sim = _make_sim()
-        result = sim.run(n_steps=50, compute_s_params=False)
-
-        error = compute_error_indicator(result, component="ez")
-        boxes = suggest_refinement_regions(error, threshold=1.0)
-
-        assert boxes == []
-
-    def test_suggest_regions_empty_for_zero_field(self):
-        """Zero error map should yield no regions."""
-        error = np.zeros((20, 20, 20))
-        boxes = suggest_refinement_regions(error, threshold=0.5)
-        assert boxes == []
 
 
 # ---------------------------------------------------------------------------

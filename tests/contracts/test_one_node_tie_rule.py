@@ -29,7 +29,7 @@ def model(lane):
 
 
 KINDS = ["point", "interval", "wire_vertex", "wire_radius", "sheet",
-         "traced_sheet", "csg_thin_box", "aperture", "flux", "current_window", "thin_wire",
+         "traced_sheet", "csg_thin_box", "aperture", "flux", "current_window",
          "port_wire", "source_wire", "lumped_wire", "port_sheet", "port_lossy", "port_face",
          "probe_sheet", "dft_sheet", "subgrid_bound", "disjoint_bound",
          "disjoint_point", "preflight_node"]
@@ -101,14 +101,6 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
     elif kind == "current_window":
         from rfx.current_moments import _index_window
         assert _index_window(coords.x, .0035, .0105, grid.shape[0]) == (3, 10)
-    elif kind == "thin_wire":
-        if lane == "graded":
-            pytest.skip("legacy Holland correction accepts uniform Grid only")
-        from rfx.geometry.thin_wire import ThinWire, compute_thin_wire_correction
-        _, sigma = compute_thin_wire_correction(grid, ThinWire((.0035,) * 3, (.0035, .0035, .0095), .0001))
-        occupied = np.nonzero(np.asarray(sigma))
-        assert set(occupied[0]) == set(occupied[1]) == {3}
-        assert (min(occupied[2]), max(occupied[2])) == (3, 9)
     elif kind in ("port_wire", "source_wire", "lumped_wire"):
         pos = (.010, .0095, .008)
         sim.add(PolylineWire(((.010, .0095, .003), pos), radius=0), material="pec")

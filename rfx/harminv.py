@@ -454,7 +454,7 @@ def harminv(
 ) -> list[MatrixPencilMode]:
     """Deprecated alias for matrix_pencil."""
     warnings.warn(
-        "rfx.harminv is deprecated; use rfx.matrix_pencil (same arguments, same result). "
+        "rfx.harminv.harminv is deprecated; use rfx.matrix_pencil (same arguments, same result). "
         "It implements the matrix pencil method, not Harminv.",
         DeprecationWarning, stacklevel=2,
     )
@@ -474,7 +474,7 @@ def harminv_from_probe(
 ) -> list[MatrixPencilMode]:
     """Deprecated alias for matrix_pencil_from_probe."""
     warnings.warn(
-        "rfx.harminv_from_probe is deprecated; use rfx.matrix_pencil_from_probe "
+        "rfx.harminv.harminv_from_probe is deprecated; use rfx.matrix_pencil_from_probe "
         "(same arguments, same result). It implements the matrix pencil method, not Harminv.",
         DeprecationWarning, stacklevel=2,
     )

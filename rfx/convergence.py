@@ -24,16 +24,7 @@ from typing import Callable, Any
 
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for convergence visualization")
+from rfx._plotting import _pyplot
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +189,7 @@ class ConvergenceResult:
         -------
         matplotlib Figure
         """
-        _require_mpl()
+        plt = _pyplot()
         import matplotlib
         matplotlib.use("Agg")
 

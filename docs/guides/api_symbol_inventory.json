@@ -124,9 +124,6 @@
     "Grid": {
       "kind": "class"
     },
-    "HarminvMode": {
-      "kind": "class"
-    },
     "LorentzFitResult": {
       "kind": "class"
     },
@@ -224,12 +221,6 @@
       "kind": "class"
     },
     "RCSResult": {
-      "kind": "class"
-    },
-    "RISSweepResult": {
-      "kind": "class"
-    },
-    "RISUnitCell": {
       "kind": "class"
     },
     "RLCCellMeta": {
@@ -464,17 +455,6 @@
         "domain"
       ]
     },
-    "auto_refine": {
-      "kind": "function",
-      "params": [
-        "sim",
-        "result",
-        "threshold",
-        "component",
-        "min_region_size",
-        "ratio"
-      ]
-    },
     "axial_ratio": {
       "kind": "function",
       "params": [
@@ -485,13 +465,6 @@
       "kind": "function",
       "params": [
         "ff"
-      ]
-    },
-    "benchmark": {
-      "kind": "function",
-      "params": [
-        "grid_sizes",
-        "n_steps"
       ]
     },
     "build_coaxial_tem_plane_source_specs": {
@@ -665,13 +638,6 @@
         "rtol"
       ]
     },
-    "compute_error_indicator": {
-      "kind": "function",
-      "params": [
-        "result",
-        "component"
-      ]
-    },
     "compute_far_field": {
       "kind": "function",
       "params": [
@@ -788,10 +754,6 @@
         "sigma_bg",
         "sigma_fg"
       ]
-    },
-    "device_info": {
-      "kind": "function",
-      "params": []
     },
     "dft_field": {
       "kind": "function",
@@ -1167,30 +1129,6 @@
         "ff",
         "plane",
         "freq_idx"
-      ]
-    },
-    "harminv": {
-      "kind": "function",
-      "params": [
-        "signal",
-        "dt",
-        "f_min",
-        "f_max",
-        "pencil_parameter",
-        "min_Q",
-        "max_modes",
-        "sv_threshold",
-        "decimate"
-      ]
-    },
-    "harminv_from_probe": {
-      "kind": "function",
-      "params": [
-        "time_series",
-        "dt",
-        "freq_range",
-        "source_decay_time",
-        "kwargs"
       ]
     },
     "init_floquet_dft": {
@@ -2315,15 +2253,6 @@
       "params": [
         "sample",
         "ref"
-      ]
-    },
-    "suggest_refinement_regions": {
-      "kind": "function",
-      "params": [
-        "error_map",
-        "grid",
-        "threshold",
-        "min_region_size"
       ]
     },
     "summarize_batch_manifest": {

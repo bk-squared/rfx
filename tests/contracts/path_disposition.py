@@ -82,14 +82,14 @@ Folded into the lane columns, because they call ``sim.run()`` or
 ``sim.forward()`` on the caller's model and add no assembly of their own:
 ``parametric_sweep``, ``ntff_sweep``, ``run_batch`` and
 ``run_batch_with_manifest``, ``config.runner.run_and_save``,
-``convergence_study``, the ``RISUnitCell`` sweeps, the diagnostics smoke run,
+``convergence_study``, the diagnostics smoke run,
 ``optimize`` (``forward(eps_override=...)``), ``profile_forward``, the
 sequential fallback of ``vmap_material_sweep``, ``compute_s_matrix`` (it
 dispatches to the calculators above or to ``run()``), ``compute_msl_s_matrix``
 (``forward()`` or ``run()`` per drive) and ``run(ringdown=...)``.
 
 Not ``Simulation`` paths, because they take a ``Grid``: ``rfx.run``,
-``rfx.run_until_decay``, ``compute_rcs``, ``gpu.benchmark``, the eager
+``rfx.run_until_decay``, ``compute_rcs``, the eager
 ``extract_s_matrix`` / ``extract_s_matrix_wire`` and
 ``rfx.subgridding.runner.run_subgridded``.
 """

@@ -120,7 +120,6 @@ from rfx.antenna import (
     antenna_bandwidth, BandwidthResult,
     plot_antenna_summary,
 )
-from rfx.gpu import device_info, benchmark
 # Opt-in surface interchange: explicit rfx imports, outside the curated star
 # surface, like the snapshot persistence helpers below.
 from rfx.ntff_surface import NTFFSurface, export_ntff_surface
@@ -196,25 +195,13 @@ from rfx.optimize_objectives import (
     steer_probe_array,
 )
 from rfx.observables import dft_field, field_energy, field_softmax, jacobian_fwd
-try:
-    from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
-except ImportError:
-    # scipy is optional; eigenmode solver is unavailable without it.
-    # Accessing WaveguideMode or solve_waveguide_modes will raise ImportError.
-    def _eigenmode_unavailable(*args, **kwargs):
-        raise ImportError(
-            "rfx.eigenmode requires scipy. Install it with: pip install scipy"
-        )
-    WaveguideMode = _eigenmode_unavailable  # type: ignore[assignment]
-    solve_waveguide_modes = _eigenmode_unavailable  # type: ignore[assignment]
+from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
 from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source, make_band_profile
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule
 from rfx.mesh_planner import MeshPlan, plan_mesh, plan_simulation_mesh
-# The harminv names are deprecated 2.x aliases: still attributes, no longer on the star surface.
 from rfx.harminv import (
     matrix_pencil, matrix_pencil_from_probe, MatrixPencilMode,
-    harminv, harminv_from_probe, HarminvMode,
 )
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
@@ -254,8 +241,6 @@ from rfx.material_fit import (
 from rfx.differentiable_material_fit import (
     differentiable_material_fit, MaterialFitResult, sparam_loss,
 )
-from rfx.ris import RISUnitCell, RISSweepResult
-from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
 from rfx.surrogate import export_training_data, export_geometry_sdf
 from rfx.convergence import (
     convergence_study, ConvergenceResult, richardson_extrapolation,
@@ -266,9 +251,8 @@ from rfx.convergence import (
 # Curated public surface (W5.5).
 #
 # ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
-# references use it. It is intentionally a strict subset of the ~245 flat
-# symbols imported above — every back-compat import is KEPT (so existing
-# ``import rfx; rfx.<name>`` keeps working), but per-step kernel internals,
+# references use it. It contains 212 names, a strict subset of the flat
+# symbols imported above. Per-step kernel internals,
 # low-level bookkeeping/state classes, and dump/replay round-trip helpers are
 # omitted from the star-import surface.
 #
@@ -321,7 +305,7 @@ __all__ = [
     # sources / waveforms / ports (builder classes; not per-step kernels)
     "GaussianPulse", "ModulatedGaussian", "CWSource", "CustomWaveform",
     "WaveguidePort", "WaveguidePortConfig", "CoaxialPort",
-    "FloquetPort", "RISUnitCell", "RISSweepResult",
+    "FloquetPort",
     # high-level S-parameter / port extractors (AD-contract-classified surface)
     "extract_waveguide_s_matrix", "extract_waveguide_sparams",
     "extract_waveguide_s11", "extract_waveguide_s21",
@@ -373,7 +357,6 @@ __all__ = [
     "MeshPlan", "plan_mesh", "plan_simulation_mesh",
     "convergence_study", "ConvergenceResult", "richardson_extrapolation",
     "quick_convergence",
-    "compute_error_indicator", "suggest_refinement_regions", "auto_refine",
     # de-embedding
     "deembed_port_extension", "deembed_thru",
     # validation entry points
@@ -394,8 +377,7 @@ __all__ = [
     "plot_s_params", "plot_radiation_pattern",
     "plot_time_series", "plot_rcs", "plot_smith",
     "plot_geometry_3d", "plot_field_3d", "save_field_vtk", "save_field_animation",
-    # gpu / surrogate
-    "device_info", "benchmark",
+    # surrogate
     "export_training_data", "export_geometry_sdf",
 ]
 

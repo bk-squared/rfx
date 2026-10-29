@@ -123,8 +123,7 @@ import numpy as np
 
 from rfx.measurement.ringdown_model import RingdownModel, RingdownPole, _as_2d, _cmul
 
-# The MODULE: ``rfx/__init__.py`` re-exports the function ``harminv`` under
-# the same name, so ``from rfx import harminv`` depends on import order.
+# Import the module explicitly for its matrix-pencil planning helpers.
 _harminv = import_module("rfx.harminv")
 
 # harminv's own defaults, read from its signature rather than re-typed, so the
