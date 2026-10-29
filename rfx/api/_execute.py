@@ -544,10 +544,10 @@ class _ExecuteMixin:
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
-        prepare=False, distributed=False, tfsf_material_overrides=(),
+        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None,
     ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
+        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
@@ -2051,7 +2051,7 @@ class _ExecuteMixin:
         _line_stub_scope = _line_stub_admit(self, s_param_freqs)
 
         _distributed_run = devices is not None and len(devices) > 1
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run, conformal=bool(conformal_pec))
         _diagnostics = _solve_assembly.diagnostics
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----

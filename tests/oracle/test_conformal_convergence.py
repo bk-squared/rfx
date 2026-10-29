@@ -3,9 +3,12 @@
 An off-axis Ez pulse excites the hollow cylinder; two ringdown windows must
 identify the dominant TM010 pole consistently without significant growing
 poles. Staircase errors are positive, pinned, and fall under mesh refinement.
-Independent radial-distance weights check the cavity complement. Conformal
-frequency accuracy and convergence remain strict expected failures until
-#1651 replaces the eps/w skin with the Dey-Mittra update.
+Independent radial-distance lengths check the cavity complement. With the
+cut-cell operands (#1651) the conformal TM010 error is -0.302 / -0.155 / -0.064 %
+at 12 / 16 / 24 ppw, slope 2.2; the two conformal tests stay strict expected
+failures because the ring-down identification keeps growing poles from a slow
+beat (the envelope oscillates by about 10 % with a period near 4e5 steps and does
+not grow over 1e6 steps at 24 ppw), so the identification bar is not met.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -156,9 +159,9 @@ def _measure_cavity(ppw, conformal):
 _E_PIN = {12: 0.0496, 16: 0.0424, 24: 0.0352}
 _CONFORMAL_XFAIL = pytest.mark.xfail(
     strict=True,
-    reason=("#1651 conformal eps/w skin: TM010 accuracy and order fail; hand-built "
-            "kernel (update_h, update_e_aniso, eps/w, apply_conformal_pec; no "
-            "apply_pec_edges) must use the production kernel before removing xfail"),
+    reason=("#1651: with the cut-cell operands TM010 reads -0.155 % / -0.064 % at 16 / 24 "
+            "ppw (slope 2.2), but identification keeps growing poles (up to 0.19 of TM010 at "
+            "24 ppw) from a slow beat; 1e6 steps show no growth (2026-10-29)"),
 )
 
 
