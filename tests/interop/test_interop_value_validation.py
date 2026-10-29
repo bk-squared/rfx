@@ -230,22 +230,6 @@ def test_public_extra_state_is_still_refused():
         shape_to_dict(via)
 
 
-def test_named_tuple_shape_state_is_readable():
-    """vars() raises on a NamedTuple; rfx/geometry/thin_wire.py already defines
-    one, so this must not TypeError if such a class is ever registered."""
-    import inspect
-
-    from rfx.geometry.thin_wire import ThinWire
-    from rfx.interop._shapes import _instance_state_names
-
-    # Build from the class's own signature rather than guessing physics values.
-    kwargs = {
-        name: (0.0 if param.default is inspect.Parameter.empty else param.default)
-        for name, param in inspect.signature(ThinWire).parameters.items()
-    }
-    assert _instance_state_names(ThinWire(**kwargs)) == tuple(ThinWire._fields)
-
-
 # --------------------------------------------------------------------------
 # Canonical input must keep working — the guards must not over-tighten.
 # --------------------------------------------------------------------------

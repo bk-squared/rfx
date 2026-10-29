@@ -144,7 +144,6 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/model/source_coefficients.py", "current_source_cb"):
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
-    ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
     ("rfx/api/_gradient_witness.py", "conductivity_gradient_record"): _HOST,
     ("rfx/measurement/decay.py", "static_remnant_advisory"): _ENERGY,

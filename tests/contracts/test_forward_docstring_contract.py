@@ -78,33 +78,7 @@ def test_all_is_curated_subset():
     names = rfx.__all__
     assert isinstance(names, list)
     assert len(names) == len(set(names)), "rfx.__all__ contains duplicates"
-    # Curated: materially smaller than the full flat surface (318 public names
-    # on the package as of the AD-certificate/diagnostics/pareto surface;
-    # __all__=204, ratio 0.64 — tighter than the 181/~245=0.74 this gate was
-    # written against). Ceiling re-specced 200 -> 210 for that deliberate
-    # 23-name expansion; kept tight on purpose so the NEXT surface expansion
-    # trips this gate again and must re-justify itself. Re-specced again
-    # 210 -> 213 for the #579 `rfx.observables` factories (`dft_field`,
-    # `field_energy`, `field_softmax`) — a genuinely new differentiable
-    # surface, not incidental growth. Re-specced 213 -> 214 for the #931
-    # lattice ownership contract's read side (`realized_pec_edge_masks`,
-    # `realized_wall_planes`, `edge_is_pec`): that is the ONE function that
-    # turns conductor geometry into PEC edges plus its two helpers, and
-    # every consumer outside the package — oracles, crossval realized-stack
-    # assertions, external comparators — has to reach it by name rather
-    # than re-deriving the rule. Its two declaration records (`SheetSpec`,
-    # `WireSpec`) were deliberately left OFF the star surface.
-    # Re-specced 214 -> 215 for `make_band_profile` (nu band-profile lane):
-    # ONE name, the axis-agnostic builder that turns declared band edges and
-    # cell sizes into an explicit profile with every interface on a node
-    # plane and the ratio law exact. A caller writing a `dz_profile` by hand
-    # is the case the multi-band support-matrix row is about, and the
-    # alternative is each caller re-deriving ramp lengths and seam
-    # refinement. Its segment record (`_BandSeg`) and engine
-    # (`_build_band_profile`) stay private. Ratio 215/335 = 0.64, unchanged.
-    # #726 deliberately adds one result record, MSLProbeClearance, next to
-    # MSLSMatrixResult/MixedSMatrixResult so callers can type their separate
-    # layout diagnosis. H-sampling helpers stay off this star-import surface.
+    # The curated surface has 212 names; additions require a deliberate cap edit.
     assert "MSLProbeClearance" in names
     # Re-specced 217 -> 218 for `subtract_flux_monitors` (#980): ONE name, the
     # two-run reference subtraction that every R/T measurement needs. It was
@@ -120,7 +94,7 @@ def test_all_is_curated_subset():
     # #1534 adds Diagnostic, the public immutable record carried by results.
     # Admit exactly this one-name expansion; keep future growth guarded.
     assert "Diagnostic" in names
-    assert len(names) < 220, f"rfx.__all__ too large to be curated: {len(names)}"
+    assert len(names) <= 212, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 
