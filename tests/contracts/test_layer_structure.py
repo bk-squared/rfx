@@ -194,40 +194,68 @@ def test_operator_only_known_miss(tmp_path, generated):
     assert observed == generated["files"][SIM]
 
 
+# Outside-ratchet fixtures are planted, not borrowed: the 2.0 layer moves empty
+# the real files outside the layer packages, so a test tied to one of them
+# breaks at the move that empties it.
+OUTSIDE_A = "rfx/_layer_check_outside_a.py"
+OUTSIDE_B = "rfx/_layer_check_outside_b.py"
+
+
+def outside_source(name):
+    return ("import jax\n\n\ndef fixture_label(x):\n    return str(x)\n\n\n"
+            f"def {name}(body, carry, xs):\n    return jax.lax.scan(body, carry, xs)\n")
+
+
+def copied_tree(root, path):
+    return ast.parse((root / path).read_text())
+
+
+@pytest.fixture
+def planted(tmp_path, generated):
+    """BASE with two outside files, one baselined time-step unit each."""
+    base = deepcopy(generated)
+    for path, name in ((OUTSIDE_A, "fixture_scan"), (OUTSIDE_B, "fixture_runner")):
+        assert not (REPO / path).exists()
+        write(tmp_path, path, outside_source(name))
+        base["outside"][path] = {"S": [name], "M": []}
+    assert gate.count(CopiedSources(tmp_path))["baseline"] == base
+    return base
+
+
 @pytest.mark.parametrize("remove_elsewhere", [False, True])
-def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, generated, remove_elsewhere):
-    path, name = "rfx/adi.py", "layer_check_outside_step"
-    assert generated["outside"][path]["S"]
-    assert name not in {unit for unit, _, _ in gate.units(real_tree(path))}
-    write(tmp_path, path, (REPO / path).read_text()
+def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, planted, remove_elsewhere):
+    path, name = OUTSIDE_A, "layer_check_outside_step"
+    assert planted["outside"][path]["S"]
+    assert name not in {unit for unit, _, _ in gate.units(copied_tree(tmp_path, path))}
+    write(tmp_path, path, (tmp_path / path).read_text()
           + "\ndef layer_check_outside_step():\n    return jax.lax.scan(body, carry, xs)\n")
-    expected = deepcopy(generated)
+    expected = deepcopy(planted)
     expected["outside"][path]["S"] = sorted([*expected["outside"][path]["S"], name])
     if remove_elsewhere:
-        other, old = "rfx/subgridding/runner.py", "run_subgridded"
-        assert generated["outside"][other] == {"S": [old], "M": []}
-        tree = real_tree(other)
+        other, old = OUTSIDE_B, "fixture_runner"
+        assert planted["outside"][other] == {"S": [old], "M": []}
+        tree = copied_tree(tmp_path, other)
         tree.body.remove(target_unit(tree, old))
         write(tmp_path, other, ast.unparse(tree) + "\n")
         del expected["outside"][other]
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
     # Even updating the baseline to match the mutated code cannot admit the copy.
-    errors = gate.violations(actual, expected, generated)
+    errors = gate.violations(actual, expected, planted)
     assert errors == [f"{path} S: new violation against BASE {name}",
                       f"{path} S: baseline grew against BASE {name}"]
 
 
-def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
-    path, old, new = "rfx/subgridding/runner.py", "run_subgridded", "renamed_scan"
-    tree = real_tree(path)
+def test_outside_rename_reports_new_and_stale_names(tmp_path, planted):
+    path, old, new = OUTSIDE_B, "fixture_runner", "renamed_scan"
+    tree = copied_tree(tmp_path, path)
     target_unit(tree, old).name = new
     write(tmp_path, path, ast.unparse(tree) + "\n")
-    expected = deepcopy(generated)
+    expected = deepcopy(planted)
     expected["outside"][path] = {"S": [new], "M": []}
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
-    assert gate.violations(actual, generated, generated) == [
+    assert gate.violations(actual, planted, planted) == [
         f"{path} S: unlisted violation {new}",
         f"{path} S: stale baseline entry {old}",
         f"{path} S: new violation against BASE {new}",
@@ -237,20 +265,20 @@ def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
 @pytest.mark.parametrize("destination,green", [
     ("rfx/stepping/moved_scan.py", True), ("rfx/runners/moved_scan.py", False),
 ])
-def test_outside_move_requires_layer_destination(tmp_path, generated, destination, green):
-    path, name = "rfx/subgridding/runner.py", "run_subgridded"
-    tree = real_tree(path)
+def test_outside_move_requires_layer_destination(tmp_path, planted, destination, green):
+    path, name = OUTSIDE_B, "fixture_runner"
+    tree = copied_tree(tmp_path, path)
     node = target_unit(tree, name)
     tree.body.remove(node)
     write(tmp_path, path, ast.unparse(tree) + "\n")
     write(tmp_path, destination, ast.unparse(node) + "\n")
-    expected = deepcopy(generated)
+    expected = deepcopy(planted)
     del expected["outside"][path]
     if not green:
         expected["outside"][destination] = {"S": [name], "M": []}
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
-    errors = gate.violations(actual, expected, generated)
+    errors = gate.violations(actual, expected, planted)
     assert errors == ([] if green else [
         f"{destination} S: new violation against BASE {name}",
         f"{destination} S: baseline grew against BASE {name}",
