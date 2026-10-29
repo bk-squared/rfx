@@ -9,8 +9,20 @@ PAIRS = (
     ('run_uniform', 'run_distributed', False),
     ('fwd_uniform', 'fwd_nonuniform', False),
     ('run_nonuniform', 'run_distributed_nu', True),
+    ('fwd_uniform', 'fwd_distributed', False),
+    ('fwd_nonuniform', 'fwd_distributed_nu', True),
 )
 LONG_ROWS = {('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'), ('_ports', 'wire_port')}
+
+
+def untraced(row, lane):
+    """A forward lane that refuses the design argument the cell differentiates.
+
+    Uniform multi-device forward takes no override or design argument; graded
+    multi-device forward takes no ``design_box``, which the current-moment
+    monitor needs. Their records come from a plain forward() on both lanes.
+    """
+    return lane == 'fwd_distributed' or (lane == 'fwd_distributed_nu' and row[0] == '_current_moments')
 
 
 @dataclass(frozen=True)
@@ -26,6 +38,11 @@ class Cell:
     @property
     def id(self):
         return ':'.join((*self.row, self.a, self.b, 'graded' if self.graded else 'constant', str(self.steps)))
+
+    @property
+    def traced(self):
+        """Both forward lanes take the design; objective and gradient are compared."""
+        return self.a.startswith('fwd_') and not any(untraced(self.row, lane) for lane in (self.a, self.b))
 
 
 def generate(builders):
@@ -106,7 +123,8 @@ PR_REFUSAL_LANES = frozenset((
 PR_FINDING_CHOICES = {
     "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",
     "port-time-record-missing": "_ports:lumped_port:run_uniform:run_distributed:constant:12",
-    "distributed-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_distributed:constant:12"
+    "distributed-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_distributed:constant:12",
+    "uniform-forward-distributed-port-spectra-refused": "_ports:lumped_port:fwd_uniform:fwd_distributed:constant:12"
 }
 
 

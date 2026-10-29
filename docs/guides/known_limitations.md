@@ -188,16 +188,6 @@ No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propa
 Workaround on CPU with Python 3.12 or newer: install `jax==0.11.1 jaxlib==0.11.1`.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
-### A finite flux box closes only when it is centred on its source
-
-Tracker: #1628
-
-A finite flux monitor integrates its node-centred field products over cells lo to hi-1 with full weight, half a cell off the box it reports, instead of with half weights at both ends.
-The two end errors cancel on a box symmetric about the source and add otherwise: on the uniform mesh at 1 mm cells, a box reaching 4 mm from the source on one side and 6 mm on the other read the net radiated flux 0.8 % off, and boxes closed by a magnetic (PMC) symmetry face read it 4.7, 3.4, 2.4 and 1.8 % low when they reach 3, 4, 5 and 6 mm from the source; the error falls as the box grows relative to the cell (not measured over meshes).
-A flux plane lying on a magnetic face reports non-zero normal flux, where the exact value is zero.
-The graded mesh slices its node-centred dual widths the same way at a finite window's ends; its size there is not measured.
-Until this is fixed, centre a flux box on its source and keep it off magnetic faces.
-
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.

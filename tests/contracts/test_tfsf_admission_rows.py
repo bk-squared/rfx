@@ -23,13 +23,15 @@ def test_tfsf_row_matches_real_entry(row, lane):
         assert admission.DETECTORS[row](sim)
         assert sum(admission.DETECTORS[other](sim) for other in ROWS) == 1
         kwargs = dict(n_steps=1, skip_preflight=True)
+        if "distributed" in lane:
+            devices = jax.devices("cpu")
+            assert len(devices) == 2, "requires two host devices"
+            kwargs["devices"] = devices
         if lane.startswith("fwd_"):
+            if "distributed" in lane:
+                kwargs["distributed"] = True
             result = sim.forward(checkpoint=False, **kwargs)
         else:
-            if lane in ("run_distributed", "run_distributed_nu"):
-                devices = jax.devices("cpu")
-                assert len(devices) == 2, "requires two host devices"
-                kwargs["devices"] = devices
             result = sim.run(compute_s_params=False, **kwargs)
         jax.block_until_ready(result.time_series)
         assert result.time_series.shape == (1, 2)

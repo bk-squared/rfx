@@ -1,5 +1,24 @@
 {
-  "causes": {},
+  "causes": {
+    "uniform-forward-distributed-port-spectra-refused": {
+      "fingerprints": {
+        "f1": {
+          "value": "lumped_port_sparams: record refused on read on B",
+          "cells": [
+            "_ports:lumped_port:fwd_uniform:fwd_distributed:constant:12"
+          ]
+        },
+        "f2": {
+          "value": "wire_port_sparams: record refused on read on B",
+          "cells": [
+            "_ports:wire_port:fwd_uniform:fwd_distributed:constant:12",
+            "_ports:wire_port:fwd_uniform:fwd_distributed:constant:36"
+          ]
+        }
+      },
+      "witnesses": {}
+    }
+  },
   "cells": {
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": [],
@@ -41,6 +60,21 @@
     "_ports:wire_port:run_uniform:run_nonuniform:constant:36": {
       "port_dft": [],
       "port_samples": []
+    },
+    "_ports:lumped_port:fwd_uniform:fwd_distributed:constant:12": {
+      "port_dft": [
+        "uniform-forward-distributed-port-spectra-refused"
+      ]
+    },
+    "_ports:wire_port:fwd_uniform:fwd_distributed:constant:12": {
+      "port_dft": [
+        "uniform-forward-distributed-port-spectra-refused"
+      ]
+    },
+    "_ports:wire_port:fwd_uniform:fwd_distributed:constant:36": {
+      "port_dft": [
+        "uniform-forward-distributed-port-spectra-refused"
+      ]
     }
   }
 }
