@@ -80,6 +80,20 @@ def sc_clamp(lengths, areas):
     return tuple(result)
 
 
+def _refuse_off_lattice_sheet(sheet, lines, widths):
+    """A sheet has no PEC interior to cut, so only its staircase plane exists."""
+    for axis, (line, width) in enumerate(zip(lines, widths)):
+        for value in (sheet.corner_lo[axis], sheet.corner_hi[axis]):
+            if not line[0] < value < line[-1]:
+                continue
+            offset = np.min(np.abs(line - value)) / width
+            if offset > 1e-6:
+                raise NotImplementedError(
+                    f'conformal PEC places PEC volumes only; this zero-thickness sheet has a {"xyz"[axis]} '
+                    f'coordinate {offset:.3g} cell off the node lattice and would stay at its staircase '
+                    'position; move the sheet onto node planes, give it thickness, or use conformal_pec=False')
+
+
 def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
     """Return E free lengths and H free areas on the uniform Yee lattice."""
     if not pec_shapes:
@@ -109,7 +123,8 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
             continue  # A sub-cell filament reaches the step through its own wire edges.
         sheet = shape.declared if isinstance(shape, _ContinuedSheetShape) else shape
         if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
-            continue  # A zero-thickness Box is a sheet, realized by its own edge masks.
+            _refuse_off_lattice_sheet(sheet, lines, widths)
+            continue  # A zero-thickness Box on the node lattice is exact through its own edge masks.
         if fn is None:
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
