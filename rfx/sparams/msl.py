@@ -28,6 +28,16 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.measurement.msl_planes import readable_values
+
+
+def _reported(x, shape):
+    """``x`` as float64 for the result's reported fields; NaN where a transform
+    leaves no single value (a ``vmap`` batch, ``jit``)."""
+    value = readable_values(x)
+    if value is None or tuple(np.shape(value)) != tuple(shape):
+        return np.full(shape, np.nan)
+    return np.asarray(value, dtype=np.float64)
 from rfx.sources.sources import GaussianPulse
 
 from rfx.api._spec import (
@@ -183,7 +193,12 @@ def compute_msl_s_matrix(
     over 2-18 GHz (1.33e-2 up to 15 GHz) (rfx-archive MSL-PLANE.md,
     decision records 10-15). The phase-only shift is exact for a line whose
     Zc equals the reference R (the closed-form Z0). Under ``eps_override``
-    the shift uses the declared εr: no gradient flows through β. The two bracketing H planes are linearly
+    β and that Z0 come from the permittivity the override sets under the
+    port line (traced, so the gradient carries the plane term), the shift
+    is applied in that line's reference, and S is then referred to
+    ``impedance=``; an override that varies between a feed plane and its
+    probe 0 is refused by name, as is a call under ``jax.jit``, where its
+    values cannot be checked (#2199). The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes
@@ -525,6 +540,22 @@ def compute_msl_s_matrix(
             2.0 * np.pi * freqs_arr * float(np.sqrt(eps_eff_hj)) / _C0_MSL
         )
         z0_hj_per_port.append(float(z0_hj))
+    # #2199: under eps_override the line between each feed plane and probe 0
+    # is the solved one, so the plane shift reads its permittivity there
+    # (traced; refused by name where it varies along that length).
+    line_eps_per_port = None
+    if eps_override is not None:
+        from rfx.measurement.msl_planes import msl_line_permittivity
+        line_eps_per_port = [
+            msl_line_permittivity(
+                eps_override, port_name=pe.name, direction=pe.direction,
+                i_feed=port_idx_meta[p]["i_feed"],
+                sign=int(port_idx_meta[p]["sign"]),
+                n_probe_offset=int(pe.n_probe_offset),
+                j_centre=port_idx_meta[p]["j_centre"],
+                k_lo=port_idx_meta[p]["k_lo"], k_hi=port_idx_meta[p]["k_hi"])
+            for p, pe in enumerate(entries)
+        ]
     # #2014: the S reference is the declared impedance=, not the line Z0.
     declared_refs = np.asarray(
         [float(pe.impedance) for pe in entries], dtype=np.float64)
@@ -1102,9 +1133,33 @@ def compute_msl_s_matrix(
             eps_r_ref_per_port,
             freqs_arr,
         )
-        S = _apply_feed_plane_shift(
-            S, msl_planes.offsets_m, msl_planes.shift_beta,
-        ).astype(_complex_dtype)
+        # The waves above are at the declared line's Z0 (z0_hj). The phase-
+        # only shift is exact in the reference of the line it moves along,
+        # so under eps_override (#2199) S is first referred to the solved
+        # line's Z0, shifted with that line's beta, and referred to
+        # impedance= from there below.
+        s_line_refs = z0_hj_per_port
+        if line_eps_per_port is None:
+            S = _apply_feed_plane_shift(
+                S, msl_planes.offsets_m, msl_planes.shift_beta,
+            ).astype(_complex_dtype)
+        else:
+            from rfx.measurement.msl_planes import (
+                msl_line_beta_z0 as _line_beta_z0,
+            )
+            _bz = [
+                _line_beta_z0(pe.width, pe.height, e, freqs_arr)
+                for pe, e in zip(entries, line_eps_per_port)
+            ]
+            line_beta = jnp.stack([b for b, _ in _bz])
+            s_line_refs = jnp.stack([z for _, z in _bz])
+            S = renormalize_power_waves(S, z0_hj_per_port, s_line_refs)
+            S = _apply_feed_plane_shift(
+                S, msl_planes.offsets_m, line_beta,
+            ).astype(_complex_dtype)
+            msl_planes = type(msl_planes)(
+                offsets_m=msl_planes.offsets_m,
+                shift_beta=_reported(line_beta, line_beta.shape))
 
         # Preserve the existing relative low-signal screen and S exactly.
         # Small passive-port wave pairs may be a true transmission zero;
@@ -1295,7 +1350,8 @@ def compute_msl_s_matrix(
                 "solver_wave_common_scale": "sqrt(reference_impedances[0]); cancels from S and cond(A)",
                 "current_spatial_alignment": "linear_bracketing_H_to_E_node",
                 "current_plane_stencils": h_stencils,
-                "s_reference_impedances_ohm": z0_hj_per_port,
+                "s_reference_impedances_ohm": [
+                    float(z) for z in _reported(s_line_refs, (n_ports,))],
                 "declared_reference_impedances_ohm": [
                     float(z) for z in declared_refs],
                 "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
@@ -1410,7 +1466,7 @@ def compute_msl_s_matrix(
 
         # #2014: refer S from the line Z0 the waves were formed at to the
         # declared impedance=, once, before the opt-in projection below.
-        S = renormalize_power_waves(S, z0_hj_per_port, declared_refs)
+        S = renormalize_power_waves(S, s_line_refs, declared_refs)
 
         s_raw = None
         passivity_correction = None
@@ -1457,7 +1513,7 @@ def compute_msl_s_matrix(
             beta_railed=beta_railed,
             probe_clearance=probe_clearance,
             reference_impedances=declared_refs.copy(),
-            line_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
+            line_impedances=_reported(s_line_refs, (n_ports,)),
             reference_plane_offsets_m=np.asarray(msl_planes.offsets_m),
             shift_beta=np.asarray(msl_planes.shift_beta),
         )

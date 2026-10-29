@@ -43,15 +43,17 @@ Scope. The shift is a pure phase factor, which is exact for a line whose
 characteristic impedance equals the power-wave reference R of the port (the
 closed-form Hammerstad-Jensen Z0); where the simulated line's Zc differs from
 R, moving the plane along it also mixes the a and b waves, which a phase
-factor does not represent. On the differentiable ``eps_override`` channel the
-shift uses the declared substrate eps_r (the calculator's resolved value), so
-no gradient flows through beta with respect to the design.
+factor does not represent. On the ``eps_override`` channel the calculator
+therefore forms beta AND the reference from the permittivity the solve used
+under the port line (:func:`msl_line_beta_z0`, traced), applies the phase in
+that line's own reference, and only then refers S to ``impedance=`` (#2199).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -115,6 +117,104 @@ def kirschning_jansen_eps_eff(eps_eff0: float, width: float, height: float,
     p4 = 1.0 + 2.751 * (1.0 - np.exp(-(er / 15.916) ** 8))
     p = p1 * p2 * ((0.1844 + p3 * p4) * fn) ** 1.5763
     return er - (er - float(eps_eff0)) / (1.0 + p)
+
+
+def msl_line_beta_z0(width: float, height: float, eps_r, freqs):
+    """Closed-form ``(beta(f), Z0)`` of a microstrip line, traceable in ``eps_r`` (#2199).
+
+    The same formulas as :func:`msl_closed_form_beta` and
+    :func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`, written
+    in ``jnp`` so that ``eps_r`` may be a tracer (the permittivity an
+    ``eps_override`` sets under the port line). The width/height branch is on
+    Python floats. Returns ``beta`` (n_freqs,) rad/m and the scalar ``Z0``.
+    """
+    from rfx.grid import C0 as c0
+    er = jnp.asarray(eps_r)
+    u = float(width) / float(height)
+    eps_eff0 = (er + 1.0) / 2.0 + (er - 1.0) / 2.0 * (1.0 + 12.0 / u) ** -0.5
+    if u <= 1.0:
+        z0 = (60.0 / jnp.sqrt(eps_eff0)) * np.log(8.0 / u + u / 4.0)
+    else:
+        z0 = 120.0 * np.pi / (
+            jnp.sqrt(eps_eff0) * (u + 1.393 + 0.667 * np.log(u + 1.444)))
+    f = np.asarray(freqs, dtype=np.float64)
+    fn = (f * 1e-9) * (float(height) * 1e3)
+    p1 = (0.27488 + (0.6315 + 0.525 / (1.0 + 0.0157 * fn) ** 20) * u
+          - 0.065683 * np.exp(-8.7513 * u))
+    p2 = 0.33622 * (1.0 - jnp.exp(-0.03442 * er))
+    p3 = 0.0363 * np.exp(-4.6 * u) * (1.0 - np.exp(-(fn / 38.7) ** 4.97))
+    p4 = 1.0 + 2.751 * (1.0 - jnp.exp(-(er / 15.916) ** 8))
+    p = p1 * p2 * ((0.1844 + p3 * p4) * fn) ** 1.5763
+    eps_f = er - (er - eps_eff0) / (1.0 + p)
+    return 2.0 * np.pi * f * jnp.sqrt(eps_f) / c0, z0
+
+
+def readable_values(x):
+    """The values of ``x`` as a NumPy array, or ``None`` when none exist.
+
+    A concrete array is returned as is. Under an eager transform the values
+    still exist inside the tracer: the primal of a ``grad``/``jacfwd`` tracer,
+    the stacked batch of a ``vmap`` tracer (its batch axes then come first, in
+    whatever order, so read only quantities whose every axis is a batch axis
+    that way). Under ``jax.jit`` there are none.
+    """
+    try:
+        return np.asarray(x)
+    except Exception:
+        pass
+    to_concrete = getattr(x, "to_concrete_value", None)
+    value = to_concrete() if to_concrete is not None else None
+    if value is not None:
+        return np.asarray(value)
+    for inner in ("primal", "val"):
+        value = getattr(x, inner, None)
+        if isinstance(value, (jax.Array, np.ndarray)):
+            return readable_values(value)
+    return None
+
+
+def msl_line_permittivity(eps_override, *, port_name: str, direction: str,
+                          i_feed: int, sign: int, n_probe_offset: int,
+                          j_centre: int, k_lo: int, k_hi: int):
+    """The permittivity the solve used under a port line, for the plane shift (#2199).
+
+    Reads ``eps_override`` on the trace-centre column, every substrate cell
+    ``k_lo <= k < k_hi``, from the feed cell to the probe-0 cell inclusive.
+    The shift applies ONE closed-form line over that length, so a
+    permittivity that varies there is refused by name rather than read at
+    one cell (per batch member under ``vmap``). Returns the value at
+    ``(i_feed, j_centre, (k_lo + k_hi) // 2)`` -- the cell the calculator
+    samples without an override -- traced.
+    """
+    from rfx._traced_refusal import TracedStructureRefusal
+    from rfx.sources.msl_port import msl_cell
+    i_end = int(i_feed) + int(sign) * int(n_probe_offset)
+    i_range = range(min(i_feed, i_end), max(i_feed, i_end) + 1)
+    k_range = range(int(k_lo), max(int(k_hi), int(k_lo) + 1))
+    cells = [msl_cell(direction, i, j_centre, k) for i in i_range for k in k_range]
+    idx = tuple(np.asarray(c) for c in zip(*cells))
+    eps = jnp.asarray(eps_override)
+    line = eps[idx]
+    lo, hi = readable_values(jnp.min(line)), readable_values(jnp.max(line))
+    if lo is None or hi is None:
+        raise TracedStructureRefusal(
+            f"compute_msl_s_matrix(eps_override=...): MSL port {port_name!r} "
+            "refers S from probe 0 to its feed plane with one line formed from "
+            "the permittivity under the line, and must check that it is "
+            "uniform there; under jax.jit the override has no value to check. "
+            "Call it outside jax.jit (jax.grad and jax.jacfwd work).")
+    if np.any(hi - lo > 1e-6 * np.maximum(np.abs(hi), 1.0)):
+        raise NotImplementedError(
+            f"compute_msl_s_matrix(eps_override=...): MSL port {port_name!r} "
+            f"sees a permittivity from {float(np.min(lo)):.6g} to "
+            f"{float(np.max(hi)):.6g} under its line between the feed plane "
+            f"and probe 0 ({len(i_range)} cells along the line, substrate "
+            "cells under the trace centre). The plane shift moves S along "
+            "that length with one closed-form line, which a varying "
+            "permittivity does not have. Keep the override uniform under each "
+            "port line from the feed to probe 0, or move the probes with "
+            "n_probe_offset (#2199).")
+    return eps[msl_cell(direction, i_feed, j_centre, (int(k_lo) + int(k_hi)) // 2)]
 
 
 def msl_closed_form_beta(width: float, height: float, eps_r: float,
@@ -222,7 +322,12 @@ def apply_feed_plane_shift(S, offsets_m, shift_beta):
     to S's dtype.
     """
     S = jnp.asarray(S)
-    d = jnp.asarray(feed_plane_factors(offsets_m, shift_beta)).astype(S.dtype)
+    if isinstance(shift_beta, jax.Array):
+        # A traced or device beta (the eps_override channel, #2199): form D in jnp.
+        phase = jnp.asarray(shift_beta) * jnp.asarray(offsets_m)[:, None]
+        d = jnp.exp(-1j * phase).astype(S.dtype)
+    else:
+        d = jnp.asarray(feed_plane_factors(offsets_m, shift_beta)).astype(S.dtype)
     return d[:, None, :] * S * d[None, :, :]
 
 

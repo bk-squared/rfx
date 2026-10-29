@@ -167,6 +167,15 @@ def _assert_h_registrations(records, grid, direction, graded):
             assert r["shape"] == (len(FREQS), 6, 2)
 
 
+def _knob(grid, scale):
+    """``eps_override`` as a scalar knob: the declared substrate everywhere, the
+    knob only in the one cell the manufactured forward reads, off every port
+    line. The feed-plane shift reads the override under the port lines (#2199),
+    so a knob there would move the line and the shift with it."""
+    cell = tuple(pad + 1 for pad in grid.axis_pads)
+    return jnp.full(grid.shape, EPS_R, dtype=jnp.float32).at[cell].set(scale)
+
+
 def _expected_vi(graded, scale):
     # Five width-node segments and one normal segment around the thin trace.
     # The H_width pair contributes +5U*s, H_z contributes -0.25*5U*s.
@@ -184,7 +193,7 @@ def test_public_msl_driver_centres_current_at_voltage_plane(
     calls, snapshots = _install_manufactured_backends(
         monkeypatch, sim, grid, profiles, direction, graded)
     scale = 1.25 if route == "forward" else 1.0
-    kwargs = {"eps_override": jnp.full(grid.shape, scale)} if route == "forward" else {}
+    kwargs = {"eps_override": _knob(grid, scale)} if route == "forward" else {}
     dump = tmp_path / "raw.npz"
     result = sim.compute_msl_s_matrix(
         freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
@@ -221,7 +230,7 @@ def test_public_forward_keeps_manufactured_material_sensitivity(monkeypatch, dir
     def objective(scale):
         result = sim.compute_msl_s_matrix(
             freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
-            eps_override=jnp.full(grid.shape, scale))
+            eps_override=_knob(grid, scale))
         return jnp.mean(jnp.real(probe0_s(result, line_s(result))[0, 0]))
 
     scale = 1.25
@@ -235,3 +244,64 @@ def test_public_forward_keeps_manufactured_material_sensitivity(monkeypatch, dir
     assert abs(expected_derivative) > 1e-4
     np.testing.assert_allclose(value, expected_s, rtol=2e-6, atol=1e-7)
     np.testing.assert_allclose(derivative, expected_derivative, rtol=3e-5, atol=1e-8)
+
+
+def _mismatched_chain(scale):
+    """S at the feed plane, 50 ohm, when the override fills the grid with
+    ``scale`` (so the port line is a ``scale`` line, not the declared EPS_R):
+    the manufactured probe-0 V/I referred to that line's Z0, moved 10U along
+    it with its beta, referred to 50 ohm. NumPy closed forms only (#2199)."""
+    from rfx.measurement.msl_planes import msl_closed_form_beta
+
+    voltage, current = _expected_vi(False, scale)
+    z_line = float(hammerstad_jensen_z0_eps_eff(4 * U, 2 * U, scale)[0])
+    beta = np.asarray(msl_closed_form_beta(4 * U, 2 * U, scale, FREQS), dtype=np.float64)
+    s_line = (voltage - z_line * current) / (voltage + z_line * current)
+    s_feed = s_line * np.exp(-2j * beta * 10 * U)
+    z_feed = z_line * (1 + s_feed) / (1 - s_feed)
+    return (z_feed - 50.0) / (z_feed + 50.0)
+
+
+@pytest.mark.parametrize("direction", DIRECTIONS)
+def test_mismatched_override_moves_s_along_the_override_line(monkeypatch, direction):
+    """The old tests' case: the override (1.25) disagrees with the declared
+    substrate under the port line. S and its derivative follow the override's line."""
+    sim, grid, profiles = _build_case(direction, False)
+    calls, _ = _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, False)
+
+    def objective(scale):
+        result = sim.compute_msl_s_matrix(
+            freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
+            eps_override=jnp.full(grid.shape, scale))
+        # The phase: its derivative is almost all plane term here.
+        return jnp.mean(jnp.angle(result.S[0, 0])), result.S[0, 0]
+
+    scale = 1.25
+    (value, s00), derivative = jax.value_and_grad(objective, has_aux=True)(
+        jnp.asarray(scale, dtype=jnp.float32))
+    assert calls == ["forward"]
+    want = _mismatched_chain(scale)
+    # The declared line's chain gives another S, by 50x the tolerance or more.
+    assert np.max(np.abs(want - _mismatched_chain_declared(scale))) > 50 * 2e-6
+    np.testing.assert_allclose(np.asarray(s00), want, rtol=0, atol=2e-6)
+
+    def fd(chain, h=1e-4):
+        return (np.mean(np.angle(chain(scale + h))) - np.mean(np.angle(chain(scale - h)))) / (2 * h)
+
+    g_fd, g_declared = fd(_mismatched_chain), fd(_mismatched_chain_declared)
+    # Measured: the declared line's chain gives 2 % of this derivative.
+    assert abs(g_fd - g_declared) > 0.5 * abs(g_fd), (g_fd, g_declared)
+    np.testing.assert_allclose(float(derivative), g_fd, rtol=2e-3)
+
+
+def _mismatched_chain_declared(scale):
+    """The pre-#2199 chain: the same V/I moved along the DECLARED line."""
+    from rfx.measurement.msl_planes import msl_closed_form_beta
+
+    voltage, current = _expected_vi(False, scale)
+    z_decl = float(hammerstad_jensen_z0_eps_eff(4 * U, 2 * U, EPS_R)[0])
+    beta = np.asarray(msl_closed_form_beta(4 * U, 2 * U, EPS_R, FREQS), dtype=np.float64)
+    s_line = (voltage - z_decl * current) / (voltage + z_decl * current)
+    s_feed = s_line * np.exp(-2j * beta * 10 * U)
+    z_feed = z_decl * (1 + s_feed) / (1 - s_feed)
+    return (z_feed - 50.0) / (z_feed + 50.0)
