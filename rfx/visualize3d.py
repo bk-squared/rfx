@@ -9,34 +9,27 @@ from __future__ import annotations
 
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: F401
-    HAS_MPL3D = True
-except (ImportError, Exception):
-    # mpl_toolkits.mplot3d may fail with dual matplotlib installations
-    HAS_MPL3D = False
+from rfx._plotting import _pyplot
+
+
+def _mpl3d():
     try:
-        import matplotlib.pyplot as plt
-        HAS_MPL = True
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
     except ImportError:
-        HAS_MPL = False
-
-try:
-    import pyvista as pv
-    HAS_PYVISTA = True
-except ImportError:
-    HAS_PYVISTA = False
+        return None
+    return Poly3DCollection
 
 
-def _has_mpl():
-    """Check if any form of matplotlib is available."""
-    return HAS_MPL3D or globals().get("HAS_MPL", False)
-
-
-def _require_mpl():
-    if not _has_mpl():
-        raise ImportError("matplotlib is required for visualization")
+def _pyvista(*, required=False):
+    try:
+        import pyvista as pv
+    except ImportError as exc:
+        if required:
+            raise ImportError(
+                'pyvista is required; pip install "rfx-fdtd[visualization]"'
+            ) from exc
+        return None
+    return pv
 
 
 # ---------------------------------------------------------------------------
@@ -94,9 +87,9 @@ def plot_geometry_3d(
     -------
     Figure (matplotlib) or Plotter (pyvista)
     """
-    use_pyvista = (backend == "pyvista") or (backend == "auto" and HAS_PYVISTA)
+    use_pyvista = backend in ("auto", "pyvista") and _pyvista(required=backend == "pyvista") is not None
 
-    if use_pyvista and HAS_PYVISTA:
+    if use_pyvista:
         return _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_label)
 
     return _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scale_label)
@@ -104,7 +97,7 @@ def plot_geometry_3d(
 
 def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scale_label):
     """Matplotlib geometry renderer (3D if available, 2D multi-view fallback)."""
-    _require_mpl()
+    plt = _pyplot()
 
     domain = sim._domain
     s = scale
@@ -119,7 +112,8 @@ def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scal
         ("C3", 0.25), ("C4", 0.25),
     ]
 
-    if HAS_MPL3D:
+    Poly3DCollection = _mpl3d()
+    if Poly3DCollection is not None:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111, projection="3d")
 
@@ -230,6 +224,7 @@ def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scal
 
 def _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_label):
     """PyVista geometry renderer."""
+    pv = _pyvista(required=True)
     pl = pv.Plotter(off_screen=True)
     s = scale
 
@@ -320,9 +315,9 @@ def plot_field_3d(
     Figure (matplotlib) or Plotter (pyvista)
     """
     field = np.asarray(getattr(state, component))
-    use_pyvista = (backend == "pyvista") or (backend == "auto" and HAS_PYVISTA)
+    use_pyvista = backend in ("auto", "pyvista") and _pyvista(required=backend == "pyvista") is not None
 
-    if use_pyvista and HAS_PYVISTA:
+    if use_pyvista:
         return _plot_field_pyvista(field, grid, component, threshold,
                                    title, cmap, scale, scale_label)
 
@@ -332,14 +327,15 @@ def plot_field_3d(
 
 def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, scale, scale_label):
     """Matplotlib field visualization (3D if available, else 2D tri-panel)."""
-    _require_mpl()
+    plt = _pyplot()
 
     nx, ny, nz = field.shape
     from rfx.visualize import _slice_coords
     coords = [values * scale for values in _slice_coords(None, grid)]
     vmax = float(np.max(np.abs(field))) or 1.0
 
-    if HAS_MPL3D:
+    Poly3DCollection = _mpl3d()
+    if Poly3DCollection is not None:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111, projection="3d")
 
@@ -401,6 +397,7 @@ def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, sca
 
 def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, scale_label):
     """PyVista isosurface / volume rendering."""
+    pv = _pyvista(required=True)
     nx, ny, nz = field.shape
     dx = grid.dx * scale
 
@@ -409,7 +406,6 @@ def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, s
     z = np.arange(nz + 1) * dx
     mesh = pv.RectilinearGrid(x, y, z)
     mesh.cell_data[component] = field.ravel(order="F")
-
     pl = pv.Plotter(off_screen=True)
     vmax = float(np.max(np.abs(field))) or 1.0
 
@@ -462,7 +458,8 @@ def save_field_vtk(
     nx, ny, nz = grid.shape
     dx = grid.dx * scale
 
-    if HAS_PYVISTA:
+    pv = _pyvista()
+    if pv is not None:
         x = np.arange(nx + 1) * dx
         y = np.arange(ny + 1) * dx
         z = np.arange(nz + 1) * dx
@@ -550,7 +547,7 @@ def save_field_animation(
     -------
     str : path to saved animation file.
     """
-    _require_mpl()
+    plt = _pyplot()
 
     if component not in snapshots:
         raise ValueError(f"Component {component!r} not in snapshots: {list(snapshots.keys())}")
@@ -664,5 +661,5 @@ def save_screenshot(
 
     out_path = f"{filename}.png"
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
+    _pyplot().close(fig)
     return out_path

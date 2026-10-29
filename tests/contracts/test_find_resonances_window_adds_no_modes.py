@@ -19,7 +19,7 @@ import importlib
 
 import rfx
 
-_harminv_module = importlib.import_module("rfx.harminv")  # ``rfx.harminv`` is the function
+_harminv_module = importlib.import_module("rfx.harminv")
 
 
 _DT = 1.9e-12

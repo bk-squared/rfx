@@ -48,8 +48,8 @@ def test_screenshot_uses_nonuniform_physical_coordinates(monkeypatch, tmp_path, 
     sim = _graded_sim("z")
     grid = sim._build_nonuniform_grid()
     state = SimpleNamespace(ez=np.ones(grid.shape))
-    monkeypatch.setattr(visual, "HAS_MPL3D", three_dimensional)
-    monkeypatch.setattr(visual, "_has_mpl", lambda: True)
+    original = visual._mpl3d
+    monkeypatch.setattr(visual, "_mpl3d", original if three_dimensional else lambda: None)
     if three_dimensional:
         from mpl_toolkits.mplot3d.axes3d import Axes3D
         original = Axes3D.plot_surface

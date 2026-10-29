@@ -25,16 +25,7 @@ import numpy as np
 
 from rfx.pareto import ParetoFront, pareto_front as build_pareto_front
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for sweep visualization")
+from rfx._plotting import _pyplot
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +257,7 @@ def plot_sweep(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
 
     if callable(metric):
         y = np.asarray([metric(r) for r in sweep_result.results])

@@ -8,22 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-try:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.animation import FuncAnimation, PillowWriter
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError(
-            "matplotlib and Pillow are required for animation export. "
-            "Install with: pip install matplotlib Pillow"
-        )
+from rfx._plotting import _pyplot
 
 
 def _animation_frame_times(result, component: str, interval: int):
@@ -108,7 +93,8 @@ def save_field_animation(
     ImportError
         If matplotlib or Pillow are not installed.
     """
-    _require_mpl()
+    plt = _pyplot()
+    from matplotlib.animation import FuncAnimation, PillowWriter
 
     # ------------------------------------------------------------------
     # Extract snapshot data

@@ -196,17 +196,7 @@ from rfx.optimize_objectives import (
     steer_probe_array,
 )
 from rfx.observables import dft_field, field_energy, field_softmax, jacobian_fwd
-try:
-    from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
-except ImportError:
-    # scipy is optional; eigenmode solver is unavailable without it.
-    # Accessing WaveguideMode or solve_waveguide_modes will raise ImportError.
-    def _eigenmode_unavailable(*args, **kwargs):
-        raise ImportError(
-            "rfx.eigenmode requires scipy. Install it with: pip install scipy"
-        )
-    WaveguideMode = _eigenmode_unavailable  # type: ignore[assignment]
-    solve_waveguide_modes = _eigenmode_unavailable  # type: ignore[assignment]
+from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
 from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source, make_band_profile
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule

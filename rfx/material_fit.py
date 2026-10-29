@@ -26,11 +26,8 @@ from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
+from rfx._plotting import _pyplot
+
 
 
 class DebyeFitResult(NamedTuple):
@@ -528,8 +525,7 @@ def plot_material_fit(
     -------
     fig : matplotlib Figure
     """
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for plot_material_fit")
+    plt = _pyplot()
 
     freqs = np.asarray(freqs)
     eps_measured = np.asarray(eps_measured)
