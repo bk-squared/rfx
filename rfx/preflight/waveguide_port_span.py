@@ -8,6 +8,7 @@ from __future__ import annotations
 import numpy as np
 
 from rfx.model.waveguide_planes import entry_planes
+from rfx.model.graded_admission import host_cells
 from rfx.preflight._common import PreflightErrorWarning
 
 
@@ -98,11 +99,21 @@ def _face_sample_points(grid, lo, hi, aperture):
 def _built(grid, axis, x):
     """The node a face at ``x`` is built on, placed as entry_planes places the source."""
     name = "xyz"[axis]
-    index = grid.index_of(name, x)
     if hasattr(grid, "dx_arr"):
         pad = getattr(grid, f"pad_{name}_lo")
-        cells = np.asarray(grid.cells(name))
+        cells = host_cells(grid, name)
+        if grid.is_traced(name):
+            from rfx.geometry.rasterize_grid import _axis_node_positions
+            from rfx.model.graded_grid import _nearest_on_line
+            # This lookup only decides membership in the source-reference
+            # interval. Admission keeps that interval outside the window;
+            # a face inside the window has the same membership on nominal
+            # and realized nodes (PREDECLARE §9, 2026-10-29 16:49).
+            index = _nearest_on_line(_axis_node_positions(cells, pad), cells, x)
+        else:
+            index = grid.index_of(name, x)
         return float(np.insert(np.cumsum(cells[pad:]), 0, 0.0)[index - pad])
+    index = grid.index_of(name, x)
     return grid.node_of(name, index)
 
 

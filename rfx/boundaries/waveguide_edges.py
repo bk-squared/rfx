@@ -1,6 +1,7 @@
 """Admit a rectangular guide mode only on a realized conducting aperture."""
 
 from rfx.errors import RfxRefusal
+from rfx.model.graded_admission import host_cells
 import jax
 import numpy as np
 
@@ -68,7 +69,7 @@ def _check_edges(sim, grid, masks, lane):
     # declaration separately from their allocated pads, as their setup does.
     faces = {face.name: face for face in grid_face_depths(grid, spec=sim._boundary_spec)}
     nodes = {axis: np.asarray(_axis_node_positions(
-        grid.cells(axis), getattr(grid, f"pad_{axis}_lo"))) for axis in "xyz"}
+        host_cells(grid, axis), getattr(grid, f"pad_{axis}_lo"))) for axis in "xyz"}
     for number, entry in enumerate(sim._waveguide_ports):
         normal = "xyz".index(entry.direction[1])
         transverse = [a for a in range(3) if a != normal]
@@ -84,7 +85,7 @@ def _check_edges(sim, grid, masks, lane):
                 spans[a], _ = _range_to_slice_nu(grid, axis, requested)
             else:
                 spans[a], _ = sim._range_to_slice(
-                    requested, sim._domain[a], float(grid.cells(axis)[0]), grid.shape[a],
+                    requested, sim._domain[a], float(host_cells(grid, axis)[0]), grid.shape[a],
                     getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi"))
         bare = []
         for a in transverse:

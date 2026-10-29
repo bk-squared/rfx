@@ -1,12 +1,16 @@
 """Physical lengths for S-parameter geometry advisories."""
+
+from rfx.model.graded_admission import host_cells
 import numpy as np
 
 
 def node_distance(grid, axis, first, second):
     """Node separation; retain uniform multiplication's exact rounding."""
     if grid.is_constant(axis):
-        return abs(second - first) * float(grid.boundary_cell(axis, "lo"))
-    return abs(float(grid.node_of(axis, second)) - float(grid.node_of(axis, first)))
+        return abs(second - first) * float(host_cells(grid, axis)[0])
+    from rfx.geometry.rasterize_grid import _axis_node_positions
+    nodes = _axis_node_positions(host_cells(grid, axis), getattr(grid, f"pad_{axis}_lo"))
+    return abs(float(nodes[second]) - float(nodes[first]))
 
 
 def absorber_depth(grid, axis, side, n_cells):
@@ -16,8 +20,8 @@ def absorber_depth(grid, axis, side, n_cells):
     use their own axis and face, including unequal low/high boundary cells.
     """
     if grid.is_constant(axis):
-        return n_cells * float(grid.boundary_cell(axis, side))
-    cells = np.asarray(grid.cells(axis), dtype=float)
+        return n_cells * float(host_cells(grid, axis)[0 if side == "lo" else -1])
+    cells = np.asarray(host_cells(grid, axis), dtype=float)
     pad = cells[:n_cells] if side == "lo" else cells[len(cells) - 1 - n_cells:-1]
     return float(pad.sum())
 
@@ -41,7 +45,7 @@ def _calculator_source_plane(grid, port):
     """
     direction = 1 if port.face == "bottom" else -1
     centre = port.position[2] + direction * port.pin_length / 2.0
-    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
+    dz = float(host_cells(grid, 2)[0])   # uniform z only (coax calculators refuse a graded mesh)
     return int(round(centre / dz)) + grid.pad_z_lo
 
 
@@ -71,13 +75,13 @@ def _msl_axis_spacing(grid, axis: int):
     from rfx.model.graded_grid import NonUniformGrid, interior_cells
 
     if not isinstance(grid, NonUniformGrid):
-        return float(grid.boundary_cell(axis, "lo")), False, True
+        return float(host_cells(grid, axis)[0]), False, True
     arr = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
     pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
     pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
     if is_tracer(arr):
         return None, None, False
-    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi, periodic="xyz"[axis] in grid.periodic_axes),
+    cells = np.asarray(interior_cells(host_cells(grid, axis, store=True), pad_lo, pad_hi, periodic="xyz"[axis] in grid.periodic_axes),
                        dtype=np.float64)
     if cells.size == 0:
         return None, None, False
@@ -97,4 +101,4 @@ def _msl_axis_cell_f64(grid, axis: int) -> float:
     axis whose cell IS that scalar reproduces the stored count exactly.
     """
     pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
-    return float(np.asarray(grid.cells(axis), dtype=np.float64)[pad_lo])
+    return float(np.asarray(host_cells(grid, axis), dtype=np.float64)[pad_lo])

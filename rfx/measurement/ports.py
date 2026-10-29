@@ -1,6 +1,8 @@
 """Realized port geometry and metric weights for measurement owners."""
 from __future__ import annotations
 
+from rfx.model.graded_admission import host_cells
+
 from collections import defaultdict
 from itertools import product
 
@@ -19,12 +21,12 @@ def _port_cells(grid, axis, nu):
     # Match _build_wp_meta: concrete x/y solver stores widened to f64;
     # z arithmetic stays in its solver dtype, including the dual addition.
     if not nu:
-        return np.asarray(grid.cells(axis))
+        return np.asarray(host_cells(grid, axis))
     import jax
     values = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
     if isinstance(values, jax.core.Tracer):
         return values
-    return np.asarray(values, dtype=np.float64 if axis != 2 else None)
+    return np.asarray(host_cells(grid, axis, store=True), dtype=np.float64 if axis != 2 else None)
 
 
 def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
@@ -166,9 +168,12 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     not feed-profile normalization. Indices use the same propagation/width/z
     frame as msl_cross_section_span. No measurement convention is changed.
     """
+    from rfx.model.graded_admission import refuse_window_cells
+    for a in range(3):
+        refuse_window_cells(grid, a, slice(None), "waveguide ports MSL owner")
     prop, width = 'xyz'.index(direction[1]), 1 if direction[1] == 'x' else 0
-    cells = [np.asarray(grid.cells(a)).astype(np.float32).astype(float) if nonuniform
-             else np.asarray(grid.cells(a)) for a in range(3)]
+    cells = [np.asarray(host_cells(grid, a)).astype(np.float32).astype(float) if nonuniform
+             else np.asarray(host_cells(grid, a)) for a in range(3)]
     offset = 0.0
     channels = []
     for number, p in enumerate(voltage_indices):

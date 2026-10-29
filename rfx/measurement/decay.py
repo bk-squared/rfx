@@ -188,7 +188,10 @@ def yee_volumes(grid, region):
     H_a: dual width along a, primal widths across (``grid.cells``,
     ``grid.duals``). The single primal cell volume for all six left W
     drifting by 5e-3 in a closed lossless graded box."""
-    primal = [jnp.asarray(np.asarray(grid.cells(a))[region[a]], jnp.float32) for a in range(3)]
+    from rfx.model.graded_admission import host_cells, refuse_window_cells
+    for a in range(3):
+        refuse_window_cells(grid, a, region[a], "waveguide ports energy volume")
+    primal = [jnp.asarray(host_cells(grid, a)[region[a]], jnp.float32) for a in range(3)]
     dual = [jnp.asarray(np.asarray(grid.duals(a))[region[a]], jnp.float32) for a in range(3)]
     box = lambda w: w[0][:, None, None] * w[1][None, :, None] * w[2][None, None, :]
     e = tuple(box([primal[b] if b == a else dual[b] for b in range(3)]) for a in range(3))
