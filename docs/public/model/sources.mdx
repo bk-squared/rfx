@@ -181,6 +181,16 @@ checks that it implements the source (below).
 - A closed-box plane wave in vacuum reproduces the incident pulse inside the
   box, and outside it the field stays below 9 float32 rounding steps of the
   pulse peak (`tests/unit/sources/test_tfsf_closed_box.py`).
+- A closed-box plane wave at 30° and at (45°, 30°) in vacuum is the lattice
+  plane wave along the direction `sim.tfsf_incidence()` reports. On a 1 mm mesh
+  at 8–12 GHz its wavenumber differs from the analytic wave by 9e-5 to 7.9e-4,
+  4× less with half the cell, and its amplitude is 0.1–0.5 % below normal
+  incidence (`tests/oracle/test_oblique_closed_box_plane_wave.py`). With an
+  NTFF box, the oblique closed-box source on a 120 mm PEC trihedral converged
+  at second order over three grids, and its backscatter is within 0.10 dB of
+  an independent full-wave reference at 5 and 15 GHz (one structure, no
+  always-on test; record kept with the project). No incident spectrum is
+  formed for an oblique box: normalize by an empty-box run.
 
 ## See also
 
