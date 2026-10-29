@@ -6,5 +6,6 @@
   sphere at 0.75-0.375 mm solves 0.19 cell large in radius (staircase 0.7, previous model about 1.1), with backscatter
   errors 0.28-0.56 dB (previous 1.7-4.5 dB). The curved-body error still falls only first order (#1651 stays open).
 - Refused under conformal PEC: `conformal_min_weight` other than 0.1, PEC shapes with no signed distance (polyhedra,
-  extrusions, volume wires; they used to fall back silently to a staircase), and a body holding no grid node. The
-  cavity-spacing preflight judges a conformal Box face at its drawn plane.
+  extrusions, volume wires; they used to fall back silently to a staircase), a body holding no grid node, and a
+  zero-thickness PEC sheet off the node lattice (it has no volume to cut). The cavity-spacing preflight judges a
+  conformal Box face at its drawn plane.

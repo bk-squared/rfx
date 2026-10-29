@@ -500,7 +500,7 @@ def test_distributed_waveguide_refuses_conformal_request():
             devices=_devices(), skip_preflight=True))
 
 
-def _copper_sheet_sim(nonuniform):
+def _copper_sheet_sim(nonuniform, corners=((0.0033, 0.0033, 0.0063), (0.0087, 0.0087, 0.0063))):
     """The only metal is one add_thin_conductor sheet (copper by default,
     which is PEC)."""
     def build():
@@ -510,8 +510,7 @@ def _copper_sheet_sim(nonuniform):
                          domain=(0.012, 0.012, 0.0 if nonuniform else 0.0122),
                          dx=1e-3, boundary="pec", cpml_layers=0, **kw, snap="declared")
         assert_declared_wall_warning(sim)
-        sim.add_thin_conductor(Box((0.0033, 0.0033, 0.0063),
-                                   (0.0087, 0.0087, 0.0063)))
+        sim.add_thin_conductor(Box(*corners))
         sim.add_source((0.002, 0.006, 0.003), "ez", amplitude_kind="field")
         sim.add_probe((0.006, 0.010, 0.009), "ez")
         return sim
@@ -519,17 +518,26 @@ def _copper_sheet_sim(nonuniform):
 
 
 def test_a_copper_thin_conductor_is_pec_to_conform():
-    """A PEC thin conductor is one of the shapes the conformal weights act
-    on, so conformal_pec=True on a graded mesh with only such a sheet is
-    refused; on a uniform mesh the same request moves the answer."""
+    """A PEC thin conductor is one of the shapes conformal_pec reaches, so a
+    graded mesh with only such a sheet is refused. The cut-cell model places
+    PEC volumes; a sheet has none, so on a uniform mesh a sheet off the node
+    lattice is refused (it would stay at its staircase plane, #1651) and a
+    sheet on node planes, exact already, gives the staircase answer (to the
+    1e-4 of the peak by which main's conformal and staircase paths already
+    differ on an uncut scene, test_conformal_sc's bit patterns)."""
     with pytest.raises(NotImplementedError,
                        match=_refusal("non-uniform mesh", "conformal_pec")):
         _copper_sheet_sim(True).run(n_steps=8, conformal_pec=True,
                                     skip_preflight=True)
-    on, off = (np.asarray(_quiet(lambda: _copper_sheet_sim(False).run(
+    with pytest.raises(NotImplementedError, match="0.3 cell off the node lattice"):
+        _quiet(lambda: _copper_sheet_sim(False).run(
+            n_steps=8, conformal_pec=True, skip_preflight=True))
+    on_nodes = ((0.003, 0.003, 0.006), (0.009, 0.009, 0.006))
+    on, off = (np.asarray(_quiet(lambda: _copper_sheet_sim(False, on_nodes).run(
         n_steps=200, conformal_pec=flag, skip_preflight=True)).time_series)
         for flag in (True, False))
-    assert np.max(np.abs(on - off)) > 0.01 * np.max(np.abs(off))
+    assert np.max(np.abs(off)) > 0
+    assert np.max(np.abs(on - off)) < 1e-3 * np.max(np.abs(off))
 
 
 @pytest.mark.parametrize("lane", list(LANES))
