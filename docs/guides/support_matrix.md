@@ -611,6 +611,15 @@ comparison with RCWA or another full-wave solver, and there is no documented
 high-level Floquet S-parameter API. Treat the result as experimental. A graded `dz`
 and a plane wave are refused with it.
 
+Just below a Rayleigh point, where a new diffraction order is about to
+propagate, that order is evanescent but decays slowly and reaches the CPML. On a
+periodic PEC cross lit at 30° by the oblique Bloch plane wave, the power balance
+|R|²+|T|² of this lossless sheet misses 1 by up to 1.2×10⁻² with the CPML
+18.6 mm from the screen; with the gap doubled it misses by 1.6×10⁻³, and the
+residual falls as the gap grows (record kept with the project). For cells used
+near a Rayleigh point, keep the CPML several decay lengths of that order away
+from the structure, and check the result by moving it.
+
 Sources, polarized sources, the plane wave, point probes, DFT planes and flux
 monitors define no port impedance or reference plane. Check their field,
 resonance, far-field or flux result directly; do not use them as ports.
