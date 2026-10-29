@@ -270,7 +270,7 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
 #                       inside `Simulation.run()`'s jit scan, described at
 #                       rfx/simulation.py:105 as "an AD-compatible alternative
 #                       to the Python-loop extract_s_matrix path")
-#   rfx/subgridding/jit_runner.py  (`_sample_lumped_vi`)
+#   rfx/measurement/subgrid_lumped_dft.py  (`_sample_lumped_vi`)
 #
 # so the branch shipped two spellings of one loop that DISAGREE.  Measured on
 # random H, `_ampere_loop` against the inlined `[i-1]` arithmetic: 9 of 21
@@ -333,10 +333,10 @@ def test_no_module_hand_rolls_a_backward_h_read_outside_the_two_definers():
 
 
 def test_the_subgrid_runner_binds_the_shared_loop_not_a_local_copy():
-    """`rfx/subgridding/jit_runner.py` imports `_ampere_loop` at module level,
+    """`rfx/measurement/subgrid_lumped_dft.py` imports `_ampere_loop` at module level,
     so a regression there would be a rebind rather than a new inline block."""
     import rfx.probes.probes as _probes
-    import rfx.subgridding.jit_runner as _jit
+    import rfx.measurement.subgrid_lumped_dft as _jit
 
     assert _jit._ampere_loop is _probes._ampere_loop
 

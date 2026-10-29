@@ -39,7 +39,7 @@ def use_per_cell_reference(monkeypatch):
     def layout(meta, dtype, **_kwargs):
         return _reference_drives(meta, np.empty(0, dtype=dtype))
     for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop', 'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
-                 'rfx.subgridding.jit_runner', 'rfx.stepping.slab_uniform_loop',
+                 'rfx.stepping.subgrid_jit', 'rfx.stepping.slab_uniform_loop',
                  'rfx.stepping.slab_graded_legacy_loop', 'rfx.stepping.slab_update'):
         module = importlib.import_module(name)
         monkeypatch.setattr(module, 'drive_layout', layout)
@@ -107,7 +107,7 @@ def test_production_step_scatter_count(lane, monkeypatch):
         'uniform': 'rfx.core.drives', 'graded': 'rfx.stepping.graded',
         'distributed': 'rfx.stepping.slab_update',
         'distributed_graded': 'rfx.stepping.graded',
-        'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
+        'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.stepping.subgrid_jit',
     }[lane])
     inject = module.inject_drives
     seen = []

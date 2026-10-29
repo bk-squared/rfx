@@ -321,7 +321,7 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/subgridding/sbp_sat_1d.py', '_update_h_1d'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/subgridding/sbp_sat_2d.py', '_update_hx_2d'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/subgridding/sbp_sat_2d.py', '_update_hy_2d'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/subgridding/sbp_sat_3d.py', '_make_mats'): (1, 'vacuum reference, with sigma explicitly zero'),
+    ('rfx/stepping/subgrid_sat.py', '_make_mats'): (1, 'vacuum reference, with sigma explicitly zero'),
 }
 
 # Every exact cell-sigma read, including typed exclusions, is classified.

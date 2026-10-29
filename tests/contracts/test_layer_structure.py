@@ -204,7 +204,7 @@ def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, generate
     expected = deepcopy(generated)
     expected["outside"][path]["S"] = sorted([*expected["outside"][path]["S"], name])
     if remove_elsewhere:
-        other, old = "rfx/subgridding/runner.py", "run_subgridded"
+        other, old = "rfx/runners/distributed_nu.py", "run_nonuniform_distributed_pec"
         assert generated["outside"][other] == {"S": [old], "M": []}
         tree = real_tree(other)
         tree.body.remove(target_unit(tree, old))
@@ -219,7 +219,7 @@ def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, generate
 
 
 def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
-    path, old, new = "rfx/subgridding/runner.py", "run_subgridded", "renamed_scan"
+    path, old, new = "rfx/runners/distributed_nu.py", "run_nonuniform_distributed_pec", "renamed_scan"
     tree = real_tree(path)
     target_unit(tree, old).name = new
     write(tmp_path, path, ast.unparse(tree) + "\n")
@@ -238,7 +238,7 @@ def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
     ("rfx/stepping/moved_scan.py", True), ("rfx/runners/moved_scan.py", False),
 ])
 def test_outside_move_requires_layer_destination(tmp_path, generated, destination, green):
-    path, name = "rfx/subgridding/runner.py", "run_subgridded"
+    path, name = "rfx/runners/distributed_nu.py", "run_nonuniform_distributed_pec"
     tree = real_tree(path)
     node = target_unit(tree, name)
     tree.body.remove(node)

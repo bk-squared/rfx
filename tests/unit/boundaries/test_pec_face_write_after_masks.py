@@ -131,6 +131,7 @@ def test_reference_masks_precede_faces(path):
     c = captured
     if path == 'coarse-reference':
         from rfx.subgridding import runner
+        from rfx.stepping import subgrid_loop
         # This reference is not run()'s runner. Its legacy coupling expects
         # cell-count fine shapes, unlike the current node-count API. Trace
         # its actual E half-step up to coupling; do not change its arithmetic
@@ -146,7 +147,7 @@ def test_reference_masks_precede_faces(path):
             except _Captured:
                 return half_step['e']
             raise AssertionError('reference must reach the coupling boundary')
-        with patch.object(runner, '_shared_node_coupling_3d', at_coupling):
+        with patch.object(subgrid_loop, '_shared_node_coupling_3d', at_coupling):
             # The assembled materials enter as constants, as run() hands
             # them over: a traced argument would detach the cells from the
             # realization attached at assembly.
