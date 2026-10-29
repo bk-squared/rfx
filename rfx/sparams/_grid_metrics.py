@@ -1,15 +1,20 @@
 """Physical lengths for S-parameter geometry advisories."""
 
-from rfx.model.graded_admission import host_cells
+from rfx.model.graded_admission import host_cells, traced_cell_mask
 import numpy as np
 
 
 def node_distance(grid, axis, first, second):
     """Node separation; retain uniform multiplication's exact rounding."""
     if grid.is_constant(axis):
-        return abs(second - first) * float(host_cells(grid, axis)[0])
+        return abs(second - first) * float(grid.boundary_cell(axis, "lo"))
+    if traced_cell_mask(grid, axis) is None:
+        return abs(float(grid.node_of(axis, second)) - float(grid.node_of(axis, first)))
+    # Traced deformation window: nodes from the host nominal widths, whose
+    # total admission holds fixed outside the window.
     from rfx.geometry.rasterize_grid import _axis_node_positions
-    nodes = _axis_node_positions(host_cells(grid, axis), getattr(grid, f"pad_{axis}_lo"))
+    ax, _n, pad_lo, _pad_hi = grid._axis_layout(axis)
+    nodes = _axis_node_positions(host_cells(grid, ax), pad_lo)
     return abs(float(nodes[second]) - float(nodes[first]))
 
 
@@ -20,7 +25,7 @@ def absorber_depth(grid, axis, side, n_cells):
     use their own axis and face, including unequal low/high boundary cells.
     """
     if grid.is_constant(axis):
-        return n_cells * float(host_cells(grid, axis)[0 if side == "lo" else -1])
+        return n_cells * float(grid.boundary_cell(axis, side))
     cells = np.asarray(host_cells(grid, axis), dtype=float)
     pad = cells[:n_cells] if side == "lo" else cells[len(cells) - 1 - n_cells:-1]
     return float(pad.sum())
@@ -45,7 +50,7 @@ def _calculator_source_plane(grid, port):
     """
     direction = 1 if port.face == "bottom" else -1
     centre = port.position[2] + direction * port.pin_length / 2.0
-    dz = float(host_cells(grid, 2)[0])   # uniform z only (coax calculators refuse a graded mesh)
+    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
     return int(round(centre / dz)) + grid.pad_z_lo
 
 
@@ -75,7 +80,7 @@ def _msl_axis_spacing(grid, axis: int):
     from rfx.model.graded_grid import NonUniformGrid, interior_cells
 
     if not isinstance(grid, NonUniformGrid):
-        return float(host_cells(grid, axis)[0]), False, True
+        return float(grid.boundary_cell(axis, "lo")), False, True
     arr = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
     pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
     pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]

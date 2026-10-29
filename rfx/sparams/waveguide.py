@@ -1534,6 +1534,9 @@ def _compute_waveguide_s_matrix_nu(
 # ::test_no_public_simulation_method_leaks_a_mixin_class_name`` pins it.
 # ---------------------------------------------------------------------------
 compute_waveguide_s_matrix.__qualname__ = "_SparamMixin.compute_waveguide_s_matrix"
+# ``flux_mesh_entry`` wraps the calculator, and Python names the INNER function
+# in a bad-keyword TypeError; give it the name the rewrite gives the wrapper.
+compute_waveguide_s_matrix.__wrapped__.__qualname__ = "Simulation.compute_waveguide_s_matrix"
 _compute_waveguide_s_matrix_nu.__qualname__ = (
     "_SparamMixin._compute_waveguide_s_matrix_nu"
 )

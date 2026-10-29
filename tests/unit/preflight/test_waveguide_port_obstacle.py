@@ -4,6 +4,7 @@ Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods (the leader's sweep),
 only the two band endpoints, 5 and 6.5 GHz; normalize=True.
 The phase oracle is the closed form 180 - 2 beta d at the reported plane.
 """
+import inspect
 import warnings
 
 import numpy as np
@@ -99,7 +100,7 @@ def test_skip_preflight_bypasses_calculator(monkeypatch):
 
     def build(self, *args, **kwargs):
         import sys
-        if sys._getframe(1).f_code is calculator.compute_waveguide_s_matrix.__code__:
+        if sys._getframe(1).f_code is inspect.unwrap(calculator.compute_waveguide_s_matrix).__code__:
             raise CalculatorReached
         return original(self, *args, **kwargs)
 
