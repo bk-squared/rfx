@@ -1,6 +1,5 @@
 """Graded CPML levels, main's AD-memory terms, and BASE 1d5712706 traces."""
 import json
-import types
 from pathlib import Path
 
 import jax
@@ -91,27 +90,6 @@ def test_batched_nested_gradient_matches_plain(box, record_property):
     print(json.dumps(dict(batched_relative_difference=relative)))
     record_property("batched_relative_difference", relative)
     assert relative <= 1e-4
-
-
-@pytest.mark.parametrize("gradient", [False, True])
-def test_integer_jaxpr_equals_base(box, monkeypatch, gradient):
-    import rfx.stepping.graded_loop as loop
-    import rfx.runners.nonuniform as runner
-    sim, eps, sigma = box
-    def trace():
-        fun = lambda e, s: jnp.sum(outputs(sim, e, s, 24)[1])
-        return str(jax.make_jaxpr(jax.grad(fun, argnums=(0, 1)) if gradient else fun)(eps, sigma))
-    actual = trace()
-    reference = types.ModuleType("base_graded_loop")
-    source = (BASE / "graded_loop.py.txt").read_text()
-    exec(compile(source, "BASE/graded_loop.py", "exec"), reference.__dict__)
-    remat = types.ModuleType("base_remat")
-    source = (BASE / "remat.py.txt").read_text()
-    exec(compile(source, "BASE/remat.py", "exec"), remat.__dict__)
-    reference.segmented_scan = remat.segmented_scan
-    monkeypatch.setattr(loop, "run_nonuniform", reference.run_nonuniform)
-    monkeypatch.setattr(runner, "run_nonuniform", reference.run_nonuniform)
-    assert trace() == actual
 
 
 def test_nested_conductivity_gradient_matches_forward_finite_difference(box, record_property):

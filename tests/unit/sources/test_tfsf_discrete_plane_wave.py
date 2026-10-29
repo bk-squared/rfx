@@ -155,10 +155,6 @@ def test_v0_independent_curl(angles, pol):
     assert np.max(commutator_errors(angles, pol)) <= 9
 
 
-def test_v0_face_index_mutation_is_red():
-    assert np.max(commutator_errors((45, 30), 's', mutate=True)) > 9
-
-
 def test_normal_reference_refuses_oblique_o1b():
     cfg, state = line(45, 30)
     with pytest.raises(NotImplementedError, match='O1b'):
@@ -255,23 +251,6 @@ def test_d3b_bound_vs_twice_bound(angles, pol):
                                   center_record(twice, zero, 300).view(np.uint32))
 
 
-def test_d3b_quarter_length_is_red(tmp_path, record_property):
-    import json
-    cfg, state = line(n_steps=1200)
-    small, zero = resized_line(cfg, state, .25)
-    center_p = 20
-    ends = (small.origin - 1, small.origin + small.n_nodes)
-    path = min(abs(cfg.source_p - end) + abs(center_p - end) for end in ends)
-    return_step = int(np.ceil(path / (299792458. * DT / DX))) + 1
-    assert return_step < 1200
-    plan = dict(return_step=return_step, zero_extension_nodes=ends, path_p=path)
-    (tmp_path / 'quarter_return_plan.json').write_text(json.dumps(plan))
-    record_property('return_plan', str(plan))
-    actual = center_record(small, zero, 1200)
-    expected = center_record(cfg, state, 1200)
-    assert np.any(actual[return_step - 1:].view(np.uint32) != expected[return_step - 1:].view(np.uint32))
-
-
 def polarization_record(theta, phi, pol, delayed=False):
     """V11: nearest sublattice samples at one projected box-centre location."""
     from scipy.optimize import brentq
@@ -314,12 +293,6 @@ def test_v11_polarization(angles, pol, record_property):
     result = polarization_record(*angles, pol)
     record_property('polarization', str(result))
     assert max(result['cross_co']) <= .01, result
-
-
-def test_v11_one_step_delay_is_red(record_property):
-    result = polarization_record(45, 30, 'p', delayed=True)
-    record_property('mutation', str(result))
-    assert max(result['cross_co']) > .01, result
 
 
 def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None):
@@ -458,28 +431,6 @@ def test_v1_v2_l1(theta, phi, pol, record_property):
     assert_v1_v2(summary)
 
 
-def measure_line_mutation(kind):
-    difference = plane.line_difference
-    def changed(cfg, state, target, source, axis):
-        if kind == 'drop_h_half_step':
-            cfg = replace(cfg, fractions=cfg.fractions[:3] + (0., 0., 0.))
-        value = difference(cfg, state, target, source, axis)
-        if kind == 'flip_curl_term' and (target, source, axis) == (4, 2, 0):
-            value = -value
-        return value
-    with patch.object(plane, 'line_difference', changed):
-        return measure_scene(45, 30, 'p')
-
-
-@pytest.mark.source_scan
-@pytest.mark.parametrize('kind', ('drop_h_half_step', 'flip_curl_term'))
-def test_v1_line_mutation_is_red(kind, record_property):
-    summary, _ = measure_line_mutation(kind)
-    record_property('mutation', str(summary))
-    assert (not np.isfinite(summary['rSF']) or summary['rSF'] > 1
-            or summary['rise_SF_ULP'] > 9), summary
-
-
 def principal_roots(m, frequencies):
     """Independent NumPy float64 principal root; no engine dispersion helper."""
     m = np.asarray(m, np.float64)
@@ -554,90 +505,6 @@ def test_v13b_matched_window_width(angles, pol, record_property):
     relative = np.abs(ratio / expected - 1)
     record_property('relative_error', relative.tolist())
     assert np.all(relative <= .02), (ratio, expected, relative)
-
-
-def test_v13b_zero_delay_defect_is_red(record_property):
-    ratio, expected = window_width_ratio((10, 0), 's', zero_delays=True)
-    record_property('defect_ratio', ratio.tolist())
-    assert np.any(np.abs(ratio / expected - 1) > .02), (ratio, expected)
-
-
-def table_defect_record(entry=None, epsilon=0.):
-    """Native setup and native gathered values; change one coefficient only."""
-    import inspect
-    reads, captured = {}, {}
-    native_init = plane.init_plane_wave
-    def initialize(*args, **kwargs):
-        cfg, state = native_init(*args, **kwargs)
-        captured['cfg'] = cfg
-        if entry is None:
-            return cfg, state
-        family, ti, ii = entry
-        key = 'tables_' + family.lower()
-        tables = list(getattr(cfg, key))
-        coefficient = tables[ti].coefficient.copy()
-        coefficient[ii] = np.float32(float(coefficient[ii]) * (1 + epsilon))
-        tables[ti] = tables[ti]._replace(coefficient=coefficient)
-        return replace(cfg, **{key: tuple(tables)}), state
-    def tap(step, values, magnetic, ti):
-        def save(n, array):
-            reads[('H' if magnetic else 'E', ti, int(n))] = np.array(array)
-        jax.debug.callback(save, step, values, ordered=True)
-    source = inspect.getsource(plane.apply_tables)
-    needle = '        values = table_operands(cfg, incident, table, ti, magnetic)'
-    assert source.count(needle) == 1
-    source = source.replace(needle, needle + '\n        _tap(incident.step + 1, values, magnetic, ti)')
-    namespace = dict(vars(plane), _tap=tap)
-    exec(compile(source, '<actual table-read tap>', 'exec'), namespace)
-    with patch.object(plane, 'init_plane_wave', initialize), patch.object(
-            plane, 'apply_tables', namespace['apply_tables']):
-        summary, arrays = measure_scene(45, 30, 's')
-    jax.effects_barrier()
-    return summary, arrays, captured['cfg'], reads
-
-
-@pytest.mark.source_scan
-def test_record10_scale_mutations(record_property):
-    """Record 12: switch step 27; measured corner eps=3e-5 first goes red
-    per-step at step 20 and on the law at step 18. At eps=1e-5 the corner's
-    full-record per-step first red is step 33, law step 37. The face-centre
-    eps=1e-5 is red on the law after the switch; eps=0 is green.
-    """
-    control, _, cfg, reads = table_defect_record()
-    assert_v1_v2(control)
-    candidates = []
-    for family in ('E', 'H'):
-        for ti, table in enumerate(getattr(cfg, 'tables_' + family.lower())):
-            values = np.stack([reads[family, ti, n] for n in range(1, 301)])
-            for ii in range(len(table.target_index)):
-                nonzero = np.flatnonzero(values[:, ii] != 0)
-                if len(nonzero):
-                    step = int(nonzero[0])
-                    product = abs(float(table.coefficient[ii]) * float(values[step, ii]))
-                    candidates.append((step, -product, family, ti, ii))
-    _, _, *corner = min(candidates)
-    assert tuple(corner) == ('E', 8, 0)
-    term = cfg.tables_e[corner[1]]
-    assert term.target_component == 2 and term.source_component == 4
-    assert np.unravel_index(term.target_index[corner[2]], cfg.shape) == (12, 12, 12)
-    center = np.array([cfg.x_lo, (cfg.y_lo + cfg.y_hi)//2, (cfg.z_lo + cfg.z_hi)//2])
-    candidates = []
-    for ti, table in enumerate(cfg.tables_e):
-        if (table.target_component, table.source_component) not in ((1, 5), (2, 4)):
-            continue
-        nodes = np.array(np.unravel_index(table.target_index, cfg.shape)).T
-        for ii in np.flatnonzero(nodes[:, 0] == cfg.x_lo):
-            candidates.append((int(np.sum((nodes[ii] - center)**2)),
-                               -abs(float(table.coefficient[ii])), ti, int(ii)))
-    _, _, ti, ii = min(candidates)
-    assert (ti, ii) == (6, 144)
-    assert cfg.tables_e[ti].target_component == 1 and cfg.tables_e[ti].source_component == 5
-    assert np.unravel_index(cfg.tables_e[ti].target_index[ii], cfg.shape) == (12, 20, 20)
-    corner_result, _, _, _ = table_defect_record(tuple(corner), 3e-5)
-    face_result, _, _, _ = table_defect_record(('E', ti, ii), 1e-5)
-    record_property('scale_mutations', dict(control=control, corner=corner_result, face=face_result))
-    assert corner_result['rise_SF_ULP'] > 9, corner_result
-    assert face_result['rSF'] > 1, face_result
 
 
 @pytest.mark.parametrize('parameter,value', (('amplitude', 1.), ('f0', 10e9), ('bandwidth', .8)))

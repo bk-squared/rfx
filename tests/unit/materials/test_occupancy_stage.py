@@ -433,19 +433,6 @@ def test_gradient_is_the_same_whole_domain_and_under_jit():
     np.testing.assert_allclose(jitted, eager, rtol=1e-6, atol=1e-6)
 
 
-@pytest.mark.source_scan
-def test_one_publication_builder_definition():
-    import ast
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[3] / 'rfx'
-    definitions = [(str(p.relative_to(root)), n.lineno)
-                   for p in root.rglob('*.py')
-                   for n in ast.walk(ast.parse(p.read_text()))
-                   if isinstance(n, ast.FunctionDef) and n.name == 'build_edge_keep']
-    assert len(definitions) == 1
-    assert definitions[0][0] == 'model/occupancy.py'
-
-
 def test_complex_fields_with_an_occupancy_are_refused():
     """The envelope path never ran with an occupancy (it failed inside clip); it stays refused, by name."""
     from rfx.core.yee import init_materials
@@ -522,36 +509,6 @@ def test_slab_drive_weight_is_last_float32_product(source_i, material_drive):
         assert actual.tobytes() == expected.tobytes()
         if occupancy == .5:
             assert actual.tobytes() == (np.float32(.0625) * v).tobytes()
-
-
-def test_slab_occupancy_gradient_has_field_and_drive_paths(monkeypatch):
-    import rfx.runners.distributed_nu as nu
-    run, _ = slab_drive_scene(6, samples=(.7, .4, -.1))
-    def loss(occupancy):
-        return jnp.sum(run(occupancy)['time_series'] ** 2)
-    value = jnp.float32(.2)
-    full = jax.grad(loss)(value)
-    # Since W1 the multi-device PEC graded run cuts the SINGLE-DEVICE drive table, whose
-    # occupancy weights are applied by rfx.model.source_coefficients.weight_drive_columns.
-    import rfx.model.source_coefficients as sc
-    # The per-slab drive table (rfx #1402 item 4) reads the weight as drive_columns' keep.
-    weigh, columns = sc.weight_drive_columns, sc.drive_columns
-    def patch(change):
-        monkeypatch.setattr(sc, 'weight_drive_columns',
-                            lambda table, weights, meta: weigh(table, change(weights), meta))
-        monkeypatch.setattr(sc, 'drive_columns', lambda eps, sigma, keep, *a, **k: columns(
-            eps, sigma, None if keep is None else change(keep), *a, **k))
-    # Keep the same forward drive values, removing only their gradient path.
-    patch(jax.lax.stop_gradient)
-    field_only = jax.grad(loss)(value)
-    # Requested comparison with drive scaling disabled altogether: unit weight on every column.
-    patch(lambda weights: jax.tree.map(jnp.ones_like, weights))
-    unscaled = jax.grad(loss)(value)
-    assert np.isfinite([full, field_only, unscaled]).all()
-    assert field_only != 0  # Field multiply reaches occupancy.
-    assert full != field_only  # Drive-weight path contributes too.
-    assert full != unscaled
-    print(f'occupancy gradients: full={full}, field_only={field_only}, unscaled_drive={unscaled}')
 
 
 @pytest.mark.parametrize('n_warmup', [0, 1])

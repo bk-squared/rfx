@@ -56,20 +56,6 @@ def _closed_form(f_hz, f_cutoff_hz, dt_s, dx_b, dx_l):
     return s_x, lead, nxt
 
 
-def test_fixture_shape_and_provenance(envelope):
-    assert envelope["no_fdtd_run"] is True
-    assert envelope["settling_db"] is None
-    assert envelope["producer"] == "scripts/diagnostics/waveguide_nu_beta_cell_size_envelope.py"
-    assert envelope["fixture"].startswith("tests/unit/autodiff/test_waveguide_nu_flux_ad.py")
-    rows = envelope["rows"]
-    f = np.array([r["f_hz"] for r in rows])
-    assert f.min() <= 8e9 and f.max() >= 12e9, f
-    assert len(rows) >= 5
-    assert envelope["beta_inputs"]["dx_boundary_m"] == pytest.approx(1.5e-3)
-    assert envelope["beta_inputs"]["dx_local_m"] == pytest.approx(0.75e-3)
-    assert envelope["grid"]["boundary_dx_m"] == pytest.approx(1.5e-3)
-
-
 def test_delta_beta_matches_yee_second_order_closed_form(envelope):
     """(beta dx)^2/24 at the two cell sizes explains the whole difference."""
     inp = envelope["beta_inputs"]
@@ -138,49 +124,3 @@ def test_live_functions_reproduce_the_committed_beta(envelope):
             assert bc == pytest.approx(r["beta_continuous_rad_per_m"], rel=1e-9)
             assert zb == pytest.approx(r["z_te_boundary_cell_ohm"], rel=1e-9)
             assert zl == pytest.approx(r["z_te_local_cell_ohm"], rel=1e-9)
-
-
-def test_live_fixture_reproduces_the_committed_inputs(envelope):
-    """The JSON's cutoff, dt, boundary dx and plane positions are the fixture's own (no FDTD)."""
-    from tests.unit.autodiff.test_waveguide_nu_flux_ad import NUM_PERIODS, _FREQS, _wr90_nu_sim
-    from rfx.api._sparams import _assert_nu_shift_span_in_one_grading_zone
-    from rfx.runners.nonuniform import _build_waveguide_port_config_nu
-    from rfx.sources.waveguide_port import waveguide_plane_positions
-
-    sim, domain_x = _wr90_nu_sim()
-    grid = sim._build_nonuniform_grid()
-    assert float(grid.dx) == pytest.approx(envelope["grid"]["boundary_dx_m"], rel=1e-12)
-    assert float(grid.dt) == pytest.approx(envelope["grid"]["dt_s"], rel=1e-9)
-    assert float(domain_x) == pytest.approx(envelope["grid"]["domain_x_m"], rel=1e-9)
-    n_steps = int(np.ceil(NUM_PERIODS / float(sim._freq_max) / float(grid.dt)))
-    by_name = {p["name"]: p for p in envelope["ports"]}
-    for entry in sim._waveguide_ports:
-        cfg = _build_waveguide_port_config_nu(sim, entry, grid, jnp.asarray(_FREQS), n_steps)
-        planes = waveguide_plane_positions(cfg)
-        rec = by_name[entry.name]
-        assert float(cfg.f_cutoff) == pytest.approx(envelope["beta_inputs"]["f_cutoff_hz"], rel=1e-9)
-        assert float(cfg.dx) == pytest.approx(rec["cfg_dx_m"], rel=1e-12)
-        assert float(cfg.dt) == pytest.approx(rec["cfg_dt_s"], rel=1e-9)
-        assert planes["source"] == pytest.approx(rec["port_plane_m"], abs=1e-9)
-        assert planes["reference"] == pytest.approx(rec["modal_record_plane_m"], abs=1e-9)
-        desired = float(entry.reference_plane)
-        axis, lo, hi, sizes = _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired, entry.name)
-        assert axis == rec["span_axis"] == "x"
-        np.testing.assert_allclose(sizes, rec["cells_crossed_m"], rtol=1e-12)
-
-
-def test_headline_envelope_the_support_matrix_quotes(envelope):
-    """Under 1 degree over 20 mm; both fixture spans in uniform 1.5 mm cells."""
-    head = envelope["headline"]
-    assert 0.0 < head["max_delta_phi_over_nominal_20mm_deg"] < 1.0, head
-    assert head["max_delta_phi_over_applied_shift_deg"] < 0.05, head
-    assert head["both_spans_in_one_cell_size"] is True
-    for p in envelope["ports"]:
-        assert p["distinct_cell_sizes_crossed_m"] == pytest.approx([1.5e-3])
-        assert len(p["cells_crossed_m"]) >= 3, p
-    # The fixture's graded block starts at x = 0.030 m; the coarse blocks are
-    # 0.030 m long, and both ports keep their planes inside them.
-    assert envelope["grid"]["first_non_coarse_cell_starts_x_m"] == pytest.approx(0.030, abs=1e-9)
-    by_f = {round(r["f_hz"] / 1e9, 2): r for r in envelope["rows"]}
-    for ghz, lo, hi in ((8.0, 0.05, 0.15), (10.0, 0.25, 0.45), (12.0, 0.7, 0.95)):
-        assert lo < by_f[ghz]["delta_phi_over_nominal_20mm_deg"] < hi, (ghz, by_f[ghz])

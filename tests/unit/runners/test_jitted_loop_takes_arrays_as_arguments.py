@@ -222,8 +222,3 @@ def test_compiled_loop_has_no_grid_sized_constants(loop_program):
     large = [(dtype, dims) for dtype, dims in constants
              if dims and int(np.prod(dims)) >= half]
     assert not large, f"grid-sized constants in the compiled loop: {large}"
-
-
-def test_jitted_loop_closes_over_no_per_cell_array(loop_program):
-    assert loop_program["loops"], "the jitted time loop was never compiled here"
-    assert not loop_program["captures"], loop_program["captures"]

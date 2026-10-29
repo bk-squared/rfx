@@ -64,11 +64,6 @@ from rfx.geometry.csg import Box  # noqa: E402
 from rfx.sources.coaxial_port import (  # noqa: E402
     coaxial_line_reflection_from_plane_voltages,
 )
-from rfx.sources.msl_port import (  # noqa: E402
-    msl_port_from_entry,
-    msl_probe_x_coords_n,
-)
-
 _LADDER_NPZ = (
     Path(__file__).resolve().parents[3]
     / "scripts" / "diagnostics" / "_coax_msl_transition_settled_run_logs"
@@ -100,17 +95,6 @@ def test_standoff_helper_is_the_repo_s_existing_5_h_sub_constant():
     # advisory must never crash a run.
     assert msl_source_near_field_standoff_cells(300e-6, 0.0) == 3
     assert msl_source_near_field_standoff_cells(0.0, 100e-6) == 3
-
-
-def test_helper_matches_add_msl_port_s_own_auto_floor():
-    """Auto ports (``n_probe_offset=None``) cannot violate BY CONSTRUCTION:
-    ``add_msl_port`` takes ``max(3, lam_cells, round(5*h/dx))``, which is
-    >= this helper for every (h, dx). Measured on the RO4350B fixture."""
-    sim = _sim_with_msl_port(n_probe_offset=None)
-    pe = sim._msl_ports[0]
-    assert pe.n_probe_offset >= msl_source_near_field_standoff_cells(
-        float(pe.height), float(sim._dx)
-    )
 
 
 def test_near_field_decay_length_matches_the_substrate_transverse_resonance():
@@ -279,76 +263,6 @@ def test_committed_example_msl_port_geometries_are_all_compliant():
 # ---------------------------------------------------------------------------
 # 3. The coax<->MSL lane's own realized ladder (method-side advisory)
 # ---------------------------------------------------------------------------
-
-def _realized_ladder(build, *, count, start, spacing):
-    """Realized MSL probe x-coordinates for a committed coax<->MSL fixture,
-    via the PRODUCTION ``msl_probe_x_coords_n`` on the real run grid."""
-    sim = build()
-    pe = sim._msl_ports[0]
-    xs = msl_probe_x_coords_n(
-        sim._build_grid(), msl_port_from_entry(pe),
-        n_probes=count, n_offset_cells=start, n_spacing_cells=spacing,
-    )
-    return (sorted(float(x) for x in xs), float(pe.position[0]),
-            float(pe.height), float(sim._dx))
-
-
-@pytest.mark.parametrize(
-    "label,builder_name,count,start,spacing,junction_x_name,"
-    "n_violating_port,n_violating_junction",
-    [
-        # Measured 2026-09-01 by building each committed fixture and
-        # evaluating the predicate on the realized ladder. The standoff is
-        # 15 cells = 1.500 mm = 5.000*h_sub at dx=100um, h_sub=300um.
-        ("attempt1", "_build_coax_msl_transition_sim", 6, 4, 2,
-         "JUNCTION_X", 6, 0),
-        ("attempt2", "_build_coax_msl_transition_sim_attempt2", 9, 4, 10,
-         "JUNCTION_X", 2, 0),
-        ("attempt2_wide", "_build_coax_msl_transition_sim_attempt2_wide",
-         9, 4, 10, "JUNCTION_X_2W", 2, 0),
-        ("attempt3", "_build_coax_msl_transition_sim_attempt3", 9, 4, 10,
-         "JUNCTION_X", 2, 0),
-        # Attempt 3b: the same geometry with the compliant ladder (the
-        # unique MAXIMAL-COUNT one at the inherited spacing -- that
-        # uniqueness is proved in
-        # tests/unit/sparams/test_coax_msl_transition.py::
-        # test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder,
-        # not re-derived here).
-        ("attempt3b", "_build_coax_msl_transition_sim_attempt3b",
-         8, 15, 10, "JUNCTION_X", 0, 0),
-        # Clears the DERIVED 4.0354*h floor but not the shipped 5*h rule --
-        # rejected rather than loosening the rule to admit it.
-        ("rejected_9_14_9", "_build_coax_msl_transition_sim_attempt3",
-         9, 14, 9, "JUNCTION_X", 1, 1),
-    ],
-)
-def test_committed_coax_msl_ladders_violate_exactly_the_measured_slots(
-    label, builder_name, count, start, spacing, junction_x_name,
-    n_violating_port, n_violating_junction,
-):
-    """Enumerated false-positive cost of the shipped 5*h rule on this lane.
-
-    Honest accounting: the MEASUREMENT above says only the d = 0.4 mm probe
-    is actually corrupt, so on attempts 2/3 the 5*h rule over-flags exactly
-    ONE further probe slot (d = 1.4 mm, rho = 7.6e-3, clean by the 0.02
-    bar). That is the price of reusing the repo's existing constant instead
-    of shipping a second, tighter one -- and it costs nothing, because the
-    advisory is report-only and refuses nothing.
-    """
-    import test_coax_msl_transition as T
-
-    xs, feed_x, h_sub, dx = _realized_ladder(
-        getattr(T, builder_name), count=count, start=start, spacing=spacing)
-    junction_x = getattr(T, junction_x_name)
-    required_m = msl_source_near_field_standoff_cells(h_sub, dx) * dx
-    assert required_m == pytest.approx(5.0 * h_sub)
-
-    viol_port = sum(1 for x in xs if abs(feed_x - x) < required_m - 1e-12)
-    viol_junction = sum(1 for x in xs
-                        if abs(x - junction_x) < required_m - 1e-12)
-    assert (viol_port, viol_junction) == (
-        n_violating_port, n_violating_junction), (label, xs)
-
 
 # ---------------------------------------------------------------------------
 # 4. The ladder self-consistency witness

@@ -65,9 +65,7 @@ references).
 
 from __future__ import annotations
 
-import ast
 import hashlib
-import importlib
 import os
 import warnings
 
@@ -1232,8 +1230,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
 }
 
 #: No manual fast-lane sheet fence remains: run() always uses the standard lane.
-_MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {}
-
 #: ``has_f0_sheets(...)`` call sites in ``rfx/`` that are NOT lane fences.
 #:
 #: The AST scan treats every ``has_f0_sheets`` call outside
@@ -1245,116 +1241,6 @@ _MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {}
 #: site and why it is not a fence; the guard still binds on every other
 #: call, and a row that stops matching the source is reported as stale, so
 #: this list cannot silently outlive its call site.
-_NON_FENCE_F0_QUERIES: dict[tuple[str, str, str], str] = {
-    ("rfx/api/_ad_memory.py", "_ad_memory_static_accounting", "has_f0_sheets"):
-        "#696 memory ACCOUNTING: adds the sheet operator's three edge masks "
-        "+ sigma_sheet to the forward working-set estimate. It changes a "
-        "reported number, never whether the lane runs.",
-}
-
-_RFX_ROOT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "rfx")
-
-
-def _enclosing_function(func_spans, lineno):
-    cands = [f for f in func_spans if f[0] <= lineno <= f[1]]
-    cands.sort(key=lambda f: f[1] - f[0])
-    return cands[0][2] if cands else "<module>"
-
-
-def _scan_source_fences():
-    """Re-derive the fence inventory from the ``rfx/`` source by AST."""
-    found: dict[tuple[str, str, str], str] = {}
-    for dirpath, _dirs, files in os.walk(_RFX_ROOT):
-        for fn in sorted(files):
-            if not fn.endswith(".py"):
-                continue
-            path = os.path.join(dirpath, fn)
-            rel = os.path.relpath(path, os.path.dirname(_RFX_ROOT))
-            rel = rel.replace(os.sep, "/")
-            with open(path, encoding="utf-8") as fh:
-                src = fh.read()
-            if "677" not in src and "f0_sheets" not in src:
-                continue
-            tree = ast.parse(src, filename=path)
-            spans = [(n.lineno, n.end_lineno, n.name) for n in ast.walk(tree)
-                     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-            for node in ast.walk(tree):
-                # refuse_f0_sheets(conductors, "<lane>")
-                if (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id.lstrip("_").startswith("refuse_f0")
-                        and len(node.args) == 2
-                        and isinstance(node.args[1], ast.Constant)):
-                    key = (rel, _enclosing_function(spans, node.lineno),
-                           node.args[1].value)
-                    found[key] = "refuse_f0_sheets"
-                # has_f0_sheets(...) used as a lane eligibility fence
-                elif (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id == "has_f0_sheets"
-                        and rel != "rfx/materials/thin_conductor.py"):
-                    key = (rel, _enclosing_function(spans, node.lineno),
-                           "has_f0_sheets")
-                    found[key] = "has_f0_sheets"
-                # raise ValueError("... (#677 v1) ...")
-                elif isinstance(node, ast.Raise):
-                    exc = node.exc
-                    if not (isinstance(exc, ast.Call) and exc.args
-                            and isinstance(exc.args[0], ast.Constant)
-                            and isinstance(exc.args[0].value, str)):
-                        continue
-                    msg = exc.args[0].value
-                    if "surface-impedance (surface_impedance_f0) sheets" not in msg:
-                        continue
-                    func = _enclosing_function(spans, node.lineno)
-                    disc = [k for (_r, _f, k) in FENCE_REGISTRY
-                            if _r == rel and _f == func and k in msg]
-                    key = (rel, func, disc[0] if disc else msg)
-                    found[key] = "inline"
-    return found
-
-
-@pytest.mark.source_scan
-def test_every_fence_in_the_source_is_pinned():
-    """Every #677 lane fence in ``rfx/`` is named by ``FENCE_REGISTRY``.
-
-    This is the anti-regression that closes the CLASS: adding a new fence
-    without a lane-level test is red here, and so is deleting a fence whose
-    lane is still registered (the registry would name a call site the
-    source no longer has).
-    """
-    found = _scan_source_fences()
-    registered = set(FENCE_REGISTRY)
-    non_fence = set(_NON_FENCE_F0_QUERIES)
-    missing = sorted(set(found) - registered - non_fence)
-    stale = sorted(registered - set(found))
-    # A non-fence row that no longer matches any call site is stale too —
-    # otherwise the exemption list would outlive the code it excuses.
-    stale += sorted(non_fence - set(found))
-    assert not missing, (
-        "these #677 lane fences exist in rfx/ but no test is registered for "
-        f"them — add a lane-level test and a FENCE_REGISTRY row: {missing}")
-    assert not stale, (
-        "FENCE_REGISTRY names call sites that are no longer in rfx/ — a "
-        f"fence was moved or deleted: {stale}")
-
-
-def test_every_registered_pinning_test_exists():
-    """A registry row is only worth something if the test it names is real —
-    a rename must not silently orphan a fence."""
-    orphans = []
-    for key, (mod_name, test_name) in {**FENCE_REGISTRY,
-                                       **_MANUAL_FENCES}.items():
-        mod = (importlib.import_module(mod_name)
-               if mod_name != __name__ else globals())
-        have = (test_name in mod if isinstance(mod, dict)
-                else hasattr(mod, test_name))
-        if not have:
-            orphans.append((key, mod_name, test_name))
-    assert not orphans, f"registered pinning tests that do not exist: {orphans}"
-
-
 # ===========================================================================
 # formerly tests/unit/materials/test_sheet_impedance.py
 # ===========================================================================

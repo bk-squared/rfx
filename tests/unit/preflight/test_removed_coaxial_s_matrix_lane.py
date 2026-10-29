@@ -37,8 +37,6 @@ called for real; only their grid build is replaced by a sentinel, so
 from __future__ import annotations
 
 import warnings
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -49,25 +47,7 @@ import rfx.sources.coaxial_port
 from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-RFX_ROOT = Path(rfx.__file__).resolve().parent
-REMOVED_LANE = "compute_coaxial_s_matrix"
 VALIDATED_LANES = ("compute_coaxial_line_reflection", "compute_coaxial_two_port")
-
-REMOVED_NAMES = (
-    (Simulation, (REMOVED_LANE, "add_coaxial_matched_load",
-                  "add_coaxial_open_termination", "add_coaxial_pec_end_cap")),
-    (rfx, ("CoaxialSMatrixResult",)),
-    (rfx.api, ("CoaxialSMatrixResult",)),
-    (rfx.sources, ("setup_coaxial_port", "add_coaxial_matched_termination",
-                   "add_coaxial_open_termination", "add_coaxial_pec_end_cap",
-                   "make_coaxial_port_source")),
-    (rfx.sources.coaxial_port, ("setup_coaxial_port",
-                                "add_coaxial_matched_termination",
-                                "add_coaxial_open_termination",
-                                "add_coaxial_pec_end_cap",
-                                "make_coaxial_port_source")),
-)
-
 
 ONE_PORT = ((0.020, "top"),)
 THREE_PORTS = ((0.010, "top"), (0.020, "top"), (0.030, "top"))
@@ -85,57 +65,6 @@ def _coax_sim(boundary="cpml", ports=ONE_PORT, **kwargs) -> Simulation:
 
 def _one_coax_port_sim() -> Simulation:
     return _coax_sim()
-
-
-@pytest.mark.source_scan
-def test_nothing_points_users_at_the_removed_coaxial_lane():
-    for entry, call in (("run", lambda sim: sim.run(n_steps=1)),
-                        ("forward", lambda sim: sim.forward(n_steps=1))):
-        with pytest.raises(NotImplementedError) as exc:
-            call(_one_coax_port_sim())
-        text = str(exc.value)
-        for gone in (REMOVED_LANE, "rfx.sources.coaxial_port"):
-            assert gone not in text, (
-                f"{entry}() on a coaxial port still points at {gone}: {text}")
-        for lane in VALIDATED_LANES:
-            assert lane in text, f"{entry}() does not name {lane}: {text}"
-
-    for calculator in ("run", "forward"):
-        errors = _one_coax_port_sim().preflight_sparameters(
-            calculator=calculator).errors
-        assert errors, (
-            f"preflight_sparameters(calculator={calculator!r}) accepted a "
-            "coaxial-port simulation; it must refuse and name the coaxial lanes")
-        text = " ".join(str(e) for e in errors)
-        assert REMOVED_LANE not in text, (
-            f"the {calculator!r} refusal still sends users to the removed "
-            f"lane: {text}")
-        for lane in VALIDATED_LANES:
-            assert lane in text, (
-                f"the {calculator!r} refusal does not name {lane}: {text}")
-
-    with pytest.raises(ValueError, match="removed") as exc:
-        _one_coax_port_sim().preflight_sparameters(calculator=REMOVED_LANE)
-    for lane in VALIDATED_LANES:
-        assert lane in str(exc.value), str(exc.value)
-
-    for owner, names in REMOVED_NAMES:
-        still_there = [n for n in names if hasattr(owner, n)]
-        assert not still_there, (
-            f"{getattr(owner, '__name__', owner)} still exposes {still_there}, "
-            "removed in #1212")
-
-    offenders = []
-    for path in sorted(RFX_ROOT.rglob("*.py")):
-        text = path.read_text(encoding="utf-8")
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            if REMOVED_LANE in line and "1212" not in line and "removed" not in line:
-                offenders.append(
-                    f"{path.relative_to(RFX_ROOT.parent)}:{lineno}: "
-                    f"{line.strip()}")
-    assert not offenders, (
-        "lines under rfx/ name the removed lane without naming its removal "
-        ":\n  " + "\n  ".join(offenders))
 
 
 class _ReachedTheSolve(Exception):

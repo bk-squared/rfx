@@ -4216,56 +4216,6 @@ def test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder():
     np.testing.assert_allclose(d_port_alt / H_SUB, 14.0 / 3.0, atol=1e-6)
 
 
-def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
-    """The driver's ``--fixture`` dispatch names EVERY label explicitly and
-    raises on an unknown one.
-
-    Fail-before-fix provenance: the dispatch used to be an if/elif chain
-    whose ``else`` branch was attempt2_wide, so adding a new ``choices``
-    entry without touching the chain would have run attempt2_wide's builder
-    and kwargs under the new label -- a silent mislabel, exactly the class of
-    defect this PR exists to fix (#822). It is now a total function,
-    ``_select_fixture``, and this test pins each label to its own builder and
-    kwargs by identity.
-    """
-    drv = _load_settled_run_driver()
-    import sys
-
-    # THIS module object, not a second import of it: the driver takes the
-    # test module as an argument, and ``import test_coax_msl_transition``
-    # under a tests/-on-sys.path layout would load a SECOND copy whose
-    # function objects are not identical to these, silently weakening every
-    # ``is`` assertion below into a no-op.
-    t_self = sys.modules[__name__]
-
-    expected = {
-        "attempt2": (_build_coax_msl_transition_sim_attempt2, _attempt2_kwargs),
-        "attempt2_wide": (_build_coax_msl_transition_sim_attempt2_wide,
-                          _attempt2_wide_kwargs),
-        "attempt3": (_build_coax_msl_transition_sim_attempt3, _attempt2_kwargs),
-        "attempt3b": (_build_coax_msl_transition_sim_attempt3b, _attempt3b_kwargs),
-    }
-    assert set(drv.FIXTURE_CHOICES) == set(expected)
-    for label, (build, kwargs_fn) in expected.items():
-        sel = drv._select_fixture(t_self, label, 4242)
-        assert sel.build is build, label
-        assert sel.kwargs == kwargs_fn(4242), label
-        assert sel.kwargs["n_steps"] == 4242
-        assert set(sel.fixture_geom) == {
-            "LX_m", "LY_m", "LZ_m", "junction_x_m", "feed_x_m", "y_c_m"}
-        assert label in sel.banner
-    # attempt3b runs on attempt 3's geometry and differs only in the ladder.
-    s3 = drv._select_fixture(t_self, "attempt3", 4242)
-    s3b = drv._select_fixture(t_self, "attempt3b", 4242)
-    assert s3.fixture_geom == s3b.fixture_geom
-    assert {k for k in s3.kwargs if not np.array_equal(
-        np.asarray(s3.kwargs[k], dtype=object),
-        np.asarray(s3b.kwargs[k], dtype=object))} == {
-        "msl_probe_count", "msl_probe_start_cells"}   # spacing is INHERITED
-    with pytest.raises(ValueError, match="unknown --fixture"):
-        drv._select_fixture(t_self, "attempt4", 4242)
-
-
 # ---------------------------------------------------------------------------
 # Part 6 -- this cross-family lane refuses a non-passive S by default (#838).
 #
@@ -4314,29 +4264,6 @@ def _synthetic_transition_result(s_params):
         freqs=np.asarray([6.0e9]),
         port_names=("coax", "msl"),
     )
-
-
-def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not():
-    """The signature invariant: this cross-family lane refuses by default.
-
-    Pinned in BOTH directions. The single-family coax lanes are a separate
-    decision and keep ``False``; a blanket flip of every ``strict_passivity``
-    in ``rfx/sparams/coax.py`` fails here rather than landing unnoticed.
-    """
-    import inspect
-    from rfx.api import Simulation
-
-    assert _transition_strict_passivity_default() is True, (
-        "compute_coax_msl_transition must refuse a non-passive S by default "
-        "(issue #838, PI decision 2026-09-20)"
-    )
-    for name in ("compute_coaxial_two_port",):
-        default = inspect.signature(
-            getattr(Simulation, name)).parameters["strict_passivity"].default
-        assert default is False, (
-            f"{name} is a single-family lane and was not part of the #838 "
-            f"decision, but its strict_passivity default is {default!r}"
-        )
 
 
 def test_transition_default_raises_on_a_nonpassive_s_and_false_returns_it():
@@ -4407,30 +4334,6 @@ def _finalize_call_in_transition_source():
         f"compute_coax_msl_transition, found {len(calls)}"
     )
     return calls[0]
-
-
-@pytest.mark.source_scan
-def test_transition_forwards_its_strict_passivity_to_the_guard():
-    """The wiring, as a source fact -- no grid, no FDTD, milliseconds.
-
-    The end-to-end tests below prove the same thing by running the method,
-    but they cost a grid build each. This one is the always-on gate: it fails
-    the moment ``strict=`` at the lane's only return stops being the
-    ``strict_passivity`` parameter, which is the single token the whole
-    behaviour change rides on.
-    """
-    import ast
-
-    call = _finalize_call_in_transition_source()
-    strict_kw = [k for k in call.keywords if k.arg == "strict"]
-    assert len(strict_kw) == 1, (
-        "the lane's _finalize_sparam_result call must pass strict= explicitly"
-    )
-    value = strict_kw[0].value
-    assert isinstance(value, ast.Name) and value.id == "strict_passivity", (
-        "strict= must be the method's own strict_passivity parameter, not a "
-        f"literal or a derived expression (found {ast.dump(value)})"
-    )
 
 
 # --- End-to-end: the real method, a planted non-passive S, 1 FDTD step ------

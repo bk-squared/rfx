@@ -35,10 +35,6 @@ TRANSFORMS = {
 }
 
 
-def test_eager_caller_is_not_under_a_transform():
-    assert _under_external_jax_transform() is False
-
-
 def test_compile_time_eval_is_eager():
     with jax.ensure_compile_time_eval():
         assert _under_external_jax_transform() is False

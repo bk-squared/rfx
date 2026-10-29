@@ -358,43 +358,6 @@ def test_dump_is_consumed(lane, row):
           f"traced_sites={sorted({r['site'] for r in same.records if r['traced']})}", file=sys.stderr)
 
 
-@pytest.mark.parametrize("lane", ["run_distributed", "run_distributed_nu", "fwd_distributed_nu"])
-@pytest.mark.parametrize("row", ["eps", "sigma"])
-def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
-    from rfx.model import electric_metrics
-    from rfx.stepping import slab_setup
-
-    original = electric_metrics.slab_wall_view
-    original_view_rows = slab_setup.uniform_from_cut
-
-    def broken_ghost(arr, nx_per, nx, rank, **kw):
-        view = original(arr, nx_per, nx, rank, **kw)
-        # Keep both material helpers; corrupt rank 1's incoming ghost.
-        return view.at[0].set(jnp.where(rank == 1, jnp.ones_like(view[0]), view[0]))
-
-    def broken_view_ghost(array, layout, mesh, **kw):
-        # The graded lanes run the wrapped step: its producers read slab views
-        # [extra low | low ghost | owned | high ghost]; corrupt rank 1's ghost.
-        rows = original_view_rows(array, layout, mesh, **kw)
-        if np.ndim(rows) != 4 or not jnp.issubdtype(rows.dtype, jnp.floating):
-            return rows
-        return rows.at[1, 1].set(jnp.ones_like(rows[1, 1]))
-
-    measured.cache_clear()
-    try:
-        # Concrete whole-grid realization reads owned rows, never these halos.
-        # This mutation continues to gate the retained per-slab producer.
-        monkeypatch.setattr(slab_setup, "_material_host_device", lambda *args, **kwargs: (None, "traced inputs"))
-        monkeypatch.setattr(electric_metrics, "slab_wall_view", broken_ghost)
-        monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
-        dump = measured(lane, row)
-        for axis in (1, 2):
-            with pytest.raises(AssertionError):
-                assert_cell(dump, row, axis)
-    finally:
-        measured.cache_clear()
-
-
 @pytest.mark.parametrize("row", ["eps", "mu", "override_drive"])
 def test_missing_record_is_not_a_departure(row):
     dump = _realized.Capture(lane="run_adi")

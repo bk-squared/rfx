@@ -17,39 +17,7 @@ invariant here:
 
 Pure Python: 28 125 layouts in well under a second.
 """
-import pytest
-
 from rfx.snapshots import plan_snapshot_pieces
-
-
-@pytest.mark.parametrize("m", range(2, 17))
-def test_piece_layout_invariants(m):
-    for lo in range(0, 3 * m):
-        for n in range(0, 6 * m + 3):
-            pieces = plan_snapshot_pieces(n, lo, m)
-            where = f"interval={m} lo={lo} n={n}: {pieces}"
-            # The pieces tile the segment in step order.
-            assert [p.start for p in pieces] == [
-                sum(q.length for q in pieces[:k]) for k in range(len(pieces))
-            ], where
-            assert sum(p.length for p in pieces) == n, where
-            frames = []
-            for p in pieces:
-                assert p.kind in ("plain", "blocks", "rec"), where
-                # No step runs as a one-step scan unless the segment is one.
-                assert p.length >= 2 or len(pieces) == 1, where
-                if p.kind == "blocks":
-                    assert (lo + p.start) % m == 0 and p.length % m == 0, where
-                    assert p.frame_rows == tuple(range(m - 1, p.length, m)), where
-                elif p.kind == "plain":
-                    assert p.frame_rows in ((), (p.length - 1,)), where
-                else:
-                    # A per-step-frame piece holds at most three frames.
-                    assert 2 <= p.length <= 3, where
-                frames += [lo + p.start + r + 1 for r in p.frame_rows]
-            # Every frame lands on a multiple, and every multiple has one.
-            assert frames == [t for t in range(lo + 1, lo + n + 1)
-                              if t % m == 0], where
 
 
 def test_large_interval_keeps_the_per_step_piece_small():

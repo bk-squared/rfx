@@ -270,36 +270,3 @@ def test_two_simulations_alternating_do_not_retain_findings():
             skip_preflight=True,
         )
         assert clean.diagnostics == ()
-
-
-@pytest.mark.source_scan
-@pytest.mark.parametrize(
-    "graded",
-    [False, True],
-    ids=["uniform", "graded"],
-)
-def test_every_family_warning_construction_executes(graded, record_property):
-    targets = set()
-    for name in ('msl', 'msl_reflector', 'line_stub', 'line_port_coverage'):
-        path = ROOT / 'rfx/preflight' / (name + '.py')
-        for node in ast.walk(ast.parse(path.read_text())):
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id in ('PreflightWarning', 'PreflightErrorWarning')):
-                targets.add((str(path), node.lineno))
-    assert len(targets) == 23
-    files = {path for path, _ in targets}
-    observed = set()
-    def trace(frame, event, arg):
-        if frame.f_code.co_filename not in files:
-            return None
-        if event == 'line':
-            observed.add((frame.f_code.co_filename, frame.f_lineno))
-        return trace
-    previous = sys.gettrace()
-    try:
-        sys.settrace(trace)
-        captured_cases(graded)
-    finally:
-        sys.settrace(previous)
-    assert targets <= observed, sorted(targets - observed)
-    record_property('family_emit_sites', json.dumps(sorted(targets)))

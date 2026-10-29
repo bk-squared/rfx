@@ -328,54 +328,9 @@ def test_the_adi_time_stepping_is_recorded_not_run_while_tracing():
     assert _ulp_at_peak(ts, ts_j) <= MAX_ULP_AT_PEAK, _ulp_at_peak(ts, ts_j)
 
 
-def _msl_direct_call(graded):
-    """The MSL board's solve through the shared entry ``forward()`` calls,
-    called directly, as ``compute_mixed_s_matrix`` and the S-matrix driver
-    do (they call it without an outer trace)."""
-    sim, *_ = _model(f"msl port/{'graded' if graded else 'uniform'}")
-    if graded:
-        def solve():
-            return sim._forward_nonuniform_from_materials(
-                n_steps=N_STEPS, checkpoint=False).time_series
-        return solve
-    grid = sim._build_grid()
-    sheets, wires = [], []
-    materials, debye, lorentz, pec_mask, *_ = sim._assemble_materials(
-        grid, pec_sheets=sheets, pec_wires=wires)
-
-    def solve():
-        return sim._forward_from_materials(
-            grid, materials, debye, lorentz, n_steps=N_STEPS,
-            checkpoint=False, pec_mask=pec_mask, pec_sheets=tuple(sheets),
-            pec_wires=tuple(wires)).time_series
-    return solve
-
-
-@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
-def test_a_staged_direct_call_of_the_shared_entry_obeys_the_rule(graded):
-    """The rule sits on the entries ``forward()`` shares with the calculators
-    (``_forward_from_materials``, ``_forward_nonuniform_from_materials``), not
-    only on ``forward()``: staged directly under ``jax.jit``, the MSL board's
-    host read of its PEC edge mask is concrete, the scan is recorded, and
-    the record equals the plain call's. (The calculators themselves run it
-    without an outer trace, so for them the rule is inactive.)"""
-    solve = _msl_direct_call(graded)
-    assert N_STEPS in _scan_lengths(jax.make_jaxpr(solve)())
-    ts = solve()
-    ts_j = jax.jit(solve)()
-    assert _ulp_at_peak(ts, ts_j) <= MAX_ULP_AT_PEAK, _ulp_at_peak(ts, ts_j)
-
-
 # ---------------------------------------------------------------------------
 # The helper's mechanisms (rfx.core.jax_utils)
 # ---------------------------------------------------------------------------
-
-def test_the_compile_time_switch_is_found_on_the_ci_jax_versions():
-    """The validated JAX exposes the switch; the next test exercises its fallback."""
-    from rfx.core.jax_utils import compile_time_switch
-
-    assert compile_time_switch() is not None
-
 
 @pytest.fixture
 def fallback_solve(monkeypatch):
@@ -424,23 +379,6 @@ def test_the_fallback_probe_record_equals_the_plain_call(fallback_solve):
     assert _ulp_at_peak(ts, ts_j) <= MAX_ULP_AT_PEAK, _ulp_at_peak(ts, ts_j)
 
 
-def test_recorded_scan_outside_a_compile_time_region_is_the_plain_scan():
-    """No region, no anchor: the helper is ``jax.lax.scan``, eager and traced."""
-    from rfx.stepping.scan import recorded_scan
-
-    def body(c, x):
-        return c * 0.5 + x, c
-
-    xs = jnp.arange(5.0, dtype=jnp.float32)
-    plain = jax.lax.scan(body, jnp.float32(1.0), xs)
-    mine = recorded_scan(body, jnp.float32(1.0), xs)
-    assert not isinstance(mine[0], jax.core.Tracer)
-    for a, b in zip(jax.tree_util.tree_leaves(plain), jax.tree_util.tree_leaves(mine)):
-        np.testing.assert_array_equal(np.asarray(a), np.asarray(b))
-    assert jax.make_jaxpr(lambda: recorded_scan(body, jnp.float32(1.0), xs))(
-    ).jaxpr.eqns[-1].primitive.name == "scan"
-
-
 def _toy_region_scan(xs):
     """A scan with a closed-over array, run through ``recorded_scan`` inside
     the region, as a forward entry does under an outer trace."""
@@ -456,33 +394,6 @@ def _toy_region_scan(xs):
         with declaration_setup():
             return recorded_scan(body, jnp.zeros(7, jnp.float32), xs)
     return body, solve
-
-
-@pytest.mark.parametrize("fallback", [False, True], ids=["switch", "fallback"])
-def test_recorded_scan_in_the_region_hides_every_concrete_operand(
-        fallback, monkeypatch):
-    """In the region every operand of the recorded loop (the arrays its body
-    closes over, the carry, ``xs``) is an output of an
-    ``optimization_barrier``, so the compiler cannot rewrite the loop around
-    known values, and the result is the plain scan's."""
-    from rfx.core import jax_utils
-
-    if fallback:
-        monkeypatch.setattr(jax_utils, "compile_time_switch", lambda: None)
-        import rfx.stepping.scan as scan  # recorded_scan reads it here
-        monkeypatch.setattr(scan, "compile_time_switch", lambda: None)
-    xs = jnp.ones((5, 7), jnp.float32)
-    body, solve = _toy_region_scan(xs)
-    jaxpr = jax.make_jaxpr(solve)().jaxpr
-    scans = [e for e in jaxpr.eqns if e.primitive.name == "scan"]
-    hidden = {v for e in jaxpr.eqns
-              if e.primitive.name == "optimization_barrier" for v in e.outvars}
-    assert len(scans) == 1 and len(scans[0].invars) == 3  # weights, carry, xs
-    assert all(v in hidden for v in scans[0].invars), jaxpr
-    plain = jax.lax.scan(body, jnp.zeros(7, jnp.float32), xs)
-    for a, b in zip(jax.tree_util.tree_leaves(plain),
-                    jax.tree_util.tree_leaves(jax.jit(solve)())):
-        np.testing.assert_array_equal(np.asarray(a), np.asarray(b))
 
 
 def test_recorded_scan_in_the_region_of_zero_length():

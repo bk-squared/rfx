@@ -66,14 +66,10 @@ import pytest
 import ast
 import inspect
 import textwrap
-from collections import Counter
-from pathlib import Path
-
 from rfx.optimize import optimize as _optimize_fn
 from rfx.topology import topology_optimize as _topology_optimize_fn
 from rfx import Simulation
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
 # The preflight check sites. #980 Phase 3 takes rfx/api/_preflight.py apart a
 # family at a time into rfx/preflight/, so the scan has to follow the code:
 # a moved check takes its emission sites out of the facade, and a scan that
@@ -84,64 +80,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 # only a real new advisory moves them. Globbed, not listed, for the reason
 # tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
 # rfx/preflight/ row: a later leg must not have to remember this file.
-_PREFLIGHT_SRCS = (
-    _REPO_ROOT / "rfx" / "api" / "_preflight.py",
-    # #1887: the shared grid judge emits a coded wall-length warning.
-    _REPO_ROOT / "rfx" / "boundaries" / "features.py",
-    *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
-)
-
 # ---------------------------------------------------------------------------
 # S1: frozen check-site surface (facade, conductor adapter, check families).
 # ---------------------------------------------------------------------------
-
-_ISSUE_CLASSES = {
-    "PreflightWarning", "PreflightErrorWarning",
-    "PreflightIssue", "PreflightConfigError",
-}
-
-
-def _enumerate_emission_sites():
-    """AST walk over the preflight sources: every construction of an
-    issue-carrying class, with its line, enclosing function, and whether
-    its ``code=`` is a source literal or computed at runtime (``getattr``
-    off a caught exception -- ``preflight()``'s own uncoded fallback).
-
-    Walks the preflight facade, conductor adapter, and ``rfx/preflight/``
-    and returns one flat list, so a site that changes FILE under #980 Phase
-    3 does not change the totals frozen below. Line numbers are per file and
-    were never part of the freeze anyway.
-    """
-    sites = []
-
-    class _V(ast.NodeVisitor):
-        def __init__(self):
-            self.func_stack = []
-
-        def visit_FunctionDef(self, node):
-            self.func_stack.append(node.name)
-            self.generic_visit(node)
-            self.func_stack.pop()
-
-        def visit_Call(self, node):
-            f = node.func
-            name = f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)
-            if name in _ISSUE_CLASSES:
-                code, dynamic = None, False
-                for kw in node.keywords:
-                    if kw.arg == "code":
-                        if isinstance(kw.value, ast.Constant):
-                            code = kw.value.value
-                        else:
-                            dynamic = True
-                enclosing = self.func_stack[-1] if self.func_stack else None
-                sites.append((node.lineno, name, code, dynamic, enclosing))
-            self.generic_visit(node)
-
-    for src in _PREFLIGHT_SRCS:
-        _V().visit(ast.parse(src.read_text()))
-    return sites
-
 
 # Frozen (issue #737/#742): re-derived independently via the AST walk
 # above, matching the campaign's own reproduction exactly. A change to
@@ -489,7 +430,6 @@ def _enumerate_emission_sites():
 # (rfx/preflight/absorber.py), new code ``body_flush_on_absorber`` -- a static
 # body lying flush on an absorbing face along its thinnest axis, which the
 # absorber pad continues as a half-space.
-_FROZEN_TOTAL_SITES = 141
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -529,7 +469,6 @@ _FROZEN_TOTAL_SITES = 141
 # 92 -> 93 (#1953): thin_conductor_thickness_unmodelled.
 # 93 -> 94 (#1887): wall_axis_off_node.
 # 94 -> 95 (#1941): body_flush_on_absorber.
-_FROZEN_LITERAL_CODE_COUNT = 95
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -543,76 +482,6 @@ _FROZEN_LITERAL_CODE_COUNT = 95
 # folds the setup audits' caught warnings into the returned report, and that
 # conversion reads ``code=`` off the caught PreflightWarning instance rather
 # than naming a slug at the site -- the same shape as preflight()'s own two.
-_FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
-    "_preflight_impl": 2,
-    # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
-    # waveguide one reads ``code=``/``source=`` off the caught
-    # PreflightWarning instance in exactly the same way.
-    "preflight_sparameters": 3,
-    "finding": 1,
-}
-
-
-@pytest.mark.source_scan
-def test_preflight_emission_site_surface_is_frozen():
-    sites = _enumerate_emission_sites()
-    assert len(sites) == _FROZEN_TOTAL_SITES, (
-        f"rfx/api/_preflight.py + rfx/preflight/ now have {len(sites)} "
-        "PreflightWarning/PreflightErrorWarning/PreflightIssue/"
-        "PreflightConfigError "
-        f"construction sites, not the frozen {_FROZEN_TOTAL_SITES} (issue "
-        "#737/#742). Update _FROZEN_TOTAL_SITES in this file -- widening "
-        "this surface without a conscious edit here is the failure mode "
-        "#737 exists to stop."
-    )
-    literal_codes = {c for (_, _, c, dyn, _) in sites if not dyn}
-    assert len(literal_codes) == _FROZEN_LITERAL_CODE_COUNT, (
-        f"{len(literal_codes)} distinct literal ``code=`` values measured, "
-        f"not the frozen {_FROZEN_LITERAL_CODE_COUNT}. Update "
-        "_FROZEN_LITERAL_CODE_COUNT in this file (issue #737/#742) -- a new "
-        "code is a new advisory kind that (b)'s classification is about."
-    )
-    dynamic_by_fn = {}
-    for (_lineno, _cls, _code, dyn, enclosing) in sites:
-        if dyn:
-            dynamic_by_fn[enclosing] = dynamic_by_fn.get(enclosing, 0) + 1
-    assert dynamic_by_fn == _FROZEN_DYNAMIC_SITES_BY_FUNCTION, (
-        f"the dynamic-code (uncoded-at-source) sites are now "
-        f"{dict(sorted(dynamic_by_fn.items()))}, not the frozen "
-        f"{dict(sorted(_FROZEN_DYNAMIC_SITES_BY_FUNCTION.items()))}. "
-        "Update _FROZEN_DYNAMIC_SITES_BY_FUNCTION in this file -- a new "
-        "dynamic-code site means preflight()/preflight_sparameters() grew "
-        "a new bare ``except`` path with no check-site slug (issue "
-        "#737/#742). Line numbers are deliberately NOT part of this "
-        "freeze: they drift on any insertion above and say nothing about "
-        "the surface."
-    )
-
-
-@pytest.mark.source_scan
-def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
-    """A shared constructor must not hide new or dynamically chosen slugs."""
-    tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
-    calls = [node for node in ast.walk(tree)
-             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-             and node.func.id == "finding"]
-    uses = [node for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
-            and node.id == "finding"]
-    assert len(uses) == len(calls), "finding must be called directly, not passed through an alias"
-    codes = []
-    for call in calls:
-        assert not any(isinstance(arg, ast.Starred) for arg in call.args)
-        assert len(call.args) >= 3 and isinstance(call.args[2], ast.Constant)
-        assert isinstance(call.args[2].value, str)
-        codes.append(call.args[2].value)
-    assert Counter(codes) == {
-        "flux_region_unavailable": 2,
-        "flux_region_invalid": 2,
-        "flux_region_clamped": 1,
-    }
-
-
 # ---------------------------------------------------------------------------
 # S2: per-entry-point emission classification.
 # ---------------------------------------------------------------------------

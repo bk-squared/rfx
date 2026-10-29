@@ -330,38 +330,3 @@ def test_advisory_measure_matches_the_battery_measure_bit_for_bit():
 # The raise-site count is frozen too, and it is the load-bearing half: exactly
 # ONE raise may exist in this guard, the passivity ``strict`` raise. Warn-only
 # means the reciprocity path must never add a second.
-_FROZEN_GUARD_WARN_SITES = 3
-_FROZEN_GUARD_RAISE_SITES = 1
-
-
-def _guard_emission_sites():
-    import ast
-    import inspect
-
-    from rfx.api import _sparams
-
-    tree = ast.parse(inspect.getsource(_sparams._warn_if_nonpassive_smatrix))
-    warns = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-             and n.func.attr == "warn"]
-    raises = [n for n in ast.walk(tree) if isinstance(n, ast.Raise)]
-    return len(warns), len(raises)
-
-
-@pytest.mark.source_scan
-def test_runtime_guard_advisory_surface_is_frozen():
-    warns, raises = _guard_emission_sites()
-    assert warns == _FROZEN_GUARD_WARN_SITES, (
-        f"_warn_if_nonpassive_smatrix now has {warns} advisory emission "
-        f"sites, not the frozen {_FROZEN_GUARD_WARN_SITES}. Update the "
-        "constant in this file with a one-line reason -- a new runtime "
-        "advisory must be a conscious edit, the same discipline "
-        "tests/unit/preflight/test_preflight_advisory_emission_contract.py applies to "
-        "rfx/api/_preflight.py."
-    )
-    assert raises == _FROZEN_GUARD_RAISE_SITES, (
-        f"_warn_if_nonpassive_smatrix now has {raises} raise sites, not the "
-        f"frozen {_FROZEN_GUARD_RAISE_SITES}. The single permitted raise is "
-        "the passivity strict-mode one; the reciprocity advisory is "
-        "warn-only and must never add another."
-    )

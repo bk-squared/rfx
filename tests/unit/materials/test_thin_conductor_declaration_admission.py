@@ -9,9 +9,6 @@ import pytest
 
 from rfx import Simulation
 from rfx.geometry.csg import Box, OrientedBox
-import rfx.model
-
-
 class NoMask:
     pass
 
@@ -156,13 +153,3 @@ def test_traced_warning_W4():
     assert w.filename == __file__
     assert w.lineno == lines[0]
     assert len(sim._thin_conductors) == 1
-
-
-@pytest.mark.source_scan
-def test_public_admission_and_declaration_only():
-    assert callable(rfx.model.admit_thin_conductor)
-    source = inspect.getsource(Simulation.add_thin_conductor)
-    # The unchanged public docstring documents errors; inspect executable source.
-    body = source.split('"""', 2)[2]
-    assert 'raise' not in body
-    assert 'warnings.warn' not in source

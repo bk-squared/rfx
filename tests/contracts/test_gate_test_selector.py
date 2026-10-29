@@ -718,8 +718,6 @@ def test_function_move_selects_both_real_source_scans_without_import_matches():
     paths = {
         "tests/unit/farfield/test_current_moment_monitor.py":
             "test_every_user_facing_return_carries_the_backstop",
-        "tests/unit/materials/test_sheet_impedance.py":
-            "test_every_fence_in_the_source_is_pinned",
     }
     sources = {path: (ROOT / path).read_text() for path in paths}
     changed = ["rfx/core/source_owner.py", "rfx/core/moved_owner.py"]

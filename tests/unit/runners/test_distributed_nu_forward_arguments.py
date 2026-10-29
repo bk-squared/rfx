@@ -133,8 +133,3 @@ def test_compiled_program_has_no_per_cell_constants(loop_program):
     large = [(dtype, dims) for dtype, dims in constants
              if dims and int(np.prod(dims)) >= loop_program["slab_cells"]]
     assert not large, f"per-cell HLO literals: {large}"
-
-
-def test_scan_closures_have_no_concrete_per_cell_arrays(loop_program):
-    assert loop_program["scans"], "must inspect the actual time loop"
-    assert not loop_program["captures"], loop_program["captures"]

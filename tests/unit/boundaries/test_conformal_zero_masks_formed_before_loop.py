@@ -1,5 +1,6 @@
 """Stage 1 reads boolean zero masks in the scan and enforces E = 0 in PEC."""
 from collections import namedtuple
+import re
 from unittest.mock import patch
 
 import jax
@@ -9,9 +10,42 @@ import pytest
 from rfx import Box, Simulation
 from rfx.stepping import uniform_setup
 from rfx.stepping.conductors import apply_conformal_pec
-from tests.unit.boundaries.test_pec_face_write_after_masks import (
-    _called, _equations, _step_jaxpr,
-)
+
+
+class _Captured(Exception):
+    pass
+
+
+def _step_jaxpr(sim, **options):
+    traces = []
+    def capture(fn, carry, xs=None, length=None, **kwargs):
+        first = jax.tree.map(lambda x: x[0], xs) if xs is not None else None
+        traces.append(jax.make_jaxpr(fn)(carry, first))
+        raise _Captured
+    with patch.object(jax.lax, 'scan', capture), pytest.raises(_Captured):
+        sim.run(n_steps=1, skip_preflight=True, **options)
+    assert len(traces) == 1
+    return traces[0]
+
+
+def _equations(jaxpr, origin=''):
+    """Inline call/shard-map jaxprs in program order, retaining call sites."""
+    jaxpr = getattr(jaxpr, 'jaxpr', jaxpr)
+    for eq in jaxpr.eqns:
+        source = origin + '\n' + str(eq.source_info.traceback) + '\n' + str(eq.params.get('name', ''))
+        children = []
+        for value in eq.params.values():
+            values = value if isinstance(value, (tuple, list)) else (value,)
+            children.extend(v for v in values if hasattr(v, 'jaxpr') or hasattr(v, 'eqns'))
+        if children:
+            for child in children:
+                yield from _equations(child, source)
+        else:
+            yield eq, source
+
+
+def _called(source, name):
+    return re.search(r'(?<![\w])' + name + r'(?![\w])', source) is not None
 
 
 def _scene():

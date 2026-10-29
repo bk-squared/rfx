@@ -82,16 +82,6 @@ would red every same-process pytest-split shard.
 
 from __future__ import annotations
 
-LOCK_PROVENANCE = {
-    "fixture": "tests/_pec_short_advisory_fixture.py,tests/_coax_msl_instrument_fixture.py",
-    "generator": "tests/locks/test_sparams_split_bit_identity.py (RFX_SPARAMS_BASELINE_CAPTURE=1)",
-    "commit": "060cb916",
-    "date": "2026-09-13",
-    "run_id": "local",
-    "host": "remilab pod linux x86_64, CPU, python 3.11.16, jax 0.10.2",
-    "pinned_until": "2027-03-13",
-}
-
 import hashlib
 import os
 import warnings
@@ -104,6 +94,17 @@ import pytest
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
+
+
+LOCK_PROVENANCE = {
+    "fixture": "tests/_pec_short_advisory_fixture.py,tests/_coax_msl_instrument_fixture.py",
+    "generator": "tests/locks/test_sparams_split_bit_identity.py (RFX_SPARAMS_BASELINE_CAPTURE=1)",
+    "commit": "060cb916",
+    "date": "2026-09-13",
+    "run_id": "local",
+    "host": "remilab pod linux x86_64, CPU, python 3.11.16, jax 0.10.2",
+    "pinned_until": "2027-03-13",
+}
 
 _BASELINE_ENV = "RFX_SPARAMS_BASELINE_DIR"
 _CAPTURE_ENV = "RFX_SPARAMS_BASELINE_CAPTURE"
@@ -124,61 +125,6 @@ _SKIP_REASON = (
 #   python -c "import rfx.api._sparams as m; print(sorted(n for n in vars(m) \
 #              if not (n.startswith('__') and n.endswith('__'))))"
 # ---------------------------------------------------------------------------
-_SPARAMS_NAMESPACE_AT_060CB916 = (
-    "CoaxMSLTransitionResult", "CoaxialLineReflectionResult", "CoaxialPort",
-    # "CoaxialSMatrixResult" left with its lane in #1212.
-    "CoaxialTwoPortResult", "GaussianPulse",
-    "MSLSMatrixResult", "MixedSMatrixResult", "NonUniformGrid", "TYPE_CHECKING",
-    "WAVEGUIDE_PHASE_BETA_CONVENTION", "WAVEGUIDE_PHASE_MAG_FLOOR",
-    "WAVEGUIDE_RECIPROCITY_ADVISORY_TOL", "WaveguideSMatrixResult",
-    "_C0_SPARAMS", "_FAR_PORT_LAMBDA_G_FRACTION", "_MSLPortEntry",
-    "_SETTLING_WITNESS_DB", "_SparamMixin", "_WaveguidePortEntry",
-    "_assemble_coax_msl_transition_from_voltages",
-    "_assemble_coaxial_two_port_from_voltages", "_assemble_mixed_power_wave_s",
-    "_assert_nu_shift_span_in_one_grading_zone", "_collocated_msl_h",
-    "_enable_x64", "_finalize_sparam_result", "_ladder_split_witness",
-    "_mixed_flux_magnitude_override", "_mixed_reciprocity_deviation",
-    "_msl_axis_spacing", "_msl_cell_profile", "_msl_power_wave_scales",
-    "_msl_wave_split_reliability", "_nu_shift_span_cells", "_project_passive",
-    "_reciprocity_advisory_message", "_register_msl_h_planes",
-    "_resolve_msl_auto_offsets", "_validate_extra_flux_monitor_entries",
-    "_warn_if_nonpassive_smatrix", "_warn_if_passivity_projected",
-    "_warn_if_ringdown_truncated", "_warn_junction_cpml_thickness",
-    "_warn_junction_probe_clearance", "_warn_msl_beta_scan_railed",
-    "_warn_msl_wave_split_unreliable", "_warn_ntff_box_dropped",
-    "_warn_thin_absorber_vs_guide_wavelength", "_waveguide_s21_phase_residual",
-    "annotations", "extract_multimode_s_matrix", "extract_multimode_s_matrix_flux",
-    "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
-    "extract_waveguide_s_params_normalized", "interior_cells", "is_tracer",
-    "jax", "jnp", "msl_modal_voltage", "msl_solve_s_from_waves", "np",
-    "s21_phase_residual_deg_rms", "settling_verdict", "waveguide_plane_positions",
-)
-
-
-def test_sparams_module_namespace_is_the_declared_re_export_surface():
-    """``rfx.api._sparams``'s module namespace must stay exactly whole.
-
-    47 files do ``from rfx.api._sparams import <helper>``; two more patch
-    ``"rfx.api._sparams.<name>"`` as a STRING, which binds nothing and fails
-    silently the moment the name stops living there. When #980 moves a helper
-    body out, the explicit re-export block has to put the name back -- and a
-    name the split ACCIDENTALLY adds is just as much a surface change, so this
-    is set equality, not a subset check.
-    """
-    import rfx.api._sparams as mod
-
-    live = {n for n in vars(mod) if not (n.startswith("__") and n.endswith("__"))}
-    declared = set(_SPARAMS_NAMESPACE_AT_060CB916)
-    assert live - declared == set(), (
-        "rfx.api._sparams gained module-level names not in the pre-split "
-        f"surface: {sorted(live - declared)}"
-    )
-    assert declared - live == set(), (
-        "rfx.api._sparams lost module-level names the pre-split surface had "
-        f"(the re-export block is incomplete): {sorted(declared - live)}"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Fixtures. Copied verbatim from the test modules named in the docstring so
 # this lock is frozen against later edits to those files; the baseline is

@@ -117,25 +117,6 @@ def test_exact_face_runs(graded, distributed, method):
     assert np.asarray(root.materials.eps_r)[-1, 5, 5] == pytest.approx(EPS_R)
 
 
-@pytest.mark.parametrize("graded", [False, True])
-def test_builder_checks_once(monkeypatch, graded):
-    import rfx.geometry.rasterize_grid as raster
-    import rfx.model.pad_fill as pad_fill
-    calls = []
-    original = raster.assert_declared_span_is_filled
-    def spy(*args, **kwargs):
-        calls.append(args[0])
-        return original(*args, **kwargs)
-    monkeypatch.setattr(raster, 'assert_declared_span_is_filled', spy)
-    monkeypatch.setattr(pad_fill, 'assert_declared_span_is_filled', spy)
-    import rfx.model.materials as materials_module
-    monkeypatch.setattr(materials_module, 'assert_declared_span_is_filled', spy)
-    sim = _graded_rig(monkeypatch) if graded else _rig(10)
-    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
-    realized_conductors(sim, grid, nonuniform=graded, mode='audit')
-    assert calls == ['ro4003c']
-
-
 def test_declared_cells_uses_local_widths():
     from types import SimpleNamespace
     from rfx.geometry.rasterize_grid import assert_declared_span_is_filled

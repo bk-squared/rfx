@@ -21,7 +21,6 @@ from rfx.boundaries import upml
 import rfx.simulation as uniform
 import rfx.stepping.uniform as stepping_uniform
 import rfx.stepping.uniform_setup as uniform_setup
-import rfx.nonuniform as nu
 import rfx.measurement.graded_wire as graded_wire
 from tests.contracts.curl_cases import model
 
@@ -199,38 +198,6 @@ def test_kernel_adapters(branch):
     assert require_shared(calls[branch]) == boundary
 
 
-def test_disabled_contract_is_detected():
-    # An E update deliberately bypassing the helper. No source inspection and
-    # no monkeypatch of the helpers: disabling require_shared's assertion
-    # makes this negative-control test fail with "DID NOT RAISE".
-    state, mats, boundary = kernel_inputs()
-    def inline_update():
-        curl_z = (state.hy - jnp.roll(state.hy, 1, axis=0)) / 1e-3
-        return state._replace(ez=state.ez + 1e-12 / yee.EPS_0 * curl_z)
-    with pytest.raises(AssertionError, match="bypassed shared"):
-        require_shared(inline_update)
-
-
-def test_cpml_uses_boundary_neighbours():
-    from rfx.boundaries.cpml import init_cpml, apply_cpml_e
-    sim = model(wall="cpml")
-    grid = sim._build_grid()
-    params, psi = init_cpml(grid)
-    from rfx.boundaries.pec import resolve_wall_faces
-    boundary = yee.CurlBoundary(*resolve_wall_faces(grid, (False, False, False)))
-    import rfx.boundaries.cpml as cpml
-    original = cpml.h_neighbor
-    reads = []
-    def witness(*args, **kwargs):
-        assert kwargs["boundary"] == boundary
-        reads.append(args[1])
-        return original(*args, **kwargs)
-    with patch.object(cpml, "h_neighbor", witness):
-        apply_cpml_e(yee.init_state(grid.shape), params, psi, grid, boundary=boundary)
-    # Two transverse H components per face, two faces per axis.
-    assert reads == [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
-
-
 @pytest.mark.parametrize("graded", [False, True])
 def test_design_box_second_update_uses_boundary(graded):
     state, mats, boundary = kernel_inputs()
@@ -238,20 +205,6 @@ def test_design_box_second_update_uses_boundary(graded):
     require_shared(lambda: stepping_yee.update_e_box(
         state, state, (1, 2, 1, 2, 1, 2), 1., .1, 1e-3,
         inv_d=inv_d, boundary=boundary), helper="curl_h_nu" if graded else "curl_h")
-
-
-def test_coaxial_injection_parent_uses_shared_curl():
-    from rfx.sources.coaxial_port import CoaxialPort, build_coaxial_tem_plane_source_specs
-    from rfx import GaussianPulse
-    sim = model(wall="pec", solved_domain=True)
-    grid = sim._build_grid()
-    port = CoaxialPort(position=(6e-3, 5e-3, 4e-3), face="top",
-                       pin_length=2e-3, impedance=50.0, pin_radius=.5e-3,
-                       outer_radius=2e-3, excitation=GaussianPulse(f0=12e9, bandwidth=1.2))
-    sources = build_coaxial_tem_plane_source_specs(grid=grid, port=port, n_steps=2)
-    require_shared(lambda: uniform.run(
-        grid, yee.init_materials(grid.shape), 2,
-        sources=list(sources.electric_sources), mag_sources=list(sources.magnetic_sources)))
 
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])

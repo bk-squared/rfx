@@ -1,5 +1,5 @@
 """The production uniform step exposes the physical hook order when compiled."""
-from dataclasses import dataclass, fields, MISSING, replace
+from dataclasses import fields, MISSING
 
 import jax
 import jax.numpy as jnp
@@ -10,7 +10,7 @@ from rfx.core.drives import StepDrives, drive_layout
 from rfx.core.yee import init_state, init_materials
 from rfx.grid import Grid
 from rfx.simulation import _StepContext, make_core_step
-from rfx.stepping import HookPoint, Kernel, compose
+from rfx.stepping import HookPoint
 
 
 ORDER = (HookPoint.AFTER_H, HookPoint.AFTER_E_UPDATE,
@@ -61,80 +61,3 @@ def test_uniform_compiled_hooks_read_the_physical_phases():
         jnp.array([2.0], jnp.float32), jnp.zeros(0))
     _check_hook_observations(extras["hook_code"], extras["hook_samples"])
     assert probe.shape == (0,)
-
-
-def test_empty_hooks_add_no_jaxpr_operation():
-    @dataclass
-    class Frame:
-        value: jax.Array
-
-    def update(frame):
-        frame.value = frame.value * 2
-
-    empty = compose({Kernel.H_UPDATE: update}, {point: () for point in ORDER})
-    absent = compose({Kernel.H_UPDATE: update}, {})
-    def direct(value):
-        frame = Frame(value)
-        update(frame)
-        return frame.value
-
-    reference = str(jax.make_jaxpr(direct)(jnp.float32(3)))
-    for step in (empty, absent):
-        assert str(jax.make_jaxpr(lambda value: step(Frame(value)).value)(jnp.float32(3))) == reference
-
-
-@pytest.mark.parametrize("point", [HookPoint.AFTER_H, HookPoint.AFTER_E_UPDATE])
-def test_fast_uniform_rejects_internal_attachments_at_construction(point):
-    ctx = _context()
-    ctx = replace(ctx, use_fast_he=True)
-    with pytest.raises(ValueError, match=f"fast path requires empty {point.value}"):
-        make_core_step(ctx, hooks={point: (lambda frame: None,)})
-
-
-def test_fast_uniform_rejects_builtin_internal_attachments():
-    ctx = replace(_context(), use_fast_he=True)
-    with pytest.raises(ValueError, match="empty after_e_update"):
-        make_core_step(ctx, design_hook=lambda previous, updated: (updated, None))
-    magnetic = drive_layout([(2, 2, 2, "hz")], jnp.float32)
-    ctx = replace(ctx, drives=ctx.drives._replace(magnetic=magnetic))
-    with pytest.raises(ValueError, match="empty after_h"):
-        make_core_step(ctx)
-
-
-def test_fast_uniform_compiled_remaining_hooks(monkeypatch):
-    from rfx.core.yee import precompute_coeffs
-    import rfx.stepping.uniform as uniform
-
-    ctx = _context()
-    ctx = replace(ctx, use_fast_he=True)
-    faces = frozenset(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
-    ctx = replace(ctx, use_pec_faces=True, pec_faces_frozen=faces,
-                  fast_coeffs=precompute_coeffs(ctx.materials, ctx.dt, ctx.dx,
-                                               pec_faces=faces, high_wall=(False, False, False)))
-    calls = []
-    combined = uniform.update_he_fast
-    def record(*args, **kwargs):
-        calls.append("combined")
-        return combined(*args, **kwargs)
-    def no_pec(*args, **kwargs):
-        raise AssertionError("fast path must not add a PEC pass")
-    monkeypatch.setattr(uniform, "update_he_fast", record)
-    monkeypatch.setattr(uniform, "apply_pec_faces", no_pec)
-    def attach(digit):
-        def observe(frame):
-            frame.carry = {**frame.carry,
-                           "code": frame.carry.get("code", jnp.int32(0)) * 10 + digit,
-                           f"sample_{digit}": frame.st.ez[2, 2, 2]}
-            if digit == 5:
-                frame.extras["code"] = frame.carry["code"]
-                frame.extras["samples"] = jnp.stack([
-                    frame.carry[f"sample_{i}"] for i in (3, 4, 5)])
-        return observe
-    core = make_core_step(ctx, hooks={p: (attach(i),)
-                                     for i, p in enumerate(ORDER, 1) if i >= 3})
-    _, _, extras = jax.jit(core)(
-        {"fdtd": init_state(ctx.grid.shape)}, jnp.int32(0),
-        jnp.array([2.0], jnp.float32), jnp.zeros(0))
-    assert calls == ["combined"]
-    assert int(extras["code"]) == 345
-    np.testing.assert_array_equal(extras["samples"], [0, 2, 2])

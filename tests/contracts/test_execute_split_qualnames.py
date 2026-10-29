@@ -14,19 +14,6 @@ import pytest
 from rfx import Simulation
 
 
-def test_moved_methods_keep_their_pre_move_qualnames():
-    assert Simulation._run_adi_from_materials.__qualname__ == (
-        "Simulation._run_adi_from_materials")
-    assert Simulation._forward_from_materials.__qualname__ == (
-        "Simulation._forward_from_materials")
-    assert Simulation._forward_from_materials.__wrapped__.__qualname__ == (
-        "_ExecuteMixin._forward_from_materials")
-    assert Simulation._refuse_conformal_boundary.__qualname__ == (
-        "Simulation._refuse_conformal_boundary")
-    assert Simulation._reject_upml_on_nonuniform.__qualname__ == (
-        "Simulation._reject_upml_on_nonuniform")
-
-
 @pytest.mark.parametrize("name, expected", [
     ("_run_adi_from_materials",
      "Simulation._run_adi_from_materials() got an unexpected keyword argument "

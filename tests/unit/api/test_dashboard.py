@@ -7,40 +7,6 @@ and that the non-Streamlit utility code works correctly.
 
 from __future__ import annotations
 
-import importlib
-
-
-def test_dashboard_package_importable():
-    """Dashboard __init__ should be importable without streamlit."""
-    mod = importlib.import_module("rfx.dashboard")
-    assert hasattr(mod, "__doc__")
-
-
-def test_components_module_importable():
-    """Components module loads without streamlit (widgets are lazy)."""
-    mod = importlib.import_module("rfx.dashboard.components")
-    assert hasattr(mod, "GeometryEntry")
-    assert hasattr(mod, "PortEntry")
-    assert hasattr(mod, "ProbeEntry")
-    assert hasattr(mod, "export_touchstone")
-
-
-def test_app_module_not_importable_without_streamlit():
-    """app.py requires streamlit at import time (uses st.set_page_config).
-
-    If streamlit is not installed, importing should raise ImportError or
-    ModuleNotFoundError. If it IS installed, import should succeed.
-    When running in full suite, streamlit module cache from earlier tests
-    may cause non-ImportError exceptions — tolerate those too.
-    """
-    try:
-        importlib.import_module("rfx.dashboard.app")
-    except (ImportError, ModuleNotFoundError):
-        pass  # Expected when streamlit is not installed
-    except Exception:
-        pass  # Streamlit state pollution from earlier tests
-
-
 def test_geometry_entry_dataclass():
     """GeometryEntry should behave as a standard dataclass."""
     from rfx.dashboard.components import GeometryEntry

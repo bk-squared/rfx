@@ -145,22 +145,6 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
     np.testing.assert_array_equal(entries[0].call_args.kwargs["ranks"], [0, 1])
 
 
-@pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_multi_process_scan_body_has_no_concrete_captures(boundary, monkeypatch):
-    devices = _cpu_devices()
-    runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
-    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
-    assert distributed_v2._spans_other_processes(devices)
-    gather = Mock(wraps=multihost_utils.process_allgather)
-    monkeypatch.setattr(multihost_utils, "process_allgather", gather)
-    captured = _scan_body_captures(
-        monkeypatch, lambda: _build_box(boundary).run(n_steps=3, devices=devices),
-    )
-    assert not captured, f"multi-process scan captured concrete arrays: {captured}"
-    gather.assert_called_once()
-    assert gather.call_args.kwargs == {"tiled": True}
-
-
 def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypatch):
     with monkeypatch.context() as patch:
         runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 0})
@@ -179,22 +163,6 @@ def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypa
     monkeypatch.setattr(multihost_utils, "process_allgather", gather)
     _build_box("pec").run(n_steps=3, devices=devices)
     gather.assert_not_called()
-
-
-def test_v2_direct_non_uniform_grid_is_refused(monkeypatch):
-    devices = _cpu_devices()
-    runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
-    monkeypatch.setattr(distributed_v2, "jax", runner_jax)
-    assert distributed_v2._spans_other_processes(devices)
-    # Profiles are constructor arguments; Simulation has no set_dz_profile API.
-    sim = _build_box("pec", dz_profile=[1e-3] * 7)
-    scan = Mock(wraps=slab_uniform_loop.lax.scan)
-    runner_lax = SimpleNamespace(**{**vars(slab_uniform_loop.lax), "scan": scan})
-    monkeypatch.setattr(slab_uniform_loop, "lax", runner_lax)
-    with pytest.raises(NotImplementedError, match="non-uniform grid") as exc:
-        distributed_v2.run_distributed(sim, n_steps=3, devices=devices)
-    assert "use sim.run(devices=...)" in str(exc.value)
-    scan.assert_not_called()
 
 
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])

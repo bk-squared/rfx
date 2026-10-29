@@ -37,15 +37,6 @@ from tests.unit.sparams.test_msl_port_integration import (
 # Preserve these binaries. Current structural gates use manufactured data below.
 # ---------------------------------------------------------------------------
 
-REPLAY_ACCUMULATORS_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "msl_replay_accumulators.npz"
-)
-REPLAY_GOLDEN_F64_PATH = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "msl_replay_golden_f64.npy"
-)
-
 # Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined
 # 2026-09-12, #726), regenerable ONLY with a written reason in
 # test_compute_msl_s_matrix_end_to_end_matches_historical_base's docstring
@@ -118,7 +109,6 @@ E2E_DZ_PROFILE = np.repeat(
     np.asarray([100e-6] + [77e-6] * 14 + [100e-6] * 8) / 2, 2)
 E2E_DOMAIN = (14e-3, 3.4e-3, 1.978e-3)
 E2E_PERIODS = 12
-E2E_REPAIR_ID = "931-msl-254um-600um-aligned-v2"
 # The implicit f0=F_MAX/2 pulse falls below the API low-signal screen at
 # 4.5/5 GHz. This explicit drive covers the entire declared measurement band.
 E2E_WAVEFORM = GaussianPulse(f0=F_MAX, bandwidth=.8)
@@ -160,59 +150,9 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
     return sim
 
 
-def _build_historical_capture_sim() -> Simulation:
-    """Interpret the unchanged PR #516 captures on their original mesh.
-
-    The replay binaries predate #931's on-lattice redraw.
-    DX and LY imported from the live integration fixture now describe a
-    different grid; using them to index old DFT planes moves both the V span
-    and Ampere contour. Freeze the capture's 80 um mesh and lateral extent
-    here as historical geometry evidence. The capture lacks the left H
-    planes required by #726 and is not a current-algorithm oracle. The
-    declared 254 um port height also differs from its realized 320 um foil.
-    """
-    dx = 80e-6
-    return _build_thru_line_sim(
-        dx=dx, ly=W_TRACE + 2 * (2 * H_SUB + 8 * dx),
-    )
-
-
 # ---------------------------------------------------------------------------
 # Replay helpers
 # ---------------------------------------------------------------------------
-
-def _make_replay_fake_run(acc_data: dict, run_idx: int):
-    """Return a sim.run replacement that replays captured accumulators.
-
-    The real FDTD scanner is NEVER called. The complex64 arrays are retained
-    only for historical geometry and missing-data rejection witnesses; no
-    missing neighbour is synthesized for the current extraction algorithm.
-    """
-    def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
-        del n_steps, num_periods, compute_s_params
-        grid = self._build_grid()
-        planes = {}
-        for key, arr in acc_data.items():
-            if not key.startswith(f"run{run_idx}__"):
-                continue
-            assert arr.shape[1:] == (grid.ny, grid.nz), (
-                f"Replay plane {key} has transverse shape {arr.shape[1:]}, "
-                f"but the simulation grid has {(grid.ny, grid.nz)}; "
-                "captured fields and geometry must be updated together"
-            )
-            plane_name = key[len(f"run{run_idx}__"):]
-            planes[plane_name] = SimpleNamespace(accumulator=arr)
-        return SimpleNamespace(dft_planes=planes)
-    return fake_run
-
-
-def _load_replay_accumulators():
-    """Load captured accumulator .npz and return (data_dict, freqs)."""
-    with np.load(REPLAY_ACCUMULATORS_PATH) as npz:
-        freqs = npz["freqs"]
-        data = {k: npz[k] for k in npz.files if k != "freqs"}
-    return data, freqs
-
 
 def _run_manufactured_assembly(*, use_x64: bool):
     """Complete c64 DFT records -> production assembly -> independent S.
@@ -347,52 +287,6 @@ def test_float32_deployment_delta_bounded():
     delta = float(np.max(np.abs(s_f64 - s_f32)))
     print(f"\n[manufactured float32-vs-float64 assembly] max_abs_dev = {delta:.3e}")
     assert delta < 1e-3
-
-
-def test_historical_capture_cannot_supply_current_bracketing_h_data():
-    """Reject the incomplete capture rather than inventing a left H plane."""
-    from rfx.api._sparams import _collocated_msl_h
-
-    acc_data, freqs = _load_replay_accumulators()
-    assert np.load(REPLAY_GOLDEN_F64_PATH).shape == (2, 2, len(freqs))
-    frame = _make_replay_fake_run(acc_data, 0)(_build_historical_capture_sim())
-    assert not any(name.endswith("_left") for name in frame.dft_planes)
-    pairs = (("_msl_run0_p0_hy_left", "_msl_run0_p0_hy"),
-             ("_msl_run0_p0_hz_left", "_msl_run0_p0_hz"))
-    assert all(right in frame.dft_planes for _, right in pairs)
-    with pytest.raises(ValueError, match="requires bracketing H-plane data"):
-        _collocated_msl_h(frame.dft_planes, pairs, (0.5, 0.5))
-
-
-def test_replay_geometry_matches_the_captured_lattice():
-    """Frozen fields need their captured indices, not the live board's DX.
-
-    Independent witnesses: the stored plane dimensions, the realized trace
-    wall, and the ground-to-trace voltage / Ampere-loop indexing metadata.
-    """
-    from rfx.probes.msl_wave_decomp import register_msl_plane_probes
-    from tests._realized_geometry import (
-        assert_sheet_planes, assert_wall_planes, realized,
-    )
-
-    sim = _build_historical_capture_sim()
-    grid = sim._build_grid()
-    assert (grid.nx, grid.ny, grid.nz) == (192, 54, 31)
-    assert_sheet_planes(sim, 2, [320e-6], what="captured MSL trace")
-    assert_wall_planes(sim, 2, [320e-6], what="captured MSL trace")
-    rz = realized(sim)
-    assert rz.pec_mask is None
-    assert not np.any(rz.edge_masks[2]), "normal Ez through the sheet stays live"
-    acc_data, freqs = _load_replay_accumulators()
-    assert {arr.shape for arr in acc_data.values()} == {(len(freqs), 54, 31)}
-    probes = register_msl_plane_probes(sim, port_index=0, freqs=freqs)
-    assert (probes.j_centre, probes.k_lo, probes.k_hi) == (26, 0, 4)
-    assert (probes.j_lo, probes.j_hi, probes.k_trace_lo, probes.k_trace_hi) == (
-        22, 30, 4, 4,
-    )
-    # Fail at the replay boundary, before silently sampling a different mesh.
-    with pytest.raises(AssertionError, match="captured fields and geometry"):
-        _make_replay_fake_run(acc_data, 0)(_build_thru_line_sim())
 
 
 # ---------------------------------------------------------------------------

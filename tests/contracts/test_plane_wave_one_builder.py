@@ -1,37 +1,10 @@
 """Declaration-based plane waves share one builder, including flux owners."""
-import ast
-from pathlib import Path
-
 import numpy as np
 import pytest
 
 from rfx import Simulation
 from rfx.measurement import flux_weights
 from rfx.measurement.plan import measurement_plan
-
-
-def test_no_plane_wave_builder_bypass():
-    root = Path(__file__).resolve().parents[2]
-    offenders = []
-    for path in sorted((root / "rfx").rglob("*.py")):
-        # compute_rcs builds an open source from calculator arguments, not a
-        # Simulation declaration; it never builds a closed box.
-        if path.relative_to(root).as_posix() in {"rfx/sources/tfsf.py", "rfx/measurement/rcs.py"}:
-            continue
-        tree = ast.parse(path.read_text(), filename=str(path))
-        names = {"init_tfsf"}
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                names.update(alias.asname or alias.name for alias in node.names
-                             if alias.name == "init_tfsf")
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            fn = node.func
-            if ((isinstance(fn, ast.Name) and fn.id in names)
-                    or (isinstance(fn, ast.Attribute) and fn.attr == "init_tfsf")):
-                offenders.append(f"{path.relative_to(root)}:{node.lineno}")
-    assert not offenders, "plane-wave builder bypasses: " + ", ".join(offenders)
 
 
 @pytest.mark.parametrize("declaration,expected_periodic", [

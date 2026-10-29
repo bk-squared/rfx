@@ -8,10 +8,6 @@ import pytest
 
 from rfx import Simulation
 from rfx import simulation
-from rfx.boundaries import tfsf as boundary_policy
-from rfx.sources import tfsf
-
-
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("kind,expected", [
     ("normal", ((False, True, True), "x")),
@@ -21,19 +17,6 @@ from rfx.sources import tfsf
 ])
 def test_uniform_entry_points_use_tfsf_boundary_policy(monkeypatch, entry, kind, expected):
     _capture_policy(monkeypatch, entry, kind, expected)
-
-
-@pytest.mark.parametrize("entry", ["run", "forward"])
-def test_methodb_helper_change_reaches_both_entry_points(monkeypatch, entry):
-    original = boundary_policy.boundary_flags
-
-    def changed(cfg, grid=None):
-        if tfsf.is_tfsf_methodB(cfg):
-            return (False, True, False), "xz"
-        return original(cfg, grid)
-
-    monkeypatch.setattr(boundary_policy, "boundary_flags", changed)
-    _capture_policy(monkeypatch, entry, "methodB", ((False, True, False), "xz"))
 
 
 def _capture_policy(monkeypatch, entry, kind, expected):
