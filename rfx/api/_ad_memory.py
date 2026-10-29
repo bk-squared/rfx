@@ -212,8 +212,12 @@ class _AdMemoryMixin:
         ``design_box`` accepts forward's corners/region forms. The window
         comes from the same realized-grid resolver. Whole-grid tape saves
         the real scan carry except declared linear accumulators; box tape
-        saves six permittivity or three occupancy window arrays. A rematted, unsegmented box uses a labelled
-        carry-plus-window bound. The fixed term is calibrated on GPU with
+        saves six write-window arrays for designed permittivity and
+        conductivity, or three for occupancy. A permittivity-only design on
+        a lossless window keeps three arrays: the estimate is then an upper
+        bound, twice that tape, and plan_ad_memory may choose checkpointing
+        that was not needed. A rematted, unsegmented box retains its labelled
+        carry-plus-computation-window bound. The fixed term is calibrated on GPU with
         JAX 0.10.2, rather than a bound for CPU compiler temporaries.
         ``cotangents`` outputs pulled back at once add 7.5 carries each beyond
         the first: one boundary carry plus 6.5 carries of working arrays.
