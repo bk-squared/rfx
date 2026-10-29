@@ -39,7 +39,7 @@ def per_cell(state, drives, wave_t):
 _LAYOUT_MODULES = (
     'rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop',
     'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
-    'rfx.subgridding.jit_runner', 'rfx.stepping.slab_uniform_loop',
+    'rfx.stepping.subgrid_jit', 'rfx.stepping.slab_uniform_loop',
     'rfx.stepping.slab_graded_legacy_loop', 'rfx.stepping.slab_update',
 )
 _INJECTOR_MODULES = ('rfx.simulation', 'rfx.stepping.graded')
@@ -74,7 +74,7 @@ assert not any(name == 'rfx.subgridding' or name.startswith('rfx.subgridding.')
 from tests.contracts import test_grouped_drives as grouped
 import rfx.core.drives as drives
 
-assert 'rfx.subgridding.jit_runner' not in sys.modules
+assert 'rfx.stepping.subgrid_jit' not in sys.modules
 mp = pytest.MonkeyPatch()
 grouped.use_per_cell_reference(mp)
 mp.undo()
@@ -147,7 +147,7 @@ def test_production_step_scatter_count(lane, monkeypatch):
         'uniform': 'rfx.core.drives', 'graded': 'rfx.stepping.graded',
         'distributed': 'rfx.stepping.slab_update',
         'distributed_graded': 'rfx.stepping.graded',
-        'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
+        'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.stepping.subgrid_jit',
     }[lane])
     inject = module.inject_drives
     seen = []

@@ -477,6 +477,17 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/measurement/graded_wire.py",
+      "function": "_bwd_neighbor",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/measurement/graded_wire.py",
+      "function": "wire_port_current",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
       "file": "rfx/measurement/ports.py",
       "function": "coax_owner",
       "kind": "roll/diff"
@@ -520,17 +531,6 @@
       "file": "rfx/model/wire_mask.py",
       "function": "polyline_tube_mask",
       "kind": "difference"
-    },
-    {
-      "file": "rfx/measurement/graded_wire.py",
-      "function": "_bwd_neighbor",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/measurement/graded_wire.py",
-      "function": "wire_port_current",
-      "kind": "neighbour",
-      "count": 6
     },
     {
       "file": "rfx/ntff_surface.py",
@@ -848,6 +848,41 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/stepping/subgrid_coupling.py",
+      "function": "_trapezoid_weights",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/subgrid_disjoint.py",
+      "function": "_apply_fine_pec_axes",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/subgrid_disjoint.py",
+      "function": "_yee_e_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/subgrid_disjoint.py",
+      "function": "_yee_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/subgrid_jit.py",
+      "function": "_make_step_fn.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/subgrid_loop.py",
+      "function": "run_subgridded_loop",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/subgrid_sat.py",
+      "function": "_update_e_only",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/stepping/tfsf_2d.py",
       "function": "_update_e_tez",
       "kind": "boundary"
@@ -958,32 +993,7 @@
     },
     {
       "file": "rfx/subgridding/disjoint_3d.py",
-      "function": "_apply_fine_pec_axes",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/subgridding/disjoint_3d.py",
-      "function": "_yee_e_step",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/subgridding/disjoint_3d.py",
-      "function": "_yee_step",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/subgridding/disjoint_3d.py",
       "function": "step_disjoint_z_slab_sat_3d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/subgridding/jit_runner.py",
-      "function": "_make_step_fn.step_fn",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/subgridding/jit_runner.py",
-      "function": "_trapezoid_weights",
       "kind": "boundary"
     },
     {
@@ -1045,11 +1055,6 @@
     {
       "file": "rfx/subgridding/sbp_sat_2d.py",
       "function": "step_subgrid_2d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/subgridding/sbp_sat_3d.py",
-      "function": "_update_e_only",
       "kind": "boundary"
     },
     {

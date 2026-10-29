@@ -86,14 +86,14 @@ FIELD_STEPPERS = {
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched",
     # The one graded-mesh step (S3-2 stage B).
     "rfx/stepping/graded.py:make_graded_step": "internal to run_nonuniform, fwd_nonuniform",
-    "rfx/subgridding/disjoint_3d.py:_yee_step": "internal to run_subgridded",
-    "rfx/subgridding/disjoint_3d.py:_yee_h_step": "internal to run_subgridded",
-    "rfx/subgridding/disjoint_3d.py:_yee_e_step": "internal to run_subgridded",
+    "rfx/stepping/subgrid_disjoint.py:_yee_step": "internal to run_subgridded",
+    "rfx/stepping/subgrid_disjoint.py:_yee_h_step": "internal to run_subgridded",
+    "rfx/stepping/subgrid_disjoint.py:_yee_e_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_apply_faces_maxwell_sat_from_snapshot": "internal to run_subgridded",
-    "rfx/subgridding/jit_runner.py:_make_step_fn": "internal to run_subgridded",
-    "rfx/subgridding/runner.py:run_subgridded": "grid-level: the non-jitted subgrid runner; rfx does not call it",
-    "rfx/subgridding/sbp_sat_3d.py:_update_h_only": "internal to run_subgridded",
-    "rfx/subgridding/sbp_sat_3d.py:_update_e_only": "internal to run_subgridded",
+    "rfx/stepping/subgrid_jit.py:_make_step_fn": "internal to run_subgridded",
+    "rfx/stepping/subgrid_loop.py:run_subgridded_loop": "grid-level: the non-jitted subgrid runner; rfx does not call it",
+    "rfx/stepping/subgrid_sat.py:_update_h_only": "internal to run_subgridded",
+    "rfx/stepping/subgrid_sat.py:_update_e_only": "internal to run_subgridded",
 }
 
 _KERNELS = {
