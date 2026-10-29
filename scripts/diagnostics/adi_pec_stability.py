@@ -83,7 +83,8 @@ def main(argv=None):
         warnings.simplefilter("ignore")
         sim = build(args.mode, args.kind, args.factor)
         if args.unguarded_measurement:
-            with patch("rfx.adi._validate_interior_pec", lambda *a, **kw: None):
+            with patch("rfx.adi._validate_interior_pec", lambda *a, **kw: None), \
+                    patch("rfx.stepping.adi._validate_interior_pec", lambda *a, **kw: None):
                 result = sim.run(n_steps=args.steps, skip_preflight=True)
         else:
             result = sim.run(n_steps=args.steps, skip_preflight=True)
