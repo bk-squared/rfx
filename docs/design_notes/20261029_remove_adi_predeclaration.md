@@ -157,3 +157,13 @@ in 5; `"adi"` re-added to the admitted solver set goes red in 1.
 
 1. A "removed in 2.1" line in the 2.0 final's ADI warning and upgrading page: yes or no (it would land in the release, not here).
 2. Keeping `adi_cfl_factor` for one release with a refusal, against removing it in 2.1 (then a 2.0 script gets `TypeError` without the reason).
+
+## 8. Decision record (rfx-core-desk, 2026-10-29)
+
+1. Yes, a "removed in 2.1" line, docs only: the upgrading page and the ADI row
+   of the support matrix, in docs-2.0's final 2.0 PR. No change to
+   `ADI_WARNING` or other code before the cut.
+2. `adi_cfl_factor` stays one release as a refusal that names the removal; it
+   is removed in 2.2 (section 3 as written).
+
+The rest of the design is accepted; code starts after #2209 lands.
