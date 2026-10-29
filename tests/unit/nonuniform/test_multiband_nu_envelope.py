@@ -312,7 +312,7 @@ def test_grading_cap_is_1_4_on_every_axis(axis):
         f"d{axis}_profile at ratio {r} is above the 1.4 cap and must draw "
         f"the preflight advisory; got {codes}")
     msgs = _ctor_ratio_warnings(axis, beyond)
-    assert msgs and "1.4" in msgs[0], msgs
+    assert msgs and "(> 1.4, " in msgs[0], msgs  # the cap, not the printed ratio 1.450
     if axis != "z":
         assert "in-plane" in msgs[0], msgs
 

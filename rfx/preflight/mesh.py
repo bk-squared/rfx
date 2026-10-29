@@ -40,9 +40,9 @@ THE THREE CLASS-BODY CONSTANTS DO NOT MOVE. ``_MULTIBAND_RATIO_CAP``,
 ``_INPLANE_RATIO_CAP`` and ``_AXIS_OF_COMPONENT`` are assignments in the
 ``_PreflightMixin`` class body, read as ``self.<NAME>`` by four of the bodies
 below and -- for the first two -- read off the CLASS by
-``tests/unit/nonuniform/test_multiband_nu_envelope.py:329``, which asserts the
-two caps are DIFFERENT numbers so that a single shared constant cannot
-silently re-couple the in-plane lock to the z one. Moving them here would keep
+``tests/unit/nonuniform/test_multiband_nu_envelope.py``, which pins each cap
+(both 1.4 since 2026-10-29, as two constants) so that a single shared constant
+cannot silently re-couple the in-plane lock to the z one. Moving them here would keep
 every ``self.`` read working (the method travels with the constant) while
 breaking that test, and no module-level namespace lock would see it happen,
 because they are not module-level names. They stay in the facade, the moved
