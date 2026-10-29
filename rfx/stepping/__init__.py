@@ -10,6 +10,13 @@ from .graded import (
     GradedStepContext,
     make_graded_step,
 )
+from .graded_loop import (
+    run_nonuniform,
+    run_nonuniform_until_decay,
+)
+from .progress_scan import (
+    scan_with_progress,
+)
 from .remat import (
     plan_checkpoint_lengths,
     segmented_scan,
@@ -31,6 +38,14 @@ from .slab import (
 )
 from .step_count import (
     steps_for_periods,
+)
+from .uniform_loop import (
+    run_uniform_loop,
+    run_uniform_until_decay,
+)
+from .uniform_setup import (
+    core_step_invariants,
+    make_core_step,
 )
 from .yee import (
     update_e,
@@ -82,27 +97,3 @@ __all__ = [
     "update_h_fast",
     "update_h_nu",
 ]
-
-# rfx.measurement → rfx.model → rfx.nonuniform → rfx.stepping loads this package
-# before the uniform and graded runners are ready (rfx#1818):
-# https://github.com/bk-squared/rfx/issues/1818
-# Remove this lazy export when that import chain is removed.
-_LAZY_EXPORTS = {
-    "core_step_invariants": "rfx.stepping.uniform_setup",
-    "make_core_step": "rfx.stepping.uniform_setup",
-    "run_nonuniform": "rfx.stepping.graded_loop",
-    "run_nonuniform_until_decay": "rfx.stepping.graded_loop",
-    "run_uniform_loop": "rfx.stepping.uniform_loop",
-    "run_uniform_until_decay": "rfx.stepping.uniform_loop",
-    "scan_with_progress": "rfx.stepping.progress_scan",
-}
-
-
-def __getattr__(name):
-    from importlib import import_module
-
-    if name not in _LAZY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
-    globals()[name] = value
-    return value
