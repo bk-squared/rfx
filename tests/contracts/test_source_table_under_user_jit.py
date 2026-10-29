@@ -80,15 +80,16 @@ def test_b_graded_current_run_under_user_jit():
     expected = np.asarray(run())
     actual = np.asarray(jax.jit(run)())
     assert actual.shape == expected.shape and actual.dtype == expected.dtype
-    peak = np.max(np.abs(expected))
-    assert peak > 0
+    peak = np.max(np.abs(expected), axis=0)
+    assert np.all(peak > 0)
     # #2241 amendment 2: identical source tables still permit the standing
     # cross-trace rounding bars for the compiled time step and record sum.
-    per_step_error = np.max(np.abs(actual - expected), axis=1)
-    assert np.all(per_step_error <= 9 * np.spacing(np.float32(peak)))
-    summed_error = np.max(np.abs(np.sum(actual, axis=0, dtype=np.float64)
-                                - np.sum(expected, axis=0, dtype=np.float64)))
-    assert summed_error <= 1e-4 * peak
+    # Each probe uses its own peak, including the smaller magnetic trace.
+    per_step_error = np.abs(actual - expected)
+    assert np.all(per_step_error <= 9 * np.spacing(peak.astype(np.float32)))
+    summed_error = np.abs(np.sum(actual, axis=0, dtype=np.float64)
+                          - np.sum(expected, axis=0, dtype=np.float64))
+    assert np.all(summed_error <= 1e-4 * peak)
     assert_same_bits(sim.forward(n_steps=N_STEPS, skip_preflight=True,
                                  checkpoint=False).time_series, expected)
 
@@ -133,6 +134,102 @@ def test_other_concrete_source_samples_under_user_jit(sampler):
     expected = jax.vmap(waveform)(jnp.arange(2000, dtype=jnp.float32) * grid.dt)
     assert_same_bits(table(), expected)
     assert_same_bits(jax.jit(table)(), expected)
+
+
+def assert_builder_samples_under_user_jit(monkeypatch, build, waveform, count):
+    """Observe the real sampler before host-only packing or mode assembly.
+
+    Keep vmap and the builder's sampling context intact. Stop immediately
+    after the last waveform sample array, so these rows judge sampling alone,
+    without staging subgrid's np.array packing or MSL's float coefficients.
+    """
+    original_vmap = jax.vmap
+
+    class SamplesReady(Exception):
+        pass
+
+    def collect():
+        samples = []
+
+        def observe(fun, *args, **kwargs):
+            mapped = original_vmap(fun, *args, **kwargs)
+            if fun is not waveform:
+                return mapped
+
+            def sample(*args, **kwargs):
+                values = mapped(*args, **kwargs)
+                samples.append(values)
+                if len(samples) == count:
+                    raise SamplesReady
+                return values
+
+            return sample
+
+        with monkeypatch.context() as patch:
+            patch.setattr(jax, "vmap", observe)
+            try:
+                build()
+            except SamplesReady:
+                return tuple(samples)
+        raise AssertionError(f"builder formed {len(samples)} sample arrays, expected {count}")
+
+    expected = collect()
+    actual = jax.jit(collect)()
+    assert len(actual) == len(expected) == count
+    for got, plain in zip(actual, expected):
+        assert np.max(np.abs(plain)) > 0
+        assert_same_bits(got, plain)
+
+
+def test_subgrid_samples_under_user_jit(monkeypatch):
+    from rfx.grid import Grid
+    from rfx.model.materials import with_components
+    from rfx.model.source_coefficients import subgrid_source_tables
+
+    grid = Grid(freq_max=10e9, domain=(8e-3,) * 3, dx=1e-3, cpml_layers=0)
+    grid.dt = 7.5e-13
+    materials = with_components(init_materials(grid.shape), grid,
+                                periodic=(False,) * 3, high_wall=(False,) * 3)
+    waveform = GaussianPulse(f0=2.4e9, bandwidth=1.2)
+    source = SimpleNamespace(waveform=waveform, component="ez", amplitude_kind="field")
+
+    def build():
+        return subgrid_source_tables(
+            [(source, (2, 2, 2), None)], grid, materials, 2000,
+            high_wall=(False,) * 3, native="field", fine_scale=1., volume=grid.dx ** 3)
+
+    assert_builder_samples_under_user_jit(monkeypatch, build, waveform, 1)
+
+
+def test_coax_staggered_samples_under_user_jit(monkeypatch):
+    from rfx.grid import Grid
+    from rfx.sources.coaxial_port import CoaxialPort, build_coaxial_tem_plane_source_specs
+
+    grid = Grid(freq_max=10e9, domain=(8e-3,) * 3, dx=1e-3, cpml_layers=0)
+    grid.dt = 7.5e-13
+    waveform = GaussianPulse(f0=2.4e9, bandwidth=1.2)
+    port = CoaxialPort(position=(4e-3, 4e-3, 2e-3), face="bottom",
+                       pin_length=2e-3, pin_radius=.635e-3, outer_radius=2.055e-3,
+                       impedance=50., excitation=waveform)
+
+    def build():
+        return build_coaxial_tem_plane_source_specs(grid=grid, port=port, n_steps=2000)
+
+    assert_builder_samples_under_user_jit(monkeypatch, build, waveform, 2)
+
+
+def test_msl_jm_samples_under_user_jit(monkeypatch):
+    from rfx.sources.msl_port import make_msl_port_sources_jm
+
+    grid = SimpleNamespace(dt=7.5e-13, dx=1e-3)
+    waveform = GaussianPulse(f0=2.4e9, bandwidth=1.2)
+    port = SimpleNamespace(excitation=waveform, direction="+x")
+
+    def build():
+        # Mode data and material coefficients are consumed after sampling.
+        return make_msl_port_sources_jm(grid, port, None, 2000, None)
+
+    assert_builder_samples_under_user_jit(monkeypatch, build, waveform, 2)
 
 
 @pytest.mark.parametrize("parameter", ["dt", "amplitude", "f0", "bandwidth", "cutoff"])
