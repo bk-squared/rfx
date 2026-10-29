@@ -1,5 +1,6 @@
 """Slab operands and ordered write-back for the single-device CPML update."""
 
+from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -169,6 +170,37 @@ def writeback_form():
     return backend_class().cpml_writeback
 
 
+@partial(jax.custom_jvp, nondiff_argnums=(0,))
+def _apply_ordered_slab(windows, field, values, owners):
+    # Plain reverse AD of the in-place write-back uses domain-sized updates.
+    # Keep the forward in-place write; the custom tangent transposes to slabs.
+    for window, value, owner in zip(windows, values, owners):
+        sl = tuple(slice(start, stop) for start, stop in window)
+        starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
+        # Match .at[sl].add: promote the operands for the addition, then
+        # cast its result back to the destination's work dtype per update.
+        updated = (field[sl] + value).astype(field.dtype)
+        if owner is not None:
+            updated = jnp.where(owner, updated, field[sl])
+        field = jax.lax.dynamic_update_slice(field, updated, starts)
+    return field
+
+
+@_apply_ordered_slab.defjvp
+def _apply_ordered_slab_jvp(windows, primals, tangents):
+    field, values, owners = primals
+    d_field, d_values, _ = tangents
+    out = _apply_ordered_slab(windows, field, values, owners)
+    d_out = d_field
+    for window, d_value, owner in zip(windows, d_values, owners):
+        sl = tuple(slice(start, stop) for start, stop in window)
+        d_term = d_value.astype(field.dtype)
+        if owner is not None:
+            d_term = jnp.where(owner, d_term, 0)
+        d_out = d_out.at[sl].add(d_term)
+    return out, d_out
+
+
 def apply_ordered(field, terms):
     """Add slab corrections in production order, including overlap rounding."""
     if writeback_form() == "padded":
@@ -192,14 +224,10 @@ def apply_ordered(field, terms):
                 mask = mask & owner
             field = jnp.where(mask, (field + correction).astype(field.dtype), field)
         return field
-    for term in terms:
-        sl, value = term[:2]
-        owner = term[2] if len(term) == 3 else None
-        starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
-        # Match .at[sl].add: promote the operands for the addition, then
-        # cast its result back to the destination's work dtype per update.
-        updated = (field[sl] + value).astype(field.dtype)
-        if owner is not None:
-            updated = jnp.where(owner, updated, field[sl])
-        field = jax.lax.dynamic_update_slice(field, updated, starts)
-    return field
+    terms = tuple(terms)
+    windows = tuple(tuple(window.indices(size)[:2]
+                          for window, size in zip(term[0], field.shape))
+                    for term in terms)
+    values = tuple(term[1] for term in terms)
+    owners = tuple(term[2] if len(term) == 3 else None for term in terms)
+    return _apply_ordered_slab(windows, field, values, owners)
