@@ -32,7 +32,7 @@ once and names the new one.
 
 | 1.x | 2.0 |
 |---|---|
-| `compute_s_matrix(lane=...)`, `s_matrix_lane(lane=...)` | `method=...`, with the same values. Passing both raises `TypeError`. |
+| `compute_s_matrix(lane=...)`, `s_matrix_lane(lane=...)` (2.0 release candidates only; 1.x had neither function) | `method=...`, with the same values. Passing both raises `TypeError`. |
 | `harminv`, `harminv_from_probe`, `HarminvMode` | `matrix_pencil`, `matrix_pencil_from_probe`, `MatrixPencilMode`: named for the method they implement, with the same arguments and results. The old names are available only in the `rfx.harminv` module, and `rfx.harminv.HarminvMode` is a plain alias that does not warn. |
 
 ## Removed
@@ -44,6 +44,7 @@ once and names the new one.
 | time-gated `minimize_s11_at_freq` | `minimize_s11_at_freq_wave_decomp` with `forward(port_s11_freqs=...)`. |
 | `sim.add(..., two_plane=True)` | Nothing: every metal volume now has both faces. A copper foil drawn as a one-cell PEC box should be declared as a sheet, `add_thin_conductor`, with the same corners. |
 | `compute_coaxial_s_matrix` and `CoaxialSMatrixResult` | `compute_coaxial_line_reflection(termination=..., dut_impedance=...)` for a one-port reflection, `compute_coaxial_two_port(...)` for a through line. |
+| `Simulation.add_coaxial_matched_load`, `add_coaxial_open_termination`, `add_coaxial_pec_end_cap` | `compute_coaxial_line_reflection(termination=...)`. A saved design file that registers one of them is refused when it is loaded. |
 | the legacy multi-device runner `rfx.runners.distributed.run_distributed` (now raises `RuntimeError`) and the `rfx.runners.run_distributed` shortcut | `sim.run(devices=[...])`, or `rfx.runners.distributed_v2.run_distributed` with the same arguments. |
 | rfx Studio, the experiment service, the agent control plane and their command-line tools | Not shipped in 2.0. Stay on the last 1.x release that ships them, or take the code from the repository history. |
 | `interior_cells`, `e_node_dual_spacings`, `node_positions_from_profile`, `z_position_to_index` and `wire_port_current` imported from `rfx.nonuniform` | Import them from the modules that define them: `rfx.model.graded_grid` for the first four, `rfx.measurement.graded_wire` for the graded-mesh `wire_port_current` (`rfx.wire_port_current` is unchanged). `make_nonuniform_grid`, `position_to_index`, `make_z_profile` and `make_band_profile` still import from `rfx.nonuniform`. |
@@ -56,12 +57,29 @@ The pole recurrence coefficients, `DebyeCoeffs.alpha` and `LorentzCoeffs.a` and
 `.b`, stay one array of shape `(n_poles, nx, ny, nz)`: their first index is the
 pole.
 
+The low-level functions and records changed as follows.
+
+- `run()`, `run_until_decay()` and `run_nonuniform()` no longer take
+  `pec_two_plane_mask`; it went with `two_plane=`.
+- `extract_s_matrix_wire()`, `wire_port_current()` and `wire_port_voltage()`
+  take `pec_edge_masks` (the realized edge masks) instead of the cell mask
+  `pec_mask`.
+- `cpml_axes` of `run()`, `run_until_decay()`, `extract_s_matrix_wire()` and
+  `extract_waveguide_s_matrix()` defaults to `None`, which takes the grid's own
+  absorbing axes. 1.x defaulted to `"xyz"` (`"x"` for the waveguide). An explicit
+  value naming an axis with no absorber raises `ValueError`.
+- The six padding fields of `NTFFBox` (`cpml_lo_x` to `cpml_hi_z`) default to
+  `None`, resolved from the grid. A box built by hand that relied on `0` now gets
+  the grid's padding; pass `0` to keep it.
+- `MeshPlan` has a new field `offset` before `warnings`. Build it by keyword.
+
 ## Defaults that changed
 
 | What | 1.x | 2.0 | To keep the 1.x behaviour |
 |---|---|---|---|
 | `add_source(amplitude_kind=None)` | meant different things on different solver paths | a current moment in A·m on every path | Uniform `run()` with PEC walls: `amplitude_kind="field"`. Uniform `run()` with an absorber, and uniform `forward()`: `amplitude_kind="current"` with the waveform amplitude multiplied by the cell volume. Graded meshes: unchanged. Field values change; S-parameters and ratios of probes do not. |
 | a port's `waveform` (lumped, wire, microstrip) | scaled with the mesh and the load | the port's open-circuit source voltage, on every mesh | S-parameters do not change. Absolute fields, flux power and far fields of port-driven models do: divide the waveform by the ratio the [changelog](/rfx/project/changelog/) gives for your port. |
+| `ad_memory_preflight(safety_factor=...)`, `plan_ad_memory(safety_factor=...)` | `1.3` | `1.15` | `safety_factor=1.3`. |
 | `compute_msl_s_matrix(enforce_passivity=...)` | `True` | `False`: S is the extracted matrix | `enforce_passivity=True`. |
 | `compute_coax_msl_transition(strict_passivity=...)` | a non-passive S came back with a warning | `True`: a non-passive S raises | `strict_passivity=False`. |
 | coaxial `cpml_axes` | `"z"` accepted | `"xyz"`, the only accepted value | Drop `cpml_axes="z"`. |
