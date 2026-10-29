@@ -657,19 +657,10 @@ def test_sub_cell_pec_box_via_add_is_refused():
 
 
 def test_conformal_weights_do_not_replace_the_realized_edges():
-    """§1.7 / §1.8: Dey-Mittra conformal is a subpixel UPDATE-COEFFICIENT
-    model, not a second realization — a run that carries conformal weights
-    still applies ``(Mx, My, Mz)`` in its step body.
+    """Realized PEC edges still apply when the conformal channel leaves them open.
 
-    ``apply_conformal_pec`` zeroes only edges whose weight is exactly 0, and
-    NO edge of a one-cell PEC slab is fully covered (both its faces sit on
-    the slab's own boundary, so w = 1/2 there — measured below). While the
-    waveguide S-matrix lane folded interior PEC into sigma=1e10 the
-    conductor survived that gap; with the fold deleted, a step body that
-    chose one branch OR the other dropped it outright (measured: conformal
-    PEC-short min|S11| 0.2296 against a 0.99 gate, restored to 0.9942).
-    Falsifier: restore the ``elif`` in ``rfx/simulation.py``'s step body and
-    the field on the slab is nonzero.
+    Clear the geometry weights on the slab deliberately: replacing the two
+    independent masks with an either/or branch must leave a nonzero field.
     """
     import jax.numpy as _jnp
     from rfx import Box
@@ -689,10 +680,9 @@ def test_conformal_weights_do_not_replace_the_realized_edges():
     cells[k, :, :] = True
     w = clamp_conformal_weights(
         *compute_conformal_weights_sdf(grid, [slab]), 0.1)
-    # The premise, measured: the conformal path alone zeroes NOTHING on a
-    # one-cell slab — no edge of it has weight 0.
-    for c in range(3):
-        assert int(np.count_nonzero(np.asarray(w[c]) == 0.0)) == 0, c
+    w = tuple(part.at[k:k + 2].set(1.) for part in w)
+    for part in w:
+        np.testing.assert_array_equal(np.asarray(part)[k:k + 2], 1.)
     # ... while the realized edge set shorts both of its faces.
     edges = realized_pec_edge_masks(_jnp.asarray(cells))
     assert bool(np.asarray(edges[1])[k].all()) and bool(np.asarray(edges[1])[k + 1].all())

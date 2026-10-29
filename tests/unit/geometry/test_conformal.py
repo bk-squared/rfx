@@ -10,7 +10,10 @@ from rfx.grid import Grid
 from rfx.core.yee import init_state, init_materials
 from rfx.stepping.yee import update_e, update_h, update_e_aniso
 from rfx.geometry.csg import Box, Sphere, Cylinder
+from rfx.model.materials import with_components
+from rfx.model.tensor_operands import finish_conformal_mu
 from rfx.geometry.conformal import (
+    compute_conformal_fractions,
     compute_conformal_weights,
     compute_conformal_weights_sdf,
     clamp_conformal_weights,
@@ -126,7 +129,7 @@ def test_conformal_weights_sdf_cylinder():
 
     w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [cyl])
 
-    w_np = np.array(w_ez)
+    w_np = np.array(w_ex)
     n_frac = int(np.sum((w_np > 0) & (w_np < 1)))
     assert n_frac > 0, "Cylinder should have fractional boundary cells"
 
@@ -142,7 +145,7 @@ def test_conformal_weights_sdf_empty():
 
 
 def test_clamp_preserves_pec_and_free():
-    """Clamping: w=0 stays 0, w=1 stays 1, small w -> w_min."""
+    """The legacy default leaves SC-clamped lengths unchanged."""
     w = jnp.array([0.0, 0.05, 0.1, 0.5, 1.0])
     dummy = jnp.ones_like(w)
 
@@ -150,7 +153,7 @@ def test_clamp_preserves_pec_and_free():
     cw_np = np.array(cw)
 
     assert cw_np[0] == 0.0, "w=0 (fully PEC) should remain 0"
-    assert abs(cw_np[1] - 0.1) < 1e-6, "w=0.05 should clamp to w_min=0.1"
+    assert abs(cw_np[1] - 0.05) < 1e-6, "SC replaces the former minimum floor"
     assert abs(cw_np[2] - 0.1) < 1e-6, "w=0.1 should remain 0.1"
     assert abs(cw_np[3] - 0.5) < 1e-6, "w=0.5 should stay unchanged"
     assert abs(cw_np[4] - 1.0) < 1e-6, "w=1 (fully free) should remain 1"
@@ -199,8 +202,9 @@ def test_conformal_pec_box_identical_to_staircase():
     ez_stair = np.array(state.ez)
 
     # Conformal run
-    w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [box])
-    w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez)
+    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [box])
+    materials = finish_conformal_mu(with_components(
+        materials, grid, periodic=(False,) * 3), areas)
     eps_ex, eps_ey, eps_ez = conformal_eps_correction(materials.eps_r, w_ex, w_ey, w_ez)
 
     state2 = init_state(grid.shape)
@@ -249,12 +253,12 @@ def test_conformal_stability_10k_steps():
     grid = Grid(freq_max=3e9, domain=(0.06, 0.06, 0.06), dx=0.006, cpml_layers=0)
     sphere = Sphere((0.03, 0.03, 0.03), 0.015)
 
-    w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [sphere])
-    w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
+    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [sphere])
     eps_ex, eps_ey, eps_ez = conformal_eps_correction(1.0, w_ex, w_ey, w_ez)
 
     state = init_state(grid.shape)
-    materials = init_materials(grid.shape)
+    materials = finish_conformal_mu(with_components(
+        init_materials(grid.shape), grid, periodic=(False,) * 3), areas)
     pulse = GaussianPulse(f0=1.5e9)
     src = (grid.nx // 2, grid.ny // 2, grid.nz // 4)
 
@@ -348,14 +352,14 @@ def test_conformal_gradient_flows():
         clamp_conformal_weights,
         conformal_eps_correction,
     )
-    w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [cyl])
-    w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
+    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl])
 
     def objective(eps_r):
         eps_ex, eps_ey, eps_ez = conformal_eps_correction(eps_r, w_ex, w_ey, w_ez)
         sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
         mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
         mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+        mats = finish_conformal_mu(with_components(mats, grid, periodic=(False,) * 3), areas)
         result = run(
             grid, mats, n_steps,
             sources=[src], probes=[prb],

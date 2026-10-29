@@ -758,9 +758,9 @@ def compute_waveguide_s_matrix(
         from rfx.geometry.smoothing import refuse_pmc_smoothing
         refuse_pmc_smoothing(self, grid)
     from rfx.model.tensor_operands import (
-        form_tensor_operands, finish_tensor_operands, form_reference_operands,
+        form_tensor_operands, finish_tensor_operands, finish_conformal_mu, form_reference_operands,
     )
-    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable = form_tensor_operands(
+    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas = form_tensor_operands(
         self, grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal=self._boundary_spec.conformal_faces(), conformal_min_weight=0.1,
         pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
@@ -771,8 +771,9 @@ def compute_waveguide_s_matrix(
         from rfx.model.materials import with_components
         from rfx.simulation import resolve_periodic
         materials = with_components(materials, grid, periodic=resolve_periodic(grid, None))
+    materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
-    ref_aniso_eps, ref_aniso_inv_eps = form_reference_operands(
+    ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes)
 
@@ -818,7 +819,8 @@ def compute_waveguide_s_matrix(
                 debye=debye,
                 lorentz=lorentz,
                 ref_shifts=ref_shifts_mm,
-                aniso_eps=aniso_eps,
+                aniso_eps=aniso_eps, ref_aniso_eps=ref_aniso_eps,
+                ref_aniso_inv_eps=ref_aniso_inv_eps, ref_conformal=ref_conformal,
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
@@ -975,7 +977,7 @@ def compute_waveguide_s_matrix(
             ref_lorentz=None,
             ref_shifts=ref_shifts,
             aniso_eps=aniso_eps,
-            ref_aniso_eps=ref_aniso_eps,
+            ref_aniso_eps=ref_aniso_eps, ref_conformal=ref_conformal,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
             ref_aniso_inv_eps=ref_aniso_inv_eps,
@@ -1006,7 +1008,7 @@ def compute_waveguide_s_matrix(
             ref_lorentz=None,
             ref_shifts=ref_shifts,
             aniso_eps=aniso_eps,
-            ref_aniso_eps=ref_aniso_eps,
+            ref_aniso_eps=ref_aniso_eps, ref_conformal=ref_conformal,
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
             ref_aniso_inv_eps=ref_aniso_inv_eps,

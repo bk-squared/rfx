@@ -22,11 +22,13 @@ from rfx.core.yee import init_state, init_materials
 from rfx.stepping.yee import update_e, update_e_aniso, update_h
 from rfx.geometry.csg import Cylinder
 from rfx.geometry.conformal import (
-    compute_conformal_weights_sdf,
-    clamp_conformal_weights,
+    compute_conformal_fractions,
     apply_conformal_pec,
     conformal_eps_correction,
 )
+from rfx.geometry.conformal_cells import sc_clamp
+from rfx.model.tensor_operands import finish_conformal_mu
+from rfx.model.materials import with_components
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
 from rfx.ringdown import identify
 from rfx.sources.sources import GaussianPulse
@@ -69,8 +71,12 @@ def _cavity_trace(ppw, conformal):
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     if conformal:
-        weights = tuple(1 - w for w in compute_conformal_weights_sdf(grid, [cylinder]))
-        weights = clamp_conformal_weights(*weights, 0.1)
+        lengths, areas = compute_conformal_fractions(grid, [cylinder], clamp=False)
+        areas = tuple(1 - a for a in areas)
+        weights = tuple(jnp.asarray(w) for w in sc_clamp(
+            tuple(1 - np.asarray(w) for w in lengths), tuple(np.asarray(a) for a in areas)))
+        materials = finish_conformal_mu(with_components(
+            materials, grid, periodic=(False,) * 3), areas)
         eps = conformal_eps_correction(materials.eps_r, *weights)
     else:
         pec_mask = ~cylinder.mask(grid)
@@ -173,23 +179,23 @@ def _assert_identified(result):
 def test_t0_complement_weights():
     """The cavity's open-edge weights follow an independent radial formula."""
     grid, cylinder = _cavity_geometry(16)
-    weights = tuple(1 - w for w in compute_conformal_weights_sdf(grid, [cylinder]))
-    clamped = clamp_conformal_weights(*weights, 0.1)
+    lengths, _ = compute_conformal_fractions(grid, [cylinder], clamp=False)
     cx, cy, _ = cylinder.center
-    # Independent float64 Yee edge midpoints; no rfx SDF/coordinate helper.
-    for component, (weight, bounded) in enumerate(zip(weights, clamped)):
-        x = (np.arange(grid.nx, dtype=float) + (0.5 if component == 0 else 0)) * grid.dx
-        y = (np.arange(grid.ny, dtype=float) + (0.5 if component == 1 else 0)) * grid.dx
-        radial_sdf = np.sqrt((x[:, None, None] - cx)**2
-                             + (y[None, :, None] - cy)**2) - _RADIUS
-        expected = np.broadcast_to(np.clip(0.5 - radial_sdf / grid.dx, 0, 1), grid.shape)
-        actual, bounded = np.asarray(weight), np.asarray(bounded)
-        # Float32 Yee coordinates near 40 mm have one ulp ~1.5e-6 of dx
-        # per coordinate; the complement error guarded here is O(1).
-        assert np.max(np.abs(actual - expected)) <= 1e-5
+    # Independent end-node radial distances, before complementing and SC.
+    for component, length in enumerate(lengths):
+        x = np.arange(grid.nx, dtype=float)[:, None, None] * grid.dx
+        y = np.arange(grid.ny, dtype=float)[None, :, None] * grid.dx
+        d0 = np.sqrt((x - cx)**2 + (y - cy)**2) - _RADIUS
+        d1 = np.sqrt((x + (component == 0) * grid.dx - cx)**2
+                     + (y + (component == 1) * grid.dx - cy)**2) - _RADIUS
+        crossing = ((d0 < 0) & (d1 > 0)) | ((d1 < 0) & (d0 > 0))
+        exterior = np.where((d0 >= 0) & (d1 >= 0), 1.,
+                            np.maximum(d0, d1) / np.where(crossing, abs(d1 - d0), 1.))
+        exterior = np.where((d0 <= 0) & (d1 <= 0), 0., exterior)
+        expected = np.broadcast_to(1 - exterior, grid.shape)
+        actual = 1 - np.asarray(length)
+        assert np.max(np.abs(actual - expected)) <= 1e-7
         assert np.any(actual == 0) and np.any(actual == 1)
-        np.testing.assert_array_equal(bounded[actual == 0], 0)
-        np.testing.assert_array_equal(bounded[actual == 1], 1)
 
 
 @pytest.mark.parametrize("ppw", _PPW)
@@ -255,8 +261,9 @@ class TestConformalConvergence:
         state = init_state(grid.shape)
         materials = init_materials(grid.shape)
 
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, [cyl])
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
+        (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl])
+        materials = finish_conformal_mu(with_components(
+            materials, grid, periodic=(False,) * 3), areas)
         eps_ex, eps_ey, eps_ez = conformal_eps_correction(
             materials.eps_r, w_ex, w_ey, w_ez)
 

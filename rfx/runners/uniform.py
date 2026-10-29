@@ -86,10 +86,10 @@ def run_uniform(
         assembler; they own no cell, so they reach the stepper only
         through the realized edge masks built here.
     conformal_pec : bool or None
-        Enable conformal PEC (eps/w on cut E edges, #1651). None reads
-        Boundary(conformal=True); an explicit False requests staircase PEC.
+        Enable conformal PEC (cut-cell operands with the SC clamp, #1651). None
+        reads Boundary(conformal=True); an explicit False requests staircase PEC.
     conformal_min_weight : float
-        Minimum cut-edge weight; caps its permittivity at eps/conformal_min_weight (default 0.1).
+        Legacy; only the default 0.1 is accepted (the SC clamp replaced it).
     pec_shapes : list or None
         List of PEC Shape objects (needed for conformal weights).
     keep_wire_port_sparams : bool
@@ -169,8 +169,8 @@ def run_uniform(
         materials = setup_rlc_materials(grid, spec, materials)
 
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
-    from rfx.model.tensor_operands import form_tensor_operands, finish_tensor_operands
-    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable = form_tensor_operands(
+    from rfx.model.tensor_operands import form_tensor_operands, finish_tensor_operands, finish_conformal_mu
+    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas = form_tensor_operands(
         sim, grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal=conformal_pec, conformal_min_weight=conformal_min_weight,
         pec_shapes=pec_shapes)
@@ -569,6 +569,7 @@ def run_uniform(
     sources = resolve_run_sources(sources, materials, sim, grid,
         tensor=aniso_eps is not None or conformal_weights is not None)
 
+    materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
 
     # Thread the field storage dtype into the ADE carry (issue #656), the

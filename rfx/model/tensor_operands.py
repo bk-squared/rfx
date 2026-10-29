@@ -1,4 +1,4 @@
-"""Form geometry permittivity operands in array order."""
+"""Form geometry permittivity and permeability operands in array order."""
 
 from rfx.errors import RfxUnsupported
 
@@ -61,6 +61,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     The caller retains its warning policy and PEC-mask handling. Only the
     waveguide device supplies ``zero_inverse_on`` for interior PEC cells.
     """
+    validate_conformal_min_weight(conformal_min_weight)
     # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
     # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
     # apply_conformal_pec) chain with a single inverse-permittivity
@@ -126,20 +127,18 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 from rfx.geometry.smoothing import compute_smoothed_eps
                 aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
-    # Conformal PEC (Stage 1): compute weights and produce anisotropic
-    # eps. Entry admission refuses this with Stage 2; keep the exclusion
+    # Conformal PEC: form node lengths, face areas, and the SC clamp.
+    # Entry admission refuses this with Stage 2; keep the exclusion
     # defensive so the two PEC treatments cannot be applied together.
     conformal_weights = None
+    conformal_areas = None
     if conformal and pec_shapes and not use_kottke_pec:
         from rfx.geometry.conformal import (
-            compute_conformal_weights_sdf,
-            clamp_conformal_weights,
+            compute_conformal_fractions,
             warn_conformal_model,
         )
         warn_conformal_model()
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, conformal_min_weight)
-        conformal_weights = (w_ex, w_ey, w_ez)
+        conformal_weights, conformal_areas = compute_conformal_fractions(grid, pec_shapes)
 
         # The 1/w permittivity is formed below, once the run's final
         # periodic flags are known (#1373).
@@ -150,7 +149,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     aniso_inv_eps = add_lumped_eps(
         aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
-    return aniso_eps, aniso_inv_eps, conformal_weights, _unextendable
+    return aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas
 
 
 def finish_tensor_operands(materials, aniso_eps, conformal_weights):
@@ -201,19 +200,41 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
             pec_shapes=boundary_pec_shapes,
             background_eps=1.0,
         )
+    reference = None
     if conformal_weights is not None:
-        w_ex, w_ey, w_ez = conformal_weights
-        # The reference run (vacuum) shares the same boundary
-        # walls, so the conformal eps correction applies equally.
-        # Build it from the ref vacuum eps so the only difference
-        # ref-vs-device is the obstacle in ``materials.eps_r``.
-        ref_eps_base = jnp.ones_like(materials.eps_r)
-        ref_ex, ref_ey, ref_ez = conformal_module.conformal_eps_correction(
-            ref_eps_base, w_ex, w_ey, w_ez,
-        )
-        ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
+        weights, areas = conformal_module.compute_conformal_fractions(grid, boundary_pec_shapes)
+        ref_aniso_eps = conformal_module.conformal_eps_correction(
+            jnp.ones_like(materials.eps_r), *weights)
+        reference = (weights, areas)
 
-    return ref_aniso_eps, ref_aniso_inv_eps
+    return ref_aniso_eps, ref_aniso_inv_eps, reference
+
+
+def validate_conformal_min_weight(value):
+    """The old floor is no longer a physics input; refuse nondefault requests."""
+    if value != 0.1:
+        raise NotImplementedError(
+            'conformal_min_weight is replaced by the SC clamp; only the ignored default 0.1 is accepted')
+
+
+def finish_conformal_mu(materials, areas):
+    """Apply PFC face areas to the realized H coefficients once, before stepping."""
+    if areas is None:
+        return materials
+    components = materials.components
+    mu = tuple(jnp.where((s > 0) & (s < 1), m * s, m)
+               for m, s in zip(components.mu_update, areas))
+    return materials._replace(components=replace(components, mu_update=mu))
+
+
+def reference_conformal_materials(grid, materials, reference, periodic):
+    """Realize reference H operands using only its boundary-wall geometry."""
+    if reference is None:
+        return materials
+    from rfx.model.materials import with_components
+    from rfx.simulation import resolve_periodic
+    materials = with_components(materials, grid, periodic=resolve_periodic(grid, periodic))
+    return finish_conformal_mu(materials, reference[1])
 
 
 def refuse_full_tensor_conformal(smoothing, conformal, pec_shapes):
