@@ -85,6 +85,7 @@ driver, is unchanged. One excited port with passive receiver ports is unchanged.
 ### A partly metal cell edge (metal density between 0 and 1) is an artificial loss; a source on such an edge is scaled by the same weight
 
 At metal density strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.
+The loss acts as a conductivity -eps0 ln(1 - M)/dt on the edge (M = 1 - (1 - w)^n over its n incident cells), so it grows as the mesh is refined: in a 12 GHz PEC cavity a 2 x 2 mm post at metal density 0.01 lowers the mode Q from above 1e10 to 73 with 1 mm cells and to 36 with 0.5 mm cells. Only densities 0 and 1 are lossless, and a result with intermediate densities does not converge under mesh refinement. A density strictly between 0 and 1 comes only from a relaxed conductor: topology optimisation with PEC as one of its two materials (the projected density becomes the metal density; the default projection `beta_projection=1.0` leaves it gray, so binarise with a large beta before reading a result), or a `pec_occupancy_override` / `design_occupancy_override` array the user passes. A PEC body declared with `add(..., material='pec')` or a PEC sheet is always 0 or 1.
 In 2.0 a source on such an edge is scaled by the same weight on single-device forward runs, as on multi-device runs.
 A resistive sheet or lumped RLC element on such an edge is NOT scaled: its update replaces the field after the weight.
 Tracker: #1373
