@@ -69,8 +69,8 @@ KERNEL_CALLERS = {
 # Top-level functions that call a field update themselves: a new one is a new
 # kernel, and its paths need cells.
 FIELD_STEPPERS = {
-    "rfx/adi.py:run_adi_2d": "internal to run_adi",
-    "rfx/adi.py:run_adi_3d": "internal to run_adi",
+    "rfx/stepping/adi.py:run_adi_2d_loop": "internal to run_adi",
+    "rfx/stepping/adi.py:run_adi_3d_loop": "internal to run_adi",
     "rfx/stepping/slab_update.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:_update_e_local_with_dispersion":

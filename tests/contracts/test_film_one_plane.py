@@ -293,9 +293,9 @@ def test_c6_graded_sigma_gradient():
 CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/stepping/slab_update.py', 'cpml_h_materials'): (2, 'H-only local/vacuum means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/stepping/slab_graded_legacy_loop.py', 'run_graded_legacy_slab_loop._apply_cpml_h_shmap._h'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
-    ('rfx/adi.py', 'adi_step_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
-    ('rfx/adi.py', 'adi_step_3d'): (2, 'ADI refuses thin-conductor declarations before stepping'),
-    ('rfx/adi.py', 'apply_adi_cpml_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
+    ('rfx/stepping/adi.py', 'adi_step_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
+    ('rfx/stepping/adi.py', 'adi_step_3d'): (2, 'ADI refuses thin-conductor declarations before stepping'),
+    ('rfx/stepping/adi.py', 'apply_adi_cpml_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
     ('rfx/checkpoint.py', 'load_materials'): (1, '**records loads sigma_film per component from HDF5'),
     ('rfx/core/yee.py', 'init_materials'): (1, 'initial cell construction precedes the shared film fold'),
     ('rfx/geometry/rasterize_grid.py', 'rasterize_geometry'): (1, 'initial cell construction precedes the shared film fold'),
@@ -327,7 +327,7 @@ CONSTRUCTOR_EXCEPTIONS = {
 # Every exact cell-sigma read, including typed exclusions, is classified.
 SIGMA_READS = {
     ('rfx/_realized.py', 'scalar_electric', 'materials'): (1, 'arithmetic into coefficient / observed scalar operands'),
-    ('rfx/adi.py', 'adi_step_3d', 'observed'): (1, 'arithmetic into ADI damping and curl coefficients'),
+    ('rfx/stepping/adi.py', 'adi_step_3d', 'observed'): (1, 'arithmetic into ADI damping and curl coefficients'),
     ('rfx/api/_compile.py', '_CompileMixin._has_pec_to_conform', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/api/_compile.py', '_CompileMixin.conductor_mask', 'materials'): (1, 'threshold / conductor cell footprint'),
     ('rfx/api/_mesh.py', '_MeshMixin._auto_configure_mesh', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
