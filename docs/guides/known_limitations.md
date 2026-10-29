@@ -414,6 +414,18 @@ not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
 
+### MSL S-parameters under `eps_override` are referred to the feed plane with the declared substrate's line
+
+Tracker: #2199
+
+`compute_msl_s_matrix(eps_override=...)` measures S at each port's probes and refers it back to the feed plane with the
+closed-form line of the declared substrate permittivity. When the override changes the permittivity under a port line,
+that shift no longer matches the solved line. On a 20 mm line on a 0.8 mm substrate, with 4 mm from each feed plane to its
+first probe and εr 2.20 declared but 2.42 solved, the S21 phase is off by 0.02 rad at 2 GHz to 0.10 rad at 10 GHz, |S11|
+by up to 0.05, and d(arg S21)/dεr comes out at 64 to 66 % of the correct value; |S21| is within 0.003. Only that
+feed-to-probe distance and the uniform mesh were run. Declare the substrate at the permittivity the override sets under
+the port lines, or keep the override away from the port lines.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
