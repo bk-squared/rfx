@@ -101,12 +101,24 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
         widths.append(width)
     coords = np.meshgrid(*lines, indexing='ij', sparse=True)
     sdf = np.full(tuple(len(line) for line in lines), np.inf, dtype=np.float64)
+    from rfx.geometry.csg import Box, PolylineWire
+    from rfx.geometry.smoothing import _ContinuedSheetShape
     for shape in pec_shapes:
         fn = _get_sdf_fn(shape)
+        if fn is None and isinstance(shape, PolylineWire) and float(shape.radius) < 0.5 * min(widths):
+            continue  # A sub-cell filament reaches the step through its own wire edges.
+        sheet = shape.declared if isinstance(shape, _ContinuedSheetShape) else shape
+        if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
+            continue  # A zero-thickness Box is a sheet, realized by its own edge masks.
         if fn is None:
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
-        sdf = np.minimum(sdf, periodic_sdf(grid, shape, coords, fn, xp=np))
+        shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
+        if not np.any(shape_sdf < 0) and np.min(shape_sdf) < max(widths):
+            raise NotImplementedError(
+                f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
+                'operands would drop it; refine the mesh or use the staircase')
+        sdf = np.minimum(sdf, shape_sdf)
     base = sdf[:-1, :-1, :-1]
     lengths, areas = [], []
     for axis in range(3):

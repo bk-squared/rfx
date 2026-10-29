@@ -226,3 +226,35 @@ def test_marching_square_saddles(positive, negative, expected):
     corners = [np.array([d]) for d in (positive, negative, positive, negative)]
     # Two disjoint corner triangles or a rectangle with two triangles removed.
     assert face_fraction(corners, (2., 3.))[0] == pytest.approx(expected)
+
+
+def test_waveguide_reference_conformal_eps_is_the_port_medium():
+    """A conformal wall cuts the reference's own medium, not vacuum (review of the #1651 fix)."""
+    from rfx.core.yee import init_materials
+    from rfx.model.tensor_operands import form_reference_operands
+    grid = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')._build_grid()
+    wall = Box((-1., .0125, -1.), (1., 1., 1.))
+    eps, _, (lengths, _) = form_reference_operands(
+        grid, init_materials(grid.shape), subpixel_smoothing=False, conformal_weights=(None,),
+        boundary_pec_shapes=[wall], reference_eps=2.5)
+    ex, ey = np.asarray(eps[0]), np.asarray(eps[1])
+    ly = np.asarray(lengths[1])
+    free = np.asarray(lengths[0]) == 1
+    assert np.allclose(ex[free], 2.5)
+    cut = (ly > 0) & (ly < 1)
+    assert cut.any() and np.allclose(ey[cut], 2.5 / ly[cut])
+
+
+def test_conformal_run_keeps_a_filament_and_refuses_a_body_holding_no_node():
+    """A lattice filament reaches the step through its wire edges; a body with no grid node inside would vanish."""
+    from rfx.geometry.csg import PolylineWire
+    sim = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')
+    sim.add(Sphere((.0101, .0099, .0102), .005), material='pec')
+    sim.add(PolylineWire(((.004, .004, .004), (.004, .004, .016)), 0.), material='pec')
+    sim.add_source((.016, .006, .007), 'ez', amplitude_kind='current')
+    assert sim.run(n_steps=2, conformal_pec=True, skip_preflight=True).state is not None
+    tiny = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')
+    tiny.add(Sphere((.011, .011, .011), .0012), material='pec')  # 0.6 cell, centred in a cell: no node inside
+    tiny.add_source((.004, .006, .007), 'ez', amplitude_kind='current')
+    with pytest.raises(NotImplementedError, match='holds no grid node'):
+        tiny.run(n_steps=2, conformal_pec=True, skip_preflight=True)
