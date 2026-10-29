@@ -2,19 +2,6 @@
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
-class _ScalarAbsorber(str):
-    """A legacy scalar token with its original immutable face expansion.
-
-    String comparisons and document serialization retain the legacy value.
-    Deepcopy preserves the shared spec reference along with the simulation.
-    """
-
-    def __new__(cls, value, spec=None):
-        token = super().__new__(cls, value)
-        token.spec = spec
-        return token
-
-
 def constructor_boundary(sim):
     from rfx.boundaries.features import boundary_was_explicit
     from rfx.boundaries.model import DEFAULT_BOUNDARY, refresh_boundary_model
@@ -24,7 +11,7 @@ def constructor_boundary(sim):
     # A Floquet port and an open TF/SF source replace the shorthand's lateral
     # faces; an explicit spec would declare them (#1944, #1945).
     open_tfsf = sim._tfsf is not None and not sim._tfsf.closed_box
-    if (sim._floquet_ports or open_tfsf) and sim._boundary_spec is getattr(sim._boundary, "spec", None):
+    if (sim._floquet_ports or open_tfsf) and sim._boundary_spec is scalar_spec(sim):
         return str(sim._boundary) if boundary_was_explicit(sim) else DEFAULT_BOUNDARY
     return sim._boundary_spec if boundary_was_explicit(sim) else DEFAULT_BOUNDARY
 
@@ -88,8 +75,22 @@ def design_constructor_boundary(spec, scalar, pec_faces, *, keeps_shorthand):
 
 
 def legacy_spec(sim):
-    """Expand the constructor's scalar and remember its original face spec."""
+    """Expand the constructor's scalar and remember its original face spec.
+
+    ``sim._boundary`` stays a plain ``str``: writers such as h5py refuse a
+    ``str`` subclass (#2214). The expansion is kept beside it, keyed to the
+    scalar it came from; deepcopy keeps both and their shared spec reference.
+    """
+    sim._boundary = str(sim._boundary)
     spec = predict_legacy_spec(sim._boundary, sim._pec_faces, sim._periodic_axes)
-    if sim._boundary in ("cpml", "upml"):
-        sim._boundary = _ScalarAbsorber(sim._boundary, spec)
+    sim._boundary_scalar_spec = (sim._boundary, spec) if sim._boundary in ("cpml", "upml") else None
     return spec
+
+
+def scalar_spec(sim):
+    """The face spec the current absorber scalar expanded to, or None.
+
+    None once ``sim._boundary`` no longer holds the scalar that was expanded.
+    """
+    entry = getattr(sim, "_boundary_scalar_spec", None)
+    return entry[1] if entry is not None and entry[0] == sim._boundary else None

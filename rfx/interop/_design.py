@@ -818,6 +818,9 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_boundary_explicit",
     # B1 descriptor derived from the exported boundary and feature entries.
     "_boundary_model",
+    # Derived: the face spec the constructor's absorber scalar expanded to
+    # (rfx.boundaries.serialization.legacy_spec); the rebuild's constructor sets it.
+    "_boundary_scalar_spec",
     "_coaxial_ports",
     "_cpml_kappa_max",
     "_cpml_layers",
