@@ -480,16 +480,17 @@ probes downstream of each feed.
   7.663 GHz at cells h/4, h/8, h/12; steps 0.64 % and 0.22 %) and lies 0.34 %
   above openEMS (7.637 GHz, its last refinement step 0.20 %). The depth of a
   deep null is not judged (rfx about −34 dB, openEMS about −27 dB here).
-- **Two open stubs through two such junctions** (the Sheen low-pass filter
-  layout; by-hand comparison with openEMS, 2026-10; not a CI test): **misses
-  the 1 % bar.** The upper stopband zero lies 2.2 % above openEMS converged
-  on its own mesh (rfx 8.236 GHz at cells h/7; openEMS 8.059 GHz, last
-  refinement step 0.06 %). On this board rfx's zero is not shown to converge
-  (8.237, 8.273, 8.236 GHz at h/3, h/5, h/7). The cause is not measured. The
-  estimate is that the two equal stubs make one nearly degenerate pair of
-  zeros, and the two solvers split the pair differently through the coupling
-  between the junctions. This estimate rests on one other solver only; it
-  does not yet separate the junction model from the solver.
+- **Two open stubs through two such junctions** (a two-stub stopband filter
+  with two transmission zeros, the Sheen low-pass layout; by-hand comparison
+  with HFSS, 2026-10; not a CI test). HFSS ran three tetrahedral meshes
+  (142 000 to 628 000 tetrahedra, converging) with wave ports five strip widths
+  wide; rfx ran cells h/4, h/8 and h/12 of the 0.794 mm substrate, converging
+  (each zero's step shrinks by 0.28 to 0.35 per refinement). Against the
+  finest HFSS mesh, rfx's |S21| is within 0.68 dB wherever both are above
+  −20 dB, both zeros are within 0.53 % (−0.46 % and +0.53 %) and the −3 dB
+  stopband edges within 0.31 %. Against openEMS the lower zero differs by
+  1.33 %; HFSS places it between the two FDTD solvers (rfx −0.46 %, openEMS
+  +0.86 %). The group delay misses the 1 % bar; see the known limitations.
 
 Nonuniform `mode="laplace"` and `mode="uniform"` have internal regression
 coverage only and no comparison with another solver on a graded mesh; treat
