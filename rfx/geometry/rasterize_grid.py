@@ -606,12 +606,9 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     else:
         sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
         sample[a] = np.asarray([requested_mid], dtype=np.float64)
-        # Generic shape samplers may wrap their concrete result in JAX.
-        # Evaluate just this plane before returning to host geometry storage.
-        with jax.ensure_compile_time_eval():
-            cross = np.asarray(periodic_mask(
-                grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
-                closed_footprint=True), dtype=bool)
+        cross = np.asarray(periodic_mask(
+            grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
+            closed_footprint=True), dtype=bool)
         fp = np.zeros(shape_3, dtype=bool)
         idx = [slice(None)] * 3
         idx[a] = slice(plane, plane + 1)
