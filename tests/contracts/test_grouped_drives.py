@@ -1,6 +1,9 @@
 """S3-1: production scan scatter growth and the legacy per-cell oracle."""
 import os
 import re
+import subprocess
+import sys
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -33,22 +36,59 @@ def per_cell(state, drives, wave_t):
     return state
 
 
+_LAYOUT_MODULES = (
+    'rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop',
+    'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
+    'rfx.subgridding.jit_runner', 'rfx.stepping.slab_uniform_loop',
+    'rfx.stepping.slab_graded_legacy_loop', 'rfx.stepping.slab_update',
+)
+_INJECTOR_MODULES = ('rfx.simulation', 'rfx.stepping.graded')
+
+
 def use_per_cell_reference(monkeypatch):
     import importlib
-    from tests.unit.runners._until_decay_reference import _reference_drives
+    reference = importlib.import_module('tests.unit.runners._until_decay_reference')
+    # Imports must finish before patching, or new modules retain the stand-ins.
+    layout_modules = [importlib.import_module(name) for name in _LAYOUT_MODULES]
+    injector_modules = [importlib.import_module(name) for name in _INJECTOR_MODULES]
     def layout(meta, dtype, **_kwargs):
-        return _reference_drives(meta, np.empty(0, dtype=dtype))
-    for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop', 'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
-                 'rfx.subgridding.jit_runner', 'rfx.stepping.slab_uniform_loop',
-                 'rfx.stepping.slab_graded_legacy_loop', 'rfx.stepping.slab_update'):
-        module = importlib.import_module(name)
+        return reference._reference_drives(meta, np.empty(0, dtype=dtype))
+    for module in layout_modules:
         monkeypatch.setattr(module, 'drive_layout', layout)
         if hasattr(module, 'inject_drives'):
             monkeypatch.setattr(module, 'inject_drives', per_cell)
     # Both one-device and wrapped graded steps import this injector.
     # Slab setup imports core.drive_layout at call time, covered above.
-    for name in ('rfx.simulation', 'rfx.stepping.graded'):
-        monkeypatch.setattr(importlib.import_module(name), 'inject_drives', per_cell)
+    for module in injector_modules:
+        monkeypatch.setattr(module, 'inject_drives', per_cell)
+
+
+def test_per_cell_reference_restores_real_injector_in_fresh_interpreter():
+    code = """
+import importlib
+import sys
+import pytest
+
+assert not any(name == 'rfx.subgridding' or name.startswith('rfx.subgridding.')
+               for name in sys.modules)
+from tests.contracts import test_grouped_drives as grouped
+import rfx.core.drives as drives
+
+assert 'rfx.subgridding.jit_runner' not in sys.modules
+mp = pytest.MonkeyPatch()
+grouped.use_per_cell_reference(mp)
+mp.undo()
+for name in dict.fromkeys(grouped._LAYOUT_MODULES + grouped._INJECTOR_MODULES):
+    module = importlib.import_module(name)
+    for attribute in ('inject_drives', 'drive_layout'):
+        if hasattr(module, attribute):
+            assert getattr(module, attribute) is getattr(drives, attribute), (name, attribute)
+"""
+    result = subprocess.run(
+        [sys.executable, '-c', code], cwd=Path(__file__).resolve().parents[2],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def run_case(lane, n=4, amplitude=1., component="ez"):
