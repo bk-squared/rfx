@@ -184,8 +184,8 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
 
 
 def form_reference_operands(grid, materials, *, subpixel_smoothing,
-                            conformal_weights, boundary_pec_shapes):
-    """Form the waveguide reference operands with its existing vacuum rule."""
+                            conformal_weights, boundary_pec_shapes, reference_eps=1.0):
+    """Form the waveguide reference operands; conformal walls cut the reference medium (reference_eps)."""
     ref_aniso_inv_eps = None
     ref_aniso_eps = None
     if subpixel_smoothing == "kottke_pec":
@@ -204,7 +204,7 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
     if conformal_weights is not None:
         weights, areas = conformal_module.compute_conformal_fractions(grid, boundary_pec_shapes)
         ref_aniso_eps = conformal_module.conformal_eps_correction(
-            jnp.ones_like(materials.eps_r), *weights)
+            jnp.full_like(materials.eps_r, reference_eps), *weights)
         reference = (weights, areas)
 
     return ref_aniso_eps, ref_aniso_inv_eps, reference

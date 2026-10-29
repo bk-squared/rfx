@@ -775,7 +775,8 @@ def compute_waveguide_s_matrix(
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
-        conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes)
+        conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
+        reference_eps=float(reference_medium.eps_r))
 
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(

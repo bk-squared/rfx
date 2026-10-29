@@ -41,7 +41,10 @@ def _preflight_impl(
         # run() passes its resolved conformal_pec: cut-cell conformal PEC solves
         # PEC Box faces at their drawn planes (#1651).
         import copy
-        self = copy.copy(self)
+        from rfx.boundaries.features import share_wall_warning_history
+        run_copy = copy.copy(self)
+        share_wall_warning_history(self, run_copy)
+        self = run_copy
         self._conformal_run_call = bool(_conformal_run)
     if _conductors is not None:
         # Execution lends its assembled, pre-port products for this call only.

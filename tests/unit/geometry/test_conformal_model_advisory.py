@@ -27,8 +27,8 @@ def test_conformal_run_warns_once_and_names_the_limitation():
     found = _advisories(True)
     assert len(found) == 1
     text = str(found[0].message)
-    assert all(part in text for part in ("eps/lbar", "mu*sbar", "SC stability clamp",
-                                         "Accuracy is under measurement", "#1651"))
+    assert all(part in text for part in ("eps/lbar", "mu*sbar", "SC clamp", "drawn plane",
+                                         "first order", "#1651"))
 
 
 def test_staircase_run_does_not_warn():

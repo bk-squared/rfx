@@ -4,11 +4,13 @@ An off-axis Ez pulse excites the hollow cylinder; two ringdown windows must
 identify the dominant TM010 pole consistently without significant growing
 poles. Staircase errors are positive, pinned, and fall under mesh refinement.
 Independent radial-distance lengths check the cavity complement. With the
-cut-cell operands (#1651) the conformal TM010 error is -0.302 / -0.155 / -0.064 %
+cut-cell operands (#1651) the TM010 error of this z-invariant cylinder (E along
+the wall) is -0.302 / -0.155 / -0.064 %
 at 12 / 16 / 24 ppw, slope 2.2; the two conformal tests stay strict expected
 failures because the ring-down identification keeps growing poles from a slow
 beat (the envelope oscillates by about 10 % with a period near 4e5 steps and does
-not grow over 1e6 steps at 24 ppw), so the identification bar is not met.
+not grow over 1e6 steps at 24 ppw), so the identification bar is not met. A
+3-D PEC sphere converges only first order with the same operands (#1651).
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
