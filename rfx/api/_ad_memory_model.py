@@ -40,8 +40,14 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         if grid is None:
             raise ValueError("design_box requires a successfully built grid")
         bounds, shape = design_box_bounds(sim._design_box_bounds_from_corners(grid, design_box), grid)
-        _, slices, _, _ = design_box_window(bounds, grid.shape)
-        window = math.prod(s.stop - s.start for s in slices)
+        write_bounds, slices, _, _ = design_box_window(bounds, grid.shape)
+        if checkpoint and not segmented:
+            # Preserve the existing unsegmented remat bound, including its
+            # computation window; its mechanism has not been identified.
+            window = math.prod(s.stop - s.start for s in slices)
+        else:
+            window = math.prod(write_bounds[2 * d + 1] - write_bounds[2 * d]
+                               for d in range(3))
     else:
         shape = tuple(grid.shape) if grid is not None else ()
     from rfx.api._ad_carry import read_carry
