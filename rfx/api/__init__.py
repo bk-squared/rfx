@@ -611,6 +611,7 @@ class Simulation(
             centered/two-interface integration lane but remains a research-only
             contract until its public runner wiring and waveform gates pass.
         """
+        from rfx.errors import AccuracyWarning
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
         if validation not in {"production", "research", "off"}:
@@ -662,7 +663,7 @@ class Simulation(
                     f"(0.0, {domain_z*1e3:.1f})mm on an absorbing z face (the "
                     f"absorber lies OUTSIDE the domain — rfx/grid.py convention). "
                     f"This causes late-time energy growth. Keep z_range strictly "
-                    f"inside the physical domain or use PEC z faces.",
+                    f"inside the physical domain or use PEC z faces.", AccuracyWarning,
                     stacklevel=2,
                 )
 
@@ -1329,6 +1330,7 @@ class Simulation(
             1.2%) and closed the closed-box referee within 0.9% at all
             bins.
         """
+        from rfx.errors import ConfigurationWarning
         if self._tfsf is not None:
             raise ValueError(
                 "Lumped ports are not supported together with the TFSF plane-wave source"
@@ -1381,7 +1383,7 @@ class Simulation(
             import warnings as _w
             _w.warn(
                 "waveform is ignored when excite=False (passive matched load). "
-                "Remove the waveform argument to suppress this warning.",
+                "Remove the waveform argument to suppress this warning.", ConfigurationWarning,
                 stacklevel=2,
             )
 
@@ -1667,6 +1669,7 @@ class Simulation(
         the full series ADE current tracker.  To ensure the series ADE
         path is used, specify at least two non-zero components.
         """
+        from rfx.errors import ConfigurationWarning
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if topology not in ("series", "parallel"):
@@ -1685,7 +1688,7 @@ class Simulation(
                 warnings.warn(
                     f"Series topology with single component ({active}) uses material "
                     f"folding, not the series ADE. Add a second component or use "
-                    f"topology='parallel' to suppress this warning.",
+                    f"topology='parallel' to suppress this warning.", ConfigurationWarning,
                     stacklevel=2,
                 )
 

@@ -331,7 +331,8 @@ def test_s2b_r3_accumulator_coverage_and_forward(accumulators, n):
         assert reason == (f"cannot judge: the record ends at step {n} before the field leaves "
                           f"{rows[0]['name']} (step {rows[0]['end_step']})")
         assert result.settling_witness["reason"] == reason
-        assert len(coverage_warnings) == 1 and coverage_warnings[0].category is UserWarning
+        from rfx.errors import AccuracyWarning
+        assert len(coverage_warnings) == 1 and coverage_warnings[0].category is AccuracyWarning
         assert reason in str(coverage_warnings[0].message)
     else:
         assert all(r["verdict"] == "covered" for r in rows)

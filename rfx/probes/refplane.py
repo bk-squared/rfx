@@ -533,6 +533,7 @@ def decompose_wire_s_matrix_with_reference_planes(
         conservation identity ``(|out|^2 - |inc|^2)/Re(Zc)`` equals the
         net line power there (Phase-0 falsifier F2).
     """
+    from rfx.errors import AccuracyWarning
     from rfx.probes.probes import decompose_wire_s_matrix
 
     # np.array (copy): the jnp output buffer is read-only and the plane
@@ -580,7 +581,7 @@ def decompose_wire_s_matrix_with_reference_planes(
                     "canonical thru). The plane off-diagonals may be "
                     "biased; increase reference_plane_cells so both planes "
                     "(N and 2N cells) sit >= 10 cells from every port.",
-                    UserWarning, stacklevel=2)
+                    AccuracyWarning, stacklevel=2)
             out1, in1 = refplane_split(v1, i1, zc[p], outboard_signs[p])
             out2, in2 = refplane_split(v2, i2, zc[p], outboard_signs[p])
             d_sep = int(plane_offsets[p]) * float(dx)

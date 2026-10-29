@@ -6,6 +6,7 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -511,7 +512,7 @@ def update_lumped_drive_ref_probe(
     return probe._replace(v_ref_dft=old_ref + v_ref * phase * dt * weight)
 
 
-class PreDecisionLumpedDiagonalWarning(UserWarning):
+class PreDecisionLumpedDiagonalWarning(AccuracyWarning):
     """A lane still reporting a lumped diagonal on the pre-decision convention.
 
     Raised where a runner returns a lumped-port S-matrix built the way the
@@ -893,6 +894,7 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
     ``warn_if_nonpassive_lumped_s11`` tracer-safety pattern) and never
     changes the returned value.
     """
+    from rfx.errors import AccuracyWarning
     import jax as _jax
     try:
         if isinstance(flux, _jax.core.Tracer):
@@ -930,7 +932,7 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
         f"enable x64 in a scoped context for the flux computation, increase "
         f"the source amplitude, or recompute from the (healthy) "
         f"accumulators in float64 as done for this check.",
-        UserWarning, stacklevel=3,
+        AccuracyWarning, stacklevel=3,
     )
 
 
@@ -1762,6 +1764,7 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     tracer with no concrete value, so the check is skipped entirely — it never
     perturbs an AD/optimization run, only the eager research call.
     """
+    from rfx.errors import AccuracyWarning
     import numpy as np
     import jax as _jax
     try:
@@ -1801,7 +1804,7 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
         f"|S11|>1; the single-cell extractor is unreliable where the incident "
         f"wave is weak (spectral band edges). Do not trust or optimize against "
         f"these bins — restrict the band to where the source has energy, or use "
-        f"run() for a passive analysis curve.",
+        f"run() for a passive analysis curve.", AccuracyWarning,
         stacklevel=3,
     )
 

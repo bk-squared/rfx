@@ -1192,6 +1192,7 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
 
 def _warn_implicit_s(message):
     """Attribute implicit S warnings to the first caller outside rfx."""
+    from rfx.errors import ConfigurationWarning
     import sys
     import warnings
     stacklevel = 2
@@ -1205,7 +1206,7 @@ def _warn_implicit_s(message):
             frame = frame.f_back
     finally:
         del frame
-    warnings.warn(message, UserWarning, stacklevel=stacklevel)
+    warnings.warn(message, ConfigurationWarning, stacklevel=stacklevel)
 
 
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):

@@ -26,6 +26,7 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.errors import RfxUnsupported
 
 from typing import NamedTuple
@@ -366,6 +367,8 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     facet -- and nothing downstream distinguishes that from a structure
     the user meant to end there.
     """
+    from rfx.errors import AccuracyWarning
+    from rfx.errors import ConfigurationWarning
     if not unextendable:
         return
     import warnings as _w
@@ -374,7 +377,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     if traced:
         _w.warn("Conducting geometry is kept as declared: "
                 + "; ".join(dict.fromkeys(u.reason for u in traced))
-                + ". No continuation is applied.", stacklevel=stacklevel)
+                + ". No continuation is applied.", ConfigurationWarning, stacklevel=stacklevel)
         conductors = [u for u in conductors if u.side != "all"]
     if conductors:
         faces = ", ".join(
@@ -382,7 +385,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
             for u in conductors)
         _w.warn("Conducting geometry reaches an absorbing face but has no "
                 f"geometry continuation: {faces}. No continuation is applied "
-                "across those faces.", stacklevel=stacklevel)
+                "across those faces.", ConfigurationWarning, stacklevel=stacklevel)
     unextendable = [u for u in unextendable if not u.conductor]
     if not unextendable:
         return
@@ -397,7 +400,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
         "eps_r = 1.0, so each structure is terminated by an end facet at the "
         "interior/pad seam and the guided/standing field sees a reflector "
         "there (issue #1043). Draw the structure as a Box or an "
-        "axis-aligned Cylinder, or move it clear of the face.",
+        "axis-aligned Cylinder, or move it clear of the face.", AccuracyWarning,
         stacklevel=stacklevel,
     )
 
@@ -848,7 +851,7 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     return solved
 
 
-class CurvedSmoothingWarning(UserWarning):
+class CurvedSmoothingWarning(AccuracyWarning):
     """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
 
 

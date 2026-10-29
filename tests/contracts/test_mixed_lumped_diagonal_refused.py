@@ -103,7 +103,8 @@ def test_projection_is_not_formed_and_warning_names_refusal(measured):
     assert not any(issubclass(w.category, PreDecisionLumpedDiagonalWarning) for w in seen)
     assert not calls
     assert result.S_raw is None and result.passivity_correction is None
-    assert len(refusals) == 1 and refusals[0].category is UserWarning
+    from rfx.errors import AccuracyWarning
+    assert len(refusals) == 1 and refusals[0].category is AccuracyWarning
     message = str(refusals[0].message)
     assert "S[:,0] (port 'lw0', index 0)" in message
     assert 'per-cell drive frame' in message and 'whole-port wave later' in message

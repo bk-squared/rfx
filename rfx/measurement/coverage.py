@@ -104,6 +104,7 @@ def with_coverage(db, witness, coverage):
 
 def warn_uncovered(witness):
     """One warning for the first uncovered accumulator, before other advisories."""
+    from rfx.errors import AccuracyWarning
     import warnings
 
     failed = next((r for r in witness.get("coverage", ()) if r["verdict"] != "covered"), None)
@@ -114,5 +115,5 @@ def warn_uncovered(witness):
               if db is None or db != db else "record-end settling coverage")
     warnings.warn(f"{prefix}: {failed['name']}: {failed['verdict']} "
                   f"(record step {failed['n_record']}, end step {failed['end_step']})",
-                  UserWarning, stacklevel=4)
+                  AccuracyWarning, stacklevel=4)
     return True

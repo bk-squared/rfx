@@ -926,7 +926,7 @@ class _PreflightMixin:
             and a healthy two-port guide ALWAYS carries the informational
             E-plane note, so escalating on emptiness would make
             ``strict=True`` raise on every correct waveguide setup. Advisories
-            are still returned in the report and printed; read them there.
+            are still returned in the report and emitted as warnings; read them there.
             (This differs from ``preflight(strict=True)``, whose report has no
             informational tier.)
         normalize:
@@ -957,6 +957,9 @@ class _PreflightMixin:
             depend on the value it was evaluated at.
         """
 
+        import warnings
+        from rfx.errors import AccuracyWarning
+        from rfx.errors import ConfigurationWarning
         aliases = {
             "run": "run",
             "result": "run",
@@ -1107,9 +1110,9 @@ class _PreflightMixin:
 
         if len(issues):              # PreflightReport refuses bool() (#980)
             for issue in issues:
-                print(f"  [SPARAM PREFLIGHT] {issue}")
+                warnings.warn(f"  [SPARAM PREFLIGHT] {issue}", AccuracyWarning, stacklevel=2)
         else:
-            print(f"  [SPARAM PREFLIGHT] {key}: all checks passed.")
+            warnings.warn(f"  [SPARAM PREFLIGHT] {key}: all checks passed.", ConfigurationWarning, stacklevel=2)
         return issues
 
     def _validate_msl_sparameter_request_for_preflight(self) -> None:

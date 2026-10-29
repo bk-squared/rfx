@@ -97,8 +97,8 @@ def test_all_is_curated_subset():
     # Pareto selection helpers are included in the curated surface.
     assert {"weighted_scalarization", "epsilon_constraint_mask",
             "select_epsilon_constrained"} <= set(names)
-    # Public exception bases: cap equals the actual curated surface count.
-    assert len(names) <= 215, f"rfx.__all__ too large to be curated: {len(names)}"
+    # Public exception and warning bases: cap equals the actual curated surface count.
+    assert len(names) <= 218, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

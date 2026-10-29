@@ -47,6 +47,7 @@ def execute_from_materials(
     Run requests gathered fields and an assembly record; forward keeps the
     fields sharded. Sources, materials, ADE, CPML and PEC staging are shared.
     """
+    from rfx.errors import ConfigurationWarning
     is_run = lane == "run_distributed_nu"
     if n_steps < 1:
         entry = "run(devices=...)" if is_run else "forward(distributed=True)"
@@ -189,7 +190,7 @@ def execute_from_materials(
                 "more time on recomputation overhead than it saves "
                 "in memory; consider checkpoint_every=None for small "
                 "runs.",
-                UserWarning,
+                ConfigurationWarning,
                 stacklevel=3,
             )
 

@@ -83,6 +83,7 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
     active = compiled
 
     def evaluate(*args, **kwargs):
+        from rfx.errors import ConfigurationWarning
         nonlocal first_call, active
         if not first_call:
             return active(*args, **kwargs)
@@ -101,7 +102,7 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
                 "every iteration now recompiles the whole simulation (on a board-sized "
                 "model most of the iteration's wall time); pass jit=False to choose "
                 "this path without a warning, or make the objective traceable",
-                UserWarning, stacklevel=2,
+                ConfigurationWarning, stacklevel=2,
             )
             return eager(*args, **kwargs)
 
@@ -189,6 +190,7 @@ def _adam_multistart(
     grad_fn = _value_and_grad_with_fallback(cost_fn, jit, "optimize")
 
     def _run_one(init_lat):
+        from rfx.errors import AccuracyWarning
         m = jnp.zeros_like(init_lat)
         v = jnp.zeros_like(init_lat)
         latent = init_lat
@@ -211,7 +213,7 @@ def _adam_multistart(
                     f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
                     f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
                     f"returning the last finite design (from before iteration "
-                    f"{it}).",
+                    f"{it}).", AccuracyWarning,
                     stacklevel=2,
                 )
                 latent = last_good

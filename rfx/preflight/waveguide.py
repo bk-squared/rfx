@@ -364,6 +364,7 @@ WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET = 2000
 
 def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_override=None, mu_r_override=None):
     """Read the drawn realization and concrete call overrides through setup's resolver."""
+    from rfx.errors import AccuracyWarning
     import jax
     from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.model.overrides import apply_material_overrides
@@ -391,7 +392,7 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
         for name, value in (("eps_override", eps_override), ("sigma_override", sigma_override), ("mu_r_override", mu_r_override)):
             if is_tracer(value):
                 import warnings
-                warnings.warn("Waveguide preflight reads drawn geometry; traced section overrides are judged at setup.",
+                warnings.warn("Waveguide preflight reads drawn geometry; traced section overrides are judged at setup.", AccuracyWarning,
                               stacklevel=2)
             elif value is not None:
                 overrides[name] = value
@@ -813,6 +814,7 @@ def _emit_waveguide_port_cutoff_findings(
     which higher-order modes exist. ``guide_label`` is the
     human-readable provenance of the latter.
     """
+    from rfx.errors import AccuracyWarning
     import warnings as _w
 
     from rfx.model.waveguide_modes import port_light_speed
@@ -824,7 +826,7 @@ def _emit_waveguide_port_cutoff_findings(
         return
     except RuntimeError as exc:
         _w.warn(f"Waveguide preflight could not resolve the section medium ({exc!r}); "
-                "cutoff checks are unchecked for this port.", stacklevel=2)
+                "cutoff checks are unchecked for this port.", AccuracyWarning, stacklevel=2)
         return
     m0, n0 = entry.mode
 

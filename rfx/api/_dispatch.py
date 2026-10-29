@@ -87,6 +87,7 @@ def _dispatch_plan(
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
+    from rfx.errors import AccuracyWarning
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=distributed, devices=devices)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
@@ -285,7 +286,7 @@ def _dispatch_plan(
             _wmod.warn(
                 f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
                 ":1 exceeds the 3:1 stability caution threshold. "
-                "Monitor for numerical dispersion / late-time drift.",
+                "Monitor for numerical dispersion / late-time drift.", AccuracyWarning,
                 stacklevel=2,
             )
 

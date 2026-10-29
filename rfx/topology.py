@@ -398,6 +398,7 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    from rfx.errors import AccuracyWarning
     resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
@@ -590,7 +591,7 @@ def topology_optimize(
                 f"iteration {it} — the FDTD forward almost certainly diverged "
                 f"(dt above CFL, conformal=True at fine dx, PEC inside CPML, or "
                 f"a sub-cell PEC feature). Stopping early and returning the last "
-                f"finite design (from before iteration {it}).",
+                f"finite design (from before iteration {it}).", AccuracyWarning,
                 stacklevel=2,
             )
             logit = last_good

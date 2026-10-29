@@ -40,6 +40,7 @@ acyclic).
 
 from __future__ import annotations
 
+from rfx.errors import RfxWarning
 from rfx.errors import RfxRefusal
 
 import json
@@ -259,7 +260,7 @@ def _sorted_box_corners(shape):
     return np.minimum(lo, hi), np.maximum(lo, hi)
 
 
-class PreflightWarning(UserWarning):
+class PreflightWarning(RfxWarning):
     """Base for structured preflight findings carried on the warning instance.
 
     Mirrors the in-repo report idioms (:class:`SubgridValidationIssue`,

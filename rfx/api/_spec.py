@@ -504,6 +504,7 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
     """Emit a UserWarning (tracer-safe, never raising) when a freshly-computed
     result carries NaN/Inf observables, so an eager forward/run surfaces a
     divergence with a cause hint instead of returning silent garbage."""
+    from rfx.errors import AccuracyWarning
     bad = _nonfinite_fields(result)
     if not bad:
         return
@@ -512,7 +513,7 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
 
     _w.warn(
         f"[{context}] result contains non-finite values in {detail} — "
-        f"{_NONFINITE_CAUSE_HINT}",
+        f"{_NONFINITE_CAUSE_HINT}", AccuracyWarning,
         stacklevel=3,
     )
 
@@ -728,6 +729,7 @@ class Result(NamedTuple):
             ``True`` if all inspected observables are finite (or unavailable
             for inspection, e.g. under tracing), ``False`` otherwise.
         """
+        from rfx.errors import AccuracyWarning
         bad = _nonfinite_fields(self)
         if not bad:
             return True
@@ -739,7 +741,7 @@ class Result(NamedTuple):
         if raise_on_nonfinite:
             raise ValueError(msg)
         import warnings as _w
-        _w.warn(msg, stacklevel=2)
+        _w.warn(msg, AccuracyWarning, stacklevel=2)
         return False
 
     # ------------------------------------------------------------------

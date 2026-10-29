@@ -412,6 +412,7 @@ def auto_configure(
     -------
     SimConfig with all derived parameters.
     """
+    from rfx.errors import ConfigurationWarning
     if materials is None:
         materials = {}
 
@@ -445,7 +446,7 @@ def auto_configure(
         import warnings as _w
         _w.warn(
             "auto_configure called with empty geometry — domain and dx are "
-            "derived from frequency range only. Add geometry before running.",
+            "derived from frequency range only. Add geometry before running.", ConfigurationWarning,
             stacklevel=2,
         )
         warnings.append(
@@ -678,11 +679,12 @@ def simulation_auto(
         >>> result = sim.run(until_decay=1e-5)
         >>> modes = result.find_resonances()
         """
+    from rfx.errors import ConfigurationWarning
     import warnings
     warnings.warn(
         "Simulation.auto() called without geometry — the auto-derived "
         "domain and grid may not match your intended structure. "
-        "Add geometry after construction or pass domain/dx overrides.",
+        "Add geometry after construction or pass domain/dx overrides.", ConfigurationWarning,
         stacklevel=2,
     )
 
@@ -691,7 +693,7 @@ def simulation_auto(
 
     if config.warnings:
         for w in config.warnings:
-            warnings.warn(f"auto_config: {w}")
+            warnings.warn(f"auto_config: {w}", ConfigurationWarning)
 
     sim_kwargs = config.to_sim_kwargs()
     sim_kwargs.update(kwargs)

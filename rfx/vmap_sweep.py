@@ -791,6 +791,7 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    from rfx.errors import ConfigurationWarning
     resolve_field_dtype(sim._precision)
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "vmap material sweep")
@@ -818,7 +819,7 @@ def vmap_material_sweep(
             n_steps = sim._nu_n_steps(num_periods)
         import warnings
         warnings.warn("Resolved non-uniform mesh: Falling back to sequential execution.",
-                      UserWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=2)
         return _sequential_fallback(sim, param_name, param_values, n_steps=n_steps)
 
     # Build grid and base materials once
@@ -927,7 +928,7 @@ def vmap_material_sweep(
             "(ports incl. MSL/coaxial/floquet, TFSF, dispersion, "
             "waveguide, flux monitors, NTFF). Falling back to sequential "
             "execution. Use parametric_sweep() for better sequential "
-            "support.",
+            "support.", ConfigurationWarning,
             stacklevel=2,
         )
         # Every swept copy gets the same explicit count, so the traces stack

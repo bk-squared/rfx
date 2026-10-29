@@ -1521,6 +1521,7 @@ def solve_two_port_from_wave_amplitudes(
     # Traced amplitudes -> jax.numpy core (differentiable); concrete -> NumPy,
     # UNCHANGED below (mirrors coaxial_line_reflection_from_plane_voltages's
     # own dispatch).
+    from rfx.errors import AccuracyWarning
     if (
         _prefer_jnp
         or isinstance(a_inc, jax.core.Tracer)
@@ -1568,7 +1569,7 @@ def solve_two_port_from_wave_amplitudes(
             "flags DEGENERACY only: cond below it is NOT a reliability "
             "certificate, because cond(A) also multiplies whatever noise is on "
             "the measured amplitudes (~1.3e-2 relative error in S from 1e-4 "
-            "noise at cond=199, which never trips this warning).",
+            "noise at cond=199, which never trips this warning).", AccuracyWarning,
             stacklevel=2,
         )
     return TwoPortWaveSolve(s_params=s, cond_a=cond)

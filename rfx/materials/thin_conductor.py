@@ -911,6 +911,7 @@ def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
     A no-op when there are no sheets or when ``eps_r`` is traced (the
     comparison would concretize a tracer).
     """
+    from rfx.errors import AccuracyWarning
     import warnings as _warnings
 
     from rfx.core.jax_utils import is_tracer
@@ -948,6 +949,6 @@ def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
             "#702 measurement was 17 % on a 127 um stack). Draw the "
             "dielectric bodies up to the sheet plane, or move the sheet to "
             "the interface. Nothing is re-sampled.",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=3,
         )

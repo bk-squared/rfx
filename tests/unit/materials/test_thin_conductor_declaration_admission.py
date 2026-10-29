@@ -94,7 +94,8 @@ def test_pec_warning(kwargs, thickness_text):
         sim.add_thin_conductor(sheet(), **kwargs)
     assert len(caught) == 1
     w = caught[0]
-    assert w.category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert w.category is ConfigurationWarning
     assert str(w.message) == expected
     assert w.filename == __file__
     assert w.lineno == line
@@ -118,7 +119,8 @@ def test_leontovich_warning_W3():
         sim.add_thin_conductor(sheet(), surface_impedance_f0=f0, sigma_bulk=sigma)
     assert len(caught) == 1
     w = caught[0]
-    assert w.category is UserWarning
+    from rfx.errors import AccuracyWarning
+    assert w.category is AccuracyWarning
     assert str(w.message) == expected
     assert w.filename == __file__
     assert w.lineno == line
@@ -139,7 +141,8 @@ def test_traced_warning_W4():
         jax.make_jaxpr(declare)(1e10)
     assert len(caught) == 1
     w = caught[0]
-    assert w.category is UserWarning
+    from rfx.errors import AccuracyWarning
+    assert w.category is AccuracyWarning
     prefix, rest = str(w.message).split('surface_impedance_f0=', 1)
     tracer, suffix = rest.split(' Hz — ', 1)
     assert tracer

@@ -5,7 +5,9 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal
+from contextlib import contextmanager
+
+from rfx.errors import RfxRefusal, RfxWarning
 
 import jax
 
@@ -29,6 +31,8 @@ def _preflight_impl(
     _tfsf_material_overrides=(),
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
+    from rfx.errors import AccuracyWarning
+    from rfx.errors import ConfigurationWarning
     import warnings
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(self)
@@ -208,20 +212,20 @@ def _preflight_impl(
 
     if len(issues):              # PreflightReport refuses bool() (#980)
         for iss in issues:
-            print(f"  [PREFLIGHT] {iss}")
+            warnings.warn(f"  [PREFLIGHT] {iss}", AccuracyWarning, stacklevel=2)
     elif check_ntff is True:
-        print("  [PREFLIGHT] All checks passed.")
+        warnings.warn("  [PREFLIGHT] All checks passed.", ConfigurationWarning, stacklevel=2)
     elif check_ntff == "advisory":
-        print("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
-              "PEC-overlap error check runs on forward()/preflight()).")
+        warnings.warn("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
+              "PEC-overlap error check runs on forward()/preflight()).", ConfigurationWarning, stacklevel=2)
     else:
-        print("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
-              "run sim.preflight() for the full set).")
+        warnings.warn("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
+              "run sim.preflight() for the full set).", ConfigurationWarning, stacklevel=2)
 
     if issues.flux_regions:
         from rfx.probes.flux_region import flux_region_message
         for record in issues.flux_regions:
-            print(f"  [FLUX REGION] {flux_region_message(record)}")
+            warnings.warn(f"  [FLUX REGION] {flux_region_message(record)}", ConfigurationWarning, stacklevel=2)
 
     return issues
 
@@ -232,6 +236,7 @@ _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     """Apply the same warning/error policy to full or scoped preflight."""
+    from rfx.errors import AccuracyWarning
     issues = PreflightReport(issues)
     if not len(issues):          # PreflightReport refuses bool() (#980)
         return
@@ -243,7 +248,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         warnings.warn(
             f"[{context}] preflight found {len(warns)} advisory issue(s) - "
             f"pass skip_preflight=True to suppress:\n  - {body}",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=stacklevel + 1,
         )
     if errors:
@@ -265,6 +270,18 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
             issues.diagnostics,
             causes=PreflightReport(errors).diagnostics,
         )
+
+
+
+@contextmanager
+def _quiet_preflight_reports():
+    """Keep rendered report warnings quiet when the caller consumes the report."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", r"  \[(?:SPARAM PREFLIGHT|PREFLIGHT|FLUX REGION)\]", RfxWarning,
+        )
+        yield
 
 
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
@@ -298,12 +315,13 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     if assembly is not None:
         conductors = assembly.realized()
     # A validator bug must propagate, rather than become an advisory.
-    if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
-        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
-    else:
-        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                     _conductors=conductors)
+    with _quiet_preflight_reports():
+        if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
+            issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
+        else:
+            issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                         _conductors=conductors)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:

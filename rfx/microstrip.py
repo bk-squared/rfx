@@ -152,6 +152,7 @@ def microstrip_width(z0: float, height: float, eps_r: float) -> float:
     A trial ``w/h`` is computed for both the narrow and wide regimes and
     the branch consistent with its own validity condition is selected.
     """
+    from rfx.errors import AccuracyWarning
     if not (z0 > 0.0):
         raise ValueError(f"z0 must be positive (ohm), got {z0!r}")
     _validate_geometry(height, eps_r)
@@ -190,7 +191,7 @@ def microstrip_width(z0: float, height: float, eps_r: float) -> float:
             f"microstrip_width: resulting w/h={u:.3g} is outside the "
             f"Hammerstad-Jensen validated range [0.05, 20]; the returned "
             f"width is an extrapolation with degraded accuracy "
-            f"(z0={z0!r} ohm, eps_r={eps_r!r}).",
+            f"(z0={z0!r} ohm, eps_r={eps_r!r}).", AccuracyWarning,
             stacklevel=2,
         )
 

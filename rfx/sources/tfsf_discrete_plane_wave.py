@@ -589,6 +589,7 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
+    from rfx.errors import AccuracyWarning
     from rfx.api import _bloch_cutoff_level_db
     from rfx.sources.tfsf import resolve_waveform
     if closed_box:
@@ -672,7 +673,7 @@ def add_tfsf_source(
                 "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
                 "depends on the record length. Narrow the bandwidth, or taper "
                 "the tail of the time series before the DFT.",
-                UserWarning,
+                AccuracyWarning,
                 stacklevel=2,
             )
 

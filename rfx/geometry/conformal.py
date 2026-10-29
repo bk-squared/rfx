@@ -71,7 +71,8 @@ def warn_conformal_model():
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
     """
-    warnings.warn(CONFORMAL_MODEL_ADVISORY, UserWarning, stacklevel=3)
+    from rfx.errors import AccuracyWarning
+    warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=3)
 
 
 # ---------------------------------------------------------------------------

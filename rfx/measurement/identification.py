@@ -7,6 +7,7 @@ from rfx._grid_metric import field_index
 
 def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=True):
     """Keep declared columns and warn once for repeated cell/component keys."""
+    from rfx.errors import ConfigurationWarning
     keys = []
     groups = {}
     for number, (position, component) in enumerate(probes):
@@ -32,5 +33,5 @@ def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=Tr
             f"Duplicate ring-down identification probe indices {duplicates} "
             "(zero-based) resolve to the same cell and component and produce "
             "identical columns. Remove the repeated probes or move them to "
-            "different cells.", UserWarning, stacklevel=stacklevel)
+            "different cells.", ConfigurationWarning, stacklevel=stacklevel)
     return tuple(keys)

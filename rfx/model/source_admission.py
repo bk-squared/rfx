@@ -40,6 +40,7 @@ def refuse_dead_soft_sources(sim, conductors):
 
 
 def _dead_sources(sim, conductors):
+    from rfx.errors import AccuracyWarning
     if not sim._ports:
         return
     faces = declared_pec_faces(sim)
@@ -57,7 +58,7 @@ def _dead_sources(sim, conductors):
             warnings.warn(
                 "Soft-source PEC admission check cannot run on a traced mesh "
                 "or traced conductor edges/source positions; no concrete "
-                "realized edge classification is available.", UserWarning,
+                "realized edge classification is available.", AccuracyWarning,
                 stacklevel=3)
         return
     from rfx.model.conductors import lumped_port_stage

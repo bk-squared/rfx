@@ -609,6 +609,7 @@ class _AdMemoryMixin:
         saved-residual diagnostics. It does not run FDTD and does not upgrade
         static planning evidence into runtime memory proof.
         """
+        from rfx.errors import ConfigurationWarning
         options = dict(design_box=design_box, design=design, checkpoint=checkpoint,
                        distributed=distributed, cotangents=cotangents)
         plan = self.plan_ad_memory(
@@ -740,7 +741,7 @@ class _AdMemoryMixin:
             warnings.warn(
                 "residual_context is ignored because residual_fun was not "
                 "provided; pass residual_fun to produce a saved-residual "
-                "diagnostic.",
+                "diagnostic.", ConfigurationWarning,
                 stacklevel=2,
             )
         residual_diagnostic = None

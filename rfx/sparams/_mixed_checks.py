@@ -19,6 +19,7 @@ def _mixed_refusal_masks(n_ports, n_lw, n_live_lw, wire_mode, drive_plan):
 
 
 def _warn_refused_mixed_entries(port_names, flux_mask, wave_mask, magnitude_channel):
+    from rfx.errors import AccuracyWarning
     columns = "; ".join(
         f"S[:,{k}] (port {port_names[k]!r}, index {k})"
         for k in np.flatnonzero(np.all(flux_mask, axis=0))
@@ -47,7 +48,7 @@ def _warn_refused_mixed_entries(port_names, flux_mask, wave_mask, magnitude_chan
         "use the uniform run(compute_s_params=True) S driver on a model without "
         "MSL ports, or use MSL ports only."
         + receive,
-        UserWarning, stacklevel=3,
+        AccuracyWarning, stacklevel=3,
     )
 
 
@@ -72,6 +73,7 @@ def _mixed_reciprocity_deviation(S):
 def _warn_partial_nonpassive(s, refused_positions, extractor, strict, passivity_tol, amplitude_eps):
     # A partial column has no power-sum witness. Individual finite entries
     # still support the independent amplitude advisory, including wave S_ik.
+    from rfx.errors import AccuracyWarning
     refused = np.asarray(refused_positions, dtype=bool)
     if refused.ndim == 2:
         refused = refused[..., None]
@@ -103,4 +105,4 @@ def _warn_partial_nonpassive(s, refused_positions, extractor, strict, passivity_
         message = f"{extractor}: " + "; ".join(messages)
         if strict and (bad_power or n_inf or n_nan):
             raise ValueError(message)
-        warnings.warn(message, UserWarning, stacklevel=4)
+        warnings.warn(message, AccuracyWarning, stacklevel=4)

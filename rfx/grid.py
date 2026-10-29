@@ -56,6 +56,7 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
     Candidates never coarsen the request. Search below the 0.75 adoption
     bound only to report the largest fitting explicit spacing (down to /16).
     """
+    from rfx.errors import ConfigurationWarning
     lengths = [float(domain['xyz'.index(a)]) for a in axes]
     if any(not np.isfinite(length) or length <= 0 for length in lengths):
         raise ValueError(f"periodic axes {axes!r} require positive finite lengths; L={lengths} m")
@@ -83,7 +84,7 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                 f"Automatic dx={dx:.12g} m snapped to dx={fitting:.12g} m: "
                 f"periodic axes {axes!r} divide exactly{walls_fit} "
                 f"(minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
-                UserWarning, stacklevel=3)
+                ConfigurationWarning, stacklevel=3)
             return fitting
         advice = (f"largest fitting dx={fitting:.12g} m ({fitting * 1e3:.12g} mm); "
                   "set dx explicitly to use it" if fitting is not None

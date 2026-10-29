@@ -6,6 +6,7 @@ grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxWarning
 from rfx.errors import RfxUnsupported
 
 import warnings
@@ -14,7 +15,7 @@ import jax
 import numpy as np
 
 
-class AutoMeshWarning(UserWarning):
+class AutoMeshWarning(RfxWarning):
     """Mesh selection information, not a preflight legality finding."""
 
 

@@ -232,6 +232,7 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     requested endpoint outside the interior emits a clamp warning, including
     sub-cell overflow. Ordinary interior snapping remains a geometry result.
     """
+    from rfx.errors import ConfigurationWarning
     from rfx.probes.flux_region import resolve_flux_axis
 
     interior = interior_cells(np.asarray(d_arr, dtype=float), pad_lo, pad_hi, periodic=periodic)
@@ -243,7 +244,7 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
             f"[0, {float(edges[-1]):.12g}] m; requested bounds "
             f"{result['requested_bounds_m']} m, realized bounds "
             f"{result['realized_bounds_m']} m. The monitor integrates the realized extent.",
-            UserWarning, stacklevel=2,
+            ConfigurationWarning, stacklevel=2,
         )
     return result["cell_slice"]
 
@@ -587,6 +588,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx.errors import ConfigurationWarning
     from rfx.measurement.decay import refuse_radiated_flux_stop
     refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
 
@@ -1275,7 +1277,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "run: chunked progress (#667) composes with neither "
                 "checkpoint/segmented-remat nor n_warmup on the NU lane "
                 "(the chunked loop is forward-only).",
-                UserWarning, stacklevel=2)
+                ConfigurationWarning, stacklevel=2)
         r = run_nonuniform(
             grid, materials, n_steps,
             checkpoint=checkpoint,

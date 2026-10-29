@@ -1276,6 +1276,7 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with analytic impedance normalization; this is
     not a traceable or validated cross-family extraction.
     """
+    from rfx.errors import AccuracyWarning
     resolve_field_dtype(self._precision)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
@@ -1650,7 +1651,7 @@ def compute_coax_msl_transition(
             f"{annulus_cells:.2f} cells is below the documented "
             "under-resolved threshold (3.5 cells, same convention as "
             "compute_coaxial_line_reflection/compute_coaxial_two_port) "
-            "— reflection accuracy degrades at high frequency.",
+            "— reflection accuracy degrades at high frequency.", AccuracyWarning,
             stacklevel=2,
         )
 
@@ -1808,7 +1809,7 @@ def compute_coax_msl_transition(
             "result.ladder_split_reflection_decades (computed when "
             "return_ladder_voltages=True) for whether this ladder "
             "actually disagrees with itself. REPORT-ONLY: nothing is "
-            "refused.",
+            "refused.", AccuracyWarning,
             stacklevel=2,
         )
 

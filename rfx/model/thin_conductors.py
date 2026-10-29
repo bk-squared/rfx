@@ -30,6 +30,8 @@ def admit_thin_conductor(
     Raises on the concrete-value checks, then warns which model the record
     selects (PEC sheet or Leontovich sheet); the warnings name the user's call.
     """
+    from rfx.errors import AccuracyWarning
+    from rfx.errors import ConfigurationWarning
     if surface_impedance_f0 is not None:
         # Concrete-value checks only: traced f0 / sigma_bulk are legal
         # differentiable DoFs and skip these (documented on Simulation.add_thin_conductor).
@@ -92,7 +94,7 @@ def admit_thin_conductor(
             f"sigma_bulk would be a different material, not thinner "
             f"copper (issue #504). For conductor loss pass "
             f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
-            f"issue #669).",
+            f"issue #669).", ConfigurationWarning,
             stacklevel=3,
         )
     if surface_impedance_f0 is not None:
@@ -110,7 +112,7 @@ def admit_thin_conductor(
             f"within the run, frozen at f0, with relative band error "
             f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
             f"inductance) is NOT modeled, so resonances read slightly "
-            f"high.",
+            f"high.", AccuracyWarning,
             stacklevel=3,
         )
     return tc

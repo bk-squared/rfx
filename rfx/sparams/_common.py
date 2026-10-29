@@ -234,6 +234,7 @@ def _warn_msl_wave_split_unreliable(
     reliable: np.ndarray, freqs: object
 ) -> None:
     """Emit one aggregate warning for unreliable MSL frequency bins."""
+    from rfx.errors import AccuracyWarning
     affected_freqs = np.flatnonzero(np.any(~reliable, axis=0))
     if not affected_freqs.size:
         return
@@ -250,7 +251,7 @@ def _warn_msl_wave_split_unreliable(
         "This flags relative signal strength, not proof of an incorrect "
         "S-matrix; a true transmission zero can also trigger it. Check "
         "signal uncertainty, settling, drive conditioning and probe "
-        "geometry before using these bins.",
+        "geometry before using these bins.", AccuracyWarning,
         stacklevel=2,
     )
 
@@ -266,6 +267,7 @@ def _warn_msl_beta_scan_railed(
     measurement.  Mirrors ``_warn_msl_wave_split_unreliable``: silent
     while tracing (caller concretizes), one warning per extraction.
     """
+    from rfx.errors import AccuracyWarning
     railed = np.asarray(beta_railed, dtype=bool)
     affected_freqs = np.flatnonzero(np.any(railed, axis=0))
     if not affected_freqs.size:
@@ -302,7 +304,7 @@ def _warn_msl_beta_scan_railed(
         "is far from the HJ estimate (wrong eps_r_sub / substrate not "
         "detected under the port) -- then the closed-form beta and the Z0 "
         "anchor of S are wrong as well. Check the result's beta_railed mask "
-        "before quoting Z0 or beta.",
+        "before quoting Z0 or beta.", AccuracyWarning,
         stacklevel=2,
     )
 
@@ -908,6 +910,7 @@ def _warn_if_sigma_max_excess(
     ``sigma_max > 1`` is a measurement artifact — ``reliable`` and
     ``settling_db`` are the fields that say which one.
     """
+    from rfx.errors import AccuracyWarning
     exc = np.asarray(excess)
     finite = np.isfinite(exc)
     # Same margin _project_passive clips to: a lossless thru reads
@@ -950,7 +953,7 @@ def _warn_if_sigma_max_excess(
             "passive set instead; that projection is skipped on the "
             "eps_override channel, so the measured and the differentiated S "
             "stay the same function."
-        ),
+        ), AccuracyWarning,
         stacklevel=2,
     )
 
@@ -959,6 +962,7 @@ def _warn_if_passivity_projected(
     correction, freqs, *, envelope: float = 0.05
 ) -> None:
     """One aggregate warning stating exactly what the projection removed."""
+    from rfx.errors import AccuracyWarning
     corr = np.asarray(correction)
     finite = np.isfinite(corr)
     if not np.any(corr[finite] > 0.0):
@@ -988,7 +992,7 @@ def _warn_if_passivity_projected(
             else ""
         )
         + "Raw values are preserved in S_raw; corrections per bin in "
-        "passivity_correction.",
+        "passivity_correction.", AccuracyWarning,
         stacklevel=2,
     )
 
@@ -1189,6 +1193,7 @@ def _warn_if_nonpassive_smatrix(
     common research-tool usage); it deliberately does not fire per optimizer
     iteration.
     """
+    from rfx.errors import AccuracyWarning
     s = getattr(result, "s_params", None)
     if s is None:
         # MSLSMatrixResult uses the historical ``S`` field name.
@@ -1226,7 +1231,7 @@ def _warn_if_nonpassive_smatrix(
         )
         if _recip_msg:
             import warnings as _w
-            _w.warn(_recip_msg, stacklevel=3)
+            _w.warn(_recip_msg, AccuracyWarning, stacklevel=3)
 
     from rfx.validation import validate_port_smatrix
 
@@ -1316,7 +1321,7 @@ def _warn_if_nonpassive_smatrix(
         advisories = [x for x in (amplitude_advisory, soft_advisory) if x]
         if advisories:
             import warnings as _w
-            _w.warn(" ".join(advisories), stacklevel=3)
+            _w.warn(" ".join(advisories), AccuracyWarning, stacklevel=3)
         return
     detail = "; ".join(f"{i.code}: {i.message}" for i in bad)
     msg = (
@@ -1333,7 +1338,7 @@ def _warn_if_nonpassive_smatrix(
     if strict:
         raise ValueError(msg)
     import warnings as _w
-    _w.warn(msg, stacklevel=3)
+    _w.warn(msg, AccuracyWarning, stacklevel=3)
 
 
 def _finalize_sparam_result(
@@ -1659,6 +1664,7 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
     ~0.11, 48 mm passed. Emits ``warnings.warn`` per thin-CPML port; does not
     raise.
     """
+    from rfx.errors import AccuracyWarning
     import warnings
 
     f_arr = np.asarray(freqs, dtype=float)
@@ -1680,7 +1686,7 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
                 f"under-drains guided energy — 20 mm CPML produced |S11| ripple "
                 f"~0.11 in the validated campaign, 48 mm passed. Thicken the "
                 f"absorber.",
-                UserWarning,
+                AccuracyWarning,
                 stacklevel=2,
             )
 
@@ -1710,6 +1716,7 @@ def _warn_ntff_box_dropped(sim, method_name: str) -> None:
       ``sim._ntff`` unpack below on the no-box fixtures.
     Intact code: 6 passed.
     """
+    from rfx.errors import ConfigurationWarning
     if sim._ntff is None:
         return
     import warnings
@@ -1733,7 +1740,7 @@ def _warn_ntff_box_dropped(sim, method_name: str) -> None:
         "S-matrix-only runs to save its DFT cost. STALE-IF: this "
         "method's result class grows ntff_data/ntff_box (issue #704 "
         "full threading), at which point remove this warning.",
-        UserWarning,
+        ConfigurationWarning,
         stacklevel=3,
     )
 
@@ -2000,6 +2007,7 @@ def _warn_thin_absorber_vs_guide_wavelength(
     Emits one ``warnings.warn`` per distinct (propagation axis, cutoff);
     does not raise. Pure NumPy, no FDTD.
     """
+    from rfx.errors import AccuracyWarning
     import warnings
 
     if boundary_spec is None:
@@ -2061,7 +2069,7 @@ def _warn_thin_absorber_vs_guide_wavelength(
             f"Raise cpml_layers to at least "
             f"{int(np.ceil(required_m / dx))} (0.75 lambda_g needs "
             f"{int(np.ceil(0.75 * lambda_g / dx))}).",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=2,
         )
 

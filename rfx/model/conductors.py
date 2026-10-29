@@ -332,6 +332,7 @@ def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, 
 
 def release_port_occupancy(occupancy, conductors):
     """Keep port edges free of design metal; warn once for this application."""
+    from rfx.errors import ConfigurationWarning
     if occupancy is None:
         return occupancy
     if np.shape(occupancy) != conductors.grid.shape:
@@ -346,7 +347,7 @@ def release_port_occupancy(occupancy, conductors):
         ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
-                      UserWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=2)
     import jax.numpy as jnp
     return jnp.asarray(occupancy).at[indices].set(0.0)
 

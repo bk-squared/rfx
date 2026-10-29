@@ -803,13 +803,14 @@ def msl_error(diagnostic, *, error=None):
 
 
 def placement_warning(message):
-    """Keep the original UserWarning category and caller's stack level."""
+    """Attach the placement diagnostic without changing the caller's stack level."""
+    from rfx.errors import AccuracyWarning
     diagnostic = msl_diagnostic(
         "msl.probe_placement_note",
         message,
         subject=message.values.get("port_name"),
         source="_resolve_msl_auto_offsets",
     )
-    warning = UserWarning(diagnostic.message)
+    warning = AccuracyWarning(diagnostic.message)
     warning.diagnostic = diagnostic
     return warning

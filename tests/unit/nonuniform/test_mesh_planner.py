@@ -117,13 +117,18 @@ def test_plan_mesh_json_markdown_and_artifact_declarations(tmp_path):
 def test_plan_simulation_mesh_suppresses_preflight_output_and_captures_sparam_issue(capsys):
     sim = Simulation(freq_max=3.0e9, domain=(0.03, 0.02, 0.01), boundary="pec", dx=0.005)
 
-    plan = plan_simulation_mesh(sim, n_steps=4, sparameter_calculator="msl")
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        plan = plan_simulation_mesh(sim, n_steps=4, sparameter_calculator="msl")
+    assert not any("[PREFLIGHT]" in str(w.message) for w in caught)
 
-    # Only preflight's [PREFLIGHT] lines are this call's to suppress; another
+    # Preflight warnings must not become stdout lines; another
     # part of the process may write to stdout.
     assert "[PREFLIGHT]" not in capsys.readouterr().out
-    sim.preflight()
-    assert "[PREFLIGHT]" in capsys.readouterr().out, "nothing to suppress here"
+    with pytest.warns(UserWarning, match=r"\[PREFLIGHT\]"):
+        sim.preflight()
+    assert "[PREFLIGHT]" not in capsys.readouterr().out
     assert plan.accuracy is None
     assert plan.plan_source == "configured_simulation"
     assert plan.grid_shape == sim.mesh_intelligence_report().grid_shape

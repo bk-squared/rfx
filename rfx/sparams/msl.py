@@ -294,6 +294,8 @@ def compute_msl_s_matrix(
         cannot run on a tracer, so the solve result is taken as-is — see
         ``cond_a``).
     """
+    from rfx.errors import AccuracyWarning
+    from rfx.errors import ConfigurationWarning
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
@@ -750,7 +752,7 @@ def compute_msl_s_matrix(
                         "the differentiable (traced) path, and host-side "
                         "wall-clock progress reporting cannot run under a "
                         "trace (issue #667).",
-                        UserWarning, stacklevel=2,
+                        ConfigurationWarning, stacklevel=2,
                     )
                 fwd_result = self.forward(
                     eps_override=eps_override,
@@ -1081,7 +1083,7 @@ def compute_msl_s_matrix(
                         "|S11|^2+|S21|^2 above 1). The drive matrix is "
                         "degenerate — check that each drive actually "
                         "excited its port and that the ports are not "
-                        "mutually shadowed.",
+                        "mutually shadowed.", AccuracyWarning,
                         stacklevel=2,
                     )
                 elif float(np.max(cond_a)) > 1.0e3:
@@ -1092,7 +1094,7 @@ def compute_msl_s_matrix(
                         "DEGENERACY of the drive system, not accuracy: "
                         "the drive columns are nearly dependent, so S is "
                         "sensitive to the recorded wave amplitudes. "
-                        "Check port isolation and settling_db.",
+                        "Check port isolation and settling_db.", AccuracyWarning,
                         stacklevel=2,
                     )
             if not _bad:
@@ -1283,7 +1285,7 @@ def compute_msl_s_matrix(
                 )
                 if strict_extractor:
                     raise diagnostic_refusal(RfxRefusal(msg), _diagnostics)
-                _w.warn(msg, stacklevel=2)
+                _w.warn(msg, AccuracyWarning, stacklevel=2)
             # Secondary — reported-Z0 sanity (retained N-probe fit).
             if z0_dev_max > _Z0_TOL:
                 # Issue #726 review P1b: the clearance story is only ONE of
@@ -1334,7 +1336,7 @@ def compute_msl_s_matrix(
                     "Z0 anchor; this does not certify those inputs."
                     + _clearance_clause +
                     " Check settling_db, probe_clearance, beta_railed and "
-                    "observation-plane sensitivity before interpreting S.",
+                    "observation-plane sensitivity before interpreting S.", AccuracyWarning,
                     stacklevel=2,
                 )
 

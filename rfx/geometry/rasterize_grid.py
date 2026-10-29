@@ -7,6 +7,7 @@ via a coordinate-provider abstraction.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.errors import RfxRefusal
 
 import warnings
@@ -59,7 +60,7 @@ class GridCoords(NamedTuple):
     shape: tuple[int, int, int]
 
 
-class ExactNodeSpineMissingWarning(UserWarning):
+class ExactNodeSpineMissingWarning(AccuracyWarning):
     """A concrete NonUniformGrid axis has no float64 cell-size spine.
 
     ``coords_from_nonuniform_grid`` then widens the solver's float32 store

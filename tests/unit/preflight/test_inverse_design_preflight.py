@@ -313,14 +313,17 @@ def test_zero_issue_summary_line_is_honest(capsys):
                      radius=0.1e-3)
         return sim
 
-    assert _clean_sim().preflight() == []
-    assert "All checks passed." in capsys.readouterr().out
+    with pytest.warns(UserWarning, match=r"All checks passed\."):
+        assert _clean_sim().preflight() == []
+    assert "[PREFLIGHT]" not in capsys.readouterr().out
 
-    assert _clean_sim().preflight(check_ntff="advisory") == []
-    assert "NTFF advisory tier" in capsys.readouterr().out
+    with pytest.warns(UserWarning, match=r"NTFF advisory tier"):
+        assert _clean_sim().preflight(check_ntff="advisory") == []
+    assert "[PREFLIGHT]" not in capsys.readouterr().out
 
-    assert _clean_sim().preflight(check_ntff=False) == []
-    assert "NTFF checks skipped" in capsys.readouterr().out
+    with pytest.warns(UserWarning, match=r"NTFF checks skipped"):
+        assert _clean_sim().preflight(check_ntff=False) == []
+    assert "[PREFLIGHT]" not in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

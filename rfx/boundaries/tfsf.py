@@ -4,6 +4,7 @@ Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
 
+from rfx.errors import AccuracyWarning
 from rfx.errors import RfxRefusal
 from dataclasses import fields, is_dataclass
 import warnings
@@ -107,7 +108,7 @@ def _leaves(value, name):
             yield from _leaves(child, f"{name}.{key}")
 
 
-class UnjudgedTFSFInvarianceWarning(UserWarning):
+class UnjudgedTFSFInvarianceWarning(AccuracyWarning):
     """The legacy operator is retained for a material unavailable at tracing."""
 
 

@@ -251,6 +251,7 @@ def compute_waveguide_s_matrix(
         valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
         the current waveguide evidence and scope.
     """
+    from rfx.errors import AccuracyWarning
     resolve_field_dtype(self._precision)
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, unsupported=True)
@@ -262,7 +263,7 @@ def compute_waveguide_s_matrix(
             "For S21 accuracy and reciprocity use normalize=True. "
             "For |S11| of strong reflectors (PEC short, resonators) "
             "normalize=False is more accurate — see the normalize "
-            "parameter docstring.",
+            "parameter docstring.", AccuracyWarning,
             stacklevel=2,
         )
     if self._ports or self._tfsf:
@@ -447,7 +448,7 @@ def compute_waveguide_s_matrix(
                 "compute_waveguide_s_matrix: could not evaluate the far-port "
                 f"absorber advisory on the non-uniform lane ({_exc!r}). The "
                 "0.5 guide-wavelength discipline is therefore UNCHECKED for "
-                "this run — verify the absorber depth by hand (#576).",
+                "this run — verify the absorber depth by hand (#576).", AccuracyWarning,
                 stacklevel=2,
             )
         else:

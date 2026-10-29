@@ -6,6 +6,7 @@ Admission never changes mesh metrics.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxWarning
 from rfx.errors import RfxRefusal
 
 from dataclasses import replace
@@ -26,7 +27,7 @@ def share_wall_warning_history(sim, diagnostic_copy):
     _WALL_AXIS_WARNED[diagnostic_copy] = _WALL_AXIS_WARNED.setdefault(sim, set())
 
 
-class WaveguideBoundaryWarning(UserWarning):
+class WaveguideBoundaryWarning(RfxWarning):
     """An omitted boundary defaults to the waveguide's electric walls."""
 
 

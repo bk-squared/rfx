@@ -55,6 +55,7 @@ def _pole_key(pole):
        such poles will not dedupe against value-equal duplicates
        (fail-loud beats silent double-counting).
     """
+    from rfx.errors import AccuracyWarning
     try:
         hash(pole)
         return pole
@@ -75,7 +76,7 @@ def _pole_key(pole):
             f"Value-equal duplicates of this pole will NOT dedupe and "
             f"can double-apply delta_eps on overlapping geometry "
             f"(issue #274).",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=3,
         )
         return id(pole)

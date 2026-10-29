@@ -202,6 +202,7 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
+    from rfx.errors import AccuracyWarning
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     import dataclasses as _dc
@@ -412,7 +413,7 @@ def compute_mixed_s_matrix(
                 "This is a layout recommendation near a possible "
                 "trace discontinuity, not an accuracy bound. Check "
                 "the realized termination and observation-plane "
-                "sensitivity; reliable only screens relative low signal.",
+                "sensitivity; reliable only screens relative low signal.", AccuracyWarning,
                 stacklevel=2,
             )
 
@@ -960,7 +961,7 @@ def compute_mixed_s_matrix(
                     "not used in S. That does not certify the shared "
                     "V/I inputs. Check settling_db, the relative "
                     "low-signal mask, probe_clearance and observation-"
-                    "plane sensitivity before interpreting S.",
+                    "plane sensitivity before interpreting S.", AccuracyWarning,
                     stacklevel=2,
                 )
         # β-scan rail flags for the diagnostic N-probe fit (issue
@@ -999,7 +1000,7 @@ def compute_mixed_s_matrix(
                         f"(1 - |S_jj|^2 < 0.05 — near-total reflection; "
                         "the incident-power reconstruction divides by "
                         "almost nothing). Off-diagonals of that column "
-                        "are UNRELIABLE at those bins.",
+                        "are UNRELIABLE at those bins.", AccuracyWarning,
                         stacklevel=2,
                     )
                 n_neg = int(_neg_power[col].sum())
@@ -1014,7 +1015,7 @@ def compute_mixed_s_matrix(
                         "negative at a receive port). Clipped to zero, "
                         "which reports |S| = 0 rather than failing: "
                         "treat those bins as an extraction failure, "
-                        "not as an absence of coupling.",
+                        "not as an absence of coupling.", AccuracyWarning,
                         stacklevel=2,
                     )
 
@@ -1179,7 +1180,7 @@ def compute_mixed_s_matrix(
                     "flux surface is mis-signed. Note the per-column "
                     "power sum CANNOT detect this — it is an identity "
                     "on this channel. Inspect the diagonals and "
-                    "settling_db before quoting any |S|.",
+                    "settling_db before quoting any |S|.", AccuracyWarning,
                     stacklevel=2,
                 )
         if return_diagnostics:

@@ -126,6 +126,7 @@ def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
     declared line. Moved here from ``compute_coax_msl_transition``'s
     issue-#581 advisory, which said the opposite before #2014.
     """
+    from rfx.errors import ConfigurationWarning
     for label, declared, line in ports:
         declared, line = float(declared), float(line)
         if line <= 0.0 or abs(declared - line) / line <= rel_tol:
@@ -140,7 +141,7 @@ def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
             f"{abs(declared - line) / (declared + line):.3f}). Pass a "
             "matching pin_radius/outer_radius (coax) or width/height/"
             "eps_r_sub (msl), or impedance= equal to the line Z0, if the "
-            "line's own reference is wanted.",
+            "line's own reference is wanted.", ConfigurationWarning,
             stacklevel=3,
         )
 

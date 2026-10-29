@@ -252,6 +252,7 @@ def _warn_if_refined(sim):
     docstrings claim "the grid this simulation would RUN on"; that claim
     is unconditionally false whenever a refinement region is set.
     """
+    from rfx.errors import ConfigurationWarning
     if getattr(sim, "_refinement", None) is not None:
         z_lo, z_hi = sim._refinement["z_range"]
         ratio = sim._refinement.get("ratio")
@@ -259,7 +260,7 @@ def _warn_if_refined(sim):
             f"add_refinement(z_range=({z_lo * 1e3:.4f}, {z_hi * 1e3:.4f}) mm, "
             f"ratio={ratio}) is set, but this viewer draws the COARSE base "
             "grid only -- the fine subgrid region (a separate runner, "
-            "rfx/subgridding/) is not reflected in this picture at all.",
+            "rfx/subgridding/) is not reflected in this picture at all.", ConfigurationWarning,
             stacklevel=3)
 
 

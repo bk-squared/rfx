@@ -331,6 +331,8 @@ class _ExecuteMixin:
           (``until_decay == 0.0`` is the documented forced-N escape on
           the NU lane and is deliberately not warned about.)
         """
+        from rfx.errors import AccuracyWarning
+        from rfx.errors import ConfigurationWarning
         import warnings
 
         if until_decay is None:
@@ -342,7 +344,7 @@ class _ExecuteMixin:
                 "the decay stop can never fire and this is a forced "
                 "decay_max_steps run. Lower decay_min_steps or raise "
                 "decay_max_steps.",
-                UserWarning, stacklevel=3,
+                ConfigurationWarning, stacklevel=3,
             )
         try:
             _ud = float(until_decay)
@@ -354,7 +356,7 @@ class _ExecuteMixin:
                 "(W < until_decay * reference) holds at every check where W "
                 "is not still rising, so the stop can fire right after the "
                 "drive end and decay_min_steps; use a fraction such as 1e-3.",
-                UserWarning, stacklevel=3,
+                AccuracyWarning, stacklevel=3,
             )
 
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
@@ -415,6 +417,7 @@ class _ExecuteMixin:
         for what to do instead. ``entry`` names the call the user made, for
         the S-parameter calculators that share this rule.
         """
+        from rfx.errors import ConfigurationWarning
         import warnings as _w
         # Per-kwarg values that do not ask for the feature. ``None`` is
         # compared by identity, so an array-valued argument never reaches
@@ -510,7 +513,7 @@ class _ExecuteMixin:
                 f"report_every={val!r} is ignored on the {path_name} run "
                 f"path ({reasons['report_every']}); the run goes on without "
                 "progress lines and its result is unchanged.",
-                UserWarning, stacklevel=3,
+                ConfigurationWarning, stacklevel=3,
             )
 
     from rfx.runners._admission import _refuse_conformal_boundary
@@ -1414,6 +1417,7 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
+        from rfx.errors import AccuracyWarning
         _call_args = dict(locals()); del _call_args["self"], _call_args["_removed_kwargs"]
         self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
             self, pinned_sheet_layout, distributed=distributed)
@@ -1452,7 +1456,7 @@ class _ExecuteMixin:
                 "compared with one-device runs in the test suite but carry no "
                 "accuracy statement of their own; see the 'Distributed execution' "
                 "row of docs/guides/support_matrix.md before relying on one.",
-                UserWarning,
+                AccuracyWarning,
                 stacklevel=2,
             )
             _DISTRIBUTED_FIRST_CALL_WARNED = True

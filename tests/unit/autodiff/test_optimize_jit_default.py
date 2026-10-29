@@ -106,7 +106,8 @@ def test_untraceable_warns_once_for_all_starts():
         actual = _run(3, objective, n_starts=2)
     fallback = [w for w in caught if "objective reads a traced value" in str(w.message)]
     assert len(fallback) == 1
-    assert fallback[0].category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert fallback[0].category is ConfigurationWarning
     assert "optimize: ConcretizationTypeError:" in str(fallback[0].message)
     assert "every iteration now recompiles the whole simulation" in str(fallback[0].message)
     with warnings.catch_warnings(record=True) as caught:

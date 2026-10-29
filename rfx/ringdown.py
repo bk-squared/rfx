@@ -1158,6 +1158,7 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
+        from rfx.errors import AccuracyWarning
         full = result.time_series
         ts_all = np.asarray(full)
         n_int = len(self.probe_keys)
@@ -1174,7 +1175,7 @@ class RingdownRun:
             warnings.warn(
                 f"ring-down completion not produced -- {nc.name} failed: "
                 f"{nc.message} Result.ringdown.s_params is None; every other "
-                "output of this run is as without ringdown=.", stacklevel=3)
+                "output of this run is as without ringdown=.", AccuracyWarning, stacklevel=3)
             return stripped._replace(ringdown=RingdownResult(
                 s_params=None, freqs=result.freqs, report=report))
         if not report.ok:
@@ -1184,7 +1185,7 @@ class RingdownRun:
             warnings.warn(
                 f"ring-down completion: witness failed -- {failed}; "
                 "Result.ringdown.s_params is not supported by its own check "
-                "(see Result.ringdown.report).", stacklevel=3)
+                "(see Result.ringdown.report).", AccuracyWarning, stacklevel=3)
         return stripped._replace(ringdown=RingdownResult(
             s_params=S, freqs=result.freqs, report=report))
 

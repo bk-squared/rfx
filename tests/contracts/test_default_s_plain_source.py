@@ -58,7 +58,8 @@ def test_default_fields_equal_explicit_false(graded, wire, distributed):
     mixed = [w for w in caught if "S-matrix requests do not support plain sources" in str(w.message)]
     # A driven graded lumped port requests S by default too (#1892).
     assert len(mixed) == 1
-    assert mixed[0].category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert mixed[0].category is ConfigurationWarning
     assert str(mixed[0].message) == REASON + FIX
     assert Path(mixed[0].filename).resolve() == Path(__file__).resolve()
     assert actual.s_params is expected.s_params is None
