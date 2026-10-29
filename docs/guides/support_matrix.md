@@ -104,6 +104,27 @@ injected-wave error is not characterized, and the auxiliary-grid instrument's
 reading must not be interpreted as a PML reflection coefficient. See
 `tests/unit/sources/test_tfsf_aux_absorber_reflection.py`.
 
+A closed TF/SF box at an angle (`closed_box=True` with `theta_deg`/`phi_deg`)
+runs on the uniform mesh with cubic cells, on one device. It carries the Yee
+lattice plane wave along the realized direction that `tfsf_incidence()`
+reports (**validated** in an empty box at 30° and at (45°, 30°), 1 mm cells,
+8–12 GHz, `tests/oracle/test_oblique_closed_box_plane_wave.py`). It differs
+from the analytic plane wave by the lattice dispersion only. On 1 mm cells the
+wavenumber error is 3.5e-4 to 7.9e-4 at 30° and 9e-5 to 2.1e-4 at
+(45°, 30°), below the axis value (7.9e-4 to 1.8e-3). Halving the cell divides
+it by 4. The amplitude is 0.1–0.5 % below the normal-incidence box of the same
+declaration on 1 mm cells, also falling 4× with half the cell. Cross-polarization
+stays below 1e-6, and the scattered-field leak stays at float32 rounding
+(`tests/unit/sources/test_tfsf_discrete_plane_wave.py`). With an NTFF box, the
+oblique closed-box source on a 120 mm PEC trihedral converged at second order
+over three grids, and its backscatter is within 0.10 dB of an independent
+full-wave reference at 5 and 15 GHz (one structure, no always-on test; record
+kept with the project). Not covered: NTFF on other bodies, DFT-plane and flux
+readings with an oblique box (admitted, not measured here), and an incident
+spectrum.
+`measure_normal_incident_spectrum` refuses an oblique box, so normalize by an
+empty-box run.
+
 An outer `jax.jit` retains forward setup arrays in the device cache until
 `jax.clear_caches()`. It adds compilation cost and can add iteration overhead;
 see the internal record 20261001-1364-jit-farfield-bench.
