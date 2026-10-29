@@ -1185,15 +1185,17 @@ def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
     issues = [i.to_dict() for i in sim.preflight()]
     body = sim.fidelity_report(print_report=False)[1]
     span = body['axes'][axis]
-    # The node span is 9--13 mm. Keep the existing 0.35-cell free-edge
-    # correction at 9 mm; the endpoint at L has no domain-wall overhang.
-    expected_lo_um = 8650 if lo_mm else 0
-    np.testing.assert_allclose(span['realized_um'], [expected_lo_um, 13000],
+    # The node span is 9--13 mm. On a periodic axis the node at L is node 0
+    # and nothing joins it from beyond, so the end at L is a free edge like
+    # its mirror at 9 mm: both get the 0.35-cell correction (#1432 Part B;
+    # before, the guards ignored the wrap and reported the L end 0.35 cell short).
+    expected_lo_um, expected_hi_um = (8650, 13350) if lo_mm else (0, 13000)
+    np.testing.assert_allclose(span['realized_um'], [expected_lo_um, expected_hi_um],
                                rtol=0, atol=1e-9)
     messages = '\n'.join(i['message'] for i in issues)
     assert '225.00%' not in messages
     if lo_mm:
-        assert f"{'xyz'[axis]}: drawn 4mm, nodes cover 4mm, solved as 4.35mm" in messages
+        assert f"{'xyz'[axis]}: drawn 4mm, nodes cover 4mm, solved as 4.7mm" in messages
         assert (f"(sheet) {'xyz'[axis]}: extent 4mm, worst face residual "
                 "350µm (8.75% of the extent)") in messages
     after = sim._assemble_realized(grid, nonuniform=False).edges
