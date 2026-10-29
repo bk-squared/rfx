@@ -80,14 +80,18 @@ def sc_clamp(lengths, areas):
     return tuple(result)
 
 
-def _refuse_off_lattice_box(box, lattice, widths, what):
-    """A Box with no node inside gives the cut cells nothing; only its staircase faces exist."""
+def _refuse_off_lattice_box(box, lattice, widths, domain, what):
+    """A Box with no node inside gives the cut cells nothing; only its staircase faces exist.
+
+    A face on or beyond a domain face is that wall's, placed by the boundary itself.
+    """
     for axis, ((line, period), width) in enumerate(zip(lattice, widths)):
         if line is None:
             continue
         for value in (box.corner_lo[axis], box.corner_hi[axis]):
             value = value % period if period else value
-            if not line[0] < value < line[-1]:
+            if not (period or 1e-6 * width < value < float(domain[axis]) - 1e-6 * width) \
+                    or not line[0] < value < line[-1]:
                 continue
             offset = np.min(np.abs(line - value)) / width
             if offset > 1e-6:
@@ -129,7 +133,7 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
             continue  # A sub-cell filament reaches the step through its own wire edges.
         sheet = shape.declared if isinstance(shape, _ContinuedSheetShape) else shape
         if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
-            _refuse_off_lattice_box(sheet, lattice, widths, 'this zero-thickness sheet')
+            _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this zero-thickness sheet')
             continue  # A zero-thickness Box on the node lattice is exact through its own edge masks.
         if fn is None:
             raise NotImplementedError(
@@ -137,11 +141,13 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
         shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
         if not np.any(shape_sdf < -1e-9 * min(widths)) and np.min(shape_sdf) < max(widths):
             if isinstance(sheet, Box):  # On node planes its staircase faces are exact.
-                _refuse_off_lattice_box(sheet, lattice, widths, 'this PEC Box')
+                _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this PEC Box')
                 continue
             raise NotImplementedError(
                 f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
-                'operands would drop it; refine the mesh or use the staircase')
+                'operands would drop it; refine the mesh or use the staircase'
+                + ('; on the 2-D lane the z = 0 slice must cross its interior, not a face'
+                   if getattr(grid, 'is_2d', False) else ''))
         sdf = np.minimum(sdf, shape_sdf)
     base = sdf[:-1, :-1, :-1]
     lengths, areas = [], []
