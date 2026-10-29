@@ -72,6 +72,8 @@ with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -498,7 +500,7 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
         edge = (int(meta.i), int(meta.j), int(meta.k), meta.component)
         if edge in first:
             m = first[edge]
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"{_describe_spec(m, specs[m])} and {_describe_spec(n, spec)} "
                 f"both land on the {edge[3]} edge of cell {edge[:3]}. Each is "
                 "solved together with that edge's field in its own implicit "

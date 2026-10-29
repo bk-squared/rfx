@@ -6,6 +6,8 @@ both conductivity extrema, including Debye polarizations in the same cells.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from typing import NamedTuple
 
 import numpy as np
@@ -296,7 +298,7 @@ def _concrete(value):
 
 
 def _refuse_traced_out_of_program():
-    raise ValueError(
+    raise RfxRefusal(
         "cannot judge Lorentz/Drude time-step stability: this multi-device run's material values or "
         "cell sizes are traced by an outer jax.jit (or a nested jax.vmap), and a check cannot be raised "
         "from inside a multi-device program. Call it without jax.jit (jax.grad, jax.jvp and one "

@@ -1,4 +1,6 @@
 """Source admission against geometry conductors and declared PEC walls."""
+
+from rfx.errors import RfxRefusal
 from rfx._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
@@ -34,7 +36,7 @@ def refuse_dead_soft_sources(sim, conductors):
     kernels' existing wire live-cell handling are not changed by this check.
     """
     for message in _dead_sources(sim, conductors):
-        raise ValueError(message)
+        raise RfxRefusal(message)
 
 
 def _dead_sources(sim, conductors):

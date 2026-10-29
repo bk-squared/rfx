@@ -15,6 +15,8 @@ References:
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from typing import NamedTuple
 
 from rfx import _realized
@@ -124,7 +126,7 @@ def adi_traced_override_refusal(values):
 def _refuse_material_interface(eps_r, sigma=None):
     reason = adi_material_interface_refusal(eps_r, sigma)
     if reason is not None:
-        raise NotImplementedError(reason)
+        raise RfxUnsupported(reason)
 
 
 # ---------------------------------------------------------------------------

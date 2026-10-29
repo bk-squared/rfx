@@ -13,6 +13,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx.stepping import steps_for_periods
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
@@ -496,7 +498,7 @@ class _ExecuteMixin:
                 + (f", or {other}." if other else ".")
             )
         if refused:
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"{entry} refuses {len(refused)} argument(s) the "
                 f"{path_name} lane does not implement; running on without "
                 "them would not be the run that was asked for:\n"

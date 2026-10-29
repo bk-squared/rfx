@@ -43,6 +43,8 @@ placement there is refused/flagged by preflight P1.9 (geometry-in-CPML).
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -812,7 +814,7 @@ def refuse_f0_sheets(thin_conductors, lane: str) -> None:
     its lane — the inventory guard there fails otherwise.
     """
     if has_f0_sheets(thin_conductors):
-        raise ValueError(
+        raise RfxRefusal(
             f"surface-impedance (surface_impedance_f0) thin conductors are "
             f"not supported on the {lane} lane: the sheet is realized by a "
             f"per-step node-thin operator (#677), which this lane does not "

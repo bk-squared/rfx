@@ -34,6 +34,8 @@ Corrections derived from Yee update stencil mismatch at TFSF boundary:
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal, RfxUnsupported
+
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -238,7 +240,7 @@ def _refuse_extended_tfsf(entry, lane: str) -> None:
     """Admission fence for runners that cannot carry either new source input."""
     if entry is not None and (getattr(entry, "closed_box", False)
                               or isinstance(entry.waveform, CustomWaveform)):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"CustomWaveform and closed_box TFSF are not supported on {lane}; "
             "use the uniform single-device 3D second-order Yee run/forward")
 
@@ -595,14 +597,14 @@ def refuse_graded_propagation_axis(entry, grid):
     axis = entry.direction[-1]
     cells = grid.cells(axis)
     if is_tracer(cells):
-        raise ValueError("TF/SF requires host x cell widths; a traced propagation "
+        raise RfxRefusal("TF/SF requires host x cell widths; a traced propagation "
                          "profile (mesh as design variable) is not supported")
     if is_one_cell_size(cells):
         return
     if axis == "x" and abs(entry.angle_deg) <= 0.01 and not entry.closed_box:
         return
     sizes = np.asarray(cells, dtype=float)
-    raise ValueError(
+    raise RfxRefusal(
         f"a TF/SF plane wave along {axis} needs uniform {axis} cells; this mesh "
         f"grades {axis} from {sizes.min() * 1e3:.4g} to {sizes.max() * 1e3:.4g} mm. "
         f"The incident line is built on one cell size, so the injected wave "

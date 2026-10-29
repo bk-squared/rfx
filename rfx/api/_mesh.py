@@ -6,6 +6,8 @@ grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 import warnings
 
 import jax
@@ -309,7 +311,7 @@ class _MeshMixin:
         z_lo, z_hi = ref["z_range"]
         ratio = ref["ratio"]
         from rfx._diagnostic_transport import diagnostic_refusal
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
             f"ratio={ratio}) is refused on {entry}: there is no "
             f"subgridded lane behind {entry}, so the refinement would be "

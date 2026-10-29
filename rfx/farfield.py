@@ -14,6 +14,8 @@ References:
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -467,7 +469,7 @@ _AXIS_FACE_ATTRS = {"x": ("i_lo", "i_hi"), "y": ("j_lo", "j_hi"),
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
 
-class NTFFBoxPlacementError(ValueError):
+class NTFFBoxPlacementError(RfxRefusal):
     """A box face parallel to a TFSF injection plane reads injected field.
 
     Carries the offending face and the nearest index that satisfies the

@@ -25,6 +25,8 @@ program contains any of it.
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 import math
 from dataclasses import dataclass, field
 
@@ -114,7 +116,7 @@ def refuse_windowed_flux(sim, path):
     for monitor in getattr(sim, "_flux_monitors", None) or []:
         window = getattr(monitor, "dft_window", "rect")
         if window != "rect":
-            raise ValueError(
+            raise RfxRefusal(
                 f"flux monitor {monitor.name!r} uses dft_window={window!r}, which is not "
                 f"supported with until_decay on the {path} path: a streaming windowed DFT "
                 "needs the true total step count in advance, and a decay-terminated run "
@@ -330,12 +332,12 @@ def refuse_radiated_flux_stop(box, until_decay, boundary):
     if box is None:
         return
     if until_decay is None or not until_decay > 0:
-        raise ValueError(
+        raise RfxRefusal(
             "radiated_flux_box selects the radiated-flux until_decay stop; use a positive "
             "until_decay with cpml/upml, or omit the box and use add_flux_monitor() "
             "for a fixed n_steps measurement")
     if boundary not in ("cpml", "upml"):
-        raise ValueError(
+        raise RfxRefusal(
             "radiated_flux_box selects the radiated-flux until_decay stop and requires "
             "cpml/upml; use an absorbing boundary, or omit the box to use the "
             "closed-box point-field stop on the uniform mesh")

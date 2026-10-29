@@ -31,6 +31,8 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal, RfxUnsupported
+
 from rfx._precision import resolve_field_dtype
 from rfx.boundaries.pmc import refuse_port_on_magnetic_face
 
@@ -216,27 +218,27 @@ def compute_mixed_s_matrix(
 
     # ---- Registration guards (v1 envelope) --------------------------
     if not self._msl_ports:
-        raise diagnostic_refusal(ValueError(
+        raise diagnostic_refusal(RfxRefusal(
             "compute_mixed_s_matrix() needs at least one add_msl_port() "
             "registration (for a pure lumped/wire multiport use the "
             "production scan driver / extract_s_matrix)."
         ), _diagnostics)
     lw_entries = [pe for pe in self._ports if pe.impedance != 0.0]
     if not lw_entries:
-        raise diagnostic_refusal(ValueError(
+        raise diagnostic_refusal(RfxRefusal(
             "compute_mixed_s_matrix() needs at least one sparam-eligible "
             "add_port() lumped/wire port (impedance != 0). For a pure "
             "MSL multiport use compute_msl_s_matrix()."
         ), _diagnostics)
     if any(pe.impedance == 0.0 for pe in self._ports):
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() does not support bare sources / "
             "0-ohm ports (add_source or add_port(impedance=0)): they "
             "are not excite-gated and would fire in EVERY drive run, "
             "contaminating the single-drive S-parameter contract."
         ), _diagnostics)
     if self._waveguide_ports or self._floquet_ports:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
             "waveguide/Floquet ports are not part of the validated "
             "mixed method (issue #488)."
@@ -246,7 +248,7 @@ def compute_mixed_s_matrix(
         if pe.direction not in ("+x", "-x")
     ]
     if _mixed_non_x:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 covers '+x'/'-x' MSL ports "
             f"only; {_mixed_non_x} are not x-directed. The y-directed "
             "MSL support landed in issue #661 for compute_msl_s_matrix(); "
@@ -256,18 +258,18 @@ def compute_mixed_s_matrix(
             "MSL multiport."
         ), _diagnostics)
     if self._coaxial_ports:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
             "coaxial ports need a separate calibration contract."
         ), _diagnostics)
     if self._tfsf is not None:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() is not supported together with "
             "TFSF; TFSF is a plane-wave source, not a port."
         ), _diagnostics)
     is_wire = [pe.extent is not None for pe in lw_entries]
     if any(is_wire) and not all(is_wire):
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix(): mixed lumped + wire port sets "
             "are not supported (the off-diagonal wave-decomposition "
             "conventions differ — same fence as "
@@ -275,7 +277,7 @@ def compute_mixed_s_matrix(
         ), _diagnostics)
     wire_mode = all(is_wire)
     if any(getattr(pe, "reference_plane_cells", None) for pe in lw_entries):
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 does not support "
             "add_port(reference_plane_cells=...); the mixed method uses "
             "the delivered-power witness for magnitude honesty instead."
@@ -285,18 +287,18 @@ def compute_mixed_s_matrix(
         or self._dx_profile is not None
         or self._dy_profile is not None
     ):
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() v1 supports the uniform mesh "
             "only (issue #488 scope: NU is explicitly out until the "
             "first pair ships)."
         ), _diagnostics)
     if self._refinement is not None:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() is not supported with SBP-SAT "
             "subgridding."
         ), _diagnostics)
     if self._solver == "adi":
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() is not supported with "
             "solver='adi'; use the uniform Yee solver."
         ), _diagnostics)
@@ -389,7 +391,7 @@ def compute_mixed_s_matrix(
             for q in range(len(xs) - 1)
         )
         if (not mono) or min(xs) <= 0.0 or max(xs) >= _lx_dom:
-            raise diagnostic_refusal(ValueError(
+            raise diagnostic_refusal(RfxRefusal(
                 f"compute_mixed_s_matrix: MSL port {pe.name!r} probe "
                 f"ladder ({', '.join(f'{x * 1e3:.2f}' for x in xs)} mm) "
                 f"leaves the declared x-domain (0, {_lx_dom * 1e3:.2f}) "
@@ -518,7 +520,7 @@ def compute_mixed_s_matrix(
         _diagnostics = report_diagnostics(self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory"))
 
     if magnitude_channel not in ("flux", "wave"):
-        raise diagnostic_refusal(ValueError(
+        raise diagnostic_refusal(RfxRefusal(
             "compute_mixed_s_matrix: magnitude_channel must be 'flux' "
             f"(default) or 'wave', got {magnitude_channel!r}."
         ), _diagnostics)
@@ -540,7 +542,7 @@ def compute_mixed_s_matrix(
             if self._boundary_spec is not None else set()
         )
         if "z_lo" not in _pec_faces:
-            raise diagnostic_refusal(NotImplementedError(
+            raise diagnostic_refusal(RfxUnsupported(
                 "compute_mixed_s_matrix(magnitude_channel='flux') "
                 "requires a PEC z_lo boundary: the per-port flux box "
                 "omits its bottom face because flux through a PEC "
@@ -553,7 +555,7 @@ def compute_mixed_s_matrix(
             ), _diagnostics)
         _bad = [pe for pe in lw_entries if pe.component != "ez"]
         if _bad:
-            raise diagnostic_refusal(NotImplementedError(
+            raise diagnostic_refusal(RfxUnsupported(
                 "compute_mixed_s_matrix(magnitude_channel='flux') "
                 "supports vertical (component='ez') lumped/wire ports "
                 "only: the flux box is built assuming the port extent "

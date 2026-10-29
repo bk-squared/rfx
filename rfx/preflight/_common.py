@@ -40,6 +40,8 @@ acyclic).
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 import json
 
 import numpy as np
@@ -336,7 +338,7 @@ class PreflightErrorWarning(PreflightWarning):
         )
 
 
-class PreflightConfigError(ValueError):
+class PreflightConfigError(RfxRefusal):
     """A structurally-impossible-config raise carrying a check-site ``code``.
 
     The structurally-impossible config validators (``upml``+refinement,

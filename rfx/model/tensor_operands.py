@@ -1,5 +1,7 @@
 """Form geometry permittivity operands in array order."""
 
+from rfx.errors import RfxUnsupported
+
 from dataclasses import dataclass, field, replace
 
 import jax
@@ -217,7 +219,7 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
 def refuse_full_tensor_conformal(smoothing, conformal, pec_shapes):
     """Refuse tensor modes that cannot carry the requested conformal weights."""
     if smoothing == 'kottke_pec' and conformal and pec_shapes:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing='kottke_pec' cannot combine with "
             "conformal_pec=True (including Boundary(conformal=True)): "
             "the smoothed inverse-permittivity tensor already treats the "
@@ -226,7 +228,7 @@ def refuse_full_tensor_conformal(smoothing, conformal, pec_shapes):
             "conformal_pec=True with subpixel_smoothing=False or True.")
     if smoothing == 'full_tensor' and conformal and pec_shapes:
         from rfx.model.smoothing_admission import FULL_TENSOR_MESSAGE
-        raise NotImplementedError(FULL_TENSOR_MESSAGE + '; conformal PEC is not supported')
+        raise RfxUnsupported(FULL_TENSOR_MESSAGE + '; conformal PEC is not supported')
 
 
 def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
@@ -280,6 +282,6 @@ def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(sim, 'subpixel_smoothing="kottke_pec"')
     if subpixel_smoothing and kerr_chi3 is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing cannot combine with kerr_chi3: "
             "the Kerr E update does not read the permittivity tensor.")

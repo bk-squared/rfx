@@ -10,6 +10,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from rfx._grid_metric import nearest_uniform_index
 from rfx.boundaries.depths import resolve_face_depths
 
@@ -564,7 +566,7 @@ def _refuse_uncollected_pec(sheets, wires, *, lane: str) -> None:
         what.append(f"{len(sheets)} PEC sheet(s)")
     if wires:
         what.append(f"{len(wires)} PEC wire(s)")
-    raise ValueError(
+    raise RfxRefusal(
         f"_assemble_materials ({lane} lane): {' and '.join(what)} were "
         f"classified, but {_uncollected_pec_caller()} passed no "
         "pec_sheets/pec_wires collector. A sheet owns no cell (#931 "

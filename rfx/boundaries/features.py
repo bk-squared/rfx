@@ -6,6 +6,8 @@ Admission never changes mesh metrics.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from dataclasses import replace
 import inspect
 from pathlib import Path
@@ -258,7 +260,7 @@ def refuse_ntff_reflecting_faces(faces, *, lane):
             incompatible[face.name] = "zero-depth absorber"
     if incompatible:
         descriptions = [f"{face} is {kind}" for face, kind in sorted(incompatible.items())]
-        raise ValueError(
+        raise RfxRefusal(
             f"{lane}: an NTFF box radiates its surface currents into free space, but "
             + "; ".join(descriptions)
             + ": the far field would miss their images (a symmetry or ground plane is not "
@@ -357,12 +359,12 @@ def refuse_traced_guide_mesh(sim, lane):
 def _refuse_periodic_guide(sim, faces):
     periodic = sorted(face for face in faces if sim._periodic_flags()["xyz".index(face[0])])
     if periodic:
-        raise ValueError("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
+        raise RfxRefusal("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
                          + "; the active periodic feature requires PERIODIC on those faces.")
 
 
 def _refuse_guide(faces, declaration, lane):
-    raise ValueError(
+    raise RfxRefusal(
         f"{lane}: full-aperture waveguide requires PEC on {', '.join(faces)}; "
         f"declare boundary={declaration!r} (absorber on the port axis).")
 
@@ -541,7 +543,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                 first = tuple(np.argwhere(bad)[0])
                 index = (tuple(int(first[start + a] + cut[a].start) for a in range(3))
                          if start >= 0 else tuple(lo for lo, _ in bounds))
-                raise ValueError(
+                raise RfxRefusal(
                     f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
                     f"{record.label} ({record.name}) at cell {index}; "
                     "the port has no model for a thin element in its section (rfx#2047); "

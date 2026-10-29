@@ -1,4 +1,6 @@
 """One PEC/DC/f0 fold on the realized grid, in declaration order."""
+
+from rfx.errors import RfxRefusal
 from dataclasses import dataclass, replace
 import warnings
 
@@ -114,7 +116,7 @@ def admit_thin_conductor(
     return tc
 
 
-class DCFilmAdmissionError(ValueError):
+class DCFilmAdmissionError(RfxRefusal):
     """A geometry-only DC film refusal, also carried by preflight."""
     code = 'dc_film_area'
     source = 'admit_dc_film'
@@ -689,7 +691,7 @@ def refuse_design_films(sim, grid, bounds):
                 f0_hits.add(index)
     for index, tc in enumerate(conductors):
         if index in f0_hits:
-            raise ValueError(
+            raise RfxRefusal(
                 f'thin_conductor[{index}] (surface_impedance_f0 sheet): the design box (cells {bounds}) '
                 'contains cells incident to its tangential edges. Move the box or the sheet.')
         if tc.is_pec or tc.surface_impedance_f0 is not None:
@@ -700,7 +702,7 @@ def refuse_design_films(sim, grid, bounds):
                                     snap=sim._snap, film_geometry=films.get(index))
         if any(part is not None and bool(jnp.any(part[sl] != 0))
                for part in lumped_components(mats.sigma_film)):
-            raise ValueError(
+            raise RfxRefusal(
                 f"the design box (cells {bounds}) contains edges of thin conductor {index}; "
                 "a design region over a declared film is not supported. Move the box or the film.")
 

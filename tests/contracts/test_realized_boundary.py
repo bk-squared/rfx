@@ -139,10 +139,10 @@ def test_no_unlisted_departures(cell):
             measured(cell["case"], cell["entry"])
         return
     if cell["status"] == "REFUSED":
+        # B1 records builtin families; public refusal subclasses retain them.
         exception_type = {"ValueError": ValueError, "NotImplementedError": NotImplementedError}[cell["exception"]]
         with pytest.raises(exception_type) as exc:
             measured(cell["case"], cell["entry"])
-        assert type(exc.value) is exception_type
         assert str(exc.value).startswith(cell["message_prefix"])
         return
     expected = {key(d) for d in cell["departures"]}

@@ -26,6 +26,8 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from typing import NamedTuple
 
 import jax
@@ -1759,7 +1761,7 @@ def refuse_pmc_smoothing(sim, grid):
                      - np.asarray(sdf_fn(*upper, shape, xp=np)))
             if np.any((abs(sdf) <= d / 2) &
                       (abs(delta) > d * 8 * np.finfo(np.float32).eps)):
-                raise NotImplementedError(
+                raise RfxUnsupported(
                     f"subpixel smoothing at PMC magnetic face {face}: material "
                     f"{entry.material_name!r} has a surface within half a cell; "
                     "the smoother has no even magnetic extension. Extend the "

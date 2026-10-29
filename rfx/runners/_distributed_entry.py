@@ -1,5 +1,7 @@
 """Shared public entry seam for the distributed runners; no stepping here."""
 
+from rfx.errors import RfxUnsupported
+
 import numpy as np
 
 from rfx.api._spec import Result, _warn_if_nonfinite_result
@@ -300,6 +302,6 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
 
 
 def refuse_sheet_layout():
-    raise NotImplementedError(
+    raise RfxUnsupported(
         "pinned_sheet_layout requires the single-device graded lane; "
         "distributed_nu and distributed_v2 do not carry this layout switch")

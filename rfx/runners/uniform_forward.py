@@ -1,6 +1,8 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx.api._spec import ForwardResult
 from rfx.sources.sources import GaussianPulse
 from rfx.grid import Grid
@@ -852,6 +854,6 @@ _forward_from_materials.__wrapped__.__qualname__ = "_ExecuteMixin._forward_from_
 
 
 def refuse_sheet_layout():
-    raise NotImplementedError(
+    raise RfxUnsupported(
         "pinned_sheet_layout requires the single-device graded lane; "
         "a uniform mesh can be passed as a graded profile")

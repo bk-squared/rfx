@@ -29,6 +29,8 @@ before any step.
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 import functools
 import inspect
 import threading
@@ -1106,12 +1108,12 @@ def refuse_undriven_drives(sim) -> None:
 def refuse_distributed_sources(sim, lane):
     """Name sources that cannot be stepped on the requested slab lane."""
     if getattr(sim, "_waveguide_ports", ()):
-        raise NotImplementedError(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
+        raise RfxUnsupported(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
     entry = getattr(sim, "_tfsf", None)
     if entry is None:
         return
     if getattr(sim, "_uses_nonuniform_mesh", False) or lane.endswith("_nu"):
-        raise NotImplementedError(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
+        raise RfxUnsupported(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
     refuse_slab_tfsf(entry, lane)
 
 
@@ -1119,7 +1121,7 @@ def refuse_slab_tfsf(entry, lane="uniform multi-device"):
     """Accept declarations or realized configs; face replays never enter a slab scan."""
     kind = slab_tfsf_refusal(entry)
     if kind is not None:
-        raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
+        raise RfxUnsupported(f"{kind} is not supported on {lane}; use one device")
 
 
 #: Closed-box TF/SF validation covers three seams, a padded last slab, a box face
@@ -1130,7 +1132,7 @@ SLAB_TFSF_MAX_DEVICES = 4
 def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
     """Refuse a closed-box TF/SF on more devices than its multi-seam validation covers."""
     if entry is not None and getattr(entry, "closed_box", False) and n_devices > SLAB_TFSF_MAX_DEVICES:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"closed-box TFSF (add_tfsf_source(closed_box=True)) on {n_devices} devices is not supported on "
             f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (three seams); "
             f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
@@ -1152,7 +1154,7 @@ def refuse_coaxial_port(sim, entry: str) -> None:
     row = ("_coaxial_ports", "coax_port")
     if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
                                       for lane in LANES):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
             "coaxial port's S-parameters come from "
             "compute_coaxial_line_reflection(...) (one-port reflection) "
@@ -1174,7 +1176,7 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if rows:
         if diagnostics is not None:
             from rfx._diagnostic_transport import diagnostic_refusal
-            raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
+            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(sim)
@@ -1272,7 +1274,7 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
             reason + "Remove the plain source, or pass compute_s_params=False "
             "to silence this warning; returning no S-parameters.")
         return False
-    raise NotImplementedError(
+    raise RfxUnsupported(
         reason + "Remove the plain source, or drop the S request to run with the "
         "source included: run(compute_s_params=False) returns the raw port waves, "
         "forward() without port_s11_freqs the fields and probe records.")
@@ -1439,11 +1441,11 @@ def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
     if not subpixel_smoothing:
         return
     if eps_override is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing builds the permittivity tensor from declared shapes; "
             "eps_override would not reach the solve. Omit smoothing or eps_override.")
     if pec_occupancy is not None or design_occupancy is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing cannot combine with pec_occupancy / design_occupancy: "
             "they supply a second inverse-permittivity operator.")
 

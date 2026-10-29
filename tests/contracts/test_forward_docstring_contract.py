@@ -94,10 +94,11 @@ def test_all_is_curated_subset():
     # #1534 adds Diagnostic, the public immutable record carried by results.
     # Admit exactly this one-name expansion; keep future growth guarded.
     assert "Diagnostic" in names
-    # Pareto selection helpers are included in the 212-name surface.
+    # Pareto selection helpers are included in the curated surface.
     assert {"weighted_scalarization", "epsilon_constraint_mask",
             "select_epsilon_constrained"} <= set(names)
-    assert len(names) <= 212, f"rfx.__all__ too large to be curated: {len(names)}"
+    # Public exception bases: cap equals the actual curated surface count.
+    assert len(names) <= 215, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

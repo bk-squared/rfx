@@ -1,4 +1,6 @@
 """Admit a rectangular guide mode only on a realized conducting aperture."""
+
+from rfx.errors import RfxRefusal
 import jax
 import numpy as np
 
@@ -33,7 +35,7 @@ def refuse_bare_waveguide_edges(sim, grid, *, lane, conformal_weights=_DEFAULT):
         masks = {}
         for record in operands:
             if isinstance(record.array, jax.core.Tracer):
-                raise ValueError(
+                raise RfxRefusal(
                     f"{lane}: waveguide aperture conductor check cannot judge traced "
                     f"PEC operand {record.name}; provide static PEC walls.")
             if record.name.startswith("pec_edge_masks."):
