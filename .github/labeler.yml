@@ -100,7 +100,6 @@
           - "rfx/mesh_planner.py"
           - "rfx/mesh_edges.py"
           - "rfx/preflight/mesh.py"
-          - "rfx/amr.py"
           # rfx/model/ (realized-model layer): the graded grid and the material modules
           - "rfx/model/graded_grid.py"
           - "rfx/model/graded_profile.py"
