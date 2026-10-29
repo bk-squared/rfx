@@ -31,7 +31,7 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal, RfxUnsupported
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 
 from rfx._precision import resolve_field_dtype
 from rfx.boundaries.pmc import refuse_port_on_magnetic_face
@@ -202,7 +202,6 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
-    from rfx.errors import AccuracyWarning
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     import dataclasses as _dc

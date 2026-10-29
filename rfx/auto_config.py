@@ -18,6 +18,7 @@ Usage
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
@@ -412,7 +413,6 @@ def auto_configure(
     -------
     SimConfig with all derived parameters.
     """
-    from rfx.errors import ConfigurationWarning
     if materials is None:
         materials = {}
 
@@ -679,7 +679,6 @@ def simulation_auto(
         >>> result = sim.run(until_decay=1e-5)
         >>> modes = result.find_resonances()
         """
-    from rfx.errors import ConfigurationWarning
     import warnings
     warnings.warn(
         "Simulation.auto() called without geometry — the auto-derived "

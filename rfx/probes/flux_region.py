@@ -5,6 +5,7 @@ Geometry-only host arithmetic shared by runners and preflight. Full-plane
 """
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import warnings
 from math import ulp
 
@@ -90,7 +91,6 @@ def flux_region_message(record):
 
 def resolve_flux_region(grid, entry, domain, *, warn=True):
     """Return a JSON-native finite-region record, or None for legacy full plane."""
-    from rfx.errors import ConfigurationWarning
     size, center = validate_flux_region_inputs(entry.size, getattr(entry, "center", None))
     if size is None:
         return None

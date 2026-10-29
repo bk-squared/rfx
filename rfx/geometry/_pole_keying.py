@@ -12,6 +12,7 @@ organisation; the split is no longer load-bearing.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import warnings
 
 from rfx.core.jax_utils import is_tracer
@@ -55,7 +56,6 @@ def _pole_key(pole):
        such poles will not dedupe against value-equal duplicates
        (fail-loud beats silent double-counting).
     """
-    from rfx.errors import AccuracyWarning
     try:
         hash(pole)
         return pole

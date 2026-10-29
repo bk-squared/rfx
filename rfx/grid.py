@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import numpy as np
 import warnings
 from fractions import Fraction
@@ -56,7 +57,6 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
     Candidates never coarsen the request. Search below the 0.75 adoption
     bound only to report the largest fitting explicit spacing (down to /16).
     """
-    from rfx.errors import ConfigurationWarning
     lengths = [float(domain['xyz'.index(a)]) for a in axes]
     if any(not np.isfinite(length) or length <= 0 for length in lengths):
         raise ValueError(f"periodic axes {axes!r} require positive finite lengths; L={lengths} m")

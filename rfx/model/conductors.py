@@ -5,7 +5,7 @@ This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal
+from rfx.errors import ConfigurationWarning, RfxRefusal
 
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, field, replace
@@ -332,7 +332,6 @@ def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, 
 
 def release_port_occupancy(occupancy, conductors):
     """Keep port edges free of design metal; warn once for this application."""
-    from rfx.errors import ConfigurationWarning
     if occupancy is None:
         return occupancy
     if np.shape(occupancy) != conductors.grid.shape:

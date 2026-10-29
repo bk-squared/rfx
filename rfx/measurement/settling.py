@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import math
 
 import numpy as np
@@ -109,7 +110,6 @@ def warn_postrun_energy_witness(
 
     Tracer-safe: a no-op under a JAX transformation.
     """
-    from rfx.errors import AccuracyWarning
     from rfx.core.jax_utils import is_tracer
     from rfx.sources.sources import GaussianPulse
 
@@ -185,7 +185,6 @@ def warn_postrun_energy_witness(
 def attach_run_settling_witness(sim, result, *, n_steps=None,
                                  num_periods=None, context="run"):
     """Attach the value witness and warn for requested spectral outputs."""
-    from rfx.errors import AccuracyWarning
     from rfx.api._spec import ForwardResult
 
     from rfx.measurement.coverage import accumulator_coverage, warn_uncovered, with_coverage

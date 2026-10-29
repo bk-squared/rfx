@@ -1,4 +1,5 @@
 """Record-end coverage of returned frequency-domain accumulators."""
+from rfx.errors import AccuracyWarning
 from dataclasses import dataclass
 from itertools import product
 
@@ -104,7 +105,6 @@ def with_coverage(db, witness, coverage):
 
 def warn_uncovered(witness):
     """One warning for the first uncovered accumulator, before other advisories."""
-    from rfx.errors import AccuracyWarning
     import warnings
 
     failed = next((r for r in witness.get("coverage", ()) if r["verdict"] != "covered"), None)

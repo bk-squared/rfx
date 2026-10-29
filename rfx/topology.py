@@ -36,6 +36,7 @@ Key concepts
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx._precision import resolve_field_dtype
 
 from dataclasses import dataclass
@@ -398,7 +399,6 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
-    from rfx.errors import AccuracyWarning
     resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")

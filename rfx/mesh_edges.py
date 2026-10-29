@@ -39,6 +39,7 @@ where the lines go; the cells between them come from
 """
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import heapq
 import warnings
 from typing import NamedTuple, Sequence
@@ -507,7 +508,6 @@ def edge_aware_profiles(
     >>> sim = Simulation(freq_max=5e9, domain=(LX, LY, LZ), dx=1e-3, **prof)
     >>> sim.add(slab, material="substrate"); sim.add(patch, material="pec")
     """
-    from rfx.errors import ConfigurationWarning
     names = {"x": 0, "y": 1, "z": 2}
     if not axes or any(a not in names for a in axes):
         raise ValueError("axes must be a non-empty subset of 'xyz'")

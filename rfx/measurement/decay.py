@@ -25,7 +25,7 @@ program contains any of it.
 
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal
 
 import math
 from dataclasses import dataclass, field
@@ -499,7 +499,6 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
     criterion line is printed as the last line. Returns None for a
     forced-length run (``thr = 0``).
     """
-    from rfx.errors import AccuracyWarning
     import warnings
 
     from rfx.diagnostic_records import Diagnostic
@@ -675,7 +674,6 @@ def warn_dc_floor(sim, *, dt, n_table):
     the pulse (``n_table * dt < t0 + 4.5 tau``) the DC is the truncation's,
     and the message says so instead.
     """
-    from rfx.errors import AccuracyWarning
     import warnings
 
     for label, name, rel_dc, s_int, t_done in dc_census(sim, dt=dt, n_table=n_table):
@@ -745,7 +743,6 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     material arrays) whose eps/sigma is at least one step is named with that
     relaxation time in steps.
     """
-    from rfx.errors import AccuracyWarning
     import warnings
 
     from rfx.core.yee import component_h_materials

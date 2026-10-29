@@ -15,6 +15,7 @@ high-permittivity skin that makes a curved body electrically larger (#1651).
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import warnings
 
 import numpy as np
@@ -71,7 +72,6 @@ def warn_conformal_model():
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
     """
-    from rfx.errors import AccuracyWarning
     warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=3)
 
 

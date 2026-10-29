@@ -43,7 +43,7 @@ placement there is refused/flagged by preflight P1.9 (geometry-in-CPML).
 
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal
 
 from dataclasses import dataclass
 
@@ -911,7 +911,6 @@ def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
     A no-op when there are no sheets or when ``eps_r`` is traced (the
     comparison would concretize a tracer).
     """
-    from rfx.errors import AccuracyWarning
     import warnings as _warnings
 
     from rfx.core.jax_utils import is_tracer

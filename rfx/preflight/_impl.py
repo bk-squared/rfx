@@ -5,7 +5,7 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal
 
 import jax
 
@@ -232,7 +232,6 @@ _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     """Apply the same warning/error policy to full or scoped preflight."""
-    from rfx.errors import AccuracyWarning
     issues = PreflightReport(issues)
     if not len(issues):          # PreflightReport refuses bool() (#980)
         return

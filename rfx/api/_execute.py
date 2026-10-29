@@ -13,7 +13,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
-from rfx.errors import RfxUnsupported
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
 
 from rfx.stepping import steps_for_periods
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -331,8 +331,6 @@ class _ExecuteMixin:
           (``until_decay == 0.0`` is the documented forced-N escape on
           the NU lane and is deliberately not warned about.)
         """
-        from rfx.errors import AccuracyWarning
-        from rfx.errors import ConfigurationWarning
         import warnings
 
         if until_decay is None:
@@ -374,8 +372,7 @@ class _ExecuteMixin:
             raise NotImplementedError(
                 "add_port(reference_plane_cells=...) S-parameters are only "
                 f"supported on the uniform single-device run() lane, not "
-                f"the {path_name} lane. Drop the opt-in or use a uniform "
-                "mesh."
+                f"the {path_name} lane. Drop the opt-in or use a uniform " "mesh."
             )
 
     @staticmethod
@@ -417,7 +414,6 @@ class _ExecuteMixin:
         for what to do instead. ``entry`` names the call the user made, for
         the S-parameter calculators that share this rule.
         """
-        from rfx.errors import ConfigurationWarning
         import warnings as _w
         # Per-kwarg values that do not ask for the feature. ``None`` is
         # compared by identity, so an array-valued argument never reaches
@@ -1417,7 +1413,6 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
-        from rfx.errors import AccuracyWarning
         _call_args = dict(locals()); del _call_args["self"], _call_args["_removed_kwargs"]
         self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
             self, pinned_sheet_layout, distributed=distributed)

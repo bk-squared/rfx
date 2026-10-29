@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 from rfx._grid_metric import field_index
 import warnings
 from dataclasses import replace
@@ -232,7 +233,6 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     requested endpoint outside the interior emits a clamp warning, including
     sub-cell overflow. Ordinary interior snapping remains a geometry result.
     """
-    from rfx.errors import ConfigurationWarning
     from rfx.probes.flux_region import resolve_flux_axis
 
     interior = interior_cells(np.asarray(d_arr, dtype=float), pad_lo, pad_hi, periodic=periodic)
@@ -588,7 +588,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
-    from rfx.errors import ConfigurationWarning
     from rfx.measurement.decay import refuse_radiated_flux_stop
     refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
 

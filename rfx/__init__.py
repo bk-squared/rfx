@@ -13,10 +13,7 @@ from rfx._runtime_floor import check as _check_runtime_floor
 
 _check_runtime_floor(_sys.version_info, _jax.__version__, _jaxlib.__version__)
 
-from rfx.errors import (
-    RfxError, RfxRefusal, RfxUnsupported,
-    RfxWarning, AccuracyWarning, ConfigurationWarning,
-)
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxError, RfxRefusal, RfxUnsupported, RfxWarning
 from rfx.diagnostic_records import Diagnostic
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult

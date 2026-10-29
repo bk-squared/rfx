@@ -59,6 +59,7 @@ accumulators).
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import warnings
 from typing import NamedTuple
 
@@ -533,7 +534,6 @@ def decompose_wire_s_matrix_with_reference_planes(
         conservation identity ``(|out|^2 - |inc|^2)/Re(Zc)`` equals the
         net line power there (Phase-0 falsifier F2).
     """
-    from rfx.errors import AccuracyWarning
     from rfx.probes.probes import decompose_wire_s_matrix
 
     # np.array (copy): the jnp output buffer is read-only and the plane

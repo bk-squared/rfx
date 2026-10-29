@@ -24,6 +24,7 @@ The pin protrudes into the cavity; direction depends on the face:
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from typing import NamedTuple
 
 import jax
@@ -1521,7 +1522,6 @@ def solve_two_port_from_wave_amplitudes(
     # Traced amplitudes -> jax.numpy core (differentiable); concrete -> NumPy,
     # UNCHANGED below (mirrors coaxial_line_reflection_from_plane_voltages's
     # own dispatch).
-    from rfx.errors import AccuracyWarning
     if (
         _prefer_jnp
         or isinstance(a_inc, jax.core.Tracer)

@@ -18,7 +18,7 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal, RfxUnsupported
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
 from rfx._precision import resolve_field_dtype
 
@@ -294,8 +294,6 @@ def compute_msl_s_matrix(
         cannot run on a tracer, so the solve result is taken as-is — see
         ``cond_a``).
     """
-    from rfx.errors import AccuracyWarning
-    from rfx.errors import ConfigurationWarning
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe

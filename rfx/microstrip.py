@@ -36,6 +36,7 @@ tool — not a substitute for a full-wave solve. All lengths are in metres.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import math
 import warnings
 
@@ -152,7 +153,6 @@ def microstrip_width(z0: float, height: float, eps_r: float) -> float:
     A trial ``w/h`` is computed for both the narrow and wide regimes and
     the branch consistent with its own validity condition is selected.
     """
-    from rfx.errors import AccuracyWarning
     if not (z0 > 0.0):
         raise ValueError(f"z0 must be positive (ohm), got {z0!r}")
     _validate_geometry(height, eps_r)

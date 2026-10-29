@@ -7,8 +7,7 @@ via a coordinate-provider abstraction.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal
 
 import warnings
 from typing import NamedTuple

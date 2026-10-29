@@ -7,6 +7,7 @@ customization or saving.
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import warnings
 
 import numpy as np
@@ -252,7 +253,6 @@ def _warn_if_refined(sim):
     docstrings claim "the grid this simulation would RUN on"; that claim
     is unconditionally false whenever a refinement region is set.
     """
-    from rfx.errors import ConfigurationWarning
     if getattr(sim, "_refinement", None) is not None:
         z_lo, z_hi = sim._refinement["z_range"]
         ratio = sim._refinement.get("ratio")

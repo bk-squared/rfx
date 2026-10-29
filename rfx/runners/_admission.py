@@ -29,7 +29,7 @@ before any step.
 
 from __future__ import annotations
 
-from rfx.errors import RfxUnsupported
+from rfx.errors import ConfigurationWarning, RfxUnsupported
 
 import functools
 import inspect
@@ -1192,7 +1192,6 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
 
 def _warn_implicit_s(message):
     """Attribute implicit S warnings to the first caller outside rfx."""
-    from rfx.errors import ConfigurationWarning
     import sys
     import warnings
     stacklevel = 2

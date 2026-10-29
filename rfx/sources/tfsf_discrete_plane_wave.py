@@ -1,6 +1,7 @@
 """Exact rational plane waves on the uniform three-dimensional Yee lattice."""
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -589,7 +590,6 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
-    from rfx.errors import AccuracyWarning
     from rfx.api import _bloch_cutoff_level_db
     from rfx.sources.tfsf import resolve_waveform
     if closed_box:

@@ -1,4 +1,5 @@
 """Resolve ring-down identification channels before the time loop."""
+from rfx.errors import ConfigurationWarning
 import inspect
 import warnings
 
@@ -7,7 +8,6 @@ from rfx._grid_metric import field_index
 
 def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=True):
     """Keep declared columns and warn once for repeated cell/component keys."""
-    from rfx.errors import ConfigurationWarning
     keys = []
     groups = {}
     for number, (position, component) in enumerate(probes):

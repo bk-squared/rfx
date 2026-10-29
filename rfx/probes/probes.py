@@ -894,7 +894,6 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
     ``warn_if_nonpassive_lumped_s11`` tracer-safety pattern) and never
     changes the returned value.
     """
-    from rfx.errors import AccuracyWarning
     import jax as _jax
     try:
         if isinstance(flux, _jax.core.Tracer):
@@ -1764,7 +1763,6 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     tracer with no concrete value, so the check is skipped entirely — it never
     perturbs an AD/optimization run, only the eager research call.
     """
-    from rfx.errors import AccuracyWarning
     import numpy as np
     import jax as _jax
     try:
@@ -1798,8 +1796,7 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
         kind = f"max|S11|={worst:.3f} > 1+{passivity_tol:g}"
     import warnings as _w
     _w.warn(
-        f"{extractor}: lumped/wire port S11 is non-passive ({kind}) "
-        f"at freq(GHz)={bad_f}"
+        f"{extractor}: lumped/wire port S11 is non-passive ({kind}) " f"at freq(GHz)={bad_f}"
         f"{' …' if len(bad_f) == 6 else ''}. A passive one-port cannot have "
         f"|S11|>1; the single-cell extractor is unreliable where the incident "
         f"wave is weak (spectral band edges). Do not trust or optimize against "

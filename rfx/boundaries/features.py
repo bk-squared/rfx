@@ -6,8 +6,7 @@ Admission never changes mesh metrics.
 """
 from __future__ import annotations
 
-from rfx.errors import RfxWarning
-from rfx.errors import RfxRefusal
+from rfx.errors import RfxRefusal, RfxWarning
 
 from dataclasses import replace
 import inspect

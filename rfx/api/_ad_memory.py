@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import math
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -609,7 +610,6 @@ class _AdMemoryMixin:
         saved-residual diagnostics. It does not run FDTD and does not upgrade
         static planning evidence into runtime memory proof.
         """
-        from rfx.errors import ConfigurationWarning
         options = dict(design_box=design_box, design=design, checkpoint=checkpoint,
                        distributed=distributed, cotangents=cotangents)
         plan = self.plan_ad_memory(

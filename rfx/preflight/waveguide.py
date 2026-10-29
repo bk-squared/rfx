@@ -55,6 +55,7 @@ the path, and a pure code-motion leg touches one fewer file.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.stepping.step_count import steps_for_periods
 import math
 
@@ -364,7 +365,6 @@ WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET = 2000
 
 def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_override=None, mu_r_override=None):
     """Read the drawn realization and concrete call overrides through setup's resolver."""
-    from rfx.errors import AccuracyWarning
     import jax
     from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.model.overrides import apply_material_overrides
@@ -814,7 +814,6 @@ def _emit_waveguide_port_cutoff_findings(
     which higher-order modes exist. ``guide_label`` is the
     human-readable provenance of the latter.
     """
-    from rfx.errors import AccuracyWarning
     import warnings as _w
 
     from rfx.model.waveguide_modes import port_light_speed

@@ -6,9 +6,7 @@ grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
 
-from rfx.errors import RfxWarning
-from rfx.errors import RfxUnsupported
-
+from rfx.errors import RfxUnsupported, RfxWarning
 import warnings
 
 import jax

@@ -4,8 +4,7 @@ Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
 
-from rfx.errors import AccuracyWarning
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal
 from dataclasses import fields, is_dataclass
 import warnings
 

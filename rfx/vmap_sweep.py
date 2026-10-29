@@ -31,6 +31,7 @@ Limitations
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 from rfx._precision import resolve_field_dtype
 from rfx.stepping.vmap_scan import _build_vmap_scan_fn
 
@@ -791,7 +792,6 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
-    from rfx.errors import ConfigurationWarning
     resolve_field_dtype(sim._precision)
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "vmap material sweep")

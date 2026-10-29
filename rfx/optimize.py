@@ -19,6 +19,7 @@ Example
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
 from rfx._traced_refusal import TracedStructureRefusal
@@ -83,7 +84,6 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
     active = compiled
 
     def evaluate(*args, **kwargs):
-        from rfx.errors import ConfigurationWarning
         nonlocal first_call, active
         if not first_call:
             return active(*args, **kwargs)
@@ -190,7 +190,6 @@ def _adam_multistart(
     grad_fn = _value_and_grad_with_fallback(cost_fn, jit, "optimize")
 
     def _run_one(init_lat):
-        from rfx.errors import AccuracyWarning
         m = jnp.zeros_like(init_lat)
         v = jnp.zeros_like(init_lat)
         latent = init_lat

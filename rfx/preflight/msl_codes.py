@@ -10,6 +10,7 @@ Severity in the table is the default: a warning record is advisory, while the
 same finding becomes refusal only at a blocking error/raise site.
 """
 
+from rfx.errors import AccuracyWarning
 from dataclasses import dataclass
 from string import Formatter
 
@@ -804,7 +805,6 @@ def msl_error(diagnostic, *, error=None):
 
 def placement_warning(message):
     """Attach the placement diagnostic without changing the caller's stack level."""
-    from rfx.errors import AccuracyWarning
     diagnostic = msl_diagnostic(
         "msl.probe_placement_note",
         message,

@@ -1,6 +1,6 @@
 """Source admission against geometry conductors and declared PEC walls."""
 
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
@@ -40,7 +40,6 @@ def refuse_dead_soft_sources(sim, conductors):
 
 
 def _dead_sources(sim, conductors):
-    from rfx.errors import AccuracyWarning
     if not sim._ports:
         return
     faces = declared_pec_faces(sim)

@@ -27,6 +27,7 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
@@ -251,7 +252,6 @@ def compute_waveguide_s_matrix(
         valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
         the current waveguide evidence and scope.
     """
-    from rfx.errors import AccuracyWarning
     resolve_field_dtype(self._precision)
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, unsupported=True)

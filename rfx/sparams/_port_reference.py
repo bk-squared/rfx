@@ -11,6 +11,7 @@ Import contract (as ``rfx.sparams._common``): only external ``rfx.*`` / stdlib
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import warnings
 
 import jax
@@ -126,7 +127,6 @@ def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
     declared line. Moved here from ``compute_coax_msl_transition``'s
     issue-#581 advisory, which said the opposite before #2014.
     """
-    from rfx.errors import ConfigurationWarning
     for label, declared, line in ports:
         declared, line = float(declared), float(line)
         if line <= 0.0 or abs(declared - line) / line <= rel_tol:

@@ -1,6 +1,6 @@
 """One PEC/DC/f0 fold on the realized grid, in declaration order."""
 
-from rfx.errors import RfxRefusal
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 from dataclasses import dataclass, replace
 import warnings
 
@@ -30,8 +30,6 @@ def admit_thin_conductor(
     Raises on the concrete-value checks, then warns which model the record
     selects (PEC sheet or Leontovich sheet); the warnings name the user's call.
     """
-    from rfx.errors import AccuracyWarning
-    from rfx.errors import ConfigurationWarning
     if surface_impedance_f0 is not None:
         # Concrete-value checks only: traced f0 / sigma_bulk are legal
         # differentiable DoFs and skip these (documented on Simulation.add_thin_conductor).

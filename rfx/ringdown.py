@@ -90,7 +90,7 @@ report in ``Result.ringdown.stop``.
 
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal, RfxUnsupported
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 
 from typing import TYPE_CHECKING
 
@@ -1158,7 +1158,6 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
-        from rfx.errors import AccuracyWarning
         full = result.time_series
         ts_all = np.asarray(full)
         n_int = len(self.probe_keys)
@@ -1322,8 +1321,7 @@ class RingdownRun:
                 RingdownWitness("W2", w2.value, tol, w2.value <= tol, w2_rule,
                                 f"judged in place of WE, which could not be formed "
                                 f"({why}); on the research boards W2 read the "
-                                "actual error low by up to several times"
-                                ""),
+                                "actual error low by up to several times" ""),
             ]
         try:
             we = early_start_witness(

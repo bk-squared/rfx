@@ -26,8 +26,7 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
-from rfx.errors import RfxUnsupported
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
 
 from typing import NamedTuple
 
@@ -367,8 +366,6 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     facet -- and nothing downstream distinguishes that from a structure
     the user meant to end there.
     """
-    from rfx.errors import AccuracyWarning
-    from rfx.errors import ConfigurationWarning
     if not unextendable:
         return
     import warnings as _w

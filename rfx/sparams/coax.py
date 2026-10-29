@@ -26,6 +26,7 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -103,8 +104,7 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
         raise ValueError(
             f"{lane}() requires positive CPML thickness on all six faces: "
             "it absorbs on all three axes, and a face without an absorber "
-            "is a PEC wall that closes a metal can around the line"
-            "."
+            "is a PEC wall that closes a metal can around the line" "."
         )
     if cpml_axes is not None and set(cpml_axes) != set("xyz"):
         raise ValueError(
@@ -1276,7 +1276,6 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with analytic impedance normalization; this is
     not a traceable or validated cross-family extraction.
     """
-    from rfx.errors import AccuracyWarning
     resolve_field_dtype(self._precision)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,

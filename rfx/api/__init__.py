@@ -18,6 +18,7 @@ Usage
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning
 import inspect
 import math
 import json
@@ -611,7 +612,6 @@ class Simulation(
             centered/two-interface integration lane but remains a research-only
             contract until its public runner wiring and waveform gates pass.
         """
-        from rfx.errors import AccuracyWarning
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
         if validation not in {"production", "research", "off"}:
@@ -1330,7 +1330,6 @@ class Simulation(
             1.2%) and closed the closed-box referee within 0.9% at all
             bins.
         """
-        from rfx.errors import ConfigurationWarning
         if self._tfsf is not None:
             raise ValueError(
                 "Lumped ports are not supported together with the TFSF plane-wave source"
@@ -1554,8 +1553,7 @@ class Simulation(
                 "not supported: the Schelkunoff J+M launch hard-codes the "
                 "x-axis TFSF correction pair and rides on the FDFD eigenmode "
                 "solver, which is a documented dead-end kept under a strict "
-                "xfail. Use mode='laplace' (the default) for a y-directed "
-                "port."
+                "xfail. Use mode='laplace' (the default) for a y-directed " "port."
             )
         from rfx.preflight._msl_probe_rules import msl_auto_probe_declaration
         (_, _near_field_m, span_total, _eps_eff_hj,
@@ -1669,7 +1667,6 @@ class Simulation(
         the full series ADE current tracker.  To ensure the series ADE
         path is used, specify at least two non-zero components.
         """
-        from rfx.errors import ConfigurationWarning
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         if topology not in ("series", "parallel"):

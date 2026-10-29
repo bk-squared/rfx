@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import numpy as np
 
 
@@ -17,7 +18,6 @@ def _warn_if_ringdown_truncated(
     witnesses: list | tuple | None = None,
 ) -> None:
     """Warn for excessive pole tails or concrete undetermined witnesses."""
-    from rfx.errors import AccuracyWarning
     from rfx.sparams._common import settling_verdict, _SETTLING_WITNESS_DB
 
     values = np.atleast_1d(np.asarray(settling_db, dtype=float))

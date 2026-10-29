@@ -1,5 +1,6 @@
 """Shared graded distributed assembly, staging and forward packaging."""
 from __future__ import annotations
+from rfx.errors import ConfigurationWarning
 import math
 import jax
 import jax.numpy as jnp
@@ -47,7 +48,6 @@ def execute_from_materials(
     Run requests gathered fields and an assembly record; forward keeps the
     fields sharded. Sources, materials, ADE, CPML and PEC staging are shared.
     """
-    from rfx.errors import ConfigurationWarning
     is_run = lane == "run_distributed_nu"
     if n_steps < 1:
         entry = "run(devices=...)" if is_run else "forward(distributed=True)"
