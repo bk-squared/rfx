@@ -116,8 +116,8 @@ every `interval` steps, optionally on one slice (`slice_axis`, `slice_index`),
 in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
 snapshot of every step is large; take a slice. Snapshots are taken on a uniform
 mesh, on one device or several, and by `run(devices=...)` on a graded mesh. A
-graded mesh on one device, ADI, subgridding and an oblique plane wave refuse
-`snapshot=`.
+graded mesh on one device, ADI, subgridding and an oblique plane wave on the
+Bloch path (`angle_deg`) refuse `snapshot=`; an oblique closed box takes it.
 
 ### JAX transforms
 
