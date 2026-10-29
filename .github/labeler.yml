@@ -167,7 +167,6 @@
           - "tests/unit/runners/test_profiling.py"
           - "tests/contracts/test_matmul_precision.py"
           - "tests/unit/sparams/test_ringdown_*.py"
-          - "tests/**/*benchmark*"
           - "scripts/benchmarks/**"
           - "scripts/benchmark_*.py"
           - "scripts/diagnostics/gpu_throughput_bench.py"

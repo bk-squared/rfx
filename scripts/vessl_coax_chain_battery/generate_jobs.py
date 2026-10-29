@@ -175,7 +175,6 @@ def jobs() -> list[dict]:
     out.append(dict(
         key="replay", preset="cpu-32-mem-64", pytest=True,
         cli=('-m pytest -p no:cacheprovider -o addopts="" '
-             "tests/oracle/test_coax_chain_battery.py "
              "tests/contracts/test_evidence_numeric_provenance.py -q"),
         description=("The assembled fixture replayed: every stored number re-derived "
                      "from the stored S and compared against the bar, plus the evidence "

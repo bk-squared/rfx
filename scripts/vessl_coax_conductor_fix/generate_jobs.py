@@ -96,8 +96,7 @@ GROUPS = [
     ("transition", "gpu-rtx4090",
      f'{PYTEST} tests/unit/sparams/test_coax_msl_transition.py '
      'tests/unit/sparams/test_coax_msl_transition_ladder_dump.py '
-     'tests/unit/sparams/test_coax_msl_transition_wave_roles.py '
-     'tests/unit/sparams/test_coax_msl_ladder_witnesses.py',
+     'tests/unit/sparams/test_coax_msl_transition_wave_roles.py',
      "the coax-to-MSL transition, which shares the stamping helper"),
     ("autodiff", "gpu-a6000-1",
      f'{PYTEST} -m "slow_physics or highmem" '

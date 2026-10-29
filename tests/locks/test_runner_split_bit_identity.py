@@ -132,7 +132,6 @@ from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": (
-        "tests/locks/test_cpml_axis_params_refactor_bit_identical.py,"
         "tests/unit/nonuniform/test_nu_flux_monitor_finite_size.py,"
         "tests/unit/runners/test_distributed_nu_smoke.py,"
         "tests/unit/runners/test_distributed.py,"

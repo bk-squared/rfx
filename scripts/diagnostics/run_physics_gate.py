@@ -100,7 +100,6 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         tests=(
             "tests/unit/sparams/test_sparam.py",
             "tests/unit/autodiff/test_s11_at_freq.py",
-            "tests/unit/autodiff/test_minimize_s11_at_freq_physical.py",
             "tests/unit/sparams/test_lumped_port_sparams_jit.py",
             "tests/unit/sparams/test_wire_sparam.py",
             "tests/unit/sparams/test_wire_port_sparams_forward.py",
@@ -133,14 +132,13 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
             "tests/oracle/test_waveguide_port_validation_battery.py",
             "tests/unit/sparams/test_waveguide_twoport_contract_v1.py",
             "tests/unit/autodiff/test_waveguide_forward.py",
-            "tests/unit/ports/test_wr90_port_oracles.py",
         ),
         claim_level="E2",
         validated_claims=(
             {
                 "claim": "waveguide-port oracle and reciprocity regression envelope",
                 "evidence_level": "E2",
-                "artifact": "tests/unit/ports/test_wr90_port_oracles.py and waveguide-port gate stdout",
+                "artifact": "waveguide-port gate stdout",
             },
         ),
         blocked_claims=(
@@ -234,32 +232,6 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
                 "claim": "coaxial, Floquet, nonuniform/distributed/AD claims-bearing S-parameters",
                 "evidence_level": "E5",
                 "reason": "promotion ladders remain campaign D7 work",
-            },
-        ),
-    ),
-    GateGroup(
-        group_id="external_crossval",
-        description=(
-            "Cross-validation harnesses and external-reference handling. "
-            "Missing external references must report skip/unknown, not pass."
-        ),
-        tests=(
-            "tests/unit/boundaries/test_crossval_migration_smoke.py",
-        ),
-        claim_level="E0",
-        coverage_scope="not_claims_bearing",
-        validated_claims=(
-            {
-                "claim": "external cross-validation harness smoke/contract gate",
-                "evidence_level": "E0",
-                "artifact": "external_crossval stdout/stderr artifacts",
-            },
-        ),
-        blocked_claims=(
-            {
-                "claim": "external full-wave cross-solver validation",
-                "evidence_level": "E4",
-                "reason": "requires actual Meep/openEMS/CSXCAD reference artifact, not only smoke tests",
             },
         ),
     ),

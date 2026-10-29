@@ -338,19 +338,12 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: Every required test allowed to read prose, and why. Adding one is a gate
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
-    "tests/contracts/test_public_docs_have_no_placeholders.py::test_public_docs_have_no_placeholders":
-        "Public navigation must not publish skeleton pages, unfinished markers, tracker references, "
-        "empty examples or broken internal links (leader's placeholder gate, 2026-10-21).",
     "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
         "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"
     "test_every_pinned_issue_keeps_its_entry":
         "a known-limitations entry must stay while its defect is open: the one "
         "page a PR must keep right (PI, 2026-09-22)",
-    "tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py::"
-    "test_sections_0_to_7_are_the_pre_declaration_as_committed":
-        "pre-declaration hash: sections 0-7 hold the windows and bars fixed "
-        "before any arm ran; editing them after the result would loosen the gate",
     "tests/contracts/test_docs_frontmatter.py::test_page_frontmatter_parses":
         "Parses the YAML frontmatter the site build parses; a page that does not parse blocks the merge train "
         "(PR 1704). It checks syntax and the presence of a title, never the prose.",
@@ -366,11 +359,6 @@ DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_ci_workflows_contract.py::test_local_sh_preserves_the_runbook_baseline_before_selected_tests",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_says_changes_must_be_a_required_check",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_tells_authors_to_run_it_before_every_push",
-    "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_autodiff_guide_pins_fd_necessary_not_sufficient",
-    "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_gradient_behavior_guide_pins_passing_witness_caveat",
-    "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_inverse_design_guide_pins_split_window_precondition",
-    "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_objective_docstring_pins_split_window_precondition",
-    "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_sources_ports_guide_pins_lumped_rlc_not_a_port",
     "tests/contracts/test_evidence_numeric_provenance.py::test_each_classification_holds_mechanically",
     "tests/contracts/test_evidence_numeric_provenance.py::test_each_registered_site_still_carries_its_references",
     "tests/contracts/test_evidence_numeric_provenance.py::test_every_enumerated_document_is_classified",
@@ -381,36 +369,15 @@ DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_known_limitations_citations.py::test_no_entry_names_an_issue_it_does_not_cite",
     "tests/contracts/test_known_limitations_citations.py::test_the_page_cites_no_issue_outside_the_pinned_set",
     "tests/contracts/test_known_limitations_citations.py::test_the_page_is_reachable_from_the_readme_and_the_support_matrix",
-    "tests/contracts/test_rcs_bistatic_caveat_docpin.py::test_compute_rcs_docstring_pins_bistatic_caveat",
-    "tests/contracts/test_rcs_bistatic_caveat_docpin.py::test_public_guide_pins_bistatic_caveat",
-    "tests/contracts/test_rcs_bistatic_caveat_docpin.py::test_rcsresult_docstring_pins_validation_scope",
-    "tests/contracts/test_retired_msl_claims_are_gone.py::test_no_page_states_a_retired_msl_claim",
     "tests/contracts/test_support_matrix_parity.py::test_ad_traceable_no_is_not_overclaimed_in_markdown",
     "tests/contracts/test_support_matrix_parity.py::test_api_summary_status_cell_agrees_with_section_status",
     "tests/contracts/test_support_matrix_parity.py::test_json_numeric_claims_appear_in_markdown",
     "tests/contracts/test_support_matrix_parity.py::test_lane_map_headers_exist_in_markdown",
     "tests/contracts/test_support_matrix_parity.py::test_markdown_run_ids_appear_in_json",
     "tests/contracts/test_support_matrix_parity.py::test_status_token_polarity_agrees",
-    "tests/contracts/test_test_durations_provenance.py::test_the_doc_reports_a_carried_count_that_fits_the_file",
-    "tests/contracts/test_test_durations_provenance.py::test_the_doc_reports_the_entry_count_the_file_has",
-    "tests/contracts/test_test_durations_provenance.py::test_the_doc_reports_the_weekly_entry_count_and_fallback_bounds",
-    "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_allowlist_entry_is_stale",
-    "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_live_two_plane_outside_the_allowlist",
-    "tests/contracts/test_two_plane_gone_from_docs_and_scripts.py::test_no_pending_entry_is_stale",
     "tests/contracts/test_waveguide_aperture_conductors.py::test_rule4_support_refusal_row",
     "tests/unit/autodiff/test_ad_diagnostics.py::test_memory_reduction_docs_include_residual_inspection_boundary",
     "tests/unit/autodiff/test_estimate_ad_memory.py::test_memory_reduction_docs_separate_planning_from_certificate_evidence",
-    "tests/unit/docs/test_showcase_catalog.py::test_each_case_title_and_question_are_its_pages_front_matter",
-    "tests/unit/docs/test_showcase_catalog.py::test_every_catalog_number_is_printed_on_the_pages_it_names",
-    "tests/unit/docs/test_showcase_catalog.py::test_every_headline_number_on_a_page_is_a_catalog_number_for_that_page",
-    "tests/unit/docs/test_showcase_catalog.py::test_every_share_host_file_a_page_links_is_a_catalog_file",
-    "tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py::test_the_notes_results_are_what_tables_prints",
-    "tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py::test_the_second_notes_results_are_still_what_its_tables_print",
-    "tests/unit/nonuniform/test_msl_notch_fz_replay.py::test_the_notes_f6_is_the_instruments_f6_byte_for_byte",
-    "tests/unit/nonuniform/test_results_git_sha_resolves.py::test_every_orphaned_sha_is_named_in_its_note",
-    "tests/unit/sparams/test_probe_fed_msl_referee_contract.py::test_predeclaration_7_2_carries_an_explicit_supersession_note",
-    "tests/unit/sparams/test_probe_fed_msl_referee_contract.py::test_predeclaration_7_2_describes_the_board_stage_2_actually_builds",
-    "tests/unit/sparams/test_thru_singular_value_dx_ladder_replay.py::test_note_results_section_quotes_the_record",
 })
 
 

@@ -106,7 +106,6 @@ COAX_FILES = (
     "tests/unit/autodiff/test_coax_end_to_end_ad.py "
     "tests/unit/autodiff/test_ad_surface_contract.py "
     "tests/oracle/test_coax_conductor_realization.py "
-    "tests/oracle/test_coax_chain_battery.py "
     "tests/oracle/test_coax_open_end_settles.py "
     "tests/locks/test_coax_chain_battery_drift.py "
 )
