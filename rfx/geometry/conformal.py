@@ -1,20 +1,16 @@
-"""Dey-Mittra conformal FDTD for PEC boundaries.
+"""Conformal PEC weights for E edges cut by a PEC surface (the shipped model, #1651).
 
-When a PEC surface cuts through a Yee cell at an angle, standard stairstepping
-gives first-order convergence. The Dey-Mittra method computes fractional cell
-areas and scales the E-field update accordingly, restoring second-order accuracy.
+Each E edge gets a weight from the signed distance ``sdf`` of its midpoint to the
+PEC surface (negative inside), w = clip(0.5 + sdf/dx, 0, 1), raised to at least
+0.1 where w > 0. This is not the edge's open fraction (the two differ by up to 0.5).
+  - 1.0: normal update
+  - 0.0: the edge is metal (E forced to zero after each update)
+  - 0 < w < 1: the edge stays live with permittivity eps_eff = eps_r / w_clamped
 
-Reference: Dey & Mittra, IEEE MGWL 7(9), 273-275, 1997.
-
-For each E-field component, we compute a weight in [0, 1]:
-  - 1.0: cell face fully outside PEC (normal update)
-  - 0.0: cell face fully inside PEC (E forced to zero)
-  - 0 < w < 1: cell face partially cut by PEC surface
-
-The conformal correction is applied via the effective permittivity:
-  eps_eff = eps_r / w_clamped
-
-This is equivalent to scaling Cb by 1/w, as described by Dey-Mittra.
+So a cut edge's update coefficient Cb is multiplied by w; H is not changed. This is
+not the Dey-Mittra scheme (Dey & Mittra, IEEE MGWL 7(9), 273-275, 1997), which keeps
+the E update and shrinks the cut H-face areas. The live cut edges form a
+high-permittivity skin that makes a curved body electrically larger (#1651).
 """
 
 from __future__ import annotations
@@ -61,11 +57,12 @@ def _signed_distance_cylinder(x, y, z, center, radius, height, axis="z"):
 
 
 CONFORMAL_MODEL_ADVISORY = (
-    "conformal PEC realizes each cut E edge as permittivity eps/w (w = the edge's open "
-    "fraction, down to 0.1), a high-permittivity skin about one cell thick that makes a "
-    "metal body electrically larger; on a PEC sphere it is further from the converged "
+    "conformal PEC realizes each cut E edge as permittivity eps/w, with w = 0.5 + (signed "
+    "distance of the edge midpoint to the surface)/dx, clipped to [0, 1] and raised to 0.1 "
+    "(not the edge's open fraction): a high-permittivity skin about one cell thick that makes "
+    "a metal body electrically larger; on a PEC sphere it is further from the converged "
     "answer than the staircase at every mesh measured. Do not use it for accuracy until "
-    "the Dey-Mittra update lands (docs/guides/known_limitations.md, tracker #1651).")
+    "the fix lands (docs/guides/known_limitations.md, tracker #1651).")
 
 
 def warn_conformal_model():
@@ -87,12 +84,12 @@ def compute_conformal_weights_sdf(
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Vectorized conformal weight computation using SDF.
 
-    For each E-field component (Ex, Ey, Ez), compute the area fraction
-    of the corresponding cell face that is outside PEC.
+    For each E-field component (Ex, Ey, Ez), compute a weight from the signed
+    distance at the edge midpoint; it is not the edge's open fraction.
 
     w = 1.0: fully free (normal update)
     w = 0.0: fully PEC (E forced to zero)
-    0 < w < 1: partial PEC (conformal Cb = Cb_standard / w)
+    0 < w < 1: live edge with permittivity eps/w (Cb multiplied by w)
 
     Uses SDF: w = clip(0.5 + sdf/dx, 0, 1) evaluated at Yee-offset positions.
     For multiple PEC shapes, weights are combined via element-wise minimum
@@ -134,7 +131,7 @@ def compute_conformal_weights_sdf(
         if sdf_fn is not None:
             # Vectorized SDF evaluation at Yee-offset positions
             # SDF convention: negative inside shape, positive outside
-            # Weight = fraction outside PEC = clip(0.5 + sdf/dx, 0, 1)
+            # Weight = clip(0.5 + sdf/dx, 0, 1) at the edge midpoint (not the open fraction)
             from rfx._periodic import periodic_sdf
             sdf_ex = periodic_sdf(grid, shape, (X + half, Y, Z), sdf_fn, xp=jnp)
             sdf_ey = periodic_sdf(grid, shape, (X, Y + half, Z), sdf_fn, xp=jnp)
@@ -164,11 +161,11 @@ def clamp_conformal_weights(
     w_ez: jnp.ndarray,
     w_min: float = 0.1,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Clamp small conformal weights for CFL stability.
+    """Clamp small conformal weights to bound the cut-edge permittivity.
 
-    Very small weights (w -> 0+) amplify the effective Cb by 1/w,
-    which can violate the CFL stability condition. Following Dey-Mittra
-    (1997), weights are clamped to a minimum threshold.
+    A cut edge gets permittivity eps/w, so very small weights (w -> 0+)
+    would give it an unbounded permittivity (Cb multiplied by w). Weights
+    are clamped to a minimum threshold, capping it at eps/w_min.
 
     w_clamped = where(w > 0, max(w, w_min), 0)
 
@@ -318,18 +315,18 @@ def compute_conformal_weights(
 
 
 def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
-    """Modify eps_r to account for Dey-Mittra conformal PEC.
+    """Modify eps_r on the edges cut by conformal PEC (#1651).
 
-    For partial PEC cells (0 < w < 1), the effective permittivity is
-    scaled by 1/w to account for the reduced cell area:
+    For cut edges (0 < w < 1), the effective permittivity is
+    scaled by 1/w:
 
         eps_eff = eps_r / w_clamped
 
-    This is equivalent to scaling Cb by 1/w (Dey-Mittra method).
+    This multiplies the edge's Cb by w; it is not the Dey-Mittra method.
     Applied ONCE at setup, not every timestep.
 
     Weights should be clamped via ``clamp_conformal_weights`` before
-    calling this function to ensure CFL stability.
+    calling this function, which bounds the permittivity at eps_r / w_min.
 
     Parameters
     ----------

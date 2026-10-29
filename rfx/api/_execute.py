@@ -1907,11 +1907,11 @@ class _ExecuteMixin:
             closed/PEC point-field fallback stop.
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
-        conformal_pec : bool
-            Enable Dey-Mittra conformal PEC for second-order accuracy
-            on curved PEC surfaces. Default False (staircase PEC).
+        conformal_pec : bool or None
+            Conformal PEC (eps/w on cut E edges; first order, enlarges a curved
+            body, #1651). None reads Boundary(conformal=True); False is staircase.
         conformal_min_weight : float
-            Minimum conformal weight for CFL stability clamping.
+            Minimum cut-edge weight; caps its permittivity at eps/conformal_min_weight.
             Default 0.1. Recommended range: 0.05-0.3.
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation

@@ -86,10 +86,10 @@ def run_uniform(
         assembler; they own no cell, so they reach the stepper only
         through the realized edge masks built here.
     conformal_pec : bool or None
-        Enable Dey-Mittra conformal PEC. None reads Boundary(conformal=True);
-        an explicit False requests staircase PEC.
+        Enable conformal PEC (eps/w on cut E edges, #1651). None reads
+        Boundary(conformal=True); an explicit False requests staircase PEC.
     conformal_min_weight : float
-        Minimum conformal weight for CFL stability (default 0.1).
+        Minimum cut-edge weight; caps its permittivity at eps/conformal_min_weight (default 0.1).
     pec_shapes : list or None
         List of PEC Shape objects (needed for conformal weights).
     keep_wire_port_sparams : bool

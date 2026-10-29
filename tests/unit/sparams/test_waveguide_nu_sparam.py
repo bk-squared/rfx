@@ -200,7 +200,7 @@ def test_nu_s_params_dispatch_and_dft_liveness():
     (all-zero S, i.e. |S21| collapses to 0 when the DFT runs with dt=0), NOT
     a physical passivity/reflection measurement. Real NU S-physics on a
     device != reference geometry lives in ``test_waveguide_nu_nontrivial.py``
-    (live invariants) and the ``nu_broad_e4`` Palace replay.
+    (live invariants).
 
     FIXED (NU-DRIVE-FIX 2026-05-25): _compute_waveguide_s_matrix_nu now
     produces the live identity instead of all-zero S. Two bugs were fixed:

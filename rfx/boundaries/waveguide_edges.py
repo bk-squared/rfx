@@ -14,8 +14,8 @@ def refuse_bare_waveguide_edges(sim, grid, *, lane, conformal_weights=_DEFAULT):
 
     An aperture edge is a line of tangential electric edges on the source
     plane. A PEC domain face at that node plane, realized PEC edges, or a
-    Dey-Mittra conformal wall must cover the entire line. A conformal edge
-    with open fraction w < 1 has a PEC surface within half a cell of it, so
+    conformal wall must cover the entire line. A conformal edge with weight
+    w < 1 has a PEC surface within half a cell of its midpoint, so
     the wall lies in the cell that holds the snapped edge. Dispatch judges
     the weights run() forms by default; run_uniform judges the ones it
     formed. Distance names the nearest parallel conductor plane covering
