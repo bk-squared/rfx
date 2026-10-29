@@ -365,21 +365,23 @@ def host_cells(grid, axis, *, store=False):
     """Host widths in the precision previously read by a metric consumer.
 
     By default this is the concrete float64 spine (``grid.cells``);
-    ``store=True`` preserves the graded solver's float32 widths. A traced
-    axis must declare a deformation window in ``nominal_profiles=`` and
-    returns its padded nominal widths in that same precision. Consumers
-    must refuse reads within the window; waveguide admission additionally
-    checks its total so downstream physical coordinates remain fixed.
+    ``store=True`` preserves the solver's float32 widths (``dx_arr``,
+    ``dy_arr``, ``dz``). A traced axis with a declared deformation window
+    returns its padded nominal widths in that same precision; consumers
+    refuse reads within the window, and waveguide admission checks its
+    total so downstream physical coordinates remain fixed. A traced axis
+    without a window returns the traced widths unchanged, as before.
     """
+    index = "xyz".index(axis) if isinstance(axis, str) else int(axis)
+    stored = (getattr(grid, "dx_arr", None), getattr(grid, "dy_arr", None),
+              getattr(grid, "dz", None))[index]
     if hasattr(grid, "is_traced") and grid.is_traced(axis):
         widths = nominal_cells(grid, axis, padded=True)
         if widths is None or traced_cell_mask(grid, axis) is None:
-            raise TracedStructureRefusal(
-                f"Host widths on traced axis {axis!r} require nominal_profiles= "
-                "with NominalProfile(cells, traced_cells=(i0, i1)).")
+            return stored if store else grid.cells(axis)
         return np.asarray(widths, dtype=np.float32 if store else np.float64)
-    if store and hasattr(grid, "_axis_store"):
-        return np.asarray(grid._axis_store(axis))
+    if store and stored is not None and not np.isscalar(stored):
+        return np.asarray(stored)
     return np.asarray(grid.cells(axis), dtype=np.float64)
 
 

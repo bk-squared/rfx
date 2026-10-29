@@ -188,7 +188,9 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
         length = float(sim._domain[index])
         if hasattr(grid, "dx_arr_f64"):
             from rfx.model.graded_grid import interior_cells
-            widths = host_cells(grid, index)
+            from rfx.model.graded_admission import traced_cell_mask
+            widths = (host_cells(grid, index) if traced_cell_mask(grid, index) is not None
+                      else (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[index])
             cells = interior_cells(widths, getattr(grid, f"pad_{axis}_lo"),
                                    getattr(grid, f"pad_{axis}_hi"))
             n, solved = len(cells), float(sum(cells))

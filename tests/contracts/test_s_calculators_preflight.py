@@ -1,4 +1,5 @@
 """Direct S calculators share run()'s admission; run() admits only once."""
+import inspect
 import sys
 
 import numpy as np
@@ -46,7 +47,7 @@ def _intercept_calculator_grid(monkeypatch, calculator):
     def build(self, *args, **kwargs):
         # Admission and preflight keep their real builds. Intercept only
         # the direct call in the calculator, so a missing preflight goes red.
-        if sys._getframe(1).f_code is calculator.__code__:
+        if sys._getframe(1).f_code is inspect.unwrap(calculator).__code__:
             raise CalculatorGridReached
         return original(self, *args, **kwargs)
 
