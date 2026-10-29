@@ -54,6 +54,7 @@ import jax.numpy as jnp
 
 from rfx._internal._precision import HIGHEST
 from rfx.optimize import _adam_update, _value_and_grad_with_fallback
+from rfx.preflight.realization import release_inspection
 
 
 # ---------------------------------------------------------------------------
@@ -624,6 +625,10 @@ def topology_optimize(
         rho_filtered, _get_beta(n_iterations - 1, beta_schedule),
     )
 
+    # The optimization solves through _forward_from_materials, which never reaches
+    # _dispatch_plan, so it releases the inspection products its preflight cached, as the
+    # calculators that bypass dispatch do.
+    release_inspection(sim)
     return TopologyResult(
         density=final_rho,
         density_projected=rho_projected,
