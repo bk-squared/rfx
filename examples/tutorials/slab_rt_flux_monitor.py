@@ -121,18 +121,19 @@ def build_sim(with_slab: bool) -> Simulation:
     return sim
 
 
-def run_one(with_slab: bool):
+# One fixed record for both runs. The field leaves the reflection plane by
+# step 605 (the record-end guard printed below). A decay stop is not used: in
+# the vacuum run the pulse has left before the drive ends, so the stop's
+# reference is a 1e-9 remainder at the lattice cutoff (about 106 GHz) and the
+# run went to its 50,000-step cap. R and T in 4-14 GHz move by at most 2e-5
+# when the record grows to 2400 or 4800 steps.
+N_STEPS = 1200
+
+
+def run_one(with_slab: bool, n_steps: int = N_STEPS):
     sim = build_sim(with_slab)
     # run() auto-runs preflight; advisories are printed, never suppressed.
-    return sim.run(
-        n_steps=4000,
-        until_decay=1e-3,  # dispersionless slab -> 1e-3 is sufficient
-        # The decay stop fired at step 600, before the field leaves the
-        # reflection plane (step 605, the run's record-end guard printed below).
-        decay_min_steps=800,
-        decay_monitor_component="ez",
-        decay_monitor_position=(TRANS_X, Y_CENTER, 0.0),
-    )
+    return sim.run(n_steps=n_steps)
 
 
 def fresnel_slab_rt(freqs, eps_r, d):
