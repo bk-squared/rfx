@@ -161,12 +161,17 @@ def _memory(mode):
 def _mutate(kind):
     """Process-local fault injection; exiting the child discards the mutation."""
     if kind == "spacing":
-        source = inspect.getsource(nu.run_nonuniform_distributed_pec)
-        source = source.replace(
-            '(inv_dx_sharded, inv_dy_rep, inv_dz_rep,\n         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings',
-            '(_, inv_dy_rep, inv_dz_rep,\n         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings')
+        from rfx.stepping import slab_graded_legacy_loop
+
+        source = inspect.getsource(slab_graded_legacy_loop.run_graded_legacy_slab_loop)
+        new = source.replace(
+            '(inv_dx_sharded, inv_dy_rep, inv_dz_rep,\n         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]',
+            '(_, inv_dy_rep, inv_dz_rep,\n         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]')
+        assert new != source, "mutation target not found: spacing"
+        # Capture the enclosing concrete metric instead of the traced spacing.
+        # The runner imports this function locally on each call.
         # Keep the module globals so the closure gate can instrument jit/scan.
-        exec(source, vars(nu))
+        exec(new, vars(slab_graded_legacy_loop))
     elif kind == "halo":
         original = slab_placement._halo
 
