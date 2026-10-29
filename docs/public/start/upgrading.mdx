@@ -30,7 +30,7 @@ once and names the new one.
 | 1.x | 2.0 |
 |---|---|
 | `compute_s_matrix(lane=...)`, `s_matrix_lane(lane=...)` | `method=...`, with the same values. Passing both raises `TypeError`. |
-| `harminv`, `harminv_from_probe`, `HarminvMode` | `matrix_pencil`, `matrix_pencil_from_probe`, `MatrixPencilMode`: named for the method they implement, with the same arguments and results. The old names are no longer brought in by `from rfx import *`, and `HarminvMode` is a plain alias that does not warn. |
+| `harminv`, `harminv_from_probe`, `HarminvMode` | `matrix_pencil`, `matrix_pencil_from_probe`, `MatrixPencilMode`: named for the method they implement, with the same arguments and results. The old names are available only in the `rfx.harminv` module, and `rfx.harminv.HarminvMode` is a plain alias that does not warn. |
 
 ## Removed
 
