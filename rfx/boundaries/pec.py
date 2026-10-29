@@ -948,6 +948,31 @@ def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
         state, realized_pec_edge_masks(pec_mask, sheets=sheets, periodic=periodic))
 
 
+def undriven_h_masks(frozen, periodic, stencil_order):
+    """H components whose every forward-curl E driver is frozen.
+
+    Non-periodic forward neighbours outside the grid are the zero field
+    supplied by ``_diff_fwd_o``, hence frozen. A Bloch phase preserves zero.
+    """
+    if stencil_order != 2:
+        raise NotImplementedError(
+            f"undriven_h_masks does not support stencil_order={stencil_order}; "
+            "only stencil_order=2 curl drivers are modelled")
+
+    def forward(mask, axis):
+        neighbour = jnp.roll(mask, -1, axis=axis)
+        if not periodic[axis]:
+            edge = [slice(None)] * mask.ndim
+            edge[axis] = -1
+            neighbour = neighbour.at[tuple(edge)].set(True)
+        return neighbour
+
+    fx, fy, fz = frozen
+    return (fz & forward(fz, 1) & fy & forward(fy, 2),
+            fx & forward(fx, 2) & fz & forward(fz, 0),
+            fx & forward(fx, 1) & fy & forward(fy, 0))
+
+
 def apply_pec_h_mask(state, pec_mask=None, *,
                      mask_hx=None, mask_hy=None, mask_hz=None) -> object:
     """Zero H-field components inside PEC cells.

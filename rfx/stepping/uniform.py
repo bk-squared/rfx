@@ -19,6 +19,7 @@ import jax.numpy as jnp
 
 from rfx.core.yee import FDTDState, update_he_fast
 from rfx.boundaries.pec import (
+    PEC_INV_THRESHOLD,
     apply_edge_keep,
     apply_pec_occupancy_box,
 )
@@ -169,39 +170,25 @@ def make_uniform_step(
                 frame.st, frame.cpml_new = ctx.apply_cpml_h(
                     frame.st, ctx.cpml_params, frame.carry["cpml"], grid, ctx.cpml_axes,
                     materials=materials, periodic=periodic)
-            # Stage 2 H damping — applied AFTER CPML-H so CPML cannot
-            # un-zero H at Kottke-frozen PEC cells.  Threshold rather
-            # than ``== 0.0`` so smooth-Kottke (eps_inside = 1e10)
-            # cells (inv ≈ 1e-10 at f=1) are caught alongside exact-PEC
-            # cells (inv = 0 from binary `pec_shapes`).  Smooth-Kottke
-            # path uses ONLY the full-PEC mask (all three inv below
-            # threshold); the pairwise per-component masks would trigger
-            # spuriously at sigmoid-edge cells (where 2 of 3 components
-            # are frozen due to Kottke anisotropy but the cell is
-            # legitimately a partial-fill interface, not full PEC) —
-            # killing wave propagation INTO the stub region.  Binary
-            # Stage 2 path keeps the pairwise masks as before (boundary
-            # cells of binary PEC need the corner-specific H zero).
+            # After CPML-H, intersect the old full-node (smooth) or pairwise
+            # (binary) mask with H whose every curl driver is frozen. This
+            # retains PEC damping while releasing field-driven corner H.
             if ctx.use_aniso_inv:
-                from rfx.boundaries.pec import apply_pec_h_mask
+                from rfx.boundaries.pec import apply_pec_h_mask, undriven_h_masks
                 _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-                _PEC_INV_THRESHOLD = 1e-9
-                _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
-                _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
-                _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
+                _xx0 = (_inv_xx < PEC_INV_THRESHOLD)
+                _yy0 = (_inv_yy < PEC_INV_THRESHOLD)
+                _zz0 = (_inv_zz < PEC_INV_THRESHOLD)
+                undriven = undriven_h_masks(
+                    (_xx0, _yy0, _zz0), periodic, ctx.stencil_order)
                 if ctx.aniso_inv_eps_smooth:
-                    frame.st = apply_pec_h_mask(
-                        frame.st,
-                        pec_mask=_xx0 & _yy0 & _zz0,
-                    )
+                    old = (_xx0 & _yy0 & _zz0,) * 3
                 else:
-                    frame.st = apply_pec_h_mask(
-                        frame.st,
-                        pec_mask=_xx0 & _yy0 & _zz0,
-                        mask_hx=_yy0 & _zz0,
-                        mask_hy=_xx0 & _zz0,
-                        mask_hz=_xx0 & _yy0,
-                    )
+                    old = (_yy0 & _zz0, _xx0 & _zz0, _xx0 & _yy0)
+                zero_hx, zero_hy, zero_hz = tuple(
+                    mask & u for mask, u in zip(old, undriven))
+                frame.st = apply_pec_h_mask(
+                    frame.st, mask_hx=zero_hx, mask_hy=zero_hy, mask_hz=zero_hz)
             if ctx.use_tfsf:
                 if ctx.tfsf_is_2d:
                     frame.tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, frame.carry["tfsf"], dx, dt)
@@ -312,11 +299,10 @@ def make_uniform_step(
             # boundary condition is not violated.
             if ctx.use_aniso_inv:
                 _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
-                _PEC_INV_THRESHOLD = 1e-9
                 frame.st = frame.st._replace(
-                    ex=jnp.where(_inv_xx_r < _PEC_INV_THRESHOLD, 0.0, frame.st.ex),
-                    ey=jnp.where(_inv_yy_r < _PEC_INV_THRESHOLD, 0.0, frame.st.ey),
-                    ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, frame.st.ez),
+                    ex=jnp.where(_inv_xx_r < PEC_INV_THRESHOLD, 0.0, frame.st.ex),
+                    ey=jnp.where(_inv_yy_r < PEC_INV_THRESHOLD, 0.0, frame.st.ey),
+                    ez=jnp.where(_inv_zz_r < PEC_INV_THRESHOLD, 0.0, frame.st.ez),
                 )
 
             if ctx.use_conformal and not ctx.use_aniso_inv:
