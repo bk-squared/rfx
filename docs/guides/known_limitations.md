@@ -214,13 +214,12 @@ Tracker: #1632
 ### Conformal PEC makes a curved metal body electrically larger, and is less accurate than the staircase.
 
 `conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
-with w the edge's open fraction (down to 0.1); only edges with w = 0 are metal. The cut cells become a high-permittivity
+with w = 0.5 + (signed distance from the surface at the edge's midpoint) / dx, clipped to [0, 1] and raised to 0.1 where it is above 0 (not the edge's open fraction: the two differ by up to 0.5); only edges with w = 0 are metal. The cut cells become a high-permittivity
 skin about one cell thick, which makes the body electrically larger. On a PEC sphere against Mie, its extinction and
 backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). Measured on main 7d332abff with a PEC sphere (radius 9 mm, plane wave 8-12 GHz, cells 0.75 / 0.5 / 0.375 mm), the extinction fitted against Mie reads a sphere larger by 1.15 / 1.08 / 1.04 cells with conformal PEC against 0.69 / 0.74 / 0.70 cells with the staircase, both falling first order in the cell size; 70-73 % of the conformal excess comes from the eps/w on cut edges whose midpoint lies inside the declared surface (eps 2 to 10), and a user gets it only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns conformal PEC on for every PEC body in that run (the default is the staircase). A run with conformal PEC warns. Conformal PEC together with
-`subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until the Dey-Mittra update (cut H-face areas)
-lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
+`subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until a fix lands (planned for 2.1), use the staircase and judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
-`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field near 1e-2 of the peak that does not decay (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
+`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
