@@ -10,6 +10,7 @@ from rfx.errors import AccuracyWarning, RfxUnsupported
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._internal._precision import resolve_field_dtype
+from rfx.preflight.realization import release_inspection
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes
@@ -514,7 +515,7 @@ def compute_waveguide_s_matrix(
             sigma_override=sigma_override,
             checkpoint_segments=checkpoint_segments,
         )
-        return _finalize_sparam_result(
+        completed = _finalize_sparam_result(
             _res_nu,
             extractor="compute_waveguide_s_matrix",
             strict=strict_passivity,
@@ -525,6 +526,8 @@ def compute_waveguide_s_matrix(
             # (|S11|>>1); reference subtraction / flux use the tighter bound.
             passivity_tol=2.0 if normalize is False else 0.10,
         )
+        release_inspection(self)
+        return completed
 
     # This extractor assembles volume materials directly, without the
     # run()/forward() RLC folding or element updates (#1263).
@@ -916,13 +919,15 @@ def compute_waveguide_s_matrix(
             reference_planes=reference_planes,
             settling_db=settling_db_mm, settling_witness=tuple(settling_details_mm),
         )
-        return _finalize_sparam_result(
+        completed = _finalize_sparam_result(
             _res_mm,
             extractor="compute_waveguide_s_matrix",
             strict=strict_passivity,
             check_reciprocity=True,
             passivity_tol=2.0 if normalize is False else 0.10,
         )
+        release_inspection(self)
+        return completed
 
     # Single-mode path (original behavior)
     cfgs = raw_cfgs
@@ -1102,13 +1107,15 @@ def compute_waveguide_s_matrix(
         s21_phase_residual_deg_rms=_ph_rms,
         s21_phase_residual_meta=_ph_meta,
     )
-    return _finalize_sparam_result(
+    completed = _finalize_sparam_result(
         _res_sm,
         extractor="compute_waveguide_s_matrix",
         strict=strict_passivity,
         check_reciprocity=True,
         passivity_tol=2.0 if normalize is False else 0.10,
     )
+    release_inspection(self)
+    return completed
 
 
 def _reference_medium(cfgs, normalize):

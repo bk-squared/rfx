@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from rfx.errors import AccuracyWarning
 from rfx._internal._precision import resolve_field_dtype
+from rfx.preflight.realization import release_inspection
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
@@ -460,7 +461,7 @@ def compute_coaxial_line_reflection(
         status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
         s11 = jnp.stack(s11_c)
         warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
-        return CoaxialLineReflectionResult(
+        completed = CoaxialLineReflectionResult(
             s11=s11,
             freqs=jnp.asarray(freqs),
             gamma=jnp.stack(gamma_c),
@@ -471,6 +472,8 @@ def compute_coaxial_line_reflection(
             termination=termination,
             status=status,
         )
+        release_inspection(self)
+        return completed
 
     # --- concrete path: NumPy (byte-identical to the validated result) ---
     v_by_plane = []
@@ -509,7 +512,7 @@ def compute_coaxial_line_reflection(
         status = "passed"
 
     warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
-    return CoaxialLineReflectionResult(
+    completed = CoaxialLineReflectionResult(
         s11=s11,
         freqs=np.asarray(freqs, dtype=float),
         gamma=gamma,
@@ -520,6 +523,8 @@ def compute_coaxial_line_reflection(
         termination=termination,
         status=status,
     )
+    release_inspection(self)
+    return completed
 
 def compute_coaxial_two_port(
     self,
@@ -1092,11 +1097,13 @@ def compute_coaxial_two_port(
         settling_db, ("port1", "port2"), n_steps=int(n_steps),
         witnesses=None if _traced_eps else settling_details,
     )
-    return _finalize_sparam_result(
+    completed = _finalize_sparam_result(
         result_obj,
         extractor="compute_coaxial_two_port",
         strict=strict_passivity,
     )
+    release_inspection(self)
+    return completed
 
 
 # Appended to the shared passivity guard's message when THIS lane refuses, so
@@ -2079,11 +2086,13 @@ def compute_coax_msl_transition(
         settling_db, ("coax", "msl"), n_steps=int(n_steps), witnesses=settling_details,
     )
     try:
-        return _finalize_sparam_result(
+        completed = _finalize_sparam_result(
             result_obj,
             extractor="compute_coax_msl_transition",
             strict=strict_passivity,
         )
+        release_inspection(self)
+        return completed
     except ValueError as exc:
         # Lane-local, on purpose. _finalize_sparam_result's message is shared
         # by five extractors and tells the reader to inspect the V/I dump --
