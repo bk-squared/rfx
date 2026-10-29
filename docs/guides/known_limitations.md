@@ -535,7 +535,7 @@ Tracker: none — accepted limitation (refused at default: tests/unit/sparams/te
 Uniform and graded run/forward place the wall on the declared E-node face.
 The multi-device runners take a magnetic face through the same single-device
 image (#1761). There, wire ports and lumped-port S-parameters refuse it, and on
-the graded mesh so do DFT planes, flux monitors, snapshots and current moments.
+the graded mesh so do every port, DFT planes, flux monitors, snapshots and current moments.
 Subgridded and ADI paths refuse magnetic faces (the `pmc_face` row of
 `tests/contracts/path_disposition.py`; the graded multi-device records:
 `tests/contracts/test_distributed_graded_pmc_records.py`).
