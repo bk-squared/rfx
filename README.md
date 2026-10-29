@@ -99,8 +99,7 @@ or an agreeing automatic/finite-difference gradient is not a convergence study.
 The [accuracy guide](https://remilab.ai/rfx/guide/validation/) explains the checks;
 [benchmarks](https://remilab.ai/rfx/guide/benchmarks/) link results to their scope.
 
-Contributor workflow and repository navigation live in
-[Working on rfx](https://github.com/bk-squared/rfx/blob/main/docs/agent/working-on-rfx.mdx) and the [repo map](https://github.com/bk-squared/rfx/blob/main/docs/agent/repo-map.mdx).
+To change rfx itself, read [Contributing to rfx](https://github.com/bk-squared/rfx/blob/main/docs/public/project/contributing.md).
 Release changes are in [CHANGELOG.md](https://github.com/bk-squared/rfx/blob/main/CHANGELOG.md).
 
 ## Citation
