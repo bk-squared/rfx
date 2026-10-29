@@ -80,18 +80,21 @@ def sc_clamp(lengths, areas):
     return tuple(result)
 
 
-def _refuse_off_lattice_sheet(sheet, lines, widths):
-    """A sheet has no PEC interior to cut, so only its staircase plane exists."""
-    for axis, (line, width) in enumerate(zip(lines, widths)):
-        for value in (sheet.corner_lo[axis], sheet.corner_hi[axis]):
+def _refuse_off_lattice_box(box, lattice, widths, what):
+    """A Box with no node inside gives the cut cells nothing; only its staircase faces exist."""
+    for axis, ((line, period), width) in enumerate(zip(lattice, widths)):
+        if line is None:
+            continue
+        for value in (box.corner_lo[axis], box.corner_hi[axis]):
+            value = value % period if period else value
             if not line[0] < value < line[-1]:
                 continue
             offset = np.min(np.abs(line - value)) / width
             if offset > 1e-6:
                 raise NotImplementedError(
-                    f'conformal PEC places PEC volumes only; this zero-thickness sheet has a {"xyz"[axis]} '
-                    f'coordinate {offset:.3g} cell off the node lattice and would stay at its staircase '
-                    'position; move the sheet onto node planes, give it thickness, or use conformal_pec=False')
+                    f'conformal PEC places PEC volumes that hold a grid node; {what} has a {"xyz"[axis]} '
+                    f'face {offset:.3g} cell off the node lattice and would stay at its staircase position; '
+                    'move it onto node planes, refine the mesh, or use conformal_pec=False')
 
 
 def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
@@ -99,7 +102,7 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
     if not pec_shapes:
         ones = (jnp.ones(grid.shape, dtype=jnp.float32),) * 3
         return ones, ones
-    lines, widths = [], []
+    lines, widths, lattice = [], [], []
     for axis in range(3):
         cells = np.asarray(grid.cells(axis), dtype=np.float64)
         if not np.all(cells == cells[0]):
@@ -107,9 +110,12 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
         width = float(cells[0])
         nodes = _axis_node_positions(cells, getattr(grid, f'pad_{"xyz"[axis]}_lo'))
         line = np.concatenate(([nodes[0] - width], nodes, [nodes[-1] + width]))
+        lattice.append((line, None))
         if axis == 2 and getattr(grid, 'is_2d', False):
             line = np.full_like(line, nodes[0])  # The collapsed lane repeats its physical slice.
+            lattice[-1] = (None, None)
         elif 'xyz'[axis] in getattr(grid, 'periodic_axes', ''):
+            lattice[-1] = (line, float(grid.domain[axis]))
             line = np.mod(line, float(grid.domain[axis]))
         lines.append(line)
         widths.append(width)
@@ -123,13 +129,16 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
             continue  # A sub-cell filament reaches the step through its own wire edges.
         sheet = shape.declared if isinstance(shape, _ContinuedSheetShape) else shape
         if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
-            _refuse_off_lattice_sheet(sheet, lines, widths)
+            _refuse_off_lattice_box(sheet, lattice, widths, 'this zero-thickness sheet')
             continue  # A zero-thickness Box on the node lattice is exact through its own edge masks.
         if fn is None:
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
         shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
-        if not np.any(shape_sdf <= 1e-9 * min(widths)) and np.min(shape_sdf) < max(widths):
+        if not np.any(shape_sdf < -1e-9 * min(widths)) and np.min(shape_sdf) < max(widths):
+            if isinstance(sheet, Box):  # On node planes its staircase faces are exact.
+                _refuse_off_lattice_box(sheet, lattice, widths, 'this PEC Box')
+                continue
             raise NotImplementedError(
                 f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
                 'operands would drop it; refine the mesh or use the staircase')
