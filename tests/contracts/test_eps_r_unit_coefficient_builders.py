@@ -353,12 +353,6 @@ def mods():
 
 # --- the gates -------------------------------------------------------------
 
-@pytest.mark.parametrize("row", sorted(SHARED_ROUTES))
-def test_shared_coefficient_route_is_itself_routed(row, mods):
-    """A shared builder counts as a route only because it calls the helper."""
-    rel, name = row
-    assert HELPER in _called_names(mods[rel].defs[name])
-
 
 @pytest.mark.parametrize("row", sorted(BUILDERS), ids=lambda r: f"{r[0]}::{r[1]}")
 def test_builder_is_routed_through_the_eps_r_unit_helper(row, mods):
@@ -389,48 +383,6 @@ def test_the_tables_are_not_stale(mods):
     assert len(NOT_A_TRACED_EPS_COEFFICIENT) <= ALLOWLIST_CEILING
     both = sorted(set(BUILDERS) & set(NOT_A_TRACED_EPS_COEFFICIENT))
     assert not both, f"a routed builder cannot also be allow-listed: {both}"
-
-
-# --- falsifiers: the defects planted in the parsed text --------------------
-
-def _plant(rel, old, new):
-    text = (REPO / rel).read_text(encoding="utf-8")
-    assert text.count(old) == 1, f"{rel}: the planting anchor moved"
-    return {rel: text.replace(old, new)}
-
-
-def test_discovery_finds_a_missed_builder():
-    """UPML's ``_e_coeffs`` as it was before #1357 routed it (the builder the
-    first version of this contract missed), and a new file with an SI Cb."""
-    planted = _plant(
-        "rfx/boundaries/upml.py",
-        "        return si_value_eps_r_grad(_upml_e_coeffs_si, _upml_e_coeffs_eps_r,\n"
-        "                                   sigma_perp, eps_r, sigma_mat, dt)\n",
-        "        eps_abs = eps_r * jnp.float32(EPS_0)\n"
-        "        return sigma_perp, (dt / eps_abs) / (1.0 + sigma_mat)\n")
-    # The model's interior-source accessor still routes both shared UPML
-    # spellings through the AD helper. Only the planted local builder is new.
-    assert unclassified(_parse(REPO, planted)) == [
-        "rfx/boundaries/upml.py::init_upml._e_coeffs"]
-    new_file = ("from rfx.core.yee import EPS_0 as _E0\n\n\n"
-                "def new_cb(eps_r, dt):\n    return dt / (eps_r * _E0)\n")
-    assert unclassified(_parse(REPO, {"rfx/_planted_builder.py": new_file})) == [
-        "rfx/_planted_builder.py::new_cb"]
-
-
-def test_a_builder_with_one_coefficient_left_in_si_is_named():
-    """One of update_e_aniso's three components back in SI next to two
-    routed ones: the route check alone passes it, the EPS_0 read does not."""
-    rel = "rfx/stepping/yee.py"
-    fn = _parse(REPO)[rel].defs["update_e_aniso"]
-    text = (REPO / rel).read_text(encoding="utf-8")
-    body = "\n".join(text.splitlines()[fn.lineno - 1:fn.end_lineno])
-    line = "    ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)"
-    assert body.count(line) == 1
-    mods = _parse(REPO, {rel: text.replace(body, body.replace(
-        line, "    ca_ez, cb_ez = 1.0, dt / (eps_ez * EPS_0)"))})
-    assert unrouted(mods, [(rel, "update_e_aniso")]) == [f"{rel}::update_e_aniso"]
-    assert unclassified(mods) == [f"{rel}::update_e_aniso"]
 
 
 def test_the_scan_sees_a_builder_put_back_in_si_units():

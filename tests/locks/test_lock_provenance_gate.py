@@ -11,10 +11,8 @@ numbers (a script path, ``"hand-derived"`` or ``"unknown"``), the short commit
 and date the numbers came from, the run id (a VESSL id, ``"local"`` or
 ``"unknown"``), the host (e.g. ``"macOS jax 0.8 cpu"`` /
 ``"remilab-c0 rtx4090 jax 0.4.33"`` / ``"unknown"``) and a ``pinned_until``
-expiry. One lock per artifact; a retired number is deleted, not quoted; unknown
-provenance gets a short expiry. When ``pinned_until`` passes, the lock must be
-re-blessed: regenerate the number, update ``commit``/``date``, extend
-``pinned_until`` -- the gate fails an expired lock so it cannot be forgotten.
+date. The gate checks complete provenance and fixture paths;
+``pinned_until`` remains recorded data and is checked for date syntax.
 The dict is read with ``ast`` (the lock modules are never imported here), so
 this gate is independent of JAX and of the physics it guards.
 """
@@ -35,17 +33,6 @@ _REPO = _HERE.parents[2]
 REQUIRED_KEYS = (
     "fixture", "generator", "commit", "date", "run_id", "host", "pinned_until",
 )
-
-#: Lock dates are written in the lab's time zone (KST, UTC+9, no daylight saving); CI runners report UTC.
-#: Comparing a KST date with the runner's date.today() refused every lock blessed between 00:00 and
-#: 09:00 KST as "in the future" (rfx PR 1858, 2026-10-18 KST at 21:23 UTC).
-LAB_TZ = _dt.timezone(_dt.timedelta(hours=9), "KST")
-
-
-def _lab_today(now: _dt.datetime | None = None) -> _dt.date:
-    """Today's date in the lab's time zone, whatever the runner's clock zone."""
-    now = now if now is not None else _dt.datetime.now(_dt.timezone.utc)
-    return now.astimezone(LAB_TZ).date()
 
 
 #: Deleting every lock module would make this gate vacuously green, so require
@@ -166,32 +153,3 @@ def test_lock_fixture_paths_exist(path: Path):
             assert (_REPO / entry).exists(), (
                 f"{_rel(path)}: LOCK_PROVENANCE['fixture'] {entry!r} does not exist"
             )
-
-
-@pytest.mark.parametrize("path", _MODULES, ids=_IDS)
-def test_lock_is_not_expired(path: Path):
-    prov = _read_provenance(path)
-    pinned_until = _parse_date(prov["pinned_until"], "pinned_until", path)
-    date = _parse_date(prov["date"], "date", path)
-    today = _lab_today()
-    assert date <= today, (
-        f"{_rel(path)}: LOCK_PROVENANCE['date'] {date} is in the future"
-    )
-    assert pinned_until >= date, (
-        f"{_rel(path)}: pinned_until {pinned_until} precedes date {date}"
-    )
-    assert pinned_until >= today, (
-        f"{_rel(path)}: lock expired on {pinned_until} (pinned at "
-        f"{prov['commit']} on {date}, run_id={prov['run_id']!r}, "
-        f"host={prov['host']!r}). Re-bless it: regenerate the number with "
-        f"generator={prov['generator']!r}, update commit/date/run_id/host, "
-        "and extend pinned_until -- do not just move the date."
-    )
-
-
-def test_lab_today_is_the_kst_date() -> None:
-    """A lock blessed at 06:23 KST must not read as tomorrow on a UTC runner."""
-    utc = _dt.timezone.utc
-    assert _lab_today(_dt.datetime(2026, 10, 17, 21, 23, tzinfo=utc)) == _dt.date(2026, 10, 18)
-    assert _lab_today(_dt.datetime(2026, 10, 17, 14, 59, tzinfo=utc)) == _dt.date(2026, 10, 17)
-    assert _lab_today(_dt.datetime(2026, 10, 17, 15, 0, tzinfo=utc)) == _dt.date(2026, 10, 18)

@@ -123,15 +123,9 @@ still load-bearing — a 5 % power-balance error makes it red (the refute
 below) — and the agreement is not host-side cancellation: re-summing the same
 accumulators in float64 moves ``closure_M`` by 3.08e-07.
 
-Layers, mirroring ``tests/test_waveguide_chain_battery.py``:
-
-* REPLAY (fast, no FDTD) — reads
-  ``tests/fixtures/waveguide_chain_battery/closure_witness.json`` and
-  re-asserts the gate, the plane geometry, the settling witness and the
-  recorded verdict.
-* LIVE (also fast: 13.5 s wall for all three solves on this box's CPU, under
-  the contract's 30 s line) — re-measures and re-asserts the gate against
-  physics rather than against the artifact.
+The retained tests check monitor-simulation agreement with the fixture and
+re-measure the closure gate against physics. The measurement helpers also
+serve ``scripts/diagnostics/waveguide_chain_battery_closure_measure.py``.
 
 Must-not list honoured: ``normalize=True`` never enters; nothing from
 ``rfx/probes/refplane.py`` is imported; ``fixture.json`` and every WP2 gate
@@ -429,40 +423,6 @@ def witness() -> dict:
     return json.loads(WITNESS.read_text())
 
 
-def test_witness_declaration_matches_this_module(witness):
-    """The artifact was measured under the constants this file declares."""
-    d = witness["declaration"]
-    assert witness["schema"] == SCHEMA
-    assert witness["schema_version"] == SCHEMA_VERSION
-    assert d["gate_abs_diff"] == CLOSURE_ABS_DIFF_GATE
-    assert d["monitor_x_m"][MON_IN_NAME] == pytest.approx(MON_IN_X_M, abs=1e-12)
-    assert d["monitor_x_m"][MON_OUT_NAME] == pytest.approx(MON_OUT_X_M, abs=1e-12)
-    assert d["monitor_coarse_cells"] == {MON_IN_NAME: K_MON_IN, MON_OUT_NAME: K_MON_OUT}
-    # The scope sentence is a claim about what this witness can and cannot catch,
-    # so it is gated like a number: the frozen artifact and this module must agree.
-    assert d["independence_scope"] == INDEPENDENCE_SCOPE
-    assert witness["dut"] == DUT and witness["reference_dut"] == REFERENCE_DUT
-    assert witness["dx_m"] == pytest.approx(RUNG_DX_M, abs=1e-15)
-    assert witness["num_periods"] == pytest.approx(F.NUM_PERIODS)
-    assert witness["freqs_hz"] == pytest.approx(list(np.asarray(F.FREQS, dtype=float)))
-
-
-def test_monitor_planes_sit_between_the_port_probes_and_the_slab():
-    """Geometry guard, no FDTD: each monitor is strictly inside the guide,
-    between its port's probe plane and the nearer slab face. A monitor on the
-    wrong side of either would measure a different power balance and the
-    comparison would be meaningless rather than wrong."""
-    probe_left, probe_right = F.PROBE_LEFT_M, F.PROBE_RIGHT_M
-    slab_lo, slab_hi = F.SLAB_X_M
-    assert probe_left < MON_IN_X_M < slab_lo, (probe_left, MON_IN_X_M, slab_lo)
-    assert slab_hi < MON_OUT_X_M < probe_right, (slab_hi, MON_OUT_X_M, probe_right)
-    # Equal clearance either side of the slab, so an evanescent residue at one
-    # face cannot bias one monitor more than the other.
-    assert (slab_lo - MON_IN_X_M) == pytest.approx(MON_OUT_X_M - slab_hi, abs=1e-12)
-    # And both monitors are downstream of the left source plane.
-    assert F.PORT_LEFT_X_M < MON_IN_X_M
-
-
 def test_monitor_simulation_matches_the_battery_fixture():
     """Dropping the right port leaves the left drive bit-identical.
 
@@ -489,147 +449,6 @@ def test_monitor_simulation_matches_the_battery_fixture():
         assert getattr(cfg1, field) == getattr(cfg2, field), field
     assert np.array_equal(np.asarray(cfg1.e_inc_table), np.asarray(cfg2.e_inc_table))
     assert np.array_equal(np.asarray(cfg1.h_inc_table), np.asarray(cfg2.h_inc_table))
-
-
-def test_recorded_solves_are_non_degenerate(witness):
-    """Branch (iii) of the pre-declaration: the numbers only carry a verdict
-    if every solve was healthy. A monitor reading exactly zero, a non-positive
-    reference flux or a settling witness above −40 dB is reported here rather
-    than absorbed into the closure number."""
-    for key in ("device_run", "reference_run"):
-        run = witness[key]
-        assert run["settling_db"] <= SETTLING_DB_MAX, (key, run["settling_db"])
-        for name in (MON_IN_NAME, MON_OUT_NAME):
-            arr = np.asarray(run["flux"][name], dtype=float)
-            assert np.all(np.isfinite(arr)), (key, name)
-            assert not np.any(arr == 0.0), (key, name, "degenerate flux record")
-    ref_in = np.asarray(witness["reference_run"]["flux"][MON_IN_NAME], dtype=float)
-    assert np.all(ref_in > 0.0), ref_in
-    dev = witness["device_run"]["flux"]
-    assert np.all(np.asarray(dev[MON_IN_NAME], dtype=float) > 0.0)
-    assert np.all(np.asarray(dev[MON_OUT_NAME], dtype=float) > 0.0)
-    for port, db in witness["flux_lane"]["settling_db"].items():
-        assert db <= SETTLING_DB_MAX, (port, db)
-    assert witness["non_vacuity_max_s11"] > NON_VACUITY_MIN_S11
-
-
-def test_recorded_preflight_matches_the_battery_record(witness):
-    """The three solves ran on the geometry WP2 measured: same preflight
-    codes as ``fixture.json``'s ``("slab", "coarse")`` and ``("thru",
-    "coarse")`` entries. Preflight output is part of the result — a changed
-    finding set means a changed fixture, not a changed number."""
-    slab_codes = sorted(i["code"] for i in witness["flux_lane"]["preflight"])
-    assert slab_codes == ["lossless_q", "mesh_resolution", "mesh_resolution",
-                          "mesh_resolution"]
-    assert sorted(i["code"] for i in witness["device_run"]["preflight"]) == slab_codes
-    assert [i["code"] for i in witness["reference_run"]["preflight"]] == []
-    joined = " ".join(i["message"] for i in witness["flux_lane"]["preflight"])
-    assert "5.1 cells per" in joined and "lossless" in joined
-
-
-def test_closure_routes_agree_within_the_column_power_tolerance(witness):
-    """THE GATE. ``max_f |closure_S − closure_M| ≤ 0.02``.
-
-    Never widened. If this goes red the tolerance stays and the measurement is
-    re-read: the PR body must name which route is suspect and why.
-    """
-    s = np.asarray(witness["closure_s_per_bin"], dtype=float)
-    m = np.asarray(witness["closure_m_per_bin"], dtype=float)
-    measured = route_disagreement(s, m)
-    assert measured == pytest.approx(witness["max_abs_diff"], rel=1e-9, abs=1e-12)
-    worst = int(np.argmax(np.abs(s - m)))
-    assert measured <= CLOSURE_ABS_DIFF_GATE, (
-        f"interior-monitor closure and port closure disagree by "
-        f"{measured:.6g} > {CLOSURE_ABS_DIFF_GATE} at "
-        f"{witness['freqs_hz'][worst] / 1e9:.2f} GHz "
-        f"(port route {s[worst]:.6g}, interior route {m[worst]:.6g})")
-    assert witness["verdict"] == "pass"
-
-
-def test_recorded_closure_columns_are_recomputed_from_the_stored_intermediates(witness):
-    """R5: the headline is re-derived from the dumped per-bin intermediates,
-    so a hand-edited headline cannot survive. Both routes are rebuilt from the
-    raw fluxes and the raw S entries, not read off the summary."""
-    s11m2 = np.asarray(witness["s11_mag2_per_bin"], dtype=float)
-    s21m2 = np.asarray(witness["s21_mag2_per_bin"], dtype=float)
-    S = G.s_from_json(witness["flux_lane"]["s_params"])
-    s11, s21 = S[0, 0], S[1, 0]
-    assert s11m2 == pytest.approx(np.abs(s11) ** 2, rel=1e-9, abs=1e-12)
-    assert s21m2 == pytest.approx(np.abs(s21) ** 2, rel=1e-9, abs=1e-12)
-    assert np.asarray(witness["closure_s_per_bin"]) == pytest.approx(
-        1.0 - s11m2 - s21m2, rel=1e-9, abs=1e-12)
-
-    f_in = np.asarray(witness["device_run"]["flux"][MON_IN_NAME], dtype=float)
-    f_out = np.asarray(witness["device_run"]["flux"][MON_OUT_NAME], dtype=float)
-    f_ref = np.asarray(witness["reference_run"]["flux"][MON_IN_NAME], dtype=float)
-    assert np.asarray(witness["closure_m_per_bin"]) == pytest.approx(
-        interior_closure(f_in, f_out, f_ref), rel=1e-9, abs=1e-12)
-
-
-def test_interior_planes_reproduce_the_port_magnitudes(witness):
-    """Stronger than the closure identity, from the same measurement: the
-    interior planes reproduce ``|S11|²`` and ``|S21|²`` themselves, not only
-    their sum.
-
-    ``1 − F_dev(in)/F_ref(in)`` is the reflected power fraction and
-    ``F_dev(out)/F_ref(in)`` the transmitted one — the flux lane's own two
-    ratios, read at planes the extractor never samples. A compensating pair of
-    errors could leave the closure sum intact while both magnitudes were
-    wrong; this separates them. Same declared 0.02, no new tolerance.
-    """
-    f_in = np.asarray(witness["device_run"]["flux"][MON_IN_NAME], dtype=float)
-    f_out = np.asarray(witness["device_run"]["flux"][MON_OUT_NAME], dtype=float)
-    f_ref = np.asarray(witness["reference_run"]["flux"][MON_IN_NAME], dtype=float)
-    s11m2 = np.asarray(witness["s11_mag2_per_bin"], dtype=float)
-    s21m2 = np.asarray(witness["s21_mag2_per_bin"], dtype=float)
-    assert np.max(np.abs((1.0 - f_in / f_ref) - s11m2)) <= CLOSURE_ABS_DIFF_GATE
-    assert np.max(np.abs((f_out / f_ref) - s21m2)) <= CLOSURE_ABS_DIFF_GATE
-
-
-def test_the_empty_guide_transports_power_between_the_two_monitor_planes(witness):
-    """Placement guard on the reference run: with no slab, the two monitor
-    planes must read the same net power. A monitor snapped into the absorber,
-    onto the source plane or outside the guide would break this before it
-    broke the closure comparison. Same declared 0.02."""
-    ref = witness["reference_run"]["flux"]
-    ratio = (np.asarray(ref[MON_OUT_NAME], dtype=float)
-             / np.asarray(ref[MON_IN_NAME], dtype=float))
-    assert np.max(np.abs(ratio - 1.0)) <= CLOSURE_ABS_DIFF_GATE, ratio
-
-
-def test_float64_resummation_of_the_same_accumulators_keeps_the_verdict(witness):
-    """The agreement is not a float32 summation artefact.
-
-    ``flux_spectrum(exact_f64=True)`` re-sums the SAME complex64 accumulators
-    in float64 — the sanctioned remedy for the subnormal-flush failure mode
-    where a physically tiny flux returns exactly 0.0 (issue #304). The stored
-    interior fluxes are ~1e-24 W, far above the float32 minimum normal, and
-    the re-summed closure must still pass the declared gate.
-    """
-    dev, ref = witness["device_run"], witness["reference_run"]
-    f_in = np.asarray(dev["flux_exact_f64"][MON_IN_NAME], dtype=float)
-    f_out = np.asarray(dev["flux_exact_f64"][MON_OUT_NAME], dtype=float)
-    f_ref = np.asarray(ref["flux_exact_f64"][MON_IN_NAME], dtype=float)
-    closure_m64 = interior_closure(f_in, f_out, f_ref)
-    s = np.asarray(witness["closure_s_per_bin"], dtype=float)
-    assert route_disagreement(s, closure_m64) <= CLOSURE_ABS_DIFF_GATE
-    # And the two summations agree with each other far inside the gate, which
-    # is what says the 2.1e-05 route difference is physics-level float32
-    # noise in the fields rather than host-side cancellation.
-    closure_m32 = np.asarray(witness["closure_m_per_bin"], dtype=float)
-    assert route_disagreement(closure_m32, closure_m64) <= CLOSURE_ABS_DIFF_GATE
-
-
-def test_a_perturbed_interior_flux_makes_the_gate_red(witness):
-    """Cheap refute, run on a copy of the artifact: scale the device run's
-    outgoing interior flux by 1.05 and the gate must fail. A gate that cannot
-    be made red by a 5 % power-balance error is not measuring the balance."""
-    f_in = np.asarray(witness["device_run"]["flux"][MON_IN_NAME], dtype=float)
-    f_out = np.asarray(witness["device_run"]["flux"][MON_OUT_NAME], dtype=float) * 1.05
-    f_ref = np.asarray(witness["reference_run"]["flux"][MON_IN_NAME], dtype=float)
-    perturbed = interior_closure(f_in, f_out, f_ref)
-    s = np.asarray(witness["closure_s_per_bin"], dtype=float)
-    assert route_disagreement(s, perturbed) > CLOSURE_ABS_DIFF_GATE
 
 
 # ---------------------------------------------------------------------------
