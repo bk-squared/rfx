@@ -88,6 +88,7 @@ def test_diagnostics_exits_successfully(capsys):
     assert "Summary: All critical checks passed." in capsys.readouterr().out
 
 
+@pytest.mark.source_scan
 def test_project_scripts_resolve_to_callables():
     project = Path(__file__).resolve().parents[3] / "pyproject.toml"
     with project.open("rb") as config:
