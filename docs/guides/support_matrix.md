@@ -115,14 +115,9 @@ wavenumber error is 3.5e-4 to 7.9e-4 at 30° and 9e-5 to 2.1e-4 at
 it by 4. The amplitude is 0.1–0.5 % below the normal-incidence box of the same
 declaration on 1 mm cells, also falling 4× with half the cell. Cross-polarization
 stays below 1e-6, and the scattered-field leak stays at float32 rounding
-(`tests/unit/sources/test_tfsf_discrete_plane_wave.py`). With an NTFF box one
-case is measured: the monostatic RCS of a square PEC trihedral corner
-reflector (edge 120 mm, three thin-conductor sheets, incidence along
-−(1,1,1)/√3, 5–15 GHz). It converges at second order over 1.00, 0.665 and
-0.500 mm cells and agrees with an independent integral-equation solution within
-0.10 dB on every grid (record kept with the project, no committed test). Not
-covered: DFT-plane and flux readings with an oblique box (admitted, not
-measured), other bodies, and an incident spectrum.
+(`tests/unit/sources/test_tfsf_discrete_plane_wave.py`). Not covered: NTFF,
+DFT-plane and flux readings with an oblique box (admitted, not measured here),
+and an incident spectrum.
 `measure_normal_incident_spectrum` refuses an oblique box, so normalize by an
 empty-box run.
 
