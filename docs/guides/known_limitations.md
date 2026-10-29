@@ -423,8 +423,9 @@ closed-form line of the declared substrate permittivity. When the override chang
 that shift no longer matches the solved line. On a 20 mm line on a 0.8 mm substrate, with 4 mm from each feed plane to its
 first probe and εr 2.20 declared but 2.42 solved, the S21 phase is off by 0.02 rad at 2 GHz to 0.10 rad at 10 GHz, |S11|
 by up to 0.05, and d(arg S21)/dεr comes out at 64 to 66 % of the correct value; |S21| is within 0.003. Only that
-feed-to-probe distance and the uniform mesh were run. Declare the substrate at the permittivity the override sets under
-the port lines, or keep the override away from the port lines.
+feed-to-probe distance and the uniform mesh were run. Workaround for the value: declare the substrate at the
+permittivity the override sets under the port lines. The gradient still omits the plane term until the fix; keep the
+override away from the port lines when the gradient matters.
 
 ## Ring-down completion and the early stop
 
