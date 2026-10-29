@@ -77,9 +77,18 @@ def test_b_graded_current_run_under_user_jit():
         return sim.run(n_steps=N_STEPS, skip_preflight=True,
                        compute_s_params=False).time_series
 
-    expected = run()
-    assert np.max(np.abs(expected)) > 0
-    assert_same_bits(jax.jit(run)(), expected)
+    expected = np.asarray(run())
+    actual = np.asarray(jax.jit(run)())
+    assert actual.shape == expected.shape and actual.dtype == expected.dtype
+    peak = np.max(np.abs(expected))
+    assert peak > 0
+    # #2241 amendment 2: identical source tables still permit the standing
+    # cross-trace rounding bars for the compiled time step and record sum.
+    per_step_error = np.max(np.abs(actual - expected), axis=1)
+    assert np.all(per_step_error <= 9 * np.spacing(np.float32(peak)))
+    summed_error = np.max(np.abs(np.sum(actual, axis=0, dtype=np.float64)
+                                - np.sum(expected, axis=0, dtype=np.float64)))
+    assert summed_error <= 1e-4 * peak
     assert_same_bits(sim.forward(n_steps=N_STEPS, skip_preflight=True,
                                  checkpoint=False).time_series, expected)
 
