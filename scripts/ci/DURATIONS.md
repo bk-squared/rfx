@@ -486,6 +486,12 @@ measurements in the weekly file using the procedure above.
    "Runner CPU" step and multiply each FAST job's artifact values by its factor to the EPYC 7763 (table in the
    header; a CPU model with no measured factor is an assumption, named in the header); slow artifacts stay raw.
    Merge the scaled maps. The log-gap check in step 2 compares a gap with the RAW artifact value of its own job.
+   Since 2026-10-29 each fast job splits with the committed `.test_durations`, as fast-suite does, so it runs
+   the tests of its fast-suite shard next to the same neighbours (for the prices it was seeded with) and
+   uploads only what it measured. Until then it split by test count: heavy distributed tests that ran after
+   their siblings in one regen job were priced at about half their fast-suite time, probably because they
+   reused programs a sibling had compiled into the job's JAX disk cache (inferred, not isolated; two main
+   runs after the 2026-10-29 refresh: shards 8 and 10 at 1.10-1.13 of their prediction on 7763s, both times).
 2. `python scripts/ci/merge_test_durations.py .test_durations <slow shards...> <fast shards...>`.
    Later inputs win: slow first, fast last — the required lane must be priced by its own runs.
    A shard cut before the session ends uploads nothing; price what it finished from its job log
