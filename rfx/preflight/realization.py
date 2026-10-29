@@ -149,9 +149,13 @@ def _realized_edges_np(pec_mask, sheets, wires, periodic, shape):
     from rfx.boundaries.pec import realized_pec_edge_masks
     if pec_mask is None and not sheets and not wires:
         return tuple(np.zeros(tuple(shape), dtype=bool) for _ in range(3))
-    cells = None if pec_mask is None else jnp.asarray(pec_mask)
-    edges = realized_pec_edge_masks(cells, sheets, wires, periodic)
-    return tuple(np.asarray(m, dtype=bool) for m in edges)
+    # This reader requires concrete geometry, including under a user's jit.
+    # Keep its shared edge-rule calculation concrete as well as its inputs.
+    import jax
+    with jax.ensure_compile_time_eval():
+        cells = None if pec_mask is None else jnp.asarray(pec_mask)
+        edges = realized_pec_edge_masks(cells, sheets, wires, periodic)
+        return tuple(np.asarray(m, dtype=bool) for m in edges)
 
 
 class _RealizedPEC:

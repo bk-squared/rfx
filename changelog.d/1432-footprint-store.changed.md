@@ -1,0 +1,7 @@
+### Thin PEC sheet storage and periodic span reports (#PR)
+
+Concrete thin PEC sheets keep a host plane mask instead of a whole-grid device
+array per sheet. Host storage scales with the sheet plane; device edge masks
+are shared across sheets. Graded runs with concrete sheets can be called under
+`jax.jit`. Periodic sheet ends use wrapped neighbours when reporting free-edge
+widths, so mirrored strips at opposite ends of the axis report equal widths.

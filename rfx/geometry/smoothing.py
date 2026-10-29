@@ -607,7 +607,7 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
                 name = f"thin_conductor[{sim._thin_conductors.index(thin)}]"
                 sheet = sheet_spec_from_shape(
                     shape, coords, sizes, name=name, refuse_thick=True, grid=grid)
-                return [(np.asarray(sheet.footprint), (False, False, False))]
+                return [(sheet.footprint, (False, False, False))]
             if not isinstance(shape, Box):
                 from rfx.model.thin_conductors import admit_dc_film
                 # Pair area admission belongs after continuation and the
@@ -631,9 +631,18 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
         if cells is not None:
             return [(np.asarray(cells), (True, True, True))]
         if sheet is not None:
-            return [(np.asarray(sheet.footprint), (False, False, False))]
+            return [(sheet.footprint, (False, False, False))]
         return [(np.asarray(mask), tuple(a == component for a in range(3)))
                 for component, mask in enumerate(wire.edges)]
+
+
+def _conductor_section(mask, index, axis):
+    from rfx.boundaries.pec import SheetFootprint
+    if isinstance(mask, SheetFootprint):
+        if axis == mask.normal_axis:
+            return mask.mask if index == mask.plane else np.zeros_like(mask.mask)
+        return np.take(mask.mask, index, axis=axis - (axis > mask.normal_axis))
+    return np.take(mask, index, axis=axis)
 
 
 def _occupied_conductor_faces(lattice, grid):
@@ -646,7 +655,7 @@ def _occupied_conductor_faces(lattice, grid):
             for mask, cell_axes in lattice:
                 index = (pad if side == "lo" else
                          grid.shape[axis] - 1 - pad - int(cell_axes[axis]))
-                if np.take(mask, index, axis=axis).any():
+                if _conductor_section(mask, index, axis).any():
                     faces.add((axis, side))
     return faces
 
@@ -821,8 +830,8 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
                 neighbour = source - 1
             if not (first <= source <= last and first <= neighbour <= last):
                 continue
-            cross = np.take(footprint, source, axis=axis)
-            inner = np.take(footprint, neighbour, axis=axis)
+            cross = _conductor_section(footprint, source, axis)
+            inner = _conductor_section(footprint, neighbour, axis)
             if not (cross.any() and np.array_equal(cross, inner)):
                 continue
             accepted.add((axis, side))

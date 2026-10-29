@@ -30,7 +30,7 @@ def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
                 return pec_mask
             masks.append(jnp.asarray(sig) > 0.0)
     for sp in (pec_sheets or ()):
-        masks.append(jnp.asarray(sp.footprint))
+        masks.append(sp.footprint)
     if not masks:
         return pec_mask
     return conductor_footprint(pec_mask=pec_mask, sheet_masks=masks)

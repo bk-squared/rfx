@@ -876,6 +876,13 @@ def conductor_footprint(
     for m in (sheet_masks or ()):
         if m is None:
             continue
+        from rfx.boundaries.pec import SheetFootprint
+        if isinstance(m, SheetFootprint):
+            if out is None:
+                out = jnp.zeros(m.shape, dtype=bool)
+            index = m.plane_index
+            out = out.at[index].set(out[index] | m.plane_view)
+            continue
         sm = jnp.asarray(m).astype(bool)
         out = sm if out is None else (out | sm)
     if out is None:

@@ -727,15 +727,18 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
             joined |= np.take(fed, i_end, axis=axis)
         return bool(end.any()) and bool(joined[end].all())
 
-    free_lo = bool(i0 > 0 and float(declared_lo) > tol
+    free_lo = bool((periodic or i0 > 0) and (periodic or float(declared_lo) > tol)
                    and not _joined(i0, i0 - 1))
-    free_hi = bool(i1 + 1 < nodes.size
-                   and float(declared_hi) < float(domain_hi) - tol
+    free_hi = bool((periodic or i1 + 1 < nodes.size)
+                   and (periodic or float(declared_hi) < float(domain_hi) - tol)
                    and not _joined(i1, i1 + 1))
     lo = float(nodes[i0])
     hi = float(nodes[i1])
     if free_lo:
-        lo -= edge_offset * float(nodes[i0] - nodes[i0 - 1])
+        previous = nodes[i0 - 1] if i0 > 0 else nodes[fp.shape[axis] - 1] - float(domain_hi)
+        lo -= edge_offset * float(nodes[i0] - previous)
     if free_hi:
-        hi += edge_offset * float(nodes[i1 + 1] - nodes[i1])
+        following = (nodes[i1 + 1] if i1 + 1 < nodes.size
+                     else nodes[(i1 + 1) % fp.shape[axis]] + float(domain_hi))
+        hi += edge_offset * float(following - nodes[i1])
     return SolvedSheetSpan(i0, i1, lo, hi, free_lo, free_hi)

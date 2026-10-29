@@ -296,7 +296,13 @@ def assemble_cells(
             geometry_masks.append((id(declared_entry), mask))
 
         if mat.chi3 != 0.0:
-            chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
+            from rfx.boundaries.pec import SheetFootprint
+            if isinstance(mask, SheetFootprint):
+                index = mask.plane_index
+                chi3_arr = chi3_arr.at[index].set(
+                    jnp.where(mask.plane_view, mat.chi3, chi3_arr[index]))
+            else:
+                chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
             has_kerr = True
 
         pole_mask = mask

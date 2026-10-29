@@ -594,8 +594,10 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                         "refusing to drop it silently.")
                 sheets.append(spec)
                 return materials, pec_mask
-            mask, plane = spec.footprint, spec.plane
-            unwrapped, end_rows = spec.unwrapped_footprint, spec.end_rows
+            mask, plane = np.asarray(spec.footprint), spec.plane
+            unwrapped = (None if spec.unwrapped_footprint is None
+                         else np.asarray(spec.unwrapped_footprint))
+            end_rows = spec.end_rows
             drawn = spec.drawn
         check_sheet_occupancy(mask, normal, lane=lane)
     else:

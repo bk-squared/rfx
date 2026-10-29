@@ -606,9 +606,12 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     else:
         sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
         sample[a] = np.asarray([requested_mid], dtype=np.float64)
-        cross = np.asarray(periodic_mask(
-            grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
-            closed_footprint=True), dtype=bool)
+        # Generic shape samplers may wrap their concrete result in JAX.
+        # Evaluate just this plane before returning to host geometry storage.
+        with jax.ensure_compile_time_eval():
+            cross = np.asarray(periodic_mask(
+                grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
+                closed_footprint=True), dtype=bool)
         fp = np.zeros(shape_3, dtype=bool)
         idx = [slice(None)] * 3
         idx[a] = slice(plane, plane + 1)
@@ -623,9 +626,9 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     unwrapped = None
     if shape_3 != tuple(coords.shape):
         from rfx.boundaries.pec import _fold_sheet_nodes
-        unwrapped = jnp.asarray(fp)
+        unwrapped = fp
         fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
-    return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
+    return SheetSpec(normal_axis=a, plane=plane, footprint=fp,
                      name=name, unwrapped_footprint=unwrapped, end_rows=end_rows,
                      drawn=_sheet_drawn_bounds(lo, hi, a, cell_sizes, grid=grid))
 

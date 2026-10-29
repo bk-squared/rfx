@@ -206,12 +206,88 @@ def _shift(arr, ax, periodic, direction, *, xp=jnp):
     return _shift_bwd(arr, ax) if direction > 0 else _shift_fwd(arr, ax)
 
 
+@dataclass(frozen=True, eq=False)
+class SheetFootprint:
+    """Host plane storage with an uncached, compatible 3-D inspection view."""
+
+    shape: tuple[int, int, int]
+    normal_axis: int
+    plane: int
+    mask: np.ndarray
+
+    def __post_init__(self):
+        shape = tuple(int(n) for n in self.shape)
+        a, plane = int(self.normal_axis), int(self.plane)
+        if len(shape) != 3 or a not in (0, 1, 2) or not 0 <= plane < shape[a]:
+            raise ValueError("invalid SheetFootprint shape, normal_axis or plane")
+        mask = np.array(self.mask, dtype=bool, copy=True)
+        if mask.shape != tuple(n for t, n in enumerate(shape) if t != a):
+            raise ValueError("SheetFootprint mask must have the two in-plane dimensions")
+        mask.flags.writeable = False
+        object.__setattr__(self, 'shape', shape)
+        object.__setattr__(self, 'normal_axis', a)
+        object.__setattr__(self, 'plane', plane)
+        object.__setattr__(self, 'mask', mask)
+
+    ndim = 3
+    dtype = np.dtype(bool)
+
+    @property
+    def plane_view(self):
+        return np.expand_dims(self.mask, self.normal_axis)
+
+    @property
+    def plane_index(self):
+        return tuple(slice(self.plane, self.plane + 1) if a == self.normal_axis
+                     else slice(None) for a in range(3))
+
+    def __array__(self, dtype=None, copy=None):
+        result = np.zeros(self.shape, dtype=bool if dtype is None else dtype)
+        result[self.plane_index] = self.plane_view
+        return result
+
+    def __getitem__(self, index):
+        return np.asarray(self)[index]
+
+    def __jax_array__(self):
+        # Explicit external array operations can request the inspection view.
+        # Return host data; neither the view nor a device copy is retained.
+        return np.asarray(self)
+
+    def sum(self, *args, **kwargs):
+        return np.asarray(self).sum(*args, **kwargs)
+
+    def slab(self, lo, end):
+        """Slice x without allocating the global inspection view."""
+        shape = (end - lo,) + self.shape[1:]
+        if self.normal_axis == 0:
+            return SheetFootprint(shape, 0, self.plane - lo, self.mask)
+        return SheetFootprint(shape, self.normal_axis, self.plane, self.mask[lo:end])
+
+    @classmethod
+    def normalize(cls, footprint, normal_axis, plane):
+        if isinstance(footprint, cls) and (footprint.normal_axis, footprint.plane) == (normal_axis, plane):
+            return footprint
+        fp = np.asarray(footprint, dtype=bool)
+        if fp.ndim != 3:
+            raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
+        if not 0 <= plane < fp.shape[normal_axis]:
+            raise ValueError(f"SheetSpec.plane={plane} is outside the array along axis "
+                             f"{'xyz'[normal_axis]} (length {fp.shape[normal_axis]})")
+        other = tuple(b for b in range(3) if b != normal_axis)
+        layers = np.flatnonzero(np.any(fp, axis=other))
+        if layers.size and (layers.size != 1 or int(layers[0]) != plane):
+            raise ValueError(f"SheetSpec footprint must occupy exactly its own plane "
+                             f"{plane} along {'xyz'[normal_axis]}; found layers {layers.tolist()}")
+        return cls(fp.shape, normal_axis, plane, np.take(fp, plane, axis=normal_axis))
+
+
 @dataclass(frozen=True)
 class SheetSpec:
     """One PEC sheet: a node footprint on ONE plane, zero thickness (§1.3).
 
-    ``footprint`` is a boolean ``(nx, ny, nz)`` NODE mask that is True only
-    on layer ``plane`` along ``normal_axis`` (the full-shape layout keeps it
+    ``footprint`` is a host :class:`SheetFootprint` whose boolean 3-D NODE
+    view is True only on layer ``plane`` along ``normal_axis`` (the view keeps it
     interchangeable with ``SheetImpedanceSpec.mask``, so a lossy f0 sheet
     and a PEC sheet are one footprint with a different operator — the #677
     G4 identity by construction).  ``plane`` is a static Python int: a
@@ -309,7 +385,7 @@ class SheetSpec:
             m[lo:hi + 1] = True
             axes.append(m)
         fp = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
-        return cls(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
+        return cls(normal_axis=a, plane=plane, footprint=fp,
                    name=name)
 
     def __post_init__(self):
@@ -318,22 +394,18 @@ class SheetSpec:
             raise ValueError(f"SheetSpec.normal_axis must be 0/1/2, got {self.normal_axis!r}")
         object.__setattr__(self, "normal_axis", a)
         object.__setattr__(self, "plane", int(self.plane))
-        fp = self.footprint
-        if getattr(fp, "ndim", None) != 3:
-            raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
-        if not (0 <= self.plane < fp.shape[a]):
-            raise ValueError(
-                f"SheetSpec.plane={self.plane} is outside the array along axis "
-                f"{'xyz'[a]} (length {fp.shape[a]})")
-        if not _is_tracer(fp):
-            fp_np = np.asarray(fp, dtype=bool)
-            other = tuple(b for b in range(3) if b != a)
-            layers = np.flatnonzero(np.any(fp_np, axis=other))
-            if layers.size and (layers.size != 1 or int(layers[0]) != self.plane):
-                raise ValueError(
-                    f"SheetSpec footprint must occupy exactly its own plane "
-                    f"{self.plane} along {'xyz'[a]}; found layers {layers.tolist()}")
-            object.__setattr__(self, "footprint", jnp.asarray(fp_np))
+        for field in ('footprint', 'unwrapped_footprint'):
+            fp = getattr(self, field)
+            if fp is None and field == 'unwrapped_footprint':
+                continue
+            if _is_tracer(fp):
+                # The f0 operator on a moving mesh uses a traced 3-D mask.
+                if fp.ndim != 3:
+                    raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
+                if not 0 <= self.plane < fp.shape[a]:
+                    raise ValueError(f"SheetSpec.plane={self.plane} is outside the array along axis {'xyz'[a]}")
+                continue
+            object.__setattr__(self, field, SheetFootprint.normalize(fp, a, self.plane))
 
 
 @dataclass(frozen=True)
@@ -456,6 +528,11 @@ def _volume_occupancy_masks(occ, periodic):
 
 def _fold_sheet_nodes(mask, shape, *, edge_axis=None, xp=jnp):
     """Identify virtual endpoint nodes after enumerating physical edges."""
+    if isinstance(mask, SheetFootprint):
+        plane_shape = tuple(1 if a == mask.normal_axis else n for a, n in enumerate(shape))
+        folded = _fold_sheet_nodes(mask.plane_view, plane_shape, edge_axis=edge_axis, xp=np)
+        return SheetFootprint(tuple(shape), mask.normal_axis, mask.plane,
+                              np.squeeze(folded, axis=mask.normal_axis))
     for axis, n in enumerate(shape):
         if mask.shape[axis] == n:
             continue
@@ -494,12 +571,11 @@ def _sheet_entry(sp, footprint):
     from rfx.core.jax_utils import is_tracer
     ranges = None
     if not is_tracer(footprint):
-        footprint = np.asarray(footprint)
-        view = footprint
-        if isinstance(sp.plane, (int, np.integer)):
+        view = footprint.plane_view if isinstance(footprint, SheetFootprint) else np.asarray(footprint)
+        if not isinstance(footprint, SheetFootprint) and isinstance(sp.plane, (int, np.integer)):
             plane = [slice(None)] * 3
             plane[sp.normal_axis] = slice(sp.plane, sp.plane + 1)
-            view = footprint[tuple(plane)]
+            view = view[tuple(plane)]
         ranges = []
         for t in range(3):
             indices = np.flatnonzero(view.any(axis=tuple(a for a in range(3) if a != t)))
@@ -540,7 +616,8 @@ def _sheet_plane_edges(entries, normal, axis, periodic, *, unwrapped=False):
         if concrete:
             index[normal] = slice(plane, plane + 1)
         index = tuple(index)
-        view = footprint[index]
+        view = (footprint.plane_view if concrete and isinstance(footprint, SheetFootprint)
+                else footprint[index])
         shifted = None if axis == normal else _shift(view, axis, neighbour_periodic, -1, xp=xp)
         own = view if axis == normal else view & shifted
         if concrete:
@@ -575,6 +652,11 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
         full = sp.footprint
         if tuple(full.shape) != tuple(shape):
             raise ValueError(f"SheetSpec footprint shape {full.shape} does not match grid shape {shape}")
+        if isinstance(full, SheetFootprint) and (sp.unwrapped_footprint is None
+                                                or isinstance(sp.unwrapped_footprint, SheetFootprint)):
+            full = _unwrapped_sheet_plane(sp, shape, periodic)
+            per_axis.setdefault(a, []).append(_sheet_entry(sp, full))
+            continue
         # Explicit legacy node masks already identify the periodic endpoints.
         # Also use this as the clip mask for diagnostic copies of a sheet.
         for t in range(3):
@@ -606,6 +688,27 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
                 mask = _fold_sheet_nodes(mask, shape, edge_axis=t)
             edge[t] = mask if edge[t] is None else (edge[t] | mask)
     return edge
+
+
+def _unwrapped_sheet_plane(sp, shape, periodic):
+    """Extend and clip only the host plane before physical edge enumeration."""
+    a = sp.normal_axis
+    full = sp.footprint.plane_view
+    raw = None if sp.unwrapped_footprint is None else sp.unwrapped_footprint.plane_view
+    extended_shape = list(shape)
+    for t in range(3):
+        if periodic[t] and t != a:
+            first = [slice(None)] * 3
+            first[t] = slice(0, 1)
+            full = np.concatenate((full, full[tuple(first)]), axis=t)
+            extended_shape[t] += 1
+            if raw is not None and raw.shape[t] == shape[t]:
+                raw = np.concatenate((raw, raw[tuple(first)]), axis=t)
+    if raw is not None:
+        if raw.shape != full.shape:
+            raise ValueError("SheetSpec unwrapped footprint does not match the periodic grid")
+        full = raw & full
+    return SheetFootprint(tuple(extended_shape), a, sp.plane, np.squeeze(full, axis=a))
 
 
 def _sheet_edge_masks(sheets, shape, periodic):
@@ -662,9 +765,12 @@ def _slab_sheets(sheets, view, end):
                 continue
             plane -= view.lo
         cut.append(replace(
-            sheet, plane=plane, footprint=sheet.footprint[view.lo:end],
+            sheet, plane=plane, footprint=(sheet.footprint.slab(view.lo, end)
+                if isinstance(sheet.footprint, SheetFootprint) else sheet.footprint[view.lo:end]),
             unwrapped_footprint=(None if sheet.unwrapped_footprint is None
-                                 else sheet.unwrapped_footprint[view.lo:end]),
+                else sheet.unwrapped_footprint.slab(view.lo, end)
+                if isinstance(sheet.unwrapped_footprint, SheetFootprint)
+                else sheet.unwrapped_footprint[view.lo:end]),
             end_rows=(None if sheet.end_rows[0] is None
                       else sheet.end_rows[0][view.lo:end],) + sheet.end_rows[1:]))
     return cut
