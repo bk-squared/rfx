@@ -135,6 +135,8 @@ from functools import partial
 from jax.sharding import PartitionSpec as P
 from rfx.boundaries.cpml import apply_cpml_e
 from rfx.boundaries.cpml import apply_cpml_h
+# Both updates round psi to its carry dtype in _cpml_slab.store_psi before
+# partial-window writeback; casting after these calls would be too late.
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.slab_update import cpml_absorbing_faces
 from rfx.stepping.slab_update import cpml_h_materials

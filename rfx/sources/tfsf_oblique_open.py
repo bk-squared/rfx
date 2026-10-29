@@ -288,7 +288,9 @@ def init_tfsf_methodB(
     ylo_h = _gather_table(idx_H(ix_face,    y_lo - 0.5), n_aux)
     yhi_h = _gather_table(idx_H(ix_face,    y_hi + 0.5), n_aux)
 
-    fdtype = jnp.float32
+    # Real auxiliary fields follow dt's promotion, with a float32 floor.
+    # A numpy float64 dt promotes the shared 1-D update under x64.
+    fdtype = jnp.promote_types(jnp.result_type(float, dt), jnp.float32)
     cfg = MethodBConfig(
         x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi,
         cos_theta=ct, sin_theta=st,

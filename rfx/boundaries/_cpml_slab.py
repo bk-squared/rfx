@@ -156,6 +156,8 @@ def face_windows(shape, depths, frame, periodic, grid):
 
 def store_psi(old, new, window, owner):
     """Select only the active psi rows, leaving identity padding untouched."""
+    # Round once at storage, including the partial windows used by slabs.
+    new = new.astype(old.dtype)
     full = all(sl == slice(None) for sl in window)
     if owner is not None:
         new = jnp.where(owner, new, old if full else old[window])
