@@ -199,7 +199,7 @@ def test_w0_holds_and_the_completion_has_the_shape_of_the_run(short_runs):
     assert amp == sorted(amp, reverse=True)
     assert 0.0 < rep.tail_share < 1.0 and rep.slowest_decay_over_window > 0.0
     gw = rep.witness("growing_poles")
-    assert gw.ok and gw.value == 0.0 and "not judged" in gw.rule
+    assert gw.ok and gw.value == 0.0 and gw.bar == 1e-2 and "not judged" in gw.rule
     assert rep.discarded_growth_max is not None
     print(f"[{lane}] W1 {rep.witness('W1').value:.3g}, accumulator round-off "
           f"{rep.s_accumulator_roundoff:.3g}; {gw.note}")

@@ -55,39 +55,6 @@
       ],
       "M": []
     },
-    "rfx/runners/_distributed_common.py": {
-      "S": [
-        "_update_e_debye_local",
-        "_update_e_local",
-        "_update_e_local_nu",
-        "_update_e_local_with_dispersion",
-        "_update_e_lorentz_local",
-        "_update_h_local",
-        "_update_h_local_nu",
-        "apply_pec_face_shmap",
-        "apply_pec_mask_shmap",
-        "exchange_e_yee_shmap",
-        "exchange_h_yee_shmap",
-        "inject_sources_shmap",
-        "update_e_nu_shmap",
-        "update_h_nu_shmap"
-      ],
-      "M": []
-    },
-    "rfx/runners/distributed_nu.py": {
-      "S": [
-        "run_nonuniform_distributed_pec"
-      ],
-      "M": []
-    },
-    "rfx/runners/distributed_v2.py": {
-      "S": [
-        "_apply_cpml_e_shmap",
-        "_apply_cpml_h_shmap",
-        "run_distributed"
-      ],
-      "M": []
-    },
     "rfx/subgridding/disjoint_3d.py": {
       "S": [
         "_apply_fine_pec_axes",

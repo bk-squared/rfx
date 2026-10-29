@@ -9,6 +9,28 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
+2026-10-29: both files re-priced. In the 11 green pr-tests runs of 2026-10-28 that ran the fast suite,
+the longest shard's pytest session took 53.8-58.9 min (shards 10 and 11; jobs 55-60 min with install,
+against a 75-min limit) and the shortest 20.1-29.1 min. On their 132 shard readings (pytest seconds
+over the shard's own test list priced with the 2026-10-21 file) the shard effect ranged from 0.77 (shard 7) to 1.25 (shard 11): the prices of the
+distributed runner tests had fallen behind. Fast prices: `regen-durations` run
+[40697495943](https://github.com/bk-squared/rfx/actions/runs/40697495943) (`lanes=fast`, main
+`5c7333978`), normalised to the EPYC 7763 with the 2026-10-29 factors below. Fast (10), an EPYC 9V74,
+was cancelled at the 120-min limit after 2,365 of its 2,455 tests and uploaded nothing; those tests are
+priced from its result-line timestamps (the first from the `collected` line). No result-line gap
+exceeds its artifact value by 600 s (largest excess 0.2 s); each artifact sum is 0.9-4.8 % below its
+session time. 377 old entries that nothing collects at `b8ad5aa70` are dropped. Merged (the old file
+first, the log-priced map last): 27,107 → **29759 entries in the file**, of which
+**397 of them carried unchanged** (not re-measured, only rounded: 359 weekly-only or highmem tests and
+38 fast tests that fast (10) never reached). This is the first refresh rounded to two significant
+figures, so every line changes once. The fast collection at `b8ad5aa70` (29,667 tests on macOS, no CAD
+extra) has 290 unpriced tests, added after `5c7333978` or never reached (3-5 min in all at the mean or
+sibling prices). pytest-split predicts 45.5-45.9 min per shard (7763 basis). Under the new prices the
+old split's shards cost 33.3-57.9 min; its shard 11 at 57.9 min matches the 56-60 min observed. Check on
+the same 132 readings: actual time (normalised) over the new-price prediction is 0.94-1.07 per shard
+(median of all readings 1.02, p10 0.93, p90 1.09). Weekly prices: `.test_durations_weekly` section.
+Inputs, scripts and readings: rfx-archive `rfx/records/20261029-prices-refresh/`.
+
 2026-10-21: fast lane re-priced. fast-suite shard 8 ran 55 min on average over 36 runs (61 over its
 successful runs; 75-76 when cancelled at the 75-min job limit); shard 9 averaged 45 min. They held
 209 and 370 tests without a price (the distributed graded-records, wrapped-step and ports files),
@@ -19,8 +41,8 @@ factors below (this run's CPUs: 7763 jobs 2, 3, 6, 7, 8, 10; 9V45 1, 11, 12; 9V7
 9, whose assumed factor now moves up to about 140 s of price). Fast (10) hit the workflow's 120-min
 limit at 89 % and stored nothing; the 1,996 tests it finished are priced from the job log's
 result-line timestamps, and the tests it never reached (`test_distributed_record_*`, `*_parity`) stay
-unpriced. Merged over the previous file (later wins): 24,640 → **27107 entries in the file**, of which
-**625 of them carried unchanged** (same node id, same price); the fast collection of
+unpriced. Merged over the previous file (later wins): 24,640 → 27107 entries in the file, of which
+625 of them carried unchanged (same node id, same price); the fast collection of
 26,716 tests has 159 unpriced. pytest-split predicts 39.9–43.4 min per shard on the 7763 basis; under
 the new prices the old shard 8 costs 84.6 min. Inputs, the build and prediction scripts: rfx-archive
 `rfx/records/20261021-fast-prices-refresh/`.
@@ -45,7 +67,24 @@ command uses `|| true`.
 
 **Fast prices are normalised to the AMD EPYC 7763.** The hosted runners hand out several CPU classes
 and the same test takes different times on them. Each fast artifact value is multiplied by its job's
-CPU factor, so the whole fast lane is priced on one machine class, the slowest one the runners hand out:
+CPU factor, so the whole fast lane is priced on one machine class. Factors since 2026-10-29:
+
+| CPU (lscpu "Model name") | factor | readings | fast jobs of run 40697495943 |
+|---|---:|---:|---|
+| AMD EPYC 7763 | 1.000 | 58 | 2, 4, 6, 7, 8, 12 |
+| AMD EPYC 9V74 | 1.283 | 28 | 1, 3, 10 |
+| AMD EPYC 9V45 | 1.602 | 33 | 11 |
+| Intel Xeon 6973P-C | 1.221 | 3 | 5 |
+| Intel Xeon Platinum 8370C | 0.960 | 5 | 9 |
+| Intel Xeon Platinum 8573C | 1.094 | 5 | none |
+
+They come from a two-way fit over 132 fast-suite shard readings of 11 green pr-tests runs on
+2026-10-28, all priced by one file: log(actual / predicted) = shard effect + CPU effect, the 7763 at
+0; residual standard deviation 0.063 in the log. The fit keeps stale prices, which sit in a few
+shards, out of the CPU factor; the plain median ratio per CPU gives 9V45 1.59, 9V74 1.34, 8573C 1.17,
+8370C 0.87 and 6973P 1.23. The 6973P and 8370C factors rest on 3 and 5 readings.
+
+Factors until 2026-10-28, used for the files of 2026-10-16 and 2026-10-21:
 
 | CPU (lscpu "Model name") | factor | fast jobs |
 |---|---:|---|
@@ -272,6 +311,17 @@ refreshed; the other 14 are carried. When regenerating, do not overwrite this on
 
 ## .test_durations_weekly — weekly prices (2026-10-19, refreshed 2026-10-20)
 
+**Refresh of 2026-10-29.** Weekly run `40625560496` at main `fd9e62c31` (16 shards, 24-98 min of
+their 180). Merge order: the new `.test_durations` prices only for weekly-collected tests with neither
+an old weekly price nor a fresh measurement; the previous weekly file; `weekly-durations-1` to `-16` in
+numeric order (raw runner seconds). Every input is pruned to the weekly collection at `b8ad5aa70`
+(30,812 tests, `RFX_S0_FULL=1`), and `merge_test_durations.py` rounds to two significant figures.
+**30570 entries in the weekly file**: 30,154 from this run, 1 from the previous file and at most
+**415 fast-lane fallback prices**; 242 collected tests stay unpriced. Predicted test time per group
+(16 groups, collection order): 60.5-71.9 min, against 63.4-74.9 min under the previous file, which left
+3,356 collected tests unpriced. The headroom projection of `test_weekly_shard_headroom.py` is 8,274 s
+against its 9,180 s budget.
+
 **Refresh of 2026-10-20.** Weekly run `39378910883` at main `a1e03dce6`: shard 5 ran 155.2 min of
 its 180 (86.2 %). Its 3,844 priced tests ran 98 min against 102 min of prices; 65 tests with no
 weekly price (distributed dispersive-CPML files added on 10-14 and 10-19, after the measurement
@@ -324,7 +374,7 @@ weekly work by x1.05–1.48 (leader's per-shard comparison); shard 4 used 9270 s
 above the 85 % budget, and shard 5 was cancelled at the 180-minute limit.
 
 2026-10-19: 27,370 entries, with 87 fast-lane fallback prices. After the 2026-10-20 refresh:
-**27,719 entries in the weekly file**, with at most **87 fast-lane fallback prices** (carried from
+27,719 entries in the weekly file, with at most 87 fast-lane fallback prices (carried from
 2026-10-19; this refresh added none).
 Values are rounded to 0.01 s and the file keeps only test ids the weekly selection collects
 (rfx-lead D:b089a0): 3,290,060 bytes at regeneration, before the pruning noted above.

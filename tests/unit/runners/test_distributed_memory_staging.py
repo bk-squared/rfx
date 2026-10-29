@@ -29,6 +29,7 @@ from rfx.core.yee import EPS_0, MaterialArrays
 from rfx.materials.debye import DebyeCoeffs
 from rfx.materials.lorentz import LorentzCoeffs, lorentz_pole
 from rfx.runners import distributed_nu, distributed_v2
+from rfx.stepping import slab_uniform_loop, slab_graded_legacy_loop
 from rfx.runners import _distributed_common as common
 from rfx.runners._distributed_common import shard_stacked, shard_x_slabs, split_array_x
 
@@ -88,7 +89,8 @@ def _measure(case, multi_process):
     cells = int(np.prod(grid.shape))
     records = []
     runner = distributed_nu if case == "nu" else distributed_v2
-    scan = runner.lax.scan
+    loop = slab_graded_legacy_loop if case == "nu" else slab_uniform_loop
+    scan = loop.lax.scan
     boundary_ghosts_true = None
     hlo_constants = []
     hlo_constants_parsed = []
@@ -261,12 +263,14 @@ def _measure(case, multi_process):
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
-    runner.lax = SimpleNamespace(**{**vars(runner.lax), "scan": traced_scan})
+    loop.lax = SimpleNamespace(**{**vars(loop.lax), "scan": traced_scan})
+    runner.lax = loop.lax
     runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
     if multi_process:
         # Exercise the multi-process topology without starting jax.distributed.
         runner_jax.process_index = lambda: 1
     runner.jax = runner_jax
+    loop.jax = runner_jax
     result = sim.run(n_steps=3, devices=devices)
     jax.block_until_ready(result.time_series)
     assert records, "the memory gate must observe the time-stepping scan"

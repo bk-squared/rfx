@@ -145,7 +145,7 @@ def test_right_ghost_hx_invariant(monkeypatch):
 
 
 def test_mutation_h_update_skips_ghost_rows(monkeypatch):
-    from rfx.runners import distributed_v2 as runner
+    from rfx.stepping import slab_uniform_loop as runner
     original = runner._update_h_local
 
     def skip_ghosts(state, *args, **kwargs):

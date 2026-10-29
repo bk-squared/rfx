@@ -12,6 +12,7 @@ import pytest
 from rfx import Box, DebyePole, Simulation
 from rfx.materials.lorentz import lorentz_pole
 from rfx.runners import distributed_nu
+from rfx.stepping import slab_graded_legacy_loop
 from tests.unit.runners.test_distributed_nu_forward_staging import _select_legacy_poles_cpml
 
 pytestmark = pytest.mark.distributed
@@ -89,7 +90,7 @@ def loop_program(request):
     occupancy = jnp.zeros(grid.shape, dtype=jnp.float32).at[8:10, 4:6, 4:6].set(0.2)
     slab_cells = int(np.prod(grid.shape)) // 2
     records = {"constants": [], "captures": [], "scans": 0, "slab_cells": slab_cells}
-    scan = distributed_nu.lax.scan
+    scan = slab_graded_legacy_loop.lax.scan
 
     def traced_scan(body, *args, **kwargs):
         records["scans"] += 1
@@ -113,9 +114,9 @@ def loop_program(request):
 
     with pytest.MonkeyPatch.context() as patch:
         _select_legacy_poles_cpml(patch)
-        patch.setattr(distributed_nu, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
-        patch.setattr(distributed_nu, "lax", SimpleNamespace(**{**vars(distributed_nu.lax),
-                                                            "scan": traced_scan}))
+        for owner in (distributed_nu, slab_graded_legacy_loop):
+            patch.setattr(owner, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
+            patch.setattr(owner, "lax", SimpleNamespace(**{**vars(jax.lax), "scan": traced_scan}))
         result = sim.forward(
             distributed=True, devices=jax.devices("cpu")[:2], n_steps=8,
             checkpoint_every=checkpoint, n_warmup=warmup,

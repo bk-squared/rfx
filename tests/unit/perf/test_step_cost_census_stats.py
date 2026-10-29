@@ -387,7 +387,7 @@ def test_capture_recognises_wrapped_graded_run_fn():
 @pytest.mark.parametrize("path,target", [
     ("uniform", "rfx.core.drives"),
     ("graded", "rfx.stepping.graded"),
-    ("multi-uniform", "rfx.runners._distributed_common"),
+    ("multi-uniform", "rfx.stepping.slab_update"),
     ("multi-graded", "rfx.stepping.graded"),
 ])
 def test_control_injection_targets_only_multi_graded_change(monkeypatch, path, target):

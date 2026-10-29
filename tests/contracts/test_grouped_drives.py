@@ -39,8 +39,8 @@ def use_per_cell_reference(monkeypatch):
     def layout(meta, dtype, **_kwargs):
         return _reference_drives(meta, np.empty(0, dtype=dtype))
     for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop', 'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
-                 'rfx.subgridding.jit_runner', 'rfx.runners.distributed_v2',
-                 'rfx.runners.distributed_nu', 'rfx.runners._distributed_common'):
+                 'rfx.subgridding.jit_runner', 'rfx.stepping.slab_uniform_loop',
+                 'rfx.stepping.slab_graded_legacy_loop', 'rfx.stepping.slab_update'):
         module = importlib.import_module(name)
         monkeypatch.setattr(module, 'drive_layout', layout)
         if hasattr(module, 'inject_drives'):
@@ -105,7 +105,7 @@ def test_production_step_scatter_count(lane, monkeypatch):
     import importlib
     module = importlib.import_module({
         'uniform': 'rfx.core.drives', 'graded': 'rfx.stepping.graded',
-        'distributed': 'rfx.runners._distributed_common',
+        'distributed': 'rfx.stepping.slab_update',
         'distributed_graded': 'rfx.stepping.graded',
         'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
     }[lane])

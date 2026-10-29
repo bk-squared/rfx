@@ -196,7 +196,7 @@ def test_operator_only_known_miss(tmp_path, generated):
 
 @pytest.mark.parametrize("remove_elsewhere", [False, True])
 def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, generated, remove_elsewhere):
-    path, name = "rfx/runners/_distributed_common.py", "layer_check_outside_step"
+    path, name = "rfx/adi.py", "layer_check_outside_step"
     assert generated["outside"][path]["S"]
     assert name not in {unit for unit, _, _ in gate.units(real_tree(path))}
     write(tmp_path, path, (REPO / path).read_text()
