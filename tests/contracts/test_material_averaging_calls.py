@@ -16,7 +16,7 @@ EXCLUDED = {"rfx/core/yee.py", "rfx/stepping/yee.py", "rfx/model/materials.py"} 
 
 # May only shrink. With seven helpers the base (5a7e4f28) has 52 sites in
 # 27 modules (the original five: 46 in 26), including two nonuniform.py aliases.
-ALLOWED_CALLS = {'rfx/adi.py': 3,
+ALLOWED_CALLS = {'rfx/stepping/adi.py': 3,
  'rfx/current_moments.py': 2,
  # static_remnant_advisory's H average moved here from rfx/simulation.py (decay stop PR).
  'rfx/measurement/decay.py': 1,

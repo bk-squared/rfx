@@ -70,11 +70,11 @@ BUILDERS = {
         "the CPML psi coefficient dt/eps",
     ("rfx/boundaries/upml.py", "init_upml"):
         "UPML's Ca/Cb (_e_coeffs)",
-    ("rfx/adi.py", "adi_step_2d"):
+    ("rfx/stepping/adi.py", "adi_step_2d"):
         "ADI 2-D damping, dt/eps and the Cx/Cy couplings",
-    ("rfx/adi.py", "adi_step_3d"):
+    ("rfx/stepping/adi.py", "adi_step_3d"):
         "ADI 3-D damping, dt/eps, cc and the Cx/Cy/Cz couplings",
-    ("rfx/adi.py", "apply_adi_cpml_2d"):
+    ("rfx/stepping/adi.py", "apply_adi_cpml_2d"):
         "the ADI ADE-CPML 1/eps",
     ("rfx/materials/thin_conductor.py", "sheet_update_coeffs"):
         "the resistive sheet's exponential-stepping A/B",
