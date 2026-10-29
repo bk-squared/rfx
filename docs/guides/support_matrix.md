@@ -79,8 +79,7 @@ notch formula omits open-end extension and is not the physical notch reference.
 The chain-battery measurements in `tests/fixtures/msl_chain_battery/fixture.json`
 include memory and runtime observations: finer meshes can exceed device memory
 and reduce throughput. They are performance observations, not accuracy evidence.
-The graded-notch runtime measurements are in
-`validation/research/multiband_nu/results/msl_notch_graded_fz_after_1213.json`.
+The graded-notch runtime measurements are in a record kept with the project.
 The earlier substrate-cell recommendation predates the material-interface
 correction and must not be used as a current mesh rule; use the measured ladder
 for the named board rather than extrapolating below its coarsest solved rung.
@@ -697,7 +696,7 @@ result is accurate.
 | TFSF + graded z | **experimental** | Only normal incidence along `+x` or `-x` (`angle_deg=0`) runs. Oblique incidence and incidence along `+z` or `-z` raise. The x axis may be graded for normal incidence: the incident line and the four boundary corrections are built on the realized x cells (primal widths for H, the mean of the two neighbouring widths for E). With no scatterer the scattered-field region reads at most 7×10⁻⁶ of the total-field peak on three x gradings (1/0.5/1 mm; 1→0.4→1 mm at ratio 1.2; a 2:1 step across the box face), as on uniform cells (rfx#2078). Oblique incidence and a closed box on a graded x stay refused. |
 | Rectangular-waveguide S-matrix + nonuniform mesh (`dx_profile`/`dy_profile`/`dz_profile`) | **experimental** | Single-mode `normalize=True` and `normalize="flux"` run. A full-aperture guide with `boundary` omitted is **refused** (the graded mesh keeps absorbers on the transverse faces); declare the walls, e.g. `boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}`. The calculator runs the graded `run()` kernel and refuses what the graded `run()` refuses. Port injection reads the local primal cell width for its H correction and the local dual spacing for its E correction. Old boundary-cell-derived injection readings do not apply to ports inside a refined band. An analytic fixture (graded dy, ratios 1--3, relative permittivity 2 and 4) is still committed, but its gate was removed with the Palace replay (#1388), so it is not current evidence. A Palace magnitude comparison on a graded mesh was recorded earlier; its replay was removed as stale (#1388), so it is not current evidence. Other profiles, bands, phase, and arbitrary junctions are not validated; multimode ports (`n_modes > 1`) are refused. `eps_override` and `sigma_override` differentiation is available only with `normalize="flux"`; only `eps_override` has a nonuniform AD-vs-FD regression test. Neither AD check establishes RF accuracy. Dispatch history: until #811 (fixed 2026-09-01) this API reached the nonuniform path only for `dx_profile`/`dy_profile` — a `dz_profile`-only simulation was silently solved on the uniform grid built from the scalar `dx` while preflight described the graded mesh (a dz-only mesh and the profile-less mesh, whose dt differ, 1.15 against 1.91 ps, returned bit-identical S in the negative test baseline, `scripts/diagnostics/wr90_dz_dispatch_falsifier.py`). A `dz_profile` now dispatches here under the same restrictions, and the WR-90 graded-propagation control is recorded by #1083. This is scoped evidence, not validation of arbitrary dz profiles. The path emits the same per-bin pole-tail settling witness (`settling_db`, warning above -40 dB) as the uniform single-mode path (#827 waveguide instance). Phase range on this path (derived arithmetic, not a measurement): the reference-plane shift `exp(-/+ jβΔ)` and the modal impedance evaluate β at the grid's BOUNDARY cell (`NonUniformGrid.dx`), not the cell the plane sits in. `Z_TE` does not depend on the cell size at all (the discrete `sin(β·dx/2)` equals `s_x·dx/2`), and the β difference is the second-order Yee correction `(β·dx)²/24` at the two sizes: for the committed WR-90 fixture (boundary 1.5 mm, fine 0.75 mm, discrete cutoff 6.650 GHz; `tests/fixtures/waveguide_nu_beta_cell_size_envelope.json`, replayed by `tests/unit/sparams/test_waveguide_nu_beta_cell_size_envelope.py`) Δβ = 0.057 / 0.271 / 0.651 rad/m at 8 / 10 / 12 GHz, i.e. 0.07° / 0.31° / 0.75° over a 20 mm plane offset (0.86° worst at 12.4 GHz) and 0.02° over that fixture's own 0.5 mm applied shift. Both of that fixture's port-to-reference spans lie in uniform 1.5 mm cells, so the two evaluations coincide there and the fixture cannot exercise the difference. A span that crosses cells of more than one size now raises `ValueError` (`tests/unit/sparams/test_waveguide_nu_grading_zone.py`) instead of applying a single β; a fixture with a reference plane inside the graded region, and β integration over the span, are deferred to #854 item 1. This bounds one mechanism; it is not a phase validation of the path. |
 | Lumped-port S-parameters + nonuniform mesh | **limited** | Single-device `forward(port_s11_freqs=...)` accepts requested bins for lumped and wire ports, including their V/I accumulators. This does not establish arbitrary full-matrix support; distributed forward accepts explicit port frequencies on both meshes (`tests/unit/runners/test_forward_distributed_uniform.py::test_requested_port_fields_match_one_device_forward`, `tests/unit/runners/test_distributed_nu_ports.py::test_port_records_and_s`). |
-| MSL S-matrix + nonuniform mesh | **experimental** | `mode="laplace"` has internal settled-S11 regression coverage on a graded mesh; `mode="uniform"` runs there without an S11 assertion. **diagnostic** — the stub-notch frequency over a substrate-cell ladder on a band-graded mesh is recorded in `validation/research/multiband_nu/results/msl_notch_graded_fz_after_1213.json` and replayed by `tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py`; it is not an accuracy statement. `mode="eigenmode"` raises. |
+| MSL S-matrix + nonuniform mesh | **experimental** | `mode="laplace"` has internal settled-S11 regression coverage on a graded mesh; `mode="uniform"` runs there without an S11 assertion. **diagnostic** — the stub-notch frequency over a substrate-cell ladder on a band-graded mesh is recorded (record kept with the project) and replayed by `tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py`; it is not an accuracy statement. `mode="eigenmode"` raises. |
 | Coaxial port + nonuniform mesh | **unsupported** | The request must fail. |
 | Lumped RLC update + nonuniform mesh | **limited** | R/L/C ADE elements participate in the field update. Material gradients through `eps_override` and `sigma_override` are implemented on graded meshes containing lumped RLC elements. Component-value gradients remain separately undocumented; requested-frequency port extraction has the scope stated above. |
 | Multi-band graded mesh (fine bands on **z, x or y**, unequal sizes allowed, ratio <= 1.4) | **limited** | The mesh and solver have bounded evidence, not port, flux or far-field validation: energy, transition reflection, round trip, order and gradients on z; cavity accuracy, transition reflection and band-width gradients in-plane. Bands narrower than two cells, absorbers next to the grading, and in-plane ports or plane waves are not covered. See [Multi-band graded mesh](#multi-band-graded-mesh) below; the time step still follows the smallest cell. |
@@ -719,26 +718,26 @@ guarantees the mesh, not the accuracy of a result on it.
 
 **What the checks show.** The checks run in closed PEC boxes, except the
 gradient check on the profile vector, which has an absorber and compares no
-field. Scripts and results: `validation/research/multiband_nu/`; shortened arms of the energy, single-transition, AD and order checks are re-run by
-`tests/unit/nonuniform/test_multiband_nu_envelope.py`, which reads none of the result files cited below.
+field. Results: record kept with the project; shortened arms of the energy, single-transition, AD and order checks are re-run by
+`tests/unit/nonuniform/test_multiband_nu_envelope.py`, and the full arms are named below.
 
 - *Energy.* The discrete energy of a lossless graded box stays bounded over
-  10^6 time steps, in 1-D and 3-D (`validation/research/multiband_nu/results/w1_pa_1d.json`,
-  `w1_pb_full_gpu.json`).
+  10^6 time steps, in 1-D and 3-D (`tests/unit/nonuniform/test_multiband_nu_envelope.py::test_fs1_full_1e6_1d`,
+  `::test_fs1_full_1e6_3d_pb`).
 - *Reflection at a transition.* Each transition reflects at the level an exact
   discrete scattering-chain model predicts, and the level falls as
   (cell / wavelength)^2, 12 dB per doubling of the resolution. At ratio 1.4 and
-  30 fine cells per wavelength it is about −54 dB
-  (`validation/research/multiband_nu/results/w2_w3.json`). A fine band between
+  30 fine cells per wavelength it is about −54 dB (record kept with the project;
+  the transition at the cap is judged against the chain model by `::test_fs2_single_transition_at_cap`). A fine band between
   two transitions reflects as the sum of the two: at most twice one transition,
   oscillating with the band width (bands of 2 to 64 cells checked,
-  `validation/research/multiband_nu/results/w6_band_builder.json`). Quote the
+  `tests/unit/nonuniform/test_band_builder_chain_model.py`). Quote the
   law, not one dB value: it depends on the resolution.
 - *Round trip.* A wave crossing up and back down the grading keeps its amplitude.
 - *Order.* The resonance of an empty PEC cavity graded along z at ratio 1.4
   converges at second order, as on a uniform mesh, with an error about 1.6 times
   the uniform mesh's at the same fine cell
-  (`validation/research/multiband_nu/results/w4r3_zdominant_cavity.json`).
+  (`tests/unit/nonuniform/test_multiband_nu_envelope.py::test_fs4_supraconvergence_full`).
 - *In-plane.* With fine bands on x and y, a cavity frequency agrees with its
   closed form, and the transition reflection follows the same law on x and y
   as on z.
@@ -764,11 +763,9 @@ field. Scripts and results: `validation/research/multiband_nu/`; shortened arms 
   a multi-band mesh is accurate; each keeps the status of its own row above.
 - *Convergence on a loaded structure.* On a dielectric-loaded microstrip-class
   structure the resonance did not move monotonically with the mesh, and whether
-  it converges to the physical answer is not settled
-  (`validation/research/convergence_floor/results/`). Show convergence on your
-  own geometry; `ladder_guard`
-  (`validation/research/convergence_floor/ladder_guard.py`, tested by
-  `tests/unit/misc/test_ladder_guard.py`) catches a mesh ladder read across a turn.
+  it converges to the physical answer is not settled (record kept with the project;
+  the non-monotone ladder is pinned by `tests/unit/misc/test_ladder_guard.py`). Show convergence on your
+  own geometry; the project's ladder check, tested there, catches a mesh ladder read across a turn.
 
 ## Interpreting output and warnings
 
