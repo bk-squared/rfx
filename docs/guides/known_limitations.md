@@ -166,7 +166,7 @@ This calibration uses one graded whole-grid scene, not a runtime guarantee.
 Design boxes use the same whole-grid adjoint workspace estimate and are unmeasured;
 other scenes, backends, and JAX versions are also unmeasured for this coefficient.
 With a design box and `checkpoint=False`, a gradient keeps 24 bytes per step for every cell of the box plus one cell on its plus side along each axis.
-That is twice what an E history needs (#2217). The estimate's term for it counts one more cell on the minus side as well, so it reads high:
+That is twice what an E history needs. The estimate's term for it counts one more cell on the minus side as well, so it reads high:
 1.12 times the compiled amount for a 24 × 24 × 24 box, 1.62 times for a one-cell 24 × 24 layer.
 Measure a representative run or pull back one output at a time when memory is tight.
 The former 2.2-times advice was exceeded by the measured 16-output row (2.25 times).
