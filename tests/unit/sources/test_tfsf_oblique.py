@@ -12,7 +12,8 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import init_state, init_materials, update_h, update_e
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_h, update_e
 
 # Oblique leakage runs need a narrowband source (bw<=0.15: off-f0 content carries
 # the wrong single-f0 k_y and breaks TFSF cancellation) which in turn needs a long

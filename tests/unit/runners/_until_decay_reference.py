@@ -35,7 +35,8 @@ from rfx.simulation import (
 from rfx.stepping.uniform_loop import _build_step_setup
 from rfx.measurement.decay import static_remnant_advisory, table_dc
 from rfx.core.drives import Drives, StepDrives
-from rfx.core.yee import component_e_materials, component_h_materials, update_h, MU_0, EPS_0
+from rfx.core.yee import component_e_materials, component_h_materials, MU_0, EPS_0
+from rfx.stepping.yee import update_h
 
 import numpy as np
 

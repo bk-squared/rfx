@@ -19,13 +19,11 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import C0
-from rfx.core.yee import (
-    init_state, init_materials, update_h, EPS_0, MU_0,
-)
+from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
+from rfx.stepping.yee import update_h
 from rfx.boundaries.pec import apply_pec
-from rfx.materials.debye import (
-    DebyePole, init_debye, update_e_debye,
-)
+from rfx.materials.debye import DebyePole, init_debye
+from rfx.stepping.poles import update_e_debye
 
 
 def _total_energy(state, dx):
@@ -131,7 +129,7 @@ def test_debye_medium_slower_propagation():
             if coeffs is not None:
                 state, dstate = update_e_debye(state, coeffs, dstate, dt, dx)
             else:
-                from rfx.core.yee import update_e
+                from rfx.stepping.yee import update_e
                 state = update_e(state, materials, dt, dx, high_wall=(False, False, False))
 
             state = apply_pec(state)

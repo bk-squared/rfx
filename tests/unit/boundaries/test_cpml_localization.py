@@ -13,7 +13,8 @@ import pytest
 from rfx.boundaries import cpml
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.pmc import apply_pmc_faces
-from rfx.core.yee import init_state, init_materials, update_h, update_e, update_h_nu, update_e_nu
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_h, update_e, update_h_nu, update_e_nu
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.model.materials import electric_cell_sizes

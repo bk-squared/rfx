@@ -516,20 +516,14 @@ def _build_step_setup(
         carry_init["lorentz"] = lorentz_state
 
     if use_tfsf:
-        from rfx.sources.tfsf import (
-            update_tfsf_1d_e,
-            update_tfsf_1d_h,
-            apply_tfsf_e,
-            apply_tfsf_h,
-            is_tfsf_2d, prepare_tfsf_for_scan,
-        )
+        from rfx.sources.tfsf import update_tfsf_1d_e, update_tfsf_1d_h, is_tfsf_2d, prepare_tfsf_for_scan
+        from rfx.stepping.tfsf import apply_tfsf_e, apply_tfsf_h
         tfsf_cfg, tfsf_state = prepare_tfsf_for_scan(tfsf, dx, dt)
         carry_init["tfsf"] = tfsf_state
         _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
         if _tfsf_is_2d:
-            from rfx.sources.tfsf_2d import (
-                update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
-            )
+            from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+            from rfx.stepping.tfsf_2d import bloch_phase_tuple
             # Per-axis Bloch phase on the 3D periodic roll (transverse axis),
             # matching the 2D-aux grid's transform (#404).
             _bloch = bloch_phase_tuple(tfsf_cfg, grid.dx)

@@ -5,7 +5,8 @@ from rfx.geometry.rasterize_grid import unpadded_high_walls
 import numpy as np
 
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.sources.sources import (
     GaussianPulse, WirePort, setup_wire_port, apply_wire_port,
 )

@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from rfx.ringdown import plain_dft
+from rfx.measurement.ringdown_tail import plain_dft
 from rfx.sparams._tail_witness import _pole_contributions
 from tests.unit.sparams.test_ringdown_oracles import _model
 

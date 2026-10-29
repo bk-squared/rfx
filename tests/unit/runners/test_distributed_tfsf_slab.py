@@ -11,9 +11,10 @@ import numpy as np
 import pytest
 
 from rfx import Simulation, Sphere
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from rfx.grid import C0
-from rfx.sources.tfsf import measure_normal_incident_spectrum, tfsf_from_declaration
+from rfx.measurement.incident import measure_normal_incident_spectrum
+from rfx.sources.tfsf import tfsf_from_declaration
 
 
 def test_f4_one_device_mie_anchor():

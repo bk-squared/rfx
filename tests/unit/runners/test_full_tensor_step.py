@@ -35,7 +35,8 @@ def test_mixed_tensor_uses_diagonal_permittivity_dtype(monkeypatch):
 
 
 def test_one_e_update_observes_cross_coupling():
-    from rfx.core.yee import init_materials, init_state, update_e_aniso
+    from rfx.core.yee import init_materials, init_state
+    from rfx.stepping.yee import update_e_aniso
     from rfx.geometry.node_tensor import compute_node_tensor_eps
     from rfx.geometry.smoothing import compute_smoothed_eps
     from rfx.grid import Grid

@@ -12,7 +12,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import EPS_0, MaterialArrays, init_state, update_e
+from rfx.core.yee import EPS_0, MaterialArrays, init_state
+from rfx.stepping.yee import update_e
 from rfx.grid import Grid
 from rfx.sources.msl_port import (
     MSLPort,

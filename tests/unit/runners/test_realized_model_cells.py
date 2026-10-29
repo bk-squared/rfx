@@ -422,8 +422,8 @@ def test_missing_sat_face_is_not_a_departure():
 ])
 def test_kernel_dump_is_consumed(kernel, quantity):
     """Exercise material apply paths outside the standard CPU lane fixtures."""
-    from rfx.core.yee import (init_materials, init_state, precompute_coeffs,
-                              update_e_aniso, update_he_fast)
+    from rfx.core.yee import init_materials, init_state, precompute_coeffs, update_he_fast
+    from rfx.stepping.yee import update_e_aniso
 
     shape = (4, 4, 4)
     ramp = jnp.arange(64, dtype=jnp.float32).reshape(shape) / 64

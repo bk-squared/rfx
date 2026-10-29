@@ -6,7 +6,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import EPS_0, init_materials, init_state, update_h
+from rfx.core.yee import EPS_0, init_materials, init_state
+from rfx.stepping.yee import update_h
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import drude_pole, init_lorentz
 from rfx.model.pole_stability import C0, largest_growth

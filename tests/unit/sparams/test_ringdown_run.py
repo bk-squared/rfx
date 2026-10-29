@@ -46,6 +46,8 @@ import jax
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
+import rfx.stepping.ringdown_emulation as stepping_ringdown_emulation
 from rfx import Box, GaussianPulse, Simulation
 from rfx import ringdown as rd
 from rfx.ringdown import RingdownSpec
@@ -130,7 +132,7 @@ def _run_captured(sim, n, **kw):
                            freq_max=k["freq_max"], guard=k["guard"],
                            sv_rel=k["sv_rel"], unit_tol=k["unit_tol"])
         S_hand = np.asarray(k["observable"](
-            k["plain"] + rd.tail_dft(main, n_record - 1, freqs)))
+            k["plain"] + ringdown_tail.tail_dft(main, n_record - 1, freqs)))
         assert S_hand.dtype == r.ringdown.s_params.dtype
         assert np.array_equal(S_hand[:, 0], r.ringdown.s_params[:, 0]), (
             "the completed S is not the completion from the main window")
@@ -284,7 +286,7 @@ def _replay_without_half_step(monkeypatch):
     Since S2 M2 the half step is the H stamp of the one DFT kernel, so the
     defect is the replay stamping the current as an E sample."""
     import rfx.core.dft_utils as dft_utils
-    orig = rd._emulate_accumulators
+    orig = stepping_ringdown_emulation._emulate_accumulators
     phase = dft_utils.port_dft_phase
 
     def replay(*a, **k):
@@ -293,14 +295,13 @@ def _replay_without_half_step(monkeypatch):
                       lambda step, freqs, dt, kind="E", **kw: phase(step, freqs, dt, "E", **kw))
             return orig(*a, **k)
 
-    monkeypatch.setattr(rd, "_emulate_accumulators", replay)
     import rfx.stepping.ringdown_emulation as ringdown_emulation
     monkeypatch.setattr(ringdown_emulation, "_emulate_accumulators", replay)
 
 
 def _replay_one_step_late(monkeypatch):
     """The W0 replay is fed the probe series shifted one step later."""
-    orig = rd._emulate_accumulators
+    orig = stepping_ringdown_emulation._emulate_accumulators
 
     def shift(a):
         a = np.asarray(a)
@@ -309,7 +310,6 @@ def _replay_one_step_late(monkeypatch):
     def replay(lane, pm, e32, h32, dt):
         return orig(lane, pm, shift(e32), {k: shift(v) for k, v in h32.items()}, dt)
 
-    monkeypatch.setattr(rd, "_emulate_accumulators", replay)
     import rfx.stepping.ringdown_emulation as ringdown_emulation
     monkeypatch.setattr(ringdown_emulation, "_emulate_accumulators", replay)
 
@@ -458,7 +458,7 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_fifth_of_its_decay_tim
     kw = {key: k[key] for key in ("freq_max", "guard", "sv_rel", "unit_tol")}
     Y = np.asarray(Y)[:n]
     S_half, S_quarter = (
-        np.asarray(k["observable"](k["plain"] + rd.tail_dft(
+        np.asarray(k["observable"](k["plain"] + ringdown_tail.tail_dft(
             rd.identify(Y, dt, n0, n, **kw), n - 1, freqs))).astype(np.complex128)
         for n0 in (600, 300))
     we_hand = float(np.max(np.abs(S_half - S_quarter)))

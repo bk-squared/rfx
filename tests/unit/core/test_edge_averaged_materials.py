@@ -18,17 +18,8 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import (
-    EPS_0,
-    FDTDState,
-    MaterialArrays,
-    curl_h,
-    e_update_coeffs,
-    edge_averaged_e_update_coeffs,
-    edge_averaged_materials,
-    precompute_coeffs,
-    update_e,
-)
+from rfx.core.yee import EPS_0, FDTDState, MaterialArrays, curl_h, e_update_coeffs, edge_averaged_e_update_coeffs, edge_averaged_materials, precompute_coeffs
+from rfx.stepping.yee import update_e
 from rfx.boundaries.pec import _volume_occupancy_masks
 
 DT = 1.0e-12
@@ -457,7 +448,7 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     """
     import jax
     import rfx.core.yee as _yee
-    from rfx.core.yee import update_e_aniso_inv, update_e_nu_aniso
+    from rfx.stepping.yee import update_e_aniso_inv, update_e_nu_aniso
 
     # Both arms compile fresh: update_e_aniso_inv is jitted, and a cached
     # trace would hand the second arm the first arm's coefficients.

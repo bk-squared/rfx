@@ -104,9 +104,15 @@ _LAZY_EXPORTS = {
 
 def __getattr__(name):
     from importlib import import_module
+    import warnings
 
     if name not in _LAZY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
-    globals()[name] = value
-    return value
+    target = _LAZY_EXPORTS[name]
+    warnings.warn(
+        f"{__name__}.{name} moved to {target}.{name}; import it from there. "
+        "The old path will be removed in rfx 3.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return getattr(import_module(target), name)

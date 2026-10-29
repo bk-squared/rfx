@@ -17,6 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import ringdown as rd
 
 DT = 1.2148552052451076e-12            # patch board step (s)
@@ -85,7 +86,7 @@ def test_the_tail_is_large_on_this_record():
     """The record stops while the slow modes ring, so a wrong tail cannot hide:
     the unrecorded part is a sizeable fraction of the infinite DFT."""
     y = _record()
-    frac = _rel(_analytic_infinite_dft(), rd.plain_dft(y, DT, FREQS))
+    frac = _rel(_analytic_infinite_dft(), ringdown_tail.plain_dft(y, DT, FREQS))
     assert frac > 0.05, frac
 
 
@@ -122,7 +123,7 @@ def test_tail_keeps_its_digits_next_to_a_slow_pole():
     w0 = 2.0 * np.pi * f0
     alpha = w0 / (2.0 * q)
     s = np.array([-alpha + 1j * w0])
-    tail = rd.tail_dft(_model(s, np.array([[1.0 + 0.0j]]), 0, dt=dt), n_last,
+    tail = ringdown_tail.tail_dft(_model(s, np.array([[1.0 + 0.0j]]), 0, dt=dt), n_last,
                        np.array([f0]))[0, 0]
     eps = Decimal(alpha) * Decimal(dt)                # exact: dt is 2**-40
     n1 = n_last + 1
@@ -376,9 +377,9 @@ def test_the_early_start_witness_is_the_difference_of_two_hand_completions(windo
     kw = dict(freq_max=F_MAX, guard=0.9, sv_rel=1.0e-6, unit_tol=1.0e-6)
     n_main = int(round(window_start * n))
     n_long = int(round(0.5 * window_start * n))
-    plain = rd.plain_dft(y, DT, FREQS)
-    c_main = plain + rd.tail_dft(rd.identify(y, DT, n_main, n, **kw), n - 1, FREQS)
-    c_long = plain + rd.tail_dft(rd.identify(y, DT, n_long, n, **kw), n - 1, FREQS)
+    plain = ringdown_tail.plain_dft(y, DT, FREQS)
+    c_main = plain + ringdown_tail.tail_dft(rd.identify(y, DT, n_main, n, **kw), n - 1, FREQS)
+    c_long = plain + ringdown_tail.tail_dft(rd.identify(y, DT, n_long, n, **kw), n - 1, FREQS)
     we_hand = float(np.max(np.abs(c_main - c_long)))
     w = rd.early_start_witness(y, DT, FREQS, n, window_start, **kw)
     w_given = rd.early_start_witness(y, DT, FREQS, n, window_start, plain=plain,
@@ -427,7 +428,7 @@ def test_the_tail_is_built_from_real_products():
     one_minus = -np.expm1(m.s[None, :] * m.dt - 1j * wdt[:, None])
     tail = m.dt * ((zn1[:, None] / one_minus) @ amp)
     for _ in range(20):                          # and the same bits every call
-        assert np.array_equal(rd.tail_dft(m, n1 - 1, FREQS), tail)
+        assert np.array_equal(ringdown_tail.tail_dft(m, n1 - 1, FREQS), tail)
 
 
 def test_the_growing_pole_rule_exempts_only_zero_frequency():
@@ -457,7 +458,7 @@ def test_a_single_channel_spectrum_given_by_the_caller_is_not_broadcast():
     n = 3000
     y = _record(n, modes=((2.5e9, 200.0, 0.5), (2.03e9, 60.0, 0.3)))[:, 0]
     kw = dict(freq_max=4.0e9)
-    plain = rd.plain_dft(y, DT, FREQS)
+    plain = ringdown_tail.plain_dft(y, DT, FREQS)
     assert plain.shape == (FREQS.size,)
     own = rd.early_start_witness(y, DT, FREQS, n, 0.5, **kw).value
     given = rd.early_start_witness(y, DT, FREQS, n, 0.5, plain=plain, **kw).value

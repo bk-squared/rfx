@@ -17,10 +17,8 @@ from scipy.special import hankel2
 
 from rfx import Box, DebyePole, GaussianPulse, LorentzPole, Simulation
 from rfx.boundaries.spec import BoundarySpec
-from rfx.core.yee import (
-    component_h_materials, init_materials, init_state, precompute_coeffs,
-    update_e, update_h, update_h_fast, update_h_nu, update_he_fast,
-)
+from rfx.core.yee import component_h_materials, init_materials, init_state, precompute_coeffs, update_he_fast
+from rfx.stepping.yee import update_e, update_h, update_h_fast, update_h_nu
 from rfx.sources.sources import WirePort, setup_wire_port
 from rfx.sources.wire_radius import MAX_RADIUS_RATIO
 from tests._x64_compat import enable_x64

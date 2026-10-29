@@ -72,7 +72,8 @@ def test_pec_cavity_s11_magnitude_near_one():
 def test_jit_path_matches_python_loop_extractor():
     """JIT-integrated path must agree with the canonical extract_s11 path."""
     from rfx.grid import Grid
-    from rfx.core.yee import init_state, init_materials, update_e, update_h
+    from rfx.core.yee import init_state, init_materials
+    from rfx.stepping.yee import update_e, update_h
     from rfx.boundaries.pec import apply_pec
     from rfx.sources.sources import LumpedPort, setup_lumped_port, apply_lumped_port
     from rfx.probes.probes import (

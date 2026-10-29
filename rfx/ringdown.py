@@ -2575,7 +2575,8 @@ class RingdownForward(RingdownRun):
         # program, where a jitted objective would otherwise use a rebuild that
         # is not the port's V and I unseen. (An S-level reading divides by the
         # incident wave and amplified float32 rounding where the drive is weak.)
-        plain = rj.plain_dft(Y, dt, f_bins)
+        from rfx.measurement.ringdown_tail_jax import plain_dft
+        plain = plain_dft(Y, dt, f_bins)
         from rfx.measurement.dft import phase
         # The analytic completion is slot-relative. Compare its actual V/I
         # conversion (including `half` above) on the physical E clock.
@@ -2622,9 +2623,15 @@ _LAZY_EXPORTS = {
 
 def __getattr__(name):
     from importlib import import_module
+    import warnings
 
     if name not in _LAZY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
-    globals()[name] = value
-    return value
+    target = _LAZY_EXPORTS[name]
+    warnings.warn(
+        f"{__name__}.{name} moved to {target}.{name}; import it from there. "
+        "The old path will be removed in rfx 3.0.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return getattr(import_module(target), name)

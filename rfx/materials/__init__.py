@@ -1,10 +1,8 @@
 """Material definitions and property arrays."""
 
 from rfx.core.yee import MaterialArrays, init_materials  # noqa: F401
-from rfx.materials.debye import (
-    DebyePole, DebyeCoeffs, DebyeState,  # noqa: F401
-    init_debye, update_e_debye,  # noqa: F401
-)
+from rfx.materials.debye import DebyePole, DebyeCoeffs, DebyeState, init_debye
+from rfx.stepping.poles import update_e_debye
 
 import jax.numpy as jnp
 

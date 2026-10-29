@@ -23,7 +23,8 @@ import pytest
 from rfx import Simulation
 from rfx.grid import Grid
 from rfx.ringdown import RingdownSpec
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, apply_lumped_port
 from rfx.probes.probes import (

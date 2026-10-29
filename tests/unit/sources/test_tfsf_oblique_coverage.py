@@ -29,7 +29,8 @@ from rfx.sources.tfsf_2d import (
 from rfx.stepping.tfsf_2d import (
     bloch_phase_tuple,
 )
-from rfx.core.yee import init_state, init_materials, update_h, update_e
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_h, update_e
 
 # Oblique leakage needs a narrowband source + long run (#404 Phase-B); marked slow.
 # The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when 1700 was set; the

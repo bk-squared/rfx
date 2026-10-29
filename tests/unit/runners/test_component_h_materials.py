@@ -1,5 +1,9 @@
 """Every material-aware H builder consumes component mu or refuses its record."""
 
+
+
+import rfx.stepping.tfsf as step_tfsf
+import rfx.stepping.yee as stepping_yee
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 import inspect
 
@@ -60,8 +64,8 @@ def test_homogeneous_fast_bake_keeps_legacy_field_bits(value):
     mats = mats._replace(mu_r=jnp.full(grid.shape, value, dtype=jnp.float32))
     old_ch = jnp.float32(grid.dt / (yee.MU_0 * grid.dx)) / mats.mu_r
     new_ch = yee.precompute_coeffs(mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch
-    expected = yee.update_h_fast(state, old_ch)
-    got = yee.update_h_fast(state, new_ch)
+    expected = stepping_yee.update_h_fast(state, old_ch)
+    got = stepping_yee.update_h_fast(state, new_ch)
     for a, b in zip(got[:6], expected[:6]):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
 
@@ -76,7 +80,7 @@ def test_normal_h_face_reads_neighbour_ghost_across_x_split(homogeneous):
               jnp.ones(3), jnp.ones(3))
     state = yee.init_state(shape)._replace(ez=jnp.indices(shape)[1].astype(jnp.float32))
     inv = tuple(1 / d for d in widths)
-    reference = yee.update_h_nu(state, mats, 1e-12, *inv, cell_sizes=widths, high_wall=(False, False, False))
+    reference = stepping_yee.update_h_nu(state, mats, 1e-12, *inv, cell_sizes=widths, high_wall=(False, False, False))
     split_m = dc._split_materials(mats, 2)
     split_s = dc._split_state(state, 2)
     got = []
@@ -114,11 +118,11 @@ def test_h_builder_carries_component_record(path):
 
     def build(m):
         if path == "uniform":
-            return yee.update_h(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+            return stepping_yee.update_h(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         if path == "nonuniform":
-            return yee.update_h_nu(state, m, grid.dt, *inv, high_wall=unpadded_high_walls(grid))
+            return stepping_yee.update_h_nu(state, m, grid.dt, *inv, high_wall=unpadded_high_walls(grid))
         if path == "fast":
-            return yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
+            return stepping_yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
         if path == "distributed_v2":
             return dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         if path == "distributed_nu":
@@ -186,13 +190,13 @@ def test_h_builder_inventory_reads_the_shared_owner():
     from rfx.subgridding import jit_runner as sg, sbp_sat_1d, sbp_sat_2d, disjoint_3d
     from rfx.sources import tfsf, tfsf_2d, waveguide_port, msl_port, coaxial_port
     from rfx.stepping import tfsf_2d as step_tfsf_2d, tfsf_oblique
-    sites = [yee.update_h, yee.update_h_nu, yee.precompute_coeffs,
+    sites = [stepping_yee.update_h, stepping_yee.update_h_nu, yee.precompute_coeffs,
              dc._update_h_local, dc._update_h_local_nu, cpml.apply_cpml_h,
              upml.init_upml, adi.adi_step_2d, adi.adi_step_3d, adi.apply_adi_cpml_2d,
              sg._z_slab_material_coupling_h_3d, sg._z_slab_material_coupling_e_3d,
              sbp_sat_1d._update_h_1d,
              sbp_sat_2d._update_hx_2d, sbp_sat_2d._update_hy_2d,
-             tfsf.update_tfsf_1d_h, tfsf.apply_tfsf_h,
+             tfsf.update_tfsf_1d_h, step_tfsf.apply_tfsf_h,
              step_tfsf_2d._update_h_tmz, step_tfsf_2d._update_h_tez, tfsf_2d.apply_tfsf_2d_h,
              tfsf_oblique.apply_methodB_h, waveguide_port.apply_waveguide_port_h,
              msl_port.make_msl_port_sources_jm,
@@ -235,11 +239,11 @@ def test_realized_h_tuple_replays_and_perturbs_one_component(path, wire):
     @jax.jit
     def advance(m):
         if path == "uniform":
-            result = yee.update_h(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+            result = stepping_yee.update_h(state, m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         elif path == "nonuniform":
-            result = yee.update_h_nu(state, m, grid.dt, *inv, high_wall=unpadded_high_walls(grid))
+            result = stepping_yee.update_h_nu(state, m, grid.dt, *inv, high_wall=unpadded_high_walls(grid))
         elif path == "fast":
-            result = yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
+            result = stepping_yee.update_h_fast(state, yee.precompute_coeffs(m, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid)).ch)
         elif path == "distributed_v2":
             result = dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         else:

@@ -66,8 +66,8 @@ _POLE_RULE = (
 
 def _pole_contributions(model, series, bins, denominator, record_s, *, growth=None):
     """Return per-bin maxima over fitted pole terms and channels by rule."""
-    from rfx.ringdown import (RingdownPole, _fit_residues, _static_pole,
-                              plain_dft, judge_growing_poles)
+    from rfx.ringdown import RingdownPole, _fit_residues, _static_pole, judge_growing_poles
+    from rfx.measurement.ringdown_tail import plain_dft
 
     window = series[model.n_ref:model.n_ref + model.n_window]
     indices = {'discarded growing': [], 'non-decaying sinusoidal': []}
@@ -128,7 +128,8 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
     from dataclasses import replace
 
     from rfx.core.jax_utils import is_tracer
-    from rfx.ringdown import identify, plain_dft, tail_dft, _static_pole, judge_growing_poles
+    from rfx.ringdown import identify, _static_pole, judge_growing_poles
+    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
 
     records = tuple(records)
     skipped = _rounding_only_records(records, rounding_groups or {})

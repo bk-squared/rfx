@@ -161,7 +161,8 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
     random background exercises the four-cell mean; one element sits on Ez
     and one on Ey at the second slab's first real cell, whose i-1 cells are
     the first slab's."""
-    from rfx.core.yee import FDTDState, update_e
+    from rfx.core.yee import FDTDState
+    from rfx.stepping.yee import update_e
     from rfx.runners._distributed_common import (
         _split_materials, _split_state, _update_e_local, slab_e_coeffs,
         slab_e_component_materials)

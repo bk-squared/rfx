@@ -55,6 +55,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import GaussianPulse
 from rfx import ringdown as rd
 from rfx.ringdown import RingdownSpec
@@ -252,7 +253,7 @@ def test_a_static_field_does_not_hold_the_floor():
     f_bins = np.linspace(5e9, 15e9, 41)
     # the completed spectrum is 2.5x the record's at half a decay time: scale
     # so the synthetic "S" stays below 1 and reads passive
-    scale = 4.0 * float(np.max(np.abs(rd.plain_dft(Y - np.array([0.5, -0.3]),
+    scale = 4.0 * float(np.max(np.abs(ringdown_tail.plain_dft(Y - np.array([0.5, -0.3]),
                                                    dt, f_bins))))
     spec = RingdownSpec()
     sched = rd._StopSchedule(2500)
@@ -357,8 +358,8 @@ def _synthetic_stop(Y, dt, bins, obs, n_max, *, ref_hz, n_off=0):
         c = sched.record(done, done * dt, dict(sources_off=True,
                                                source_ratio_long=0.0, **fields), 0.0)
         model = rd.identify(Y[:done], dt, n0, done, freq_max=ref_hz)
-        errors.append(np.asarray(obs(rd.plain_dft(Y[:done], dt, bins)
-                                     + rd.tail_dft(model, done - 1, bins))))
+        errors.append(np.asarray(obs(ringdown_tail.plain_dft(Y[:done], dt, bins)
+                                     + ringdown_tail.tail_dft(model, done - 1, bins))))
         if c.stop:
             break
     return sched.checks, errors

@@ -138,6 +138,7 @@
       "label": "Project",
       "items": [
         "rfx/project/changelog",
+        "rfx/project/deprecation-policy",
         "rfx/project/contributing",
         "rfx/project/citation"
       ]

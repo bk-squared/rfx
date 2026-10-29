@@ -6,7 +6,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import MU_0, curl_h, init_materials, init_state, update_h
+from rfx.core.yee import MU_0, curl_h, init_materials, init_state
+from rfx.stepping.yee import update_h
 from tests.unit.sparams.test_coax_two_port_smatrix import _sim
 
 

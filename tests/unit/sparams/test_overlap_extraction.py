@@ -15,7 +15,8 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.waveguide_port import (

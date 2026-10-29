@@ -19,9 +19,11 @@ import pytest
 
 from rfx import Box, Simulation, SnapshotSpec, Sphere
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.farfield import compute_far_field, make_ntff_box
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import make_ntff_box
 from rfx.grid import C0
-from rfx.sources.tfsf import measure_normal_incident_spectrum, tfsf_from_declaration
+from rfx.measurement.incident import measure_normal_incident_spectrum
+from rfx.sources.tfsf import tfsf_from_declaration
 from rfx.stepping.slab import Slab
 
 COMPONENTS = ("ex", "ey", "ez", "hx", "hy", "hz")

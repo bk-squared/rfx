@@ -1,0 +1,28 @@
+---
+title: "Deprecation policy"
+description: "Which rfx names are public, and how replacements and removals are announced."
+sidebar:
+  order: 4
+---
+
+rfx follows semantic versioning for its public API: the names in
+`rfx.__all__`, documented `Simulation` methods and arguments, and names
+documented on the public pages. Names starting with `_` and undocumented
+modules are internal and may change in any release.
+
+A public name is removed or renamed only in a major release. Before removal,
+it keeps working for at least one minor release and emits a
+`DeprecationWarning` naming its replacement and the major release that
+removes it.
+
+A moved import path works the same way. For example, the time-step names
+formerly imported from `rfx.core.yee`, such as `update_e` and `update_h`,
+now live in `rfx.stepping.yee`. The old paths still return the same objects,
+with a warning that they will be removed in rfx 3.0.
+
+Each deprecation and removal has a changelog entry of type `deprecated` or
+`removed`.
+
+Python shows `DeprecationWarning` raised from code in `__main__` by default.
+Elsewhere, use `python -W default::DeprecationWarning` or pytest's warnings
+summary to see these warnings.

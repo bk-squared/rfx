@@ -1,5 +1,8 @@
 """Realization operands, shared consumption, and one build per main-path run."""
 
+import rfx.stepping.yee as stepping_yee
+
+
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
@@ -81,11 +84,11 @@ def test_main_kernels_and_ade_read_stored_operands(monkeypatch):
     monkeypatch.setattr(stepping_yee, "component_h_materials", forbidden)
     jax.clear_caches()
     state = yee.init_state(cells.eps_r.shape)
-    state = yee.update_h(state, materials, 1e-12, .001, high_wall=(False, False, False))
-    state = yee.update_e(state, materials, 1e-12, .001, high_wall=(False, False, False))
+    state = stepping_yee.update_h(state, materials, 1e-12, .001, high_wall=(False, False, False))
+    state = stepping_yee.update_e(state, materials, 1e-12, .001, high_wall=(False, False, False))
     inv = [jnp.ones(n) * 1000 for n in cells.eps_r.shape]
-    state = yee.update_h_nu(state, materials, 1e-12, *inv, high_wall=(False, False, False))
-    state = yee.update_e_nu(state, materials, 1e-12, *inv, high_wall=(False, False, False))
+    state = stepping_yee.update_h_nu(state, materials, 1e-12, *inv, high_wall=(False, False, False))
+    state = stepping_yee.update_e_nu(state, materials, 1e-12, *inv, high_wall=(False, False, False))
     yee.precompute_coeffs(materials, 1e-12, .001, high_wall=(False, False, False))
     init_debye([d], materials, 1e-12, high_wall=(False, False, False))
     init_lorentz([lorentz_pole], materials, 1e-12, high_wall=(False, False, False))
@@ -132,8 +135,8 @@ def test_scan_value_and_gradient_match_cell_path_peak_tolerance(quantity):
         if realized:
             m = model.with_components(m, None, periodic=(False,) * 3, high_wall=(False, False, False))
         def step(state, _):
-            state = yee.update_h(state, m, 1e-12, .001, high_wall=(False, False, False))
-            return yee.update_e(state, m, 1e-12, .001, high_wall=(False, False, False)), None
+            state = stepping_yee.update_h(state, m, 1e-12, .001, high_wall=(False, False, False))
+            return stepping_yee.update_e(state, m, 1e-12, .001, high_wall=(False, False, False)), None
         state, _ = jax.lax.scan(step, initial, None, length=4)
         return jnp.sum(state.ex**2 + state.ey**2 + state.ez**2)
     values = getattr(cells, quantity)

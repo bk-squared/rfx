@@ -37,7 +37,8 @@ import jax.numpy as jnp
 import pytest
 
 from rfx.nonuniform import make_nonuniform_grid
-from rfx.core.yee import FDTDState, MaterialArrays, MU_0, update_h_nu
+from rfx.core.yee import FDTDState, MaterialArrays, MU_0
+from rfx.stepping.yee import update_h_nu
 from rfx.runners.distributed_nu import (
     _build_sharded_inv_dx_arrays,
     _update_h_local_nu,

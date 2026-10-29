@@ -28,15 +28,12 @@ import jax.numpy as jnp
 
 from rfx.api import Simulation
 from rfx.grid import Grid, C0
-from rfx.core.yee import (
-    init_state, init_materials, update_h, EPS_0, MU_0,
-)
+from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
+from rfx.stepping.yee import update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.geometry.csg import Box
-from rfx.materials.lorentz import (
-    LorentzPole, drude_pole, lorentz_pole,
-    init_lorentz, update_e_lorentz,
-)
+from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole, init_lorentz
+from rfx.stepping.poles import update_e_lorentz
 from rfx.materials.debye import DebyePole, init_debye
 
 
