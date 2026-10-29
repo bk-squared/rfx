@@ -17,7 +17,7 @@ from typing import NamedTuple
 
 import numpy as np
 from scipy import sparse
-from scipy.sparse.linalg import eigsh
+from scipy.sparse.linalg import ArpackError, eigsh
 
 from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
 from rfx.sources.waveguide_port import cutoff_frequency, C0_LOCAL
@@ -491,8 +491,11 @@ def _numerical_modes(a: float, b: float, dx: float,
     if n_te_req >= 1:
         try:
             te_vals, te_vecs = eigsh(L_te, k=n_te_req, which='SM')
-        except Exception:
-            te_vals, te_vecs = np.array([]), np.zeros((ny * nz, 0))
+        except ArpackError as exc:
+            raise RuntimeError(
+                f"TE eigenmode solve failed for cross-section {ny} x {nz}, "
+                f"k={n_te_req}: {exc}"
+            ) from exc
 
         # Filter out near-zero eigenvalue (trivial constant mode)
         valid_mask = te_vals > 1e-6
@@ -528,8 +531,11 @@ def _numerical_modes(a: float, b: float, dx: float,
     if n_tm_req >= 1:
         try:
             tm_vals, tm_vecs = eigsh(L_tm, k=n_tm_req, which='SM')
-        except Exception:
-            tm_vals, tm_vecs = np.array([]), np.zeros((ny * nz, 0))
+        except ArpackError as exc:
+            raise RuntimeError(
+                f"TM eigenmode solve failed for cross-section {ny} x {nz}, "
+                f"k={n_tm_req}: {exc}"
+            ) from exc
 
         valid_mask = tm_vals > 1e-6
         tm_vals = tm_vals[valid_mask]

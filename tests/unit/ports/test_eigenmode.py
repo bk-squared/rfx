@@ -1,6 +1,10 @@
 """Tests for the numerical eigenmode solver."""
 
 import numpy as np
+import pytest
+from scipy.sparse.linalg import ArpackError, ArpackNoConvergence
+
+import rfx.eigenmode as eigenmode
 
 from rfx.eigenmode import solve_waveguide_modes
 from rfx.sources.waveguide_port import cutoff_frequency
@@ -159,3 +163,42 @@ class TestEigenmodeTM11:
             f"TM11 cutoff: analytical={fc_analytical:.6e}, "
             f"numerical={fc_numerical:.6e}, rel_error={rel_error:.4f}"
         )
+
+
+@pytest.mark.parametrize("family,fail_call,k", [("TE", 1, 6), ("TM", 2, 5)])
+@pytest.mark.parametrize("error_type", [ArpackNoConvergence, ArpackError, ValueError])
+def test_eigenmode_solver_failure(monkeypatch, family, fail_call, k, error_type):
+    ny, nz = round(A / DX), round(B / DX)
+    eps_cross = np.ones((ny, nz))
+    eps_cross[:ny // 2, :] = 4.0
+    if error_type is ArpackNoConvergence:
+        error = error_type("forced", eigenvalues=np.array([]),
+                           eigenvectors=np.zeros((ny * nz, 0)))
+    elif error_type is ArpackError:
+        error = error_type(-1)
+    else:
+        error = error_type("other")
+    real_eigsh = eigenmode.eigsh
+    calls = 0
+
+    def failing_eigsh(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == fail_call:
+            raise error
+        return real_eigsh(*args, **kwargs)
+
+    monkeypatch.setattr(eigenmode, "eigsh", failing_eigsh)
+    expected = ValueError if error_type is ValueError else RuntimeError
+    with pytest.raises(expected) as caught:
+        solve_waveguide_modes(A, B, DX, FREQS, n_modes=1, eps_cross=eps_cross)
+    assert calls == fail_call
+    if error_type is ValueError:
+        assert caught.value is error
+    else:
+        message = str(caught.value)
+        assert family in message
+        assert f"{ny} x {nz}" in message
+        assert f"k={k}" in message
+        assert str(error) in message
+        assert caught.value.__cause__ is error

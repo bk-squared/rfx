@@ -51,7 +51,7 @@ def assembled_as_pec(sim, entry) -> bool:
     """
     try:
         mat = sim._resolve_material(entry.material_name)
-    except Exception:
+    except KeyError:
         return entry.material_name == "pec"
     sigma = getattr(mat, "sigma", 0.0)
     if is_tracer(sigma):
