@@ -161,9 +161,9 @@ def test_conformal_weights_sdf():
     from rfx.geometry import Sphere
     from rfx.geometry.conformal import compute_conformal_weights_sdf
     grid = _geometry_grid()
-    text = jax.jit(lambda radius: compute_conformal_weights_sdf(
-        grid, [Sphere((4.3e-3, 5.2e-3, 4.7e-3), radius)])).lower(
-            jnp.float32(2.6e-3)).as_text()
+    weights = compute_conformal_weights_sdf(
+        grid, [Sphere((4.3e-3, 5.2e-3, 4.7e-3), 2.6e-3)])
+    text = jax.jit(lambda: weights).lower().as_text()
     assert _assert_all_highest(text, "conformal weights SDF") >= 0
 
 

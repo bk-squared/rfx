@@ -1,4 +1,4 @@
-"""A run with conformal PEC says that its model enlarges a metal body (#1651)."""
+"""The PFC/SC model retains its accuracy-under-measurement advisory (#1651)."""
 
 import warnings
 
@@ -27,7 +27,8 @@ def test_conformal_run_warns_once_and_names_the_limitation():
     found = _advisories(True)
     assert len(found) == 1
     text = str(found[0].message)
-    assert "eps/w" in text and "known_limitations" in text
+    assert all(part in text for part in ("eps/lbar", "mu*sbar", "SC stability clamp",
+                                         "Accuracy is under measurement", "#1651"))
 
 
 def test_staircase_run_does_not_warn():

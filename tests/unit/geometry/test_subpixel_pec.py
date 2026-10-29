@@ -221,38 +221,19 @@ def test_assemble_materials_unchanged_without_conformal():
 
 
 def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
-    """Sanity that the existing Dey-Mittra weight machinery reproduces
-    the plan-stated boundary-cell weight (~0.36 at WR-90 dx=1 mm) when
-    the half-space Box from Stage 1 is in place. Skipped until the Box
-    injection actually lands — without that the assertion is vacuous."""
+    """The y edge crosses 22.86 mm; the x edge at y=23 mm is metal."""
     from rfx.geometry.conformal import compute_conformal_weights_sdf
 
     sim = _wr90_sim(conformal=True)
     grid = sim._build_grid()
     _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
-    if not pec_shapes:
-        pytest.skip("conformal injection not yet implemented")
-
-    w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-    w_ex = np.asarray(w_ex)
-
-    # Expected fractional cell: Yee Ex at (i+0.5, j, k) carries y=j*dx.
-    # The SDF half-space starts at y=WR_90_A=22.86 mm; the cell with
-    # |sdf| ≈ 0.14 mm sits at j = round(WR_90_A/dx) (=23 for dx=1 mm).
-    j_boundary = int(round(WR_90_A / float(grid.dx)))
-    # Pick an interior x and the middle-z cell.
-    i_mid = grid.shape[0] // 2
-    k_mid = grid.shape[2] // 2
-    w_at_boundary = float(w_ex[i_mid, j_boundary, k_mid])
-
-    # Plan reproduction: 0.36 ± 0.05 (handover memory entry 4910).
-    assert 0.0 < w_at_boundary < 1.0, (
-        f"boundary cell weight should be fractional, got {w_at_boundary:.4f}"
-    )
-    assert abs(w_at_boundary - 0.36) < 0.05, (
-        f"WR-90 dx=1 mm boundary-cell weight should be ≈0.36, got "
-        f"{w_at_boundary:.4f}"
-    )
+    assert pec_shapes
+    w_ex, w_ey, _ = compute_conformal_weights_sdf(grid, pec_shapes)
+    j = int(round(WR_90_A / float(grid.dx)))
+    i, k = grid.shape[0] // 2, grid.shape[2] // 2
+    assert float(w_ex[i, j, k]) == 0.
+    expected = WR_90_A / float(grid.dx) - (j - 1)
+    assert float(w_ey[i, j - 1, k]) == pytest.approx(expected, abs=1e-7)
 
 
 # -----------------------------------------------------------------------------
