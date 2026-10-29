@@ -294,7 +294,9 @@ def admit_waveguide(sim, *, lane="dispatch", edges=True):
                          or any(sim._periodic_flags()["xyz".index(face[0])] for face in incompatible)):
         raise ValueError(
             f"{lane}: full-aperture waveguide defaults on {', '.join(incompatible)} "
-            "would change realized transverse pads or an active periodic feature; this requires PR3b.")
+            "would change realized transverse pads or an active periodic feature; "
+            "rfx does not apply these defaults on faces with a transverse absorber pad or an "
+            "active periodic axis. Remove the pad or periodic feature on those faces.")
     state = getattr(sim, "_boundary_default_warned", [False])
     if incompatible and not state[0]:
         _warn_caller("Waveguide boundary default: " + ", ".join(incompatible)
@@ -384,7 +386,9 @@ def admit_grid_waveguide(grid, ports):
         _refuse_guide(faces, declaration, "low-level dispatch")
     elif faces and any(getattr(grid, f"pad_{face}") or face[0] in grid.periodic_axes for face in faces):
         raise ValueError("Full-aperture waveguide defaults would change realized transverse "
-                         "pads or an active periodic feature; this requires PR3b.")
+                         "pads or an active periodic feature; rfx does not apply these defaults "
+                         "on faces with a transverse absorber pad or an active periodic axis. "
+                         "Remove the pad or periodic feature on those faces.")
     elif faces and not state[0]:
         _warn_caller("Waveguide boundary default: " + ", ".join(faces)
                      + " are solved as PEC electric walls.")

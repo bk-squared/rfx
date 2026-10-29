@@ -19,8 +19,8 @@ from rfx.backend import backend_class
 OUTER_JIT_REFUSAL = (
     "rfx: a multi-device run on GPUs cannot be compiled inside an enclosing jax.jit "
     "(or lax.scan / jax.checkpoint): the compiler then encodes each device's position "
-    "as an operation CUDA rejects ('Failed to add memset node to a CUDA graph', "
-    "rfx tracker 1598). Either call run(devices=...) / forward(distributed=True) "
+    "as an operation CUDA rejects ('Failed to add memset node to a CUDA graph'). "
+    "Either call run(devices=...) / forward(distributed=True) "
     "and jax.grad of it WITHOUT jax.jit — the runner compiles its own time loop — "
     "or start the process with XLA_FLAGS=--xla_gpu_enable_command_buffer= "
     "(set before importing jax)."

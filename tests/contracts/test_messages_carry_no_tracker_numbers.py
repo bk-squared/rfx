@@ -10,6 +10,8 @@ import pytest
 TRACKER_PATTERNS = (
     r"#\d{2,5}\b",
     r"\bPR\s*#?\d{3,5}\b",
+    r"\btracker\s*#?\d+",
+    r"\bPR\s*#?\d+[a-z]?\b",
     r"\bissue[- ]#?\d+",
     r"\b20\d\d-\d\d-\d\d\b",
 )
@@ -64,7 +66,7 @@ def test_messages_carry_no_tracker_numbers():
 
 @pytest.mark.parametrize("text", [
     "See #931", "issue #123", "issue-#80", "issue 1218", "PR 123", "PR #123",
-    "Measured 2026-10-05",
+    "Measured 2026-10-05", "rfx tracker 1598", "tracker #1598", "PR3b", "PR #3b",
 ])
 def test_tracker_spellings(text):
     assert any(re.search(pattern, text) for pattern in TRACKER_PATTERNS)
