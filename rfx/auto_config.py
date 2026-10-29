@@ -591,6 +591,10 @@ def auto_configure(
         dt = 0.99 / (C0 * math.sqrt(1/dx**2 + 1/dx**2 + 1/dz_min**2))
     else:
         dt = 0.99 * dx / (C0 * math.sqrt(3))
+        from rfx._conformal_b import conformal_b_q
+        q = conformal_b_q()
+        if q is not None:
+            dt = q * (dx / (C0 * np.sqrt(3.0)) * 0.99)
 
     # 5. Number of steps
     # Source time: the pulse completes at t0 + cutoff*tau = 2*t0

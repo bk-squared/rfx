@@ -8,6 +8,7 @@ from fractions import Fraction
 from math import lcm
 
 from rfx.boundaries.depths import resolve_face_depths
+from rfx._conformal_b import conformal_b_q
 
 from rfx._grid_metric import (
     node_tie_tol,
@@ -268,7 +269,10 @@ class Grid:
             wall_axes="".join(a for a in "xyz" if kinds[a] == "wall"
                               and not (self.is_2d and a == "z")))
         ndim = 2 if self.is_2d else 3
+        q = conformal_b_q()
         self.dt = self.dx / (C0 * np.sqrt(float(ndim))) * 0.99
+        if q is not None:
+            self.dt = q * self.dt
         if self.is_2d:
             self.cpml_axes = self.cpml_axes.replace("z", "")
 
@@ -339,7 +343,9 @@ class Grid:
     @staticmethod
     def courant_dt(dx: float, ndim: int = 3) -> float:
         """Courant-stable timestep for 2D or 3D FDTD."""
-        return dx / (C0 * np.sqrt(float(ndim))) * 0.99
+        q = conformal_b_q()
+        dt = dx / (C0 * np.sqrt(float(ndim))) * 0.99
+        return dt if q is None else q * dt
 
     def num_timesteps(self, num_periods: float = 20.0) -> int:
         """Estimate timesteps for given number of periods at freq_max."""

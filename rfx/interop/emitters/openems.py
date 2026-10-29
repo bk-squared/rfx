@@ -1089,7 +1089,12 @@ def _plan_ports(
 # ---------------------------------------------------------------------------
 
 def _courant_dt(dx_m: float) -> float:
-    """rfx's ``Grid.courant_dt`` for 3D — a pure function of ``dx``."""
+    """Ordinary rfx 3D step; option B has no equivalent in this export."""
+    from rfx._conformal_b import conformal_b_q
+    q = conformal_b_q()
+    if q is not None:
+        raise _refuse('RFX_CONFORMAL_B_Q',
+                      'the openEMS export does not carry the option-B timestep and face operands')
     return dx_m / (299792458.0 * math.sqrt(3.0)) * 0.99
 
 

@@ -418,6 +418,16 @@ def _check_numerical_dispersion(self) -> None:
 
     inv_sq = sum(1.0 / di ** 2 for di in d)
     dt_cfl = 0.99 / (C0 * math.sqrt(inv_sq))
+    if all(p is None for p in (self._dx_profile, self._dy_profile, self._dz_profile)):
+        from rfx._conformal_b import conformal_b_q
+        q = conformal_b_q()
+        if q is not None:
+            ndim = 2 if getattr(self, '_mode', '3d').startswith('2d') else 3
+            dt_cfl = q * (dx_nom / (C0 * math.sqrt(float(ndim))) * 0.99)
+            cached = getattr(self, '_pf_campaign_ctx', None)
+            grid = getattr(cached[1], 'grid', None) if cached is not None else None
+            if grid is not None:
+                dt_cfl = float(grid.dt)
     omega = 2.0 * math.pi * self._freq_max
 
     errors = {}
