@@ -445,8 +445,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             "distributed_v2 is a uniform-grid runner; use sim.run(devices=...) "
             "for a non-uniform grid (shared distributed NU staging).")
     # Drop any standalone diagnostic arrays before allocating solve products.
-    sim._pf_campaign_ctx = None
-    sim._realized_geometry_record = None
+    from rfx.preflight.realization import release_inspection
+    release_inspection(sim)
     from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []

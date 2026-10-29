@@ -34,6 +34,7 @@ from __future__ import annotations
 from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 
 from rfx._precision import resolve_field_dtype
+from rfx.preflight.realization import release_inspection
 from rfx.boundaries.pmc import refuse_port_on_magnetic_face
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -1196,7 +1197,7 @@ def compute_mixed_s_matrix(
             # every wave, so a suspicious |S| can be traced to V/I
             # health (e.g. a broken Ampere loop shows as v0/i far
             # from the line Z0) without re-running.
-            return result, {
+            diagnostics = {
                 "v_lw": v_lw, "i_lw": i_lw,
                 "v0_msl": v0_msl, "i_msl": i_msl,
                 "drive_plan": drive_plan,
@@ -1208,6 +1209,9 @@ def compute_mixed_s_matrix(
                 "box_lw_flux": box_lw,
                 "plane_msl_flux": plane_msl,
             }
+            release_inspection(self)
+            return result, diagnostics
+        release_inspection(self)
         return result
     finally:
         self._dft_planes = saved_dft

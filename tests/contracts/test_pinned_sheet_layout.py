@@ -194,8 +194,7 @@ def test_same_simulation_then_zero_layout_bytes(compiled):
     sim = board()
     # Populate diagnostic caches as well as executing the fixed-sheet solve.
     sim.realized_geometry()
-    cached = {name: sim.__dict__.get(name) for name in (
-        '_pf_campaign_ctx', '_realized_geometry_record', '_coax_geometry', '_mesh_resolution')}
+    mesh_resolution = sim.__dict__.get('_mesh_resolution')
 
     def fixed():
         return observe(sim)
@@ -207,13 +206,17 @@ def test_same_simulation_then_zero_layout_bytes(compiled):
         return observe(board(()))
 
     jax.block_until_ready((jax.jit(fixed) if compiled else fixed)())
+    # #1432: a successful solve releases inspection products; mesh selection stays.
+    for name in ('_pf_campaign_ctx', '_realized_geometry_record', '_coax_geometry'):
+        assert getattr(sim, name) is None
     zeros = tuple(jnp.asarray(a) for a in edge_arrays(()))
     actual = (jax.jit(switched) if compiled else switched)(zeros)
     expected = (jax.jit(absent) if compiled else absent)()
     assert_bytes(actual, expected)
     assert len(sim._pinned_sheets) == 1
-    for name, value in cached.items():
-        assert sim.__dict__.get(name) is value
+    assert sim.__dict__.get('_mesh_resolution') is mesh_resolution
+    for name in ('_pf_campaign_ctx', '_realized_geometry_record', '_coax_geometry'):
+        assert getattr(sim, name) is None
 
 
 @pytest.mark.parametrize('lane', ['run_adi', 'run_subgridded'])

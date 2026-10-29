@@ -818,6 +818,24 @@ def context_from_conductors(sim, conductors):
     return ctx
 
 
+def release_inspection(sim):
+    """Release the model-owned inspection products."""
+    sim._pf_campaign_ctx = None
+    sim._realized_geometry_record = None
+    sim._coax_geometry = None
+
+
+def clear_inspection_cache(self):
+    """Release this model's cached inspection products.
+
+    Clears preflight's assembly context, the realized-geometry record and
+    the coax stamp. They are rebuilt on the next call that needs them.
+    They are released automatically while the solve runs. Call this after
+    inspecting a model you will not solve. Returns None.
+    """
+    release_inspection(self)
+
+
 def _campaign_ctx(self):
     """The shared :class:`_CampaignStaticsContext` for THIS preflight.
 
@@ -890,6 +908,7 @@ _assemble_realized.__qualname__ = "_PreflightMixin._assemble_realized"
 _port_realized_edges.__qualname__ = "_PreflightMixin._port_realized_edges"
 _port_pec_mask.__qualname__ = "_PreflightMixin._port_pec_mask"
 _campaign_ctx.__qualname__ = "_PreflightMixin._campaign_ctx"
+clear_inspection_cache.__qualname__ = "_PreflightMixin.clear_inspection_cache"
 
 
 # Standalone preflight: report what the production assembly refuses (an error, never a pass).
