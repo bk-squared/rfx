@@ -434,14 +434,6 @@ group delay differs by up to 19 % per bin; there it climbs toward each solver's 
 above HFSS on average; the offset shrinks with the mesh (4.24, 2.88, 2.43 %) but is not yet inside 1 %. Read group delay
 next to a narrow stopband as following the zero positions.
 
-### A uniform-mesh forward(distributed=True) does not return the per-port spectra
-
-Tracker: #1628
-
-On a uniform mesh, `forward(distributed=True)` returns the port S-matrix and the port V, I and V_ref time records as one
-device does, but not the per-port spectra `lumped_port_sparams` / `wire_port_sparams`: reading them raises
-`NotImplementedError`. Take the spectra from `run(devices=...)` or from one device.
-
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
