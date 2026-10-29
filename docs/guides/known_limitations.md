@@ -225,6 +225,12 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
+### `kottke_pec` smoothing turns one orientation of concave PEC corner into a magnetic short
+
+Tracker: #2242
+
+`subpixel_smoothing="kottke_pec"` and the tensor occupancy lane (`RFX_PEC_OCC_KOTTKE=1`) hold a field-driven H component at zero at concave PEC corners of one orientation (an empty cell with metal on its -y and -z faces, and the cyclic versions), so the corner acts as a magnetic short. In the reproduction, a one-cell PEC staircase, the port impedance is off by up to 1.5e-1 of its peak, while the mirrored staircase is unaffected. Until it is fixed, run PEC geometry with subpixel smoothing off.
+
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
 Tracker: #2150
