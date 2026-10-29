@@ -415,6 +415,7 @@ class TestBetaSchedule:
 class TestTopologyOptimize:
     """Integration test for the full topology optimization loop."""
 
+    @pytest.mark.gpu  # optax is installed only in the GPU suite
     @pytest.mark.skipif(
         not importlib.util.find_spec("optax"),
         reason="optax not installed",
@@ -531,6 +532,7 @@ def test_pec_foreground_gradient_is_finite_and_nonzero():
     assert float(jnp.max(jnp.abs(grad))) > 0.0
 
 
+    @pytest.mark.gpu  # optax is installed only in the GPU suite
     @pytest.mark.skipif(
         not importlib.util.find_spec("optax"),
         reason="optax not installed",
@@ -585,6 +587,7 @@ def test_pec_foreground_gradient_is_finite_and_nonzero():
         assert result.eps_design.shape == (5, 5, 1)
         assert result.final_result is None
 
+    @pytest.mark.gpu  # optax is installed only in the GPU suite
     @pytest.mark.skipif(
         not importlib.util.find_spec("optax"),
         reason="optax not installed",

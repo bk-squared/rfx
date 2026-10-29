@@ -15,8 +15,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.tooling
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"

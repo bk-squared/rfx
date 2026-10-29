@@ -6,8 +6,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.tooling
-
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
     'kl_tracker', ROOT / 'scripts/ci/check_known_limitations.py')
@@ -43,6 +41,7 @@ def test_every_limitation_has_a_valid_tracker():
     assert not problems, '\n' + '\n'.join(problems)
 
 
+@pytest.mark.tooling
 @pytest.mark.parametrize('body', ['', 'Tracker: TODO-LEADER', 'Tracker: none',
                                   'Tracker: TODO-NEW-ISSUE (silent gradient error)',
                                   'Tracker: none — accepted limitation (documented)',
@@ -57,6 +56,7 @@ def test_missing_or_invalid_tracker_refuses(body):
         kl.trackers(entry)
 
 
+@pytest.mark.tooling
 def test_all_leaf_subjects_count_and_section_headings_do_not():
     page = ('# Page\nintro\n## Standalone\nTracker: #1\n'
             '## Group\n### First\nTracker: #2, #3\n'
@@ -67,6 +67,7 @@ def test_all_leaf_subjects_count_and_section_headings_do_not():
     assert [kl.trackers(e) for e in subjects] == [{1}, {2, 3}, set()]
 
 
+@pytest.mark.tooling
 @pytest.mark.parametrize('subject', ['**Legacy subject.**', '- **Legacy subject:**'])
 def test_legacy_bold_subject_cannot_evade_tracker_contract(subject):
     entry, = kl.entries('# Page\n## Section\n' + subject + '\nAvoid this.\n')
@@ -74,6 +75,7 @@ def test_legacy_bold_subject_cannot_evade_tracker_contract(subject):
         kl.trackers(entry)
 
 
+@pytest.mark.tooling
 @pytest.mark.parametrize('reason', [
     'refused at default', 'warns at default', 'diagnostic, does not enter the result',
 ])
