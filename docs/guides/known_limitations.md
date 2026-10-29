@@ -231,11 +231,11 @@ Tracker: #2242
 
 `subpixel_smoothing="kottke_pec"` and the tensor occupancy lane (`RFX_PEC_OCC_KOTTKE=1`) hold a field-driven H component at zero at concave PEC corners of one orientation (an empty cell with metal on its -y and -z faces, and the cyclic versions), so the corner acts as a magnetic short. In the reproduction, a one-cell PEC staircase, the port impedance is off by up to 1.5e-1 of its peak, while the mirrored staircase is unaffected. Until it is fixed, run PEC geometry with subpixel smoothing off.
 
-### On a graded mesh, `run()` wrapped in `jax.jit` differs from plain `run()` by accumulated float32 rounding
+### On a graded mesh, `run()` wrapped in `jax.jit` differs from plain `run()`
 
 Tracker: #2241
 
-On a graded (non-uniform) mesh, wrapping `run()` itself in `jax.jit` gives a result that differs from plain `run()` by accumulated float32 rounding. On the graded tutorial board without its two thin sheets (Linux CPU), the fields differ by 1–5 float32 ULP of the peak in the first 64 steps. Over a 65,552-step record the probe trace differs by up to 6662.5 ULP of the peak per sample and by 1.9e-2 of the peak summed over the record, and by 30–95 % of the small field left after the pulse. `forward()` under `jax.jit` is bit-identical to plain `forward()` (uniform and graded mesh, CPU and GPU), so gradients and optimization are not affected: put `forward()` inside `jax.jit`, not `run()`.
+On a graded (non-uniform) mesh, wrapping `run()` itself in `jax.jit` gives a result that differs from plain `run()`; the cause is under investigation. On the graded tutorial board without its two thin sheets (Linux CPU), the fields differ by 1–5 float32 ULP of the peak in the first 64 steps. Over a 65,552-step record the probe trace differs by up to 6662.5 ULP of the peak per sample and by 1.9e-2 of the peak summed over the record, and by 30–95 % of the small field left after the pulse. `forward()` under `jax.jit` is bit-identical to plain `forward()` (uniform and graded mesh, CPU and GPU), so gradients and optimization are not affected: put `forward()` inside `jax.jit`, not `run()`.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
