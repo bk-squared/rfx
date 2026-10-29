@@ -64,6 +64,8 @@ import pytest
 
 from tests._git_tracked import git_available, tracked_set
 
+pytestmark = pytest.mark.docs_consistency
+
 _REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------

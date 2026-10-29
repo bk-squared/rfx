@@ -13,6 +13,8 @@ import tempfile
 
 import pytest
 
+pytestmark = pytest.mark.tooling
+
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = "scripts/ci/resolve_baselines.py"
 SPEC = importlib.util.spec_from_file_location("baseline_resolver", REPO / SCRIPT)

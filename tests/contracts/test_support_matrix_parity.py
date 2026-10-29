@@ -131,6 +131,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.docs_consistency
+
 MATRIX_JSON_PATH = Path("docs/guides/sparameter_support_matrix.json")
 MATRIX_MD_PATH = Path("docs/guides/support_matrix.md")
 

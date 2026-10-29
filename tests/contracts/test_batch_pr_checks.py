@@ -13,6 +13,8 @@ import sys
 import pytest
 import yaml
 
+pytestmark = pytest.mark.tooling
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/ci/check_batch.py"

@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.tooling
+
 _HERE = Path(__file__).resolve()
 _LOCKS_DIR = _HERE.parent
 _REPO = _HERE.parents[2]

@@ -66,6 +66,8 @@ import pytest
 
 from tests._git_tracked import tracked_set
 
+pytestmark = pytest.mark.docs_consistency
+
 REPO = Path(__file__).resolve().parents[2]
 _EXCLUDED = ("docs/public/", "docs/agent/")
 

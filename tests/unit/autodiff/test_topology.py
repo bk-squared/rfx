@@ -30,8 +30,6 @@ from rfx.topology import (
     _DEFAULT_BETA_SCHEDULE,
 )
 
-pytestmark = pytest.mark.gpu
-
 
 # ---------------------------------------------------------------------------
 # TopologyDesignRegion
