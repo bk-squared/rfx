@@ -14,7 +14,7 @@ COUNTS = (48, 9, 4)
 FREQS = np.linspace(8.4e9, 11.6e9, 17)
 
 
-def guide(delta, *, axis="x", window=(22, 30), nominal=True, total_change=False):
+def guide(delta, *, axis="x", window=(22, 30), nominal=True, total_change=False, pin_dt=True):
     n = COUNTS["xyz".index(axis)]
     cells = np.full(n, DX, dtype=np.float64)
     lo, hi = window if window is not None else (22, 30)
@@ -26,7 +26,7 @@ def guide(delta, *, axis="x", window=(22, 30), nominal=True, total_change=False)
         freq_max=float(FREQS[-1]), domain=tuple(n * DX for n in COUNTS), dx=DX,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8,
         **{f"d{axis}_profile": profile}, nominal_profiles=declaration,
-        dt=3e-12, dt_min_cell=0.002,
+        **(dict(dt=3e-12, dt_min_cell=0.002) if pin_dt else {}),
     )
     for cell, direction, name, reference in ((5, "+x", "left", 8), (43, "-x", "right", 40)):
         sim.add_waveguide_port(
@@ -91,6 +91,23 @@ def test_nonflux_normalization_refused(no_scan, normalize):
 def test_admitted_window_still_refused_outside_s_matrix(no_scan, entry):
     with pytest.raises(TracedStructureRefusal, match="waveguide port.*run\\(\\)/forward\\(\\)"):
         jax.jacfwd(lambda d: read(guide(d), entry=entry))(0.0)
+
+
+def test_unpinned_time_step_refused(no_scan):
+    with pytest.raises(TracedStructureRefusal, match="waveguide port.*dt= and dt_min_cell="):
+        jax.jacfwd(lambda d: read(guide(d, pin_dt=False)))(0.0)
+
+
+def test_admission_ends_with_the_s_matrix_call():
+    """A run() after an admitted S-matrix call on the same traced guide is refused."""
+    def s_then_run(delta):
+        sim = guide(delta)
+        value = read(sim)
+        read(sim, entry="run")
+        return value
+
+    with pytest.raises(TracedStructureRefusal, match="waveguide port.*run\\(\\)/forward\\(\\)"):
+        jax.jacfwd(s_then_run)(0.0)
 
 
 def slab_guide(delta, lo=22, hi=26):

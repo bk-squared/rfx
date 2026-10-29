@@ -5,6 +5,7 @@ from functools import wraps
 import numpy as np
 
 from rfx._traced_refusal import TracedStructureRefusal
+from rfx.core.jax_utils import is_tracer
 from rfx.model.graded_admission import host_cells, traced_cell_mask
 
 _flux_entry = ContextVar("waveguide_flux_mesh_entry", default=False)
@@ -34,6 +35,8 @@ def admit_traced_window(sim, traced, prefix):
     if traced != ["x"] or any(e.direction[1] != "x" for e in sim._waveguide_ports):
         refuse("only port-normal x cell widths may be traced; transverse y/z and scalar dx are refused")
     grid = sim._build_nonuniform_grid()
+    if is_tracer(grid.dt):
+        refuse("the time step follows the traced cells; pin it with dt= and dt_min_cell=")
     mask = traced_cell_mask(grid, "x")
     if mask is None:
         refuse("the traced x axis needs a declared traced_cells window")
