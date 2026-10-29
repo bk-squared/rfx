@@ -7,7 +7,8 @@ f0 = 29 GHz) so the conductor-loss FWHM is spectrally resolvable on CPU.
 Measured 2026-08-19 (120000 steps, df = 0.0816 GHz, JAX CPU float32;
 preflight on the fixture class: "All checks passed"):
 
-  f0 run:   f_mode = 24.7530 GHz, FWHM = 0.9339 GHz  -> Q_f0 = 26.5
+  f0 run:   f_mode = 24.7530 GHz, FWHM = 0.9339 GHz  -> 26.5 (a Hann
+            width reading, not the Q; see PERTURBATION BAND below)
   PEC run:  f_mode = 24.7673 GHz, FWHM = 0.1339 GHz  (window-limited)
   Q_pred = omega*W/P = 13.9, with W = 1/4 int(eps|E|^2 + mu|H|^2) dV over
   the full stack and P = 1/2 Rs0 sum |dHt|^2 dA from the PEC-run
@@ -37,17 +38,21 @@ Two teeth, split by what the evidence supports:
 * LOSS-IS-REAL (green): FWHM_f0 / FWHM_pec measured 6.98 — the f0 sheet
   broadens the mode far beyond the identical processing window, i.e.
   Q_f0 << Q_PEC, and only when asked (the PEC control is the same cells).
-* PERTURBATION BAND (xfail, strict): the contract band
-  Q_f0 in [0.7, 1.3] * Q_pred measured Q_f0/Q_pred = 1.905, and 1.885 on
-  the stacked-pair variant with a filtered-ring-down Q extractor reading
-  33.5 vs spectral 34.4 — a stable ~1.9x across two fixtures and two Q
-  extractors. Comparator-first caveat (workspace rule): the Q_pred
-  integral chain (DFT-plane energy + H-jump quadrature) has NOT itself
-  reproduced a known-Q analytic case, so this red cannot be attributed to
-  the operator — the independent free-standing-sheet transmission oracle
-  (tests/oracle/test_leontovich_alpha_oracle.py) pins the delivered Rs to +-4.4%
-  frequency-flat. Next step is validating the Q_pred comparator on an
-  analytic lossy-wall cavity, not touching the operator (R2).
+* PERTURBATION BAND: Q_f0 in [0.7, 1.3] * Q_pred, unchanged since
+  2026-08-19. It used to read Q_f0 from the Hann-windowed half-power width
+  above and measured 1.905 (#1626). That width is not the Q. The mode is
+  gone after about 1 ns of a 12.25 ns record, so the window's rise
+  multiplies the whole decay by about t^2. That narrows the line to 0.51 of
+  its width, and the width reads the Q about 1.9x high: 1.94x on a clean
+  synthetic decay at this dt, length and onset
+  (tests/unit/misc/test_harminv_short_decay_long_record.py pins the
+  extractor used now). The band now reads Q_f0 from find_resonances.
+  Re-measured 2026-10-29 on b8ad5aa70:
+  - Hann width reading 27.31, Q from find_resonances 14.20, Q_pred 14.29.
+  - The ratio is 0.993, and 0.987-0.993 over 30000, 60000 and 120000 steps.
+  - A second route that does not use the patch pole fit agrees within 0.8 %:
+    the record's five undamped 12 mm box TM_mn0 tones (17.7-51.4 GHz) are
+    removed, then the unwindowed width is read.
 """
 
 import warnings
@@ -136,6 +141,15 @@ def _measured():
     r = sim_f0.run(n_steps=N_STEPS, skip_preflight=True)
     ts = np.asarray(r.time_series)[:, 0]
     f_mode, fw_f0, df = _fwhm_and_peak(ts, dt)
+    # The Q is the ring-down pole's, not the Hann width's (#1626, docstring).
+    # The record also holds the lossless TM_mn0 tones of the 12 mm box; the
+    # mode is taken nearest f_mode only when it is unambiguous.
+    modes = r.find_resonances(freq_range=(20e9, 27e9),
+                              waveform=GaussianPulse(f0=29e9, bandwidth=0.6))
+    by_dist = sorted(modes, key=lambda mode: abs(mode.freq - f_mode))
+    d_near = abs(by_dist[0].freq - f_mode)
+    d_second = abs(by_dist[1].freq - f_mode) if len(by_dist) > 1 else np.inf
+    assert d_second >= 5 * d_near, [(m.freq, m.Q) for m in by_dist]
 
     sim_pec = _build("pec", dft_freqs=(f_mode,))
     r2 = sim_pec.run(n_steps=N_STEPS, skip_preflight=True)
@@ -169,10 +183,10 @@ def _measured():
         for comp in ("hx", "hy"):
             dH = planes[f"{comp}{k}"] - planes[f"{comp}{k - 1}"]
             P += 0.5 * rs0 * float(np.sum(np.abs(dH[foot]) ** 2)) * dA
-    q_f0 = f_mode / fw_f0
     q_pred = 2 * np.pi * f_mode * W / P
     _cache["out"] = dict(f_mode=f_mode, fw_f0=fw_f0, fw_pec=fw_pec, df=df,
-                         q_f0=q_f0, q_pred=q_pred)
+                         q_f0=float(by_dist[0].Q), q_f0_hann=f_mode / fw_f0,
+                         q_pred=q_pred)
     return _cache["out"]
 
 
@@ -198,26 +212,15 @@ def test_g2_loss_is_real():
     # the fixture; the WIDTH of this pin (+-0.3 GHz) and the FWHM and Q
     # assertions around it are unchanged.
     assert abs(out["f_mode"] - 25.399e9) < 0.3e9, out["f_mode"]
-    assert abs(out["q_f0"] / 26.5 - 1.0) < 0.25, out["q_f0"]
+    # The Hann width reading, about 1.9x the Q (#1626): a regression pin on
+    # the processed envelope only, not a Q.
+    assert abs(out["q_f0_hann"] / 26.5 - 1.0) < 0.25, out["q_f0_hann"]
 
 
 @pytest.mark.slow_physics
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1626 (cause undetermined; #677 fixed the sheet geometry, not this band). "
-           "G2 band (2026-08-19): Q_f0/Q_pred measured 1.905 here and "
-           "1.885 on the stacked-pair variant — a stable ~1.9x outside the "
-           "contract band [0.7, 1.3], reproduced by two fixtures and two Q "
-           "extractors (spectral FWHM 34.4 vs filtered ring-down 33.5 on "
-           "the pair). Comparator-first: the Q_pred integral chain "
-           "(DFT-plane energy + H-jump quadrature) has never reproduced a "
-           "known-Q analytic case, while the independent transmission "
-           "oracle pins the operator's delivered Rs to +-4.4% "
-           "frequency-flat — so validate the Q_pred comparator on an "
-           "analytic lossy-wall cavity BEFORE attributing this to the "
-           "operator. A future pass must remove this marker explicitly.",
-)
 def test_g2_perturbation_q_band():
     out = _measured()
+    print("[G2/BAND] " + "  ".join(
+        f"{k}={v:.6g}" for k, v in sorted(out.items())))
     ratio = out["q_f0"] / out["q_pred"]
     assert 0.7 <= ratio <= 1.3, out
