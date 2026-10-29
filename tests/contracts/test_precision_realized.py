@@ -164,9 +164,11 @@ def invoke(sim, entry):
                 include_environment=False,
                 run_kwargs={'n_steps':128,'s_param_freqs':FREQS,'skip_preflight':True})[0].result
     if entry == 'batch':
-        from rfx.batch import run_batch, ParameterSweep
-        return run_batch(lambda **kw: sim, ParameterSweep(unused=[1.]),
-                         run_kwargs={'n_steps':128,'s_param_freqs':FREQS,'skip_preflight':True})[0][1]
+        from rfx.batch import ParameterSweep
+        factory = lambda **kw: sim
+        run_kwargs = {'n_steps':128,'s_param_freqs':FREQS,'skip_preflight':True}
+        return [(p, factory(**p).run(**run_kwargs))
+                for p in ParameterSweep(unused=[1.]).combinations()][0][1]
     if entry in ('compute_waveguide_s_matrix', 'compute_s_matrix'):
         return getattr(sim, entry)(n_steps=32, normalize=False)
     if entry == 'compute_coax_msl_transition':

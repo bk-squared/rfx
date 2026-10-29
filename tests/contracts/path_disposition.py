@@ -80,7 +80,7 @@ each calculator's existing handling, including the waveguide NTFF warning.
 
 Folded into the lane columns, because they call ``sim.run()`` or
 ``sim.forward()`` on the caller's model and add no assembly of their own:
-``parametric_sweep``, ``ntff_sweep``, ``run_batch`` and
+``parametric_sweep``, ``ntff_sweep`` and
 ``run_batch_with_manifest``, ``config.runner.run_and_save``,
 ``convergence_study``, the diagnostics smoke run,
 ``optimize`` (``forward(eps_override=...)``), ``profile_forward``, the

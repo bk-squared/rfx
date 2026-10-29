@@ -27,11 +27,11 @@ Supply `make_simulation(width, eps_r)` for your device; it must return a
 configured `Simulation`. This block is not a standalone program.
 
 ```python
-from rfx.batch import ParameterSweep, run_batch
+from rfx.batch import ParameterSweep
 
 sweep = ParameterSweep(width=[0.028, 0.030, 0.032], eps_r=[3.8, 4.2])
 
-results = run_batch(make_simulation, sweep, run_kwargs={"n_steps": 500})
+results = [(p, make_simulation(**p).run(n_steps=500)) for p in sweep.combinations()]
 for params, result in results:
     print(params, result.time_series.shape)
 ```
