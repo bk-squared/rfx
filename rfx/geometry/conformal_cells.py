@@ -114,7 +114,7 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
         shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
-        if not np.any(shape_sdf < 0) and np.min(shape_sdf) < max(widths):
+        if not np.any(shape_sdf <= 1e-9 * min(widths)) and np.min(shape_sdf) < max(widths):
             raise NotImplementedError(
                 f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
                 'operands would drop it; refine the mesh or use the staircase')

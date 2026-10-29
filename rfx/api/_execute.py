@@ -2000,7 +2000,7 @@ class _ExecuteMixin:
         -------
         Result
         """
-        from rfx.model.tensor_operands import validate_conformal_min_weight
+        from rfx.geometry.conformal import validate_conformal_min_weight
         validate_conformal_min_weight(conformal_min_weight)
         self._resolve_field_dtype()
         admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box)

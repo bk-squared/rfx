@@ -80,11 +80,16 @@ def compute_conformal_weights_sdf(grid: Grid, pec_shapes: list):
     return compute_conformal_fractions(grid, pec_shapes)[0]
 
 
-def clamp_conformal_weights(w_ex, w_ey, w_ez, w_min=0.1):
-    """Accept the former default; node geometry already applies the SC clamp."""
-    if w_min != 0.1:
+def validate_conformal_min_weight(value):
+    """The old floor is no longer a physics input; refuse nondefault requests."""
+    if value != 0.1:
         raise NotImplementedError(
             'conformal_min_weight is replaced by the SC clamp; only the ignored default 0.1 is accepted')
+
+
+def clamp_conformal_weights(w_ex, w_ey, w_ez, w_min=0.1):
+    """Accept the former default; node geometry already applies the SC clamp."""
+    validate_conformal_min_weight(w_min)
     return w_ex, w_ey, w_ez
 
 

@@ -61,7 +61,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     The caller retains its warning policy and PEC-mask handling. Only the
     waveguide device supplies ``zero_inverse_on`` for interior PEC cells.
     """
-    validate_conformal_min_weight(conformal_min_weight)
+    conformal_module.validate_conformal_min_weight(conformal_min_weight)
     # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
     # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
     # apply_conformal_pec) chain with a single inverse-permittivity
@@ -210,13 +210,6 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
     return ref_aniso_eps, ref_aniso_inv_eps, reference
 
 
-def validate_conformal_min_weight(value):
-    """The old floor is no longer a physics input; refuse nondefault requests."""
-    if value != 0.1:
-        raise NotImplementedError(
-            'conformal_min_weight is replaced by the SC clamp; only the ignored default 0.1 is accepted')
-
-
 def finish_conformal_mu(materials, areas):
     """Apply PFC face areas to the realized H coefficients once, before stepping."""
     if areas is None:
@@ -232,7 +225,7 @@ def reference_conformal_materials(grid, materials, reference, periodic):
     if reference is None:
         return materials
     from rfx.model.materials import with_components
-    from rfx.simulation import resolve_periodic
+    from rfx._uniform_specs import resolve_periodic
     materials = with_components(materials, grid, periodic=resolve_periodic(grid, periodic))
     return finish_conformal_mu(materials, reference[1])
 
