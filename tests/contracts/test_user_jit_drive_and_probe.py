@@ -33,7 +33,7 @@ DZ_MSL = np.r_[np.full(6, .5), .5 * 1.25 ** np.arange(1, 6)] * 1e-3
 
 
 XFAILS = dict.fromkeys((1, 3, 5, 15, 29, 30, 31, 32, 40, 43), pytest.mark.xfail(
-    strict=True, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
+    strict=True, raises=AssertionError, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
 XFAILS.update(dict.fromkeys((17, 19, 50), pytest.mark.xfail(
     strict=True, raises=jax.errors.ConcretizationTypeError,
     reason="#2241 graded port assembly calls float() on a traced cell spacing under a user jit (rfx/model/graded_ports.py:77)")))
@@ -68,8 +68,7 @@ for _path, _kinds in (
         _entries = ('forward',) if _kind == 'tfsf-closed' else (
             ('run',) if _kind == 'msl-eigenmode' else ('run', 'forward'))
         for _entry in _entries:
-            _always = ((_path in ('uniform', 'graded') and _kind == 'lumped'
-                        and _entry == 'run') or (_path == 'multi-uniform' and _kind == 'point')
+            _always = ((_path in ('uniform', 'graded') and _kind == 'lumped') or (_path == 'multi-uniform' and _kind == 'point')
                        or _path == 'adi' or _kind == 'msl-eigenmode')
             ROWS.append(_row(_path, _kind, _entry, always=_always))
 for _path in ('uniform', 'graded', 'multi-graded', 'adi'):
