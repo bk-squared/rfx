@@ -476,14 +476,11 @@ def _ports(sim, ctx, assembled):
 
 
 def realized_geometry(sim):
-    """Build once per preflight context and port configuration, without stepping."""
+    """Build once per preflight context and declaration snapshot, without stepping."""
+    from rfx.api._declarations import declaration_key
+
     ctx = sim._campaign_ctx()
-    key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
-                     ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports",
-                      "_probes", "_dft_planes", "_flux_monitors")),
-           *(id(getattr(sim, attr, None)) for attr in ("_tfsf", "_ntff", "_current_moments")),
-           repr(sorted(getattr(sim, "_dft_plane_regions", {}).items())), sim._freq_max,
-           tuple(sorted(getattr(sim, "_internal_probe_indices", ()) or ())))
+    key = (ctx, declaration_key(sim))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
