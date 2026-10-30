@@ -811,6 +811,8 @@ def _dump_list(
 # one of the constructor-state tuples, so a new builder field cannot slip into rfx without
 # a decision being recorded here.
 
+_OPTIONAL_SOLVER_DEFAULTS = {"snap": "strict", "pec_occupancy_model": "edge_keep"}
+
 EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_adi_cfl_factor",
     "_boundary",
@@ -849,8 +851,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_probes",
     "_refinement",
     "_solver",
-    "_snap",
-    "_pec_occupancy_model",
+    *(f"_{key}" for key in _OPTIONAL_SOLVER_DEFAULTS),
     "_stencil_order",
     "_dt_pin", "_dt_min_cell",
     "_tfsf",
@@ -1483,8 +1484,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
         },
         "boundary": _dump_boundary(sim),
         "solver": {
-            "snap": check_text(sim._snap, what="_snap"),
-            "pec_occupancy_model": check_text(sim._pec_occupancy_model, what="_pec_occupancy_model"),
+            **{key: check_text(getattr(sim, f"_{key}"), what=f"_{key}") for key in _OPTIONAL_SOLVER_DEFAULTS},
             "precision": check_text(sim._precision, what="_precision"),
             "solver": check_text(sim._solver, what="_solver"),
             "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
@@ -1744,7 +1744,7 @@ def simulation_from_design(document: Any) -> Any:
     _require_exact_keys(
         solver,
         {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
-         "dt_pin", "dt_min_cell"} | ({"snap", "pec_occupancy_model"} & set(solver)),
+         "dt_pin", "dt_min_cell"} | (_OPTIONAL_SOLVER_DEFAULTS.keys() & set(solver)),
         what="solver",
     )
 
@@ -1789,8 +1789,7 @@ def simulation_from_design(document: Any) -> Any:
             if mesh["dz_profile"] is None
             else _array_from_dict(mesh["dz_profile"], what="mesh.dz_profile")
         ),
-        snap=check_text(solver.get("snap", "strict"), what="solver.snap"),
-        pec_occupancy_model=check_text(solver.get("pec_occupancy_model", "edge_keep"), what="solver.pec_occupancy_model"),
+        **{key: check_text(solver.get(key, default), what=f"solver.{key}") for key, default in _OPTIONAL_SOLVER_DEFAULTS.items()},
         precision=check_text(solver["precision"], what="solver.precision"),
         solver=check_text(solver["solver"], what="solver.solver"),
         adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
@@ -2053,12 +2052,8 @@ def _first_difference(left: Any, right: Any, path: str = "") -> str | None:
 
 def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
-    # Documents written before snap was exported use the strict default.
-    if "snap" not in document["solver"]:
-        document = {**document, "solver": {**document["solver"], "snap": "strict"}}
-    # Documents written before the occupancy model was exported use edge_keep.
-    if "pec_occupancy_model" not in document["solver"]:
-        document = {**document, "solver": {**document["solver"], "pec_occupancy_model": "edge_keep"}}
+    # Older documents use defaults for optional solver keys they do not carry.
+    document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
     if _equal(rebuilt, document):
         return
     where = _first_difference(rebuilt, document) or "<unknown>"
