@@ -1321,8 +1321,7 @@ class RingdownRun:
                 RingdownWitness("W2", w2.value, tol, w2.value <= tol, w2_rule,
                                 f"judged in place of WE, which could not be formed "
                                 f"({why}); on synthetic close-mode pairs, the graded and "
-                                "uniform box fixtures, and a metal cavity with a 2.7 % "
-                                "mode pair, W2 read the actual error 0.003-22x"),
+                                "uniform box fixtures, and a metal cavity with a 2.7 % mode pair, W2 read the actual error 0.003-22x"),
             ]
         try:
             we = early_start_witness(
