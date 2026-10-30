@@ -639,7 +639,7 @@ def dc_census(sim, *, dt, n_table):
             continue
         label = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
         try:
-            s = np.asarray(wf(jnp.asarray(t)), dtype=np.float64)
+            s = np.asarray(jax.vmap(wf)(jnp.asarray(t)), dtype=np.float64)
         except (TimeoutError,):
             raise
         except Exception as exc:  # noqa: BLE001 - recorded in DCNotEvaluated.error
