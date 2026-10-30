@@ -48,7 +48,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx._precision import HIGHEST
-from rfx.optimize import _value_and_grad_with_fallback
+from rfx.optimize import _adam_update, _value_and_grad_with_fallback
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +365,7 @@ def topology_optimize(
     minimize an objective function, using gradient information from
     ``jax.value_and_grad`` through the full FDTD pipeline.
 
-    Uses ``optax.adam`` for the optimizer.
+    Uses Adam (rfx's own update) for the optimizer.
 
     Parameters
     ----------
@@ -402,19 +402,12 @@ def topology_optimize(
     resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
-    # #677 lane fence, deliberately ABOVE the optional-dependency import:
-    # the surface-impedance sheet is unsupported on this lane whether or not
-    # optax happens to be installed, and hoisting it is what lets
-    # tests/unit/materials/test_sheet_impedance.py pin THIS call site in an environment
-    # without the [optimization] extra (a fence pinned only where an optional
-    # package exists is a fence nothing checks in the default CI image).
+    # Refuse unsupported surface-impedance sheets at entry.
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "topology-optimization")
     from rfx.runners._admission import admit
     admit(sim, "topology_optimize")
-    # #1240: the same reasoning for a refinement. The forward lane refuses it
-    # too, but only after the optax import, so without the extra it was a
-    # refusal nothing checked.
+    # Refuse refinement before constructing the optimization forward.
     sim._require_no_refinement_without_a_subgrid("topology_optimize()")
 
     # Build grid and compute design region indices
@@ -446,8 +439,7 @@ def topology_optimize(
 
     # The design arrays reach the solve whole-grid and traced, so the
     # current-moment monitor's guard checks the cells they can change: the
-    # design region's bounds. Same reasoning as the two fences above: run the
-    # guard here, above the optax import, and not only in the forward.
+    # design region's bounds. Run the guard here, before tracing the forward.
     design_region_cells = SimpleNamespace(bounds=(
         lo_idx[0], hi_idx[0] + 1, lo_idx[1], hi_idx[1] + 1,
         lo_idx[2], hi_idx[2] + 1))
@@ -457,15 +449,6 @@ def topology_optimize(
 
     from rfx.model.thin_conductors import refuse_design_films
     refuse_design_films(sim, grid, tuple(v for a, b in zip(lo_idx, hi_idx) for v in (a, b + 1)))
-
-    try:
-        import optax
-    except ImportError:
-        raise ImportError(
-            "topology_optimize requires optax. "
-            "Install it with: pip install optax  "
-            "or: pip install rfx-fdtd[optimization]"
-        )
 
     if beta_schedule is None:
         beta_schedule = _DEFAULT_BETA_SCHEDULE
@@ -510,9 +493,8 @@ def topology_optimize(
     # logit(0.5) = 0
     init_logit = jnp.log(init_density / (1.0 - init_density + 1e-8) + 1e-8)
 
-    # Set up optax optimizer
-    optimizer = optax.adam(learning_rate)
-    opt_state = optimizer.init(init_logit)
+    # Adam moments in logit space.
+    m = v = jnp.zeros_like(init_logit)
 
     logit = init_logit
     history = []
@@ -580,7 +562,7 @@ def topology_optimize(
         loss, grad = grad_fn(logit, jnp.asarray(beta, dtype=jnp.float32))
 
         # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
-        # gradient would silently poison ``logit`` via the optax update and
+        # gradient would silently poison ``logit`` via the Adam update and
         # every later iteration. Stop fast with a cause hint and RESTORE the
         # last design whose forward was finite (the current ``logit`` is the
         # one that just diverged).
@@ -601,9 +583,8 @@ def topology_optimize(
         loss_val = float(loss)
         history.append(loss_val)
 
-        # optax update
-        updates, opt_state = optimizer.update(grad, opt_state, logit)
-        logit = optax.apply_updates(logit, updates)
+        step, m, v = _adam_update(m, v, grad, it, learning_rate, 0.9, 0.999, 1e-8)
+        logit = logit - step
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             rho_raw = jax.nn.sigmoid(logit)
