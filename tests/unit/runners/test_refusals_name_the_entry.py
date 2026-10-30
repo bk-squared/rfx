@@ -12,36 +12,16 @@ from tests.unit.preflight.test_pec_face_short_of_domain_wall import A_WG, B_WG, 
 def graded_scene(kind):
     sim = Simulation(freq_max=10e9, domain=(.02,) * 3, dx=.001,
                      dz_profile=[.0009, .0011] * 10, boundary="pec")
-    if kind == "rlc":
-        sim.add_source((.01, .01, .005), "ex", amplitude_kind="current")
-        sim.add_lumped_rlc((.008,) * 3, "ez", R=50.)
-    else:
-        sim.add_port((.01, .01, .005), "ez", impedance=50., extent=.003,
-                     reference_plane_cells=1, direction="+x")
+    sim.add_port((.01, .01, .005), "ez", impedance=50., extent=.003,
+                 reference_plane_cells=1, direction="+x")
     sim.add_probe((.01, .01, .014), "ez")
     return sim
 
 
 @pytest.mark.parametrize("entry,kind,lane,expected", [
-    ("run", "rlc", None,
-     "add_lumped_rlc() element(s) (1): not supported on the distributed multi-device run() "
-     "path; the lane never applies them and would solve the structure as if "
-     "the elements were absent, with no warning ("
-     "rfx.runners.distributed_v2.run_distributed / "
-     "rfx.runners.distributed.run_distributed have no lumped-element update). "
-     "Remove the elements, or omit devices=... (use a single-device run() instead)."),
     ("run", "wire", None,
      "Wire ports with reference_plane_cells are not supported with devices=...; "
      "the V_ref path needs pre-injection recordings. Use one device."),
-    # Graded forward(distributed=True) is refused at the shared multi-device check,
-    # as run() is, before the graded lane assembles (#2076).
-    ("forward", "rlc", None,
-     "add_lumped_rlc() element(s) (1): not supported on the distributed multi-device forward() "
-     "path; the lane never applies them and would solve the structure as if "
-     "the elements were absent, with no warning ("
-     "rfx.runners.distributed_v2.run_distributed / "
-     "rfx.runners.distributed.run_distributed have no lumped-element update). "
-     "Remove the elements, or omit distributed=True (use a single-device forward() instead)."),
     ("forward", "wire", None,
      "Wire ports with reference_plane_cells are not supported with distributed=True; "
      "the V_ref path needs pre-injection recordings. Use one device."),

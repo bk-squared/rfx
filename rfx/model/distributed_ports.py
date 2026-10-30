@@ -32,14 +32,16 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        lorentz=lorentz_spec is not None, pmc=bool(sim._boundary_spec.pmc_faces())) != 'wrapped':
             raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC port faces are not supported.')
     admit(sim, lane, diagnostics=diagnostics)
+    from rfx.stepping.slab_lumped import fold
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.
     in_program = mesh.devices.size < 2
-    drive_model = sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid,
+    drive_model = sc.dispersive_drive_model(fold(sim, grid, materials), debye_spec, lorentz_spec, grid,
                                           in_program=in_program)
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
             sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=in_program)
+    materials = fold(sim, grid, materials)
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
@@ -105,9 +107,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
             final_drive_model = materials
         sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
                    for i, j, k, component, waveform in queue.resolve(final_drive_model)]
-    if ports_present:
-        conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
-            conductors, (), pec_occupancy_override, None, sim=sim)
+    conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
+        conductors, (), pec_occupancy_override, None, sim=sim, occupancy_mesh=mesh)
     conductors, record = conductor_model.at_kernel(sim, conductors,
         lane=lane, pec_edges=conductors.pec_edges)
     return materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override

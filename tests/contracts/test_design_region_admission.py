@@ -266,12 +266,83 @@ def test_path_existing_refusals(kind, path):
             sim.forward(**options)
 
 
-@pytest.mark.parametrize('kind', ['r', 'sheet'])
-def test_path_two_device_graded_refuses(kind):
+@pytest.mark.parametrize('kind', ['sheet'])
+@pytest.mark.parametrize('occupancy', [0., .5])
+def test_path_two_device_graded_refuses(kind, occupancy):
     sim, grid = model('graded', kind)
-    with pytest.raises((ValueError, NotImplementedError), match='[Rr][Ll][Cc]|surface.impedance'):
-        sim.forward(n_steps=2, pec_occupancy_override=jnp.zeros(grid.shape),
+    with pytest.raises((ValueError, NotImplementedError), match='surface.impedance'):
+        sim.forward(n_steps=2, pec_occupancy_override=jnp.full(grid.shape, occupancy),
             distributed=True, devices=jax.devices()[:2], skip_preflight=True)
+
+
+@pytest.mark.parametrize('padded', [False, True], ids=['grid', 'padded'])
+def test_path_two_device_graded_rlc_occupancy(padded):
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2, 'set XLA_FLAGS before starting Python'
+    records, messages = [], []
+    for distributed in (False, True):
+        sim, grid = model('graded', 'r')
+        occupancy = jnp.full(grid.shape, .5)
+        if distributed and padded:
+            occupancy = sim.shard_distributed_override(occupancy, devices, pad_value=.5)
+            assert occupancy.shape[0] > grid.shape[0]
+        with warnings.catch_warnings(record=True) as emitted:
+            warnings.simplefilter('always')
+            result = sim.forward(n_steps=400, checkpoint=False, skip_preflight=True,
+                pec_occupancy_override=occupancy,
+                **({'distributed': True, 'devices': devices} if distributed else {}))
+            records.append(np.asarray(result.time_series))
+        messages.append([str(w.message) for w in emitted if 'Port occupancy release:' in str(w.message)])
+    one, two = records
+    assert one.shape == two.shape == (400, 1)
+    assert np.isfinite(one).all() and np.isfinite(two).all()
+    peak = np.max(np.abs(one), axis=0).astype(np.float32)
+    assert np.all(peak > 0)
+    ulp = np.spacing(peak).astype(np.float64)
+    error = np.max(np.abs(two.astype(np.float64) - one.astype(np.float64)), axis=0)
+    assert np.all(error <= 9 * ulp), ('B1', error / ulp)
+    assert len(messages[0]) == 1 and 'lumped_rlc[0]' in messages[0][0]
+    assert messages[0] == messages[1]
+
+
+def test_path_two_device_graded_port_padded_occupancy(monkeypatch):
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2, 'set XLA_FLAGS before starting Python'
+    records, messages = [], []
+    released = []
+    original = products.release_port_occupancy
+
+    def release(occupancy, conductors, **kwargs):
+        result = original(occupancy, conductors, **kwargs)
+        nx = conductors.grid.shape[0]
+        if occupancy.shape[0] > nx:
+            assert result.sharding == occupancy.sharding
+            assert np.asarray(result)[nx:].tobytes() == np.asarray(occupancy)[nx:].tobytes()
+            assert np.asarray(result)[:nx].tobytes() == released[0].tobytes()
+        else:
+            released.append(np.asarray(result))
+        return result
+
+    monkeypatch.setattr(products, 'release_port_occupancy', release)
+    for padded in (False, True):
+        sim, grid = model('graded', 'none')
+        sim.add_port((.010, .008, .004), 'ez', impedance=50.)
+        occupancy = jnp.full(grid.shape, .5)
+        if padded:
+            occupancy = sim.shard_distributed_override(occupancy, devices, pad_value=.5)
+            assert occupancy.shape[0] > grid.shape[0]
+        with warnings.catch_warnings(record=True) as emitted:
+            warnings.simplefilter('always')
+            result = sim.forward(n_steps=400, checkpoint=False, skip_preflight=True,
+                pec_occupancy_override=occupancy, distributed=True, devices=devices)
+            records.append(np.asarray(result.time_series))
+        messages.append([str(w.message) for w in emitted if 'Port occupancy release:' in str(w.message)])
+    local, sharded = records
+    assert local.shape == sharded.shape == (400, 1)
+    assert np.isfinite(local).all() and np.isfinite(sharded).all() and np.any(local)
+    assert local.dtype == sharded.dtype and local.tobytes() == sharded.tobytes()
+    assert len(messages[0]) == 1 and 'port[1]' in messages[0][0]
+    assert messages[0] == messages[1]
 
 
 def test_path_two_device_graded_source_not_reached():

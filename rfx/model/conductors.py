@@ -315,7 +315,8 @@ def _port_release_description(conductors):
     return "; ".join(descriptions)
 
 
-def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None):
+def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None,
+                           occupancy_mesh=None):
     """Publish only for an occupancy input, then release and guard its box."""
     if occupancy is not None or design is not None:
         for i, config in enumerate(waveguide_configs):
@@ -325,16 +326,47 @@ def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, 
         if occupancy is not None or design is not None:
             conductors = publish_declarations(conductors, sim, design, sheet_operator, occupancy=occupancy)
         conductors = replace(conductors, design_findings=source_findings(sim, conductors, occupancy, design))
-    occupancy = release_port_occupancy(occupancy, conductors)
+    occupancy = release_port_occupancy(occupancy, conductors, mesh=occupancy_mesh)
     refuse_port_design_box(design, conductors)
     return conductors, occupancy
 
 
-def release_port_occupancy(occupancy, conductors):
+def _release_sharded_occupancy(occupancy, cells, mesh):
+    """Scatter only real-grid cells on their owners; communicate a warning bit.
+
+    Published incident cells are bounded by the conductors grid. Translating
+    those indices into each shard leaves alignment rows untouched, without
+    slicing an indivisible real-grid extent or gathering the global design.
+    """
+    import jax
+    import jax.numpy as jnp
+    from jax.sharding import PartitionSpec as P
+
+    def release(local):
+        x, y, z = (jnp.asarray(c) for c in cells.T)
+        x = x - jax.lax.axis_index('x') * local.shape[0]
+        owned = (x >= 0) & (x < local.shape[0])
+        indices = (jnp.where(owned, x, local.shape[0]), y, z)
+        occupied = jnp.any(local.at[indices].get(mode='fill', fill_value=0) != 0)
+        released = local.at[indices].set(0.0, mode='drop')
+        return released, jax.lax.pmax(occupied.astype(jnp.int32), 'x')
+
+    return jax.jit(jax.shard_map(release, mesh=mesh, in_specs=P('x'),
+        out_specs=(P('x'), P()), check_vma=False))(occupancy)
+
+
+def release_port_occupancy(occupancy, conductors, *, mesh=None):
     """Keep port edges free of design metal; warn once for this application."""
     if occupancy is None:
         return occupancy
-    if np.shape(occupancy) != conductors.grid.shape:
+    sharded = False
+    if mesh is not None:
+        from rfx.stepping.slab import Slab, is_sharded
+        layout = Slab(conductors.grid.shape[0], mesh.size, 0)
+        sharded = is_sharded(occupancy, layout, mesh)
+    expected = ((layout.nx_padded, *conductors.grid.shape[1:]) if sharded
+                else conductors.grid.shape)
+    if np.shape(occupancy) != expected:
         raise ValueError(f"Port occupancy shape {np.shape(occupancy)} differs from "
                          f"conductors grid shape {conductors.grid.shape}.")
     if not len(conductors.released_cells):
@@ -342,11 +374,17 @@ def release_port_occupancy(occupancy, conductors):
     import warnings
     from rfx.core.jax_utils import is_tracer
     indices = tuple(conductors.released_cells.T)
-    if is_tracer(occupancy) or np.any(np.asarray(occupancy)[indices] != 0):
+    if sharded:
+        released, occupied = _release_sharded_occupancy(occupancy, conductors.released_cells, mesh)
+    else:
+        occupied = True if is_tracer(occupancy) else np.any(np.asarray(occupancy)[indices] != 0)
+    if is_tracer(occupancy) or bool(occupied):
         ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
                       ConfigurationWarning, stacklevel=2)
+    if sharded:
+        return released
     import jax.numpy as jnp
     return jnp.asarray(occupancy).at[indices].set(0.0)
 
