@@ -897,10 +897,13 @@ def build_coaxial_tem_plane_source_specs(
     delta_t = 0.5 * dt_step + 0.5 * dz * float(np.sqrt(eps_r)) / float(_C0)
 
     # E and H source amplitude tables.
-    times_e = jnp.arange(int(n_steps), dtype=jnp.float32) * jnp.float32(dt_step)
-    times_h = times_e + jnp.float32(delta_t)
-    e_inc_table = jax.vmap(port.excitation)(times_e)
-    h_inc_table = jax.vmap(port.excitation)(times_h) / jnp.float32(z_med)
+    from rfx.sources._sampling import concrete_waveform_eval
+    with concrete_waveform_eval(port.excitation, dt_step, delta_t):
+        times_e = jnp.arange(int(n_steps), dtype=jnp.float32) * jnp.float32(dt_step)
+        times_h = times_e + jnp.float32(delta_t)
+        e_inc_table = jax.vmap(port.excitation)(times_e)
+        h_samples = jax.vmap(port.excitation)(times_h)
+    h_inc_table = h_samples / jnp.float32(z_med)
 
     # TFSF coefficients (mirror waveguide_port.py:1297, 1338, with ε
     # replaced by εr·ε₀ for the dielectric fill — the source plane sits

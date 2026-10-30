@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
+from rfx.sources._sampling import concrete_waveform_eval
 
 
 def stamped_drive(port, cell):
@@ -44,8 +45,9 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     if n_steps is None:
         samples = excitation(time)
     else:
-        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-        samples = jax.vmap(excitation)(times)
+        with concrete_waveform_eval(excitation, grid.dt):
+            times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+            samples = jax.vmap(excitation)(times)
     from rfx.model.source_coefficients import source_table
     return source_table(samples, native="cb", coefficient=cb * sigma_port * unit_field)
 
