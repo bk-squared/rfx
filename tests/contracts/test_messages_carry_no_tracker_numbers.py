@@ -19,8 +19,6 @@ TRACKER_PATTERNS = (
 # These constants are record provenance or documentation, never message text.
 # Keep prefixes narrow, and require every exception to still be used.
 ALLOWLIST = (
-    ("measurement/ports.py", "record endpoint: one sample fewer; moved with #1466",
-     "Owner record timing provenance, not a warning or refusal"),
     ("sparams/_common.py", "Warn-only complex-reciprocity tolerance for the rectangular-waveguide\n",
      "Attribute docstring documenting the tolerance's measured derivation"),
     ("sparams/msl.py", "PRE-passivity-projection raw extraction referred to the declared feed planes,",
