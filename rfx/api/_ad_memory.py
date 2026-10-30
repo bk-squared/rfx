@@ -213,9 +213,12 @@ class _AdMemoryMixin:
         comes from the same realized-grid resolver. Whole-grid tape saves
         the real scan carry except declared linear accumulators; box tape
         saves six write-window arrays for designed permittivity and
-        conductivity, or three for occupancy. A permittivity-only design on
+        conductivity, or three for occupancy, plus streaming observation
+        phase residuals read from the realized measurement carry. Carried
+        closed-box incident-line arrays add their realized resident bytes.
+        A permittivity-only design on
         a lossless window keeps three arrays: the estimate is then an upper
-        bound, twice that tape, and plan_ad_memory may choose checkpointing
+        bound, twice that field term plus the observation term, and plan_ad_memory may choose checkpointing
         that was not needed. A rematted, unsegmented box retains its labelled
         carry-plus-computation-window bound. The fixed term is calibrated on GPU with
         JAX 0.10.2, rather than a bound for CPU compiler temporaries.
