@@ -431,14 +431,12 @@ Tracker: none — accepted limitation (refused at default: tests/unit/sparams/te
 
 Tracker: #2203
 
-On a two-stub microstrip stopband filter, |S21|, both transmission zeros and the −3 dB stopband edges are inside the
-accuracy bar against HFSS (see the support matrix). The transmission group delay over 5–11 GHz is not. Both solvers
-converge (rfx cells h/4 to h/12, HFSS three meshes; reference the finest HFSS mesh), and rfx's reference planes are
-moved out to HFSS's ports on the box faces with rfx's own line propagation constant. On the skirts of the stopband the
-group delay differs by up to 19 % per bin; there it climbs toward each solver's own zero, and the zeros differ by up to
-0.53 % (that the zeros carry the difference is estimated, not measured). In the passband at 5.0–5.6 GHz rfx reads 2.4 %
-above HFSS on average; the offset shrinks with the mesh (4.24, 2.88, 2.43 %) but is not yet inside 1 %. Read group delay
-next to a narrow stopband as following the zero positions.
+On a two-stub microstrip stopband filter on the edge-aware non-uniform mesh (`rfx.mesh_edges.edge_aware_profiles`),
+the passband group delay over 5.0–5.6 GHz is 1.06 % above an HFSS reference. With the mesh it changes little at the fine
+end: 1.44, 1.14 and 1.06 % at h/4, h/8 and h/12, where h is the substrate thickness. Near the stopband edges the per-bin
+difference is larger and not flat. The stopband minima are shallower in rfx: −35 and −41 dB, against −39 and −59 dB in
+HFSS. The cause is not known. On a uniform mesh the gap is larger and falls first order with the cell (3.86, 2.44 and
+1.96 %), because a free PEC sheet edge is solved 0.35 cell beyond its last node.
 
 ## Ring-down completion and the early stop
 
