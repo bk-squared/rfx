@@ -221,6 +221,13 @@ def occupancy_from_design(shape, window, values):
 def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
                               periodic_bool, design_occupancy):
     """Keep the existing optional tensor path and all of its refusals."""
+    if (self._pec_occupancy_model == "kottke"
+            and design_occupancy is not None and pec_occupancy_local is None):
+        raise RfxUnsupported(
+            "pec_occupancy_model='kottke' applies to pec_occupancy_override "
+            "only, not to a design occupancy box. Use pec_occupancy_override "
+            "on the single-device uniform forward() lane, or select "
+            "pec_occupancy_model='edge_keep'.")
     aniso_inv_eps_run = None
     pec_occupancy_for_run = pec_occupancy_local
     tensor = pec_occupancy_local is not None and self._pec_occupancy_model == "kottke"

@@ -7,6 +7,54 @@ from rfx import Simulation
 from rfx.errors import RfxRefusal, RfxUnsupported
 
 
+@pytest.mark.parametrize("model", ["edge_keep", "kottke"])
+def test_uniform_design_occupancy_without_pec_override_admission(monkeypatch, model):
+    """A design-only box must refuse Kottke before entering the solve."""
+    import rfx.simulation as simulation
+
+    class SolveReached(Exception):
+        pass
+
+    def solve(*args, **kwargs):
+        raise SolveReached
+
+    monkeypatch.setattr(simulation, "run", solve)
+    sim = Simulation(freq_max=10e9, domain=(.008,) * 3, dx=.001,
+                     boundary="pec", cpml_layers=0, pec_occupancy_model=model)
+    expected = RfxUnsupported if model == "kottke" else SolveReached
+    match = "kottke.*pec_occupancy_override only, not to a design occupancy box" if model == "kottke" else None
+    with pytest.raises(expected, match=match):
+        sim.forward(n_steps=1, design_box=((.002,) * 3, (.004,) * 3),
+                    design_occupancy_override=jnp.full((3,) * 3, .5),
+                    skip_preflight=True, checkpoint=False)
+
+
+def test_topology_occupancy_reaches_uniform_solve_with_kottke_tensor(monkeypatch):
+    """Topology embeds its design in a full-grid occupancy, which is supported."""
+    import rfx.simulation as simulation
+    from rfx.model.occupancy import occupancy_from_design
+
+    class SolveReached(Exception):
+        pass
+
+    def solve(*args, **kwargs):
+        assert kwargs["pec_occupancy"] is None
+        assert kwargs["aniso_inv_eps"] is not None
+        assert kwargs["design_occupancy"] is None
+        raise SolveReached
+
+    monkeypatch.setattr(simulation, "run", solve)
+    sim = Simulation(freq_max=10e9, domain=(.008,) * 3, dx=.001,
+                     boundary="pec", cpml_layers=0, pec_occupancy_model="kottke")
+    grid = sim._build_grid()
+    materials = sim._assemble_materials(grid)[0]
+    occupancy = occupancy_from_design(
+        grid.shape, (slice(2, 5),) * 3, jnp.full((3,) * 3, .5))
+    with pytest.raises(SolveReached):
+        sim._forward_from_materials(grid, materials, None, None,
+                                    n_steps=1, pec_occupancy=occupancy)
+
+
 @pytest.mark.parametrize("distributed", [False, True])
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 def test_graded_forward_refuses_kottke_occupancy(distributed, axis):
