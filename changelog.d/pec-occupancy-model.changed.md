@@ -5,3 +5,5 @@
 - A graded `forward(pec_occupancy_override=...)` used to run the default model silently when the variable was set;
   with `"kottke"` it now raises `RfxUnsupported` naming the uniform single-device lane.
 - Setting `RFX_PEC_OCC_KOTTKE` now raises at `Simulation` construction; `RFX_PEC_OCC_KOTTKE_DEBUG` is gone.
+- Design documents (`design_to_json` / `simulation_from_design`) carry the option; a document without it loads
+  `"edge_keep"`.
