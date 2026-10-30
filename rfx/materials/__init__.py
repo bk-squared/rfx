@@ -37,7 +37,7 @@ def set_material(materials: _MaterialArrays, mask, *,
 
 
 # Compatibility imports warn and resolve to the owning module on every access.
-_MOVED_NAMES = {
+_LAZY_EXPORTS = {
     "MaterialArrays": "rfx.core.yee",
     "init_materials": "rfx.core.yee",
     "DebyePole": "rfx.materials.debye",
@@ -50,4 +50,4 @@ _MOVED_NAMES = {
 
 def __getattr__(name):
     from rfx._moved_names import resolve_moved
-    return resolve_moved(__name__, _MOVED_NAMES, name)
+    return resolve_moved(__name__, _LAZY_EXPORTS, name)
