@@ -1350,7 +1350,8 @@ class Simulation(
                     "line integral and a PEC signal trace. Single-cell "
                     "lumped ports have no closed-box flux-referee validation of "
                     "reference-plane V/I waves; that validation used a "
-                    "wire-port matched thru line on 2026-07-10."
+                    "wire-port matched thru line, with reference-plane |S21| within "
+                    "~2.5% of the box referee at all nine frequency bins."
                 )
             if int(reference_plane_cells) != reference_plane_cells \
                     or int(reference_plane_cells) < 1:

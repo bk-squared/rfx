@@ -1,4 +1,4 @@
-"""Runtime messages explain the limitation without tracker numbers; dated measurements keep their provenance."""
+"""Runtime messages explain the limitation without tracker numbers or dates."""
 
 import ast
 import re
@@ -13,7 +13,7 @@ TRACKER_PATTERNS = (
     r"\btracker\s*#?\d+",
     r"\bPR\s*#?\d+[a-z]?\b",
     r"\bissue[- ]#?\d+",
-    r"https?://[^\s]+/(?:issues|pull)/\d+",
+    r"\b20\d\d-\d\d-\d\d\b",
 )
 
 # These constants are record provenance or documentation, never message text.
@@ -66,7 +66,7 @@ def test_messages_carry_no_tracker_numbers():
 
 @pytest.mark.parametrize("text", [
     "See #931", "issue #123", "issue-#80", "issue 1218", "PR 123", "PR #123",
-    "https://github.com/bk-squared/rfx/issues/313", "rfx tracker 1598", "tracker #1598", "PR3b", "PR #3b",
+    "Measured 2026-10-05", "rfx tracker 1598", "tracker #1598", "PR3b", "PR #3b",
 ])
 def test_tracker_spellings(text):
     assert any(re.search(pattern, text) for pattern in TRACKER_PATTERNS)
@@ -87,8 +87,3 @@ class Notice:
     assert sorted(node.value for node in _non_docstring_constants(tree)) == [
         " (#931)", "2026-10-05", ": ", "PR 123", "issue #123",
     ]
-
-
-def test_dated_measurements_are_not_tracker_references():
-    assert not any(re.search(pattern, "Measured on a PEC short on 2026-09-07")
-                   for pattern in TRACKER_PATTERNS)

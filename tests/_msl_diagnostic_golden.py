@@ -90,7 +90,7 @@ TEXT_8 = (
     'cell danger zone of the existing declared-face alignment heuristic. The fraction '
     'alone does not establish material/PEC overlap. Historical substrate-air/trace mixed-'
     'cell runs with AD-traceable ``pec_occupancy_override`` reported unphysical |S21|² > 1'
-    ' (cited, not remeasured on this checkout: historical runs on 2026-05-08, dx∈[75,82]µm '
+    ' (cited, not remeasured on this checkout: historical runs, dx∈[75,82]µm '
     "h_sub=254µm). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT "
     'RUN PATH (subpixel_smoothing=False and no conformal PEC face — the shipped defaults):'
     ' a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces '
@@ -480,7 +480,7 @@ TEXT_42 = (
     'cell danger zone of the existing declared-face alignment heuristic. The fraction '
     'alone does not establish material/PEC overlap. Historical substrate-air/trace mixed-'
     'cell runs with AD-traceable ``pec_occupancy_override`` reported unphysical |S21|² > 1'
-    ' (cited, not remeasured on this checkout: historical runs on 2026-05-08, dx∈[75,82]µm '
+    ' (cited, not remeasured on this checkout: historical runs, dx∈[75,82]µm '
     "h_sub=254µm). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT "
     'RUN PATH (subpixel_smoothing=False and no conformal PEC face — the shipped defaults):'
     ' a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces '

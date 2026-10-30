@@ -756,7 +756,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         "DECLARED cross-section realizes short of the realized wall. "
         "The vacuum cell left between them is a parallel-plate line "
         "along that wall, open at both ends (measured on the WR-90 PEC-short "
-        "waveguide case on 2026-09-07: |S21| 0.22-0.33 past a PEC short, and the "
+        "waveguide case: |S21| 0.22-0.33 past a PEC short, and the "
         "pec-short |S11| deficit 0.0146 -> 0.0560). REMEDY: draw the "
         "face to the REALIZED wall plane quoted above, not to the "
         "declared dimension (tests/_realized_geometry."

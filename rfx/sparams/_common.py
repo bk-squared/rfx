@@ -1626,7 +1626,7 @@ def _warn_junction_probe_clearance(
                 f"of the validated far-port envelope); recommend "
                 f">= {recommended_m * 1e3:.1f} mm (5 decay lengths). Compact "
                 f"port-to-junction clearance left residual max|S|~3.9 in the "
-                f"2026-07-06 waveguide port-to-junction clearance verification "
+                f"waveguide port-to-junction clearance verification "
                 f"(necessary-but-not-sufficient) — move "
                 f"the probe plane farther from the junction.",
                 code="port_junction_probe_clearance",

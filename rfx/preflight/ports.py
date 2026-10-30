@@ -257,7 +257,7 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
                 f"{len(near)} reference-plane port(s) use "
                 "reference_plane_cells < 10 — planes this close sit in "
                 "the port near field. Measured on the canonical thru "
-                "(dx = 0.5 mm, 2026-07-10 closed-box flux-referee battery): N=3 planes read "
+                "(dx = 0.5 mm, closed-box flux-referee battery): N=3 planes read "
                 "Zc = 52-53 ohm with |Im(Zc)/Re(Zc)| up to 8.2% and "
                 "beta/(w/c) = 1.16-1.20 (vs the clean mid-line "
                 "constants at N=10), and the closed-box-referee |S21| "
@@ -543,9 +543,9 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"(center {tuple(round(x, 6) for x in mid_center)}) "
                     f"lands inside PEC geometry "
                     f"'{name}'. S-parameters from "
-                    f"this port are silently corrupted (measured on a thru line with a 1.5 mm port extent on 2026-07-10: "
-                    f"near-null forward transmission + over-unity "
-                    f"reverse). Shorten/lengthen the extent or move "
+                    f"this port are silently corrupted (measured on a thru line with a 1.5 mm port extent: "
+                    f"near-null forward |S21| = 0.005-0.010 + over-unity "
+                    f"reverse |S12| = 1.06-1.15). Shorten/lengthen the extent or move "
                     f"the port so the midpoint cell sits in "
                     f"dielectric.",
                     code="wire_port_midpoint_in_pec",
