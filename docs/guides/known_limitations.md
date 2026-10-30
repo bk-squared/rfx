@@ -612,6 +612,8 @@ before the DFT.
 
 Tracker: #1991
 
+`compute_rcs` now emits an `AccuracyWarning` before an oblique-incidence run to flag this mesh-dependent absolute level.
+
 `compute_rcs(..., theta_inc=θ)` with θ ≠ 0 runs the oblique open-domain plane wave (2.5-D: open in y, a thin
 periodic slab in z). On a 2.2-wavelength PEC plate at θ = 20° and 40°, the specular peak of the returned bistatic RCS
 is +0.86 dB above a physical-optics uniform-aperture reference at λ/30 cells, and −1.55 dB below it at λ/60, a 2.4 dB

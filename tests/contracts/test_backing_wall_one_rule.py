@@ -360,6 +360,7 @@ def test_class_W_calculator(normalize, n_modes):
     assert got['faces'] == expected_faces(sim, got['grid'], 'W-guide', 'uniform')
 
 
+@pytest.mark.filterwarnings("ignore:The absolute oblique RCS level is mesh dependent:rfx.errors.AccuracyWarning")
 def test_class_R_oblique_calculator():
     from rfx.core.yee import init_materials
     from rfx.measurement.rcs import compute_rcs

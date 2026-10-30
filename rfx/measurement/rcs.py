@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import warnings
+
+from rfx.errors import AccuracyWarning
 from rfx.core.yee import MaterialArrays
 from rfx.farfield import FarFieldResult
 from rfx.farfield import NTFFBox
@@ -415,6 +418,15 @@ def compute_rcs(
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
         _run_kw.update(cpml_axes="xy", periodic=(False, False, True))
+    if float(theta_inc) != 0.0:
+        warnings.warn(
+            "The absolute oblique RCS level is mesh dependent: measured +0.86 dB "
+            "vs physical optics at lambda/30 and -1.55 dB at lambda/60 on a "
+            "2.2-wavelength plate. Treat it as a +/-2 dB-class number and check "
+            "with two meshes (tracker #1991). The far-field pattern shape and "
+            "the specular direction are validated within the documented envelope.",
+            AccuracyWarning, stacklevel=2,
+        )
     result = run(grid, materials, n_steps, **_run_kw)
 
     # --- 4. Compute far-field from NTFF data ---

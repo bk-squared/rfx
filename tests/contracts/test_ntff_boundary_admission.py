@@ -262,6 +262,7 @@ def test_waveguide_realized_exterior(aperture, boundary, faces, entry, monkeypat
 
 
 @pytest.mark.parametrize("case", ("xy_pads", "pec_z"))
+@pytest.mark.filterwarnings("ignore:The absolute oblique RCS level is mesh dependent:rfx.errors.AccuracyWarning")
 def test_oblique_rcs_wrapped_z_is_not_refused(case, monkeypatch):
     from rfx.core.yee import init_materials
     from rfx.grid import Grid

@@ -328,6 +328,7 @@ def test_compute_rcs_box_placement_passes_the_check(ntff_offset):
     assert np.all(np.isfinite(np.asarray(res.monostatic_rcs)))
 
 
+@pytest.mark.filterwarnings("ignore:The absolute oblique RCS level is mesh dependent:rfx.errors.AccuracyWarning")
 def test_compute_rcs_oblique_y_faces_follow_the_margin():
     """Method B injects on y too, and compute_rcs insets its y faces from the
     CPML rather than from the injection planes.

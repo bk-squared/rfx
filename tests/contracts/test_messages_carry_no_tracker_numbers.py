@@ -16,9 +16,11 @@ TRACKER_PATTERNS = (
     r"\b20\d\d-\d\d-\d\d\b",
 )
 
-# These constants are record provenance or documentation, never message text.
+# Exceptions are record provenance, documentation, or explicitly required advisories.
 # Keep prefixes narrow, and require every exception to still be used.
 ALLOWLIST = (
+    ("measurement/rcs.py", "The absolute oblique RCS level is mesh dependent:",
+     "The #1991 advisory contract explicitly requires its tracker in the warning"),
     ("measurement/ports.py", "record endpoint: one sample fewer; moved with #1466",
      "Owner record timing provenance, not a warning or refusal"),
     ("sparams/_common.py", "Warn-only complex-reciprocity tolerance for the rectangular-waveguide\n",

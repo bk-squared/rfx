@@ -191,6 +191,7 @@ def test_compute_rcs_vacuum_guard_fires_on_y_plane():
                     cpml_layers=6, tfsf_margin=6)
 
 
+@pytest.mark.filterwarnings("ignore:The absolute oblique RCS level is mesh dependent:rfx.errors.AccuracyWarning")
 def test_compute_rcs_vacuum_guard_clears_interior_target():
     """Control: the same strip moved to the box interior passes the guard
     (compute_rcs completes a short run without the validator firing)."""
@@ -264,6 +265,7 @@ def test_oblique_nu_grid_fence_fails_loud_on_ez():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("theta_inc", [20.0, 40.0])
+@pytest.mark.filterwarnings("ignore:The absolute oblique RCS level is mesh dependent:rfx.errors.AccuracyWarning")
 def test_absolute_sigma_matches_po_at_gate_grid(theta_inc):
     """PUBLIC-path lock: compute_rcs specular-peak sigma vs the PO
     uniform-aperture oracle (W = rasterized plate width, h = 2*dx) within

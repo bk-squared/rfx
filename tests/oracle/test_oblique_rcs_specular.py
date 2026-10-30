@@ -146,6 +146,7 @@ def _methodB_pattern(theta_deg):
 
 
 @pytest.mark.parametrize("theta_inc", [20.0, 40.0])
+@pytest.mark.filterwarnings("ignore:The absolute oblique RCS level is mesh dependent:rfx.errors.AccuracyWarning")
 def test_oblique_specular_peak_tracks_injection_angle(theta_inc):
     """PRIMARY unfakeable gate (via the public compute_rcs API): the bistatic
     far-field of the PEC plate peaks at the reflection-law specular direction
