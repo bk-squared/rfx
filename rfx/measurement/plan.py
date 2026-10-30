@@ -155,7 +155,6 @@ def _plane_nodes(grid, axis, index, component, region=None, weights=None):
 def _pec_edges(sim, grid):
     import jax
     from rfx.boundaries.pec import realized_pec_edge_masks
-    from rfx.core.jax_utils import is_tracer
     sheets, wires = [], []
     assemble = sim._assemble_materials_nu if sim._uses_nonuniform_mesh else sim._assemble_materials
     result = assemble(grid, pec_sheets=sheets, pec_wires=wires)
@@ -164,7 +163,7 @@ def _pec_edges(sim, grid):
     with jax.ensure_compile_time_eval():
         edges = realized_pec_edge_masks(result[3], sheets=tuple(sheets), wires=tuple(wires),
                                        periodic=sim._periodic_flags())
-    return None if any(is_tracer(mask) for mask in edges) else edges
+    return edges
 
 
 def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
@@ -247,6 +246,9 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             known_differences=(),
                             availability='result missing' if path.startswith('fwd') else 'sampled'))
     edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
+    from rfx.core.jax_utils import is_tracer
+    from rfx.errors import RfxRefusal
+    edges_traced = edges is not None and any(is_tracer(mask) for mask in edges)
     from rfx.sources.sources import WirePort, _wire_port_live_cells
     from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
@@ -254,6 +256,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             continue  # a soft source has no measurement owner
         live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:
+            if edges_traced:
+                raise RfxRefusal(
+                    f'port:{i}: wire port live cells depend on PEC geometry that is traced, '
+                    'so they cannot be counted. Make that geometry concrete or remove the port.'
+                )
             end = list(entry.position)
             end['xyz'.index(entry.component[1])] += entry.extent
             port = WirePort(entry.position, tuple(end), entry.component, entry.impedance,
@@ -285,7 +292,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             availability=(('V/I unavailable in main scan; sampled in second scan when compute_s_params is on'
                                            if not nu else 'V/I unavailable in run without wire extent')
                                           if entry.extent is None and path.startswith('run') else 'sampled')))
-        if entry.extent is None and edges is not None:
+        if entry.extent is None and edges is not None and not edges_traced:
             from rfx.boundaries.pec import clear_edges
             edges = clear_edges(edges, list(live), component=entry.component)
     from .ports import waveguide_owners

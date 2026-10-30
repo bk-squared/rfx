@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Cylinder, GaussianPulse, Simulation
+from rfx import Box, Cylinder, GaussianPulse, Simulation, Sphere
 from rfx.boundaries.pec import SheetFootprint, SheetSpec
 from rfx.errors import RfxRefusal
 from rfx.geometry.rasterize_grid import (
@@ -79,3 +79,47 @@ def test_zero_edge_plane_check_under_user_jit(geometry):
             jax.jit(check)(0.)
     else:
         assert float(jax.jit(check)(0.)) == 0.
+
+
+@pytest.mark.parametrize('geometry', ('traced-volume', 'concrete-sheet'))
+def test_wire_measurement_live_cells_under_user_jit(geometry):
+    from rfx.measurement.plan import build_measurement_plan
+
+    config = dict(freq_max=1e6, domain=(6., 6., 6.), dx=1., boundary='pec')
+    grid = Simulation(**config)._build_grid()
+    frequencies = np.array([1e6])
+
+    def live_cells(displacement):
+        sim = Simulation(**config)
+        if geometry == 'traced-volume':
+            # The translated volume shorts part of the port at displacement=0.
+            sphere = Sphere((3. + displacement, 3., 2.), radius=1.5)
+
+            class TranslatedVolume:
+                # Custom shapes need not expose a static bounding box, which
+                # the built-in Sphere admission requires before edge assembly.
+                def mask(self, grid):
+                    return sphere.mask(grid)
+
+                def mask_on_coords(self, x, y, z):
+                    return sphere.mask_on_coords(x, y, z)
+
+            sim.add(TranslatedVolume(), material='pec')
+        else:
+            # A concrete vertical sheet also shorts part of this ez extent.
+            sim.add_thin_conductor(Box((3., 2., 1.), (3., 4., 3.)))
+        sim.add_port((3., 3., 1.), 'ez', extent=4., impedance=50.)
+        plan = build_measurement_plan(sim, grid, n_steps=2, frequencies=frequencies)
+        voltage = next(c for c in plan.owners[0].channels if c.name == 'V_port')
+        return len(voltage.nodes)
+
+    if geometry == 'traced-volume':
+        with pytest.raises(RfxRefusal, match=(
+                'wire port live cells depend on PEC geometry that is traced, '
+                'so they cannot be counted.*Make that geometry concrete or remove the port')):
+            jax.jit(live_cells)(0.)
+    else:
+        # Trace before any eager assembly, and keep the concrete live edges exact.
+        compiled = int(jax.jit(live_cells)(0.))
+        assert compiled == live_cells(0.)
+        assert 0 < compiled < 4

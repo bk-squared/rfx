@@ -448,8 +448,8 @@ def compute_mixed_s_matrix(
                 pec_mask, sheets=tuple(_mx_pec_sheets),
                 wires=tuple(_mx_pec_wires),
                 periodic=self._periodic_flags())
-        if any(is_tracer(mask) for mask in _mx_pec_edge_masks):
-            _mx_pec_edge_masks = None
+    _mx_pec_edges_traced = (_mx_pec_edge_masks is not None
+                            and any(is_tracer(mask) for mask in _mx_pec_edge_masks))
 
     # Analytic Hammerstad-Jensen anchor per MSL port (eps precedence
     # mirrors compute_msl_s_matrix: explicit eps_r_sub > rasterised
@@ -507,6 +507,12 @@ def compute_mixed_s_matrix(
         from rfx.sources.sources import WirePort, _wire_port_live_cells
         axis_map = {"ex": 0, "ey": 1, "ez": 2}
         for idx, pe in enumerate(lw_entries):
+            if _mx_pec_edges_traced:
+                raise RfxRefusal(
+                    f'compute_mixed_s_matrix: wire port {idx} live cells depend on PEC '
+                    'geometry that is traced, so they cannot be counted. '
+                    'Make that geometry concrete or remove the port.'
+                )
             end = list(pe.position)
             end[axis_map[pe.component]] += pe.extent
             wp = WirePort(
