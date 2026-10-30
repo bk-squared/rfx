@@ -10,6 +10,22 @@ from numbers import Integral
 import numpy as np
 
 
+def _validate_constructor_choices(
+    snap: str, interface_eps: str, pec_occupancy_model: str,
+) -> tuple[str, str, str]:
+    """Validate constructor choices in their established error order."""
+    from rfx.runners.nonuniform import INTERFACE_EPS_RULES
+
+    if snap not in ("strict", "declared"):
+        raise ValueError(f"snap must be 'strict' or 'declared', got {snap!r}")
+
+    from rfx.model.occupancy import validate_occupancy_model
+    pec_occupancy_model = validate_occupancy_model(pec_occupancy_model)
+    if interface_eps not in INTERFACE_EPS_RULES:
+        raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
+    return snap, interface_eps, pec_occupancy_model
+
+
 def _require_integral_param(name: str, value: object) -> int:
     """Return ``value`` as int after rejecting bools and non-integral values."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral):
