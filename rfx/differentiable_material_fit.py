@@ -73,6 +73,7 @@ import numpy as np
 
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
+from rfx.optimize import _adam_update
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +263,7 @@ def _default_lorentz_guess(
 
 
 # ---------------------------------------------------------------------------
-# Adam optimizer (manual fallback, follows optimize.py pattern)
+# Compatibility wrapper for callers of the former local Adam helper
 # ---------------------------------------------------------------------------
 
 def _adam_step(
@@ -277,12 +278,8 @@ def _adam_step(
     eps: float = 1e-8,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Single Adam optimizer step. Returns (new_params, new_m, new_v)."""
-    m = beta1 * m + (1 - beta1) * grad
-    v = beta2 * v + (1 - beta2) * grad ** 2
-    m_hat = m / (1 - beta1 ** (step + 1))
-    v_hat = v / (1 - beta2 ** (step + 1))
-    params = params - lr * m_hat / (jnp.sqrt(v_hat) + eps)
-    return params, m, v
+    update, m, v = _adam_update(m, v, grad, step, lr, beta1, beta2, eps)
+    return params - update, m, v
 
 
 # ---------------------------------------------------------------------------
@@ -665,9 +662,8 @@ def differentiable_material_fit(
         loss_history.append(loss_val)
         last_s_sim = s_sim_aux
 
-        params, m, v = _adam_step(
-            params, grad, m, v, it, learning_rate,
-        )
+        step, m, v = _adam_update(m, v, grad, it, learning_rate)
+        params = params - step
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             print(f"  iter {it:4d}  loss = {loss_val:.6e}  "

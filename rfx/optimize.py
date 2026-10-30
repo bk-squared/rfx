@@ -109,6 +109,25 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
     return evaluate
 
 
+def _adam_update(
+    m, v, grad, it, lr, beta1=0.9, beta2=0.999, eps=1e-8, step_clamp=None,
+):
+    """Return the Adam step and updated moments; ``it`` is zero-based.
+
+    When requested, cap the step's L2 norm before the caller subtracts it.
+    """
+    m = beta1 * m + (1 - beta1) * grad
+    v = beta2 * v + (1 - beta2) * grad ** 2
+    m_hat = m / (1 - beta1 ** (it + 1))
+    v_hat = v / (1 - beta2 ** (it + 1))
+    step = lr * m_hat / (jnp.sqrt(v_hat) + eps)
+    if step_clamp is not None:
+        snorm = jnp.linalg.norm(step)
+        step = jnp.where(snorm > step_clamp,
+                         step * (step_clamp / snorm), step)
+    return step, m, v
+
+
 def _adam_multistart(
     cost_fn: Callable,
     latent_inits,
@@ -227,18 +246,10 @@ def _adam_multistart(
                 latents.append(latent)
 
             # Adam update
-            m = beta1 * m + (1 - beta1) * grad
-            v = beta2 * v + (1 - beta2) * grad ** 2
-            m_hat = m / (1 - beta1 ** (it + 1))
-            v_hat = v / (1 - beta2 ** (it + 1))
-            if step_clamp is None:
-                latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
-            else:
-                step = lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
-                snorm = jnp.linalg.norm(step)
-                step = jnp.where(snorm > step_clamp,
-                                 step * (step_clamp / snorm), step)
-                latent = latent - step
+            step, m, v = _adam_update(
+                m, v, grad, it, lr, beta1, beta2, eps_adam, step_clamp,
+            )
+            latent = latent - step
 
             if verbose and (it % 10 == 0 or it == n_iters - 1):
                 print(f"  iter {it:4d}  loss = {loss_val:.6e}")
