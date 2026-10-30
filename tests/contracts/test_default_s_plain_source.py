@@ -102,7 +102,7 @@ def test_preflight_explicit_request_result_is_unused(source):
     assert caught == []
     assert len(report) == int(source)
     if source:
-        assert str(report[0]) == "NotImplementedError: " + REFUSAL
+        assert str(report[0]) == "RfxUnsupported: " + REFUSAL
     else:
         assert sim._validate_run_sparameter_request(
             compute_s_params=True, s_param_freqs=None, s_param_n_steps=None) is True

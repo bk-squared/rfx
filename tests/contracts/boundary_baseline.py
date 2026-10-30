@@ -179,7 +179,8 @@ def validate_class_changes(previous, cells):
         if cell[0] == "waveguide-pmc" and cell[1] in (
                 "run", "forward", "nonuniform", "sweep", "gpu-query", "distributed", "subgridded"):
             assert row["status"] == "REFUSED"
-            assert row["exception"] == "NotImplementedError"
+            # RfxRefusal subclasses ValueError and RfxUnsupported subclasses NotImplementedError.
+            assert row["exception"] in ("NotImplementedError", "RfxUnsupported")
             assert row["message_prefix"] == "PMC magnetic face(s)"
             continue
         magnetic = cell[0] in ("pmc-pec", "pmc-cpml", "waveguide-pmc")

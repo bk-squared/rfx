@@ -44,7 +44,7 @@ def pretend_gpu(monkeypatch):
 def assert_refused(call):
     with pytest.raises(NotImplementedError) as exc:
         call()
-    assert "1598" in str(exc.value)
+    assert "a multi-device run on GPUs cannot be compiled inside an enclosing jax.jit" in str(exc.value)
     assert "xla_gpu_enable_command_buffer" in str(exc.value)
     assert str(exc.value) == rank.OUTER_JIT_REFUSAL
 
