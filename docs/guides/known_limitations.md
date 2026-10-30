@@ -229,15 +229,21 @@ Tracker: #1651
 
 Tracker: #2274
 
-With `conformal_pec=True`, cut cells use the open (PEC-free) area of each cut H face and the open length of each cut E
-edge. Measured against the drawn surface on 1 mm cells, these can be off by up to 0.78 of a face (0.60 of an edge) in
-cells within one cell of a Box edge or corner. On curved bodies they can be off by up to 0.44 of a face (cylinder side)
-and 0.63 of an edge (sphere), where a mesh face or edge is nearly tangent to the surface. Cut cells crossed only by a
-flat face are exact, and a Box face lying on a mesh plane is realized at its drawn plane. Effect on S-parameters,
-resonance frequencies and RCS: not measured. A finer mesh shrinks the region affected near an edge and, on a sphere
-over three meshes, the share of nearly tangent cells (above 0.1: 4-17 owners while the cut faces grew 16x). The
-largest deviation does not shrink. Judge a body with edges or a curved body by a mesh series of at least three
-refinements. Measured 2026-10-31 with the conformal update of #2240; record kept with the project.
+With `conformal_pec=True`, the H update uses the open (PEC-free) area of each cut face. The E update uses the open
+length of each cut edge, after a stability bound that caps it by the areas of the faces around it. Measured against
+the drawn surface on 1 mm cells, before that bound:
+- Within one cell of a Box edge or corner, the open areas are off by up to 0.78 of a face and the open lengths by up
+  to 0.60 of an edge.
+- On curved bodies they are off by up to 0.44 of a face (cylinder side) and 0.63 of an edge (sphere), where a mesh face
+  or edge is nearly tangent to the surface.
+
+Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a mesh plane is realized
+at its drawn plane. Effect on S-parameters, resonance frequencies and RCS: not measured.
+
+A finer mesh shrinks the region affected near an edge. On a sphere at radius 4.3, 8.6 and 17.2 cells it also shrinks
+the share of nearly tangent cells: the faces off by more than 0.1 of a face were 17, 4 and 6, while the cut faces grew
+16x. The largest deviation does not shrink. Judge a body with edges, or a curved body, by a mesh series of at least
+three refinements. Measured 2026-10-31 with the conformal update of #2240; record kept with the project.
 
 ### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
 
