@@ -300,9 +300,11 @@ class _AdMemoryMixin:
                                 and math.isfinite(limit) and limit > 0):
                             avail_gb = limit / 1e9
                             break
-                    except Exception:
+                    except (TimeoutError,): raise
+                    except Exception:  # noqa: BLE001 - recorded in available_gb
                         continue
-            except Exception:
+            except (TimeoutError,): raise
+            except Exception:  # noqa: BLE001 - recorded in available_gb
                 avail_gb = None
 
         to_gb = 1.0 / 1e9

@@ -14,6 +14,7 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.backend import backend_class
+from rfx.core.jax_utils import is_tracer
 
 
 OUTER_JIT_REFUSAL = (
@@ -45,8 +46,8 @@ def _is_gpu_mesh(mesh):
 def _staged_by_enclosing_program():
     """Probe staging even when the enclosing program has no traced inputs."""
     try:
-        return isinstance(jax.lax.add(np.float32(0), np.float32(0)), jax.core.Tracer)
-    except Exception:
+        return is_tracer(jax.lax.add(np.float32(0), np.float32(0)))
+    except AttributeError:
         return True
 
 

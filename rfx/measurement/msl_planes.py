@@ -158,10 +158,9 @@ def readable_values(x):
     whatever order, so read only quantities whose every axis is a batch axis
     that way). Under ``jax.jit`` there are none.
     """
-    try:
+    from rfx.core.jax_utils import is_tracer
+    if not is_tracer(x):
         return np.asarray(x)
-    except Exception:
-        pass
     to_concrete = getattr(x, "to_concrete_value", None)
     value = to_concrete() if to_concrete is not None else None
     if value is not None:

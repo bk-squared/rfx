@@ -42,7 +42,8 @@ def _sources(sim, ctx):
         try:
             cell = tuple(int(k) for k in field_index(ctx.grid, pe.position, pe.component))
             rows.append(SourceGeometry(f"port[{i}]", "soft_point", pe.component, (cell,)))
-        except Exception as exc:  # a misplaced source refuses at run time
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in SourceGeometry.error
             rows.append(SourceGeometry(f"port[{i}]", "soft_point", pe.component, error=_error(exc)))
     if sim._tfsf is not None:
         rows.append(_tfsf_row(sim, ctx))
@@ -61,7 +62,8 @@ def _tfsf_row(sim, ctx):
             planes = sim.tfsf_box_indices()
         box = tuple(planes.get("xyz"[a]) for a in range(3))
         return SourceGeometry("tfsf", "tfsf", entry.polarization, index_box=box)
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in SourceGeometry.error
         return SourceGeometry("tfsf", "tfsf", entry.polarization, error=_error(exc))
 
 
@@ -75,7 +77,8 @@ def _probes(sim, ctx):
         try:
             index = tuple(int(k) for k in field_index(grid, pe.position, pe.component))
             rows.append(ProbeGeometry(f"probe[{i}]", "point", (pe.component,), index=index))
-        except Exception as exc:
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
             rows.append(ProbeGeometry(f"probe[{i}]", "point", (pe.component,), error=_error(exc)))
     regions = getattr(sim, "_dft_plane_regions", {})
     for pe in sim._dft_planes:
@@ -91,7 +94,8 @@ def _probes(sim, ctx):
                 fixed[t[0]] = (int(region[0]), int(region[1]) - 1)
                 fixed[t[1]] = (int(region[2]), int(region[3]) - 1)
             rows.append(ProbeGeometry(pe.name, "dft_plane", (pe.component,), index_box=_box(grid, fixed)))
-        except Exception as exc:
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
             rows.append(ProbeGeometry(pe.name, "dft_plane", (pe.component,), error=_error(exc)))
     for pe in getattr(sim, "_flux_monitors", ()):
         rows.append(_flux_row(sim, ctx, pe, locate))
@@ -120,7 +124,8 @@ def _flux_row(sim, ctx, pe, locate):
             for b, (lo, hi) in zip(t, region["cell_slices"]):
                 fixed[b] = (int(lo), int(hi) - 1)
         return ProbeGeometry(pe.name, "flux", components, index_box=_box(ctx.grid, fixed))
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
         return ProbeGeometry(pe.name, "flux", components, error=_error(exc))
 
 
@@ -134,7 +139,8 @@ def _ntff_row(sim, ctx, locate):
         lo, hi = (b.i_lo, b.j_lo, b.k_lo), (b.i_hi, b.j_hi, b.k_hi)
         box = tuple((int(lo[a]), int(hi[a])) for a in range(3))
         return ProbeGeometry("ntff", "ntff", components, index_box=box)
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
         return ProbeGeometry("ntff", "ntff", components, error=_error(exc))
 
 
@@ -172,6 +178,7 @@ def cells_per_wavelength(sim, sizes, domain, materials, pec_mask):
     f, cell = float(sim._freq_max), max(widths)
     vacuum = C0 / f / cell
     medium = eps_mu = None
+    error = None
     try:
         if not any(is_tracer(v) for v in (materials.eps_r, materials.mu_r, pec_mask)):
             region = tuple(slices)
@@ -184,6 +191,8 @@ def cells_per_wavelength(sim, sizes, domain, materials, pec_mask):
             if keep.any():
                 eps_mu = float(product[keep].max())
                 medium = float(C0 / (f * np.sqrt(eps_mu)) / cell)
-    except Exception:  # an unreadable material operand leaves medium unset
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in CellsPerWavelength.error
         medium = eps_mu = None
-    return CellsPerWavelength(vacuum, medium, cell, f, eps_mu)
+        error = _error(exc)
+    return CellsPerWavelength(vacuum, medium, cell, f, eps_mu, error)

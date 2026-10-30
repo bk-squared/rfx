@@ -22,7 +22,8 @@ def linear_accumulators(sim, grid, n_steps):
     def add(name, initialize):
         try:
             state = jax.eval_shape(initialize)
-        except Exception as error:
+        except (TimeoutError,): raise
+        except Exception as error:  # noqa: BLE001 - recorded in warnings
             path = "graded" if sim._uses_nonuniform_mesh else "uniform"
             warnings.append(f"Linear accumulator {name.replace('_', ' ')} on the {path} path "
                             f"could not be initialized ({type(error).__name__}: {error}); "

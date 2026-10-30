@@ -62,12 +62,12 @@ def compile_time_switch():
     is turned off. A JAX that fails the probe in any way (the declared
     0.4.20 floor implements the region differently) gets ``None``, and
     :func:`recorded_scan` uses its fallback. Every plain ``run()`` reaches
-    this probe, so no exception it raises may escape.
+    this probe, so probe failures return None; timeout signals still escape.
     """
     try:
         from jax._src import config as _config
         switch = _config.eager_constant_folding
-    except Exception:
+    except (ImportError, AttributeError):
         return None
     seen = []
 
@@ -81,7 +81,8 @@ def compile_time_switch():
 
     try:
         jax.make_jaxpr(probe)()
-    except Exception:
+    except (TimeoutError,): raise
+    except Exception:  # noqa: BLE001 - recorded in compile_time_switch result (None)
         return None
     return switch if seen == [True] else None
 

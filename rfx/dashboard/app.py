@@ -273,7 +273,8 @@ with tab_results:
             progress_bar.progress(100, text="Complete!")
             st.success(f"Simulation complete in {elapsed:.1f}s ({actual_steps} steps)")
 
-        except Exception as exc:
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in Simulation failed message / Show full traceback
             progress_bar.empty()
             st.error(f"Simulation failed: {exc}")
             with st.expander("Show full traceback"):
