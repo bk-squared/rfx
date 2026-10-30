@@ -1,6 +1,8 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx.api._spec import ForwardResult
 from rfx.sources.sources import GaussianPulse
 from rfx.grid import Grid
@@ -94,10 +96,10 @@ def _forward_from_materials(
     if subpixel_smoothing and sheet_impedance is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
-            "supported with subpixel_smoothing / conformal_pec "
-            "(#677 v1): the sheet operator assumes the plain isotropic "
+            "supported with subpixel_smoothing / conformal_pec"
+            ": the sheet operator assumes the plain isotropic "
             "E update at its edges (Stage-1/2 conformal and Kottke "
-            "lanes are untouched by #677).")
+            "lanes do not apply the sheet operator).")
     from rfx.model.tensor_operands import (
         refuse_tensor_conflicts, form_tensor_operands, finish_tensor_operands)
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,
@@ -852,6 +854,6 @@ _forward_from_materials.__wrapped__.__qualname__ = "_ExecuteMixin._forward_from_
 
 
 def refuse_sheet_layout():
-    raise NotImplementedError(
+    raise RfxUnsupported(
         "pinned_sheet_layout requires the single-device graded lane; "
         "a uniform mesh can be passed as a graded profile")

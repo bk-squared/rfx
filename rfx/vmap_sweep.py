@@ -31,6 +31,7 @@ Limitations
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 from rfx._precision import resolve_field_dtype
 from rfx.stepping.vmap_scan import _build_vmap_scan_fn
 
@@ -606,7 +607,7 @@ def _build_full_scan_fn(
             assert _probe.accumulator.dtype == _expected_dtype, (
                 f"vmap DFT accumulator dtype {_probe.accumulator.dtype} != "
                 f"run()'s {_expected_dtype} "
-                f"(x64_enabled={jax.config.x64_enabled}) — #477/#484 "
+                f"(x64_enabled={jax.config.x64_enabled}) — "
                 "x64-contract pin violated"
             )
 
@@ -818,7 +819,7 @@ def vmap_material_sweep(
             n_steps = sim._nu_n_steps(num_periods)
         import warnings
         warnings.warn("Resolved non-uniform mesh: Falling back to sequential execution.",
-                      UserWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=2)
         return _sequential_fallback(sim, param_name, param_values, n_steps=n_steps)
 
     # Build grid and base materials once
@@ -927,7 +928,7 @@ def vmap_material_sweep(
             "(ports incl. MSL/coaxial/floquet, TFSF, dispersion, "
             "waveguide, flux monitors, NTFF). Falling back to sequential "
             "execution. Use parametric_sweep() for better sequential "
-            "support.",
+            "support.", ConfigurationWarning,
             stacklevel=2,
         )
         # Every swept copy gets the same explicit count, so the traces stack

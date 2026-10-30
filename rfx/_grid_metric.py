@@ -153,6 +153,7 @@ it. Recorded, not changed (0a moves no consumer):
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import numpy as np
 
 #: Canonical axis order. Index into this for the integer spelling.
@@ -214,7 +215,7 @@ NODE_TIE_REL = 1e-9
 SOLVER_WIDTH_EPS = 4 * float(np.finfo(np.float32).eps)
 
 
-class Float32WidthResolutionWarning(UserWarning):
+class Float32WidthResolutionWarning(AccuracyWarning):
     """Float32-valued widths can place a declared face beyond the node band."""
 
 

@@ -65,6 +65,8 @@ is one of the 30 numbers a block keeps (3 components x 10 weights).
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx._grid_metric import field_index
 from typing import NamedTuple
 
@@ -926,7 +928,7 @@ def refuse_blocks_too_large(monitor, freqs) -> None:
     f_max = float(np.max(np.asarray(freqs, dtype=np.float64)))
     k_offset = 2.0 * np.pi * f_max / C0 * float(monitor.max_offset)
     if k_offset > MAX_K_OFFSET:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"the current-moment monitor's blocks are too large for "
             f"{f_max / 1e9:.4g} GHz: an edge sits {monitor.max_offset * 1e3:.3g} "
             f"mm from its block's centre, k*|delta| = {k_offset:.2f}, above the "
@@ -1011,7 +1013,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
     ov = dict(overrides or {})
     for name in ("eps_r", "sigma", "mu_r", "pec_mask", "pec_occupancy"):
         if ov.get(name) is not None and is_tracer(ov[name]):
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"the current-moment monitor needs to know where the model "
                 f"carries current, and a traced whole-grid {name} override "
                 "can put material anywhere, including outside its slab. Hand "
@@ -1021,13 +1023,13 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
 
     spec = getattr(sim, "_boundary_spec", None)
     if spec is not None and spec.pmc_faces():
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "the current-moment monitor reads the electric current only; a "
             f"PMC face ({', '.join(sorted(spec.pmc_faces()))}) carries a "
             "magnetic surface current it never sees. Use absorbing "
             "boundaries while this monitor is on.")
     if spec is not None and spec.pec_faces():
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "the current-moment monitor reads only the current inside its "
             f"slab; a PEC domain face ({', '.join(sorted(spec.pec_faces()))}) "
             "is a conductor outside it whose current is never read. Use "
@@ -1044,7 +1046,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
              "one cell of an infinite array, whose current no finite slab "
              "holds")):
         if getattr(sim, attr, None):
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"the current-moment monitor is not supported with a {what} "
                 f"port: {unseen}, and the monitor reads only the electric "
                 "current J = curl_h H - eps0 dE/dt inside its slab. Feed the "
@@ -1056,7 +1058,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         # write no H; both sit inside J = curl_h H - eps0 dE/dt. The
         # eigenmode launch adds the M half of a J+M pair on H.
         if getattr(pe, "mode", "laplace") == "eigenmode":
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"the current-moment monitor is not supported with the "
                 f"microstrip port {pe.name!r} in mode='eigenmode': that "
                 "mode is unsupported by this monitor, including passive ports. "
@@ -1091,7 +1093,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         mu = np.asarray(materials.mu_r)
         if np.any(mu != 1.0):
             idx = tuple(int(v[0]) for v in np.nonzero(mu != 1.0))
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 "the current-moment monitor reads the electric current only; "
                 f"the model has mu_r != 1 (first at cell {idx}), and a "
                 "magnetic material radiates through its magnetization "
@@ -1283,7 +1285,7 @@ def refuse_h_side_conductor(sim, where: str) -> None:
     """
     if getattr(sim, "_current_moments", None) is None:
         return
-    raise NotImplementedError(
+    raise RfxUnsupported(
         f"add_current_moment_monitor() is not supported with {where}: that "
         "path zeroes H inside the cells it treats as PEC, which is a magnetic "
         "surface current at the conductor that the monitor, reading only the "
@@ -1304,7 +1306,7 @@ def refuse_current_moment_monitor(sim, lane: str) -> None:
     """
     if getattr(sim, "_current_moments", None) is None:
         return
-    raise NotImplementedError(
+    raise RfxUnsupported(
         f"add_current_moment_monitor() is not supported on the {lane}; that "
         "scan body does not accumulate block current moments, and a result "
         "with the field silently empty is worse than a refusal. Supported: "

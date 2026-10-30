@@ -798,7 +798,8 @@ def test_advisory_is_a_userwarning_so_the_default_filter_shows_it():
             grid, cfgs, _FREQS, sim._cpml_layers, sim._boundary_spec)
     hits = [w for w in caught if ADVISORY_KEY in str(w.message)]
     assert len(hits) == 1
-    assert hits[0].category is UserWarning, hits[0].category
+    from rfx.errors import AccuracyWarning
+    assert hits[0].category is AccuracyWarning, hits[0].category
 
 
 # --------------------------------------------------------------------------- #

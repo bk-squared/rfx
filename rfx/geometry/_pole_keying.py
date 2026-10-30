@@ -12,6 +12,7 @@ organisation; the split is no longer load-bearing.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import warnings
 
 from rfx.core.jax_utils import is_tracer
@@ -73,9 +74,9 @@ def _pole_key(pole):
             f"non-float-coercible scalars, e.g. a complex 0-d array); "
             f"keying its geometry mask by object identity. "
             f"Value-equal duplicates of this pole will NOT dedupe and "
-            f"can double-apply delta_eps on overlapping geometry "
-            f"(issue #274).",
-            UserWarning,
+            f"can double-apply delta_eps on overlapping geometry"
+            f".",
+            AccuracyWarning,
             stacklevel=3,
         )
         return id(pole)

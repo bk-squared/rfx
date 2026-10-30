@@ -5,6 +5,8 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, RfxRefusal
+
 import jax
 
 from rfx.api._ad_memory_types import ADMemoryUnavailable
@@ -241,7 +243,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         warnings.warn(
             f"[{context}] preflight found {len(warns)} advisory issue(s) - "
             f"pass skip_preflight=True to suppress:\n  - {body}",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=stacklevel + 1,
         )
     if errors:
@@ -256,7 +258,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         from rfx._diagnostic_transport import diagnostic_refusal
 
         raise diagnostic_refusal(
-            ValueError(
+            RfxRefusal(
                 f"[{context}] preflight found {len(errors)} blocking error(s) "
                 f"(pass skip_preflight=True to bypass):\n  - {detail}"
             ),

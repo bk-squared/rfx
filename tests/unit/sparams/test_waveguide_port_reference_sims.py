@@ -425,11 +425,11 @@ def test_a_reference_port_inside_pec_is_refused_like_a_direct_entry(monkeypatch)
     freqs = jnp.linspace(4.5e9, 8.0e9, 6)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(ValueError, match=r"'top'.*PEC volume.*rfx#1994"):
+        with pytest.raises(ValueError, match=r"'top'.*PEC volume.*one homogeneous"):
             _tj_ref_horizontal(freqs, 6e9).compute_waveguide_s_matrix(
                 num_periods=30, normalize="flux")
         refs = [_tj_ref_horizontal(freqs, 6e9)] + _tj_refs(freqs, 6e9)[1:]
-        with pytest.raises(ValueError, match=r"port_reference_sims\[0\]: .*'top'.*PEC volume.*rfx#1994"):
+        with pytest.raises(ValueError, match=r"port_reference_sims\[0\]: .*'top'.*PEC volume.*one homogeneous"):
             _tj_device(freqs, 6e9).compute_waveguide_s_matrix(
                 num_periods=30, normalize="flux", port_reference_sims=refs)
 

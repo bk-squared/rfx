@@ -36,6 +36,7 @@ tool — not a substitute for a full-wave solve. All lengths are in metres.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import math
 import warnings
 
@@ -190,7 +191,7 @@ def microstrip_width(z0: float, height: float, eps_r: float) -> float:
             f"microstrip_width: resulting w/h={u:.3g} is outside the "
             f"Hammerstad-Jensen validated range [0.05, 20]; the returned "
             f"width is an extrapolation with degraded accuracy "
-            f"(z0={z0!r} ohm, eps_r={eps_r!r}).",
+            f"(z0={z0!r} ohm, eps_r={eps_r!r}).", AccuracyWarning,
             stacklevel=2,
         )
 

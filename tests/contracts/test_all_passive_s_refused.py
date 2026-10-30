@@ -76,7 +76,8 @@ def _default(sim, *, devices=None):
         warnings.simplefilter("always")
         result = sim.run(n_steps=64, skip_preflight=True, devices=devices)
     refusal = [w for w in caught if "Lumped/wire S needs a driven port" in str(w.message)]
-    assert len(refusal) == 1 and refusal[0].category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert len(refusal) == 1 and refusal[0].category is ConfigurationWarning
     assert Path(refusal[0].filename).resolve() == Path(__file__).resolve()
     assert str(refusal[0].message).endswith("; returning no S-parameters.")
     assert result.s_params is None

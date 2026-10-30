@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
 
-class UnsupportedDesignFeature(ValueError):
+
+class UnsupportedDesignFeature(RfxRefusal):
     """Raised when a design cannot be represented without silent loss.
 
     The interop layer refuses rather than approximating: a design description

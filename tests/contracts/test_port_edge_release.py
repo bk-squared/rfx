@@ -144,7 +144,8 @@ def test_c1_c2_c4_kernel_occupancy(monkeypatch, lane, kind, placement, p):
     assert len(seen['warnings']) == (placement != 'away'), ('C4', seen['warnings'])
     if seen['warnings']:
         warning = seen['warnings'][0]
-        assert warning.category is UserWarning
+        from rfx.errors import ConfigurationWarning
+        assert warning.category is ConfigurationWarning
         message = str(warning.message)
         for entity, comp, driven in root.released_port_edges:
             assert entity in message and comp in message and str(driven) in message
@@ -278,7 +279,8 @@ def test_c5_result_gradient(lane,kind):
         grad=np.asarray(jax.grad(loss)(occupancy))
     released = [w for w in caught if 'Port occupancy release:' in str(w.message)]
     assert len(released) == 1, ('C4 forward warning count', len(released))
-    assert released[0].category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert released[0].category is ConfigurationWarning
     assert np.isfinite(grad).all()
     np.testing.assert_array_equal(grad[tuple(expected.T)],0.)
     region=np.asarray(occupancy)>0
@@ -651,7 +653,7 @@ def test_w7_waveguide_mutations(monkeypatch, mutation):
     if mutation == 'removed':
         # Unreleased PEC occupancy now sits in the port's guide segment: the
         # setup refuses it (rfx#1994) before the source record can differ.
-        with pytest.raises(ValueError, match=r'rfx#1994'):
+        with pytest.raises(ValueError, match=r'one homogeneous'):
             test_w3_waveguide_source_record()
     else:
         test_w3_waveguide_source_record()

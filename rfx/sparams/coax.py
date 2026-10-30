@@ -26,6 +26,7 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -103,8 +104,7 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
         raise ValueError(
             f"{lane}() requires positive CPML thickness on all six faces: "
             "it absorbs on all three axes, and a face without an absorber "
-            "is a PEC wall that closes a metal can around the line "
-            "(issue 1218)."
+            "is a PEC wall that closes a metal can around the line" "."
         )
     if cpml_axes is not None and set(cpml_axes) != set("xyz"):
         raise ValueError(
@@ -113,7 +113,7 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
             "the lateral pads are vacuum backed by the PEC grid faces, a "
             "closed metal can that holds the field leaving an unshielded "
             "conductor end; the open termination's |S11| then rose above 1 "
-            "and grew with the record (issue 1218)."
+            "and grew with the record."
         )
 
 
@@ -1650,7 +1650,7 @@ def compute_coax_msl_transition(
             f"{annulus_cells:.2f} cells is below the documented "
             "under-resolved threshold (3.5 cells, same convention as "
             "compute_coaxial_line_reflection/compute_coaxial_two_port) "
-            "— reflection accuracy degrades at high frequency.",
+            "— reflection accuracy degrades at high frequency.", AccuracyWarning,
             stacklevel=2,
         )
 
@@ -1792,7 +1792,7 @@ def compute_coax_msl_transition(
             f"x = {', '.join(f'{x * 1e3:.2f}' for x in xs_sorted)} mm) "
             "violates the source near-field standoff of "
             f"{_standoff_cells} cells ({_standoff_m * 1e3:.2f} mm = "
-            "5·h_sub, the issue-#80 Fix B constant add_msl_port's own auto "
+            "5·h_sub, the source near-field standoff constant add_msl_port's own auto "
             "n_probe_offset already floors to): "
             + "; ".join(_standoff_hits)
             + ". Within a few substrate thicknesses of a launch "
@@ -1808,7 +1808,7 @@ def compute_coax_msl_transition(
             "result.ladder_split_reflection_decades (computed when "
             "return_ladder_voltages=True) for whether this ladder "
             "actually disagrees with itself. REPORT-ONLY: nothing is "
-            "refused.",
+            "refused.", AccuracyWarning,
             stacklevel=2,
         )
 
@@ -1829,7 +1829,7 @@ def compute_coax_msl_transition(
             "conductor found above the substrate top at the registered "
             "MSL port's own feed plane; declare the microstrip trace as "
             "a Box(material='pec') (a volume) or as a zero-thickness "
-            "Box / add_thin_conductor (a sheet, #931)."
+            "Box / add_thin_conductor (a sheet)."
         )
     dz_arr = _msl_cell_profile(grid, "z", grid.nz)
     _complex_dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64

@@ -10,6 +10,7 @@ Severity in the table is the default: a warning record is advisory, while the
 same finding becomes refusal only at a blocking error/raise site.
 """
 
+from rfx.errors import AccuracyWarning
 from dataclasses import dataclass
 from string import Formatter
 
@@ -47,7 +48,7 @@ MSL_PROBE_CLEARANCE_EFFECT = (
     "quarter-wave open-stub notch has. Both are ABOVE unity on a passive "
     "structure, by 0.31 % and 0.21 %; that is never reported here as "
     "physics - they are raw, unprojected values carrying the coherent power "
-    "excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one fixture, one "
+    "excess measured on the coax-to-MSL transition. Their 0.009 dB difference is one fixture, one "
     "bin, an arm-to-arm difference, NOT a bound on S, and that comparison's "
     "producer verdict was not_read. What it does show is that S11/S21 move "
     "far less than the fit does, because they normalize with the analytic "
@@ -119,7 +120,7 @@ TEMPLATES = {
     "to dx ≤ {recommended_cell_m:um|.1f}µm and align the {absolute_faces} "
     "with nodes; on a profiled mesh, place sufficient nodes between those "
     "faces. Geometry screening does not quantify Z0 error. The historical "
-    "sweep and its realized-board Hammerstad-Jensen anchor are pre-#802 "
+    "sweep and its realized-board Hammerstad-Jensen anchor are historical float32-coordinate "
     "records; a new matched-geometry measurement is needed before quoting a "
     "current accuracy bound.",
     "declared_interface": "the declared trace plane at {normal_axis}={declared_trace_m:um|.1f}µm "
@@ -143,12 +144,12 @@ TEMPLATES = {
     "heuristic. The fraction alone does not establish material/PEC "
     "overlap. Historical substrate-air/trace mixed-cell runs with "
     "AD-traceable ``pec_occupancy_override`` reported unphysical |S21|² > "
-    "1 (cited, not remeasured on this checkout: runs #563/#567, "
-    "2026-05-08, dx∈[75,82]µm h_sub=254µm). A hard "
+    "1 (cited, not remeasured on this checkout: historical runs"
+    ", dx∈[75,82]µm h_sub=254µm). A hard "
     "``Box(material='pec')`` avoids that specific bug ON THE DEFAULT RUN "
     "PATH (subpixel_smoothing=False and no conformal PEC face — the "
     "shipped defaults): a PEC Box is a VOLUME that occupies whole primal "
-    "cells with walls on both faces (lattice ownership contract #931), "
+    "cells with walls on both faces (lattice ownership contract), "
     "and a foil trace declared as a SHEET (zero-thickness Box / "
     "add_thin_conductor) is one node plane; neither enters "
     "``pec_occupancy_override``. That is NOT a blanket exemption — two "
@@ -273,18 +274,18 @@ TEMPLATES = {
     "near_field_owner": "MSL port '{port_name}' (direction={direction!r}): ",
     "near_field_uniform": "{first_probe_distance_m:len|} ({first_probe_height_ratio:.2f}·h_sub) "
     "from this port's OWN feed plane, inside the source near-field standoff "
-    "of {standoff_cells} cells ({standoff_m:len|} = 5·h_sub, the issue-#80 "
-    "Fix B constant",
+    "of {standoff_cells} cells ({standoff_m:len|} = 5·h_sub, the source near-field standoff"
+    " constant",
     "near_field_witness": " Within a few substrate thicknesses of the feed the launched field is "
     "not the guided mode yet: the evanescent content decays with the "
     "substrate's own transverse-resonance length 2·h_sub/π = "
-    "{decay_length_m:len|} for THIS board (on the issue-#823 fixture, "
+    "{decay_length_m:len|} for THIS board (on the coax-to-MSL fixture, "
     "h_sub=300µm, that length measured 0.1932mm against a predicted "
     "0.19099mm — 1.1%). The decay LENGTH is a property of the substrate; "
     "the near-feed AMPLITUDE is not, so no error magnitude is predicted for "
     "your port here — read result diagnostics (the two-wave fit residual, "
     "and on the coax<->MSL lane the ladder-split witness) rather than "
-    "trusting this offset. For reference, the #823 fixture's own measured "
+    "trusting this offset. For reference, the coax-to-MSL fixture's own measured "
     "amplitude (11.3 at the feed plane) put "
     "{reference_height_ratio:.0f}·h_sub at 4.4e-3 against the 0.02 two-wave "
     "residual bar this family holds itself to, and "
@@ -359,7 +360,7 @@ TEMPLATES.update(
         "{relation}. {band_text}eps_eff={eps_eff:.6g}; port {port_name!r}. {mismatch}The "
         "port's realized grid node is {axis}={port_node_m:mm|.9g} mm. Fix: start the "
         "signal strip at that coordinate (the port's grid node), so it covers the port "
-        "node and nothing behind it (#1512).",
+        "node and nothing behind it.",
     }
 )
 TEMPLATES.update(
@@ -462,16 +463,16 @@ TEMPLATES.update(
         "{recommended_reflector_gap_m:um|.0f}µm (λ_g/4 at f_max) clear of "
         "the reflector {feed_reflector_gap_m:mm|.2f}mm from the feed). "
         "The feed line is too short for a clean N-probe measurement "
-        "(issue #469) — keeping the upstream-priority offset "
+        "— keeping the upstream-priority offset "
         "{offset_min_cells}, which puts the deep probes inside the "
         "reflector's near field. ",
-        "placement_graded_skipped": "MSL auto probe-offset interval solve (issue #469) SKIPPED for "
+        "placement_graded_skipped": "MSL auto probe-offset interval solve SKIPPED for "
         "{port_count} port(s), so the downstream reflector clearance is "
         "NOT enforced for them and no auto probe spacing is widened "
-        "(#681; on a graded propagation axis both would count reflector "
+        "(on a graded propagation axis both would count reflector "
         "and absorber distances in cells of more than one size). Per "
         "port: {details}. This used to be silent for every non-uniform "
-        "mesh (issue #686). Set n_probe_offset explicitly on these ports, "
+        "mesh. Set n_probe_offset explicitly on these ports, "
         "or make the propagation axis uniform, if the deepest probe's "
         "clearance matters.",
     }
@@ -803,13 +804,13 @@ def msl_error(diagnostic, *, error=None):
 
 
 def placement_warning(message):
-    """Keep the original UserWarning category and caller's stack level."""
+    """Attach the placement diagnostic without changing the caller's stack level."""
     diagnostic = msl_diagnostic(
         "msl.probe_placement_note",
         message,
         subject=message.values.get("port_name"),
         source="_resolve_msl_auto_offsets",
     )
-    warning = UserWarning(diagnostic.message)
+    warning = AccuracyWarning(diagnostic.message)
     warning.diagnostic = diagnostic
     return warning

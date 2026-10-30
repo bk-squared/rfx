@@ -1,5 +1,6 @@
 """Shared admission and diagnostic wording for #1465."""
 
+from rfx.errors import AccuracyWarning
 SUBGRID_WARNING = (
     "The subgridded lane is unstable and unverified: an empty lossless PEC "
     "cavity's first resonance is 8 % high at a 1.5 mm coarse mesh and its "
@@ -12,7 +13,7 @@ SUBGRID_NOTICE = (
 )
 
 
-class ExperimentalSubgridWarning(UserWarning):
+class ExperimentalSubgridWarning(AccuracyWarning):
     """An explicit opt-in to the unstable, unverified subgridded lane."""
 
 

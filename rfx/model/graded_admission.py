@@ -8,6 +8,7 @@ keeps what it returns; the messages are the ones the constructor raised.
 """
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, RfxWarning
 import warnings
 from collections.abc import Mapping
 from typing import NamedTuple
@@ -47,7 +48,7 @@ class NominalProfile(NamedTuple):
     traced_cells: tuple | None = None
 
 
-class DeclaredZWarning(UserWarning):
+class DeclaredZWarning(RfxWarning):
     """The caller explicitly keeps a declared z different from the solved length."""
 
 
@@ -215,7 +216,7 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
                     "docs/guides/support_matrix.md, "
                     "'Multi-band graded mesh'). This may cause "
                     "numerical reflections. Use "
-                    f"rfx.smooth_grading({_axis_name}) to fix.",
+                    f"rfx.smooth_grading({_axis_name}) to fix.", AccuracyWarning,
                     stacklevel=4,
                 )
 

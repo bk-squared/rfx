@@ -167,7 +167,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                     f"WirePort at {pe.position} ({pe.component}, extent "
                     f"{pe.extent}): all {len(_cells_ijk)} extent cells land "
                     "inside PEC geometry, so the port has no live cell to "
-                    "terminate or drive (issue #318). Shorten the extent or "
+                    "terminate or drive. Shorten the extent or "
                     "move the port so at least one cell center sits outside "
                     "PEC."
                 )

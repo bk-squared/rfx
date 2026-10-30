@@ -34,7 +34,7 @@ def test_per_frequency_amplitude_advisory_reports_worst_bin():
     assert len(amplitude) == 1
     assert "frequency index 1" in amplitude[0]
     assert "1.36" in amplitude[0]
-    assert "issue #337" in amplitude[0]
+    assert "passivity violated: extraction/normalization artifact" in amplitude[0]
 
 
 def test_pec_short_like_1_03_column_is_silent():

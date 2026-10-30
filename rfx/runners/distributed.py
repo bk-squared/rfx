@@ -41,7 +41,7 @@ def run_distributed(*args, **kwargs):
     """Removed (#1296). Raises ``RuntimeError`` naming the replacement."""
     raise RuntimeError(
         "rfx.runners.distributed.run_distributed, the jax.pmap multi-device "
-        "runner, was removed in #1296. Use Simulation.run(n_steps=..., "
+        "runner, was removed. Use Simulation.run(n_steps=..., "
         "devices=[...]), which runs the shard_map runner for two or more "
         "devices and the single-device lane for one; or, to call a runner "
         "directly, rfx.runners.distributed_v2.run_distributed(sim, n_steps=..., "

@@ -91,10 +91,10 @@ def _refused(sim):
     found = _split_findings(sim)
     assert found and all(i.severity == "error" for i in found)
     text = str(found[0])
-    assert "#1342" in text and "lower node" in text
-    with pytest.raises(ValueError, match="half_node_split|#1342"):
+    assert "Move both off the half node" in text and "lower node" in text
+    with pytest.raises(ValueError, match="Move both off the half node"):
         _run(sim)
-    with pytest.raises(ValueError, match="#1342"):
+    with pytest.raises(ValueError, match="Move both off the half node"):
         _run(sim, skip_preflight=True)
 
 

@@ -27,6 +27,7 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
@@ -262,7 +263,7 @@ def compute_waveguide_s_matrix(
             "For S21 accuracy and reciprocity use normalize=True. "
             "For |S11| of strong reflectors (PEC short, resonators) "
             "normalize=False is more accurate — see the normalize "
-            "parameter docstring.",
+            "parameter docstring.", AccuracyWarning,
             stacklevel=2,
         )
     if self._ports or self._tfsf:
@@ -447,7 +448,7 @@ def compute_waveguide_s_matrix(
                 "compute_waveguide_s_matrix: could not evaluate the far-port "
                 f"absorber advisory on the non-uniform lane ({_exc!r}). The "
                 "0.5 guide-wavelength discipline is therefore UNCHECKED for "
-                "this run — verify the absorber depth by hand (#576).",
+                "this run — verify the absorber depth by hand.", AccuracyWarning,
                 stacklevel=2,
             )
         else:
@@ -494,7 +495,7 @@ def compute_waveguide_s_matrix(
             raise NotImplementedError(
                 "compute_waveguide_s_matrix() on a uniform mesh does not "
                 "implement lumped RLC elements in the device or reference "
-                "simulations (#1263). Use run() or forward() for fields "
+                "simulations. Use run() or forward() for fields "
                 "with these elements, or remove them from the S-matrix model.")
 
     # The uniform waveguide scan has no subgrid and never read
@@ -605,7 +606,7 @@ def compute_waveguide_s_matrix(
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
             "supported with subpixel_smoothing / conformal on the "
-            "waveguide S-matrix method (#677 v1): the sheet operator "
+            "waveguide S-matrix method: the sheet operator "
             "assumes the plain isotropic E update at its edges.")
     # #931 §1.7: the interior PEC of this lane is the realized edge
     # set, applied per step by the shared ``apply_pec_edges``.  The
@@ -778,8 +779,8 @@ def compute_waveguide_s_matrix(
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
-            "supported on the multimode waveguide S-matrix path "
-            "(#677 v1): the multimode extractors do not thread the "
+            "supported on the multimode waveguide S-matrix path"
+            ": the multimode extractors do not thread the "
             "sheet operator ctx, so the runs would silently simulate "
             "NO sheet. Use n_modes=1 ports or drop the f0 sheet.")
     if has_multimode:
@@ -1081,7 +1082,7 @@ def _reference_medium(cfgs, normalize):
     from rfx.model.waveguide_modes import PortMedium
     media = [c.medium for group in cfgs for c in (group if isinstance(group, list) else [group])]
     if normalize and any(m != media[0] for m in media[1:]):
-        raise ValueError("Waveguide normalize=True/'flux' requires all ports to share one medium (rfx#1994).")
+        raise ValueError("Waveguide normalize=True/'flux' requires all ports to share one medium.")
     return media[0] if media else PortMedium()
 
 

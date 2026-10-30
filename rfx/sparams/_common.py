@@ -23,6 +23,7 @@ import time.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -244,13 +245,12 @@ def _warn_msl_wave_split_unreliable(
     f1 = freqs_arr[int(affected_freqs[0])] / 1e9
     f2 = freqs_arr[int(affected_freqs[-1])] / 1e9
     warnings.warn(
-        "low signal at an MSL port plane: "
-        f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz "
+        "low signal at an MSL port plane: " f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz "
         "have both |V| and |I| below 10% of their record's band medians. "
         "This flags relative signal strength, not proof of an incorrect "
         "S-matrix; a true transmission zero can also trigger it. Check "
         "signal uncertainty, settling, drive conditioning and probe "
-        "geometry before using these bins.",
+        "geometry before using these bins.", AccuracyWarning,
         stacklevel=2,
     )
 
@@ -291,7 +291,7 @@ def _warn_msl_beta_scan_railed(
         f"port(s) {ports} minimized the fit residual at the edge of the "
         "±35% scan around the analytic Hammerstad-Jensen guess — the "
         "reported Z0/beta at those bins are the scan limit, NOT a "
-        f"measurement (issue #681). Railed bins per port: {per_port}. "
+        f"measurement. Railed bins per port: {per_port}. "
         "Fitted Z0/beta are not used in S11/S21, "
         "which use measured V/I and the analytic Z0 anchor; this does not "
         "certify those inputs. S is shifted from probe 0 to the declared "
@@ -302,7 +302,7 @@ def _warn_msl_beta_scan_railed(
         "is far from the HJ estimate (wrong eps_r_sub / substrate not "
         "detected under the port) -- then the closed-form beta and the Z0 "
         "anchor of S are wrong as well. Check the result's beta_railed mask "
-        "before quoting Z0 or beta.",
+        "before quoting Z0 or beta.", AccuracyWarning,
         stacklevel=2,
     )
 
@@ -950,7 +950,7 @@ def _warn_if_sigma_max_excess(
             "passive set instead; that projection is skipped on the "
             "eps_override channel, so the measured and the differentiated S "
             "stay the same function."
-        ),
+        ), AccuracyWarning,
         stacklevel=2,
     )
 
@@ -988,7 +988,7 @@ def _warn_if_passivity_projected(
             else ""
         )
         + "Raw values are preserved in S_raw; corrections per bin in "
-        "passivity_correction.",
+        "passivity_correction.", AccuracyWarning,
         stacklevel=2,
     )
 
@@ -1226,7 +1226,7 @@ def _warn_if_nonpassive_smatrix(
         )
         if _recip_msg:
             import warnings as _w
-            _w.warn(_recip_msg, stacklevel=3)
+            _w.warn(_recip_msg, AccuracyWarning, stacklevel=3)
 
     from rfx.validation import validate_port_smatrix
 
@@ -1269,7 +1269,7 @@ def _warn_if_nonpassive_smatrix(
                 f"index {frequency_index}: max |S| = {worst_value:.4g}; "
                 "passivity violated: extraction/normalization artifact — do "
                 "not interpret as physics; see the normalize parameter "
-                "docstring and issue #337"
+                "docstring"
             )
     bad = [
         i for i in report.issues
@@ -1316,7 +1316,7 @@ def _warn_if_nonpassive_smatrix(
         advisories = [x for x in (amplitude_advisory, soft_advisory) if x]
         if advisories:
             import warnings as _w
-            _w.warn(" ".join(advisories), stacklevel=3)
+            _w.warn(" ".join(advisories), AccuracyWarning, stacklevel=3)
         return
     detail = "; ".join(f"{i.code}: {i.message}" for i in bad)
     msg = (
@@ -1333,7 +1333,7 @@ def _warn_if_nonpassive_smatrix(
     if strict:
         raise ValueError(msg)
     import warnings as _w
-    _w.warn(msg, stacklevel=3)
+    _w.warn(msg, AccuracyWarning, stacklevel=3)
 
 
 def _finalize_sparam_result(
@@ -1639,7 +1639,7 @@ def _warn_junction_probe_clearance(
                 f"of the validated far-port envelope); recommend "
                 f">= {recommended_m * 1e3:.1f} mm (5 decay lengths). Compact "
                 f"port-to-junction clearance left residual max|S|~3.9 in the "
-                f"2026-07-06 verification (necessary-but-not-sufficient) — move "
+                f"verification (necessary-but-not-sufficient) — move "
                 f"the probe plane farther from the junction.",
                 code="port_junction_probe_clearance",
                 loc=f"port:{i}", source="_warn_junction_probe_clearance",
@@ -1680,7 +1680,7 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
                 f"under-drains guided energy — 20 mm CPML produced |S11| ripple "
                 f"~0.11 in the validated campaign, 48 mm passed. Thicken the "
                 f"absorber.",
-                UserWarning,
+                AccuracyWarning,
                 stacklevel=2,
             )
 
@@ -1726,14 +1726,14 @@ def _warn_ntff_box_dropped(sim, method_name: str) -> None:
         "radiation pattern you asked for is lost for every driven-port "
         "solve in this call. WHY: threading NTFF data out of the "
         "per-drive S-matrix solves (one pattern per drive) is not "
-        "implemented — issue #704 tracks that full fix; this warning "
-        "closes only the silent part. REMEDY: call run() on this "
+        "implemented"
+        ". REMEDY: call run() on this "
         "simulation for far-field patterns (Result.ntff_data/ntff_box "
         "from the same port drive), or drop the NTFF box from "
         "S-matrix-only runs to save its DFT cost. STALE-IF: this "
-        "method's result class grows ntff_data/ntff_box (issue #704 "
-        "full threading), at which point remove this warning.",
-        UserWarning,
+        "method's result class grows ntff_data/ntff_box"
+        ", at which point remove this warning.",
+        ConfigurationWarning,
         stacklevel=3,
     )
 
@@ -2054,14 +2054,14 @@ def _warn_thin_absorber_vs_guide_wavelength(
             f"lambda_g = {lambda_g * 1e3:.1f} mm): {detail}, against a "
             f"required {required_m * 1e3:.1f} mm. A thin absorber reflects "
             f"guided energy and can set the accuracy envelope instead of "
-            f"discretization: in the WR-90 iris lane (issue #494) residual "
+            f"discretization: in the WR-90 iris lane residual "
             f"|S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, and "
             f"0.0093 at 0.75, so {_FAR_PORT_LAMBDA_G_FRACTION:g} lambda_g "
             f"is a floor and not a target. "
             f"Raise cpml_layers to at least "
             f"{int(np.ceil(required_m / dx))} (0.75 lambda_g needs "
             f"{int(np.ceil(0.75 * lambda_g / dx))}).",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=2,
         )
 

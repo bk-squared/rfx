@@ -1,4 +1,6 @@
 """One PEC/DC/f0 fold on the realized grid, in declaration order."""
+
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 from dataclasses import dataclass, replace
 import warnings
 
@@ -88,9 +90,9 @@ def admit_thin_conductor(
             f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
             f"eps_r. Every metal is above this threshold — a lower "
             f"sigma_bulk would be a different material, not thinner "
-            f"copper (issue #504). For conductor loss pass "
-            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
-            f"issue #669).",
+            f"copper. For conductor loss pass "
+            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet"
+            f").", ConfigurationWarning,
             stacklevel=3,
         )
     if surface_impedance_f0 is not None:
@@ -108,13 +110,13 @@ def admit_thin_conductor(
             f"within the run, frozen at f0, with relative band error "
             f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
             f"inductance) is NOT modeled, so resonances read slightly "
-            f"high.",
+            f"high.", AccuracyWarning,
             stacklevel=3,
         )
     return tc
 
 
-class DCFilmAdmissionError(ValueError):
+class DCFilmAdmissionError(RfxRefusal):
     """A geometry-only DC film refusal, also carried by preflight."""
     code = 'dc_film_area'
     source = 'admit_dc_film'
@@ -587,7 +589,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 if sheets is None:
                     raise ValueError(
                         "PEC thin conductor (add_thin_conductor with sigma_bulk >= "
-                        "1e6 and no surface_impedance_f0) is a SHEET (#931) and this "
+                        "1e6 and no surface_impedance_f0) is a SHEET and this "
                         "lane collects no sheets (apply_thin_conductor(sheets=None)); "
                         "refusing to drop it silently.")
                 sheets.append(spec)
@@ -689,7 +691,7 @@ def refuse_design_films(sim, grid, bounds):
                 f0_hits.add(index)
     for index, tc in enumerate(conductors):
         if index in f0_hits:
-            raise ValueError(
+            raise RfxRefusal(
                 f'thin_conductor[{index}] (surface_impedance_f0 sheet): the design box (cells {bounds}) '
                 'contains cells incident to its tangential edges. Move the box or the sheet.')
         if tc.is_pec or tc.surface_impedance_f0 is not None:
@@ -700,7 +702,7 @@ def refuse_design_films(sim, grid, bounds):
                                     snap=sim._snap, film_geometry=films.get(index))
         if any(part is not None and bool(jnp.any(part[sl] != 0))
                for part in lumped_components(mats.sigma_film)):
-            raise ValueError(
+            raise RfxRefusal(
                 f"the design box (cells {bounds}) contains edges of thin conductor {index}; "
                 "a design region over a declared film is not supported. Move the box or the film.")
 

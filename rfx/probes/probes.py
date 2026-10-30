@@ -6,6 +6,7 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -511,7 +512,7 @@ def update_lumped_drive_ref_probe(
     return probe._replace(v_ref_dft=old_ref + v_ref * phase * dt * weight)
 
 
-class PreDecisionLumpedDiagonalWarning(UserWarning):
+class PreDecisionLumpedDiagonalWarning(AccuracyWarning):
     """A lane still reporting a lumped diagonal on the pre-decision convention.
 
     Raised where a runner returns a lumped-port S-matrix built the way the
@@ -926,11 +927,11 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
         f"but the DFT accumulators are healthy and a float64 recompute of "
         f"the same sum gives nonzero flux (peak |flux| = {peak:.3e}). The "
         f"per-cell E x H* products underflowed the float32 minimum normal "
-        f"(~1.18e-38) and were flushed to zero (issue #304). Remedies: "
+        f"(~1.18e-38) and were flushed to zero. Remedies: "
         f"enable x64 in a scoped context for the flux computation, increase "
         f"the source amplitude, or recompute from the (healthy) "
         f"accumulators in float64 as done for this check.",
-        UserWarning, stacklevel=3,
+        AccuracyWarning, stacklevel=3,
     )
 
 
@@ -1795,13 +1796,12 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
         kind = f"max|S11|={worst:.3f} > 1+{passivity_tol:g}"
     import warnings as _w
     _w.warn(
-        f"{extractor}: lumped/wire port S11 is non-passive ({kind}) "
-        f"at freq(GHz)={bad_f}"
+        f"{extractor}: lumped/wire port S11 is non-passive ({kind}) " f"at freq(GHz)={bad_f}"
         f"{' …' if len(bad_f) == 6 else ''}. A passive one-port cannot have "
         f"|S11|>1; the single-cell extractor is unreliable where the incident "
         f"wave is weak (spectral band edges). Do not trust or optimize against "
         f"these bins — restrict the band to where the source has energy, or use "
-        f"run() for a passive analysis curve.",
+        f"run() for a passive analysis curve.", AccuracyWarning,
         stacklevel=3,
     )
 

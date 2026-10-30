@@ -55,6 +55,7 @@ the path, and a pure code-motion leg touches one fewer file.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.stepping.step_count import steps_for_periods
 import math
 
@@ -391,7 +392,7 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
         for name, value in (("eps_override", eps_override), ("sigma_override", sigma_override), ("mu_r_override", mu_r_override)):
             if is_tracer(value):
                 import warnings
-                warnings.warn("Waveguide preflight reads drawn geometry; traced section overrides are judged at setup.",
+                warnings.warn("Waveguide preflight reads drawn geometry; traced section overrides are judged at setup.", AccuracyWarning,
                               stacklevel=2)
             elif value is not None:
                 overrides[name] = value
@@ -759,8 +760,8 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 " This axis has no explicit range: the None-range "
                 "branch of _range_to_slice reports the declared domain "
                 "rather than the rasterized span its own explicit "
-                "branch computes (issue #729 site 2, still open — not "
-                "a new defect)."
+                "branch computes (declared/rasterized span mismat"
+                "ch)."
             )
             if reading is None:
                 reading = _waveguide_port_cutoff_reading(
@@ -824,7 +825,7 @@ def _emit_waveguide_port_cutoff_findings(
         return
     except RuntimeError as exc:
         _w.warn(f"Waveguide preflight could not resolve the section medium ({exc!r}); "
-                "cutoff checks are unchecked for this port.", stacklevel=2)
+                "cutoff checks are unchecked for this port.", AccuracyWarning, stacklevel=2)
         return
     m0, n0 = entry.mode
 

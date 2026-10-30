@@ -39,6 +39,7 @@ where the lines go; the cells between them come from
 """
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import heapq
 import warnings
 from typing import NamedTuple, Sequence
@@ -575,7 +576,7 @@ def edge_aware_profiles(
                     "coincides with a sheet edge. No mesh line is put ON a "
                     f"sheet edge, so the nearest node is {edge_offset:.2f} of "
                     "the edge cell inside the metal. Move the plane off the "
-                    "edge if it has to sit on a node.", stacklevel=2)
+                    "edge if it has to sit on a node.", ConfigurationWarning, stacklevel=2)
         # A solid's face on a sheet edge (a slab cut flush with its foil)
         # yields to the edge rule, as the docstring says; only a DECLARED
         # plane warns, because the caller asked for a node there.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import numpy as np
 import warnings
 from fractions import Fraction
@@ -83,7 +84,7 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                 f"Automatic dx={dx:.12g} m snapped to dx={fitting:.12g} m: "
                 f"periodic axes {axes!r} divide exactly{walls_fit} "
                 f"(minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
-                UserWarning, stacklevel=3)
+                ConfigurationWarning, stacklevel=3)
             return fitting
         advice = (f"largest fitting dx={fitting:.12g} m ({fitting * 1e3:.12g} mm); "
                   "set dx explicitly to use it" if fitting is not None

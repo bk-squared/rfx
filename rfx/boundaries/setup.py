@@ -29,7 +29,7 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
             _unsupported_ob.append("flux monitor")
         if _unsupported_ob:
             raise NotImplementedError(
-                "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch path; "
+                "Oblique (angle_deg != 0) TFSF uses the complex Bloch path; "
                 "frequency-domain monitors are not yet transform-aware on it. "
                 "Unsupported: " + ", ".join(_unsupported_ob) + ". Use field "
                 "snapshots / final state (returned as physical fields), or "

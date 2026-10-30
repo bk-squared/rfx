@@ -1,4 +1,6 @@
 """Forward smoothing option conflicts."""
+
+from rfx.errors import RfxUnsupported
 from rfx.model.smoothing_admission import admit_full_tensor
 
 
@@ -17,7 +19,7 @@ def refuse_forward_smoothing(sim, *, subpixel_smoothing,
             "subpixel_smoothing": subpixel_smoothing},
             instead="use the default solver='yee'")
     if sim._uses_nonuniform_mesh and subpixel_smoothing == "kottke_pec":
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "
             "is not supported on the non-uniform mesh path. "
             "Drop the dx/dy/dz profile or use the legacy "

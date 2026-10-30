@@ -1,4 +1,6 @@
 """Source admission against geometry conductors and declared PEC walls."""
+
+from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
@@ -34,7 +36,7 @@ def refuse_dead_soft_sources(sim, conductors):
     kernels' existing wire live-cell handling are not changed by this check.
     """
     for message in _dead_sources(sim, conductors):
-        raise ValueError(message)
+        raise RfxRefusal(message)
 
 
 def _dead_sources(sim, conductors):
@@ -55,7 +57,7 @@ def _dead_sources(sim, conductors):
             warnings.warn(
                 "Soft-source PEC admission check cannot run on a traced mesh "
                 "or traced conductor edges/source positions; no concrete "
-                "realized edge classification is available.", UserWarning,
+                "realized edge classification is available.", AccuracyWarning,
                 stacklevel=3)
         return
     from rfx.model.conductors import lumped_port_stage

@@ -25,6 +25,8 @@ program contains any of it.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, RfxRefusal
+
 import math
 from dataclasses import dataclass, field
 
@@ -114,7 +116,7 @@ def refuse_windowed_flux(sim, path):
     for monitor in getattr(sim, "_flux_monitors", None) or []:
         window = getattr(monitor, "dft_window", "rect")
         if window != "rect":
-            raise ValueError(
+            raise RfxRefusal(
                 f"flux monitor {monitor.name!r} uses dft_window={window!r}, which is not "
                 f"supported with until_decay on the {path} path: a streaming windowed DFT "
                 "needs the true total step count in advance, and a decay-terminated run "
@@ -330,12 +332,12 @@ def refuse_radiated_flux_stop(box, until_decay, boundary):
     if box is None:
         return
     if until_decay is None or not until_decay > 0:
-        raise ValueError(
+        raise RfxRefusal(
             "radiated_flux_box selects the radiated-flux until_decay stop; use a positive "
             "until_decay with cpml/upml, or omit the box and use add_flux_monitor() "
             "for a fixed n_steps measurement")
     if boundary not in ("cpml", "upml"):
-        raise ValueError(
+        raise RfxRefusal(
             "radiated_flux_box selects the radiated-flux until_decay stop and requires "
             "cpml/upml; use an absorbing boundary, or omit the box to use the "
             "closed-box point-field stop on the uniform mesh")
@@ -521,7 +523,7 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
         message = (f"{head}: requested threshold {rule.thr:.3g}; the energy stopped falling at "
                    f"{reached:.3g} of the after-drive reference ({w / wmax:.3g} of the drive's "
                    f"peak energy); {FLOOR_TEXT}")
-        warnings.warn(message, UserWarning, stacklevel=3)
+        warnings.warn(message, AccuracyWarning, stacklevel=3)
     elif quantity == "conserved_energy" and rule.n_end is None:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    "a drive was still on at decay_max_steps, so the energy stop could not fire")
@@ -684,20 +686,20 @@ def warn_dc_floor(sim, *, dt, n_table):
                 f"decay_max_steps window ends inside the source pulse (table "
                 f"{n_table * float(dt):.3e} s < pulse completion t0+4.5*tau ~ {t_done:.3e} s) "
                 "— the DC estimate is truncation-dominated, not intrinsic waveform DC; "
-                "until_decay may cap-hit (issue #388). Increase decay_max_steps (or run "
+                "until_decay may cap-hit. Increase decay_max_steps (or run "
                 "with a fixed n_steps) so the table covers the full pulse; raising the "
                 "waveform cutoff makes this WORSE (it lengthens the onset).",
-                UserWarning, stacklevel=3)
+                AccuracyWarning, stacklevel=3)
         else:
             warnings.warn(
                 f"soft source at {label}: waveform {name} has relative DC {rel_dc:.2e} "
                 f"(|sum s*dt| = {abs(s_int):.3e} over the planned {int(n_table)}-step "
                 "table): it deposits a static charge whose field neither decays nor is "
                 "absorbed by CPML, so the energy left after the drive may never fall to "
-                "the until_decay threshold and the run may cap-hit (issue #388); thin "
+                "the until_decay threshold and the run may cap-hit; thin "
                 "source cells make a small charge's field large, so this warns from "
                 f"relative DC {DC_ADVISE:g}. Remedies: {REMEDIES}.",
-                UserWarning, stacklevel=3)
+                AccuracyWarning, stacklevel=3)
 
 
 def advisory_inputs(sim, *, dt, n_table):
@@ -788,17 +790,17 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
             "remnant is quasi-static charge left by the drive, or charge relaxing in a lossy "
             "medium (relaxation time eps/sigma). Lossy materials: "
             f"{'; '.join(media) if media else 'none (no sigma > 0 in the model)'}. Its field is "
-            "out of band and the record stays correct (issue #388). Remedies: a fixed n_steps, "
+            "out of band and the record stays correct. Remedies: a fixed n_steps, "
             "radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator, or a larger "
             "until_decay threshold.",
-            UserWarning, stacklevel=3)
+            AccuracyWarning, stacklevel=3)
         return
     warnings.warn(
         f"run(until_decay=...) cap-hit at max_steps without the energy criterion firing, "
         f"and {100 * (1 - h_share):.1f}% of the final interior energy is electrostatic "
         f"(H-share {h_share:.1e}): a static charge left by a soft drive holds the energy "
-        "above the threshold; it neither radiates nor is absorbed by CPML (issue #388). "
+        "above the threshold; it neither radiates nor is absorbed by CPML. "
         "Soft drives with relative DC above "
         f"{DC_ADVISE:g}: {'; '.join(named) if named else 'none found'}. "
         f"Remedies: {REMEDIES}.",
-        UserWarning, stacklevel=3)
+        AccuracyWarning, stacklevel=3)

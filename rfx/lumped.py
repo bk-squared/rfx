@@ -72,6 +72,8 @@ with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -498,13 +500,13 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
         edge = (int(meta.i), int(meta.j), int(meta.k), meta.component)
         if edge in first:
             m = first[edge]
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"{_describe_spec(m, specs[m])} and {_describe_spec(n, spec)} "
                 f"both land on the {edge[3]} edge of cell {edge[:3]}. Each is "
                 "solved together with that edge's field in its own implicit "
                 "step, and two such solves on one edge act on a field the other "
                 "has already changed: the pair gains energy instead of being the "
-                "parallel circuit it declares (issue #1245). Model them as ONE "
+                "parallel circuit it declares. Model them as ONE "
                 "add_lumped_rlc with the combined value (two parallel inductors "
                 "L1*L2/(L1+L2)), or place them on different edges. Folded "
                 "elements -- a parallel R or C, or a pure R or pure C declared "
@@ -547,7 +549,7 @@ def _parallel_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
     if e_prev is None:
         raise ValueError(
             "a parallel lumped inductor is solved together with its edge "
-            "field (issue #1245) and needs E^n, the edge field at the start "
+            "field and needs E^n, the edge field at the start "
             "of the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
             "the E update")
 
@@ -660,8 +662,8 @@ def rlc_element_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
     if meta.is_series:
         if e_prev is None:
             raise ValueError(
-                "a series RLC element is solved together with its edge field "
-                "(issue #1163) and needs E^n, the edge field at the start of "
+                "a series RLC element is solved together with its edge field"
+                " and needs E^n, the edge field at the start of "
                 "the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
                 "the E update")
         return _series_values(e_std, rlc_state, meta, e_prev)

@@ -122,7 +122,7 @@ def test_unsupported_fixture_is_refused_before_assembly(
     # fail here, before an unrelated setup error (e.g. the zero-ohm source).
     monkeypatch.setattr(Simulation, "_assemble_materials", unexpected_assembly)
     monkeypatch.setattr("rfx.simulation.run", unexpected_assembly)
-    match = re.escape(input_name) + r".*#1290.*" + re.escape(remedy)
+    match = re.escape(input_name) + r".*" + re.escape(remedy)
     with jax.enable_x64(), pytest.raises(NotImplementedError, match=match):
         differentiable_material_fit(
             factory, np.zeros((1, 1, 3), complex), np.array([2e9, 3e9, 4e9]),
@@ -148,7 +148,7 @@ def test_port_on_pec_edge_is_refused_before_fdtd(monkeypatch, conductor):
         raise AssertionError("point port on PEC reached FDTD before refusal")
 
     monkeypatch.setattr("rfx.simulation.run", unexpected_step)
-    with pytest.raises(NotImplementedError, match=r"add_port\(\).*PEC edge.*#1290.*Move"):
+    with pytest.raises(NotImplementedError, match=r"add_port\(\).*PEC edge.*Move"):
         differentiable_material_fit(
             factory, np.zeros((1, 1, 3), complex), np.array([2e9, 3e9, 4e9]),
             n_iterations=1, verbose=False)
@@ -224,6 +224,6 @@ def test_off_node_port_next_to_pec_block(monkeypatch, x, refused):
     error = _fit_to_scan(monkeypatch, factory)
     if refused:
         assert isinstance(error, NotImplementedError), f"PEC port was accepted: {error}"
-        assert re.search(r"add_port\(\).*PEC edge.*#1290.*Move", str(error))
+        assert re.search(r"add_port\(\).*PEC edge.*Move", str(error))
     else:
         assert isinstance(error, _FDTDReached), f"clear off-node port was refused: {error}"

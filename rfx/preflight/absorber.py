@@ -301,15 +301,15 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
         hi_clauses.append(
             "at a hi face ending at the domain face the pad stays "
             "background and the rasterizer's dropped boundary node is "
-            "left unrepaired (#808 gate)"
+            "left unrepaired"
         )
     msg = (
         f"Dispersive material '{worst[1]}' (geometry entry #{worst[0]}, "
         f"{worst[3]}) touches absorbing face(s) {worst[2]}. The realized "
         f"absorber there matches no declared material: a lo-face pad "
         f"replicates the material's STATIC eps/sigma/mu without its "
-        f"dispersion poles (#627a; poles are deliberately not extended, "
-        f"#627b), and " + ", and ".join(hi_clauses) + " — a band-limited "
+        f"dispersion poles (poles are deliberately not extended), "
+        f"and " + ", and ".join(hi_clauses) + " — a band-limited "
         "impedance step instead of a matched continuation. "
     )
     if len(hits) > 1:
@@ -320,7 +320,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
     msg += (
         "This is a fidelity limitation, not an instability. Do NOT "
         "extend pole masks into the pad to fix it: measured divergent "
-        "(issue #636 factorial, "
+        "(factorial measurement, "
         "docs/design_notes/i636_cpml_pole_pad_predeclaration.md — "
         "surface-polariton modes of the eps(omega)<0 band inside the "
         "absorber grow without bound; the Drude cell diverges even "
@@ -334,7 +334,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
     msg += (
         ". And do not extend the statics for it either: the "
         "eps_inf-without-pole surround silently moved a committed "
-        "Debye recovery past its gate (issue #808, "
+        "Debye recovery past its gate ("
         "docs/design_notes/issue808_debye_pad_predeclaration.md). "
         "Mitigations: leave >= 1 cell of background material between "
         "the dispersive structure and the domain face, add pole "
@@ -477,8 +477,8 @@ def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
                 f"hi={axis_boundary.hi!r})). The absorber you asked for "
                 f"is unaffected — the layer budget is clamped to the "
                 f"axis for the CPML scratch buffers only, and the "
-                f"clamped region carries no active absorber layers "
-                f"(issue #647). It does mean the layer count was sized "
+                f"clamped region carries no active absorber layers"
+                f". It does mean the layer count was sized "
                 f"for a coarser mesh or a larger domain than this one; "
                 f"set that face's lo_thickness/hi_thickness explicitly "
                 f"if you meant a thinner absorber.",
@@ -564,7 +564,7 @@ def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
                     f"(add_thin_conductor, or a zero-thickness PEC Box — "
                     f"one node plane, normal E through it live); a thick "
                     f"plate is a PEC Box VOLUME (walls on both faces, "
-                    f"lattice ownership contract #931).",
+                    f"lattice ownership contract).",
                     code="pec_faces_finite_pec",
                     source="_validate_cfg_pec_faces_with_finite_pec",
                 ),
@@ -642,8 +642,8 @@ def _validate_cfg_upml_nonuniform_lane(self, _w) -> None:
         "identical apart from the mesh profile): apply_upml_e ran 1x "
         "on the uniform lane and 0x on the non-uniform lane while "
         "sim._boundary still read 'upml', so the run was CPML and "
-        "even a post-hoc audit reported the absorber that never ran "
-        "(issue #680). That is not a slightly worse UPML — CPML and "
+        "even a post-hoc audit reported the absorber that never ran"
+        ". That is not a slightly worse UPML — CPML and "
         "UPML differ in reflection and in how material inside the pad "
         "is treated. Use boundary='cpml' to run the absorber that is "
         "implemented on this lane, or drop the mesh profile(s) to "
@@ -936,7 +936,7 @@ def _validate_cfg_geometry_in_cpml(
                 )
             msg += (
                 f" {absorber_label} modifies field updates — geometry "
-                f"inside the absorber is physically meaningless (issue #61)."
+                f"inside the absorber is physically meaningless."
             )
             # Per-entry detail lives here rather than in N warning lines:
             # every crossing entry's index, crossed face and overshoot.
@@ -1120,7 +1120,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
                 f"absorber seam, and {u.reason}. With subpixel smoothing the "
                 f"pad there is solved at eps_r = 1.0, not the declared "
                 f"{u.eps_r:g}, so the structure is terminated by an end facet "
-                f"at the interior/pad boundary (issue #1043). Move it clear "
+                f"at the interior/pad boundary. Move it clear "
                 f"of the face, or declare it as a Box / axis-aligned "
                 f"Cylinder, which are continued.")
         _w.warn(
@@ -1376,7 +1376,7 @@ def _validate_cfg_conductor_in_thin_absorber(self, _w, dx, absorber_label) -> No
                 f"{absorber_label} face (declared {_fmt_len(abs(distance))} "
                 f"{'past' if distance < 0 else 'from'} it), and that face has "
                 f"{layers} absorbing layer(s). Both at once is a measured growth "
-                f"class (issue #801): on the isolated-patch rig at dx = h/3 with a "
+                f"class: on the isolated-patch rig at dx = h/3 with a "
                 f"laterally padded domain, 6 layers with the ground flush against "
                 f"the face grew (ring-down 0.00 dB, +8.5e-4 per step), while 8 and "
                 f"12 layers at the same mesh and geometry settled (-44.2 / -46.0 dB) "
@@ -1537,7 +1537,7 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
             rows.append(f"{depth} layers: {r2} dB at 2 GHz, {r10} dB at 10 GHz, "
                         f"{at30} at 30 GHz, {rlow} dB below 1 GHz")
         messages.append("CPML reference reflections measured at 1 mm cells with "
-                        "the shipped CFS alpha (#1272, #1346): " + "; ".join(rows)
+                        "the shipped CFS alpha: " + "; ".join(rows)
                         + ". These reference values do not predict reflection "
                         "on a different mesh or for UPML.")
     messages.append("Use at least 8 absorbing layers; 16 layers is the default recommendation.")
@@ -1548,7 +1548,7 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
     overlap = [face for face in thin if face in conductor_faces]
     if overlap:
         messages.append("Conductor proximity on " + ", ".join(overlap)
-                        + " is also reported by conductor_in_thin_absorber (#801).")
+                        + " is also reported by conductor_in_thin_absorber.")
     _w.warn(
         PreflightWarning(
             " ".join(messages),

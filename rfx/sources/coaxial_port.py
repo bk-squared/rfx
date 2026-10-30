@@ -24,6 +24,7 @@ The pin protrudes into the cavity; direction depends on the face:
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from typing import NamedTuple
 
 import jax
@@ -1571,7 +1572,7 @@ def solve_two_port_from_wave_amplitudes(
             "flags DEGENERACY only: cond below it is NOT a reliability "
             "certificate, because cond(A) also multiplies whatever noise is on "
             "the measured amplitudes (~1.3e-2 relative error in S from 1e-4 "
-            "noise at cond=199, which never trips this warning).",
+            "noise at cond=199, which never trips this warning).", AccuracyWarning,
             stacklevel=2,
         )
     return TwoPortWaveSolve(s_params=s, cond_a=cond)

@@ -59,6 +59,7 @@ accumulators).
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import warnings
 from typing import NamedTuple
 
@@ -153,8 +154,8 @@ def _trace_bbox_at_plane(pec2d: np.ndarray, seed_uv: tuple[int, int]):
                 "requires a conducting signal trace (uniform transmission "
                 "line) at the plane. Check the port direction and N, and "
                 "check that the caller passed the full conductor footprint "
-                "(#695: an f0 surface-impedance sheet is in neither "
-                "`pec_mask` nor `materials.sigma`; #931: a PEC sheet owns "
+                "(an f0 surface-impedance sheet is in neither "
+                "`pec_mask` nor `materials.sigma`; a PEC sheet owns "
                 "no cell and is not in `pec_mask` either).")
         d2 = (cand[:, 0] - su) ** 2 + (cand[:, 1] - sv) ** 2
         su, sv = (int(x) for x in cand[int(np.argmin(d2))])
@@ -236,13 +237,13 @@ def build_wire_refplane_specs(
         raise ValueError(
             "reference_plane_cells: the simulation has no conductor at the "
             "reference planes — the plane V/I method requires a conducting "
-            "signal trace (uniform transmission line). Note (#695): the "
+            "signal trace (uniform transmission line). Note: the "
             "caller must hand this the FULL conductor footprint "
             "(`Simulation.conductor_mask()` / "
             "`rfx.materials.thin_conductor.conductor_footprint`), not the "
-            "bare `pec_mask`: since #677 a surface_impedance_f0 sheet is a "
+            "bare `pec_mask`: with the sheet operator a surface_impedance_f0 sheet is a "
             "node-thin operator that appears in NEITHER `pec_mask` NOR "
-            "`materials.sigma`, and since #931 a PEC SHEET owns no cell "
+            "`materials.sigma`, and under lattice ownership a PEC SHEET owns no cell "
             "either, so a sheet-traced board handed a bare `pec_mask` "
             "reaches this line reading 'no metal' on a perfectly healthy "
             "model.")
@@ -580,7 +581,7 @@ def decompose_wire_s_matrix_with_reference_planes(
                     "canonical thru). The plane off-diagonals may be "
                     "biased; increase reference_plane_cells so both planes "
                     "(N and 2N cells) sit >= 10 cells from every port.",
-                    UserWarning, stacklevel=2)
+                    AccuracyWarning, stacklevel=2)
             out1, in1 = refplane_split(v1, i1, zc[p], outboard_signs[p])
             out2, in2 = refplane_split(v2, i2, zc[p], outboard_signs[p])
             d_sep = int(plane_offsets[p]) * float(dx)

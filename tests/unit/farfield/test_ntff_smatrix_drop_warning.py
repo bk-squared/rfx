@@ -160,7 +160,7 @@ def test_msl_warns_with_ntff_box(monkeypatch):
     assert "dropped" in msg                    # what happens to it
     assert "run()" in msg                      # the workaround
     assert "STALE-IF" in msg                   # when to delete the warning
-    assert "#704" in msg                       # full threading stays open
+    assert "threading NTFF data out" in msg                       # full threading stays open
 
 
 def test_msl_silent_without_ntff_box(monkeypatch):

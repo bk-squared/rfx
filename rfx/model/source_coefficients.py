@@ -1,6 +1,8 @@
 """Run-specific source coefficient selection and absorber admission."""
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from rfx._grid_metric import field_index
 from dataclasses import replace
 
@@ -207,7 +209,7 @@ def current_source_volume(grid, position_ijk, component):
             f"make_current_source: unknown component {component!r} "
             f"(expected one of {sorted(_axis_of)}). The control volume is "
             f"component-dependent on a non-uniform mesh, so there is no safe "
-            f"fallback (issue #672)."
+            f"fallback."
         )
     p_axis = _axis_of[component]
     grid_traced = (
@@ -377,7 +379,7 @@ def edge_in_absorber_pad(grid, cell, component=None):
 
 def _refuse_pad_edge(grid, cell, label, component=None):
     if edge_in_absorber_pad(grid, cell, component):
-        raise ValueError(
+        raise RfxRefusal(
             f"{label} edge {tuple(cell)} lies inside a UPML absorber pad; "
             "its source coefficient does not include the absorber operator. "
             "Move the source/port edge into the interior.")

@@ -10,6 +10,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from rfx._grid_metric import nearest_uniform_index
 from rfx.boundaries.depths import resolve_face_depths
 
@@ -301,7 +303,7 @@ class _CompileMixin:
             raise NotImplementedError(
                 "the coaxial S-parameter lanes (compute_coaxial_line_reflection, "
                 "compute_coaxial_two_port) "
-                "do not realize declared PEC geometry of ANY kind (#931): "
+                "do not realize declared PEC geometry of ANY kind: "
                 "this material-only builder discards the cell mask, and "
                 "a sheet or a wire owns no cell to begin "
                 f"with. Declared here: {', '.join(_declared)} — all of it "
@@ -564,11 +566,11 @@ def _refuse_uncollected_pec(sheets, wires, *, lane: str) -> None:
         what.append(f"{len(sheets)} PEC sheet(s)")
     if wires:
         what.append(f"{len(wires)} PEC wire(s)")
-    raise ValueError(
+    raise RfxRefusal(
         f"_assemble_materials ({lane} lane): {' and '.join(what)} were "
         f"classified, but {_uncollected_pec_caller()} passed no "
-        "pec_sheets/pec_wires collector. A sheet owns no cell (#931 "
-        "§1.3), so it cannot be returned in pec_mask and this caller "
+        "pec_sheets/pec_wires collector. A sheet owns no cell"
+        ", so it cannot be returned in pec_mask and this caller "
         "would step or report a model with the conductor MISSING. Pass "
         "pec_sheets=[] / pec_wires=[]: realize them with "
         "rfx.boundaries.pec.realized_pec_edge_masks if this path steps "

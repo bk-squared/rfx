@@ -1,4 +1,5 @@
 """Resolve ring-down identification channels before the time loop."""
+from rfx.errors import ConfigurationWarning
 import inspect
 import warnings
 
@@ -32,5 +33,5 @@ def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=Tr
             f"Duplicate ring-down identification probe indices {duplicates} "
             "(zero-based) resolve to the same cell and component and produce "
             "identical columns. Remove the repeated probes or move them to "
-            "different cells.", UserWarning, stacklevel=stacklevel)
+            "different cells.", ConfigurationWarning, stacklevel=stacklevel)
     return tuple(keys)

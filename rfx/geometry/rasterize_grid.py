@@ -7,6 +7,8 @@ via a coordinate-provider abstraction.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, RfxRefusal
+
 import warnings
 from typing import NamedTuple
 
@@ -57,7 +59,7 @@ class GridCoords(NamedTuple):
     shape: tuple[int, int, int]
 
 
-class ExactNodeSpineMissingWarning(UserWarning):
+class ExactNodeSpineMissingWarning(AccuracyWarning):
     """A concrete NonUniformGrid axis has no float64 cell-size spine.
 
     ``coords_from_nonuniform_grid`` then widens the solver's float32 store
@@ -188,8 +190,8 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             f"{', '.join(spine_missing)} (dx_arr_f64 / dy_arr_f64 / dz_f64 "
             "is None or not float64): node positions were widened from the "
             "float32 store and can sit ~1e-10 m off the exact node line, "
-            "which flips half-open inclusion at node-aligned faces (#802 "
-            "class). Build the grid with make_nonuniform_grid, or set the "
+            "which flips half-open inclusion at node-aligned faces"
+            ". Build the grid with make_nonuniform_grid, or set the "
             "spine fields from the float64 profile.",
             ExactNodeSpineMissingWarning, stacklevel=2)
 
@@ -502,10 +504,10 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None)
 
 
 def _refuse_zero_cells(shape, name, what: str):
-    raise ValueError(
+    raise RfxRefusal(
         f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells "
         "on this grid: no primal-cell centre lies inside it, so it would "
-        "silently vanish (the #369 vaporized-metal class, now an error). A "
+        "silently vanish (the vaporized-metal class, now an error). A "
         "legacy radius=0 filament is a PolylineWire. A positive PEC wire "
         "radius must be resolved as a volume, a >= 0.5*d; a volume needs "
         "a radius of at least ~0.87 of the "
@@ -615,7 +617,7 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
         raise ValueError(
             f"sheet {name!r}: the footprint rasterizes to ZERO nodes on this "
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
-            f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
+            f"{'xyz'[a]}={plane}; it would silently vanish. "
             "Widen the footprint to reach a node line or refine the mesh.")
     end_rows = sheet_end_rows(shape, coords, a, grid=grid)
     unwrapped = None
@@ -715,13 +717,13 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
                for m in _rpem(None, sheets=tuple(group), periodic=periodic)):
             continue
         names = ", ".join(repr(getattr(sp, "name", None)) for sp in group)
-        raise ValueError(
+        raise RfxRefusal(
             f"PEC sheet plane {'xyz'[axis]}={plane} realizes ZERO PEC edges on "
             f"this grid{(' (' + lane + ' lane)') if lane else ''}: its whole "
             f"footprint ({len(group)} declaration(s): {names}) reaches node "
             "line(s) but never two ADJACENT ones, so the metal carries no "
-            "current and would silently vanish (#369 class; the volume side "
-            "refuses the same drawing, #931 §1.5). Widen the footprint to span "
+            "current and would silently vanish (the volume side "
+            "refuses the same drawing). Widen the footprint to span "
             "at least one cell in an in-plane direction, or refine the mesh.")
 
 
@@ -846,7 +848,7 @@ def _refuse_subcell(subcell, shape, name):
         f"{'xyz'[i]} ({ext:.6g} m against a local cell of {d:.6g} m)"
         for i, ext, d in subcell)
     kind = type(shape).__name__
-    raise ValueError(
+    raise RfxRefusal(
         f"PEC {kind} {name!r} is thinner than one cell along {where}: "
         f"a {kind} passed to sim.add() is a VOLUME; declare a sheet (a "
         "zero-thickness Box or add_thin_conductor) or resolve the "
@@ -921,7 +923,7 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes, *, grid=None):
 def _refuse_subcell_wire_radius(radius, d_min):
     """Use the same positive-subcell refusal on static and traced meshes."""
     if 0 < radius < 0.5 * d_min:
-        raise ValueError(
+        raise RfxRefusal(
             "PEC PolylineWire filament radius is not supported for "
             "0 < a < 0.5*d_min; resolve the wire as a volume, a >= 0.5*d "
             "(refine the mesh to resolve the declared radius).")
@@ -1257,7 +1259,7 @@ def periodic_flags_from_axes(periodic_axes) -> tuple[bool, bool, bool]:
     return tuple(ax in s for ax in "xyz")
 
 
-class PadFillShortfall(ValueError):
+class PadFillShortfall(RfxRefusal):
     """A declared structure is not rasterized to a face whose pad is filled
     from it (issue #1070).
 
@@ -1423,10 +1425,10 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             f"rasterized mask stops {empty_tail} interior nodes short of it, "
             f"and that face carries a {hi_pad}-cell absorber pad which is "
             f"filled by replicating from the interior edge. One node short is "
-            f"the documented half-open [lo, hi) Box shortfall and is repaired "
-            f"(#627a); {empty_tail} is not, so the pad would be filled with "
+            f"the documented half-open [lo, hi) Box shortfall and is repaired"
+            f"; {empty_tail} is not, so the pad would be filled with "
             f"vacuum and the structure would end in a facet inside its own "
-            f"absorber (#1070, #831).\n"
+            f"absorber.\n"
             f"  declared {axis_name} extent: {declared * 1e6:.4f} um "
             f"= {declared_cells!r} cells on this axis\n"
             f"  interior nodes on {axis_name}: {n_int}; "

@@ -1,6 +1,7 @@
 """Shared run/forward lane admission, before execution or sharding."""
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import functools
 import jax.numpy as jnp
 
@@ -155,7 +156,7 @@ def _dispatch_plan(
         if self._precision != "float32":
             raise NotImplementedError(
                 f"precision={self._precision!r} is currently supported "
-                f"only on the uniform single-device lane (issue #630); "
+                f"only on the uniform single-device lane; "
                 f"the {lane!r} lane does not thread field_dtype through "
                 "its runner and would silently run float32 fields "
                 "regardless of this setting. Use precision='float32' "
@@ -189,7 +190,7 @@ def _dispatch_plan(
         if checkpoint_segments is not None and is_nonuniform:
             raise NotImplementedError(
                 "forward(checkpoint_segments=...) is currently wired only "
-                "on the uniform single-device forward path (issue #73). "
+                "on the uniform single-device forward path. "
                 "Drop checkpoint_segments or run on a uniform mesh without "
                 "distributed=True. NU support is tracked as a follow-up."
             )
@@ -231,23 +232,23 @@ def _dispatch_plan(
             raise NotImplementedError(
                 "checkpoint_every (segmented remat) is currently only "
                 "supported on the non-uniform forward path. For the "
-                "uniform path, use checkpoint_segments instead (issue #73)."
+                "uniform path, use checkpoint_segments instead."
             )
         if n_warmup > 0:
             raise NotImplementedError(
-                "n_warmup (issue #40) is currently only supported on the "
+                "n_warmup is currently only supported on the "
                 "non-uniform / distributed-non-uniform forward paths "
                 "(_forward_from_materials has no warmup-split parameter); "
                 "on the uniform lane it was previously accepted and "
-                "silently ignored (issue #626 — measured bit-identical "
+                "silently ignored (measured bit-identical "
                 "gradient at n_warmup=0 vs n_warmup=60), which is worse "
                 "than an error. For reverse-mode memory relief on the "
-                "uniform lane use checkpoint_segments instead (issue #73) "
+                "uniform lane use checkpoint_segments instead "
                 "— it is EXACT (no gradient approximation), unlike "
                 "n_warmup which trades memory/compute for a truncated, "
                 "increasingly biased gradient as n_warmup approaches the "
-                "loss window (measured on the non-uniform lane, issue "
-                "#626 part 2)."
+                "loss window (measured on the non-uniform lane"
+                ")."
             )
         # n_steps for the uniform forward lane is resolved by the caller
         # from the grid it builds and reuses for material assembly.
@@ -285,7 +286,7 @@ def _dispatch_plan(
             _wmod.warn(
                 f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
                 ":1 exceeds the 3:1 stability caution threshold. "
-                "Monitor for numerical dispersion / late-time drift.",
+                "Monitor for numerical dispersion / late-time drift.", AccuracyWarning,
                 stacklevel=2,
             )
 

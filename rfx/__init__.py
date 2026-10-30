@@ -13,6 +13,7 @@ from rfx._runtime_floor import check as _check_runtime_floor
 
 _check_runtime_floor(_sys.version_info, _jax.__version__, _jaxlib.__version__)
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxError, RfxRefusal, RfxUnsupported, RfxWarning
 from rfx.diagnostic_records import Diagnostic
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
@@ -250,7 +251,7 @@ from rfx.convergence import (
 # Curated public surface (W5.5).
 #
 # ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
-# references use it. It contains 212 names, a strict subset of the flat
+# references use it. It contains 218 names, a strict subset of the flat
 # symbols imported above. Per-step kernel internals,
 # low-level bookkeeping/state classes, and dump/replay round-trip helpers are
 # omitted from the star-import surface.
@@ -271,6 +272,8 @@ from rfx.convergence import (
 #     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
 #     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
 __all__ = [
+    "RfxError", "RfxRefusal", "RfxUnsupported",
+    "RfxWarning", "AccuracyWarning", "ConfigurationWarning",
     "Diagnostic",
     # grid / core simulation entry points
     "Grid", "NonUniformGrid", "make_nonuniform_grid",

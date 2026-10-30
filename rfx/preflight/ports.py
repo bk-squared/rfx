@@ -194,7 +194,7 @@ def _check_coaxial_port_junction_aperture(self) -> None:
                 f"terminated in a short by registered geometry at this "
                 f"plane. The assembly is PEC-OR-only: a ground sheet "
                 f"declared as a full plane with a dielectric 'hole' "
-                f"declared AFTER it stays solid (issue #589: S00 = "
+                f"declared AFTER it stays solid (S00 = "
                 f"-0.9928 at 6 GHz measured on exactly that fixture). "
                 f"If a clearance aperture was intended, build the "
                 f"conductor WITH the hole (a patterned sheet shape via "
@@ -257,12 +257,12 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
                 f"{len(near)} reference-plane port(s) use "
                 "reference_plane_cells < 10 — planes this close sit in "
                 "the port near field. Measured on the canonical thru "
-                "(dx = 0.5 mm, 2026-07-10 battery): N=3 planes read "
+                "(dx = 0.5 mm, verification battery): N=3 planes read "
                 "Zc = 52-53 ohm with |Im(Zc)/Re(Zc)| up to 8.2% and "
                 "beta/(w/c) = 1.16-1.20 (vs the clean mid-line "
                 "constants at N=10), and the closed-box-referee |S21| "
                 "residual was -3.1%. The Phase-0 pre-registration rule "
-                "(issue #313) places BOTH planes (N and 2N cells) >= 10 "
+                "places BOTH planes (N and 2N cells) >= 10 "
                 "cells from every port — prefer "
                 "reference_plane_cells >= 10 when the line length "
                 "allows it.",
@@ -333,7 +333,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
         classification_unavailable_reason = (
             "non-uniform mesh (dz_profile/dx_profile/"
             "dy_profile set) -- the shared wire-port primitive "
-            "only covers the uniform-grid path (issue #544)"
+            "only covers the uniform-grid path"
         )
     # A model with no conductor declaration has nothing that can
     # freeze a port: skip the production assembly (the expensive part
@@ -519,7 +519,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"Wire port at {pe.position} (extent {pe.extent}): "
                     f"dead-cell classification unavailable "
                     f"({classification_unavailable_reason}). The "
-                    f"#314/#319 PEC-overlap advisories and the #556 "
+                    f"PEC-overlap advisories and the "
                     f"end-gap-to-conductor advisory are skipped "
                     f"for this port -- inspect the realized live/dead "
                     f"source edges and the intended terminal contacts "
@@ -547,7 +547,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"near-null forward transmission + over-unity "
                     f"reverse). Shorten/lengthen the extent or move "
                     f"the port so the midpoint cell sits in "
-                    f"dielectric (issue #314).",
+                    f"dielectric.",
                     code="wire_port_midpoint_in_pec",
                     source="_validate_cfg_port_inside_pec",
                 ),
@@ -569,12 +569,12 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"{dead_names} (n_live/n = {n_live}/{n}). Dead "
                     f"cells are shorted by the PEC and are excluded "
                     f"from the port's resistance distribution, drive "
-                    f"injection, and wave normalization (issue #318 "
-                    f"fix): the port terminates at {z0:g} ohm across "
+                    f"injection, and wave normalization"
+                    f": the port terminates at {z0:g} ohm across "
                     f"its {n_live} live cells. (rfx versions before "
-                    f"the #318 fix counted all {n} cells and "
+                    f"the live-cell accounting fix counted all {n} cells and "
                     f"physically terminated at Z0*(n_live/n) = "
-                    f"{z_eff:.1f} ohm — the issue-#313 finding.) "
+                    f"{z_eff:.1f} ohm — the drive-side scale-bias finding.) "
                     f"Verify the extent was MEANT to end on/inside "
                     f"the conductor, and keep the midpoint V/I probe "
                     f"cell live; to silence, shorten the extent or "
@@ -619,7 +619,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             PreflightWarning(
                 f"Port/source/probe at {pos} ({component}) is frozen "
                 f"by realized PEC geometry {names}: {what} (lattice "
-                f"ownership contract, #931). Field will be zero. "
+                f"ownership contract). Field will be zero. "
                 f"Move it off the conductor, or drive/read a "
                 f"component the conductor leaves live (the normal E "
                 f"through a sheet plane; tangential H beside a sheet).",
@@ -803,7 +803,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
                 f"floating single-cell port inside substrate does not "
                 f"couple to patch-antenna TM modes. Pass "
                 f"extent=<substrate_height> to create a WirePort spanning "
-                f"ground → patch plane (issue #71).",
+                f"ground → patch plane.",
                 code="floating_port",
                 source="_validate_cfg_floating_single_cell_port",
             ),
@@ -1014,7 +1014,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 f"{int(idx[a])} ({_mm(node_axes[a][int(idx[a])])}), the "
                 f"conductor on node {node} ({_mm(node_axes[a][node])}). A "
                 "wire vertex or a sheet plane at a half node goes to the "
-                "lower node (#1342), as do point features. On either lane two "
+                "lower node, as do point features. On either lane two "
                 "coordinates a float step apart that straddle the half node "
                 "split the same way. The feature sits one cell off the "
                 "conductor it was drawn on and does not drive or sample it. "
@@ -1098,7 +1098,7 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
                         f"{'xyz'[a]} node {port_node[a]} is outside the trace footprint "
                         f"nodes {first}..{last}. Move the port and the trace end "
                         "onto the same mesh node, extend the trace past the port, "
-                        "or refine the mesh to put a node at the declared end (#1342).")
+                        "or refine the mesh to put a node at the declared end.")
     return messages
 
 

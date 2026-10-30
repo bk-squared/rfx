@@ -36,6 +36,7 @@ Key concepts
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx._precision import resolve_field_dtype
 
 from dataclasses import dataclass
@@ -590,7 +591,7 @@ def topology_optimize(
                 f"iteration {it} — the FDTD forward almost certainly diverged "
                 f"(dt above CFL, conformal=True at fine dx, PEC inside CPML, or "
                 f"a sub-cell PEC feature). Stopping early and returning the last "
-                f"finite design (from before iteration {it}).",
+                f"finite design (from before iteration {it}).", AccuracyWarning,
                 stacklevel=2,
             )
             logit = last_good

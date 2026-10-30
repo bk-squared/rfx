@@ -5,6 +5,7 @@ Geometry-only host arithmetic shared by runners and preflight. Full-plane
 """
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import warnings
 from math import ulp
 
@@ -150,5 +151,5 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
         clamped=any(a["clamped_low"] or a["clamped_high"] for a in axes),
     )
     if warn and record["clamped"]:
-        warnings.warn(flux_region_message(record), UserWarning, stacklevel=2)
+        warnings.warn(flux_region_message(record), ConfigurationWarning, stacklevel=2)
     return record

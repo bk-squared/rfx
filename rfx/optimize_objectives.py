@@ -545,8 +545,8 @@ def minimize_s11_at_freq_wave_decomp(
             raise ValueError(
                 "minimize_s11_at_freq_wave_decomp requires forward(...) "
                 "to be called with port_s11_freqs=... so that "
-                "result.s_params / result.freqs are populated. See "
-                "issue #72."
+                "result.s_params / result.freqs are populated."
+                ""
             )
         if s_params.ndim != 3 or s_params.shape[0] != s_params.shape[1]:
             raise ValueError("expected (n_ports, n_ports, n_freqs) S-parameter shape")

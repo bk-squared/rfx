@@ -420,10 +420,10 @@ def test_research_subgrid_result_keeps_its_report(topology, monkeypatch):
 
 
 @pytest.mark.parametrize('frequencies, message', [
-    (['not a number'], '#1512: line-port read frequencies must be concrete'),
-    ([], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
-    ([-1.], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
-    ([float('nan')], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
+    (['not a number'], 'line-port read frequencies must be concrete'),
+    ([], 'line-port read frequencies must be finite, nonnegative and nonempty'),
+    ([-1.], 'line-port read frequencies must be finite, nonnegative and nonempty'),
+    ([float('nan')], 'line-port read frequencies must be finite, nonnegative and nonempty'),
 ])
 def test_line_stub_read_band_refusal_has_a_record(frequencies, message):
     from rfx.preflight.line_stub import read_band

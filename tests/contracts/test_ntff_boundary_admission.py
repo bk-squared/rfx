@@ -23,7 +23,7 @@ UPML = (
     "boundary='upml' does not support the non-uniform {entry}() lane: the "
     "non-uniform runner implements CPML only (rfx/nonuniform.py dispatches on "
     "cpml_layers > 0 and never reads the boundary type), so this configuration "
-    "used to run CPML while sim._boundary kept reporting 'upml' (issue #680). "
+    "used to run CPML while sim._boundary kept reporting 'upml'. "
     "Pass boundary='cpml' to run the absorber that is actually implemented "
     "here, or drop the mesh profile(s) to use the uniform lane, which does "
     "implement UPML."

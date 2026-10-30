@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal, RfxUnsupported
+
 
 def magnetic_image_faces(faces, shape, periodic=(False, False, False)):
     """Resolved magnetic image faces: no periodic or collapsed-axis walls.
@@ -19,7 +21,7 @@ def refuse_waveguide_pmc(sim):
     """The waveguide mode solver only implements electric aperture walls."""
     faces = sorted(sim._boundary_spec.pmc_faces())
     if faces and sim._waveguide_ports:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"PMC magnetic face(s) {', '.join(faces)}: waveguide-port feature "
             "in waveguide_port.init_waveguide_port has no magnetic aperture "
             "mode solver. Use a full PEC-walled guide until that kernel "
@@ -58,7 +60,7 @@ def refuse_port_on_magnetic_face(sim, caller, *, reason):
             axis = "xyz".index(face[0])
             node = 0 if face.endswith("lo") else grid.shape[axis] - 1
             if any(cell[axis] == node for cell in live):
-                raise ValueError(
+                raise RfxRefusal(
                     f"{caller}: port {index} at position {port.position} "
                     f"lies on magnetic face {face}. A port on a magnetic "
                     "face describes the full symmetric object while the "

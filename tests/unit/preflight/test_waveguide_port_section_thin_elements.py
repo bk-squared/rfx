@@ -72,7 +72,7 @@ def test_inside_refused(element, label):
         with pytest.raises(ValueError, match=(
                 r"Waveguide port 'right': section cells .*: " + label
                 + r" at cell \(\d+, \d+, \d+\); the port has no model for a thin element "
-                r"in its section \(rfx#2047\); draw it beyond the reference plane\.")):
+                r"in its section; draw it beyond the reference plane\.")):
             _execute(sim)
 
 
@@ -92,7 +92,7 @@ def test_other_entries_refuse(graded, entry):
         with pytest.raises(ValueError, match=(
                 r"Waveguide port 'right': section cells .*: PEC edge "
                 r"\(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\) "
-                r"at cell .*rfx#2047")):
+                r"at cell .*thin element")):
             _execute(sim, entry)
 
 
@@ -145,7 +145,7 @@ def test_b4_section_boundary_nodes(direction, scene):
                 sim.forward(n_steps=2, skip_preflight=True)
             assert re.search(re.escape(f"Waveguide port '{name}': section cells "), str(exc.value))
             assert re.search(re.escape(
-                "the port has no model for a thin element in its section (rfx#2047); "
+                "the port has no model for a thin element in its section; "
                 "draw it beyond the reference plane."), str(exc.value))
         else:
             sim.forward(n_steps=2, skip_preflight=True)

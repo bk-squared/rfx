@@ -555,7 +555,7 @@ def test_admission(declaration, path, direction):
         run, forward = pair['run'], pair['forward']
         assert run['outcome'] == forward['outcome'] == 'raised', pair
         assert (run['type'], run['message']) == (forward['type'], forward['message']), pair
-        assert run['type'] == 'NotImplementedError', pair
+        assert run['type'] in ('NotImplementedError', 'RfxUnsupported'), pair
         assert 'Lumped/wire S-matrix requests do not support plain sources' in run['message'], pair
         return
     ids = outcomes(declaration, path, 'admission', pair, direction)
@@ -572,7 +572,8 @@ DECLARATION_REFUSAL_ROWS = (
 #: The exception classes rfx raises to refuse a request it does not solve
 #: (admission rows and lane refusals: NotImplementedError; configuration
 #: guards, PreflightConfigError included: ValueError).
-REFUSAL_TYPES = ('NotImplementedError', 'ValueError')
+# RfxRefusal subclasses ValueError and RfxUnsupported subclasses NotImplementedError.
+REFUSAL_TYPES = ('NotImplementedError', 'RfxUnsupported', 'ValueError', 'RfxRefusal')
 
 
 def raised_in_rfx(record):
@@ -632,7 +633,7 @@ def test_both_refuse(declaration, path, direction):
                         'PW-oblique': 'TFSF 2-D Bloch line (is_tfsf_2d)',
                     }[declaration])
         for record in pair.values():
-            assert record['type'] == 'NotImplementedError', record
+            assert record['type'] in ('NotImplementedError', 'RfxUnsupported'), record
             assert expected in record['message'], record
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
@@ -642,7 +643,7 @@ def test_both_refuse(declaration, path, direction):
         expected = ('waveguide ports (add_waveguide_port) are not supported on'
                     if path.startswith('multi-device') else 'compute_waveguide_s_matrix()')
         for record in pair.values():
-            assert record['type'] == 'NotImplementedError', record
+            assert record['type'] in ('NotImplementedError', 'RfxUnsupported'), record
             assert expected in record['message'], record
 
 

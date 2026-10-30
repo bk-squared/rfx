@@ -346,7 +346,7 @@ def _require_supported_fixture(sim) -> None:
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):
         raise NotImplementedError(
             "differentiable_material_fit() does not support periodic axes "
-            "(BoundarySpec per-face periodic declarations) (#1290). Remove the "
+            "(BoundarySpec per-face periodic declarations). Remove the "
             "periodic-axis override from sim_factory; use Simulation.forward() "
             "with a custom loss to retain it.")
 
@@ -365,8 +365,8 @@ def _require_ports_clear_of_pec(sim, grid, pec_mask, pec_sheets, pec_wires) -> N
         if edge_is_pec(edges, pe.component, *field_index(grid, pe.position, pe.component)):
             raise NotImplementedError(
                 "differentiable_material_fit() does not support add_port() "
-                f"on a PEC edge (position={pe.position} m, component={pe.component}) "
-                "(#1290). Move the port off the PEC edge in sim_factory, or "
+                f"on a PEC edge (position={pe.position} m, component={pe.component}"
+                "). Move the port off the PEC edge in sim_factory, or "
                 "use Simulation.forward() with a custom loss to retain its "
                 "port-edge clearing."
             )

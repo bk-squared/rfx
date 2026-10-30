@@ -1,11 +1,13 @@
 """Leaf AD memory estimate record."""
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 import json
 from typing import NamedTuple
 
 
-class ADMemoryUnavailable(ValueError):
+class ADMemoryUnavailable(RfxRefusal):
     """AD memory cannot be estimated for this precision or forward trace."""
 
 

@@ -43,6 +43,8 @@ placement there is refused/flagged by preflight P1.9 (geometry-in-CPML).
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, RfxRefusal
+
 from dataclasses import dataclass
 
 import numpy as np
@@ -154,7 +156,7 @@ def check_sheet_occupancy(mask, n_axis: int, *, lane: str) -> None:
         raise ValueError(
             f"add_thin_conductor(surface_impedance_f0=...): the sheet shape "
             f"rasterizes to ZERO cells on this grid ({lane} lane), so it would "
-            f"silently vanish instead of loading the field (issue #369 class). "
+            f"silently vanish instead of loading the field. "
             f"A slab thinner than one cell only registers where a grid node "
             f"falls inside it: centre it on a node plane, thicken it to at "
             f"least one cell, or draw it as a Box with equal lo/hi on its "
@@ -812,10 +814,10 @@ def refuse_f0_sheets(thin_conductors, lane: str) -> None:
     its lane — the inventory guard there fails otherwise.
     """
     if has_f0_sheets(thin_conductors):
-        raise ValueError(
+        raise RfxRefusal(
             f"surface-impedance (surface_impedance_f0) thin conductors are "
             f"not supported on the {lane} lane: the sheet is realized by a "
-            f"per-step node-thin operator (#677), which this lane does not "
+            f"per-step node-thin operator, which this lane does not "
             f"apply — running would silently simulate NO sheet at all. Use "
             f"the uniform or non-uniform run()/S-parameter lanes, or drop "
             f"surface_impedance_f0 (PEC or DC-fold sheets are fine here).")
@@ -883,7 +885,7 @@ def conductor_footprint(
                 "sheet_masks are all None/empty) and no `shape` was given to "
                 "seed an all-False mask. Refusing to invent a conductor-free "
                 "answer the caller cannot distinguish from 'I was handed "
-                "nothing' (#695).")
+                "nothing'.")
         return jnp.zeros(tuple(shape), dtype=bool)
     return out
 
@@ -942,10 +944,10 @@ def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
             f"{eps_val:.4g}) over {n_buried} of its footprint nodes. The "
             "sheet is therefore buried half a cell inside the dielectric "
             "instead of lying on its interface, so the realized cavity "
-            "carries half a cell of the wrong medium in series (#931; the "
-            "#702 measurement was 17 % on a 127 um stack). Draw the "
+            "carries half a cell of the wrong medium in series (the"
+            " measurement was 17 % on a 127 um stack). Draw the "
             "dielectric bodies up to the sheet plane, or move the sheet to "
             "the interface. Nothing is re-sampled.",
-            UserWarning,
+            AccuracyWarning,
             stacklevel=3,
         )

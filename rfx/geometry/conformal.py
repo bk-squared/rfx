@@ -15,6 +15,7 @@ high-permittivity skin that makes a curved body electrically larger (#1651).
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 import warnings
 
 import numpy as np
@@ -62,7 +63,7 @@ CONFORMAL_MODEL_ADVISORY = (
     "(not the edge's open fraction): a high-permittivity skin about one cell thick that makes "
     "a metal body electrically larger; on a PEC sphere it is further from the converged "
     "answer than the staircase at every mesh measured. Do not use it for accuracy until "
-    "the fix lands (docs/guides/known_limitations.md, tracker #1651).")
+    "the fix lands (docs/guides/known_limitations.md).")
 
 
 def warn_conformal_model():
@@ -71,7 +72,7 @@ def warn_conformal_model():
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
     """
-    warnings.warn(CONFORMAL_MODEL_ADVISORY, UserWarning, stacklevel=3)
+    warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=3)
 
 
 # ---------------------------------------------------------------------------

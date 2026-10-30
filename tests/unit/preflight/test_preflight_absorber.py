@@ -563,7 +563,7 @@ def test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab():
     assert "bounds 15.2–25.4 mm on x" in msg, msg
     assert found[0].severity == "warning", found[0].severity
     assert found[0].source == "_validate_cfg_waveguide_reference_plane"
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
+    with pytest.raises(ValueError, match="left.*eps.*one homogeneous"):
         _waveguide_refplane_in_slab_sim().compute_waveguide_s_matrix(
             n_steps=2, skip_preflight=True)
 
@@ -924,7 +924,7 @@ def test_issue660_single_shape_overshoot_still_warns():
     assert "geometry entries cross" not in msg, (
         f"no plural aggregate clause for a single entry; got: {msg}"
     )
-    assert "issue #61" in msg, f"the physics explanation must survive; got: {msg}"
+    assert "geometry inside the absorber is physically meaningless" in msg, f"the physics explanation must survive; got: {msg}"
 
 
 def test_issue660_geometry_fully_inside_the_domain_stays_silent():
@@ -986,7 +986,7 @@ def test_high_q_lorentz_touching_face_warns():
     assert issue.severity == "warning"
     assert "Q=60" in str(issue)
     assert "x-lo" in issue.loc and "y-lo" in issue.loc
-    assert "#636" in str(issue)
+    assert "surface-polariton modes" in str(issue)
 
 
 def test_drude_touching_face_warns():
@@ -1019,7 +1019,7 @@ def test_low_q_lorentz_touching_face_warns():
     found = _findings(sim)
     assert len(found) == 1, found
     assert "Q=2" in str(found[0])
-    assert "#808" in str(found[0])
+    assert "eps_inf-without-pole surround" in str(found[0])
 
 
 def test_out_of_band_high_q_lorentz_touching_face_warns():
@@ -1053,7 +1053,7 @@ def test_debye_touching_face_warns():
     issue = found[0]
     assert issue.severity == "warning"
     assert "Debye" in str(issue)
-    assert "#808" in str(issue)
+    assert "eps_inf-without-pole surround" in str(issue)
     # exact-touch branch (this box ends AT x-hi): the background-pad
     # wording is the truthful one and must stay
     assert "the pad stays background" in str(issue)
@@ -1342,7 +1342,7 @@ def test_conductor_flush_with_a_thin_absorber_is_reported():
     assert "6 absorbing layer(s)" in msg, msg
     assert "not a stability bound" in msg, msg
     assert "mechanism is not established" in msg, msg
-    assert "#801" in msg, msg
+    assert "Both at once is a measured growth class" in msg, msg
 
 
 def test_the_same_conductor_with_a_default_absorber_is_silent():

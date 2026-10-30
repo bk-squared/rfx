@@ -1,6 +1,7 @@
 """Exact rational plane waves on the uniform three-dimensional Yee lattice."""
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -672,7 +673,7 @@ def add_tfsf_source(
                 "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
                 "depends on the record length. Narrow the bandwidth, or taper "
                 "the tail of the time series before the DFT.",
-                UserWarning,
+                AccuracyWarning,
                 stacklevel=2,
             )
 

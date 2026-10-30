@@ -18,6 +18,8 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
+
 from rfx._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -309,21 +311,21 @@ def compute_msl_s_matrix(
     )
 
     if not self._msl_ports:
-        raise diagnostic_refusal(ValueError("No MSL ports registered. Call add_msl_port() first."), _diagnostics)
+        raise diagnostic_refusal(RfxRefusal("No MSL ports registered. Call add_msl_port() first."), _diagnostics)
     if self._ports or self._waveguide_ports or self._floquet_ports:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() is defined only for add_msl_port(...) "
             "families in the current simulation. Use separate "
             "simulations for add_port(...), add_waveguide_port(...), "
             "or add_floquet_port(...) S-parameter workflows."
         ), _diagnostics)
     if self._tfsf is not None:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() is not supported together with TFSF; "
             "TFSF is a plane-wave source, not an MSL port."
         ), _diagnostics)
     if self._coaxial_ports:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() does not include add_coaxial_port(...); "
             "coaxial-port S-parameters need a separate validated V/I "
             "extraction and calibration contract."
@@ -337,7 +339,7 @@ def compute_msl_s_matrix(
         getattr(pe, "mode", "laplace") == "eigenmode"
         for pe in self._msl_ports
     ):
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() on a non-uniform mesh supports "
             "mode='laplace'/'uniform' (Ez static-Laplace feed) only; the "
             "eigenmode J+M launch needs the magnetic-source channel that "
@@ -345,12 +347,12 @@ def compute_msl_s_matrix(
             "(the add_msl_port default) on the graded-mesh lane."
         ), _diagnostics)
     if self._refinement is not None:
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() is not supported with SBP-SAT "
             "subgridding."
         ), _diagnostics)
     if self._solver == "adi":
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() is not supported with solver='adi'; "
             "use the uniform Yee solver."
         ), _diagnostics)
@@ -582,10 +584,10 @@ def compute_msl_s_matrix(
                 "compute_msl_s_matrix: no realized PEC trace conductor "
                 "found above the substrate top for MSL port "
                 f"{entries[p_idx].name!r}; the closed Ampere-loop "
-                "current (issue #80 stage S1) needs the trace. Declare "
+                "current needs the trace. Declare "
                 "the microstrip trace as a Box(material='pec') (a "
                 "volume) or as a zero-thickness Box / add_thin_conductor "
-                "(a sheet, #931). A surface_impedance_f0 thin conductor "
+                "(a sheet). A surface_impedance_f0 thin conductor "
                 "is NOT a trace conductor here — it realizes no PEC "
                 "edge, and the Ampere-loop current and V span anchor on "
                 "realized PEC wall planes. Keep the trace PEC and use f0 "
@@ -747,8 +749,8 @@ def compute_msl_s_matrix(
                         "that channel routes through forward(), which is "
                         "the differentiable (traced) path, and host-side "
                         "wall-clock progress reporting cannot run under a "
-                        "trace (issue #667).",
-                        UserWarning, stacklevel=2,
+                        "trace.",
+                        ConfigurationWarning, stacklevel=2,
                     )
                 fwd_result = self.forward(
                     eps_override=eps_override,
@@ -1071,26 +1073,26 @@ def compute_msl_s_matrix(
                 )))
                 if _bad:
                     _w507.warn(
-                        "compute_msl_s_matrix: the multi-drive S solve "
-                        f"(issue #507) produced non-finite entries with "
+                        "compute_msl_s_matrix: the multi-drive S solve"
+                        f" produced non-finite entries with "
                         f"cond(A) up to {float(np.max(cond_a)):.3g}; "
                         "keeping the single-ratio S for this run, which "
                         "carries the far port's echo in S11 (so expect "
                         "|S11|^2+|S21|^2 above 1). The drive matrix is "
                         "degenerate — check that each drive actually "
                         "excited its port and that the ports are not "
-                        "mutually shadowed.",
+                        "mutually shadowed.", AccuracyWarning,
                         stacklevel=2,
                     )
                 elif float(np.max(cond_a)) > 1.0e3:
                     _w507.warn(
-                        "compute_msl_s_matrix: the multi-drive S solve "
-                        f"(issue #507) has cond(A) up to "
+                        "compute_msl_s_matrix: the multi-drive S solve"
+                        f" has cond(A) up to "
                         f"{float(np.max(cond_a)):.3g}. That bounds "
                         "DEGENERACY of the drive system, not accuracy: "
                         "the drive columns are nearly dependent, so S is "
                         "sensitive to the recorded wave amplitudes. "
-                        "Check port isolation and settling_db.",
+                        "Check port isolation and settling_db.", AccuracyWarning,
                         stacklevel=2,
                     )
             if not _bad:
@@ -1280,8 +1282,8 @@ def compute_msl_s_matrix(
                     "S11/S21 at this bin are UNRELIABLE."
                 )
                 if strict_extractor:
-                    raise diagnostic_refusal(ValueError(msg), _diagnostics)
-                _w.warn(msg, stacklevel=2)
+                    raise diagnostic_refusal(RfxRefusal(msg), _diagnostics)
+                _w.warn(msg, AccuracyWarning, stacklevel=2)
             # Secondary — reported-Z0 sanity (retained N-probe fit).
             if z0_dev_max > _Z0_TOL:
                 # Issue #726 review P1b: the clearance story is only ONE of
@@ -1327,12 +1329,12 @@ def compute_msl_s_matrix(
                     "board (h_sub/W snapped to the lattice; see "
                     "sim.fidelity_report()) differs from the "
                     "declared one — not necessarily an extraction "
-                    "fault (issue #752). Fitted Z0/beta are not used in "
+                    "fault. Fitted Z0/beta are not used in "
                     "S11/S21, which use measured V/I and the analytic "
                     "Z0 anchor; this does not certify those inputs."
                     + _clearance_clause +
                     " Check settling_db, probe_clearance, beta_railed and "
-                    "observation-plane sensitivity before interpreting S.",
+                    "observation-plane sensitivity before interpreting S.", AccuracyWarning,
                     stacklevel=2,
                 )
 

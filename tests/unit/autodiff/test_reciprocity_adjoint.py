@@ -122,10 +122,10 @@ def test_design_sigma_refused_at_admission(sigma):
     sim, eps = fixture("float32")
     for value in (sigma, jnp.full_like(eps, sigma), (eps * 0 + sigma,) * 3):
         with patch.object(sim, "_build_grid", side_effect=AssertionError("past admission")):
-            with pytest.raises(NotImplementedError, match="#1424.*on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
+            with pytest.raises(NotImplementedError, match="on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
                 sim.forward(gradient="adjoint", design_box=(BOX_LO, BOX_HI),
                             design_eps_override=eps, design_sigma_override=value)
-    with pytest.raises(NotImplementedError, match="#1424.*on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
+    with pytest.raises(NotImplementedError, match="on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
         jax.grad(objective(sim, mode="adjoint"), argnums=1)(eps, jnp.full_like(eps, sigma))
 
 

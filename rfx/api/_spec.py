@@ -17,6 +17,7 @@ the method body) — do not hoist it to module scope.
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from rfx.sources.tfsf_discrete_plane_wave import _TFSFEntry
 
 from dataclasses import dataclass
@@ -511,9 +512,8 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
     import warnings as _w
 
     _w.warn(
-        f"[{context}] result contains non-finite values in {detail} — "
-        f"{_NONFINITE_CAUSE_HINT}",
-        stacklevel=3,
+        f"[{context}] result contains non-finite values in {detail} — {_NONFINITE_CAUSE_HINT}",
+        AccuracyWarning, stacklevel=3,
     )
 
 
@@ -739,7 +739,7 @@ class Result(NamedTuple):
         if raise_on_nonfinite:
             raise ValueError(msg)
         import warnings as _w
-        _w.warn(msg, stacklevel=2)
+        _w.warn(msg, AccuracyWarning, stacklevel=2)
         return False
 
     # ------------------------------------------------------------------

@@ -84,9 +84,9 @@ def test_pec_warning(kwargs, thickness_text):
         'add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m '
         'PEC threshold, so this is a LOSSLESS PEC sheet.' + thickness_text +
         ' here, and neither is eps_r. Every metal is above this threshold — a lower '
-        'sigma_bulk would be a different material, not thinner copper (issue #504). '
+        'sigma_bulk would be a different material, not thinner copper. '
         'For conductor loss pass surface_impedance_f0=<band centre Hz> '
-        '(Leontovich sheet, issue #669).'
+        '(Leontovich sheet).'
     )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -94,7 +94,8 @@ def test_pec_warning(kwargs, thickness_text):
         sim.add_thin_conductor(sheet(), **kwargs)
     assert len(caught) == 1
     w = caught[0]
-    assert w.category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert w.category is ConfigurationWarning
     assert str(w.message) == expected
     assert w.filename == __file__
     assert w.lineno == line
@@ -118,7 +119,8 @@ def test_leontovich_warning_W3():
         sim.add_thin_conductor(sheet(), surface_impedance_f0=f0, sigma_bulk=sigma)
     assert len(caught) == 1
     w = caught[0]
-    assert w.category is UserWarning
+    from rfx.errors import AccuracyWarning
+    assert w.category is AccuracyWarning
     assert str(w.message) == expected
     assert w.filename == __file__
     assert w.lineno == line
@@ -139,7 +141,8 @@ def test_traced_warning_W4():
         jax.make_jaxpr(declare)(1e10)
     assert len(caught) == 1
     w = caught[0]
-    assert w.category is UserWarning
+    from rfx.errors import AccuracyWarning
+    assert w.category is AccuracyWarning
     prefix, rest = str(w.message).split('surface_impedance_f0=', 1)
     tracer, suffix = rest.split(' Hz — ', 1)
     assert tracer

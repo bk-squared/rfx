@@ -2252,7 +2252,7 @@ def test_preflight_report_matches_the_committed_snapshot(
     if fixture_id == "waveguide_refplane_in_slab":
         sim = build()
         solve = sim.run if len(sim._waveguide_ports) == 1 else sim.compute_waveguide_s_matrix
-        with pytest.raises(ValueError, match=r"left.*eps.*rfx#1994"):
+        with pytest.raises(ValueError, match=r"left.*eps.*one homogeneous"):
             solve(n_steps=2, skip_preflight=True)
 
 

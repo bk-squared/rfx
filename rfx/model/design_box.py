@@ -146,10 +146,10 @@ def resolve_design_box(
     if stencil_order != 2:
         unsupported.append(f"stencil_order={stencil_order}")
     if bloch is not None:
-        unsupported.append("oblique-periodic Bloch path (#404)")
+        unsupported.append("oblique-periodic Bloch path")
     if unsupported:
         raise NotImplementedError(
-            "the design-box permittivity (#1179) rebuilds only the plain "
+            "the design-box permittivity rebuilds only the plain "
             "lossy Yee E update inside its box, so every path that computes "
             "E some other way is rejected rather than silently ignored. "
             "Unsupported feature(s) present: " + ", ".join(unsupported)
@@ -179,10 +179,10 @@ def resolve_design_box(
         _n = grid.shape[_axis]
         if _lo == 0 or _hi == _n:
             raise NotImplementedError(
-                f"a design box (#1179) flush against a PERIODIC {_name} face "
+                f"a design box flush against a PERIODIC {_name} face "
                 f"is not supported: cells [{_lo}, {_hi}) on a {_n}-cell "
                 f"periodic axis. An E component takes the mean of its four "
-                f"incident cells (#1210), and across a periodic seam those "
+                f"incident cells, and across a periodic seam those "
                 f"neighbours wrap -- the box's one-cell window does not. Move "
                 f"the box off the {_name} faces, or use eps_override (the "
                 f"whole-grid traced permittivity), which wraps correctly.")
@@ -237,7 +237,7 @@ def resolve_design_box(
                     f"into the CPML absorber ({pad_lo} layer(s) at {name}_lo "
                     f"and {pad_hi} at {name}_hi, on a {n}-cell axis; the box's "
                     f"update window is [{lo}, {hi}), one cell wider on the "
-                    f"plus side since #1210). The "
+                    f"plus side under edge averaging). The "
                     f"absorber builds its own coefficient from the background "
                     f"permittivity, which the design box no longer carries. "
                     f"Move the box into cells [{pad_lo}, {n - pad_hi - 1}).")
@@ -343,7 +343,7 @@ def resolve_design_box(
                      sheet_impedance.mask_ez):
             if mask is not None and bool(jnp.any(jnp.asarray(mask)[w_sl])):
                 raise ValueError(
-                    f"a surface_impedance_f0 sheet (#677) has loaded edges "
+                    f"a surface_impedance_f0 sheet has loaded edges "
                     f"inside the design box {bounds}. The sheet operator "
                     f"REPLACES the E update at those edges with coefficients "
                     f"built from the background permittivity, so it would "

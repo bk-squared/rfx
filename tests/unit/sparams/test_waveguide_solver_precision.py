@@ -60,7 +60,7 @@ def test_adi_refused_before_fields(monkeypatch, nonuniform):
         sim._solver = "adi"
     monkeypatch.setattr(uniform_setup, "init_state", _forbid_field_initialization)
     monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
-    with pytest.raises(NotImplementedError, match=r"solver='adi'.*#1300.*solver='yee'"):
+    with pytest.raises(NotImplementedError, match=r"solver='adi'.*solver='yee'"):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
 
 
@@ -86,7 +86,6 @@ def test_preflight_reports_adi_refusal():
     assert len(routing_errors) == 1
     message = str(routing_errors[0])
     assert "solver='adi'" in message
-    assert "#1300" in message
     assert "Use solver='yee'" in message
 
 

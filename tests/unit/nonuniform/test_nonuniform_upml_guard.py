@@ -63,7 +63,7 @@ def test_message_names_the_issue_and_the_remedy():
     with pytest.raises(ValueError) as exc:
         sim.run(n_steps=4, skip_preflight=True)
     msg = str(exc.value)
-    assert "#680" in msg
+    assert "non-uniform runner implements CPML only" in msg
     assert "boundary='cpml'" in msg
     assert "non-uniform" in msg
 
@@ -185,8 +185,8 @@ def test_advisory_carries_its_basis_not_only_its_verdict():
     # falsifier
     assert "stale if" in msg
     assert "apply_upml_* call site appears outside rfx/simulation.py" in msg
-    # and the issue it came from
-    assert "#680" in msg
+    # why the requested absorber is refused
+    assert "non-uniform runner has no UPML code at all" in msg
 
 
 def test_skip_preflight_does_not_bypass_the_lane_guard():

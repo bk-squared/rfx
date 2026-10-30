@@ -20,7 +20,7 @@ def _advisories(conformal):
         warnings.simplefilter("always")
         _sim().run(n_steps=4, conformal_pec=conformal, compute_s_params=False,
                    skip_preflight=True)
-    return [w for w in caught if "#1651" in str(w.message)]
+    return [w for w in caught if "conformal PEC realizes each cut E edge" in str(w.message)]
 
 
 def test_conformal_run_warns_once_and_names_the_limitation():

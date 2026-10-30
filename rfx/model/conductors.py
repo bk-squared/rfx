@@ -5,6 +5,8 @@ This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning, RfxRefusal
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, field, replace
 
@@ -344,7 +346,7 @@ def release_port_occupancy(occupancy, conductors):
         ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
-                      UserWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=2)
     import jax.numpy as jnp
     return jnp.asarray(occupancy).at[indices].set(0.0)
 
@@ -361,7 +363,7 @@ def refuse_port_design_box(design, conductors):
                         if any(c in hits for c in cells)})
         sample = sorted(hits)[:6]
         remainder = f" and {len(hits) - 6} more" if len(hits) > 6 else ""
-        raise ValueError(f"{', '.join(ports)}: the design occupancy box (cells {bounds}) "
+        raise RfxRefusal(f"{', '.join(ports)}: the design occupancy box (cells {bounds}) "
                          f"covers port-cleared cell(s) {sample}{remainder}. A port forces the "
                          "occupancy to zero around its driven edges before the run. "
                          "Move the box off the port, or use pec_occupancy_override.")
@@ -941,7 +943,7 @@ def refuse_layout_drives(edge_sets, sources, waveguide_ports):
         edges = {(axis, *cell) for cell in zip(*(v.ravel().tolist() for v in indices))}
         overlap = sorted(edges & driven)
         if overlap:
-            raise ValueError(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+            raise RfxRefusal(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
                              f"source or port drives addressed edge {overlap[0]}; "
                              "move the drive off the layout switch on the graded lane")
 
@@ -998,7 +1000,7 @@ def refuse_layout_metal_consumers(layout, sim, grid):
     if getattr(sim, '_tfsf', None) is not None:
         # The TF/SF invariance admission (#1816) judges the static metal only.
         index, sheet, _ = layout[0]
-        raise ValueError(
+        raise RfxRefusal(
             f"pinned_sheet_layout sheet {index} ({sheet.name!r}): the TF/SF invariance "
             "admission reads the static metal, so it cannot judge a switched sheet, and an "
             "open plane wave on the graded mesh admits no finite scatterer, drawn or switched; "

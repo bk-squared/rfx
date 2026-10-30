@@ -6,6 +6,8 @@ Admission never changes mesh metrics.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal, RfxWarning
+
 from dataclasses import replace
 import inspect
 from pathlib import Path
@@ -24,7 +26,7 @@ def share_wall_warning_history(sim, diagnostic_copy):
     _WALL_AXIS_WARNED[diagnostic_copy] = _WALL_AXIS_WARNED.setdefault(sim, set())
 
 
-class WaveguideBoundaryWarning(UserWarning):
+class WaveguideBoundaryWarning(RfxWarning):
     """An omitted boundary defaults to the waveguide's electric walls."""
 
 
@@ -258,7 +260,7 @@ def refuse_ntff_reflecting_faces(faces, *, lane):
             incompatible[face.name] = "zero-depth absorber"
     if incompatible:
         descriptions = [f"{face} is {kind}" for face, kind in sorted(incompatible.items())]
-        raise ValueError(
+        raise RfxRefusal(
             f"{lane}: an NTFF box radiates its surface currents into free space, but "
             + "; ".join(descriptions)
             + ": the far field would miss their images (a symmetry or ground plane is not "
@@ -291,7 +293,9 @@ def admit_waveguide(sim, *, lane="dispatch", edges=True):
                          or any(sim._periodic_flags()["xyz".index(face[0])] for face in incompatible)):
         raise ValueError(
             f"{lane}: full-aperture waveguide defaults on {', '.join(incompatible)} "
-            "would change realized transverse pads or an active periodic feature; this requires PR3b.")
+            "would change realized transverse pads or an active periodic feature; "
+            "rfx does not apply these defaults on faces with a transverse absorber pad or an "
+            "active periodic axis. Remove the pad or periodic feature on those faces.")
     state = getattr(sim, "_boundary_default_warned", [False])
     if incompatible and not state[0]:
         _warn_caller("Waveguide boundary default: " + ", ".join(incompatible)
@@ -357,12 +361,12 @@ def refuse_traced_guide_mesh(sim, lane):
 def _refuse_periodic_guide(sim, faces):
     periodic = sorted(face for face in faces if sim._periodic_flags()["xyz".index(face[0])])
     if periodic:
-        raise ValueError("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
+        raise RfxRefusal("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
                          + "; the active periodic feature requires PERIODIC on those faces.")
 
 
 def _refuse_guide(faces, declaration, lane):
-    raise ValueError(
+    raise RfxRefusal(
         f"{lane}: full-aperture waveguide requires PEC on {', '.join(faces)}; "
         f"declare boundary={declaration!r} (absorber on the port axis).")
 
@@ -381,7 +385,9 @@ def admit_grid_waveguide(grid, ports):
         _refuse_guide(faces, declaration, "low-level dispatch")
     elif faces and any(getattr(grid, f"pad_{face}") or face[0] in grid.periodic_axes for face in faces):
         raise ValueError("Full-aperture waveguide defaults would change realized transverse "
-                         "pads or an active periodic feature; this requires PR3b.")
+                         "pads or an active periodic feature; rfx does not apply these defaults "
+                         "on faces with a transverse absorber pad or an active periodic axis. "
+                         "Remove the pad or periodic feature on those faces.")
     elif faces and not state[0]:
         _warn_caller("Waveguide boundary default: " + ", ".join(faces)
                      + " are solved as PEC electric walls.")
@@ -541,10 +547,10 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                 first = tuple(np.argwhere(bad)[0])
                 index = (tuple(int(first[start + a] + cut[a].start) for a in range(3))
                          if start >= 0 else tuple(lo for lo, _ in bounds))
-                raise ValueError(
+                raise RfxRefusal(
                     f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
                     f"{record.label} ({record.name}) at cell {index}; "
-                    "the port has no model for a thin element in its section (rfx#2047); "
+                    "the port has no model for a thin element in its section; "
                     "draw it beyond the reference plane.")
 
     traced_check("waveguide port", "section thin elements", check,
@@ -609,7 +615,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                     array = array * jnp.where(weight > 0, weight, 1.0)
                 operands.append((name, array, None, "anisotropic permittivity"))
     reason = ("waveguide sections require one homogeneous, isotropic, lossless, "
-              "non-dispersive medium (rfx#1994)")
+              "non-dispersive medium")
 
     def section(array, bounds):
         trailing = 0

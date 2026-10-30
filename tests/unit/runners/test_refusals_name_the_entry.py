@@ -26,7 +26,7 @@ def graded_scene(kind):
     ("run", "rlc", None,
      "add_lumped_rlc() element(s) (1): not supported on the distributed multi-device run() "
      "path; the lane never applies them and would solve the structure as if "
-     "the elements were absent, with no warning (#1239; "
+     "the elements were absent, with no warning ("
      "rfx.runners.distributed_v2.run_distributed / "
      "rfx.runners.distributed.run_distributed have no lumped-element update). "
      "Remove the elements, or omit devices=... (use a single-device run() instead)."),
@@ -38,7 +38,7 @@ def graded_scene(kind):
     ("forward", "rlc", None,
      "add_lumped_rlc() element(s) (1): not supported on the distributed multi-device forward() "
      "path; the lane never applies them and would solve the structure as if "
-     "the elements were absent, with no warning (#1239; "
+     "the elements were absent, with no warning ("
      "rfx.runners.distributed_v2.run_distributed / "
      "rfx.runners.distributed.run_distributed have no lumped-element update). "
      "Remove the elements, or omit distributed=True (use a single-device forward() instead)."),

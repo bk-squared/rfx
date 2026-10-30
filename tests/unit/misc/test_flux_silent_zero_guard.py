@@ -41,7 +41,7 @@ def _monitor(e_scale: float, h_scale: float, n_freqs: int = 3) -> FluxMonitor:
 def test_flushed_flux_warns_and_value_unchanged():
     """Subnormal-flushed monitor: warn, but still return the flushed zeros."""
     mon = _monitor(1e-20, 1e-22)  # product 1e-42 -> flushed to exactly 0
-    with pytest.warns(UserWarning, match="issue #304"):
+    with pytest.warns(UserWarning, match="products underflowed the float32 minimum normal"):
         flux = flux_spectrum(mon)
     assert np.all(np.asarray(flux) == 0.0), (
         "guard must WARN only — the returned value stays the flushed zeros")
@@ -79,6 +79,6 @@ def test_traced_call_skips_guard_and_matches_eager():
     with warnings.catch_warnings():
         warnings.simplefilter("error")  # a traced warn would fail here
         jitted = jax.jit(_f)(mon.e1_dft, mon.h2_dft)
-    with pytest.warns(UserWarning, match="issue #304"):
+    with pytest.warns(UserWarning, match="products underflowed the float32 minimum normal"):
         eager = flux_spectrum(mon)
     np.testing.assert_array_equal(np.asarray(jitted), np.asarray(eager))

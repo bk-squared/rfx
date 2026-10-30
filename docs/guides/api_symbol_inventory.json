@@ -43,6 +43,9 @@
     "AD_MemoryEstimate": {
       "kind": "class"
     },
+    "AccuracyWarning": {
+      "kind": "class"
+    },
     "ArtifactBundle": {
       "kind": "class"
     },
@@ -71,6 +74,9 @@
       "kind": "class"
     },
     "CoaxialTEMReferencePlaneVI": {
+      "kind": "class"
+    },
+    "ConfigurationWarning": {
       "kind": "class"
     },
     "ConvergenceResult": {
@@ -230,6 +236,18 @@
       "kind": "class"
     },
     "Result": {
+      "kind": "class"
+    },
+    "RfxError": {
+      "kind": "class"
+    },
+    "RfxRefusal": {
+      "kind": "class"
+    },
+    "RfxUnsupported": {
+      "kind": "class"
+    },
+    "RfxWarning": {
       "kind": "class"
     },
     "ScatteringResponse": {

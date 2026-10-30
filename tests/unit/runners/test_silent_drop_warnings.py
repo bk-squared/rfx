@@ -740,7 +740,7 @@ def test_nu_path_until_decay_runs_on_absorbing_boundary():
     # truncation-dominated (longer decay_max_steps / fixed n_steps) —
     # NOT recommend a higher cutoff, which lengthens the onset and
     # makes truncation worse.
-    dc_msgs = [m for m in msgs if "issue #388" in m]
+    dc_msgs = [m for m in msgs if "relative DC" in m]
     assert dc_msgs, "the #388 advisory should fire on this fixture"
     assert "truncation-dominated" in dc_msgs[0], (
         f"table-truncated rel_DC must take the truncation branch, "

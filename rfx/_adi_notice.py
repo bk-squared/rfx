@@ -1,5 +1,6 @@
 """Shared experimental ADI notice and public absorber refusal."""
 
+from rfx.errors import AccuracyWarning
 ADI_WARNING = (
     'ADI is experimental and outside the 2.0 supported scope; it refuses graded '
     'meshes, interior PEC, material interfaces, and ports. Its accuracy envelope '
@@ -18,7 +19,7 @@ ADI_SPONGE_REFUSAL = (
 )
 
 
-class ExperimentalADIWarning(UserWarning):
+class ExperimentalADIWarning(AccuracyWarning):
     """Use of the experimental ADI solver outside the supported 2.0 scope."""
 
 

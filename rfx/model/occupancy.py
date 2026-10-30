@@ -3,6 +3,8 @@
 The single-device uniform and graded steps multiply by these arrays,
 built once before the time loop.
 """
+
+from rfx.errors import RfxRefusal
 from functools import partial
 
 import jax
@@ -222,7 +224,7 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
         pec_occupancy_for_run = None
         if design_occupancy is not None:
             raise NotImplementedError(
-                "a design occupancy box (#1183) does not combine with "
+                "a design occupancy box does not combine with "
                 "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1). That "
                 "lane turns the occupancy into an inverse-eps tensor "
                 "inside the E update and sets pec_occupancy_for_run to "
@@ -384,7 +386,7 @@ def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):
                 if footprint[edge] or footprint[tuple(neighbour)]:
                     owner = f"pinned_sheet_layout sheet {index} ({sheet.name!r})"
                     break
-            raise ValueError(
+            raise RfxRefusal(
                 f"{owner}: seam edge e{'xyz'[axis]}{edge} is outside the layout arrays; "
                 "overlap the addressed sheet with its neighbour by one node, "
                 "leave at least one empty node between them, "
@@ -397,7 +399,7 @@ def refuse_degenerate_layout(layout, grid):
         if grid.shape[sheet.normal_axis] == 1:
             _, indices = layout_edge_indices(grid, sheet, 0)
             edge = tuple(int(v.flat[0]) for v in indices)
-            raise ValueError(
+            raise RfxRefusal(
                 f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
                 f"length-1 normal PEC stage owns edge e{'xyz'[sheet.normal_axis]}{edge}; "
                 "the graded lane layout switch needs more than one cell along the sheet normal")

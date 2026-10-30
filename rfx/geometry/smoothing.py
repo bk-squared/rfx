@@ -26,6 +26,8 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
+
 from typing import NamedTuple
 
 import jax
@@ -372,7 +374,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     if traced:
         _w.warn("Conducting geometry is kept as declared: "
                 + "; ".join(dict.fromkeys(u.reason for u in traced))
-                + ". No continuation is applied.", stacklevel=stacklevel)
+                + ". No continuation is applied.", ConfigurationWarning, stacklevel=stacklevel)
         conductors = [u for u in conductors if u.side != "all"]
     if conductors:
         faces = ", ".join(
@@ -380,7 +382,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
             for u in conductors)
         _w.warn("Conducting geometry reaches an absorbing face but has no "
                 f"geometry continuation: {faces}. No continuation is applied "
-                "across those faces.", stacklevel=stacklevel)
+                "across those faces.", ConfigurationWarning, stacklevel=stacklevel)
     unextendable = [u for u in unextendable if not u.conductor]
     if not unextendable:
         return
@@ -394,8 +396,8 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
         f"were NOT continued into it -- {faces}. Those pads are solved at "
         "eps_r = 1.0, so each structure is terminated by an end facet at the "
         "interior/pad seam and the guided/standing field sees a reflector "
-        "there (issue #1043). Draw the structure as a Box or an "
-        "axis-aligned Cylinder, or move it clear of the face.",
+        "there. Draw the structure as a Box or an "
+        "axis-aligned Cylinder, or move it clear of the face.", AccuracyWarning,
         stacklevel=stacklevel,
     )
 
@@ -846,7 +848,7 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     return solved
 
 
-class CurvedSmoothingWarning(UserWarning):
+class CurvedSmoothingWarning(AccuracyWarning):
     """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
 
 
@@ -891,7 +893,7 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
                 "permittivity keeps only its diagonal, so a resonance converges first order and "
                 "can be further off than with subpixel_smoothing=False. Check a mesh series "
                 "against the unsmoothed run, or use subpixel_smoothing='full_tensor' on a uniform "
-                "single-device mesh; see docs/guides/known_limitations.md (rfx #1632).",
+                "single-device mesh; see docs/guides/known_limitations.md.",
                 CurvedSmoothingWarning, stacklevel=3)
 
 
@@ -1759,7 +1761,7 @@ def refuse_pmc_smoothing(sim, grid):
                      - np.asarray(sdf_fn(*upper, shape, xp=np)))
             if np.any((abs(sdf) <= d / 2) &
                       (abs(delta) > d * 8 * np.finfo(np.float32).eps)):
-                raise NotImplementedError(
+                raise RfxUnsupported(
                     f"subpixel smoothing at PMC magnetic face {face}: material "
                     f"{entry.material_name!r} has a surface within half a cell; "
                     "the smoother has no even magnetic extension. Extend the "

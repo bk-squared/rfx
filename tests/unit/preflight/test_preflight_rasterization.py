@@ -1146,10 +1146,10 @@ def test_asymmetric_metal_on_nu_triggers_warning():
                          np.full(25, 1e-3)])
     sim = _build(dz)
     issues = sim.preflight()
-    assert _has(issues, "issue #48"), (
+    assert _has(issues, "radiation pattern may be corrupted"), (
         f"expected issue #48 warning, got: {issues!r}"
     )
-    hits = [i for i in issues if "issue #48" in i]
+    hits = [i for i in issues if "radiation pattern may be corrupted" in i]
     assert any("realized as a sheet" in i and "node" in i for i in hits), hits
 
 
@@ -1158,7 +1158,7 @@ def test_symmetric_metal_on_nu_is_silent():
     dz = np.full(60, 0.25e-3)
     sim = _build(dz)
     issues = sim.preflight()
-    assert not _has(issues, "issue #48"), (
+    assert not _has(issues, "radiation pattern may be corrupted"), (
         f"uniform-dz profile triggered the asymmetric-metal warning; "
         f"issues: {issues!r}"
     )

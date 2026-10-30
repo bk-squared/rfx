@@ -30,6 +30,8 @@ retired pmap version so callers retain the same entry-point arguments.
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from functools import partial
 from types import SimpleNamespace
 
@@ -234,7 +236,7 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
             features.append("periodic axes " + ", ".join(repr(a) for a in periodic_axes))
         if bloch is not None:
             features.append("a Bloch phase")
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"{' and '.join(features)}: periodic / Bloch boundaries are not "
             f"supported on the {lane} path; {reason} {remedy}"
         )
@@ -267,7 +269,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     ports = getattr(sim, "_ports", ()) or ()
     if any(pe.extent is not None and pe.reference_plane_cells is not None
            for pe in ports):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "Wire ports with reference_plane_cells are not supported with "
             f"{'distributed=True' if forward else 'devices=...'}; "
             "the V_ref path needs pre-injection recordings. Use one device.")
@@ -280,7 +282,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         refuse_distributed_lumped_s_pmc(sim, entry="forward" if forward else "run")
 
     if any(not pe.excite for pe in ports):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "add_port(..., excite=False) (passive port) is not supported "
             f"on the {lane} path; the lane would drive the port with its "
             "waveform (or raise in make_port_source for waveform=None) "
@@ -293,7 +295,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     kerr = sorted(name for name, material in (getattr(sim, "_materials", None) or {}).items()
                   if getattr(material, "chi3", 0.0) != 0.0)
     if kerr:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"Kerr chi3 (nonlinear) material(s) {', '.join(repr(k) for k in kerr)}: "
             f"not supported on the {lane} path; the lane drops chi3 and would run "
             "the material as linear, with no warning "
@@ -304,10 +306,10 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
     rlc = getattr(sim, "_lumped_rlc", None) or ()
     if rlc:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"add_lumped_rlc() element(s) ({len(rlc)}): not supported on the {lane} "
             "path; the lane never applies them and would solve the structure as if "
-            "the elements were absent, with no warning (#1239; "
+            "the elements were absent, with no warning ("
             "rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed have no lumped-element update). "
             f"Remove the elements, or {single_device_hint}."
@@ -316,7 +318,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     msl = getattr(sim, "_msl_ports", None) or ()
     if msl:
         from rfx._diagnostic_transport import diagnostic_refusal
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
             "the lane never drives or terminates microstrip ports, so a model fed "
             "only by them returns a zero field, with no warning "
@@ -326,7 +328,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         ), diagnostics)
 
     if getattr(sim, "_refinement", None) is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"add_refinement() (subgridding): not supported on the {lane} path; "
             "the lane ignores the refinement and would solve the unrefined grid, "
             "with no warning (rfx.runners.distributed_v2.run_distributed / "

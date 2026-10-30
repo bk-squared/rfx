@@ -6,13 +6,14 @@ grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported, RfxWarning
 import warnings
 
 import jax
 import numpy as np
 
 
-class AutoMeshWarning(UserWarning):
+class AutoMeshWarning(RfxWarning):
     """Mesh selection information, not a preflight legality finding."""
 
 
@@ -260,7 +261,7 @@ class _MeshMixin:
             "axis profile was given, or auto-meshing produced one), and that "
             "is refused: the non-uniform lane has no subgrid, so it would "
             "ignore the refinement and solve the unrefined mesh, "
-            "bit-identical to the same model without it (#1240). Either use "
+            "bit-identical to the same model without it. Either use "
             "a uniform base mesh (dx= and no dx/dy/dz profile) and keep "
             "add_refinement, or remove add_refinement and pass a dz_profile "
             f"whose cells between z = {z_lo * 1e3:g} and {z_hi * 1e3:g} mm "
@@ -309,12 +310,12 @@ class _MeshMixin:
         z_lo, z_hi = ref["z_range"]
         ratio = ref["ratio"]
         from rfx._diagnostic_transport import diagnostic_refusal
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
             f"ratio={ratio}) is refused on {entry}: there is no "
             f"subgridded lane behind {entry}, so the refinement would be "
             "ignored and the unrefined grid solved, bit-identical to the same "
-            "model without it (#1240). add_refinement takes effect in run(), "
+            "model without it. add_refinement takes effect in run(), "
             f"on a uniform mesh. Remove the refinement to use {entry}. "
             "forward(), optimize(), compute_waveguide_s_matrix() and "
             "vmap_material_sweep() also take a non-uniform mesh: a dz_profile "

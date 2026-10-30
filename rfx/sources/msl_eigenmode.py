@@ -186,7 +186,7 @@ def compute_msl_eigenmode_profile(
     raise NotImplementedError(
         "Path B from-scratch FDFD eigenmode solver "
         "(rfx.sources.msl_fdfd_eigenmode) is not yet wired in. "
-        "MPB subprocess approach was removed 2026-05-04 — see module "
+        "MPB subprocess approach was removed — see module "
         "docstring. "
         "Use mode='laplace' for now."
     )

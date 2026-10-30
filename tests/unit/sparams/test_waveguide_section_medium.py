@@ -58,7 +58,7 @@ def test_segment_extents(graded, placement):
     sim = guide(graded, **({"reference_plane": .07} if placement == "declared" else {}))
     lo, hi = {"h": (.018, .0199), "declared": (.06, .062), "pec": (.022, .024)}[placement]
     fill(sim, lo, hi, "pec" if placement == "pec" else "fill")
-    with pytest.raises(ValueError, match=r"launch.*(eps|PEC).*cell.*rfx#1994"):
+    with pytest.raises(ValueError, match=r"launch.*(eps|PEC).*cell.*one homogeneous"):
         execute(sim)
 
 
@@ -260,7 +260,7 @@ def test_other_operands(graded, kind):
         with pytest.raises(NotImplementedError, match="Kerr|chi3"):
             execute(sim)
     else:
-        with pytest.raises(ValueError, match="launch.*rfx#1994"):
+        with pytest.raises(ValueError, match="launch.*one homogeneous"):
             execute(sim)
 
 

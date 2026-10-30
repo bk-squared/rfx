@@ -19,6 +19,7 @@ Example
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
 from rfx._traced_refusal import TracedStructureRefusal
@@ -101,7 +102,7 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
                 "every iteration now recompiles the whole simulation (on a board-sized "
                 "model most of the iteration's wall time); pass jit=False to choose "
                 "this path without a warning, or make the objective traceable",
-                UserWarning, stacklevel=2,
+                ConfigurationWarning, stacklevel=2,
             )
             return eager(*args, **kwargs)
 
@@ -211,7 +212,7 @@ def _adam_multistart(
                     f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
                     f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
                     f"returning the last finite design (from before iteration "
-                    f"{it}).",
+                    f"{it}).", AccuracyWarning,
                     stacklevel=2,
                 )
                 latent = last_good

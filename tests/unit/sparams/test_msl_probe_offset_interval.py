@@ -335,7 +335,7 @@ def test_graded_propagation_axis_bails_out_and_says_so(direction):
             else "counted in this port's own runway cell") in msgs[0]
     assert f"direction={direction!r}" in msgs[0]
     assert "'p1'" in msgs[0]
-    assert "#686" in msgs[0]
+    assert "This used to be silent for every non-uniform mesh" in msgs[0]
 
 
 @pytest.mark.parametrize("direction", _ALL_DIRECTIONS)

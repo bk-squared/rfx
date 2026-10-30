@@ -3,6 +3,8 @@
 Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
+
+from rfx.errors import AccuracyWarning, RfxRefusal
 from dataclasses import fields, is_dataclass
 import warnings
 
@@ -105,7 +107,7 @@ def _leaves(value, name):
             yield from _leaves(child, f"{name}.{key}")
 
 
-class UnjudgedTFSFInvarianceWarning(UserWarning):
+class UnjudgedTFSFInvarianceWarning(AccuracyWarning):
     """The legacy operator is retained for a material unavailable at tracing."""
 
 
@@ -163,12 +165,12 @@ def invariant(value, axis, shape):
 
 def _refuse(axis, feature, *, nonuniform=False):
     if nonuniform:
-        raise ValueError(
+        raise RfxRefusal(
             f"TF/SF {axis}_lo, {axis}_hi: {feature} prevents an invariant periodic "
             "replacement; on the graded mesh a finite scatterer or an array under "
             "a plane wave is not available: run it on the uniform mesh "
             f"(closed_box=True, or {axis}='periodic')")
-    raise ValueError(
+    raise RfxRefusal(
         f"TF/SF {axis}_lo, {axis}_hi: {feature} prevents an invariant periodic "
         f"replacement; declare boundary with {axis}='periodic' to solve an array, "
         "or use closed_box=True for a finite scatterer.")
@@ -394,7 +396,7 @@ def refuse_injection_plane_operands(cfg, grid, materials, updates, localized):
         for value, (plane, name, vacuum, label) in zip(values, metadata):
             expected = np.eye(3) if vacuum == "identity" else vacuum
             if not np.all(np.asarray(value) == expected):
-                raise ValueError(f"{prefix}{plane}: {label} ({name})")
+                raise RfxRefusal(f"{prefix}{plane}: {label} ({name})")
 
     traced_check(feature, check_name, check, *arrays, ordered=True)
 

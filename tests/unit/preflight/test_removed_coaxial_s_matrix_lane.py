@@ -114,7 +114,7 @@ def test_nothing_points_users_at_the_removed_coaxial_lane():
             assert lane in text, (
                 f"the {calculator!r} refusal does not name {lane}: {text}")
 
-    with pytest.raises(ValueError, match="#1212") as exc:
+    with pytest.raises(ValueError, match="removed") as exc:
         _one_coax_port_sim().preflight_sparameters(calculator=REMOVED_LANE)
     for lane in VALIDATED_LANES:
         assert lane in str(exc.value), str(exc.value)
@@ -129,13 +129,13 @@ def test_nothing_points_users_at_the_removed_coaxial_lane():
     for path in sorted(RFX_ROOT.rglob("*.py")):
         text = path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
-            if REMOVED_LANE in line and "1212" not in line:
+            if REMOVED_LANE in line and "1212" not in line and "removed" not in line:
                 offenders.append(
                     f"{path.relative_to(RFX_ROOT.parent)}:{lineno}: "
                     f"{line.strip()}")
     assert not offenders, (
         "lines under rfx/ name the removed lane without naming its removal "
-        "(#1212):\n  " + "\n  ".join(offenders))
+        ":\n  " + "\n  ".join(offenders))
 
 
 class _ReachedTheSolve(Exception):

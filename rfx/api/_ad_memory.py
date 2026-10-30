@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import math
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -740,7 +741,7 @@ class _AdMemoryMixin:
             warnings.warn(
                 "residual_context is ignored because residual_fun was not "
                 "provided; pass residual_fun to produce a saved-residual "
-                "diagnostic.",
+                "diagnostic.", ConfigurationWarning,
                 stacklevel=2,
             )
         residual_diagnostic = None

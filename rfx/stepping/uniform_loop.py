@@ -479,7 +479,7 @@ def run(
         raise NotImplementedError(
             "run(stop_fn=...) ends the record at a step chosen during the run; "
             "a snapshot's frame axes and checkpoint_segments' segment lengths "
-            "are fixed from n_steps before it (issue #1254).")
+            "are fixed from n_steps before it.")
 
     if gradient == "adjoint":
         if snapshot is not None or stop_fn is not None or report_every is not None:
@@ -635,7 +635,7 @@ def run(
                 raise RuntimeError(
                     f"snapshot {comp!r} recorded {n_frames} frames, expected "
                     f"{len(snap_axes[comp].steps)} for n_steps={n_steps}, "
-                    f"interval={snap_interval} (#1258)")
+                    f"interval={snap_interval}")
     else:
         time_series = outputs[0]
         snapshots = None

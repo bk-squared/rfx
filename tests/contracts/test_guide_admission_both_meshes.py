@@ -25,7 +25,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Box, Simulation
+from rfx import Box, Simulation, RfxRefusal, RfxUnsupported
 from rfx.boundaries.features import admit_waveguide
 from rfx.interop import design_to_dict, simulation_from_design
 
@@ -37,18 +37,18 @@ EXPECTED = {
     # 22.86 x 10.16 mm at 2 mm: both meshes keep the declared transverse
     # absorbers and refuse the explicitly absorbing full-aperture guide.
     "wr90-nonwhole-cells": (
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "both refuse: declared transverse absorbers are incompatible with the full aperture",
     ),
     "perpendicular-pec-z": (
         ("admitted", None, ""),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b",
     ),
     "perpendicular-cpml": (
-        ("refused", ValueError, "full-aperture waveguide requires PEC on z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'cpml', 'z': 'pec'} (absorber on the port axis)."),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'cpml', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b",
     ),
     "not-passed": (
@@ -57,18 +57,18 @@ EXPECTED = {
         "until S1 boundaries PR3b-2b",
     ),
     "cpml": (
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "",
     ),
     "transverse-absorber": (
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "",
     ),
     "transverse-pmc": (
-        ("refused", NotImplementedError, "PMC magnetic face(s) y_hi, y_lo: waveguide-port feature in waveguide_port.init_waveguide_port has no magnetic aperture mode solver. Use a full PEC-walled guide until that kernel implements magnetic symmetry."),
-        ("refused", NotImplementedError, "PMC magnetic face(s) y_hi, y_lo: waveguide-port feature in waveguide_port.init_waveguide_port has no magnetic aperture mode solver. Use a full PEC-walled guide until that kernel implements magnetic symmetry."),
+        ("refused", RfxUnsupported, "PMC magnetic face(s) y_hi, y_lo: waveguide-port feature in waveguide_port.init_waveguide_port has no magnetic aperture mode solver. Use a full PEC-walled guide until that kernel implements magnetic symmetry."),
+        ("refused", RfxUnsupported, "PMC magnetic face(s) y_hi, y_lo: waveguide-port feature in waveguide_port.init_waveguide_port has no magnetic aperture mode solver. Use a full PEC-walled guide until that kernel implements magnetic symmetry."),
         "PMC + waveguide port refused by refuse_waveguide_pmc",
     ),
     "transverse-periodic": (
@@ -77,8 +77,8 @@ EXPECTED = {
         "port registration refuses before any entry (rfx/api/__init__.py:2293)",
     ),
     "periodic-admission": (
-        ("refused", ValueError, "Full-aperture waveguide requires PEC on y_hi, y_lo; the active periodic feature requires PERIODIC on those faces."),
-        ("refused", ValueError, "Full-aperture waveguide requires PEC on y_hi, y_lo; the active periodic feature requires PERIODIC on those faces."),
+        ("refused", RfxRefusal, "Full-aperture waveguide requires PEC on y_hi, y_lo; the active periodic feature requires PERIODIC on those faces."),
+        ("refused", RfxRefusal, "Full-aperture waveguide requires PEC on y_hi, y_lo; the active periodic feature requires PERIODIC on those faces."),
         "guide admission behind periodic port-registration refusal",
     ),
     "pec-walls": (
@@ -87,8 +87,8 @@ EXPECTED = {
         "",
     ),
     "imported-graded-cpml": (
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "graded document import versus uniform explicit cpml reference",
     ),
     "unknown-provenance": (
@@ -97,8 +97,8 @@ EXPECTED = {
         "until S1 boundaries PR3b-2b",
     ),
     "pmc-admission": (
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "guide admission behind refuse_waveguide_pmc (rfx/boundaries/pmc.py:29)",
     ),
 }
@@ -107,12 +107,12 @@ EXPECTED = {
 PUBLIC_OVERRIDES = {
     ("perpendicular-pec-z", "run"): (
         ("refused", ValueError, "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "uniform run two-port refusal (rfx/runners/uniform.py:337); guide answer pinned by admission row",
     ),
     ("perpendicular-pec-z", "run-skip-preflight"): (
         ("refused", ValueError, "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"),
-        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", RfxRefusal, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         "uniform run two-port refusal (rfx/runners/uniform.py:337); guide answer pinned by admission row",
     ),
     ("not-passed", "run"): (

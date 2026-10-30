@@ -1230,7 +1230,7 @@ def test_the_package_no_longer_exports_run_distributed():
     with pytest.raises(RuntimeError) as excinfo:
         v1.run_distributed(object(), n_steps=1)
     msg = str(excinfo.value)
-    for needle in ("removed in #1296", "Simulation.run(",
+    for needle in ("was removed", "Simulation.run(",
                    "rfx.runners.distributed_v2.run_distributed"):
         assert needle in msg, msg
 

@@ -602,7 +602,7 @@ class _PreflightMixin:
                             f"{_off} sits within the source fringing "
                             f"transient ({_nf_cells} cells = max(3, round("
                             f"5·h_sub/runway_cell))); probe 0 may corrupt the V·I-split "
-                            f"S11 of a high-Q resonant load (issue #80) — "
+                            f"S11 of a high-Q resonant load — "
                             + _remedy
                         )
         if self._waveguide_ports:
@@ -972,7 +972,7 @@ class _PreflightMixin:
         }
         if calculator.lower() == "compute_coaxial_s_matrix":  # removed, #1212
             raise ValueError(
-                "calculator='compute_coaxial_s_matrix' names a method removed in #1212. "
+                "calculator='compute_coaxial_s_matrix' names a method that was removed. "
                 "Use calculator='coaxial' to check the coaxial methods, "
                 "compute_coaxial_line_reflection() (one-port reflection) and "
                 "compute_coaxial_two_port() (through line)."
@@ -1134,7 +1134,7 @@ class _PreflightMixin:
         if self._solver != "yee":
             raise NotImplementedError(
                 "compute_waveguide_s_matrix() does not support "
-                f"solver={self._solver!r} (#1300). Use solver='yee'."
+                f"solver={self._solver!r}. Use solver='yee'."
             )
         if not self._waveguide_ports:
             raise ValueError(
@@ -1381,8 +1381,8 @@ class _PreflightMixin:
                 f"precision={self._precision!r} was requested on a "
                 "non-uniform mesh (dx/dy/dz profile set), but the "
                 "non-uniform runner does not thread field_dtype -- fields "
-                "would silently run float32 regardless of this setting "
-                "(issue #630). run()/forward() will raise NotImplementedError "
+                "would silently run float32 regardless of this setting"
+                ". run()/forward() will raise NotImplementedError "
                 "at dispatch rather than proceed silently; this warning "
                 "exists to explain that error before you hit it. Use "
                 "precision='float32' (the default) with a non-uniform mesh, "
@@ -1658,12 +1658,12 @@ class _PreflightMixin:
             f"this simulation requests {' and '.join(wants)} but registers no "
             "point probe. run() and forward() score their ring-down settling witness from "
             "the recorded probe time series, so the result will carry settling_db=None "
-            "and those DFT numbers will have no truncation guard (#885); add "
+            "and those DFT numbers will have no truncation guard; add "
             "sim.add_probe(position, component) somewhere the field is live "
             "and NOT on a source/port drive cell — a record on the drive "
             "cell peaks on the drive pulse, so its end/peak ratio measures "
             "source turn-off rather than the structure's ring-down and does "
-            "not count as an independent witness (#1090) — and retain its "
+            "not count as an independent witness — and retain its "
             "time series. Inspect forward's diagnostic on "
             "the concrete result after JIT/AD evaluation.",
             code="settling_witness_will_be_absent",

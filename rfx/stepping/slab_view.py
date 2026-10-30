@@ -349,6 +349,6 @@ def device_rows(value, mesh, *, unpack):
         if a.ndim != field:
             raise ValueError(
                 f"device_rows takes field ({field}-D) leaves when unpack={unpack}; "
-                f"got shape {a.shape} (pole coefficients are pole-first, rfx #1834)")
+                f"got shape {a.shape} (pole coefficients are pole-first)")
         return _axis_map(mesh, unpack)(a)
     return jax.tree.map(convert, value)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal
+
 from importlib import import_module
 import math
 from numbers import Number
@@ -17,7 +19,7 @@ _STAGE1_FACTOR = 1.87
 _STAGE2_FACTOR = 1.71
 
 
-class IdentificationMemoryRefused(ValueError):
+class IdentificationMemoryRefused(RfxRefusal):
     """An identification stage would exceed the configured memory bound."""
 
     __module__ = "rfx.ringdown"

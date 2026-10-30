@@ -215,7 +215,7 @@ def test_trace_port_realized_footprint(lane, extent, lo, hi, x, node, footprint,
     assert [str(i) for i in reported] == findings
     assert all(i.severity == "error" for i in reported)
     if refused:
-        with pytest.raises(ValueError, match="Move the port.*#1342"):
+        with pytest.raises(ValueError, match="Move the port and the trace end onto the same mesh node"):
             sim.run(n_steps=1, skip_preflight=True)
     else:
         assert np.isfinite(sim.run(n_steps=1, skip_preflight=True).time_series).all()

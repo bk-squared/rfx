@@ -1,5 +1,6 @@
 """Shared graded distributed assembly, staging and forward packaging."""
 from __future__ import annotations
+from rfx.errors import ConfigurationWarning
 import math
 import jax
 import jax.numpy as jnp
@@ -189,7 +190,7 @@ def execute_from_materials(
                 "more time on recomputation overhead than it saves "
                 "in memory; consider checkpoint_every=None for small "
                 "runs.",
-                UserWarning,
+                ConfigurationWarning,
                 stacklevel=3,
             )
 

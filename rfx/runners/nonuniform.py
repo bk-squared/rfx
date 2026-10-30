@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 from rfx._grid_metric import field_index
 import warnings
 from dataclasses import replace
@@ -243,7 +244,7 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
             f"[0, {float(edges[-1]):.12g}] m; requested bounds "
             f"{result['requested_bounds_m']} m, realized bounds "
             f"{result['realized_bounds_m']} m. The monitor integrates the realized extent.",
-            UserWarning, stacklevel=2,
+            ConfigurationWarning, stacklevel=2,
         )
     return result["cell_slice"]
 
@@ -651,20 +652,20 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if design_box is not None:
         if sim._waveguide_ports:
             raise NotImplementedError(
-                "a design box (#1183) does not combine with a waveguide "
+                "a design box does not combine with a waveguide "
                 "port on the non-uniform lane: the port injects and "
                 "extracts a modal field over its whole plane, built from "
                 "the background permittivity before the time loop. Use "
                 "eps_override.")
         if getattr(sim, "_msl_ports", None):
             raise NotImplementedError(
-                "a design box (#1183) does not combine with an MSL port on "
+                "a design box does not combine with an MSL port on "
                 "the non-uniform lane: the port rewrites ``materials`` "
                 "across its cross-section at setup, which the design "
                 "permittivity would not reach. Use eps_override.")
         if until_decay is not None:
             raise NotImplementedError(
-                "a design box (#1183) does not combine with until_decay on "
+                "a design box does not combine with until_decay on "
                 "the non-uniform lane: the decay stop is a forward-only "
                 "host loop, so there is no gradient tape for the box to "
                 "keep small. Use a fixed n_steps run.")
@@ -1117,14 +1118,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported (#677 v1): the sheet operator would "
+                "not supported: the sheet operator would "
                 "silently override the ADE dispersion update at its edges. "
                 "Remove the dispersive material or the f0 sheet.")
         if aniso_eps is not None:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with subpixel_smoothing / anisotropic permittivity are "
-                "not supported (#677 v1): the sheet operator assumes the "
+                "not supported: the sheet operator assumes the "
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
 
@@ -1192,7 +1193,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         if until_decay is not None or checkpoint_every is not None or n_warmup:
             raise NotImplementedError(
                 "run_nonuniform_path(stop_fn=...) does not combine with "
-                "until_decay, checkpoint_every or n_warmup (issue #1254).")
+                "until_decay, checkpoint_every or n_warmup.")
         from types import SimpleNamespace as _NS
 
         from rfx.progress import validate_report_every
@@ -1272,10 +1273,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             import warnings
             warnings.warn(
                 f"report_every={report_every} is ignored on this non-uniform "
-                "run: chunked progress (#667) composes with neither "
+                "run: chunked progress composes with neither "
                 "checkpoint/segmented-remat nor n_warmup on the NU lane "
                 "(the chunked loop is forward-only).",
-                UserWarning, stacklevel=2)
+                ConfigurationWarning, stacklevel=2)
         r = run_nonuniform(
             grid, materials, n_steps,
             checkpoint=checkpoint,

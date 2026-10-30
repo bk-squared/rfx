@@ -3,6 +3,8 @@
 Ranks are data, and assembly replicates before indexing by rank (#1441).
 Only placement is performed for cell records; moment pairs are summed once.
 """
+
+from rfx.errors import RfxUnsupported
 from functools import partial
 
 import jax
@@ -24,7 +26,7 @@ def refuse_record_options(sim, options):
     if sim._dft_planes and getattr(sim, "_internal_probe_indices", ()):
         names.append("dft_time_records (record_dft from _internal_probe_indices)")
     if names:
-        raise NotImplementedError(f"{', '.join(names)} is not supported on the distributed record path")
+        raise RfxUnsupported(f"{', '.join(names)} is not supported on the distributed record path")
 
 
 def _field_specs(state):

@@ -40,6 +40,8 @@ acyclic).
 
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal, RfxWarning
+
 import json
 
 import numpy as np
@@ -257,7 +259,7 @@ def _sorted_box_corners(shape):
     return np.minimum(lo, hi), np.maximum(lo, hi)
 
 
-class PreflightWarning(UserWarning):
+class PreflightWarning(RfxWarning):
     """Base for structured preflight findings carried on the warning instance.
 
     Mirrors the in-repo report idioms (:class:`SubgridValidationIssue`,
@@ -336,7 +338,7 @@ class PreflightErrorWarning(PreflightWarning):
         )
 
 
-class PreflightConfigError(ValueError):
+class PreflightConfigError(RfxRefusal):
     """A structurally-impossible-config raise carrying a check-site ``code``.
 
     The structurally-impossible config validators (``upml``+refinement,

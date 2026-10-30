@@ -369,7 +369,7 @@ def test_preflight_advisories_make_no_stale_absolute_realized_bound():
     # plus an explicit requirement for new matched measurement evidence.
     assert "realized-board Hammerstad-Jensen anchor" in src
     assert "new matched-geometry measurement" in src
-    assert "pre-#802" in src
+    assert "historical float32-coordinate" in src
 
 
 def _load_historical_script(stem):

@@ -927,7 +927,7 @@ def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
         raise ValueError(
             f"waveguide incident table: a bin of the length-{length} build falls exactly on the "
             f"{mode_type} cutoff (f0={f0}, f_c={f_c}), where the admittance is infinite; "
-            "move f0 so the source spectrum at f_c is below about 1e-3 of its peak (#2013)")
+            "move f0 so the source spectrum at f_c is below about 1e-3 of its peak")
     # exp(j(omega*t - beta*x)): H is upstream by dx/2 and later by dt/2.
     # The evanescent continuation is essential to a causal response at cutoff.
     phase = np.exp(0.5j * beta * float(dx) + 1j * np.pi * freqs * float(dt))
@@ -1013,7 +1013,7 @@ def _converged_incident_tables(*, f_c, medium, dt, dx, t0, tau,
         f"f0={f0}, bandwidth={bandwidth}, f_c={f_c}. The source spectrum reaches the "
         f"{mode_type} cutoff, where the forward wave's H decays too slowly to tabulate (a TM "
         "admittance diverges at cutoff; a TE one at DC); raise f0 or narrow the bandwidth so "
-        "the source spectrum at f_c is below about 1e-3 of its peak (#2013)")
+        "the source spectrum at f_c is below about 1e-3 of its peak")
 
 
 def with_port_medium(cfg, medium):

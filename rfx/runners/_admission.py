@@ -29,6 +29,8 @@ before any step.
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning, RfxUnsupported
+
 import functools
 import inspect
 import threading
@@ -1004,7 +1006,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
         lines = ([] if lane == "material_fit" else
                  [f"  - {ROW_WORDS[row]}" for row in message_rows])
         if ("_refinement", "slab") in rows and lane != "material_fit":
-            lines.append("  - add_refinement(): this calculator has no subgridded lane (#1240).")
+            lines.append("  - add_refinement(): this calculator has no subgridded lane.")
             if sim._uses_nonuniform_mesh:
                 lines.append("  - subgridding on a non-uniform mesh is not supported.")
         if lane == "material_fit":
@@ -1030,17 +1032,17 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 ("_precision", ""): "Use precision='float32'.",
                 ("_stencil_order", ""): "Use stencil_order=2.",
                 ("_interface_eps", "dual_average"): "Use interface_eps='sampled'.",
-                ("_refinement", "slab"): "This calculator has no subgridded lane (#1240). Remove the refinement.",
+                ("_refinement", "slab"): "This calculator has no subgridded lane. Remove the refinement.",
             }
             lines.extend(f"  - {ROW_WORDS[row]}"
                          + (f" — {names[row]}" if row in names else "")
-                         + " (#1290). "
+                         + ". "
                          + remedies.get(row, "Remove this input from sim_factory.")
                          for row in message_rows)
         if lane == "waveguide_s_matrix" and ("_solver", "") in rows:
-            lines.append("  - solver='adi' (#1300). Use solver='yee'.")
+            lines.append("  - solver='adi'. Use solver='yee'.")
         if lane == "waveguide_s_matrix" and any(row[0] == "_lumped_rlc" for row in rows):
-            lines.append("  - lumped RLC elements are not implemented (#1263). Use run() / forward().")
+            lines.append("  - lumped RLC elements are not implemented. Use run() / forward().")
         return (f"{CALCULATOR_WORDS[lane]} does not carry these declared inputs "
                 "and refuses them before the first time step:\n"
                 + "\n".join(lines)
@@ -1072,7 +1074,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                   "conformal_pec=False for a staircase S-matrix.")
     if ("_waveguide_ports", "n_modes") in rows:
         where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
-                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port (#2070).")
+                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port.")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
@@ -1106,12 +1108,12 @@ def refuse_undriven_drives(sim) -> None:
 def refuse_distributed_sources(sim, lane):
     """Name sources that cannot be stepped on the requested slab lane."""
     if getattr(sim, "_waveguide_ports", ()):
-        raise NotImplementedError(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
+        raise RfxUnsupported(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
     entry = getattr(sim, "_tfsf", None)
     if entry is None:
         return
     if getattr(sim, "_uses_nonuniform_mesh", False) or lane.endswith("_nu"):
-        raise NotImplementedError(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
+        raise RfxUnsupported(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
     refuse_slab_tfsf(entry, lane)
 
 
@@ -1119,7 +1121,7 @@ def refuse_slab_tfsf(entry, lane="uniform multi-device"):
     """Accept declarations or realized configs; face replays never enter a slab scan."""
     kind = slab_tfsf_refusal(entry)
     if kind is not None:
-        raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
+        raise RfxUnsupported(f"{kind} is not supported on {lane}; use one device")
 
 
 #: Closed-box TF/SF validation covers three seams, a padded last slab, a box face
@@ -1130,7 +1132,7 @@ SLAB_TFSF_MAX_DEVICES = 4
 def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
     """Refuse a closed-box TF/SF on more devices than its multi-seam validation covers."""
     if entry is not None and getattr(entry, "closed_box", False) and n_devices > SLAB_TFSF_MAX_DEVICES:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"closed-box TFSF (add_tfsf_source(closed_box=True)) on {n_devices} devices is not supported on "
             f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (three seams); "
             f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
@@ -1152,7 +1154,7 @@ def refuse_coaxial_port(sim, entry: str) -> None:
     row = ("_coaxial_ports", "coax_port")
     if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
                                       for lane in LANES):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
             "coaxial port's S-parameters come from "
             "compute_coaxial_line_reflection(...) (one-port reflection) "
@@ -1174,7 +1176,7 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if rows:
         if diagnostics is not None:
             from rfx._diagnostic_transport import diagnostic_refusal
-            raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
+            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(sim)
@@ -1203,7 +1205,7 @@ def _warn_implicit_s(message):
             frame = frame.f_back
     finally:
         del frame
-    warnings.warn(message, UserWarning, stacklevel=stacklevel)
+    warnings.warn(message, ConfigurationWarning, stacklevel=stacklevel)
 
 
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
@@ -1272,7 +1274,7 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
             reason + "Remove the plain source, or pass compute_s_params=False "
             "to silence this warning; returning no S-parameters.")
         return False
-    raise NotImplementedError(
+    raise RfxUnsupported(
         reason + "Remove the plain source, or drop the S request to run with the "
         "source included: run(compute_s_params=False) returns the raw port waves, "
         "forward() without port_s11_freqs the fields and probe records.")
@@ -1439,11 +1441,11 @@ def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
     if not subpixel_smoothing:
         return
     if eps_override is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing builds the permittivity tensor from declared shapes; "
             "eps_override would not reach the solve. Omit smoothing or eps_override.")
     if pec_occupancy is not None or design_occupancy is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing cannot combine with pec_occupancy / design_occupancy: "
             "they supply a second inverse-permittivity operator.")
 
@@ -1501,7 +1503,7 @@ def _reject_upml_on_nonuniform(self, lane: str) -> None:
         "non-uniform runner implements CPML only (rfx/nonuniform.py "
         "dispatches on cpml_layers > 0 and never reads the boundary "
         "type), so this configuration used to run CPML while "
-        "sim._boundary kept reporting 'upml' (issue #680). Pass "
+        "sim._boundary kept reporting 'upml'. Pass "
         "boundary='cpml' to run the absorber that is actually "
         "implemented here, or drop the mesh profile(s) to use the "
         "uniform lane, which does implement UPML."

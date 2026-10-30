@@ -20,6 +20,8 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
+
 from rfx._precision import resolve_field_dtype
 
 from rfx._grid_metric import field_index
@@ -44,15 +46,15 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
     option = "distributed=True" if entry == "forward" else "devices=..."
     faces = sorted(sim._boundary_spec.pmc_faces())
     if faces and any(pe.impedance != 0 and pe.extent is not None for pe in sim._ports):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; the multi-device main run "
             "zeroes tangential E on a declared PMC face, so nearby wire loads "
-            "and drives would be wrong even with compute_s_params=False "
-            f"(rfx #1221, B3b). Use one device (omit {option})."
+            "and drives would be wrong even with compute_s_params=False"
+            f". Use one device (omit {option})."
         )
     if faces and any(pe.impedance != 0 for pe in sim._ports):
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; use one device (omit {option})."
         )
@@ -426,7 +428,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 "return_vi_dump=True is not supported together with "
                 "add_port(reference_plane_cells=...): the midpoint V/I "
                 "replay bundle cannot reproduce the plane-wave "
-                "off-diagonals (issue #313)."
+                "off-diagonals."
             )
         from rfx.probes.refplane import (
             decompose_wire_s_matrix_with_reference_planes,
