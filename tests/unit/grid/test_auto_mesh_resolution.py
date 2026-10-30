@@ -275,4 +275,3 @@ def test_msl_s_matrix_reuses_auto_mesh_across_drives(monkeypatch):
     assert len(plans) == 1
     # Base 3299c0b6d plans during port registration, before this capture.
     assert len(auto_warnings) == 0
-    print(f"AutoMeshWarning count={len(auto_warnings)} mesh plans={len(plans)}")
