@@ -630,12 +630,6 @@ Tracker: #1373
 
 `forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`. It runs inside a user `jax.jit`, where port S-parameters are refused by name. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
 
-### A graded multi-device `forward()` with a port refuses a PEC occupancy override in the sharded layout
-
-Tracker: #2218
-
-On a graded mesh, `forward(distributed=True)` with a port refuses a `pec_occupancy_override` given as an x-sharded padded array (`ValueError` on its shape); pass it in the grid shape. A grid-shape override and `eps_override`/`sigma_override` are not affected. The fix is planned for 2.1, with lumped RLC elements on several devices.
-
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
 Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_conductivity_gradient_record.py::test_lossless_design)
