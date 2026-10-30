@@ -20,7 +20,7 @@ The website identifies its source version; select the release matching your inst
 
 ## Release status: 2.0 release candidate
 
-rfx 2.0 is in release candidates; the install lines below take the newest one. What 2.0 changes for a user:
+rfx 2.0 is in release candidates; the install lines below take the newest one on PyPI. What 2.0 changes for a user:
 
 - **An input a solver path does not implement is refused, never dropped.** If `run()`,
   `forward()` or an S-parameter calculator routes your model to a path that does not
