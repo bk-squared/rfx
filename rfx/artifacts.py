@@ -118,7 +118,8 @@ def _scalar(value: Any) -> Any:
             item = value.item()
             if item is not value:
                 return _scalar(item)
-    except (TypeError, ValueError, AttributeError):
+    except (TimeoutError,): raise
+    except Exception:  # noqa: BLE001 - type dispatch: falls through to _array_summary
         pass
     return value
 
@@ -601,7 +602,7 @@ def _git(args: list[str], *, cwd: Path) -> str | None:
             timeout=2,
         )
     except (TimeoutError,): raise
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
         return None
     if proc.returncode != 0:
         return None

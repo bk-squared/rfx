@@ -21,6 +21,27 @@ from rfx.geometry.csg import Box
 C = 2.998e8
 
 
+def test_ntff_public_preflight_traced_frequency_list_uses_declared_maximum():
+    import jax
+    import jax.numpy as jnp
+    from rfx.sources.sources import GaussianPulse
+
+    messages = []
+
+    def check(f):
+        sim = Simulation(freq_max=10e9, domain=(0.04,) * 3, dx=0.002, boundary="cpml")
+        sim.add_source((0.02,) * 3, "ez", waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+                       amplitude_kind="field")
+        sim.add_ntff_box((0.008,) * 3, (0.032,) * 3, freqs=[f, 0.5 * f])
+        report = sim.preflight(strict=False, check_ntff=True)
+        messages.extend(str(issue) for issue in report if "NTFF face x_lo" in str(issue))
+        return f
+
+    jax.make_jaxpr(check)(jnp.float32(5e9))
+    assert len(messages) == 1
+    assert "f_max=10.00GHz" in messages[0]
+
+
 def _sane_sim(freq_max=5e9, domain=(0.04, 0.04, 0.04)):
     sim = Simulation(freq_max=freq_max, domain=domain, boundary="cpml",
                      cpml_layers=8, dx=C / freq_max / 20.0)
