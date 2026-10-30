@@ -13,9 +13,7 @@
           500.0,
           1.0,
           750.0,
-          672.0,
-          0.0,
-          688.0
+          0.0
         ],
         "severity": "warning",
         "source": "_validate_cfg_wire_port_on_graded_node"
@@ -32,9 +30,7 @@
           500.0,
           1.5,
           1.0,
-          672.0,
-          0.0,
-          688.0
+          0.0
         ],
         "severity": "warning",
         "source": "_validate_cfg_wire_port_on_graded_node"

@@ -8,8 +8,7 @@
           0.01,
           0.01,
           0.0025,
-          4.4,
-          71.0
+          4.4
         ],
         "severity": "warning",
         "source": "_validate_cfg_floating_single_cell_port"

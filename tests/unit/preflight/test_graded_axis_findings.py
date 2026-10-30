@@ -157,7 +157,7 @@ def test_unsupported_graded_tfsf_is_refused_on_every_entry(entry, direction, kin
             else:
                 sim.forward(n_steps=4, checkpoint=False, skip_preflight=skip)
     message = str(exc.value)
-    assert ("x cells" in message and "2078" in message
+    assert ("x cells" in message and "leaks into the scattered-field region" in message
             or "oblique incidence" in message or "closed_box" in message), message
 
 

@@ -12,9 +12,7 @@
         "code": "pec_realization_refused",
         "loc": null,
         "numbers": [
-          0.0,
-          931.0,
-          1.5
+          0.0
         ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"

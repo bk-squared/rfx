@@ -2075,7 +2075,7 @@ def test_a_v1_document_is_refused_by_name_not_silently_migrated():
         simulation_from_design(doc)
     msg = str(exc.value)
     assert "rfx-design-ir/v1" in msg and "rfx-design-ir/v2" in msg, msg
-    assert "two" in msg and "931" in msg, msg
+    assert "two" in msg and "one-cell PEC Box is a volume with both faces now" in msg, msg
 
 
 def test_a_stray_two_plane_key_is_refused_rather_than_ignored():

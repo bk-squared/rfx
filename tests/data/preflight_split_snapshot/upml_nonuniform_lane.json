@@ -10,8 +10,7 @@
           4.0,
           3.0,
           1.0,
-          0.0,
-          680.0
+          0.0
         ],
         "severity": "warning",
         "source": "_validate_cfg_upml_nonuniform_lane"
@@ -51,8 +50,6 @@
           6.0,
           6.0,
           1.0,
-          1272.0,
-          1346.0,
           6.0,
           -38.0,
           2.0,

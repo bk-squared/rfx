@@ -491,7 +491,8 @@ def test_w2_is_judged_when_the_pulse_is_still_on_in_the_longer_window():
     assert rep.completed and rep.witness("source_off").ok
     assert not we.judged and math.isnan(we.value) and not we.ok
     assert we.note.startswith("not formed") and "of its peak in [0.25 T, T]" in we.note
-    assert w2.judged and "could not be formed" in w2.note and "R-i" in w2.note
+    assert (w2.judged and "could not be formed" in w2.note
+            and "actual error low by up to several times" in w2.note)
     assert rep.long_rank is None and rep.long_n_kept is None
     assert w2.ok and rep.ok
     assert rep.ok == all(w.ok for w in rep.witnesses if w.name != "WE")
