@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from rfx.geometry.rasterize_grid import _axis_node_positions
 from rfx.geometry.smoothing import _get_sdf_fn
 from rfx._periodic import periodic_sdf
+from rfx.errors import RfxUnsupported
 
 
 def edge_fraction(a, b):
@@ -95,7 +96,7 @@ def _refuse_off_lattice_box(box, lattice, widths, domain, what):
                 continue
             offset = np.min(np.abs(line - value)) / width
             if offset > 1e-6:
-                raise NotImplementedError(
+                raise RfxUnsupported(
                     f'conformal PEC places PEC volumes that hold a grid node; {what} has a {"xyz"[axis]} '
                     f'face {offset:.3g} cell off the node lattice and would stay at its staircase position; '
                     'move it onto node planes, refine the mesh, or use conformal_pec=False')
