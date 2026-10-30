@@ -79,16 +79,16 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
     sign = 1 if direction[0] == "+" else -1
     calls, snapshots = [], []
 
-    def record(scale):
+    def record(self, scale):
         planes, registrations = {}, []
-        for entry in sim._dft_planes:
+        for entry in self._dft_planes:
             assert entry.axis == direction[-1]
             point = [0.0, 0.0, 0.0]
             point[prop] = entry.coordinate
-            indices = (sim._pos_to_nu_index(grid, tuple(point)) if graded
+            indices = (self._pos_to_nu_index(grid, tuple(point)) if graded
                        else grid.position_to_index(tuple(point)))
             index = indices[prop]
-            region = sim._dft_plane_regions[entry.name]
+            region = self._dft_plane_regions[entry.name]
             lo_w, hi_w, lo_z, hi_z = region
             shape = (hi_w - lo_w, hi_z - lo_z)
             if entry.component == "ez":
@@ -129,21 +129,21 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
         snapshots.append(registrations)
         return SimpleNamespace(dft_planes=planes)
 
-    def fake_run(**kwargs):
+    def fake_run(self, **kwargs):
         calls.append("run")
-        return record(1.0)
+        return record(self, 1.0)
 
-    def fake_forward(*, eps_override, **kwargs):
+    def fake_forward(self, *, eps_override, **kwargs):
         calls.append("forward")
         assert eps_override.shape == grid.shape
         # Depend on one interior material cell: a reduction over thousands
         # of identical cells would add unrelated float32 summation error to
         # this scalar-parameter pullback, without testing another H sample.
         cell = tuple(pad + 1 for pad in grid.axis_pads)
-        return record(eps_override[cell])
+        return record(self, eps_override[cell])
 
-    monkeypatch.setattr(sim, "run", fake_run)
-    monkeypatch.setattr(sim, "forward", fake_forward)
+    monkeypatch.setattr(Simulation, "run", fake_run)
+    monkeypatch.setattr(Simulation, "forward", fake_forward)
     return calls, snapshots
 
 

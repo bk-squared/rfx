@@ -1157,10 +1157,9 @@ def _compute_waveguide_s_matrix_nu(
     Drives each port in turn, running device + homogeneous-reference
     scans through ``run_nonuniform_path`` so ``dx_profile`` /
     ``dy_profile`` / ``dz_profile`` actually flow into the Yee update. The per-port
-    drive is implemented by temporarily zeroing ``amplitude`` on
-    non-driven entries; the original port list is restored in a
-    ``finally`` block. The reference's whole domain has the shared port
-    medium. Unequal port media are refused before launching either scan.
+    drive uses a private declaration variant with zero ``amplitude`` on
+    non-driven entries; the caller's port list remains unchanged. The reference's
+    whole domain has the shared port medium. Unequal port media are refused before launching either scan.
 
     Current scope (matches the uniform path minus a few niceties):
       - ``normalize=True`` or ``normalize='flux'``.

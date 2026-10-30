@@ -147,3 +147,15 @@ def test_two_waveguide_calls_share_no_drive_state(monkeypatch):
     for result in results:
         assert np.array_equal(result.s_params, single.s_params)
     _assert_original(sim, before)
+
+
+def test_release_set_preserves_input_keyed_mesh_resolution():
+    sim = model()
+    mesh = object()
+    sim._mesh_resolution = mesh
+    assert {a for a, reason in NOT_DECLARATIONS if reason == "cache"} == {
+        "_pf_campaign_ctx", "_realized_geometry_record", "_coax_geometry", "_msl_default_memo",
+    }
+    assert declaration_variant(sim)._mesh_resolution is mesh
+    release_declaration_caches(sim)
+    assert sim._mesh_resolution is mesh

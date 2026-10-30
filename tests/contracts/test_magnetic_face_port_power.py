@@ -55,14 +55,14 @@ def test_mixed_flux_refuses_before_monitor_or_step(monkeypatch, wire):
     sim = _mixed_scene(wire)
     steps = []
 
-    def step(*args, **kwargs):
+    def step(self, *args, **kwargs):
         steps.append(True)
         raise _StepReached
 
     def monitor(*args, **kwargs):
         pytest.fail('registered a flux monitor before refusing magnetic-face port')
 
-    monkeypatch.setattr(sim, '_forward_from_materials', step)
+    monkeypatch.setattr(type(sim), '_forward_from_materials', step)
     monkeypatch.setattr(sim, 'add_flux_monitor', monitor)
     from types import SimpleNamespace
     from rfx.diagnostic_records import Diagnostic
@@ -83,11 +83,11 @@ def test_mixed_wave_admits_magnetic_face_port(monkeypatch, wire):
     sim = _mixed_scene(wire)
     steps = []
 
-    def step(*args, **kwargs):
+    def step(self, *args, **kwargs):
         steps.append(True)
         raise _StepReached
 
-    monkeypatch.setattr(sim, '_forward_from_materials', step)
+    monkeypatch.setattr(type(sim), '_forward_from_materials', step)
     with pytest.raises(_StepReached):
         sim.compute_mixed_s_matrix(freqs=np.array([8e9, 10e9]), n_steps=4,
                                    skip_preflight=True, magnitude_channel='wave')

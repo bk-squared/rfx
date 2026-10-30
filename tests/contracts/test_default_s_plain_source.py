@@ -130,7 +130,7 @@ def test_distributed_resolved_false_does_not_reenter_native_run(monkeypatch):
                                     compute_s_params=False, devices=devices)
     sim = model(wire=True)
     public_run = sim.run
-    monkeypatch.setattr(sim, "run", lambda **kwargs: pytest.fail("reentered native run"))
+    monkeypatch.setattr(Simulation, "run", lambda self, **kwargs: pytest.fail("reentered native run"))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         actual = public_run(n_steps=12, skip_preflight=True, devices=devices)
