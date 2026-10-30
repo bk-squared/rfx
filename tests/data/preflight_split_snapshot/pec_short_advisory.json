@@ -7,7 +7,8 @@
         "numbers": [
           2.0,
           1.0,
-          1.0
+          1.0,
+          20260906.0
         ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
@@ -17,6 +18,7 @@
         "loc": null,
         "numbers": [
           1.0,
+          20260906.0,
           0.0,
           84.0,
           86.0,

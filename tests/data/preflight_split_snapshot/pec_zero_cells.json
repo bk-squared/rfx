@@ -15,7 +15,8 @@
           0.0,
           0.0,
           0.5,
-          0.87
+          0.87,
+          20260906.0
         ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"

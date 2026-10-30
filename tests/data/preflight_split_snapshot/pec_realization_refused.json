@@ -12,7 +12,8 @@
         "code": "pec_realization_refused",
         "loc": null,
         "numbers": [
-          0.0
+          0.0,
+          20260906.0
         ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"

@@ -7,7 +7,8 @@
         "numbers": [
           80.0,
           1.0,
-          1.0
+          1.0,
+          20260906.0
         ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
@@ -36,7 +37,9 @@
       {
         "code": "pec_faces_finite_pec",
         "loc": null,
-        "numbers": [],
+        "numbers": [
+          20260906.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_faces_with_finite_pec"
       },
@@ -58,6 +61,7 @@
         "loc": null,
         "numbers": [
           1.0,
+          20260906.0,
           1.0,
           240.0,
           320.0,
@@ -83,6 +87,7 @@
           600.0,
           40.0,
           6.67,
+          20260906.0,
           8.0,
           -10.0,
           50.0,
@@ -185,6 +190,7 @@
           75.0,
           82.0,
           254.0,
+          20260906.0,
           -1.0,
           1.0,
           240.0,

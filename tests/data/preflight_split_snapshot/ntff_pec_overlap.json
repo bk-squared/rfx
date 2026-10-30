@@ -7,7 +7,8 @@
         "numbers": [
           0.02,
           0.02,
-          0.02
+          0.02,
+          20260906.0
         ],
         "severity": "warning",
         "source": "_validate_cfg_port_inside_pec"
@@ -18,7 +19,8 @@
         "numbers": [
           0.022,
           0.02,
-          0.02
+          0.02,
+          20260906.0
         ],
         "severity": "warning",
         "source": "_validate_cfg_port_inside_pec"
@@ -42,6 +44,7 @@
           30.0,
           996.0,
           3.32,
+          20260906.0,
           8.0,
           -10.0,
           50.0,
