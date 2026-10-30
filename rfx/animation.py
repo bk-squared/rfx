@@ -221,7 +221,7 @@ def save_field_animation(
         try:
             from matplotlib.animation import FFMpegWriter
             writer = FFMpegWriter(fps=fps)
-        except (ImportError, RuntimeError):
+        except ImportError:
             # ffmpeg not available — fall back to GIF
             filename = filename[:-4] + ".gif"
             writer = PillowWriter(fps=fps)

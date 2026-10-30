@@ -69,6 +69,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
+from rfx.core.jax_utils import is_tracer
 from rfx.grid import C0
 
 from rfx.preflight._common import (
@@ -191,12 +192,10 @@ def _validate_ntff_inverse_design(
     # ran and produced corrupted directivity. The two-tier check below
     # warns mildly in [λ/4, λ/2) (results may degrade) and strongly in
     # < λ/4 (directivity / pattern likely corrupted).
-    if freqs is None:
-        return
-    try:
-        f_max = float(jnp.max(jnp.asarray(freqs)))
-    except Exception:
+    if freqs is None or is_tracer(freqs) or jnp.asarray(freqs).size == 0:
         f_max = float(self._freq_max)
+    else:
+        f_max = float(jnp.max(jnp.asarray(freqs)))
     lam_min = C0 / max(f_max, 1.0)
     gap_thresh = lam_min / 4.0
     huygens_thresh = lam_min / 2.0

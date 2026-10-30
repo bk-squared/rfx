@@ -127,6 +127,7 @@ class CellsPerWavelength:
     max_cell_m: float
     freq_hz: float
     max_eps_mu: float | None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -284,7 +285,8 @@ def _build_record(sim, ctx, *, compact=False):
                         mask = ctx.rasterize(shape)
                 else:
                     mask = ctx.rasterize(shape)
-            except Exception as exc:
+            except (TimeoutError,): raise
+            except Exception as exc:  # noqa: BLE001 - recorded in mask_error
                 mask = None
                 mask_error = f"{type(exc).__name__}: {exc}"
         axes = []

@@ -531,7 +531,8 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
             # the only driven one; that is the mode this advisory speaks for.
             cfg = built if hasattr(built, "f_cutoff") else (
                 built[0] if built else None)
-        except Exception as exc:  # noqa: BLE001 - preflight never crashes
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in build_error
             skipped = "error"
             build_error = f"{type(exc).__name__}: {exc}"
 

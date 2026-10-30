@@ -356,7 +356,8 @@ def fidelity_report(sim, print_report: bool = True):
                         cls, message = geometry.mask_error.split(": ", 1)
                         raise getattr(builtins, cls, ValueError)(message)
                     nb_mask = _entity_mask(entry, sim, grid, nonuniform)
-                except Exception as exc:
+                except (TimeoutError,): raise
+                except Exception as exc:  # noqa: BLE001 - recorded in findings.exception / findings.detail
                     pec_unrasterized.append((i, name, type(exc).__name__))
                     nb_item["findings"].append(dict(
                         kind="rasterization-failed",
