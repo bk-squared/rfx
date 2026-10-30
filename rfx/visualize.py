@@ -1273,6 +1273,8 @@ def visualize_structure(sim, *, include_cpml: bool = True,
     fig = go.Figure()
 
     for entry in sim._geometry:
+        if not hasattr(entry.shape, "bounding_box"):
+            continue
         try:
             c1, c2 = entry.shape.bounding_box()
         except NotImplementedError:

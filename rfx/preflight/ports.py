@@ -672,6 +672,7 @@ def _wire_port_cell_centers(self, pe):
     cannot be rasterized (diagnostics must not crash a run).
     """
     try:
+        from rfx.core.jax_utils import is_tracer
         from rfx.nonuniform import NonUniformGrid
         from rfx.geometry.rasterize_grid import (
             coords_from_nonuniform_grid, coords_from_uniform_grid,
@@ -683,7 +684,7 @@ def _wire_port_cell_centers(self, pe):
             coords = coords_from_nonuniform_grid(grid)
         else:
             coords = coords_from_uniform_grid(grid)
-        if not cells:
+        if not cells or any(is_tracer(line) for line in (coords.x, coords.y, coords.z)):
             return None
         nodes = [np.asarray(line, dtype=float)
                  for line in (coords.x, coords.y, coords.z)]

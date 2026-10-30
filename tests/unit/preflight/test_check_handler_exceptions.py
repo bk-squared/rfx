@@ -180,6 +180,8 @@ def _case(name, monkeypatch, fail):
 @pytest.mark.parametrize("name,expected,recorded", CASES, ids=[row[0] for row in CASES])
 @pytest.mark.parametrize("failure", ["expected", "unexpected", "signature", "timeout"])
 def test_check_exception_policy(monkeypatch, name, expected, recorded, failure):
+    # "signature" injects plain TypeError for a broken internal call, not
+    # TracerArrayConversionError: supported traced inputs are checked below.
     error = {"expected": expected, "unexpected": RuntimeError, "signature": TypeError, "timeout": TimeoutError}[failure]
     reached = []
 
@@ -210,3 +212,69 @@ def test_check_exception_policy(monkeypatch, name, expected, recorded, failure):
             if name == "adi":
                 assert not seen
     assert reached, f"{name}: injected callee was not reached"
+
+
+@pytest.mark.parametrize("entry", ["preflight", "forward"])
+def test_traced_wire_port_public_entries(entry):
+    """A mesh design variable must survive the default preflight path."""
+    import jax
+    import jax.numpy as jnp
+    from tests.unit.autodiff.test_wire_port_on_traced_mesh import _board, DX
+
+    def traced(delta):
+        sim = _board(delta)
+        sim.add_probe((12 * DX, 10 * DX, 9 * DX), "ez")
+        if entry == "preflight":
+            sim.preflight()
+            return delta
+        result = sim.forward(n_steps=4)
+        return jnp.sum(result.time_series ** 2)
+
+    assert jax.make_jaxpr(traced)(jnp.float32(0.1 * DX)).jaxpr.eqns
+
+
+class ProtocolOnlyShape:
+    """The Shape protocol does not require a bounding box."""
+
+    def mask_on_coords(self, x, y, z):
+        return np.zeros((len(x), len(y), len(z)), dtype=bool)
+
+    def mask(self, grid):
+        return np.zeros(grid.shape, dtype=bool)
+
+
+def _protocol_shape_sim(include_protocol_shape=True):
+    sim = Simulation(freq_max=10e9, domain=(.03, .012, .006),
+                     dx=.0005, boundary="cpml")
+    sim.add_material("sub", eps_r=3.38)
+    if include_protocol_shape:
+        sim.add(ProtocolOnlyShape(), material="sub")
+    sim.add(Box((0, 0, 0), (.03, .012, .001)), material="sub")
+    return sim
+
+
+def test_protocol_only_shape_add_msl_port():
+    sim = _protocol_shape_sim()
+    control = _protocol_shape_sim(include_protocol_shape=False)
+    for board in (sim, control):
+        board.add_msl_port((.005, .006, 0), width=.002, height=.001)
+    assert len(sim._msl_ports) == 1
+    assert sim._msl_auto_probe_lengths == control._msl_auto_probe_lengths
+    assert sim._msl_auto_probe_spacing == control._msl_auto_probe_spacing
+    assert sim._msl_auto_offset_min == control._msl_auto_offset_min
+
+
+def test_protocol_only_shape_visualize_structure(monkeypatch):
+    import rfx.visualize as visualize
+
+    traces = []
+    fig = NS(data=traces, add_trace=traces.append, update_layout=lambda **kw: None)
+    monkeypatch.setattr(visualize, "_plotly", lambda: NS(Figure=lambda: fig, Mesh3d=NS))
+    result = visualize.visualize_structure(
+        _protocol_shape_sim(), include_sources=False, include_ntff=False,
+        include_cpml=False,
+    )
+    assert result is fig
+    assert len(result.data) == 1
+    assert result.data[0].name == "sub"
+    assert result.data[0].x == [0., 30., 30., 0., 0., 30., 30., 0.]
