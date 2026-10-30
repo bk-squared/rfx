@@ -225,11 +225,11 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
-### On macOS CPU, the compiled graded time step can differ under a user `jax.jit`
+### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
 
 Tracker: #2241
 
-On Linux CPU, `run()` wrapped in `jax.jit` on a graded mesh is bit-identical to plain `run()`. On macOS CPU only, the compiled graded time step itself can still differ under a user `jax.jit`, with every input to the time-step loop identical (recorded; a fix is planned for 2.1).
+`run()` with a lumped port, called inside a user `jax.jit`, does not reproduce plain `run()` on a uniform mesh: on Linux CPU a probe trace differs by up to about 5e2 float32 ULP of its peak per step (1.1e-3 of the peak summed over the record), and the port current by up to 16 ULP. On a graded mesh the same call raises `ConcretizationTypeError`. Without a lumped port, on the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU; on macOS CPU the compiled graded time step itself can still differ under a user `jax.jit`, with every input to the time-step loop identical. Call `forward()` inside `jax.jit` instead: with lumped ports it reproduces the plain call within 9 float32 ULP of the record peak on both meshes (`tests/unit/autodiff/test_forward_jit_contract.py`). Or call `run()` without an enclosing `jax.jit`. A fix is planned for 2.1.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
