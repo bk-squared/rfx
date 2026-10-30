@@ -30,6 +30,11 @@ CENTRAL_PATHS = (
     "rfx/model/",
 )
 CENTRAL_TEST_DIRS = ("tests/unit/runners/", "tests/unit/autodiff/")
+MODEL_PATHS = (
+    "rfx/geometry/", "rfx/model/", "rfx/materials/", "rfx/boundaries/",
+    "rfx/mesh_edges.py", "rfx/grid.py", "rfx/_grid_metric.py",
+    "rfx/realized_geometry.py", "rfx/realized_placement.py", "rfx/_realized.py",
+)
 CONTRACT_DIR = "tests/contracts/"
 PACKAGE_TEST_ROOT = "tests/unit/"
 # Locks and closed-form oracles pin numbers a user receives; any rfx/ change runs them.
@@ -74,6 +79,37 @@ def directly_imports(source: str, modules: set[str], filename: str = "<test>") -
     return False
 
 
+def model_building_tests(test_sources: Mapping[str, str]) -> set[str]:
+    modules = {name: path for path in test_sources
+               if (name := test_module_name(path)) is not None}
+    importers = defaultdict(set)
+    building = set()
+    for name, path in modules.items():
+        try:
+            tree = ast.parse(test_sources[path], filename=path)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if ((isinstance(node, ast.Name) and node.id == "Simulation")
+                    or (isinstance(node, ast.Attribute) and node.attr == "Simulation")):
+                building.add(name)
+            imported = set()
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module)
+                imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+            for dependency in imported & modules.keys():
+                importers[dependency].add(name)
+    pending = list(building)
+    while pending:
+        for name in importers[pending.pop()] - building:
+            building.add(name)
+            pending.append(name)
+    return {modules[name] for name in building if is_test_file(modules[name])
+            and not modules[name].startswith(CONTRACT_DIR)}
+
+
 @dataclass(frozen=True)
 class Selection:
     files: tuple[str, ...]
@@ -90,6 +126,9 @@ class Selection:
     always_on_seconds: float
     test_module_files: int
     test_module_seconds: float
+    model_changed: bool
+    model_building_files: int
+    model_building_seconds: float
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
@@ -108,6 +147,8 @@ class Selection:
             f"recorded {self.always_on_seconds:.6f} s",
             f"test-module importers added: {self.test_module_files} files, "
             f"recorded {self.test_module_seconds:.6f} s",
+            *([f"model-building tests added: {self.model_building_files} files, "
+               f"recorded {self.model_building_seconds:.6f} s"] if self.model_changed else []),
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"source-scan tests that run: {self.source_scan_run_count} tests, "
@@ -185,6 +226,12 @@ def select_tests(
     candidates.update(always_on_added)
     test_module_added = test_importers - candidates
     candidates.update(test_module_added)
+    model_changed = source_changed and any(
+        path.startswith(prefix) if prefix.endswith("/") else path == prefix
+        for path in changed for prefix in MODEL_PATHS
+    )
+    model_added = model_building_tests(test_sources) - candidates if model_changed else set()
+    candidates.update(model_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
     totals: dict[str, float] = defaultdict(float)
     for nodeid, seconds in durations.items():
@@ -197,6 +244,7 @@ def select_tests(
     package_added &= selected
     always_on_added &= selected
     test_module_added &= selected
+    model_added &= selected
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
@@ -245,6 +293,7 @@ def select_tests(
         len(package_added), sum(totals[path] for path in sorted(package_added)),
         len(always_on_added), sum(totals[path] for path in sorted(always_on_added)),
         len(test_module_added), sum(totals[path] for path in sorted(test_module_added)),
+        model_changed, len(model_added), sum(totals[path] for path in sorted(model_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),
@@ -267,7 +316,9 @@ def changed_paths(base: str, head: str | None, root: Path) -> list[str]:
 
 def read_test_sources(root: Path) -> dict[str, str]:
     sources = {}
-    for path in sorted((root / "tests").rglob("test_*.py")):
+    for path in sorted((root / "tests").rglob("*.py")):
+        if path.name == "conftest.py":
+            continue
         with tokenize.open(path) as handle:
             sources[path.relative_to(root).as_posix()] = handle.read()
     return sources

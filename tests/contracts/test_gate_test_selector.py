@@ -71,6 +71,95 @@ def test_test_module_parent_import_matches_alias():
     ) is True
 
 
+def test_model_change_selects_transitive_model_builders():
+    sources = {
+        "tests/unit/sparams/test_x.py": "import tests.unit.autodiff.test_helper",
+        "tests/unit/autodiff/test_helper.py": "import tests._probe\nSimulation()",
+        "tests/_probe.py": "from rfx.api import Simulation\nSimulation()",
+        "tests/unit/sparams/test_y.py": "",
+    }
+    result = selector.select_tests(["rfx/geometry/rasterize_grid.py"], sources, {
+        "tests/unit/sparams/test_x.py::test_x": 3,
+        "tests/unit/autodiff/test_helper.py::test_helper": 4,
+    })
+    assert "tests/unit/sparams/test_x.py" in result.files
+    assert "tests/unit/autodiff/test_helper.py" in result.files
+    assert "tests/unit/sparams/test_y.py" not in result.files
+    assert "tests/_probe.py" not in result.files
+    assert result.model_building_files == 2
+    assert "model-building tests added: 2 files, recorded 7.000000 s" in result.summary()
+    result = selector.select_tests(["rfx/sparams/foo.py"], sources, {})
+    assert result.files == ("tests/unit/sparams/test_x.py", "tests/unit/sparams/test_y.py")
+    assert result.package_directory_files == 2
+    assert result.model_building_files == 0
+    assert "model-building tests added:" not in result.summary()
+
+
+@pytest.mark.parametrize("source", [
+    "import tests._bridge as helper", "from tests import _bridge as helper",
+    "from tests._bridge import build", "from tests._bridge import *",
+])
+def test_model_builders_follow_helper_cycles_and_absolute_import_forms(source):
+    sources = {
+        "tests/unit/other/test_x.py": source,
+        "tests/_bridge.py": "from tests._probe import build",
+        "tests/_probe.py": "import tests._bridge\napi.Simulation()",
+        "tests/unit/other/test_relative.py": "from ._bridge import build",
+        "tests/unit/other/test_text.py": 'text = "Simulation()"',
+        "tests/unit/other/test_broken_helper.py": "import tests._broken",
+        "tests/_broken.py": "Simulation()\ndef broken(",
+        "tests/unit/other/test_conftest.py": "import tests.conftest",
+        "tests/conftest.py": "Simulation()",
+        "tests/contracts/test_model.py": "Simulation()",
+    }
+    result = selector.select_tests(["rfx/grid.py"], sources, {})
+    assert result.files == ("tests/unit/other/test_x.py",)
+    assert result.model_building_files == 1
+
+
+@pytest.mark.parametrize("changed", selector.MODEL_PATHS)
+def test_model_paths_respect_prefix_or_exact_match(changed):
+    sources = {"tests/unit/other/test_x.py": "Simulation()"}
+    path = changed + "nested/x.py" if changed.endswith("/") else changed
+    result = selector.select_tests([path], sources, {})
+    assert result.files == tuple(sources)
+    assert result.model_building_files == 1
+    unrelated = changed.rstrip("/") + "_other/x.py"
+    assert selector.select_tests([unrelated], sources, {}).model_building_files == 0
+
+
+def test_model_builders_keep_budget_and_source_scan_partial_additions():
+    sources = {
+        "tests/unit/other/test_heavy.py": "Simulation()",
+        "tests/unit/other/test_boundary.py": "Simulation()",
+        "tests/unit/other/test_scan.py": 'import pytest\nSimulation()\n'
+            '@pytest.mark.source_scan\ndef test_scan(): pass\ndef test_plain(): pass',
+    }
+    durations = {
+        "tests/unit/other/test_heavy.py::test_x": 401,
+        "tests/unit/other/test_boundary.py::test_x": 400,
+        "tests/unit/other/test_scan.py::test_scan": 3,
+        "tests/unit/other/test_scan.py::test_plain": 500,
+    }
+    result = selector.select_tests(["rfx/geometry/x.py"], sources, durations)
+    assert result.files == ("tests/unit/other/test_boundary.py",
+                            "tests/unit/other/test_scan.py::test_scan")
+    assert result.model_building_files == 1
+    assert result.model_building_seconds == 400
+    assert result.selected_seconds == 403
+    assert result.excluded == {"tests/unit/other/test_heavy.py": 401}
+    assert result.partly_added == {"tests/unit/other/test_scan.py": 503}
+
+
+def test_reader_includes_helpers_but_excludes_conftest(tmp_path):
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    for name in ("test_x.py", "_probe.py", "__init__.py", "conftest.py", "notes.txt"):
+        (tests / name).write_text("Simulation()")
+    sources = selector.read_test_sources(tmp_path)
+    assert set(sources) == {"tests/test_x.py", "tests/_probe.py", "tests/__init__.py"}
+
+
 def test_edited_test_module_selects_three_replay_importers():
     source = "from tests.crossval.msl_notch_filter import test_msl_notch_filter as case"
     result = selector.select_tests(["tests/crossval/msl_notch_filter/test_msl_notch_filter.py"], {
