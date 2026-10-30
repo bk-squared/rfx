@@ -92,12 +92,54 @@ def test_value_and_gradient_bits_against_original_builder(kind, checkpoint, monk
     ("occupancy", 768),     # 4 B * 4^3 write cells * 3.
 ])
 @pytest.mark.parametrize("checkpoint,segments", [(False, None), (False, 2), (True, 2)])
-def test_estimate_write_window(design, step_bytes, checkpoint, segments):
-    estimate = _scene("lossless").estimate_ad_memory(
+@pytest.mark.parametrize("nfreq", [0, 2, 5])
+def test_estimate_write_window(design, step_bytes, checkpoint, segments, nfreq):
+    sim = _scene("lossless")
+    if nfreq:
+        sim.add_dft_plane_probe(axis="x", coordinate=.020, component="ez",
+                                freqs=jnp.linspace(6e9, 9e9, nfreq), name="out",
+                                region=(5, 7, 5, 8))
+    estimate = sim.estimate_ad_memory(
         STEPS, design_box=BOX, design=design, checkpoint=checkpoint,
         checkpoint_segments=segments)
     assert estimate.tape_window_cells == 64
-    assert estimate.tape_step_bytes == step_bytes
+    # One complex64 phase per frequency, independent of the 2x3 plane area.
+    assert estimate.tape_step_bytes == step_bytes + nfreq * 8
+
+
+@pytest.mark.parametrize("feature,components", [("flux", 4), ("ntff", 4), ("combined", 9)])
+@pytest.mark.parametrize("nfreq", [2, 5])
+def test_observation_residuals_match_box_estimate(feature, components, nfreq, capsys):
+    sim = _scene("lossless")
+    freqs = jnp.linspace(6e9, 9e9, nfreq)
+    if feature in ("flux", "combined"):
+        sim.add_flux_monitor(axis="x", coordinate=.020, freqs=freqs, name="flux")
+    if feature in ("ntff", "combined"):
+        sim.add_ntff_box((.006, .006, .006), (.018, .014, .012), freqs=freqs)
+    if feature == "combined":
+        sim.add_dft_plane_probe(axis="x", coordinate=.020, component="ez",
+                                freqs=freqs, name="out", region=(5, 7, 5, 8))
+
+    def loss(eps):
+        result = sim.forward(design_box=BOX, design_eps_override=eps,
+                             n_steps=STEPS, checkpoint=False, skip_preflight=True)
+        leaves = []
+        if result.ntff_data is not None:
+            leaves.extend(jax.tree.leaves(result.ntff_data))
+        if feature in ("flux", "combined"):
+            monitor = result.flux_monitors["flux"]
+            leaves.extend(getattr(monitor, name) for name in
+                          ("e1_dft", "e2_dft", "h1_dft", "h2_dft"))
+        if feature == "combined":
+            leaves.append(result.dft_planes["out"].accumulator)
+        return sum(jnp.sum(jnp.abs(leaf) ** 2) for leaf in leaves)
+
+    print_saved_residuals(loss, jnp.full((3, 3, 3), 2., jnp.float32))
+    residuals = capsys.readouterr().out
+    phases = re.findall(r"c64\[80," + str(nfreq) + r",1,1(,4)?\]", residuals)
+    assert sum(4 if component else 1 for component in phases) == components, residuals
+    estimate = sim.estimate_ad_memory(STEPS, design_box=BOX, checkpoint=False)
+    assert estimate.tape_step_bytes == 6 * 4**3 * 4 + components * nfreq * 8
 
 
 def test_unsegmented_checkpoint_bound_is_unchanged():

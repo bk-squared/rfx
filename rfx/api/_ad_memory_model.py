@@ -17,6 +17,23 @@ AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 AD_MEMORY_WORKING_CARRIES = 6.5
 
 
+def box_observation_residual_bytes(excluded):
+    """Read streaming observation phase sizes from the realized carry leaves.
+
+    print_saved_residuals on a box saves (nf, 1, 1) per plane/flux
+    component, not its spatial accumulator. NTFF shares one (nf, 1, 1, 4)
+    phase across all faces; neither face sums nor Kahan compensation are
+    per-step residuals. Frequency count and dtype come from read_carry.
+    """
+    size = 0
+    for leaf in excluded:
+        if leaf["name"].startswith(("dft_planes[", "flux_monitors[")):
+            size += leaf["bytes"] // math.prod(leaf["shape"][1:])
+        elif leaf["name"] == "ntff.x_lo":
+            size += leaf["bytes"] // math.prod(leaf["shape"][1:-1])
+    return size
+
+
 def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmented,
                     distributed=False, n_steps=1, checkpoint_every=None, checkpoint_segments=None, n_warmup=0):
     """Resolve the shared window, then read the requested forward carry."""
@@ -69,6 +86,15 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         # The rematted box's no-segment mechanism is not identified: bound
         # it by the carry plus six window arrays, rather than claiming a fit.
         tape = carry + 6 * window * 4
+    elif window is not None:
+        tape += box_observation_residual_bytes(excluded)
+        if not resident:
+            # A stop_gradient incident line has no per-step AD residual,
+            # but its six forward arrays remain resident. Their realized
+            # length grows with n_steps, so omitting them also biases a
+            # compiled-memory slope. Read their bytes, never fit a slope.
+            # A chosen face record already replaces this resident line.
+            resident += carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 replay_table_bytes=sum(size for _, size in replay_tables),
                 replay_table_bytes_by_kind=tuple(replay_tables),
