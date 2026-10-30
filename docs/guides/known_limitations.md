@@ -392,6 +392,17 @@ this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_E
 Settled in #726 (closed): the guard and preflight used to contradict each other
 about this, and a measurement decided it.
 
+### A microstrip port's S-parameters change with where its probes sample the line, also on a straight matched line.
+
+Tracker: #2270
+
+On a straight matched microstrip line with no discontinuity, the two-port `|S21|` from `compute_msl_s_matrix` rises up to 0.1 dB above unity (0 dB), which a passive line cannot do.
+Moving the probes to 5, 12 or 20 mm from the port moves `|S21|` by up to about 0.18 dB over 1–12 GHz (at most 0.08 dB below 10 GHz) and `|S11|` by up to 0.045.
+A 0.1 mm cell gives the same spread as a 0.2 mm cell, so a finer mesh does not remove it.
+This is inside the 2 dB magnitude bar. The cause is not known.
+Measured on a synthetic straight line (εr 2.2, substrate 0.80 mm, strip 2.43 mm, 60 mm long) on uniform 0.2 and 0.1 mm cells, three probe placements each (record kept with the project).
+Until it is fixed, read an `|S21|` within about 0.2 dB of 0 dB on a microstrip port as unity, and do not judge a sub-0.2 dB loss or gain from it.
+
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
 Tracker: #1373
