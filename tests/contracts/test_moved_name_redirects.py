@@ -13,6 +13,20 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 # Literal contract: do not derive expectations from production redirect tables.
 MOVED = [
+    ('rfx.materials', 'MaterialArrays', 'rfx.core.yee',
+     'rfx.materials.MaterialArrays moved to rfx.core.yee.MaterialArrays; import it from there. The old path will be removed in rfx 3.0.'),
+    ('rfx.materials', 'init_materials', 'rfx.core.yee',
+     'rfx.materials.init_materials moved to rfx.core.yee.init_materials; import it from there. The old path will be removed in rfx 3.0.'),
+    ('rfx.materials', 'DebyePole', 'rfx.materials.debye',
+     'rfx.materials.DebyePole moved to rfx.materials.debye.DebyePole; import it from there. The old path will be removed in rfx 3.0.'),
+    ('rfx.materials', 'DebyeCoeffs', 'rfx.materials.debye',
+     'rfx.materials.DebyeCoeffs moved to rfx.materials.debye.DebyeCoeffs; import it from there. The old path will be removed in rfx 3.0.'),
+    ('rfx.materials', 'DebyeState', 'rfx.materials.debye',
+     'rfx.materials.DebyeState moved to rfx.materials.debye.DebyeState; import it from there. The old path will be removed in rfx 3.0.'),
+    ('rfx.materials', 'init_debye', 'rfx.materials.debye',
+     'rfx.materials.init_debye moved to rfx.materials.debye.init_debye; import it from there. The old path will be removed in rfx 3.0.'),
+    ('rfx.materials', 'update_e_debye', 'rfx.stepping.poles',
+     'rfx.materials.update_e_debye moved to rfx.stepping.poles.update_e_debye; import it from there. The old path will be removed in rfx 3.0.'),
     ('rfx.adjoint', '_plane_slice', 'rfx.stepping.adjoint_scan',
      'rfx.adjoint._plane_slice moved to rfx.stepping.adjoint_scan._plane_slice; import it from there. The old path will be removed in rfx 3.0.'),
     ('rfx.adjoint', 'design_adjoint_scan', 'rfx.stepping.adjoint_scan',
