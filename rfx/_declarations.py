@@ -5,6 +5,7 @@ than just their addresses. Concrete mesh profiles are small mutable arrays, so
 keys snapshot their contents. Traced inputs are retained without concretization.
 """
 from collections.abc import Mapping
+from copy import copy
 
 import jax
 import numpy as np
@@ -32,7 +33,6 @@ DECLARATIONS = (
     ("_freq_max", "value"),
     ("_boundary", "value"),
     ("_boundary_spec", "value"),
-    ("_boundary_model", "value"),
     ("_boundary_explicit", "value"),
     ("_boundary_scalar_spec", "value"),
     ("_pec_faces", "value"),
@@ -67,6 +67,8 @@ NOT_DECLARATIONS = (
     ("_realized_geometry_record", "cache"),
     ("_coax_geometry", "cache"),
     ("_mesh_resolution", "cache"),
+    ("_msl_default_memo", "cache"),
+    ("_boundary_model", "derived; its inputs are keyed"),
     ("_frozen_mesh", "committed mesh snapshot; resolved mesh declarations key it"),
     ("_amplitude_kind_warned", "run state: source amplitude warning already emitted"),
     ("_boundary_default_warned", "run state: implicit waveguide boundary warning already emitted"),
@@ -132,3 +134,30 @@ def declaration_key(sim):
             term = _value_key(value)
         key.append((attr, term))
     return tuple(key)
+
+
+def release_declaration_caches(sim):
+    """Release declaration-derived products before a new declaration or solve."""
+    for attr, reason in NOT_DECLARATIONS:
+        if reason == "cache":
+            setattr(sim, attr, None)
+
+
+def declaration_variant(sim, **replacements):
+    """Copy a declaration with private containers and no inherited caches.
+
+    Declaration entries and array inputs remain shared; callers replacing
+    mutable value-form state must supply their own container.
+    """
+    unknown = replacements.keys() - dict(DECLARATIONS).keys()
+    if unknown:
+        raise TypeError(f"Unknown DECLARATIONS replacement(s): {', '.join(sorted(unknown))}")
+    variant = copy(sim)
+    for attr, form in DECLARATIONS:
+        if form in {"entries", "mapping"}:
+            value = getattr(sim, attr, None)
+            setattr(variant, attr, list(value or ()) if form == "entries" else dict(value or {}))
+    for attr, value in replacements.items():
+        setattr(variant, attr, value)
+    release_declaration_caches(variant)
+    return variant

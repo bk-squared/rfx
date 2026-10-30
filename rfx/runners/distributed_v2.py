@@ -30,6 +30,7 @@ retired pmap version so callers retain the same entry-point arguments.
 
 from __future__ import annotations
 
+from rfx._declarations import release_declaration_caches
 from rfx.errors import RfxUnsupported
 
 from functools import partial
@@ -445,8 +446,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             "distributed_v2 is a uniform-grid runner; use sim.run(devices=...) "
             "for a non-uniform grid (shared distributed NU staging).")
     # Drop any standalone diagnostic arrays before allocating solve products.
-    sim._pf_campaign_ctx = None
-    sim._realized_geometry_record = None
+    release_declaration_caches(sim)
     from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
