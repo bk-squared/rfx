@@ -1,0 +1,4 @@
+### Fixed — `register_msl_wave_probes` rejects a direction other than "+x"/"-x" with ValueError (#PR)
+
+- The check was an `assert`, so under `python -O` a direction such as "-y" silently placed the probes with the "-x"
+  sign. It now raises `ValueError` naming the allowed directions in every interpreter mode.
