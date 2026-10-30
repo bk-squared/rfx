@@ -223,11 +223,11 @@ def _check_optional_extras(report: _Report) -> None:
                 critical=False,
             )
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+        except Exception:  # noqa: BLE001 - recorded in report.lines
             report.record(
                 INFO,
                 f"optional {dist_name}",
-                f"unavailable ({purpose}): {type(exc).__name__}: {exc} — install only if needed",
+                f"not installed ({purpose}) — install only if needed",
                 critical=False,
             )
 

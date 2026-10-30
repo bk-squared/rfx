@@ -62,8 +62,12 @@ def test_ntff_concrete_frequencies_use_their_maximum():
 
 
 def test_ntff_malformed_concrete_frequencies_raise():
-    with pytest.raises((TypeError, ValueError)):
-        _ntff_warnings(["malformed"])
+    # Conversion and size inspection succeed; reading the maximum as a real
+    # frequency fails. A fallback around float(jnp.max(...)) must not hide it.
+    freqs = jnp.asarray([5e9 + 1j])
+    assert freqs.size == 1
+    with pytest.raises(TypeError):
+        _ntff_warnings(freqs)
 
 
 MESSAGE = "injected recorded-handler failure"
@@ -286,7 +290,7 @@ def test_g5_failure_is_recorded(case, monkeypatch):
         assert result == STATUS_FAILED
     elif case == "optional_deps":
         assert len(result) == 4
-        assert all(f"RuntimeError: {MESSAGE}" in line for line in result)
+        assert all("not installed (" in line for line in result)
     elif case == "invariance":
         assert "RuntimeError: invariance unavailable" in result
     else:
@@ -300,13 +304,10 @@ def test_g5_timeout_propagates(case, monkeypatch):
         call()
 
 
-@pytest.mark.parametrize("case", ["scalar", "laplace", "compile_switch", "staging", "readable"])
+@pytest.mark.parametrize("case", ["laplace", "compile_switch", "staging", "readable"])
 def test_narrowed_handlers_propagate_runtime_error(case, monkeypatch):
     fail = _raising(RuntimeError)
-    if case == "scalar":
-        from rfx.artifacts import _scalar
-        call = lambda: _scalar(SimpleNamespace(item=fail))
-    elif case == "staging":
+    if case == "staging":
         from rfx.stepping.rank import _staged_by_enclosing_program
         monkeypatch.setattr(jax.lax, "add", fail)
         call = _staged_by_enclosing_program
@@ -331,11 +332,27 @@ def test_narrowed_handlers_propagate_runtime_error(case, monkeypatch):
         call()
 
 
-@pytest.mark.parametrize("error", [TypeError, ValueError, AttributeError])
+@pytest.mark.parametrize("error", [TypeError, ValueError, AttributeError, NotImplementedError, RuntimeError])
 def test_scalar_conversion_known_failure_preserves_value(error):
     from rfx.artifacts import _scalar
     value = SimpleNamespace(item=_raising(error))
     assert _scalar(value) is value
+
+
+def test_scalar_type_dispatch_propagates_timeout():
+    from rfx.artifacts import _scalar
+    with pytest.raises(TimeoutError, match=MESSAGE):
+        _scalar(SimpleNamespace(item=_raising(TimeoutError)))
+
+
+def test_git_undecodable_output_preserves_default(monkeypatch):
+    from rfx import artifacts
+
+    def undecodable(*args, **kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(artifacts.subprocess, "run", undecodable)
+    assert artifacts._git(["status", "--porcelain"], cwd=Path.cwd()) is None
 
 
 def test_staging_probe_missing_api_is_conservative(monkeypatch):
