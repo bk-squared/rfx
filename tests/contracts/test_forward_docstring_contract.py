@@ -78,7 +78,7 @@ def test_all_is_curated_subset():
     names = rfx.__all__
     assert isinstance(names, list)
     assert len(names) == len(set(names)), "rfx.__all__ contains duplicates"
-    # The curated surface has 212 names; additions require a deliberate cap edit.
+    # The curated surface has 218 names; additions require a deliberate cap edit.
     assert "MSLProbeClearance" in names
     # Re-specced 217 -> 218 for `subtract_flux_monitors` (#980): ONE name, the
     # two-run reference subtraction that every R/T measurement needs. It was

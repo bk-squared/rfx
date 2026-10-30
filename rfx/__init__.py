@@ -252,7 +252,7 @@ from rfx.convergence import (
 # Curated public surface (W5.5).
 #
 # ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
-# references use it. It contains 212 names, a strict subset of the flat
+# references use it. It contains 218 names, a strict subset of the flat
 # symbols imported above. Per-step kernel internals,
 # low-level bookkeeping/state classes, and dump/replay round-trip helpers are
 # omitted from the star-import surface.
