@@ -199,7 +199,7 @@ def _run(sim, graded, observable, design, n_steps, eps):
     r = sim.forward(n_steps=n_steps, skip_preflight=True, checkpoint=False, **kw)
     summed = None
     if observable == "far field":
-        from rfx.farfield import compute_far_field
+        from rfx.measurement.farfield import compute_far_field
         ff = compute_far_field(r.ntff_data, r.ntff_box, _grid(sim, graded),
                                THETA, PHI)
         summed = jnp.stack([ff.E_theta, ff.E_phi])
@@ -426,7 +426,7 @@ def test_the_fallback_probe_record_equals_the_plain_call(fallback_solve):
 
 def test_recorded_scan_outside_a_compile_time_region_is_the_plain_scan():
     """No region, no anchor: the helper is ``jax.lax.scan``, eager and traced."""
-    from rfx.core.jax_utils import recorded_scan
+    from rfx.stepping.scan import recorded_scan
 
     def body(c, x):
         return c * 0.5 + x, c
@@ -444,7 +444,8 @@ def test_recorded_scan_outside_a_compile_time_region_is_the_plain_scan():
 def _toy_region_scan(xs):
     """A scan with a closed-over array, run through ``recorded_scan`` inside
     the region, as a forward entry does under an outer trace."""
-    from rfx.core.jax_utils import declaration_setup, recorded_scan
+    from rfx.core.jax_utils import declaration_setup
+    from rfx.stepping.scan import recorded_scan
 
     weights = jnp.linspace(0.5, 1.5, 7, dtype=jnp.float32)
 

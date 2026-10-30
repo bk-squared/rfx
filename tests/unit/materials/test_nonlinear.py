@@ -7,7 +7,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import init_state, init_materials, EPS_0
-from rfx.materials.nonlinear import KerrMaterial, apply_kerr_update, apply_kerr_ade
+from rfx.materials.nonlinear import KerrMaterial, apply_kerr_update
+from rfx.stepping.kerr import apply_kerr_ade
 
 pytestmark = pytest.mark.gpu
 
@@ -154,7 +155,7 @@ def test_kerr_ade_differentiable():
 def test_kerr_reactive_conserves_energy():
     """A reactive-Kerr FDTD run stays finite and LOSSLESS — the total energy does not
     systematically drain (the pre-#437 dissipative operator would bleed it toward zero)."""
-    from rfx.core.yee import update_e, update_h
+    from rfx.stepping.yee import update_e, update_h
 
     shape = (20, 20, 20)
     materials = init_materials(shape)          # vacuum, lossless (sigma=0)

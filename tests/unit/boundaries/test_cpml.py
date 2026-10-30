@@ -40,7 +40,8 @@ import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0, cells_spanning
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse

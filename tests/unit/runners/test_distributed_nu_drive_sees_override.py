@@ -95,9 +95,8 @@ import pytest  # noqa: E402
 
 from rfx import Simulation  # noqa: E402
 from rfx.geometry.rasterize_grid import unpadded_high_walls  # noqa: E402
-from rfx.core.yee import (  # noqa: E402
-    FDTDState, MaterialArrays, curl_h_nu, update_e_nu,
-)
+from rfx.core.yee import FDTDState, MaterialArrays, curl_h_nu
+from rfx.stepping.yee import update_e_nu
 from rfx.geometry import Box  # noqa: E402
 from rfx.nonuniform import position_to_index  # noqa: E402
 from rfx.runners import distributed_nu as nu  # noqa: E402

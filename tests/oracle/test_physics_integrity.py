@@ -11,10 +11,8 @@ import jax.numpy as jnp
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import (
-    MaterialArrays, init_state, init_materials,
-    update_h, update_e, EPS_0, MU_0,
-)
+from rfx.core.yee import MaterialArrays, init_state, init_materials, EPS_0, MU_0
+from rfx.stepping.yee import update_h, update_e
 from rfx.boundaries.pec import apply_pec
 
 

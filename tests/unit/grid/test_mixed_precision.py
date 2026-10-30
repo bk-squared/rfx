@@ -68,7 +68,7 @@ class TestInitState:
 
 class TestYeeUpdateMixedPrecision:
     def test_update_h_preserves_dtype(self):
-        from rfx.core.yee import update_h
+        from rfx.stepping.yee import update_h
         state = init_state((10, 10, 10), field_dtype=jnp.float16)
         materials = init_materials((10, 10, 10))
         # Set a nonzero E field to get nonzero H update
@@ -79,7 +79,7 @@ class TestYeeUpdateMixedPrecision:
         assert new_state.hz.dtype == jnp.float16
 
     def test_update_e_preserves_dtype(self):
-        from rfx.core.yee import update_e
+        from rfx.stepping.yee import update_e
         state = init_state((10, 10, 10), field_dtype=jnp.float16)
         materials = init_materials((10, 10, 10))
         state = state._replace(hz=state.hz.at[5, 5, 5].set(jnp.float16(1.0)))

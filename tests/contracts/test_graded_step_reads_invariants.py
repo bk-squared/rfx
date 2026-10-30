@@ -131,7 +131,7 @@ def test_t3_step_end_field_write_is_carried(monkeypatch):
 def test_t3_after_h_write_is_read_by_e_update(monkeypatch):
     _live_check()
     ctx, setup = _setup(monkeypatch, [.001, .0008, .0012, .001, .001])
-    from rfx.core.yee import update_e_nu
+    from rfx.stepping.yee import update_e_nu
     from rfx.boundaries.pec import apply_pec_faces
 
     def write(frame):

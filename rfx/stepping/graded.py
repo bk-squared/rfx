@@ -199,7 +199,7 @@ def make_graded_step(
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
         if ctx.use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_h
+            from rfx.stepping.tfsf import apply_tfsf_h
             frame.st = apply_tfsf_h(frame.st, ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
         if ctx.use_waveguide_ports:
             from rfx.stepping.waveguide_source import apply_waveguide_port_h as _apply_wg_h_nu
@@ -264,7 +264,7 @@ def make_graded_step(
 
     def e_boundary(frame: GradedFrame):
         if ctx.use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_e
+            from rfx.stepping.tfsf import apply_tfsf_e
             frame.st = apply_tfsf_e(frame.st, ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt)
         if ctx.use_waveguide_ports:
             from rfx.stepping.waveguide_source import apply_waveguide_port_e as _apply_wg_e_nu

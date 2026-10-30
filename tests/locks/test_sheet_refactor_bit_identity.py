@@ -50,18 +50,8 @@ import pytest
 
 from tests.contracts.path_equivalence.comparison import array_peak
 
-from rfx.core.yee import (
-    MaterialArrays,
-    _diff_bwd_o,
-    _shift_bwd,
-    curl_h,
-    curl_h_nu,
-    edge_averaged_materials,
-    init_state,
-    update_e,
-    update_e_nu,
-    EPS_0,
-)
+from rfx.core.yee import MaterialArrays, _diff_bwd_o, _shift_bwd, curl_h, curl_h_nu, edge_averaged_materials, init_state, EPS_0
+from rfx.stepping.yee import update_e, update_e_nu
 from rfx.boundaries.pec import apply_pec_mask, realized_pec_edge_masks
 
 LOCK_PROVENANCE = {

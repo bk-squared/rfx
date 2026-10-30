@@ -229,8 +229,8 @@ def test_transverse_grading_keeps_the_scalar_x_line(axis):
     import jax
     import jax.numpy as jnp
     from rfx.core.yee import EPS_0, MU_0, init_state
-    from rfx.sources.tfsf import (tfsf_from_declaration, apply_tfsf_e, apply_tfsf_h,
-                                  update_tfsf_1d_h, update_tfsf_1d_e)
+    from rfx.sources.tfsf import tfsf_from_declaration, update_tfsf_1d_h, update_tfsf_1d_e
+    from rfx.stepping.tfsf import apply_tfsf_e, apply_tfsf_h
 
     def model(**kwargs):
         sim = Simulation(freq_max=10e9, domain=(.05, .008, .008), dx=_DX,

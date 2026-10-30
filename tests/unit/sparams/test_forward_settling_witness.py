@@ -151,7 +151,7 @@ def test_actual_public_forward_returns_numeric_carrier_through_outer_jit():
 
 @pytest.mark.parametrize('extent', [None, .001])
 def test_recorded_s_channels_reproduce_accumulators(extent):
-    from rfx.ringdown import plain_dft
+    from rfx.measurement.ringdown_tail import plain_dft
 
     sim = Simulation(freq_max=5e9, domain=(.006,)*3, dx=.001,
                      boundary='pec', cpml_layers=0)

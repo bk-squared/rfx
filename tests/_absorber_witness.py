@@ -10,7 +10,8 @@ import numpy as np
 
 from rfx.boundaries import cpml
 from rfx.boundaries.pec import apply_pec_faces
-from rfx.core.yee import init_materials, init_state, update_e, update_h
+from rfx.core.yee import init_materials, init_state
+from rfx.stepping.yee import update_e, update_h
 from rfx.grid import C0, Grid
 from rfx.model.materials import electric_cell_sizes
 
@@ -28,7 +29,7 @@ def _line(n_layers, kappa_max, interior, dx, transverse_phase=None,
     depths = None if face_layers is None else dict(zip((f"{axis}_lo", f"{axis}_hi"), face_layers))
     if nonuniform:
         from rfx.nonuniform import make_nonuniform_grid
-        from rfx.core.yee import update_e_nu, update_h_nu
+        from rfx.stepping.yee import update_e_nu, update_h_nu
         from rfx.boundaries.pmc import apply_pmc_faces
         grid = make_nonuniform_grid(
             domain[:2], np.full(cells[2], dx), dx,

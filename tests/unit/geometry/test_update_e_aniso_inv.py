@@ -15,14 +15,8 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import (
-    init_state,
-    init_materials,
-    update_h,
-    update_e,
-    update_e_aniso,
-    EPS_0,
-)
+from rfx.core.yee import init_state, init_materials, EPS_0
+from rfx.stepping.yee import update_h, update_e, update_e_aniso
 
 
 # -----------------------------------------------------------------------------
@@ -58,7 +52,7 @@ def test_update_e_aniso_inv_vacuum_matches_update_e():
     must produce the same field as the scalar ``update_e`` to within
     float32 ULP. Pins the bit-stable bridge: legacy callers that
     redirect through Stage 2 see no observable change in vacuum."""
-    from rfx.core.yee import update_e_aniso_inv
+    from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (16, 12, 10)
     dx = 0.001
@@ -106,7 +100,7 @@ def test_update_e_aniso_inv_dielectric_matches_update_e_aniso():
     Stage 2's update is bit/ULP equivalent to Stage 1's update. The
     only place they may differ is float arithmetic ordering — within
     a few ULP per cell, well under any physical metric."""
-    from rfx.core.yee import update_e_aniso_inv
+    from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (16, 12, 10)
     dx = 0.001
@@ -162,7 +156,7 @@ def test_update_e_aniso_inv_pec_tangential_frozen():
     claim of Stage 2 — tangential E at PEC is auto-zeroed via Ca=1,
     Cb=0, NOT via a separate apply_pec_faces / apply_conformal_pec
     pass."""
-    from rfx.core.yee import update_e_aniso_inv
+    from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (16, 12, 10)
     dx = 0.001
@@ -198,7 +192,7 @@ def test_update_e_aniso_inv_pec_tangential_with_sigma_still_frozen():
     the physics that "PEC has no loss" emerges naturally from the
     inv-eps form: σ → ∞ is *not* needed and is in fact unstable
     (see derivation §6)."""
-    from rfx.core.yee import update_e_aniso_inv
+    from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (8, 8, 8)
     dx = 0.001
@@ -237,7 +231,7 @@ def test_update_e_aniso_inv_partial_pec_perpendicular_finite():
 
     Setup: inv_eps = 0.36 (matches the WR-90 dx=1mm boundary cell from
     Stage 2 step 1) on Ey only, with vacuum Ex and Ez."""
-    from rfx.core.yee import update_e_aniso_inv
+    from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (8, 8, 8)
     dx = 0.001
@@ -267,7 +261,7 @@ def test_update_e_aniso_inv_jit_compatible():
     the FDTD scan body in Stage 2 step 3). No Python-level conditionals
     on traced arrays."""
     import jax
-    from rfx.core.yee import update_e_aniso_inv
+    from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (8, 8, 8)
     dx = 0.001

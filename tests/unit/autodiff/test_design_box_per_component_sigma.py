@@ -32,7 +32,8 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import GaussianPulse, Simulation
-from rfx.core.yee import FDTDState, e_update_coeffs, update_e_box
+from rfx.core.yee import FDTDState, e_update_coeffs
+from rfx.stepping.yee import update_e_box
 
 F0 = 8e9
 DX = 2e-3

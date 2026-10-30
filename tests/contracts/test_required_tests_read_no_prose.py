@@ -360,6 +360,8 @@ GATE_OPT_OUTS = {
 #: as documentation takes it out of the required lanes, so a new entry here is
 #: something a reviewer should see: a number check must not leave this way.
 DOCS_CONSISTENCY_TESTS = frozenset({
+    "tests/contracts/test_pareto_feature.py::test_pareto_page_is_connected",
+    "tests/contracts/test_pareto_feature.py::test_pareto_python_blocks_execute",
     "tests/contracts/test_doc_python_blocks.py::test_public_python_blocks_parse",
     "tests/contracts/test_ci_workflows_contract.py::test_local_sh_preserves_the_runbook_baseline_before_selected_tests",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_says_changes_must_be_a_required_check",

@@ -55,9 +55,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
-from rfx.core.yee import (
-    init_state, init_materials, update_e, update_h, EPS_0, MU_0,
-)
+from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
+from rfx.stepping.yee import update_e, update_h
 from rfx.floquet import (
     init_floquet_dft,
     extract_floquet_modes,

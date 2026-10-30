@@ -22,10 +22,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import (
-    EPS_0, MU_0, MaterialArrays, _diff_bwd_o, _diff_fwd_o, _shift_bwd,
-    _shift_fwd, init_state, update_e, update_h,
-)
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, _diff_bwd_o, _diff_fwd_o, _shift_bwd, _shift_fwd, init_state
+from rfx.stepping.yee import update_e, update_h
 
 
 def test_order2_helpers_byte_identical():

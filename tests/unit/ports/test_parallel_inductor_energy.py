@@ -47,8 +47,8 @@ except ImportError:  # older JAX
 
 from rfx import lumped
 from rfx.boundaries.pec import apply_pec
-from rfx.core.yee import (MU_0, e_component_coeffs, init_materials, init_state,
-                          update_e, update_h)
+from rfx.core.yee import MU_0, e_component_coeffs, init_materials, init_state
+from rfx.stepping.yee import update_e, update_h
 from rfx.grid import Grid
 
 L_H = 2e-9

@@ -68,10 +68,8 @@ from rfx.boundaries.pec import (
     apply_pec, apply_pec_occupancy, apply_pec_occupancy_box,
     pec_occupancy_box_keep,
 )
-from rfx.core.yee import (
-    MaterialArrays, e_update_coeffs, init_state, init_materials,
-    update_e_box, update_e_nu, update_h_nu,
-)
+from rfx.core.yee import MaterialArrays, e_update_coeffs, init_state, init_materials
+from rfx.stepping.yee import update_e_box, update_e_nu, update_h_nu
 from rfx.nonuniform import make_nonuniform_grid, position_to_index
 from rfx.model.materials import electric_cell_sizes
 from rfx.model.materials import _design_box_edge_coeffs

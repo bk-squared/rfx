@@ -11,9 +11,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import (
-    FDTDState, MaterialArrays, update_e, update_h, EPS_0, MU_0,
-)
+from rfx.core.yee import FDTDState, MaterialArrays, EPS_0, MU_0
+from rfx.stepping.yee import update_e, update_h
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 SHAPE = (16, 12, 10)

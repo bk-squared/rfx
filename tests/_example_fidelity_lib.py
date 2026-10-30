@@ -369,6 +369,11 @@ CLASSIFICATION: dict[str, Entry] = {
             _v("cpml", variant="cpml"), _v("pec", variant="pec"),
             _v("cavity", variant="cavity"), _v("vacuum", variant="vacuum"),
             _v("dielectric", variant="dielectric"))),)),
+    "examples/inverse_design/pareto_front_sweep.py": Entry(
+        "no_simulation",
+        "Reuses quickstart.hello_world.build_simulation via _make_sim, adds a "
+        "dielectric insert, and delegates solves to parametric_sweep; the "
+        "end-to-end tutorial test checks the resulting artifact."),
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)

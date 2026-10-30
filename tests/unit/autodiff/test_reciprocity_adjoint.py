@@ -1,4 +1,7 @@
 """#1424 F2 gates: CPU fixtures; measurements use record_property, never stdout."""
+
+import rfx.stepping.adjoint_scan as adjoint_scan
+
 import rfx.stepping.uniform_loop as uniform_loop
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
@@ -317,7 +320,7 @@ def test_wavelet_targets(precision, record_property):
     "use_pec_occupancy", "use_pmc_faces"])
 def test_g5_kernel_refusals(flag):
     from types import SimpleNamespace
-    from rfx.adjoint import design_adjoint_scan
+    from rfx.stepping.adjoint_scan import design_adjoint_scan
     class Context(SimpleNamespace):
         def __getattr__(self, name):
             if name.startswith("use_"):
@@ -330,7 +333,7 @@ def test_g5_kernel_refusals(flag):
 @pytest.mark.parametrize("case", ["missing_design", "bloch", "periodic", "anisotropy", "dtype", "stencil"])
 def test_g5_kernel_admission(case):
     from types import SimpleNamespace
-    from rfx.adjoint import design_adjoint_scan
+    from rfx.stepping.adjoint_scan import design_adjoint_scan
     from rfx.model.tensor_operands import TensorOperands
     class Context(SimpleNamespace):
         def __getattr__(self, name):
@@ -383,7 +386,7 @@ def _raw_coefficient_results(n_steps):
             local = replace(ctx, design_box=ctx.design_box._replace(
                 ca=coeffs[0], cb=coeffs[1]))
             if mode == "adjoint":
-                last, _ = adjoint.design_adjoint_scan(local, initial, xs)
+                last, _ = adjoint_scan.design_adjoint_scan(local, initial, xs)
             else:
                 core = make_core_step(local, core_step_invariants(local))
                 def step(carry, row):

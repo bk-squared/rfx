@@ -29,10 +29,9 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import (
-    FDTDState, MaterialArrays, update_h_nu, update_e_nu, EPS_0, MU_0,
-)
-from rfx.materials.nonlinear import apply_kerr_ade
+from rfx.core.yee import FDTDState, MaterialArrays, EPS_0, MU_0
+from rfx.stepping.yee import update_h_nu, update_e_nu
+from rfx.stepping.kerr import apply_kerr_ade
 from rfx.probes.probes import init_flux_monitor, flux_spectrum
 from rfx.adi import run_adi_3d
 from rfx.grid import C0
@@ -366,7 +365,8 @@ def test_optc1_falsifier_yee_matches_corrected_analytic():
     Measured 2026-07-13: f_peak = 3.846 GHz vs corrected 3.854 GHz
     -> 0.21% (FFT half-bin 0.28%); vs biased 3.533 GHz -> 8.87%.
     """
-    from rfx.core.yee import init_state, init_materials, update_e, update_h
+    from rfx.core.yee import init_state, init_materials
+    from rfx.stepping.yee import update_e, update_h
     from rfx.boundaries.pec import apply_pec
 
     N = 12

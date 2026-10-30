@@ -14,6 +14,27 @@
   },
   "examples": [
     {
+      "path": "examples/inverse_design/pareto_front_sweep.py",
+      "lane": "pr",
+      "kind": "script",
+      "builders": [],
+      "no_builder_reason": "_make_sim reuses the quickstart hello_world builder and adds a dielectric insert; no public builder is defined here.",
+      "runs_solve": true,
+      "solve_via": "parametric_sweep calls Simulation.run for each permittivity",
+      "outputs": [
+        {
+          "path": "examples/inverse_design/pareto_front.json",
+          "format": "json",
+          "written_by": "Path.write_text",
+          "contains": "Pareto front with objective directions, indices and parameter metadata",
+          "units": {
+            "peak_field": "V/m",
+            "eps_r": "dimensionless"
+          }
+        }
+      ]
+    },
+    {
       "path": "examples/config/microstrip_thru.yaml",
       "lane": "pr",
       "kind": "config",

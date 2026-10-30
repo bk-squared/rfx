@@ -18,9 +18,8 @@ import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0, cells_spanning
-from rfx.core.yee import (
-    init_state, init_materials, update_e, update_e_aniso, update_h,
-)
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_e_aniso, update_h
 from rfx.geometry.csg import Cylinder
 from rfx.geometry.conformal import (
     compute_conformal_weights_sdf,

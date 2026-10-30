@@ -7,7 +7,8 @@ import pytest
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h, update_e_aniso
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h, update_e_aniso
 from rfx.geometry.csg import Box, Sphere, Cylinder
 from rfx.geometry.conformal import (
     compute_conformal_weights,

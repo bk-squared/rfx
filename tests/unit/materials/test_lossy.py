@@ -13,7 +13,8 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h, EPS_0, MU_0
+from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.materials import set_material
 from rfx.sources.sources import GaussianPulse, add_point_source

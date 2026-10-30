@@ -81,6 +81,7 @@
         "rfx/design/design-regions",
         "rfx/design/optimization",
         "rfx/design/sweeps",
+        "rfx/design/pareto",
         "rfx/guide/gradient-behavior"
       ]
     },
@@ -138,6 +139,7 @@
       "label": "Project",
       "items": [
         "rfx/project/changelog",
+        "rfx/project/deprecation-policy",
         "rfx/project/contributing",
         "rfx/project/citation"
       ]

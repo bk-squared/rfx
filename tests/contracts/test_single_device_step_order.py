@@ -10,7 +10,8 @@ import pytest
 
 from rfx.boundaries.pec import apply_pec_faces, apply_pec_occupancy
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
-from rfx.core.yee import curl_h, init_materials, init_state, update_e, update_h
+from rfx.core.yee import curl_h, init_materials, init_state
+from rfx.stepping.yee import update_e, update_h
 from rfx.grid import Grid
 from rfx.model.materials import with_components
 from rfx.model.occupancy import with_edge_keep
@@ -168,7 +169,8 @@ def _graded_scene(kind):
 
 
 def _graded_reference(ctx, carry, source, invariants):
-    from rfx.core.yee import curl_h_nu, update_e_nu, update_h_nu
+    from rfx.core.yee import curl_h_nu
+    from rfx.stepping.yee import update_e_nu, update_h_nu
 
     old = carry['fdtd']
     materials = invariants['materials']

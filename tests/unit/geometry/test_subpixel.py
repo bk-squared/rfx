@@ -14,10 +14,8 @@ import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import (
-    MaterialArrays, init_state, init_materials,
-    update_e, update_e_aniso, update_h,
-)
+from rfx.core.yee import MaterialArrays, init_state, init_materials
+from rfx.stepping.yee import update_e, update_e_aniso, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.geometry.csg import Sphere
 from rfx.geometry.smoothing import compute_smoothed_eps

@@ -52,7 +52,8 @@ import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse

@@ -96,7 +96,8 @@ def test_equal_cells_are_bit_identical_per_transverse_component():
 
 @pytest.mark.parametrize('tensor', [False, True])
 def test_raw_nu_update_requires_primal_metrics(tensor):
-    from rfx.core.yee import init_state, update_e_nu, update_e_nu_aniso
+    from rfx.core.yee import init_state
+    from rfx.stepping.yee import update_e_nu, update_e_nu_aniso
     g = MetricGrid(([1.,2.,4.],[3.,2.,1.],[2.,5.,3.]))
     m = MaterialArrays(jnp.arange(27,dtype=jnp.float32).reshape(g.shape)+1,
                        jnp.full(g.shape,.1),jnp.ones(g.shape))
@@ -292,7 +293,8 @@ def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term)
 
 @pytest.mark.parametrize('tensor', [False, True])
 def test_rounded_inverse_duals_cannot_decide_primal_constancy(tensor):
-    from rfx.core.yee import init_state, update_e_nu, update_e_nu_aniso
+    from rfx.core.yee import init_state
+    from rfx.stepping.yee import update_e_nu, update_e_nu_aniso
     # Unequal float64 cells become indistinguishable as float32 inverse duals.
     grid = MetricGrid(([1., 1.+1e-9, 1.],)*3)
     assert not any(grid.is_constant(a) for a in range(3))

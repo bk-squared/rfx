@@ -42,6 +42,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+import rfx.stepping.yee as stepping_yee
 import rfx.adi
 import rfx.boundaries.cpml
 import rfx.boundaries.upml
@@ -330,10 +331,10 @@ def _builder_cases():
             lambda e: rfx.core.yee.precompute_coeffs(mats._replace(eps_r=e), dt, dx, high_wall=(False, False, False)),
             mats.eps_r, 1e24),
         "update_e_aniso": (
-            lambda e: rfx.core.yee.update_e_aniso(st, mats, e, e, e, dt, dx, high_wall=(False, False, False)).ex,
+            lambda e: stepping_yee.update_e_aniso(st, mats, e, e, e, dt, dx, high_wall=(False, False, False)).ex,
             mats.eps_r, 1e24),
         "update_e_aniso_inv": (
-            lambda e: rfx.core.yee.update_e_aniso_inv(
+            lambda e: stepping_yee.update_e_aniso_inv(
                 st, mats, 1.0 / e, 1.0 / e, 1.0 / e, dt, dx, high_wall=(False, False, False)).ez, mats.eps_r, 1e28),
         "adi_step_2d": (
             lambda e: rfx.adi.adi_step_2d(*f2, e, sig2, 5 * dt, dx, dx)[0], eps2, 1e20),
@@ -596,7 +597,7 @@ def _jvp(name, dtype):
 
 
 # The builders above that are jax.jit functions themselves.
-_JITTED_BUILDERS = (rfx.core.yee.update_e_aniso_inv,)
+_JITTED_BUILDERS = (stepping_yee.update_e_aniso_inv,)
 
 
 @pytest.fixture

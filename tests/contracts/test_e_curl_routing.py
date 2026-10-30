@@ -4,6 +4,7 @@ Each adapter must reach the shared curl with the step's resolved boundary.
 The inline negative control also checks that disabling the assertion is red.
 Numerical byte comparisons against 5c477d59 live in the B3a lane records.
 """
+
 from contextlib import ExitStack
 from dataclasses import replace
 from unittest.mock import patch
@@ -178,16 +179,16 @@ def test_kernel_adapters(branch):
     dt, dx = 1e-12, 1e-3
     coeffs = yee.precompute_coeffs(mats, dt, dx, high_wall=(False, False, False))
     calls = {
-        "plain": lambda: yee.update_e(state, mats, dt, dx, boundary=boundary, high_wall=(False, False, False)),
-        "aniso": lambda: yee.update_e_aniso(state, mats, mats.eps_r, mats.eps_r,
+        "plain": lambda: stepping_yee.update_e(state, mats, dt, dx, boundary=boundary, high_wall=(False, False, False)),
+        "aniso": lambda: stepping_yee.update_e_aniso(state, mats, mats.eps_r, mats.eps_r,
                                            mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
-        "inverse": lambda: yee.update_e_aniso_inv(state, mats, mats.eps_r, mats.eps_r,
+        "inverse": lambda: stepping_yee.update_e_aniso_inv(state, mats, mats.eps_r, mats.eps_r,
                                                   mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
-        "fast_e": lambda: yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey, coeffs.ca_ez,
+        "fast_e": lambda: stepping_yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey, coeffs.ca_ez,
                                             coeffs.cb_ex, coeffs.cb_ey, coeffs.cb_ez,
                                             boundary=boundary),
         "fast_he": lambda: yee.update_he_fast(state, coeffs, boundary=boundary),
-        "box": lambda: yee.update_e_box(state, state, (1, 2, 1, 2, 1, 2),
+        "box": lambda: stepping_yee.update_e_box(state, state, (1, 2, 1, 2, 1, 2),
                                          1., .1, dx, boundary=boundary),
     }
     if branch == "upml":
@@ -234,7 +235,7 @@ def test_cpml_uses_boundary_neighbours():
 def test_design_box_second_update_uses_boundary(graded):
     state, mats, boundary = kernel_inputs()
     inv_d = tuple(jnp.ones(n) / 1e-3 for n in state.ex.shape) if graded else None
-    require_shared(lambda: yee.update_e_box(
+    require_shared(lambda: stepping_yee.update_e_box(
         state, state, (1, 2, 1, 2, 1, 2), 1., .1, 1e-3,
         inv_d=inv_d, boundary=boundary), helper="curl_h_nu" if graded else "curl_h")
 

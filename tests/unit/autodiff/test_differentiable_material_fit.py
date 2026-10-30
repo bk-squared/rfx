@@ -17,8 +17,10 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
-from rfx.core.yee import MaterialArrays, init_state, init_materials, update_h
-from rfx.materials.debye import DebyePole, init_debye, update_e_debye
+from rfx.core.yee import MaterialArrays, init_state, init_materials
+from rfx.stepping.yee import update_h
+from rfx.materials.debye import DebyePole, init_debye
+from rfx.stepping.poles import update_e_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz, lorentz_pole
 from rfx.sources.sources import GaussianPulse
 from rfx.simulation import make_source, make_probe, run

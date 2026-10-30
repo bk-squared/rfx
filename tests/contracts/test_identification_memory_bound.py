@@ -1,5 +1,7 @@
 """Two-stage refusal before allocation, with independent byte estimates."""
 
+
+
 import json
 import os
 from pathlib import Path
@@ -10,6 +12,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import ringdown as rd
 from rfx.sparams._tail_witness import tail_share_witness
 
@@ -215,7 +218,7 @@ def test_we_refusal_preserves_synthetic_completion(monkeypatch):
     plan = object.__new__(rd.RingdownRun)
     plan.spec, plan.n_steps, plan.source_ratio_long = spec, 40000, 0.
     witnesses = plan._error_witnesses(y, .0001, [.4], .5, lambda value: value,
-                                     rd.plain_dft(y, .0001, [.4]), w2, {})
+                                     ringdown_tail.plain_dft(y, .0001, [.4]), w2, {})
     we = witnesses[0]
     assert we.name == 'WE' and np.isnan(we.value) and not we.ok
     assert w2.spectra.tobytes() == expected

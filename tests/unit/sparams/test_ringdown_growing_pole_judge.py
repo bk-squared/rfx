@@ -1,9 +1,12 @@
 """Closed-form and record oracles for the kept growing-pole judge (#2158)."""
+
+
 from dataclasses import replace
 
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import ringdown as rd
 from rfx.sparams._tail_witness import tail_share_witness
 
@@ -221,7 +224,7 @@ def test_issue_2158_seed_1_rounding_record_passes():
     model = rd.identify(y, DT, round(.4*n), n, freq_max=13e9)
     # How many rounding poles land in the kept band depends on the platform's
     # rounding (2 on an arm64 Mac); test_c4 pins "counted, yet passes" exactly.
-    judge = rd.judge_growing_poles(model, n, BINS, np.abs(rd.plain_dft(y, DT, BINS)))
+    judge = rd.judge_growing_poles(model, n, BINS, np.abs(ringdown_tail.plain_dft(y, DT, BINS)))
     assert judge.status == 'pass' and judge.ok
     witness = tail_share_witness([('rounding', y)], DT, 0, BINS, freq_max=13e9)
     assert witness.status == 'pass', witness.reason

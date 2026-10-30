@@ -308,7 +308,5 @@ _LAZY_EXPORTS = {
 
 
 def __getattr__(name):
-    if name not in _LAZY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from importlib import import_module
-    return getattr(import_module(_LAZY_EXPORTS[name]), name)
+    from rfx._moved_names import resolve_moved
+    return resolve_moved(__name__, _LAZY_EXPORTS, name)
