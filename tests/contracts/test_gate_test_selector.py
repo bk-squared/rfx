@@ -28,7 +28,7 @@ def sources():
         "tests/unit/test_debye.py": "from rfx.materials.debye import Debye",
         "tests/unit/test_import.py": "import rfx.materials.debye as d",
         "tests/unit/test_parent.py": "from rfx.materials import debye as d",
-        "tests/unit/test_top.py": "from rfx import Simulation",
+        "tests/unit/test_top.py": "from rfx import GaussianPulse",
         "tests/unit/test_bare.py": "import rfx",
         "tests/unit/test_other.py": 'text = "import rfx.materials.debye"',
         "tests/unit/test_child.py": "import rfx.materials.debye.child",
@@ -895,3 +895,8 @@ def test_selected_status_handling_in_isolated_bash(tmp_path, status):
     result = module.run_fragment(tmp_path, fake=True, first=status, retry=1)
     assert result.returncode == (0 if status in (0, 5) else 1)
     assert ("nothing to run" in result.stdout) == (status == 5)
+
+
+def test_aliased_simulation_import_builds_a_model():
+    sources = {"tests/unit/other/test_x.py": "def f():\n    from rfx.api import Simulation as _Sim\n    _Sim()"}
+    assert selector.select_tests(["rfx/grid.py"], sources, {}).files == tuple(sources)

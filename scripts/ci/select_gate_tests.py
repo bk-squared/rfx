@@ -91,7 +91,10 @@ def model_building_tests(test_sources: Mapping[str, str]) -> set[str]:
             continue
         for node in ast.walk(tree):
             if ((isinstance(node, ast.Name) and node.id == "Simulation")
-                    or (isinstance(node, ast.Attribute) and node.attr == "Simulation")):
+                    or (isinstance(node, ast.Attribute) and node.attr == "Simulation")
+                    # An aliased import (`Simulation as _Sim`) leaves no Name node.
+                    or (isinstance(node, ast.ImportFrom)
+                        and any(alias.name == "Simulation" for alias in node.names))):
                 building.add(name)
             imported = set()
             if isinstance(node, ast.Import):
