@@ -225,11 +225,11 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
-### On a graded mesh, `run()` wrapped in `jax.jit` differs from plain `run()`
+### On macOS CPU, the compiled graded time step can differ under a user `jax.jit`
 
 Tracker: #2241
 
-On a graded (non-uniform) mesh, wrapping `run()` itself in `jax.jit` gives a result that differs from plain `run()`; the cause is under investigation. On the graded tutorial board without its two thin sheets (Linux CPU), the fields differ by 1–5 float32 ULP of the peak in the first 64 steps. Over a 65,552-step record the probe trace differs by up to 6662.5 ULP of the peak per sample and by 1.9e-2 of the peak summed over the record, and by 30–95 % of the small field left after the pulse. `forward()` under `jax.jit` is bit-identical to plain `forward()` (uniform and graded mesh, CPU and GPU), so gradients and optimization are not affected: put `forward()` inside `jax.jit`, not `run()`.
+On Linux CPU, `run()` wrapped in `jax.jit` on a graded mesh is bit-identical to plain `run()`. On macOS CPU only, the compiled graded time step itself can still differ under a user `jax.jit`, with every input to the time-step loop identical (recorded; a fix is planned for 2.1).
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
