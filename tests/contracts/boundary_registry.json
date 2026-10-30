@@ -259,6 +259,11 @@
     },
     {
       "file": "rfx/boundaries/pec.py",
+      "function": "undriven_h_masks.forward",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
       "function": "wire_node_footprint",
       "kind": "neighbour"
     },
