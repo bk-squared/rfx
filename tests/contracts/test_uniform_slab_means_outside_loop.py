@@ -1,4 +1,4 @@
-"""Uniform slabs form material means in the rank prologue, before time stepping."""
+"""Uniform slabs hoist material means only when CPML shares the consumers."""
 import inspect
 import re
 from pathlib import Path
@@ -34,7 +34,7 @@ def _mean_sources():
             for f in functions for lines, first in [inspect.getsourcelines(f)]]
 
 
-def assert_means_outside_while(hlo):
+def means_inside_while(hlo):
     # Recent XLA stores source_file/source_line in an indexed metadata table.
     files = dict(re.findall(r'^(\d+) "([^"]+)"$', hlo.split('FunctionNames')[0], re.M))
     locations = {key: (files[file], line) for key, file, line in re.findall(
@@ -75,11 +75,11 @@ def assert_means_outside_while(hlo):
                 if (source and Path(source[1]).name == filename and first <= int(source[2]) < end
                         or re.search(r'op_name="[^"]*\b' + function + r'\b', line)):
                     violations.append((name, function, line.strip()))
-    assert not violations, f'material means inside while body: {violations}'
+    return violations
 
 
 @pytest.mark.parametrize('boundary', ['cpml', 'pec'])
-def test_uniform_slab_means_outside_loop(boundary, monkeypatch, tmp_path):
+def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
     assert len(jax.devices('cpu')) == 2, 'run with two virtual CPU devices'
     original = jax.jit
     captured = []
@@ -103,7 +103,13 @@ def test_uniform_slab_means_outside_loop(boundary, monkeypatch, tmp_path):
     assert len(captured) == 2, 'public run must lower and compile the uniform slab driver'
     for stage, hlo in zip(('lowered', 'compiled'), captured):
         (tmp_path / f'{boundary}-{stage}.hlo').write_text(hlo)
-        assert_means_outside_while(hlo)
+        means = means_inside_while(hlo)
+        if boundary == 'cpml':
+            assert not means, f'material means inside while body: {means}'
+        elif stage == 'lowered':
+            # Pin the input program; CPU optimization may move invariant work.
+            # Bandwidth: hoisting adds slab reads for update-only consumers (rfx-archive plans/absorber/20261026-cpml-cost-952 D1-L0 reading).
+            assert means, 'PEC must form material means inside the while body'
 
 
 def independent_means():

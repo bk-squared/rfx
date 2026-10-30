@@ -1,5 +1,5 @@
-### Changed — Uniform multi-device runs form their material means once (#PR)
+### Changed — Uniform multi-device CPML runs form their material means once (#PR)
 
-Uniform multi-device runs now form each component's material average (permittivity, conductivity, permeability) once
-before the time loop instead of on every step; the update coefficients are still formed inside the loop.
-Results are unchanged: CPU CPML and PEC runs give bit-identical fields at 200, 400 and 800 steps.
+Uniform multi-device runs with CPML now form component material averages once before the time loop;
+update coefficients remain inside the loop. PEC-only multi-device runs are unchanged.
+CPU CPML and PEC fields remain bit-identical to their respective references at 200, 400 and 800 steps.
