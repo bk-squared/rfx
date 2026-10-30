@@ -472,66 +472,6 @@ class TestTopologyOptimize:
             f"Loss did not decrease: {first_loss:.6e} -> {last_loss:.6e}"
         )
 
-def test_pec_foreground_gradient_is_finite_and_nonzero():
-    """PEC occupancy topology should produce a usable simulator gradient."""
-    from rfx.api import Simulation
-    from rfx.core.yee import MaterialArrays
-
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
-    sim.add_source((0.005, 0.0075, 0.0075), "ez")
-    sim.add_probe((0.01, 0.0075, 0.0075), "ez")
-
-    region = TopologyDesignRegion(
-        corner_lo=(0.006, 0.006, 0.006),
-        corner_hi=(0.009, 0.009, 0.009),
-        material_bg="air",
-        material_fg="pec",
-        beta_projection=1.0,
-    )
-
-    grid = sim._build_grid()
-    lo_idx = grid.position_to_index(region.corner_lo)
-    hi_idx = grid.position_to_index(region.corner_hi)
-    design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
-
-    base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(grid)
-
-    def loss_fn(logit):
-        rho = jax.nn.sigmoid(logit)
-        fields = density_to_material_fields(
-            rho,
-            eps_bg=1.0006,
-            eps_fg=1.0,
-            sigma_bg=0.0,
-            sigma_fg=1e10,
-            pec_fg=True,
-        )
-        si, sj, sk = lo_idx
-        ei, ej, ek = hi_idx
-        eps_r = base_materials.eps_r.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.eps)
-        sigma = base_materials.sigma.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.sigma)
-        materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=base_materials.mu_r)
-        pec_occupancy = jnp.zeros(grid.shape, dtype=jnp.float32)
-        pec_occupancy = pec_occupancy.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.pec_occupancy)
-        result = sim._forward_from_materials(
-            grid,
-            materials,
-            debye_spec,
-            lorentz_spec,
-            n_steps=20,
-            checkpoint=True,
-            pec_mask=base_pec_mask,
-            pec_occupancy=pec_occupancy,
-        )
-        return -jnp.sum(result.time_series ** 2)
-
-    logit0 = jnp.zeros(design_shape, dtype=jnp.float32)
-    grad = jax.grad(loss_fn)(logit0)
-
-    assert jnp.all(jnp.isfinite(grad))
-    assert float(jnp.max(jnp.abs(grad))) > 0.0
-
-
     @pytest.mark.gpu  # optax is installed only in the GPU suite
     @pytest.mark.skipif(
         not importlib.util.find_spec("optax"),
@@ -657,3 +597,63 @@ def test_pec_foreground_gradient_is_finite_and_nonzero():
                 f"hi_idx[{d}]={hi[d]} inside CPML (max={dim-1-pad})"
             )
         print(f"\n  CPML topology: grid={grid.shape}, pads=({grid.pad_x},{grid.pad_y},{grid.pad_z})")
+
+
+def test_pec_foreground_gradient_is_finite_and_nonzero():
+    """PEC occupancy topology should produce a usable simulator gradient."""
+    from rfx.api import Simulation
+    from rfx.core.yee import MaterialArrays
+
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim.add_source((0.005, 0.0075, 0.0075), "ez")
+    sim.add_probe((0.01, 0.0075, 0.0075), "ez")
+
+    region = TopologyDesignRegion(
+        corner_lo=(0.006, 0.006, 0.006),
+        corner_hi=(0.009, 0.009, 0.009),
+        material_bg="air",
+        material_fg="pec",
+        beta_projection=1.0,
+    )
+
+    grid = sim._build_grid()
+    lo_idx = grid.position_to_index(region.corner_lo)
+    hi_idx = grid.position_to_index(region.corner_hi)
+    design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
+
+    base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(grid)
+
+    def loss_fn(logit):
+        rho = jax.nn.sigmoid(logit)
+        fields = density_to_material_fields(
+            rho,
+            eps_bg=1.0006,
+            eps_fg=1.0,
+            sigma_bg=0.0,
+            sigma_fg=1e10,
+            pec_fg=True,
+        )
+        si, sj, sk = lo_idx
+        ei, ej, ek = hi_idx
+        eps_r = base_materials.eps_r.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.eps)
+        sigma = base_materials.sigma.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.sigma)
+        materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=base_materials.mu_r)
+        pec_occupancy = jnp.zeros(grid.shape, dtype=jnp.float32)
+        pec_occupancy = pec_occupancy.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.pec_occupancy)
+        result = sim._forward_from_materials(
+            grid,
+            materials,
+            debye_spec,
+            lorentz_spec,
+            n_steps=20,
+            checkpoint=True,
+            pec_mask=base_pec_mask,
+            pec_occupancy=pec_occupancy,
+        )
+        return -jnp.sum(result.time_series ** 2)
+
+    logit0 = jnp.zeros(design_shape, dtype=jnp.float32)
+    grad = jax.grad(loss_fn)(logit0)
+
+    assert jnp.all(jnp.isfinite(grad))
+    assert float(jnp.max(jnp.abs(grad))) > 0.0
