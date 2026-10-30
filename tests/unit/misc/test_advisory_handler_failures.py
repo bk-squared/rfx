@@ -15,6 +15,24 @@ from rfx.sources.sources import CustomWaveform
 from rfx.sparams._common import _warn_if_nonpassive_smatrix
 
 
+def test_dc_census_scalar_only_custom_waveform():
+    waveform = CustomWaveform(lambda t: jax.lax.cond(
+        t < 1e-9, lambda t: 0.0 * t, lambda t: jnp.sin(t * 1e9), t))
+    port = SimpleNamespace(impedance=0., excite=True, position=(0., 0., 0.),
+                           component="ez", waveform=waveform)
+    sim = SimpleNamespace(_ports=[port], _msl_ports=[])
+    dt, n_table = 0.5e-9, 8
+    rows = dc_census(sim, dt=dt, n_table=n_table)
+    assert len(rows) == 1
+    assert not isinstance(rows[0], DCNotEvaluated)
+    samples = np.asarray(jax.vmap(waveform)(
+        jnp.asarray(np.arange(n_table, dtype=np.float64) * dt)), dtype=np.float64)
+    integral = float(np.sum(samples)) * dt
+    relative_dc = abs(integral) / (float(np.sum(np.abs(samples))) * dt)
+    assert rows[0] == ("(0.0, 0.0, 0.0) (ez)", "CustomWaveform",
+                       relative_dc, integral, None)
+
+
 def test_advisory_exception_boundaries():
     class BrokenArray:
         def __array__(self, *args, **kwargs):
