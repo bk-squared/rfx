@@ -74,7 +74,8 @@ def register_msl_wave_probes(
         for ``ez1``, ``ez2``, ``ez3`` and ``hy1``, plus the physical
         spacing ``delta`` between adjacent probes.
     """
-    assert direction in ("+x", "-x")
+    if direction not in ("+x", "-x"):
+        raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
     sign = 1 if direction == "+x" else -1
     grid = sim._build_realized_grid()
     dx = float(grid.cells(0)[0])
