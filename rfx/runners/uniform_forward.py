@@ -19,7 +19,6 @@ from rfx.api._refplane_checks import (
 )
 import jax.numpy as jnp
 import numpy as np
-import os
 from rfx.api._forward_result import pack_uniform_forward_result
 from rfx._diagnostic_transport import result_with_diagnostics
 
@@ -571,10 +570,6 @@ def _forward_from_materials(
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-    from rfx.model.source_coefficients import resolve_run_sources
-    sources = resolve_run_sources(sources, materials, self, grid,
-        tensor=(pec_occupancy_local is not None and os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False"))
-            or aniso_eps is not None or aniso_inv_eps is not None)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, None)
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
@@ -625,22 +620,26 @@ def _forward_from_materials(
             waveguide_ports.append(
                 self._build_waveguide_port_config(pe, grid, wg_freqs, n_steps))
 
-    # Floquet ports — inject soft source, same as run_uniform.py:274-327
-    if self._floquet_ports:
-        from rfx.floquet import floquet_port_source
-        for fpe in self._floquet_ports:
-            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
     conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy, sim=self, sheet_operator=sheet_impedance)
 
-    # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
+    # Tensor lane (opt-in via ``pec_occupancy_model="kottke"``): when
     # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
     # tensor from the occupancy with the lattice contract's edge rule
     # (#1197: ``inv_c = (1 - M_c) * baseline``) and run it through the
     # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
     # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
     # this branch — the two would double-correct at sigmoid edges.
-    pec_occupancy_for_run, aniso_inv_eps_run = _occupancy.select_occupancy_operator(
+    pec_occupancy_for_run, aniso_inv_eps_run, occupancy_tensor = _occupancy.select_occupancy_operator(
         self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
+    from rfx.model.source_coefficients import resolve_run_sources
+    sources = resolve_run_sources(sources, materials, self, grid,
+        tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None)
+
+    # Floquet ports — inject soft source, same as run_uniform.py:274-327
+    if self._floquet_ports:
+        from rfx.floquet import floquet_port_source
+        for fpe in self._floquet_ports:
+            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
 
     if aniso_inv_eps is not None:
         aniso_inv_eps_run = aniso_inv_eps

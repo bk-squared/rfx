@@ -589,6 +589,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx.model.occupancy import refuse_graded_occupancy_model
+    refuse_graded_occupancy_model(sim, pec_occupancy_override)
     from rfx.measurement.decay import refuse_radiated_flux_stop
     refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
 

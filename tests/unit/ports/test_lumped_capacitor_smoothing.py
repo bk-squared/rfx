@@ -38,6 +38,8 @@ FLOOR = 32 * np.finfo(np.float32).eps
 
 def _model(lane, component=None, *, fractional=False, seeded=False):
     kwargs = {"dz_profile": np.full(11, DX)} if lane.startswith("nu") else {}
+    if lane in ("forward", "forward_occ", "materials_occ"):
+        kwargs["pec_occupancy_model"] = "kottke"
     if lane.endswith("dual"):
         kwargs["interface_eps"] = "dual_average"
     boundary = (BoundarySpec(x=Boundary(lo="pec", hi="pec", conformal=True),
@@ -106,7 +108,6 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
             stack.enter_context(patch.object(graded_setup, "init_state", _seed_h))
         n_steps = 1 if seeded else 240
         if lane in ("forward", "forward_occ", "materials_occ"):
-            stack.enter_context(patch.dict(os.environ, RFX_PEC_OCC_KOTTKE="1"))
             grid = sim._build_grid()
             occupancy = jnp.zeros(grid.shape, dtype=jnp.float32)
             if fractional:

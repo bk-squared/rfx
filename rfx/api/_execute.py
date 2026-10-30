@@ -1167,7 +1167,7 @@ class _ExecuteMixin:
             a box covering a cell the port setup CLEARS the occupancy at
             (the port cell, its six face neighbours, an MSL port's in-plane
             diagonal owners), and the Kottke occupancy lane
-            (``RFX_PEC_OCC_KOTTKE=1``), where the occupancy becomes an
+            (``pec_occupancy_model="kottke"``), where the occupancy becomes an
             inverse-eps tensor inside the E update that the box's values
             never reach.
         design_box_holds_ports : bool

@@ -4,13 +4,38 @@ The single-device uniform and graded steps multiply by these arrays,
 built once before the time loop.
 """
 
-from rfx.errors import RfxRefusal
+from rfx.errors import RfxRefusal, RfxUnsupported
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 
 from rfx.boundaries.pec import _shift, realized_pec_edge_masks
+
+
+def validate_occupancy_model(model):
+    """Validate the constructor option and reject the removed shell switch."""
+    import os
+    # Migration guard for one minor release; remove after that release.
+    if "RFX_PEC_OCC_KOTTKE" in os.environ:
+        raise RfxRefusal(
+            "RFX_PEC_OCC_KOTTKE was removed; unset it and use "
+            "Simulation(pec_occupancy_model='kottke') or "
+            "Simulation(pec_occupancy_model='edge_keep').")
+    if model not in ("edge_keep", "kottke"):
+        raise RfxRefusal(
+            f"pec_occupancy_model must be 'edge_keep' or 'kottke', got {model!r}")
+    return model
+
+
+def refuse_graded_occupancy_model(sim, occupancy):
+    """Both graded forward lanes carry only the edge-keep occupancy model."""
+    if occupancy is not None and sim._pec_occupancy_model == "kottke":
+        raise RfxUnsupported(
+            "pec_occupancy_model='kottke' with pec_occupancy_override is not "
+            "supported on graded forward paths. Use the single-device uniform "
+            "forward() lane (omit dx/dy/dz profiles and distributed=True), "
+            "or select pec_occupancy_model='edge_keep'.")
 
 
 def clip_occupancy(x):
@@ -196,14 +221,13 @@ def occupancy_from_design(shape, window, values):
 def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
                               periodic_bool, design_occupancy):
     """Keep the existing optional tensor path and all of its refusals."""
-    import os
     aniso_inv_eps_run = None
     pec_occupancy_for_run = pec_occupancy_local
-    if (pec_occupancy_local is not None and
-            os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False")):
+    tensor = pec_occupancy_local is not None and self._pec_occupancy_model == "kottke"
+    if tensor:
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(
-            self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
+            self, "the Kottke occupancy lane (pec_occupancy_model='kottke')")
         from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
         from rfx.core.yee import add_lumped_eps
         # The plain path's four-cell edge mean (#1213), not the per-cell
@@ -225,7 +249,7 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
         if design_occupancy is not None:
             raise NotImplementedError(
                 "a design occupancy box does not combine with "
-                "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1). That "
+                "the Kottke occupancy lane (pec_occupancy_model='kottke'). That "
                 "lane turns the occupancy into an inverse-eps tensor "
                 "inside the E update and sets pec_occupancy_for_run to "
                 "None, so the design values never reach the update and "
@@ -233,23 +257,9 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
                 "field the tensor already handled — the anti-pattern "
                 "the comment above names. Measured: value 19x and "
                 "gradient 2.8x off pec_occupancy_override, silently. "
-                "Use pec_occupancy_override on that lane, or unset "
-                "RFX_PEC_OCC_KOTTKE.")
-        if os.environ.get("RFX_PEC_OCC_KOTTKE_DEBUG", "0") not in ("0", "", "false", "False"):
-            import sys as _sys
-            _ix, _iy, _iz = aniso_inv_eps_run
-            print(f"[kottke debug] occ shape={pec_occupancy_local.shape} "
-                  f"min={float(jnp.min(pec_occupancy_local)):.3e} "
-                  f"max={float(jnp.max(pec_occupancy_local)):.3e}", file=_sys.stderr, flush=True)
-            print(f"[kottke debug] inv_xx min={float(jnp.min(_ix)):.3e} "
-                  f"max={float(jnp.max(_ix)):.3e} "
-                  f"any_nan={bool(jnp.any(jnp.isnan(_ix)))}", file=_sys.stderr, flush=True)
-            print(f"[kottke debug] eps_r min={float(jnp.min(materials.eps_r)):.3e} "
-                  f"max={float(jnp.max(materials.eps_r)):.3e}", file=_sys.stderr, flush=True)
-            from rfx.model.thin_conductors import conductivity_envelope  # lazy: import cycle
-            print(f"[kottke debug] sigma min={float(jnp.min(conductivity_envelope(materials))):.3e} "
-                  f"max={float(jnp.max(conductivity_envelope(materials))):.3e}", file=_sys.stderr, flush=True)
-    return pec_occupancy_for_run, aniso_inv_eps_run
+                "Use pec_occupancy_override on that lane, or select "
+                "pec_occupancy_model='edge_keep'.")
+    return pec_occupancy_for_run, aniso_inv_eps_run, tensor
 
 
 @jax.custom_jvp

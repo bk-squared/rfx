@@ -761,7 +761,7 @@ def test_occupancy_fence_box_holding_a_port_cell():
 
 
 def test_occupancy_fence_kottke_occupancy_lane(monkeypatch):
-    """``RFX_PEC_OCC_KOTTKE=1`` moves the occupancy into the E update.
+    """``pec_occupancy_model="kottke"`` moves the occupancy into the E update.
 
     On that lane the occupancy becomes an inverse-eps tensor built from the
     STATIC array and ``pec_occupancy_for_run`` is set to None, so the
@@ -771,8 +771,7 @@ def test_occupancy_fence_kottke_occupancy_lane(monkeypatch):
     before the fence: value 19x and gradient 2.8x off
     ``pec_occupancy_override``, silently.
     """
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
-    sim = _sim()
+    sim = _sim(pec_occupancy_model="kottke")
     grid = sim._build_grid()
     _, shape = _box_cells(sim)
     static = jnp.zeros(grid.shape, jnp.float32).at[6:9, 6:9, 6:9].set(0.7)

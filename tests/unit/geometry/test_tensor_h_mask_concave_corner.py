@@ -53,7 +53,8 @@ def test_applied_masks_follow_all_curl_drivers(monkeypatch, smooth, scene):
 
     h = 0.0005
     sim = Simulation(freq_max=16e9, domain=(14*h, 16*h, 14*h), dx=h,
-                     precision="float32", boundary="pec", cpml_layers=0)
+                     precision="float32", boundary="pec", cpml_layers=0,
+                     pec_occupancy_model="kottke" if smooth else "edge_keep")
     sim.add_port(position=(2*h, 2*h, 2*h), component="ez", extent=h,
                  impedance=50., waveform=GaussianPulse(f0=6e9, bandwidth=1.))
     grid = sim.freeze_mesh()
@@ -75,7 +76,6 @@ def test_applied_masks_follow_all_curl_drivers(monkeypatch, smooth, scene):
 
     monkeypatch.setattr(uniform, "make_uniform_step", make)
     monkeypatch.setattr(uniform, "compose", compose)
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1" if smooth else "0")
     if smooth:
         sim.forward(n_steps=1, pec_occupancy_override=jnp.asarray(cells),
                     skip_preflight=True, checkpoint=False)
@@ -119,7 +119,6 @@ def test_stencil_boundary_and_order_guard(periodic):
 
 
 def test_trigger_impedance_matches_plain_float32(monkeypatch):
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "0")
     h = 0.0005
     frequencies = np.linspace(2e9, 12e9, 64)
     zs = []

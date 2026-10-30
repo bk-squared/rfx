@@ -45,9 +45,14 @@ sim = Simulation(
 | `dx_profile`, `dy_profile`, `dz_profile` | Cell sizes along an axis, for a graded mesh. See [Non-Uniform Mesh](/rfx/model/domain-mesh/). |
 | `mode` | `"3d"` (default), `"2d_tmz"` (Ez, Hx, Hy) or `"2d_tez"` (Hz, Ex, Ey). |
 | `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). The last two run on the uniform single-device solver only. |
+| `pec_occupancy_model` | `"edge_keep"` (default) scales the E-edge update; `"kottke"` converts occupancy to an inverse-permittivity tensor on single-device uniform `forward()` and topology. Graded `forward()` (including distributed) refuses `"kottke"` with an occupancy input. Uniform distributed `forward()` refuses occupancy overrides; `run()` has no occupancy input. |
 | `solver` | `"yee"` (default) or the experimental `"adi"`. See [ADI Solver](/rfx/guide/adi-solver/). |
 | `stencil_order` | `2` (default) or `4`. Order 4 only runs on a uniform, PEC or periodic, non-dispersive model. |
 | `dt`, `dt_min_cell` | Pin the time step on a graded mesh (for mesh-as-design-variable work). Refused on a uniform mesh. |
+
+Set the occupancy model when constructing `Simulation`, before tracing or calling
+`forward()`. The removed `RFX_PEC_OCC_KOTTKE` environment variable raises at
+construction while set, even to `0`; unset it and use the constructor option.
 
 Put PEC faces in a `BoundarySpec`. Neither
 is a finite ground plane: for that, draw a sheet with `add_thin_conductor()`.

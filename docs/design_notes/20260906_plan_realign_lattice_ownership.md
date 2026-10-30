@@ -233,7 +233,7 @@ carrying `two_plane` is rejected with a message, not ignored).
   NOT read the pre-#931 rule's 0.00926519 and must not: that rule zeroed its own wrong
   subset of fractional edges. The fence applies only to the Stage-2 tensor built from
   the run's own `pec_shapes`; the occupancy-derived tensor (`aniso_inv_eps_smooth`, the
-  `RFX_PEC_OCC_KOTTKE` lane) keeps the realized edges, because there the static
+  `pec_occupancy_model="kottke"` lane) keeps the realized edges, because there the static
   declaration and the traced override are two different geometries and the intersection
   would silently delete declared metal. Pinned by
   `test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it` and
