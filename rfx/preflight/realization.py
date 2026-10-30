@@ -329,7 +329,7 @@ class _CampaignStaticsContext:
     every other preflight check that reads conductor geometry.
 
     Built once per CONFIGURATION through :meth:`_PreflightMixin
-    ._campaign_ctx` (a cache keyed on the entry identities and the mesh
+    ._campaign_ctx` (a cache keyed on the declarations and their mesh
     parameters, so an ``add()`` after a preflight misses it — a plain
     instance cache would have gone stale). The grid, sample coordinates,
     cell centres and the realized conductor set come from the PRODUCTION
@@ -827,28 +827,13 @@ def _campaign_ctx(self):
     the context runs the production assembly, which on a large model
     is the most expensive thing preflight does, and five checks each
     building their own would run it five times. The cache key is the
-    identity of every geometry / thin-conductor / pinned-sheet entry
-    plus the mesh parameters, so an ``add()`` or ``add_pinned_sheet()``
-    after a preflight (a new entry object) or a mesh change misses the
-    cache and rebuilds — the staleness a plain instance cache would
-    have had.  EVERY declaration surface that reaches the assembly must
-    have a term here: a conductor the solve realizes and preflight's
-    cached context does not is a preflight reporting a different model
-    from the one that runs.
+    shared declaration snapshot. Entry references prevent address reuse;
+    concrete profile contents detect in-place edits. Observer-only changes
+    also rebuild: both public records describe the same declaration state.
     """
-    sim = self
-    key = (
-        tuple(id(e) for e in sim._geometry),
-        tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
-        tuple(id(ps) for ps in getattr(sim, "_pinned_sheets", ())),
-        *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
-          ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")),
-        id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
-        id(sim._dz_profile), tuple(sim._domain),
-        getattr(sim, "_periodic_axes", None), sim._cpml_layers,
-        id(getattr(sim, "_refinement", None)),
-        tuple(sorted((name, id(spec)) for name, spec in sim._materials.items())),
-    )
+    from rfx.api._declarations import declaration_key
+
+    key = declaration_key(self)
     cached = getattr(self, "_pf_campaign_ctx", None)
     if cached is not None and cached[0] == key:
         return cached[1]
