@@ -10,7 +10,7 @@ from rfx.grid import Grid
 from rfx.measurement.rcs import compute_rcs
 
 
-@pytest.mark.parametrize("theta_inc, expected_count", [(20.0, 1), (0.0, 0)])
+@pytest.mark.parametrize("theta_inc, expected_count", [(20.0, 1), (0.0, 0), (1e-7, 0)])
 def test_oblique_rcs_level_warning_before_run(monkeypatch, theta_inc, expected_count):
     grid = Grid(freq_max=15e9, domain=(.054, .054, .054), dx=.003, cpml_layers=6)
     materials = init_materials(grid.shape)
@@ -30,5 +30,4 @@ def test_oblique_rcs_level_warning_before_run(monkeypatch, theta_inc, expected_c
     assert len(caught) == expected_count
     if expected_count:
         assert caught[0].category is AccuracyWarning
-        assert "#1991" in str(caught[0].message)
         assert "mesh dependent" in str(caught[0].message)

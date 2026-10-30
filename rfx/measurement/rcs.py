@@ -418,12 +418,12 @@ def compute_rcs(
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
         _run_kw.update(cpml_axes="xy", periodic=(False, False, True))
-    if float(theta_inc) != 0.0:
+    if _oblique:
         warnings.warn(
             "The absolute oblique RCS level is mesh dependent: measured +0.86 dB "
             "vs physical optics at lambda/30 and -1.55 dB at lambda/60 on a "
             "2.2-wavelength plate. Treat it as a +/-2 dB-class number and check "
-            "with two meshes (tracker #1991). The far-field pattern shape and "
+            "with two meshes. The far-field pattern shape and "
             "the specular direction are validated within the documented envelope.",
             AccuracyWarning, stacklevel=2,
         )
