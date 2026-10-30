@@ -546,6 +546,104 @@ def test_changelog_edit_with_the_release_label_passes(git_repo: Path):
     assert _run_check(git_repo, base, head, labels=["release"]) == []
 
 
+@pytest.fixture()
+def release_diff(git_repo: Path):
+    (git_repo / "rfx/__init__.py").write_text(
+        '__version__ = "2.0.0rc3"\n\nvalue = 1\n', encoding="utf-8")
+    (git_repo / "changelog.d/50.fixed.md").write_text(
+        "### Fixed — correct the value (#50)\n\n- Correct the value.\n", encoding="utf-8")
+    base = _commit(git_repo, "before release")
+    (git_repo / "rfx/__init__.py").write_text(
+        '__version__ = "2.0.0"\n\nvalue = 1\n', encoding="utf-8")
+    (git_repo / "CHANGELOG.md").write_text(SYNTHETIC + "\nassembled\n", encoding="utf-8")
+    (git_repo / "changelog.d/50.fixed.md").unlink()
+    return git_repo, base, _commit(git_repo, "release")
+
+
+def test_release_version_only_with_assembly_and_deletions_passes(release_diff):
+    repo, base, head = release_diff
+    assert _run_check(repo, base, head, labels=["release"]) == []
+
+
+def test_release_version_only_without_label_fails_both_rules(release_diff):
+    repo, base, head = release_diff
+    failures = _run_check(repo, base, head)
+    assert len(failures) == 2
+    assert "without the 'release' label" in failures[0]
+    assert "adds no changelog fragment" in failures[1]
+
+
+def test_release_version_and_other_init_line_needs_fragment(release_diff):
+    repo, base, _ = release_diff
+    (repo / "rfx/__init__.py").write_text(
+        '__version__ = "2.0.0"\n\nvalue = 2\n', encoding="utf-8")
+    head = _commit(repo, "change another init line")
+    failures = _run_check(repo, base, head, labels=["release"])
+    assert len(failures) == 1
+    assert "adds no changelog fragment" in failures[0]
+
+
+def test_release_version_and_other_package_file_needs_fragment(release_diff):
+    repo, base, _ = release_diff
+    (repo / "rfx/simulation.py").write_text("x = 2\n", encoding="utf-8")
+    head = _commit(repo, "change another package file")
+    failures = _run_check(repo, base, head, labels=["release"])
+    assert len(failures) == 1
+    assert "adds no changelog fragment" in failures[0]
+
+
+@pytest.mark.parametrize("operation", ["add", "delete", "rename-in", "rename-out"])
+def test_release_init_must_be_modified_not_added_deleted_or_renamed(git_repo, operation):
+    text = '__version__ = "2.0.0"\n'
+    source = git_repo / ("docs/version.py" if operation == "rename-in" else "rfx/__init__.py")
+    if operation != "add":
+        source.write_text(text, encoding="utf-8")
+        base = _commit(git_repo, "version file before release")
+    else:
+        base = _git(git_repo, "rev-parse", "HEAD")
+    if operation == "add":
+        source.write_text(text, encoding="utf-8")
+    elif operation == "delete":
+        source.unlink()
+    else:
+        destination = "rfx/__init__.py" if operation == "rename-in" else "docs/version.py"
+        _git(git_repo, "mv", str(source.relative_to(git_repo)), destination)
+    head = _commit(git_repo, operation)
+    failures = _run_check(git_repo, base, head, labels=["release"])
+    assert len(failures) == 1
+    assert "adds no changelog fragment" in failures[0]
+
+
+@pytest.mark.parametrize("old,new", [
+    ('__version__ = "2.0.0rc3"\n\n', '__version__ = "2.0.0"\n \n\n'),
+    ('__version__ = "2.0.0rc3"', '__version__ = "2.0.0"'),
+])
+def test_release_version_diff_ignores_blank_lines_and_missing_newline(git_repo, old, new):
+    path = git_repo / "rfx/__init__.py"
+    path.write_text(old, encoding="utf-8")
+    base = _commit(git_repo, "old version")
+    path.write_text(new, encoding="utf-8")
+    head = _commit(git_repo, "new version")
+    assert _run_check(git_repo, base, head, labels=["release"]) == []
+
+
+@pytest.mark.parametrize("old,new", [
+    ('__version__ = "2.0.0rc3"\nvalue = 1\n', '__version__ = "2.0.0"\n'),
+    ("__version__ = '2.0.0rc3'\n", '__version__ = "2.0.0"\n'),
+    ('__version__ = "2.0.0rc3"\n', '__version__ = "2.0.0"  # release\n'),
+    ('__version__ = "2.0.0rc3"\n', ' __version__ = "2.0.0"\n'),
+])
+def test_release_requires_exact_version_lines_on_both_sides(git_repo, old, new):
+    path = git_repo / "rfx/__init__.py"
+    path.write_text(old, encoding="utf-8")
+    base = _commit(git_repo, "old init")
+    path.write_text(new, encoding="utf-8")
+    head = _commit(git_repo, "new init")
+    failures = _run_check(git_repo, base, head, labels=["release"])
+    assert len(failures) == 1
+    assert "adds no changelog fragment" in failures[0]
+
+
 def test_docs_only_change_without_a_fragment_passes(git_repo: Path):
     base = _git(git_repo, "rev-parse", "HEAD")
     (git_repo / "docs" / "guide.md").write_text("doc edited\n", encoding="utf-8")

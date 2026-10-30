@@ -6,8 +6,10 @@ Four rules, all mechanical:
 1. ``CHANGELOG.md`` may only be edited by a PR labelled ``release``. Every
    other PR writes ``changelog.d/<number>.<type>.md`` instead, which is what
    removes the conflict class the file used to generate.
-2. A PR that changes anything under ``rfx/`` must ADD a fragment. Docs, tests,
-   scripts and records may add one; they are not required to.
+2. A PR that changes anything under ``rfx/`` must ADD a fragment, except a
+   ``release`` PR whose only package change modifies version assignment lines
+   in ``rfx/__init__.py``. Docs, tests, scripts and records may add one; they
+   are not required to.
 3. Fragment names, heading lines and bodies must be well formed. The validator
    is the assembler's own, imported here, so CI and the release step cannot
    drift.
@@ -32,6 +34,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -112,6 +115,31 @@ def fragment_line_count(text: str) -> int:
     return len(body.split("\n")) if body else 0
 
 
+def _version_only_package_change(entries: Sequence[Entry], base: str, head: str,
+                                 repo: Path) -> bool:
+    package = [entry for entry in entries if entry[1].startswith(GUARDED_PREFIX)]
+    if package != [("M", "rfx/__init__.py", True)]:
+        return False
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--no-textconv", "--unified=0",
+             f"{base}...{head}", "--", "rfx/__init__.py"],
+            cwd=repo, capture_output=True, text=True, check=True,
+        ).stdout
+    except subprocess.CalledProcessError:
+        return False
+    changed = []
+    in_hunk = False
+    for line in diff.splitlines():
+        if line.startswith("@@ "):
+            in_hunk = True
+        elif in_hunk and line.startswith(("+", "-")) and line[1:].strip():
+            changed.append(line[1:])
+    return bool(changed) and all(
+        re.fullmatch(r'__version__ = "[^"]+"', line) for line in changed
+    )
+
+
 def _is_fragment(path: str) -> bool:
     return (
         path.startswith(FRAGMENT_DIR + "/")
@@ -156,7 +184,10 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
     added_fragments = [path for status, path, _ in entries
                        if status == "A" and _is_fragment(path)]
     touched_package = any(path.startswith(GUARDED_PREFIX) for _, path, _ in entries)
-    if touched_package and not added_fragments:
+    release_version_only = RELEASE_LABEL in labels and _version_only_package_change(
+        entries, base, head, repo,
+    )
+    if touched_package and not added_fragments and not release_version_only:
         failures.append(
             f"this PR changes {GUARDED_PREFIX} but adds no changelog fragment.\n"
             f"  Add {example} containing exactly the entry you would have pasted\n"
