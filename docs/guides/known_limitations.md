@@ -64,7 +64,7 @@ definition per port kind. The periodic `run()` S refusal remains; graded
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_lumped_wire_s_isolated_drives.py::test_several_excited_ports_refused_before_step)
 
-Before this change, graded run()/forward() and uniform forward() could return
+Before 2.0.0rc1, graded run()/forward() and uniform forward() could return
 mixed S-parameters from one record with several excited lumped or wire ports.
 Each reported entry b_j/a_k was the sum, over every driven port m, of S_jm
 times its incident amplitude a_m divided by the incident amplitude a_k.
@@ -85,7 +85,8 @@ driver, is unchanged. One excited port with passive receiver ports is unchanged.
 ### A partly metal cell edge (metal density between 0 and 1) is an artificial loss; a source on such an edge is scaled by the same weight
 
 At metal density strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.
-Since this change, a source on such an edge is scaled by the same weight on single-device forward runs, as multi-device runs already did.
+The loss acts as a conductivity -eps0 ln(1 - M)/dt on the edge (M = 1 - (1 - w)^n over its n incident cells), so it grows as the mesh is refined: in a 12 GHz PEC cavity a 2 x 2 mm post at metal density 0.01 lowers the mode Q from above 1e10 to 73 with 1 mm cells and to 36 with 0.5 mm cells. Only densities 0 and 1 are lossless, and a result with intermediate densities does not converge under mesh refinement. A density strictly between 0 and 1 comes only from a relaxed conductor: topology optimisation with PEC as one of its two materials (the projected density becomes the metal density; the default projection `beta_projection=1.0` leaves it gray, so binarise with a large beta before reading a result), or a `pec_occupancy_override` / `design_occupancy_override` array the user passes. A PEC body declared with `add(..., material='pec')` or a PEC sheet is always 0 or 1.
+In 2.0 a source on such an edge is scaled by the same weight on single-device forward runs, as on multi-device runs.
 A resistive sheet or lumped RLC element on such an edge is NOT scaled: its update replaces the field after the weight.
 Tracker: #1373
 → [#1373](https://github.com/bk-squared/rfx/issues/1373)
@@ -164,18 +165,24 @@ one boundary carry plus 6.5 carries of backward working arrays.
 This calibration uses one graded whole-grid scene, not a runtime guarantee.
 Design boxes use the same whole-grid adjoint workspace estimate and are unmeasured;
 other scenes, backends, and JAX versions are also unmeasured for this coefficient.
+With a design box and `checkpoint=False`, a gradient keeps 24 bytes per step for every cell of the box plus one cell on its plus side along each axis.
+That is twice what an E history needs. The estimate's term for it counts one more cell on the minus side as well, so it reads high:
+1.12 times the compiled amount for a 24 × 24 × 24 box, 1.62 times for a one-cell 24 × 24 layer.
 Measure a representative run or pull back one output at a time when memory is tight.
 The former 2.2-times advice was exceeded by the measured 16-output row (2.25 times).
-An estimate from the compiled whole gradient is the planned replacement.
+Since rfx 2.0, on a single-device graded run on a GPU, `estimate_ad_memory(..., compiled=True)` compiles the gradient program without running it and returns its device peak in `compiled_total_bytes`: 0.992 to 1.000 of the measured peak on four graded rows on two GPU models, for one compile of 9 to 31 s.
+It refuses wherever it was not measured: uniform, multi-device and subgridded runs, other backends, a preallocated GPU memory pool (`XLA_PYTHON_CLIENT_PREALLOCATE` must be "false"), design boxes, float64, warmup steps, plans that do not segment the run, and outputs other than probe and waveguide-port records.
 
 ### jax 0.11.2 and 0.12.0 run the time step slower than jax 0.10.2, on CPU at every measured size and on GPU on a large grid
 
 Tracker: #2125
 
+rfx's install range (`jax>=0.10.2,<0.11.2`) does not install these versions; this entry applies where they are installed by hand.
+
 Measured at two grid sizes, with and without one lumped RLC element. This is not a trend over grid size.
 On one RTX A6000 at 3.05 M cells (CPML included), jax 0.11.2 takes 1.18 times as long per time step as jax 0.10.2.
 On the GPU at 0.53 M cells, the two versions take the same time (1.00).
-On both devices the slowdown appears with and without the lumped element, so it comes from the compiler version, not from rfx.
+On both devices the slowdown appears with and without the lumped element.
 Peak device memory is the same on both versions.
 `estimate_ad_memory` still reads 1.007 to 1.009 of the measured gradient peak with `checkpoint=True`.
 On CPU (one node, 8 cores, the same two grids), jax 0.11.2 takes 2.7 to 3.0 times as long per step at 0.53 M cells.
@@ -183,9 +190,12 @@ At 3.05 M cells it takes 1.6 to 2.4 times as long.
 The compiled CPU step holds 18 more domain-sized copies on jax 0.11.2, with and without the lumped element.
 Peak host memory is unchanged on CPU (0.91 to 1.01 times).
 jax 0.11.0 and 0.11.1 run the CPU step at jax 0.10.2's speed (1.00 to 1.01 times, 8 domain-sized copies); jax 0.12.0 is slower (5.6 times at 0.53 M cells, 2.4 times at 3.05 M cells).
-The release and the change in the compiled program (domain-sized fusions 85 to 98, copies 8 to 26) match openxla/xla#50977: from jaxlib 0.11.2, chains of partial array updates are recomputed. This is a match by version and operation counts, not a proven cause.
+On CPU, every domain-sized copy that jaxlib 0.11.2 adds comes from the absorber (CPML) write-back. That write-back is a chain of partial updates of each field, and from 0.11.2 the compiler recomputes such chains (openxla/xla#50977). This holds in 40 of 43 measured scenes.
+On the GPU the write-back takes another form, and the extra copies do not appear; the cause of the GPU's 1.18 times at 3.05 M cells is not measured.
+An rfx-side change, a compiler barrier after each absorber update on CPU, removed the extra copies. With it, the step on 0.11.2 took 0.98 to 1.00 times jax 0.10.2's time, and the fields stayed bit-identical. It is planned for 2.1, together with lifting the install cap.
+These step times come from a second CPU node; on it, the unchanged step on 0.11.2 took 1.5 to 1.7 times jax 0.10.2's time, so the size of the slowdown depends on the machine.
 No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
-Workaround on CPU with Python 3.12 or newer: install `jax==0.11.1 jaxlib==0.11.1`.
+Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
@@ -197,9 +207,9 @@ Grid-aligned faces are not affected. Judge such resonances by at least three ref
 `subpixel_smoothing=False`; disagreement means neither series has converged.
 
 `subpixel_smoothing="full_tensor"` uses full anisotropic averaging (Farjadpour 2006; Oskooi 2009;
-Werner–Bauer–Cary 2013 node form) on uniform single-device meshes. Extinction cross section on a synthetic eps-4
+Werner–Bauer–Cary 2013 node form) on single-device Yee meshes, uniform or graded. Extinction cross section on a synthetic eps-4
 sphere measured second-order convergence over three meshes. This is not a convergence-order claim for high-contrast rods.
-Graded meshes, multiple devices, ADI, subgrids, UPML, and the waveguide S driver refuse this option.
+Multiple devices, ADI, subgrids, UPML and the waveguide S driver refuse this option.
 Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
@@ -207,15 +217,19 @@ Tracker: #1632
 ### Conformal PEC makes a curved metal body electrically larger, and is less accurate than the staircase.
 
 `conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
-with w the edge's open fraction (down to 0.1); only edges with w = 0 are metal. The cut cells become a high-permittivity
+with w = 0.5 + (signed distance from the surface at the edge's midpoint) / dx, clipped to [0, 1] and raised to 0.1 where it is above 0 (not the edge's open fraction: the two differ by up to 0.5); only edges with w = 0 are metal. The cut cells become a high-permittivity
 skin about one cell thick, which makes the body electrically larger. On a PEC sphere against Mie, its extinction and
-backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). A run with conformal PEC warns, except together with
-`subpixel_smoothing="kottke_pec"`: that combination forms no conformal weights (the smoothed tensor treats the metal
-edges instead) and gives no conformal warning. Until the Dey-Mittra update (cut H-face areas)
-lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
+backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). Measured on main 7d332abff with a PEC sphere (radius 9 mm, plane wave 8-12 GHz, cells 0.75 / 0.5 / 0.375 mm), the extinction fitted against Mie reads a sphere larger by 1.15 / 1.08 / 1.04 cells with conformal PEC against 0.69 / 0.74 / 0.70 cells with the staircase, both falling first order in the cell size; 70-73 % of the conformal excess comes from the eps/w on cut edges whose midpoint lies inside the declared surface (eps 2 to 10), and a user gets it only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns conformal PEC on for every PEC body in that run (the default is the staircase). A run with conformal PEC warns. Conformal PEC together with
+`subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until a fix lands (planned for 2.1), use the staircase and judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
-`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field near 1e-2 of the peak that does not decay (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
+`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
+
+### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
+
+Tracker: #2241
+
+`run()` called inside a user `jax.jit` can differ from plain `run()`. On Linux CPU over 192 steps it was seen with a point current source (up to 487 float32 ULP of a probe's own peak per step on a uniform mesh, 333 on a graded mesh), a lumped port (467, uniform) and a wire port (135, uniform). On a graded mesh, `run()` with a lumped or wire port inside `jax.jit` raises `ConcretizationTypeError`. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. `forward()` inside `jax.jit` matches the plain call on one device without a traced override, for every drive measured (point source, lumped, wire, waveguide and microstrip ports, plane wave); `tests/unit/autodiff/test_forward_jit_contract.py` pins it for wire, microstrip and lumped ports. On several devices, or with a traced `eps_override`, it can also differ. Until a fix lands (planned for 2.1), call `forward()` inside `jax.jit` on one device, or call `run()` without an enclosing `jax.jit`. The cause is not yet localized.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
@@ -227,6 +241,17 @@ the compiled time step falls from 233.2 MB to 156.1 MB. The peak is reached on e
 buffer holds it is not yet found. A third GPU therefore does not let a model fit that two GPUs cannot hold.
 What to do: size a run on three or more GPUs in one process from its two-GPU peak.
 → [#2150](https://github.com/bk-squared/rfx/issues/2150)
+
+### Many thin PEC sheets can run out of GPU memory inside run() on a small card
+
+Tracker: #1432
+
+Each thin PEC sheet keeps whole-grid footprint arrays on the device in every conductor assembly, and the results of
+`preflight()` and `realized_geometry()` stay on the device until the Simulation is deleted. With 161 sheets on 3.05 M
+cells one assembly holds 0.97 GiB. After `preflight()`, `realized_geometry()` and a second model kept in the same process,
+the device held 4.24 GiB, and `run()`'s own preflight then stopped in the allocator on an 8 GB card (5.84 GiB pool). The
+same run completed when no second model was kept (peak 5.39 GiB). The public API has no way yet to free
+those arrays before `run()`.
 
 ## Ports and extraction
 
@@ -282,7 +307,7 @@ this path are not usable as an absolute power reference. Cross-family transition
 calculators are not pursued further before 2.0, so the excess will not be attributed or
 corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
 the coaxial two-port and line-reflection calculators) for a result you can cite.
-#838 was closed as not planned before 2.0 (PI decision, 2026-09-20); this is a standing limitation.
+#838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
 
@@ -297,11 +322,11 @@ cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), or as an absorber too close
 above the line (next entry), not as gain.
 `enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
-the raw S is gated: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch at its 25 µm claims rung, in
+a test checks the raw S: the microstrip chain battery holds its maximum column power at
+or below 1.02 on the open-stub notch on the 25 µm mesh the claims rest on, in
 `tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
 measured notch and thru values. Coarser meshes are
-reported, not gated.
+reported, not tested.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
@@ -358,9 +383,10 @@ Tracker: none — accepted limitation (diagnostic, does not enter the result: te
 
 The N-probe fit rides the standing wave instead of measuring the
 line: the fitted `Z0` follows the reflection's ripple, while `reliable` can stay
-True on every in-band bin. `S` itself is normalized with the analytic
-Hammerstad-Jensen `Z0` (`rfx/sparams/msl.py`, `reference_impedances`), not with
-the fitted one. Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
+True on every in-band bin. `S` itself is referred to each port's declared
+`impedance=` (`reference_impedances`), with its waves formed at the analytic
+Hammerstad-Jensen line impedance (`line_impedances`), not at the fitted `Z0`. Judge by
+`probe_clearance` and `beta_railed`, not by `reliable`; the
 fix is a longer uniform feed or a moved reference plane. Every warning about
 this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`).
 Settled in #726 (closed): the guard and preflight used to contradict each other
@@ -370,21 +396,47 @@ about this, and a measurement decided it.
 
 Tracker: #1373
 
-Open for 2.0 in #1373 (folded from #1524 on 2026-10-07): it is to be measured
-against a run with the update's exact coefficient, and refused if the error is
-outside the accuracy bar.
+The field increment a source adds on its edge is the update's coefficient times the drive. A rectangular-waveguide port and a plane-wave source still compute that coefficient apart from the update.
 
-The field increment a source adds on its edge is the update's coefficient times the drive. One place still computes that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
+- A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge 1/w times harder than the update does, w being the edge's open fraction. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) the launched wave, and with it every absolute field and probe amplitude, reads 2.7 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.6 % with 0.75 mm cells; the excess falls in proportion to the cell size. |S11| and |S21| moved by at most 3e-3, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
+- A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
+- A plane-wave source (`add_tfsf_source`) on a smoothed or conformal edge is not measured; planned for 2.1.
 
-### WR-90 S-parameters near cutoff need a record of about 32 000 steps at a/45.
+Any fix is 2.1. Until then, read absolute amplitudes from a port beside a conformal wall as high by up to these amounts, or put the walls on mesh nodes. Measured 2026-10-29; record kept with the project.
+
+### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)
 
 Below f/fc = 1.2 the guide's slow group velocity rings long after the source
-ends. At a/45 cells such a band needs about 32 000 steps before |S11|²+|S21|²
-stops moving with record length; on 8 000 steps it moves by up to 1e-2 per bin,
-and the run's settling check reports that record (−39 dB against −40 dB).
+ends. At a/45 cells the run's settling check passes from about 16 000 steps
+(−51.6 dB); there |S11|²+|S21|² is within 1.8e-3 of a 64 000-step record, inside
+the check's own per-bin bound. On 8 000 steps the sum moves by up to 9e-3 per bin
+and the settling check fails that record (−39.7 dB against −40 dB). From
+32 000 steps on, the remaining 1.2e-3 to 1.3e-3 of |1 − |S11|² − |S21|²| does
+not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
+(f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
+
+### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
+
+Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_msl_feed_shift_eps_override.py::test_override_varying_along_the_shifted_length_is_refused_by_port_name)
+
+`compute_msl_s_matrix(eps_override=...)` moves S from the probes to the feed planes along the line the override sets under each port (its beta and Z0; the gradient carries that term). Two cases are refused by name:
+
+- an override whose permittivity varies under a port line between its feed plane and its first probe. The move uses one line over that length; keep the override uniform there or move the probes with `n_probe_offset`.
+- a call under `jax.jit`, where the override has no values to check (`::test_override_without_values_is_refused_under_jit`). Call it outside `jax.jit`; `jax.grad` and `jax.jacfwd` work.
+
+### A two-stub microstrip stopband filter's group delay misses the 1 % bar against HFSS
+
+Tracker: #2203
+
+On a two-stub microstrip stopband filter on the edge-aware non-uniform mesh (`rfx.mesh_edges.edge_aware_profiles`),
+the passband group delay over 5.0–5.6 GHz is 1.06 % above an HFSS reference. With the mesh it changes little at the fine
+end: 1.44, 1.14 and 1.06 % at h/4, h/8 and h/12, where h is the substrate thickness. Near the stopband edges the per-bin
+difference is larger and not flat. The stopband minima are shallower in rfx: −35 and −41 dB, against −39 and −59 dB in
+HFSS. The cause is not known. On a uniform mesh the gap is larger and falls first order with the cell (3.86, 2.44 and
+1.96 %), because a free PEC sheet edge is solved 0.35 cell beyond its last node.
 
 ## Ring-down completion and the early stop
 
@@ -398,22 +450,22 @@ Tracker: #1514
 `forward(ringdown=...)` identify the ringing's poles on the record's second
 half. Two resonances closer than the record can resolve come back as one
 blended pole, and the completion from any window of that record makes the same
-blend. The early-window vs late-window comparison WE then agrees while the completed S can be several
+blend. The comparison of an early-window and a late-window completion then agrees while the completed S can be several
 percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
-#1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
+#1381 was closed as a stated limit (decided 2026-09-30); this is a standing limitation.
 
 ### The early stop can end the run before a weak unresolved high-Q pair is resolved.
 
 Tracker: #1514
 
-The rule is `run(..., until_identified=True)`: stop once WE agrees
+The rule is `run(..., until_identified=True)`: stop once the early-window and late-window completions agree
 twice and the record is half the decay time of the slowest mode that moves S.
 A weakly coupled pair of very high-Q modes (Q about 5e4, each feature 0.02–0.03
 in |S|, 40–60 MHz apart) beats inside a short record. The record reads the beat
 as fast decay, the blended pole's weight falls below the bar, and the floor
 does not hold. Measured on a synthetic one-port: the stop fires at 2250 steps
-with the completed S up to 3e-2 off at the pair while WE reads about 1e-4.
+with the completed S up to 3e-2 off at the pair while that comparison reads about 1e-4.
 Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
@@ -432,7 +484,7 @@ On the same record, one-cell wire-port completion restores |S11| to 1 within 1e-
 `run(ringdown=...)` currently refuses one-cell lumped ports.
 What to do: record well past the slowest mode's decay, or use a one-cell wire port
 (`add_port(..., extent=dx)`) with `run(ringdown=...)`.
-#1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
+#1255 was closed as a stated limit (decided 2026-10-01); this is a standing limitation.
 
 ### A probe at the rounding level of a much stronger probe in the same cell is not judged by the decay check.
 
@@ -466,7 +518,7 @@ Tracker: none — accepted limitation (refused at default: tests/unit/sparams/te
 Uniform and graded run/forward place the wall on the declared E-node face.
 The multi-device runners take a magnetic face through the same single-device
 image (#1761). There, wire ports and lumped-port S-parameters refuse it, and on
-the graded mesh so do DFT planes, flux monitors, snapshots and current moments.
+the graded mesh so do every port, DFT planes, flux monitors, snapshots and current moments.
 Subgridded and ADI paths refuse magnetic faces (the `pmc_face` row of
 `tests/contracts/path_disposition.py`; the graded multi-device records:
 `tests/contracts/test_distributed_graded_pmc_records.py`).
@@ -564,7 +616,7 @@ Tracker: #1991
 periodic slab in z). On a 2.2-wavelength PEC plate at θ = 20° and 40°, the specular peak of the returned bistatic RCS
 is +0.86 dB above a physical-optics uniform-aperture reference at λ/30 cells, and −1.55 dB below it at λ/60, a 2.4 dB
 change from mesh refinement alone. Treat the absolute value as a ±2 dB-class number at λ/30 to λ/60, not a sub-dB one.
-The far-field pattern shape and the direction of the specular peak are validated (peak within 3° at θ = 40°, gated at
+The far-field pattern shape and the direction of the specular peak are validated (peak within 3° at θ = 40°, tested at
 ±6°; tests/oracle/test_oblique_rcs_specular.py). The returned RCS is that of a strip whose height is the
 two-cell far-field box in z, `h_eff = 2·dx`: for a physical strip of height `L_z`, scale it by `(L_z/h_eff)²`.
 What to do: compare shapes and directions directly; for an absolute level, run two meshes (λ/30 and λ/60) and
@@ -576,7 +628,13 @@ report the spread as the uncertainty of the level.
 
 Tracker: #1373
 
-`forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`, and it refuses to run inside `jax.jit`. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
+`forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`. It runs inside a user `jax.jit`, where port S-parameters are refused by name. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
+
+### A graded multi-device `forward()` with a port refuses a PEC occupancy override in the sharded layout
+
+Tracker: #2218
+
+On a graded mesh, `forward(distributed=True)` with a port refuses a `pec_occupancy_override` given as an x-sharded padded array (`ValueError` on its shape); pass it in the grid shape. A grid-shape override and `eps_override`/`sigma_override` are not affected. The fix is planned for 2.1, with lumped RLC elements on several devices.
 
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
@@ -626,7 +684,7 @@ in every bin whose phase is `(ω − ω_r)·T`; a parameter that moves the reson
 spins that phase, and because the phase grows with the simulation time the spin
 lands in the derivative magnified while staying nearly invisible in the value.
 In the measured cases the sign of the slope was right and its size was not — an
-optimizer reading them takes steps of the wrong length, and a gate on a gradient
+optimizer reading them takes steps of the wrong length, and a check on a gradient
 value passes or fails on the simulation time rather than on the physics.
 
 The committed reproduction is a lossy-filled PEC cavity
@@ -647,7 +705,7 @@ the cosine between the two — so a change of step length reads differently from
 turn of the descent direction. Complex observables (an S-parameter, a DFT
 phasor) are compared as complex sensitivities, since a parameter that rotates a
 phasor at constant magnitude moves only its imaginary part. A per-element table
-comes with the result to locate where a failure sits; it is not the verdict,
+comes with the result to locate where a failure sits; it is not the pass/fail result,
 because an element carrying a millionth of the dominant sensitivity moves by
 100 % on its own rounding. The comparison with a longer run does not replace the −40 dB rule — a
 record too short by more than `factor` can still pass it, because both runs then
@@ -707,7 +765,7 @@ The SMOKE half was #1100.
 Tracker: #737
 
 The
-example-fidelity gate builds every reachable example and pins the preflight rows
+example-fidelity check builds every reachable example and pins the preflight rows
 it emits; it does not step time, and it does not check that any example's printed
 result is right. Six tutorials plus `hello_world` are additionally run end to end
 with physics assertions. Everything else in `examples/` and `validation/` is
@@ -721,7 +779,7 @@ Tracker: #1471
 The patch-antenna accuracy figure is not claimed for 2.0 because
 its simulation time predates the current decay check. It is re-measured after
 2.0, with the MSL notch filter's, on a redesigned record length and mesh ladder
-(PI decision 2026-10-04, recorded on
+(decided 2026-10-04, recorded on
 [#1471](https://github.com/bk-squared/rfx/issues/1471)).
 
 ---

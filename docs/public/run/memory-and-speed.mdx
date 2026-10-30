@@ -17,7 +17,7 @@ memory report can and cannot tell you.
 |---|---|---|
 | `forward(design_box=..., design_eps_override=..., checkpoint=False)` | keeps only the design box on the tape instead of whole-grid material arrays; same gradient | [Inverse Design](/rfx/design/optimization/) |
 | `checkpoint_segments=K` | uniform mesh: stores state at segment boundaries and replays one segment at a time, about `sqrt(n_steps)` memory for about 2x compute. `K` must divide `n_steps`. | `forward()`, `optimize()` |
-| `checkpoint_every=K` | the same on a non-uniform mesh; `K` is a chunk length in steps | `forward()`, `optimize()` |
+| `checkpoint_every=K` | the same on a non-uniform mesh; `K` is a chunk length in steps. On a graded single-device run, a tuple of decreasing lengths nests checkpoint levels: less memory for more recomputation, same values. `plan_ad_memory` and `estimate_ad_memory` report the levels | `forward()`, `optimize()` (a tuple: `forward()` only) |
 | a graded mesh | fewer cells when one thin feature needs fine cells along one axis | [Non-Uniform Mesh](/rfx/model/domain-mesh/) |
 | a shorter record | fewer steps on the tape; check the gradient still converges | [Gradient Behavior](/rfx/guide/gradient-behavior/) |
 | `n_warmup=K` | non-uniform mesh only: no tape for the first `K` steps. This **approximates** the gradient | `forward()` docstring |
@@ -177,6 +177,13 @@ Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory
 | `composite_ad_memory_preflight` | yes | `ad_memory_preflight(...)` | the combined report above |
 | `static_action_hint` | yes | `ad_memory_preflight(...)` | a deterministic next action, such as `use_checkpoint_every` |
 | `bounded_certificate` | yes | `ad_memory_compiled_certificate(...)` | the compiler's memory estimate for one exact compiled executable and scope |
+
+On a graded single-device run, `estimate_ad_memory(..., compiled=True)` also
+compiles (does not run) the differentiated program and reports the GPU memory
+peak it will need in `compiled_total_bytes`, at the cost of one compile. It
+refuses the paths where it was not measured: uniform, multi-device and
+subgridded runs, other backends, and `XLA_PYTHON_CLIENT_PREALLOCATE` other than
+`"false"`, among others; the message names the reason.
 
 ## Explain an estimate
 

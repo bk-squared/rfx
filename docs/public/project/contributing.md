@@ -16,7 +16,7 @@ cd rfx
 pip install -e '.[dev]'
 ```
 
-rfx needs Python 3.11 or newer and JAX and jaxlib 0.10.2 or newer.
+rfx needs Python 3.11 or newer and JAX and jaxlib from 0.10.2 up to, not including, 0.11.2.
 The `dev` extra installs `pytest`,
 `pytest-xdist`, `ruff` and the other development tools. Everything below runs
 on a CPU. To test on an NVIDIA GPU, install the JAX build that matches your

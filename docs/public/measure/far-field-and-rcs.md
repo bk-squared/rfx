@@ -236,6 +236,19 @@ for the other helpers.
 - **Bistatic RCS with a strong forward-oblique lobe** → you left
   `subtract_incident_reference=False`; turn it on. A larger `ntff_offset`
   does not fix it.
+- **Far-field phase on an electrically long domain** → the far-field
+  transform uses the free-space wavenumber k, while the scattered wave
+  crosses the grid with the Yee wavenumber k_num, slightly larger
+  (along an axis, sin(ωΔt/2)/(cΔt) = sin(k_num·Δx/2)/Δx; the relation
+  `tests/oracle/test_numerical_dispersion_oracle.py` measures). The far
+  field then carries an extra phase −(k_num − k)·L, L the distance from the
+  scatterer to the box along the direction read. Magnitudes, monostatic RCS
+  and flux do not change; phase uses do (the optical theorem's forward
+  amplitude, coherent sums of far fields from separate runs). With the
+  default time step, along an axis, it is 0.35 rad over 20 wavelengths at
+  20 cells per wavelength and 0.09 rad at 40, falling as the square of the
+  cell size. Keep the box close to the scatterer, refine until the forward
+  phase converges, or multiply by exp(+j(k_num − k)·L).
 - **RCS of a new target** → only the monostatic sphere case is checked
   against Mie. Run your own convergence study and compare with a reference.
 - **Oblique incidence refuses your setup** → it needs `polarization="ez"`, a

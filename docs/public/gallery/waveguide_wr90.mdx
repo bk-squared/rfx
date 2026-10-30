@@ -1,6 +1,6 @@
 ---
 title: "Hollow rectangular waveguide (WR-90, TE10)"
-description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0014 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
+description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0014 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21|² to the dielectric fill that matches central finite differences of the same model to 0.22 % in one float32 computation."
 sidebar:
   order: 13
 ---
@@ -40,8 +40,10 @@ below fills only a short section instead, whose two faces reflect.
   while lower frequencies would not.
 - Reading two-port **|S11| (reflection) and |S21| (transmission)** against the
   exact matched empty-guide answer (`|S11| = 0`, `|S21| = 1`).
-- Taking a **gradient through the FDTD solver** with `jax.grad`: how `|S21|`
-  responds to the guide's dielectric fill, validated against finite differences.
+- Taking a **gradient through the FDTD solver** with `jax.grad`: how `|S21|²`
+  responds to the guide's dielectric fill, checked against central finite
+  differences of the same model for one float32 computation. The case has no check
+  against a longer run.
 
 ## Geometry & materials
 

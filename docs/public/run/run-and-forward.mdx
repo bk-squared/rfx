@@ -87,8 +87,8 @@ Where the two calls still differ:
   only when `port_s11_freqs` is given.
 - `forward(distributed=True)` on a uniform mesh runs the declared model as it
   is: it refuses override and design arguments, checkpoint arguments,
-  `n_warmup`, `emit_time_series=False`, an enclosing `jax.jit` and a gradient
-  through its port S.
+  `n_warmup`, `emit_time_series=False`, port S inside an enclosing `jax.jit`
+  and a gradient through its port S.
 
 ### How long it runs
 
@@ -116,8 +116,8 @@ every `interval` steps, optionally on one slice (`slice_axis`, `slice_index`),
 in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
 snapshot of every step is large; take a slice. Snapshots are taken on a uniform
 mesh, on one device or several, and by `run(devices=...)` on a graded mesh. A
-graded mesh on one device, ADI, subgridding and an oblique plane wave refuse
-`snapshot=`.
+graded mesh on one device, ADI, subgridding and an oblique plane wave on the
+Bloch path (`angle_deg`) refuse `snapshot=`; an oblique closed box takes it.
 
 ### JAX transforms
 
@@ -128,7 +128,8 @@ compiles the whole solve again on every call. A jitted result need not be
 bit-identical to the plain one: the compiler may round in a different order.
 On a graded mesh over several devices, `forward()` takes gradients and `vmap`
 without an outer `jax.jit`; `forward(distributed=True)` on a uniform mesh takes
-no gradient through its port S and refuses an enclosing `jax.jit`. An outer
+no gradient through its port S, and inside an enclosing `jax.jit` it returns
+probe records but refuses port S. An outer
 `jax.jit` over several GPUs is refused while XLA command buffers are on, and
 the message says how to turn them off.
 
@@ -165,7 +166,7 @@ finds them equal for every combination both calls accept
 | `precision="float64"` outside `jax.enable_x64()` | all | build and run inside the block |
 | `precision="float64"` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
 | `until_decay` | multi-device, ADI, subgridded, a graded mesh with closed boundaries, a plane wave at an angle | `n_steps` |
-| `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
+| `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, port S inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
 | `forward()` with `Boundary(conformal=True)` | all | `run()` |
 | `run(snapshot=...)` | graded mesh on one device, ADI, subgridded, an oblique plane wave | a uniform mesh, or `run(devices=...)` on a graded mesh |
 | `add_refinement` without `validation="research"` or `"off"` | uniform mesh, `run()` | a graded mesh |
