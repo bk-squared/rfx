@@ -117,24 +117,6 @@ class MSLEigenmodeData:
 
 
 # ---------------------------------------------------------------------------
-# Cross-section geometry helpers
-# ---------------------------------------------------------------------------
-
-
-def _axis_cell_size(grid, axis: str, idx: int) -> float:
-    profile_attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
-    profile = getattr(grid, profile_attr, None)
-    if profile is not None:
-        try:
-            n = int(profile.shape[0])
-        except Exception:
-            return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
-        clamped = max(0, min(idx, n - 1))
-        return float(profile[clamped])
-    return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
-
-
-# ---------------------------------------------------------------------------
 # Public API: compute_msl_eigenmode_profile
 # ---------------------------------------------------------------------------
 

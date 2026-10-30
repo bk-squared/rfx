@@ -488,29 +488,14 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
 def _axis_cell_size(grid, axis: str, idx: int) -> float:
     """Return the cell size at index ``idx`` along ``axis``.
 
-    Supports both uniform Grid and NonUniformGrid via duck typing.
-
-    On a ``NonUniformGrid`` the per-cell sizes live in ``dx_arr``/``dy_arr``/
-    ``dz`` (the NamedTuple has NO ``*_profile`` attribute), so the duck-typed
-    ``getattr(grid, "dx_profile")`` path below would fall through to the scalar
-    BOUNDARY ``grid.dx`` for every cell — the wrong-cell bug. Read the real
-    per-cell array first. On a uniform ``Grid`` (not a ``NonUniformGrid``) this
-    branch is skipped and the legacy behaviour is byte-identical.
+    NonUniformGrid stores per-cell sizes in dx_arr/dy_arr/dz. Uniform
+    Grid has no profile attributes and uses its scalar spacing.
     """
     from rfx.nonuniform import NonUniformGrid
     if isinstance(grid, NonUniformGrid):
         per_cell = np.asarray({"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis])
         clamped = max(0, min(int(idx), int(per_cell.shape[0]) - 1))
         return float(per_cell[clamped])
-    profile_attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
-    profile = getattr(grid, profile_attr, None)
-    if profile is not None:
-        try:
-            n = int(profile.shape[0])
-        except Exception:
-            return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
-        clamped = max(0, min(idx, n - 1))
-        return float(profile[clamped])
     # Fallback for axis-specific scalar (Grid doesn't carry .dy/.dz today)
     return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
 
