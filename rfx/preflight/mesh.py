@@ -246,7 +246,7 @@ def _validate_mesh_quality(self) -> None:
                 hint = (
                     " A PEC shape passed to sim.add() is a VOLUME "
                     "(realized with both faces and a shorted interior, "
-                    "lattice ownership contract), and a "
+                    "lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md), and a "
                     "volume thinner than one local cell is refused at "
                     "assembly rather than snapped to a plane. "
                     "If this is foil (a ground plane, patch, trace), "

@@ -564,7 +564,7 @@ def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
                     f"(add_thin_conductor, or a zero-thickness PEC Box — "
                     f"one node plane, normal E through it live); a thick "
                     f"plate is a PEC Box VOLUME (walls on both faces, "
-                    f"lattice ownership contract).",
+                    f"lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md).",
                     code="pec_faces_finite_pec",
                     source="_validate_cfg_pec_faces_with_finite_pec",
                 ),

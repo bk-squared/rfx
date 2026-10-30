@@ -102,6 +102,6 @@ def test_wall_message_names_current_grid_rule():
     hit, = _sim(A_WG, B_WG).preflight().by_code(CODE)
     text = str(hit)
     assert "nearest whole number of cells" in text
-    assert "the WR-90 waveguide case" in text
+    assert "the WR-90 PEC-short waveguide case" in text
     assert "ceil(" not in text
     assert "cv11" not in text
