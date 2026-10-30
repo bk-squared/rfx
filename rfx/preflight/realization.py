@@ -831,7 +831,7 @@ def _campaign_ctx(self):
     concrete profile contents detect in-place edits. Observer-only changes
     also rebuild: both public records describe the same declaration state.
     """
-    from rfx.api._declarations import declaration_key
+    from rfx._declarations import declaration_key
 
     key = declaration_key(self)
     cached = getattr(self, "_pf_campaign_ctx", None)

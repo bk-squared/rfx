@@ -10,6 +10,8 @@ from rfx.errors import ConfigurationWarning, RfxRefusal
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, field, replace
 
+from rfx._declarations import release_declaration_caches
+
 import numpy as np
 
 from rfx.preflight._common import PreflightReport
@@ -187,8 +189,7 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     root = replace(root, materials=materials, pec_cells=cells, pec_edges=edges,
         stamped_entities=tuple(entities), provenance=root.provenance + (
             ConductorStage(tuple(e.entity_id for e in entities), 'coax stamp'),))
-    sim._coax_geometry = None
-    sim._realized_geometry_record = None
+    release_declaration_caches(sim)
     if not _traced_product(root):
         from rfx.model.coax import stamp_check_findings
         ctx = None
@@ -465,8 +466,7 @@ class PreparedSolve:
 def prepare_solve(sim, *, distributed=False):
     """Keep solve ownership local to this execution, never in audit caches."""
     if distributed:
-        sim._pf_campaign_ctx = None
-        sim._realized_geometry_record = None
+        release_declaration_caches(sim)
     return PreparedSolve(sim)
 
 
@@ -755,8 +755,7 @@ def forward_kernel_inputs(sim, root, lane, edges, sheet_operator):
 
 def distributed_solve_inputs(sim, grid, assembly, skip, gather, *, n_devices=1):
     """Consume the dispatch handoff without retaining it during slab staging."""
-    sim._pf_campaign_ctx = None
-    sim._realized_geometry_record = None
+    release_declaration_caches(sim)
     if assembly is None:
         root = solve_conductors(sim, grid, nonuniform=True, n_devices=n_devices)
         report = sim._auto_preflight(
@@ -906,7 +905,7 @@ def prepare_sheet_layout(sim, layout, *, distributed):
     indices = {index for index, _, _ in addressed}
     fixed._pinned_sheets = [sheet for index, sheet in enumerate(sim._pinned_sheets)
                             if index not in indices]
-    fixed._pf_campaign_ctx = None
+    release_declaration_caches(fixed)
     return fixed, addressed
 
 
