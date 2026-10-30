@@ -29,6 +29,7 @@ Use small documentation PRs unless a feature PR must include docs to remain accu
 Before publishing a release or merging a docs-heavy feature:
 
 - Re-audit docs/guides/known_limitations.md: every entry true on the release commit (tests/contracts/test_known_limitations_tracker.py, scripts/ci/check_known_limitations.py)
+- Set the version in every place that names it. The package version is in `pyproject.toml`, `rfx/__init__.py` (`__version__`) and `CITATION.cff`. The install lines carry it as `"rfx-fdtd>=2.0.0rc1"`, which installs the newest release candidate. At 2.0 final, change each to `rfx-fdtd` or `"rfx-fdtd>=2.0"`: `README.md` (both install blocks), `docs/public/index.mdx`, `docs/public/start/install.mdx` (two lines), `docs/public/start/upgrading.mdx`, `docs/public/guide/first-run.mdx`, `docs/public/api/geometry-materials.mdx` and `docs/public/model/materials.mdx` (the `cad` extra). `git grep -n '2\.0\.0rc' -- README.md docs/public pyproject.toml rfx/__init__.py CITATION.cff` lists them. Leave the version a gallery case records as the one that computed it (`docs/public/gallery/`), and the history lines in `docs/guides/known_limitations.md`.
 
 ```bash
 python scripts/check_public_docs_manifest.py
