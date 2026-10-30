@@ -1320,7 +1320,8 @@ class RingdownRun:
                                 f"not formed: {why}", judged=False),
                 RingdownWitness("W2", w2.value, tol, w2.value <= tol, w2_rule,
                                 f"judged in place of WE, which could not be formed "
-                                f"({why}); on the research boards W2 read the "
+                                f"({why}); on the openEMS simple-patch and metal-cavity "
+                                f"research fixtures W2 read the "
                                 "actual error low by up to several times" ""),
             ]
         try:

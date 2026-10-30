@@ -1305,7 +1305,7 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
     if document["refinement"] is not None:
         note(
             "refinement",
-            "SBP-SAT subgridding is an rfx research prototype, falsified in 3D"
+            "SBP-SAT subgridding is an rfx research prototype, falsified in 3D (docs/design_notes/geometry_setup_interop.md)"
             " and outside the public support scope; it must not be "
             "exported to another solver, where its presence would read as a "
             "validated capability",
@@ -1715,7 +1715,7 @@ def simulation_from_design(document: Any) -> Any:
         if schema == "rfx-design-ir/v1":
             legacy = (
                 "; v1 geometry entries carried the per-entry 'two-plane' "
-                "realization flag, which the lattice ownership contract "
+                "realization flag, which the lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md "
                 "removed — a "
                 "one-cell PEC Box is a volume with both faces now, and a "
                 "zero-thickness Box is a sheet. Re-export the design from "

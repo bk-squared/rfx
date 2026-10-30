@@ -1348,7 +1348,9 @@ class Simulation(
                     "reference_plane_cells is only supported on wire ports "
                     "(extent=...): the plane V/I method needs a gap-voltage "
                     "line integral and a PEC signal trace. Single-cell "
-                    "lumped ports have no Phase-0 evidence."
+                    "lumped ports have no closed-box flux-referee validation of "
+                    "reference-plane V/I waves; that validation used a "
+                    "wire-port matched thru line on 2026-07-10."
                 )
             if int(reference_plane_cells) != reference_plane_cells \
                     or int(reference_plane_cells) < 1:

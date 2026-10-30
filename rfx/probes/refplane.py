@@ -243,7 +243,7 @@ def build_wire_refplane_specs(
             "`rfx.materials.thin_conductor.conductor_footprint`), not the "
             "bare `pec_mask`: with the sheet operator a surface_impedance_f0 sheet is a "
             "node-thin operator that appears in NEITHER `pec_mask` NOR "
-            "`materials.sigma`, and under lattice ownership a PEC SHEET owns no cell "
+            "`materials.sigma`, and under the lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md a PEC SHEET owns no cell "
             "either, so a sheet-traced board handed a bare `pec_mask` "
             "reaches this line reading 'no metal' on a perfectly healthy "
             "model.")

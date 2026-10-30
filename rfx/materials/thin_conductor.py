@@ -951,8 +951,9 @@ def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
             f"{eps_val:.4g}) over {n_buried} of its footprint nodes. The "
             "sheet is therefore buried half a cell inside the dielectric "
             "instead of lying on its interface, so the realized cavity "
-            "carries half a cell of the wrong medium in series (the"
-            " measurement was 17 % on a 127 um stack). Draw the "
+            "carries half a cell of the wrong medium in series (a sheet-bounded "
+            "127 um dielectric stack measured a 17 % excess in sum(d/eps), "
+            "the series-capacitance electrical thickness). Draw the "
             "dielectric bodies up to the sheet plane, or move the sheet to "
             "the interface. Nothing is re-sampled.",
             AccuracyWarning,
