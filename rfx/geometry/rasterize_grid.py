@@ -713,8 +713,13 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
     for (axis, plane), group in by_plane.items():
         if any(is_tracer(sp.footprint) for sp in group):
             continue
-        if any(bool(np.asarray(m).any())
-               for m in _rpem(None, sheets=tuple(group), periodic=periodic)):
+        # Host footprints stay concrete under a user jit; the edge builder's
+        # JAX operations must stay concrete too before this host-only check.
+        with jax.ensure_compile_time_eval():
+            masks = _rpem(None, sheets=tuple(group), periodic=periodic)
+        if any(is_tracer(m) for m in masks):
+            continue
+        if any(bool(np.asarray(m).any()) for m in masks):
             continue
         names = ", ".join(repr(getattr(sp, "name", None)) for sp in group)
         raise RfxRefusal(

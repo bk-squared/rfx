@@ -443,10 +443,13 @@ def compute_mixed_s_matrix(
     )
     _mx_pec_edge_masks = None
     if pec_mask is not None or _mx_pec_sheets or _mx_pec_wires:
-        _mx_pec_edge_masks = _rpem_mx(
-            pec_mask, sheets=tuple(_mx_pec_sheets),
-            wires=tuple(_mx_pec_wires),
-            periodic=self._periodic_flags())
+        with jax.ensure_compile_time_eval():
+            _mx_pec_edge_masks = _rpem_mx(
+                pec_mask, sheets=tuple(_mx_pec_sheets),
+                wires=tuple(_mx_pec_wires),
+                periodic=self._periodic_flags())
+        if any(is_tracer(mask) for mask in _mx_pec_edge_masks):
+            _mx_pec_edge_masks = None
 
     # Analytic Hammerstad-Jensen anchor per MSL port (eps precedence
     # mirrors compute_msl_s_matrix: explicit eps_r_sub > rasterised

@@ -517,10 +517,11 @@ def compute_msl_s_matrix(
     _msl_pec_edge_masks = None
     if (_msl_assembled[3] is not None or _msl_pec_sheets
             or _msl_pec_wires):
-        _msl_pec_edge_masks = _rpem_msl(
-            _msl_assembled[3], sheets=tuple(_msl_pec_sheets),
-            wires=tuple(_msl_pec_wires),
-            periodic=self._periodic_flags())
+        with jax.ensure_compile_time_eval():
+            _msl_pec_edge_masks = _rpem_msl(
+                _msl_assembled[3], sheets=tuple(_msl_pec_sheets),
+                wires=tuple(_msl_pec_wires),
+                periodic=self._periodic_flags())
     beta0_per_port: list[np.ndarray] = []
     z0_hj_per_port: list[float] = []
     eps_r_ref_per_port: list[float] = []

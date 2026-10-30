@@ -374,7 +374,8 @@ def realized_trace_planes_on_column(pec_edge_masks, normal_idx, ij, k_from,
     in-plane axis finds its backward incident edge.
     """
     from rfx.boundaries.pec import realized_wall_planes
-    if pec_edge_masks is None:
+    from rfx.core.jax_utils import is_tracer
+    if pec_edge_masks is None or any(is_tracer(mask) for mask in pec_edge_masks):
         return None, None
     planes = [k for k in realized_wall_planes(
         pec_edge_masks, normal_idx, ij=ij, periodic=periodic)
@@ -395,9 +396,10 @@ def _realized_trace_planes(sim, grid, span, j_centre):
     if _pec_mask is None and not _pec_sheets and not _pec_wires:
         return None, None
     _periodic = sim._periodic_flags()
-    masks = realized_pec_edge_masks(
-        _pec_mask, sheets=tuple(_pec_sheets), wires=tuple(_pec_wires),
-        periodic=_periodic)
+    with jax.ensure_compile_time_eval():
+        masks = realized_pec_edge_masks(
+            _pec_mask, sheets=tuple(_pec_sheets), wires=tuple(_pec_wires),
+            periodic=_periodic)
     ij = tuple(
         span["i_feed"] if c == span["prop_idx"] else int(j_centre)
         for c in range(3) if c != span["normal_idx"]

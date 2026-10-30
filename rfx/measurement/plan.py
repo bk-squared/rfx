@@ -153,14 +153,18 @@ def _plane_nodes(grid, axis, index, component, region=None, weights=None):
 
 
 def _pec_edges(sim, grid):
+    import jax
     from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.core.jax_utils import is_tracer
     sheets, wires = [], []
     assemble = sim._assemble_materials_nu if sim._uses_nonuniform_mesh else sim._assemble_materials
     result = assemble(grid, pec_sheets=sheets, pec_wires=wires)
     if result[3] is None and not sheets and not wires:
         return None
-    return realized_pec_edge_masks(result[3], sheets=tuple(sheets), wires=tuple(wires),
-                                   periodic=sim._periodic_flags())
+    with jax.ensure_compile_time_eval():
+        edges = realized_pec_edge_masks(result[3], sheets=tuple(sheets), wires=tuple(wires),
+                                       periodic=sim._periodic_flags())
+    return None if any(is_tracer(mask) for mask in edges) else edges
 
 
 def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,

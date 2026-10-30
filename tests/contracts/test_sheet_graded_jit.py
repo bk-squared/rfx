@@ -1,9 +1,15 @@
 """A concrete PEC sheet remains geometry under an outer graded run trace."""
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx import Box, Cylinder, GaussianPulse, Simulation
+from rfx.boundaries.pec import SheetFootprint, SheetSpec
+from rfx.errors import RfxRefusal
+from rfx.geometry.rasterize_grid import (
+    coords_from_uniform_grid, refuse_vaporized_sheets, sheet_spec_from_shape,
+)
 
 
 def assert_trace_records(actual, expected):
@@ -39,3 +45,37 @@ def test_trace_check_rejects_changed_record():
     expected = np.ones((4, 1), dtype=np.float32)
     with pytest.raises(AssertionError, match='per-step'):
         assert_trace_records(expected * 2, expected)
+
+
+@pytest.mark.parametrize('geometry', ('concrete', 'zero-edge', 'traced-footprint', 'traced-join'))
+def test_zero_edge_plane_check_under_user_jit(geometry):
+    sim = Simulation(freq_max=1e6, domain=(4., 4., 4.), dx=1., boundary='pec')
+    coords = coords_from_uniform_grid(sim._build_grid())
+
+    def check(displacement):
+        # Rasterize inside the user trace, before any eager geometry cache.
+        hi = 1.1 if geometry == 'zero-edge' else 2.1
+        sheet = sheet_spec_from_shape(Box((.9, .9, 2.), (hi, hi, 2.)), coords)
+        assert isinstance(sheet.footprint, SheetFootprint)
+        sheets = [sheet]
+        if geometry == 'traced-footprint':
+            sheets = [SheetSpec(2, 2, jnp.asarray(np.asarray(sheet.footprint))
+                                & (displacement > 0))]
+        elif geometry == 'traced-join':
+            # Concrete footprints can still have a traced physical join.
+            # Neither singleton owns an edge; the join decides their union.
+            sheets = []
+            for x in (1, 2):
+                footprint = np.zeros(coords.shape, dtype=bool)
+                footprint[x, 1, 2] = True
+                drawn = ((x - .5 + displacement, x + .5 + displacement, 1e-6),
+                         (.5, 1.5, 1e-6), None)
+                sheets.append(SheetSpec(2, 2, footprint, drawn=drawn))
+        refuse_vaporized_sheets(sheets)
+        return displacement
+
+    if geometry == 'zero-edge':
+        with pytest.raises(RfxRefusal, match='realizes ZERO PEC edges'):
+            jax.jit(check)(0.)
+    else:
+        assert float(jax.jit(check)(0.)) == 0.

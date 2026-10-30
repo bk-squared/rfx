@@ -353,11 +353,15 @@ def _require_ports_clear_of_pec(sim, grid, pec_mask, pec_sheets, pec_wires) -> N
     if pec_mask is None and not pec_sheets and not pec_wires:
         return
     from rfx.boundaries.pec import edge_is_pec, realized_pec_edge_masks
+    from rfx.core.jax_utils import is_tracer
     from rfx.simulation import resolve_periodic
 
-    edges = realized_pec_edge_masks(
-        pec_mask, sheets=pec_sheets, wires=pec_wires,
-        periodic=resolve_periodic(grid, None))
+    with jax.ensure_compile_time_eval():
+        edges = realized_pec_edge_masks(
+            pec_mask, sheets=pec_sheets, wires=pec_wires,
+            periodic=resolve_periodic(grid, None))
+    if any(is_tracer(mask) for mask in edges):
+        return
     for pe in sim._ports:
         if edge_is_pec(edges, pe.component, *field_index(grid, pe.position, pe.component)):
             raise NotImplementedError(

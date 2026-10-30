@@ -1,4 +1,5 @@
 """Conductor footprint for the API reference-plane trace scan."""
+import jax
 import jax.numpy as jnp
 
 
@@ -28,12 +29,15 @@ def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
         if sig is not None:
             if is_tracer(sig):
                 return pec_mask
-            masks.append(jnp.asarray(sig) > 0.0)
+            with jax.ensure_compile_time_eval():
+                masks.append(jnp.asarray(sig) > 0.0)
     for sp in (pec_sheets or ()):
         masks.append(sp.footprint)
     if not masks:
         return pec_mask
-    return conductor_footprint(pec_mask=pec_mask, sheet_masks=masks)
+    with jax.ensure_compile_time_eval():
+        footprint = conductor_footprint(pec_mask=pec_mask, sheet_masks=masks)
+    return pec_mask if is_tracer(footprint) else footprint
 
 
 

@@ -140,10 +140,13 @@ def _owners(sim, conductors, component, cell):
     for label, cells, sheet, wire in products:
         if cells is None and sheet is None and wire is None:
             continue
-        own = realized_pec_edge_masks(cells,
-            sheets=() if sheet is None else (sheet,),
-            wires=() if wire is None else (wire,), periodic=conductors.periodic)
-        if any(bool(own[c][tuple(v + d for v, d in zip(cell, (di, dj, dk)))])
+        with jax.ensure_compile_time_eval():
+            own = realized_pec_edge_masks(cells,
+                sheets=() if sheet is None else (sheet,),
+                wires=() if wire is None else (wire,), periodic=conductors.periodic)
+        if any(is_tracer(mask) for mask in own):
+            continue
+        if any(bool(np.asarray(own[c])[tuple(v + d for v, d in zip(cell, (di, dj, dk)))])
                for c, di, dj, dk in offsets):
             owners.append(label)
     return owners or ['unattributed realized PEC edge']
