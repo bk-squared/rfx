@@ -1,0 +1,6 @@
+### Fixed — passivity and non-finite advisories no longer hide a defect, and the DC-floor census names a waveform it could not evaluate (#PR)
+
+- The non-passive S-matrix, lumped-S11, flux-flush and non-finite-field advisories skip traced values explicitly;
+  any other failure while reading S or the fields now raises instead of silently skipping the warning.
+- The DC-floor census reports a port whose waveform raises as "not evaluated" with the error, instead of leaving it
+  out of the census without a word; a timeout still stops the run.
