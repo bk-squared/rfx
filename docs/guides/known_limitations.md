@@ -397,11 +397,11 @@ about this, and a measurement decided it.
 Tracker: #2270
 
 On a straight matched microstrip line with no discontinuity, the two-port `|S21|` from `compute_msl_s_matrix` rises up to 0.1 dB above unity (0 dB), which a passive line cannot do.
-Moving the probes to 5, 12 or 20 mm from the port moves `|S21|` by up to about 0.18 dB over 1–12 GHz (at most 0.08 dB below 10 GHz) and `|S11|` by up to 0.045.
-A 0.1 mm cell gives the same spread as a 0.2 mm cell, so a finer mesh does not remove it.
+Moving the probes (`add_msl_port(..., n_probe_offset=...)`, in cells from the feed plane) to 5, 12 or 20 mm from the port moves `|S21|` by up to about 0.19 dB over 1–12 GHz (at most 0.08 dB below 10 GHz) and `|S11|` by up to 0.045.
+A 0.1 mm cell gives nearly the same `|S21|` spread (0.17 against 0.19 dB), so a finer mesh does not remove it; for `|S11|` the two meshes do not settle the trend.
 This is inside the 2 dB magnitude bar. The cause is not known.
 Measured on a synthetic straight line (εr 2.2, substrate 0.80 mm, strip 2.43 mm, 60 mm long) on uniform 0.2 and 0.1 mm cells, three probe placements each (record kept with the project).
-Until it is fixed, read an `|S21|` within about 0.2 dB of 0 dB on a microstrip port as unity, and do not judge a sub-0.2 dB loss or gain from it.
+On a line like this one, until it is fixed, read an `|S21|` within about 0.2 dB of 0 dB as unity, do not judge a loss or gain below 0.2 dB from it, and do not read an `|S11|` below about −27 dB as resolved.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
