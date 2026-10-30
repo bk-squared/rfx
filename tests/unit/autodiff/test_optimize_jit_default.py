@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 
 import jax
@@ -142,7 +141,6 @@ def _topology(n_iterations, **kwargs):
                              verbose=False, skip_preflight=True, **kwargs)
 
 
-@pytest.mark.skipif(not importlib.util.find_spec("optax"), reason="optax not installed")
 def test_topology_dynamic_beta_compiles_once():
     _topology(4)
     _, n1 = _compiles(_topology, 1)

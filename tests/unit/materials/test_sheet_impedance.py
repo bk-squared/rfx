@@ -978,9 +978,7 @@ def test_fence_gradient_check():
 
 
 def test_fence_topology_optimize():
-    """The fence sits ABOVE ``topology_optimize``'s optional ``import optax``
-    precisely so this test binds in an environment without the
-    ``[optimization]`` extra — the default CI image."""
+    """Unsupported surface-impedance sheets are refused at topology entry."""
     from rfx.topology import TopologyDesignRegion, topology_optimize
 
     def go():

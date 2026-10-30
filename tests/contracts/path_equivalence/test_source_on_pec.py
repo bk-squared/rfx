@@ -233,7 +233,6 @@ def test_vmap_adjacent_source_matches_scalar_run(kind):
 
 
 def test_topology_optimize_refuses_dead_source():
-    pytest.importorskip('optax')
     from rfx.topology import TopologyDesignRegion, topology_optimize
     sim = model()
     region = TopologyDesignRegion(corner_lo=point(1, 1, 1),

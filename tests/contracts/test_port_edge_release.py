@@ -110,8 +110,6 @@ def independent_cells(component, edge, shape, periodic):
 @pytest.mark.parametrize('placement', ['interior', 'face', 'touch', 'away'])
 @pytest.mark.parametrize('p', [.5, 1.])
 def test_c1_c2_c4_kernel_occupancy(monkeypatch, lane, kind, placement, p):
-    if lane == 'topology':
-        pytest.importorskip('optax')
     sim, grid, edge, component = model(lane, kind)
     lo, hi = box(edge, component, kind, placement)
     occupancy = jnp.zeros(grid.shape).at[tuple(slice(a,b) for a,b in zip(lo,hi))].set(p)
