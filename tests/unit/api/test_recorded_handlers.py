@@ -286,7 +286,7 @@ def test_g5_failure_is_recorded(case, monkeypatch):
         assert result == STATUS_FAILED
     elif case == "optional_deps":
         assert len(result) == 4
-        assert all("not installed" in line for line in result)
+        assert all(f"RuntimeError: {MESSAGE}" in line for line in result)
     elif case == "invariance":
         assert "RuntimeError: invariance unavailable" in result
     else:
@@ -377,12 +377,15 @@ def test_artifact_traced_values_use_metadata_without_host_conversion():
     jax.make_jaxpr(check)(jnp.ones(2))
 
 
-RECORDED_PROBES = (
+PROBE_CASES = (
     "version", "backend", "devices", "device_metadata", "analysis_attribute",
     "analysis_call", "analysis_field", "scope", "memory_outer", "memory_inner",
     "safe_float", "array_values", "to_dict", "asdict", "sequence", "profile",
     "grid_shape", "frequencies", "git", "distribution_version", "compile_probe",
 )
+NARROWED_PROBES = ("safe_float", "array_values", "sequence", "profile",
+                   "grid_shape", "frequencies", "git", "distribution_version")
+RECORDED_PROBES = tuple(case for case in PROBE_CASES if case not in NARROWED_PROBES)
 
 
 def _recorded_probe(case, monkeypatch, error):
@@ -414,7 +417,7 @@ def _recorded_probe(case, monkeypatch, error):
         sim = _uniform_sim()
         monkeypatch.setattr(jax, "local_devices", fail if case == "memory_outer" else lambda: [
             SimpleNamespace(platform="mps", memory_stats=fail)])
-        return lambda: sim.estimate_ad_memory(4).available_gb
+        return lambda: sim.estimate_ad_memory(4).warning
     if case == "distribution_version":
         from rfx import diagnostics
         monkeypatch.setattr(diagnostics.metadata, "version", fail)
@@ -422,7 +425,12 @@ def _recorded_probe(case, monkeypatch, error):
     if case == "compile_probe":
         from rfx.core.jax_utils import compile_time_switch
         monkeypatch.setattr(jax, "make_jaxpr", fail)
-        return compile_time_switch.__wrapped__
+        def probe():
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                assert compile_time_switch.__wrapped__() is None
+            return str(caught[0].message)
+        return probe
     from rfx import artifacts
     if case == "safe_float":
         class BrokenFloat:
@@ -451,7 +459,7 @@ def _recorded_probe(case, monkeypatch, error):
     raise AssertionError(case)
 
 
-@pytest.mark.parametrize("case", RECORDED_PROBES)
+@pytest.mark.parametrize("case", PROBE_CASES)
 def test_recorded_probe_timeout_propagates(case, monkeypatch):
     call = _recorded_probe(case, monkeypatch, TimeoutError)
     with pytest.raises(TimeoutError, match=MESSAGE):
@@ -461,22 +469,54 @@ def test_recorded_probe_timeout_propagates(case, monkeypatch):
 @pytest.mark.parametrize("case", RECORDED_PROBES)
 def test_recorded_probe_preserves_fallback(case, monkeypatch):
     result = _recorded_probe(case, monkeypatch, RuntimeError)()
-    if case in {"memory_outer", "memory_inner", "safe_float", "grid_shape", "git", "compile_probe"}:
+    if case in {"to_dict", "asdict"}:
+        assert result["type"] == "SimpleNamespace"
+        assert "fail" in result["repr"]
+        result = result["error"]
+    assert f"RuntimeError: {MESSAGE}" in result
+
+
+@pytest.mark.parametrize("case", NARROWED_PROBES)
+def test_default_probe_runtime_error_propagates(case, monkeypatch):
+    with pytest.raises(RuntimeError, match=MESSAGE):
+        _recorded_probe(case, monkeypatch, RuntimeError)()
+
+
+@pytest.mark.parametrize("case, error", [
+    (case, error)
+    for case, errors in (
+        ("safe_float", (TypeError, ValueError, OverflowError)),
+        ("grid_shape", (TypeError, ValueError, OverflowError)),
+        ("array_values", (TypeError, ValueError)),
+        ("profile", (TypeError, ValueError)),
+        ("frequencies", (TypeError, ValueError)),
+        ("sequence", (TypeError,)),
+        ("git", (OSError,)),
+        ("distribution_version", (ImportError, OSError)),
+    ) for error in errors
+])
+def test_default_probe_expected_failure_preserves_fallback(case, error, monkeypatch):
+    result = _recorded_probe(case, monkeypatch, error)()
+    if case in {"safe_float", "grid_shape", "git"}:
         assert result is None
     elif case == "distribution_version":
         assert result == "?"
     elif case == "sequence":
         assert result == {"present": True, "count": None, "type": "BrokenSequence"}
-    elif case in {"array_values", "profile", "frequencies"}:
+    else:
         assert result["shape"] == [2, 2, 2]
         assert result["dtype"] == "float32"
         assert result["size"] == 8
         assert "min" not in result
-    elif case in {"to_dict", "asdict"}:
-        assert result["type"] == "SimpleNamespace"
-        assert "fail" in result["repr"]
-    else:
-        assert MESSAGE in result
+
+
+def test_git_subprocess_timeout_preserves_default(monkeypatch):
+    import subprocess
+    from rfx import artifacts
+    def expired(*args, **kwargs):
+        raise subprocess.TimeoutExpired("git", 2)
+    monkeypatch.setattr(artifacts.subprocess, "run", expired)
+    assert artifacts._git(["status"], cwd=Path.cwd()) is None
 
 
 def test_animation_writer_runtime_error_propagates(monkeypatch, tmp_path):

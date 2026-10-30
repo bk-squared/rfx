@@ -278,6 +278,7 @@ class _AdMemoryMixin:
 
         # Device memory detection (best effort). CPU has no device budget.
         memory_limit_unknown = False
+        memory_errors = []
         if avail_gb is None:
             try:
                 memory_limit_unknown = backend_class().device_memory == "memory_stats_if_available"
@@ -301,10 +302,12 @@ class _AdMemoryMixin:
                             avail_gb = limit / 1e9
                             break
                     except (TimeoutError,): raise
-                    except Exception:  # noqa: BLE001 - recorded in available_gb
+                    except Exception as exc:  # noqa: BLE001 - recorded in warning
+                        memory_errors.append(f"Device memory query failed: {type(exc).__name__}: {exc}")
                         continue
             except (TimeoutError,): raise
-            except Exception:  # noqa: BLE001 - recorded in available_gb
+            except Exception as exc:  # noqa: BLE001 - recorded in warning
+                memory_errors.append(f"Device memory query failed: {type(exc).__name__}: {exc}")
                 avail_gb = None
 
         to_gb = 1.0 / 1e9
@@ -315,6 +318,8 @@ class _AdMemoryMixin:
         warning = tape_warning(model, checkpoint=checkpoint,
                                segments=segmented_active_segments,
                                live=segmented_live_tape_steps, active=active_steps)
+        if memory_errors:
+            warning = " ".join(filter(None, (*dict.fromkeys(memory_errors), warning)))
         if isinstance(checkpoint_every_i, tuple):
             memory = checkpoint_memory(active_steps, checkpoint_every_i,
                 boundary_bytes=model["carry_bytes"], step_bytes=model["tape_step_bytes"],

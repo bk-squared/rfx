@@ -130,8 +130,7 @@ def _safe_float(value: Any) -> float | None:
         return None
     try:
         return float(value)
-    except (TimeoutError,): raise
-    except Exception:  # noqa: BLE001 - recorded in mesh.dx / mesh.dt / simulation.freq_max
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -159,22 +158,23 @@ def _jsonable(value: Any, *, array_values: bool = False, max_array_values: int =
         if array_values and size <= max_array_values and not is_tracer(value):
             try:
                 return _np.asarray(value).tolist()
-            except (TimeoutError,): raise
-            except Exception:  # noqa: BLE001 - recorded in shape / dtype / size
+            except (TypeError, ValueError):
                 pass
         return _array_summary(value)
     if hasattr(value, "to_dict") and callable(value.to_dict):
         try:
             return _jsonable(value.to_dict())
         except (TimeoutError,): raise
-        except Exception:  # noqa: BLE001 - recorded in type / repr
-            pass
+        except Exception as exc:  # noqa: BLE001 - recorded in error
+            return {"type": type(value).__name__, "repr": repr(value),
+                    "error": f"{type(exc).__name__}: {exc}"}
     if hasattr(value, "_asdict") and callable(value._asdict):
         try:
             return _jsonable(value._asdict())
         except (TimeoutError,): raise
-        except Exception:  # noqa: BLE001 - recorded in type / repr
-            pass
+        except Exception as exc:  # noqa: BLE001 - recorded in error
+            return {"type": type(value).__name__, "repr": repr(value),
+                    "error": f"{type(exc).__name__}: {exc}"}
     # Record object identity without chasing arbitrary private state.
     return {"type": type(value).__name__, "repr": repr(value)}
 
@@ -207,8 +207,7 @@ def _sequence_summary(value: Any) -> dict[str, Any]:
         return {"present": False, "count": 0}
     try:
         return {"present": True, "count": len(value)}
-    except (TimeoutError,): raise
-    except Exception:  # noqa: BLE001 - recorded in count / type
+    except TypeError:
         return {"present": True, "count": None, "type": type(value).__name__}
 
 
@@ -228,8 +227,7 @@ def _profile_summary(profile: Any) -> dict[str, Any]:
                 "max": float(_np.max(arr)),
                 "sum": float(_np.sum(arr)),
             })
-    except (TimeoutError,): raise
-    except Exception:  # noqa: BLE001 - recorded in shape / dtype / count
+    except (TypeError, ValueError):
         pass
     return out
 
@@ -426,8 +424,7 @@ def _grid_shape(grid: Any) -> list[int] | None:
     if shape is not None:
         try:
             return [int(x) for x in shape]
-        except (TimeoutError,): raise
-        except Exception:  # noqa: BLE001 - recorded in mesh.grid_shape
+        except (TypeError, ValueError, OverflowError):
             pass
     dims = [getattr(grid, axis, None) for axis in ("nx", "ny", "nz")]
     if all(dim is not None for dim in dims):
@@ -540,8 +537,7 @@ def _freq_summary(freqs: Any) -> dict[str, Any] | None:
             "min": float(_np.min(arr)) if arr.size else None,
             "max": float(_np.max(arr)) if arr.size else None,
         })
-    except (TimeoutError,): raise
-    except Exception:  # noqa: BLE001 - recorded in result.freqs.shape / dtype / size
+    except (TypeError, ValueError):
         pass
     return out
 
@@ -605,7 +601,7 @@ def _git(args: list[str], *, cwd: Path) -> str | None:
             timeout=2,
         )
     except (TimeoutError,): raise
-    except Exception:  # noqa: BLE001 - recorded in reproducibility.repository / commit / worktree_status
+    except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0:
         return None
