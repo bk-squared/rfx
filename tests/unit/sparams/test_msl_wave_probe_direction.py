@@ -1,6 +1,7 @@
 """Invalid point-probe directions fail before building or modifying a simulation."""
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -26,5 +27,6 @@ except ValueError as error:
         raise
 else:
     raise SystemExit('invalid direction was accepted')
-"""], capture_output=True, text=True, check=False)
+"""], capture_output=True, text=True, check=False,
+        cwd=Path(__file__).resolve().parents[3])
     assert result.returncode == 0, result.stdout + result.stderr
