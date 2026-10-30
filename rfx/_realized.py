@@ -74,7 +74,13 @@ class Capture:
 
 @contextmanager
 def capture(*, transform=None):
-    """Collect actual operands; wait for all callbacks before returning."""
+    """Test-only hook collecting operands; wait for callbacks before returning.
+
+    Clears every JAX compilation cache in the process on entry and exit:
+    kernels read ``ACTIVE`` at trace time, so entry must retrace to observe
+    operands and exit must discard traces containing observer callbacks.
+    Never called by rfx itself.
+    """
     import jax
 
     global ACTIVE
