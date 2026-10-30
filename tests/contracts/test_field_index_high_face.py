@@ -3,6 +3,7 @@
 import jax
 import numpy as np
 import pytest
+from packaging.version import Version
 
 from rfx import GaussianPulse, Simulation
 from rfx._grid_metric import field_index
@@ -16,6 +17,12 @@ NODE_HIGH = (20, 16, 12)
 LANES = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
          'two_uniform_run', 'two_graded_forward', 'adi_run', 'subgrid_run')
 FREQS = np.array([3e9, 5e9, 7e9])
+JAX012_HIGH_FACE_XFAILS = frozenset({
+    ('i', 2, 'pmc', 'uniform_run'),
+    ('i', 2, 'pmc', 'uniform_forward'),
+    ('ii', 2, 'pmc', 'uniform_run'),
+    ('ii', 2, 'pmc', 'uniform_forward'),
+})
 
 
 def model(lane, axis, boundary, mirrored=False):
@@ -190,7 +197,13 @@ def mirror(a, b, signs, fields, record_property):
 @pytest.mark.parametrize('boundary', ('pec', 'pmc'))
 @pytest.mark.parametrize('axis', range(3))
 @pytest.mark.parametrize('row', ('i', 'ii', 'iii'))
-def test_c2_c2b(lane, boundary, axis, row, record_property):
+def test_c2_c2b(lane, boundary, axis, row, record_property, request):
+    if (row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS and Version(jax.__version__) >= Version("0.12"):
+        request.applymarker(pytest.mark.xfail(
+            strict=True,
+            reason="#2167 on jax>=0.12 the uniform PMC high-face mirror differs beyond 200 float32 eps "
+                   "(weekly latest-jax 10-30); cause not yet bisected between #2231 and #2213",
+        ))
     # Existing admission is part of this per-path contract.
     refusal = None
     if lane == 'subgrid_run':
