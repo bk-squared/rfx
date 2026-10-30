@@ -830,7 +830,9 @@ def test_drive_column_mutations_are_caught(monkeypatch, mode, mutation):
             '((coefficient * jnp.where(owned[n], keep[axis][cell], 0.)) * samples[:, n])')
         assert mutated != source, 'M2 no longer matches drive_columns'
         source = mutated
-        source = source.replace('if keep is not None:', 'if keep is not None and volume is None:')
+        mutated = source.replace('if keep is not None:', 'if keep is not None and volume is None:')
+        assert mutated != source, 'M2 second edit no longer matches drive_columns'
+        source = mutated
     else:
         source = source.replace('if volume is None:',
             'cell = (cell[0] - 1, cell[1], cell[2])\n        if volume is None:', 1)
