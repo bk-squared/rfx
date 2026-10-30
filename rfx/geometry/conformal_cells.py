@@ -5,7 +5,7 @@ import os
 import numpy as np
 import jax.numpy as jnp
 
-from rfx._conformal_b import conformal_b_q
+from rfx._conformal_b import conformal_b_floor_frac, conformal_b_q
 from rfx.geometry.rasterize_grid import _axis_node_positions
 from rfx.geometry.smoothing import _get_sdf_fn
 from rfx._periodic import periodic_sdf
@@ -83,8 +83,8 @@ def sc_clamp(lengths, areas):
     return tuple(result)
 
 
-def conformal_b_floor(lengths, areas, q):
-    """Raise cut H faces to q**2 times their largest bounding E edge.
+def conformal_b_floor(lengths, areas, q, *, floor_frac=None):
+    """Raise cut H faces to floor_frac (default q**2) times their largest E edge.
 
     A face normal to ``normal`` at a node has two edges along each
     in-plane axis: at that node and one node higher along the other
@@ -92,6 +92,7 @@ def conformal_b_floor(lengths, areas, q):
     a high halo so every returned physical face has all four edges.
     Neither lengths nor uncut (zero or one) areas are changed.
     """
+    fraction = q**2 if floor_frac is None else floor_frac
     result = []
     for normal, area in enumerate(areas):
         largest = np.zeros_like(area)
@@ -105,7 +106,7 @@ def conformal_b_floor(lengths, areas, q):
             high[tuple(end)] = 0.
             largest = np.maximum(largest, np.maximum(lengths[axis], high))
         result.append(np.where((area > 0) & (area < 1),
-                               np.maximum(area, q**2 * largest), area))
+                               np.maximum(area, fraction * largest), area))
     return tuple(result)
 
 
@@ -133,6 +134,7 @@ def _refuse_off_lattice_box(box, lattice, widths, domain, what):
 def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
     """Return E free lengths and H free areas on the uniform Yee lattice."""
     q = conformal_b_q()
+    floor_frac = conformal_b_floor_frac()
     floor = q is not None and os.environ.get('RFX_CONFORMAL_B_FLOOR') != '0'
     if not pec_shapes:
         ones = (jnp.ones(grid.shape, dtype=jnp.float32),) * 3
@@ -197,7 +199,7 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
             corners.append(sdf[tuple(corner)])
         areas.append(face_fraction(corners, (widths[u], widths[v])))
     if floor:
-        areas = conformal_b_floor(lengths, areas, q)
+        areas = conformal_b_floor(lengths, areas, q, floor_frac=floor_frac)
     elif q is None and clamp:
         lengths = sc_clamp(lengths, areas)
     physical = (slice(1, -1),) * 3 if floor else (slice(1, None),) * 3

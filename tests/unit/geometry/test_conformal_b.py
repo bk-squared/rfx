@@ -20,6 +20,7 @@ def local_worktree_and_clean_gate(monkeypatch):
     assert Path(rfx.__file__).resolve().is_relative_to(root)
     monkeypatch.delenv('RFX_CONFORMAL_B_Q', raising=False)
     monkeypatch.delenv('RFX_CONFORMAL_B_FLOOR', raising=False)
+    monkeypatch.delenv('RFX_CONFORMAL_B_FLOOR_FRAC', raising=False)
 
 
 @pytest.mark.parametrize('normal', range(3))
@@ -122,3 +123,30 @@ def test_invalid_q_refuses(monkeypatch, value):
     monkeypatch.setenv('RFX_CONFORMAL_B_Q', value)
     with pytest.raises(ValueError, match='RFX_CONFORMAL_B_Q'):
         Grid.courant_dt(.00075)
+
+
+@pytest.mark.parametrize('value', ['', 'bad', '0', '-.5', '1.01', 'nan', 'inf', '-inf'])
+def test_invalid_floor_fraction_refuses(monkeypatch, value):
+    monkeypatch.setenv('RFX_CONFORMAL_B_FLOOR_FRAC', value)
+    grid = Grid(12e9, (.003,) * 3, dx=.001, cpml_layers=0)
+    with pytest.raises(ValueError, match='RFX_CONFORMAL_B_FLOOR_FRAC'):
+        compute_conformal_fractions(grid, [])
+
+
+@pytest.mark.parametrize('fraction,expected', [('0.0625', .1), ('0.25', .25), ('1', 1.)])
+def test_floor_fraction_override_and_gates(monkeypatch, fraction, expected):
+    from rfx import Box
+    grid = Grid(12e9, (.003,) * 3, dx=.001, cpml_layers=0)
+    wall = Box((-1.,) * 3, (.0039, 1., 1.))
+    ordinary = compute_conformal_fractions(grid, [wall])
+    monkeypatch.setenv('RFX_CONFORMAL_B_FLOOR_FRAC', fraction)
+    inactive = compute_conformal_fractions(grid, [wall])
+    for actual_group, expected_group in zip(inactive, ordinary):
+        for actual, want in zip(actual_group, expected_group):
+            np.testing.assert_array_equal(actual, want)
+    monkeypatch.setenv('RFX_CONFORMAL_B_Q', '.25')
+    _, areas = compute_conformal_fractions(grid, [wall])
+    assert float(areas[1][3, 1, 1]) == pytest.approx(expected)
+    monkeypatch.setenv('RFX_CONFORMAL_B_FLOOR', '0')
+    _, raw = compute_conformal_fractions(grid, [wall])
+    assert float(raw[1][3, 1, 1]) == pytest.approx(.1)
