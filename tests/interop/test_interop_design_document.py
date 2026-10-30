@@ -522,6 +522,22 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
 # Anti-drift ledgers
 # ---------------------------------------------------------------------------
 
+def test_pec_occupancy_model_round_trip_and_legacy_default():
+    sim = Simulation(freq_max=10e9, domain=(0.008,) * 3, dx=0.001,
+                     boundary="pec", pec_occupancy_model="kottke")
+    payload = design_to_json(sim)
+    document = json.loads(payload)
+    assert document["solver"]["pec_occupancy_model"] == "kottke"
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._pec_occupancy_model == "kottke"
+    assert_designs_equivalent(sim, rebuilt)
+
+    del document["solver"]["pec_occupancy_model"]
+    legacy = simulation_from_design(document)
+    assert legacy._pec_occupancy_model == "edge_keep"
+    assert design_to_dict(legacy)["solver"]["pec_occupancy_model"] == "edge_keep"
+
+
 def test_every_simulation_attribute_is_classified():
     """Every builder attribute is either exported or explicitly excluded.
 

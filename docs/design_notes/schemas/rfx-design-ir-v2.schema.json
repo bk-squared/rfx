@@ -173,6 +173,11 @@
         "dt_min_cell"
       ],
       "properties": {
+        "pec_occupancy_model": {
+          "type": "string",
+          "enum": ["edge_keep", "kottke"],
+          "default": "edge_keep"
+        },
         "snap": {
           "type": "string",
           "enum": ["strict", "declared"],
