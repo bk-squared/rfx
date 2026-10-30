@@ -292,7 +292,9 @@ def test_c2b_rlc(lane, boundary, axis, record_property):
         return np.asarray(execute(sim, lane).time_series)
 
     try:
-        if lane.startswith('two_') or lane in ('subgrid_run',):
+        # Multi-device PEC now pins C2b admission and identical, nonzero records;
+        # PMC still pins the multi-device RLC guard.
+        if (lane.startswith('two_') and boundary == 'pmc') or lane in ('subgrid_run',):
             for d in (0., .4, 1.):
                 with pytest.raises((ValueError, NotImplementedError), match='lumped|RLC|rlc|subgridd|PMC|magnetic'):
                     response(d)
