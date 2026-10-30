@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -13,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 # Stands in for $PYTHON: each check fails when its FAIL_* variable is set.
 FAKE_PYTHON = r'''#!/bin/bash
 case "$*" in
-  *check_changelog_fragment.py*) exit "${FAIL_CHANGELOG:-0}" ;;
+  "- "*) exec "$REAL_PYTHON" "$@" ;;
+  *check_changelog_fragment.py*) printf '%s\n' "$PR_LABELS_JSON" > "$LOG_DIR/changelog-labels"; exit "${FAIL_CHANGELOG:-0}" ;;
+  *check_data_budget.py*) printf '%s\n' "$PR_LABELS_JSON" > "$LOG_DIR/data-budget-labels"; exit 0 ;;
   *check_file_size_ratchet.py*) exit "${FAIL_RATCHET:-0}" ;;
   *"-m pytest tests/contracts"*) printf '%s\n' "$*" > "$LOG_DIR/contracts-args"; exit "${FAIL_CONTRACTS:-0}" ;;
   *select_gate_tests.py*)
@@ -26,7 +30,7 @@ esac
 '''
 
 
-def run_gate(tmp_path, **fail):
+def run_gate(tmp_path, *, body=None, labels=None, **fail):
     ci = tmp_path / "repo" / "scripts" / "ci"
     ci.mkdir(parents=True)
     shutil.copy(ROOT / "scripts/ci/local.sh", ci / "local.sh")
@@ -37,10 +41,19 @@ def run_gate(tmp_path, **fail):
     python.chmod(0o755)
     logs = tmp_path / "logs"
     logs.mkdir()
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("FAIL_", "RFX_GATE_"))}
-    env.update(PYTHON=str(python), LOG_DIR=str(logs), **{f"FAIL_{k.upper()}": "1" for k in fail})
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith(("FAIL_", "RFX_GATE_")) and k != "PR_LABELS_JSON"}
+    env.update(PYTHON=str(python), REAL_PYTHON=sys.executable, LOG_DIR=str(logs),
+               **{f"FAIL_{k.upper()}": "1" for k in fail})
+    if labels is not None:
+        env["PR_LABELS_JSON"] = labels
+    args = []
+    if body is not None:
+        body_path = tmp_path / "body.md"
+        body_path.write_text(body, encoding="utf-8")
+        args.append(str(body_path))
     # /bin/bash is 3.2 on macOS: empty arrays under set -u must still work.
-    result = subprocess.run(["/bin/bash", str(ci / "local.sh")], env=env, cwd=tmp_path,
+    result = subprocess.run(["/bin/bash", str(ci / "local.sh"), *args], env=env, cwd=tmp_path,
                             capture_output=True, text=True, timeout=60)
     return result, logs
 
@@ -72,3 +85,27 @@ def test_all_stage1_steps_pass_then_selected_tests_run(tmp_path):
     assert "nothing selected" in result.stdout
     assert result.stdout.rstrip().endswith("all 10 steps passed")
     assert "FAILED" not in result.stdout
+
+
+@pytest.mark.parametrize("body,labels,expected,source", [
+    ("Labels: release, foo\n", None, ["release", "foo"], "body.md"),
+    ("Labels: release, foo\n", "", ["release", "foo"], "body.md"),
+    ("No label line\n", None, [], "body.md"),
+    (None, None, [], "default (no readable PR body)"),
+    ("Labels: release\n", '[]', [], "PR_LABELS_JSON environment"),
+    ("Labels: release\n", '["data-budget-exception"]', ["data-budget-exception"],
+     "PR_LABELS_JSON environment"),
+    ('Labels: , release, , foo , \nLabels: ignored\n', None, ["release", "foo"], "body.md"),
+    ('Labels: \nLabels: release\n', None, [], "body.md"),
+    (' Labels: ignored\nlabels: ignored\nLabels: release\n', None, ["release"], "body.md"),
+    ('Labels: quote"name, back\\slash\n', None, ['quote"name', 'back\\slash'], "body.md"),
+])
+def test_labels_reach_changelog_and_data_budget(tmp_path, body, labels, expected, source):
+    result, logs = run_gate(tmp_path, body=body, labels=labels)
+    assert result.returncode == 0, result.stdout + result.stderr
+    for gate in ("changelog", "data-budget"):
+        assert json.loads((logs / f"{gate}-labels").read_text()) == expected
+    reports = [line for line in result.stdout.splitlines() if line.startswith("gate labels:")]
+    assert len(reports) == 1
+    assert f"gate labels: {json.dumps(expected)}; source:" in reports[0]
+    assert source in reports[0]
