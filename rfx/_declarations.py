@@ -66,7 +66,7 @@ NOT_DECLARATIONS = (
     ("_pf_campaign_ctx", "cache"),
     ("_realized_geometry_record", "cache"),
     ("_coax_geometry", "cache"),
-    ("_mesh_resolution", "cache"),
+    ("_mesh_resolution", "cache keyed on its inputs; not released"),
     ("_msl_default_memo", "cache"),
     ("_boundary_model", "derived; its inputs are keyed"),
     ("_frozen_mesh", "committed mesh snapshot; resolved mesh declarations key it"),
@@ -144,7 +144,7 @@ def release_declaration_caches(sim):
 
 
 def declaration_variant(sim, **replacements):
-    """Copy a declaration with private containers and no inherited caches.
+    """Copy a declaration with private containers and release derived products.
 
     Declaration entries and array inputs remain shared; callers replacing
     mutable value-form state must supply their own container.

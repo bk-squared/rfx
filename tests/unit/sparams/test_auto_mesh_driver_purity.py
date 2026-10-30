@@ -40,7 +40,7 @@ def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, 
     assert sim.__dict__["_dz_profile"] is None
 
     reached=[]
-    def stop(*args, **kwargs):
+    def stop(self, *args, **kwargs):
         reached.append(True)
         assert sim.__dict__["_dz_profile"] is None
         assert sim._resolve_mesh() == resolved
@@ -70,12 +70,12 @@ def test_msl_driver_preserves_auto_mesh_on_solve_failure(monkeypatch):
     assert sim._uses_nonuniform_mesh
     assert sim.__dict__["_dz_profile"] is None
 
-    def stop(*args, **kwargs):
+    def stop(self, *args, **kwargs):
         assert sim.__dict__["_dz_profile"] is None
         assert sim._resolve_mesh() is resolved
         raise _StopBeforeSolve("runner reached")
 
-    monkeypatch.setattr(sim, "run", stop)
+    monkeypatch.setattr(Simulation, "run", stop)
     with pytest.raises(_StopBeforeSolve, match="runner reached"):
         sim.compute_msl_s_matrix(n_steps=1, n_freqs=2)
     assert sim.__dict__["_dz_profile"] is None

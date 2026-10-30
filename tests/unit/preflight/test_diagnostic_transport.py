@@ -1,12 +1,11 @@
 """Public execution boundaries retain host records under nesting and transforms."""
-from types import MethodType
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Diagnostic
+from rfx import Diagnostic, Simulation
 from tests._msl_diagnostic_cases import structure, U
 
 
@@ -36,23 +35,24 @@ def test_actual_forward_jit_grad_vmap(graded):
 
 
 
-def test_msl_calculator_unions_every_drive_without_duplicates():
+def test_msl_calculator_unions_every_drive_without_duplicates(monkeypatch):
     # Manufactured spectra isolate the public calculator's nested-run transport.
     # Real field evolution is covered by the forward and run tests above.
     from tests.unit.autodiff.test_msl_forward_identity import _build_planted_sim, FREQS
-    sim, _ = _build_planted_sim(1.)
-    backend = sim.run
+    sim, _ = _build_planted_sim(monkeypatch, 1.)
+    backend = Simulation.run
     seen = []
     def drive(self, **kwargs):
         d = Diagnostic('msl.drive_observation', 'advisory', str(len(seen)),
                        'drive observation', {'drive': len(seen)})
         seen.append(d)
         result = backend(
+            self,
             **kwargs,
         )
         result.diagnostics = (d, d)
         return result
-    sim.run = MethodType(drive, sim)
+    monkeypatch.setattr(Simulation, "run", drive)
     result = sim.compute_msl_s_matrix(
         freqs=FREQS,
         n_steps=1,
@@ -61,6 +61,7 @@ def test_msl_calculator_unions_every_drive_without_duplicates():
     )
     assert len(seen) == 2
     assert tuple(d for d in result.diagnostics if d.code == 'msl.drive_observation') == tuple(seen)
+    monkeypatch.undo()
     clean = structure().run(
         n_steps=2,
         compute_s_params=False,
@@ -308,7 +309,7 @@ def test_mixed_calculator_unions_own_report_and_each_drive(monkeypatch):
         )
         result['diagnostics'] = (own, record, record)
         return result
-    monkeypatch.setattr(sim, '_forward_from_materials', MethodType(drive, sim))
+    monkeypatch.setattr(Simulation, '_forward_from_materials', drive)
     result, details = sim.compute_mixed_s_matrix(
         freqs=FREQS,
         n_steps=1,

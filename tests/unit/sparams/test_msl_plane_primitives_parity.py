@@ -28,7 +28,7 @@ against code that no longer exists).
 """
 from __future__ import annotations
 
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
@@ -62,14 +62,14 @@ _RTOL = 1e-6  # fast (fake-run) lane tolerance -- same-function-call parity
 _BETA = 2500.0  # rad/m; resolves the half-cell error in both test meshes
 
 
-def _fake_run(sim, *, n_steps=None, num_periods=1.0, compute_s_params=False,
+def _fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False,
               report_every=None, report_label=None):
     """Sample synthetic fields at their actual Yee positions (no FDTD)."""
-    grid = sim._build_grid()
+    grid = self._build_grid()
     planes = {}
     kk = jnp.arange(grid.nz, dtype=jnp.float32)
     jj = jnp.arange(grid.ny, dtype=jnp.float32)
-    for entry in sim._dft_planes:
+    for entry in self._dft_planes:
         index = grid.position_to_index((entry.coordinate, 0.0, 0.0))[0]
         sample_x = (index - grid.pad_x_lo) * grid.dx
         if entry.component.startswith("h"):
@@ -130,7 +130,7 @@ def _build_thru(dx: float) -> Simulation:
                                           # below the declared face
 ])
 @pytest.mark.parametrize("port_index", [0, 1], ids=["plus_x", "minus_x"])
-def test_plane_path_v_and_i_match_production(dx, label, port_index, tmp_path):
+def test_plane_path_v_and_i_match_production(dx, label, port_index, tmp_path, monkeypatch):
     sim = _build_thru(dx)
     freqs = jnp.asarray([1.0e9], dtype=jnp.float32)
     ps = register_msl_plane_probes(sim, port_index=port_index, freqs=freqs, name_prefix="d")
@@ -139,7 +139,7 @@ def test_plane_path_v_and_i_match_production(dx, label, port_index, tmp_path):
         "d_ez1", "d_ez2", "d_ez3", "d_hy", "d_hz",
     ]
 
-    sim.run = MethodType(_fake_run, sim)
+    monkeypatch.setattr(Simulation, "run", _fake_run)
     fr = sim.run()
     for left_name, right_name in ((ps.hy_left_name, ps.hy_name),
                                  (ps.hz_left_name, ps.hz_name)):

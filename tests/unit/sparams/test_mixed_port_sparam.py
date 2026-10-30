@@ -14,7 +14,6 @@ Layer 1 (this file, fast suite):
     is the separate slow-lane battery.
 """
 
-from types import MethodType
 
 import jax.numpy as jnp
 import numpy as np
@@ -750,7 +749,7 @@ def _fake_forward_mixed_z_profile(nz_markers, n_lw):
     return fake_forward
 
 
-def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh():
+def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh(monkeypatch):
     """The mixed lane's MSL V must anchor on the REALIZED trace plane —
     read from the single owner — and on the bisecting mesh (dx = 80 um,
     h_sub/dx = 3.175) that plane is not where the declaration is.
@@ -778,8 +777,8 @@ def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh():
     _add_feed(sim, y_c)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
     n_lw = len(sim._ports)
-    sim._forward_from_materials = MethodType(
-        _fake_forward_mixed_z_profile(marker, n_lw), sim)
+    monkeypatch.setattr(Simulation, "_forward_from_materials",
+                        _fake_forward_mixed_z_profile(marker, n_lw))
 
     result, diag = sim.compute_mixed_s_matrix(
         freqs=np.asarray([1.0e9]), magnitude_channel="wave",
