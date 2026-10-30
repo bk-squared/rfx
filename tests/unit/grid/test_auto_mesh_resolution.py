@@ -242,3 +242,37 @@ def test_jit_keeps_static_nonuniform_subcell_refusal():
 
     with pytest.raises(ValueError, match="thinner than one cell"):
         jax.jit(loss)(jnp.ones((9, 9, 9)))
+
+
+def test_msl_s_matrix_reuses_auto_mesh_across_drives(monkeypatch):
+    """Two real drive scans retain the base's plan without new mesh warnings."""
+    from rfx.api._mesh import _MeshMixin
+
+    plans = []
+    original = _MeshMixin._auto_configure_mesh
+
+    def counted(self):
+        plans.append(self)
+        return original(self)
+
+    monkeypatch.setattr(_MeshMixin, "_auto_configure_mesh", counted)
+    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
+                     boundary="cpml", cpml_layers=8, snap="declared")
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
+    sim.add(Box((0, 0, 0), (0.012, 0.008, 0)), material="pec")
+    sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
+    for position, direction, name in ((0.002, "+x", "p1"), (0.010, "-x", "p2")):
+        sim.add_msl_port(position=(position, 0.004, 0), width=0.0012,
+                         height=0.0008, direction=direction, impedance=50,
+                         eps_r_sub=2.2, name=name)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.compute_msl_s_matrix(freqs=jnp.linspace(2e9, 18e9, 16),
+                                         num_periods=2.0)
+    auto_warnings = [w for w in caught if issubclass(w.category, AutoMeshWarning)]
+    assert result.S.shape == (2, 2, 16)
+    assert len(plans) == 1
+    # Base 3299c0b6d plans during port registration, before this capture.
+    assert len(auto_warnings) == 0
+    print(f"AutoMeshWarning count={len(auto_warnings)} mesh plans={len(plans)}")

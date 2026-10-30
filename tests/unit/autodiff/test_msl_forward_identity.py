@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 import warnings
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
@@ -63,7 +63,7 @@ def _planted_s(scale: float) -> np.ndarray:
     return scale * base * np.array([1.0, 0.9 + 0.1j, 0.8 - 0.15j])
 
 
-def _build_planted_sim(scale: float):
+def _build_planted_sim(monkeypatch, scale: float):
     """A two-port MSL sim whose run() and forward() both replay planted V/I."""
     expected = _planted_s(scale)
     a = np.array([[1.0 + 0.1j, 0.2 - 0.05j], [-0.1 + 0.04j, 0.9 - 0.1j]])
@@ -137,8 +137,8 @@ def _build_planted_sim(scale: float):
         sim.add_msl_port(position=(feed, 6 * U, 0), width=4 * U, height=2 * U,
                          direction=direction, mode="uniform", eps_r_sub=2.0,
                          n_probe_offset=10, n_probe_spacing=2, n_probes=3)
-    sim.run = MethodType(fake_scan, sim)
-    sim.forward = MethodType(fake_scan, sim)
+    monkeypatch.setattr(Simulation, "run", fake_scan)
+    monkeypatch.setattr(Simulation, "forward", fake_scan)
     return sim, expected
 
 
@@ -200,7 +200,7 @@ def _compute(sim, **kwargs):
 _NONPASSIVE_SCALE = 3.0
 
 
-def test_eps_override_channel_returns_the_same_s_as_the_plain_call():
+def test_eps_override_channel_returns_the_same_s_as_the_plain_call(monkeypatch):
     """The no-op override must return the plain call's S, entry for entry.
 
     MEASURED (this fixture, CPU float32): the two channels agree EXACTLY,
@@ -220,10 +220,10 @@ def test_eps_override_channel_returns_the_same_s_as_the_plain_call():
     Both channels are fed byte-identical synthetic records here, so (b)
     cannot be passed by a fixture that happens to be passive.
     """
-    sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
+    sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
     plain = _compute(sim)
     override = _compute(
-        _build_planted_sim(_NONPASSIVE_SCALE)[0],
+        _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)[0],
         eps_override=_noop_eps_override(sim),
     )
 
@@ -240,17 +240,17 @@ def test_eps_override_channel_returns_the_same_s_as_the_plain_call():
     assert override.S_raw is None and override.passivity_correction is None
 
 
-def test_the_returned_s_is_the_planted_one_on_both_channels():
+def test_the_returned_s_is_the_planted_one_on_both_channels(monkeypatch):
     """Independent oracle: neither channel's S is merely equal to the other.
 
     Two channels agreeing on a wrong matrix would satisfy the identity test
     above. The planted S is built outside the extractor, so this pins WHICH
     function they agree on: the raw extraction.
     """
-    sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
+    sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
     plain = _compute(sim)
     override = _compute(
-        _build_planted_sim(_NONPASSIVE_SCALE)[0],
+        _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)[0],
         eps_override=_noop_eps_override(sim),
     )
     for label, result in (("plain", plain), ("eps_override", override)):
@@ -259,16 +259,16 @@ def test_the_returned_s_is_the_planted_one_on_both_channels():
             err_msg=f"{label} channel did not return the planted S")
 
 
-def test_sigma_max_excess_measures_the_returned_matrix_on_both_channels():
+def test_sigma_max_excess_measures_the_returned_matrix_on_both_channels(monkeypatch):
     """The bound violation stays measurable without projecting it away.
 
     ``sigma_max_excess`` is computed from the singular values of the RAW S,
     and the planted matrix's own singular values are the oracle — this does
     not re-run the extractor's helper against itself.
     """
-    sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
+    sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
     for kwargs in ({}, {"eps_override": _noop_eps_override(sim)}):
-        result = _compute(_build_planted_sim(_NONPASSIVE_SCALE)[0], **kwargs)
+        result = _compute(_build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)[0], **kwargs)
         expected = np.maximum(
             _sigma_max(_planted_at_declared(planted, result)) - 1.0, 0.0)
         assert result.sigma_max_excess is not None
@@ -276,9 +276,9 @@ def test_sigma_max_excess_measures_the_returned_matrix_on_both_channels():
                                    expected, rtol=1e-4, atol=1e-6)
 
 
-def test_a_passive_extraction_reports_zero_excess_and_says_nothing():
+def test_a_passive_extraction_reports_zero_excess_and_says_nothing(monkeypatch):
     """No warning, and no excess, when the extraction respects the bound."""
-    sim, planted = _build_planted_sim(0.8)
+    sim, planted = _build_planted_sim(monkeypatch, 0.8)
     assert float(_sigma_max(planted).max()) < 1.0
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -289,9 +289,9 @@ def test_a_passive_extraction_reports_zero_excess_and_says_nothing():
                 if "is not passive" in str(w.message)]
 
 
-def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning():
+def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning(monkeypatch):
     """Loud without projecting: count, worst sigma_max, and the opt-in."""
-    sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
+    sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = sim.compute_msl_s_matrix(n_steps=1, freqs=FREQS, num_periods=1.0)
@@ -313,9 +313,9 @@ def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning():
                 if m.startswith("S-matrix projected onto the passive set")]
 
 
-def test_enforce_passivity_true_still_projects_and_keeps_the_raw():
+def test_enforce_passivity_true_still_projects_and_keeps_the_raw(monkeypatch):
     """The opt-in is unchanged: bounded S, raw kept, clip recorded, warned."""
-    sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
+    sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = sim.compute_msl_s_matrix(n_steps=1, freqs=FREQS,
@@ -332,15 +332,15 @@ def test_enforce_passivity_true_still_projects_and_keeps_the_raw():
                for w in caught)
 
 
-def test_enforce_passivity_true_is_still_skipped_under_eps_override():
+def test_enforce_passivity_true_is_still_skipped_under_eps_override(monkeypatch):
     """The AD exemption survives the default change, flag or no flag.
 
     Asking for the projection on the differentiable channel must still not
     get it — that is what keeps a finite-difference cross-check and
     ``jax.grad`` on the same function (PR #468).
     """
-    sim, planted = _build_planted_sim(_NONPASSIVE_SCALE)
-    result = _compute(_build_planted_sim(_NONPASSIVE_SCALE)[0],
+    sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
+    result = _compute(_build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)[0],
                       eps_override=_noop_eps_override(sim),
                       enforce_passivity=True)
     assert result.S_raw is None and result.passivity_correction is None

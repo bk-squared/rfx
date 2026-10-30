@@ -555,7 +555,7 @@ def test_transpose_bug_is_caught_only_by_the_nonreciprocal_fixture():
 # expected plane from realized_wall_planes rather than restating it, so a
 # future divergence between the span anchor and the realization is loud.
 
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 
 import jax.numpy as jnp
 
@@ -621,15 +621,16 @@ def _raw_v_for_dx(dx, tmp_path):
     for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
         sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
                          height=_H_SUB, direction=d, impedance=50.0)
-    sim.run = MethodType(_fake_run_z_profile(_MARKER), sim)
-    dump = str(tmp_path / f"wiring_{int(dx*1e9)}.npz")
-    with pytest.warns(UserWarning):
-        sim.compute_msl_s_matrix(
-            n_steps=1, freqs=jnp.asarray([1.0e9], dtype=jnp.float32),
-            num_periods=1.0, enforce_passivity=False,
-            raw_3probe_dump_path=dump,
-        )
-    d = np.load(dump, allow_pickle=True)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Simulation, "run", _fake_run_z_profile(_MARKER))
+        dump = str(tmp_path / f"wiring_{int(dx*1e9)}.npz")
+        with pytest.warns(UserWarning):
+            sim.compute_msl_s_matrix(
+                n_steps=1, freqs=jnp.asarray([1.0e9], dtype=jnp.float32),
+                num_periods=1.0, enforce_passivity=False,
+                raw_3probe_dump_path=dump,
+            )
+        d = np.load(dump, allow_pickle=True)
     return complex(np.asarray(d["raw_v"])[0, 0, 0, 0]), dx
 
 
@@ -795,15 +796,16 @@ def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
     for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
         sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
                          height=_H_SUB, direction=d, impedance=50.0)
-    sim.run = MethodType(fake_run, sim)
-    dump = str(tmp_path / f"{tag}.npz")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        res = sim.compute_msl_s_matrix(
-            n_steps=1,
-            freqs=jnp.asarray(list(freqs_hz), dtype=jnp.float32),
-            num_periods=1.0, raw_3probe_dump_path=dump, **kw,
-        )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Simulation, "run", fake_run)
+        dump = str(tmp_path / f"{tag}.npz")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            res = sim.compute_msl_s_matrix(
+                n_steps=1,
+                freqs=jnp.asarray(list(freqs_hz), dtype=jnp.float32),
+                num_periods=1.0, raw_3probe_dump_path=dump, **kw,
+            )
     # Return the warnings instead of discarding them: a blanket ignore here
     # swallowed the honesty guard's own verdict (PR #526 review, F3).
     return res, dump, [str(w.message) for w in caught]

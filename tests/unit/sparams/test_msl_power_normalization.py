@@ -71,7 +71,7 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
     calls = []
     names = re.compile(r"_msl_run(?P<drive>\d+)_p(?P<port>\d+)_(?:ez\d+|hy|hz)(?:_left)?")
 
-    def record(theta):
+    def record(self, theta):
         dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
         c, s = jnp.cos(theta), 1j * jnp.sin(theta)
         power_s = jnp.stack((jnp.stack((c, s)), jnp.stack((s, c))))[:, :, None]
@@ -81,12 +81,12 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
         root_r = jnp.asarray(np.sqrt(references), dtype=dtype)[:, None, None]
         voltage, current = root_r * (a + b), (a - b) / root_r
         planes = {}
-        for entry in sim._dft_planes:
+        for entry in self._dft_planes:
             match = names.fullmatch(entry.name)
             assert match is not None and entry.axis == "x"
             drive, port = int(match["drive"]), int(match["port"])
             index = grid.position_to_index((entry.coordinate, 0, 0))[0]
-            region = sim._dft_plane_regions[entry.name]
+            region = self._dft_plane_regions[entry.name]
             w0, w1, k0, k1 = region
             shape = (w1 - w0, k1 - k0)
             if entry.component == "ez":
@@ -120,17 +120,17 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
             )
         return SimpleNamespace(dft_planes=planes)
 
-    def fake_run(**kwargs):
+    def fake_run(self, **kwargs):
         calls.append("run")
-        return record(jnp.asarray(THETA))
+        return record(self, jnp.asarray(THETA))
 
-    def fake_forward(*, eps_override, **kwargs):
+    def fake_forward(self, *, eps_override, **kwargs):
         calls.append("forward")
         assert eps_override.shape == grid.shape
-        return record(eps_override[tuple(pad + 1 for pad in grid.axis_pads)])
+        return record(self, eps_override[tuple(pad + 1 for pad in grid.axis_pads)])
 
-    monkeypatch.setattr(sim, "run", fake_run)
-    monkeypatch.setattr(sim, "forward", fake_forward)
+    monkeypatch.setattr(Simulation, "run", fake_run)
+    monkeypatch.setattr(Simulation, "forward", fake_forward)
     return sim, grid, references, calls
 
 

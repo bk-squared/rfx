@@ -422,7 +422,7 @@ def test_mixed_driver_installs_the_resolved_ladder_for_each_run():
     assert sim._msl_ports[0] is reg
 
 
-def test_msl_driver_rebuilt_entries_keep_n_probes():
+def test_msl_driver_rebuilt_entries_keep_n_probes(monkeypatch):
     """``compute_msl_s_matrix`` rebuilds ``_MSLPortEntry`` per driven run;
     the rebuild used to omit ``n_probes`` (silently back to the dataclass
     default 5). Register a two-port microstrip thru with ``n_probes=3`` and
@@ -459,12 +459,12 @@ def test_msl_driver_rebuilt_entries_keep_n_probes():
 
     seen: list = []
 
-    def fake_run(*a, **kw):
+    def fake_run(self, *a, **kw):
         seen.append([(pe.name, pe.n_probes, pe.n_probe_offset,
-                      pe.n_probe_spacing) for pe in sim._msl_ports])
+                      pe.n_probe_spacing) for pe in self._msl_ports])
         raise _Abort
 
-    sim.run = fake_run
+    monkeypatch.setattr(Simulation, "run", fake_run)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with pytest.raises(_Abort):
