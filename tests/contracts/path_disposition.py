@@ -731,10 +731,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("rlc_unvalidated", "production validation; research/off drop it, "
                                 "see _refinement 'relaxed_validation'"),
         run_adi=ADI_RLC,
-        run_distributed=refuses("lumped RLC refused (#1239)", raises="add_lumped_rlc() element(s)"),
+        run_distributed=carries(),
+        run_distributed_nu=carries(),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("lumped RLC refused by the shared multi-device check (#1239, #2076)", raises="add_lumped_rlc() element(s)"),
+        fwd_distributed_nu=carries(),
         fwd_adi=ADI_RLC,
     ) for element in ("R", "series_RL")},
     "_tfsf": {"plane_wave": lanes(

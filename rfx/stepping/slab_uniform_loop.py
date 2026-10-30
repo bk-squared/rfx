@@ -64,6 +64,7 @@ def run_uniform_slab_loop(
     nx_per,
     pad_x,
     ports,
+    rlc_metas,
     prb_device_ids,
     prb_local_specs,
     rep,
@@ -247,6 +248,8 @@ def run_uniform_slab_loop(
         return new_st, new_db_st, new_lr_st, absorber
 
     records = SlabRecords(sim, grid, nx_per, mesh, sharded_state.ex.dtype, n_steps, snapshot)
+    from rfx.stepping.slab_lumped import SlabRLC, initial
+    rlc = SlabRLC(rlc_metas, layout, mesh)
     from rfx.stepping import slab_tfsf
     tfsf_cfg, tfsf_line, tfsf_tables = slab_tfsf.prepare(sim, grid, n_steps, layout, mesh)
 
@@ -296,6 +299,7 @@ def run_uniform_slab_loop(
                 magnetic=cpml_params_arg.magnetic._replace(**magnetic_cpml_spacings))
         _step_idx, src_vals = xs
         st = carry["fdtd"]
+        rlc_previous = rlc.read(st, ranks=ranks) if rlc_metas else ()
         record_previous = records.prepare(st, ranks=ranks)
         cpml_st = carry["cpml"]
         db_st = carry["debye"]
@@ -334,6 +338,8 @@ def run_uniform_slab_loop(
             ranks=ranks, grid=cpml_grid, high_wall=high_wall,
             e_curl_coeff=absorber, boundary=curl_boundary)
 
+        if rlc_metas:
+            st, rlc_states = rlc.update(st, carry['rlc_states'], rlc_previous, ranks=ranks)
         reference_out = ports.references(st, port_table_arg, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -391,6 +397,8 @@ def run_uniform_slab_loop(
 
         updated = {"fdtd": st, "cpml": cpml_st,
                    "debye": db_st, "lorentz": lr_st}
+        if rlc_metas:
+            updated['rlc_states'] = rlc_states
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
@@ -421,6 +429,7 @@ def run_uniform_slab_loop(
         """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
+        rlc_previous = rlc.read(st, ranks=ranks) if rlc_metas else ()
         record_previous = records.prepare(st, ranks=ranks)
         db_st = carry["debye"]
         lr_st = carry["lorentz"]
@@ -442,6 +451,8 @@ def run_uniform_slab_loop(
         st, incident = slab_tfsf.apply_e(
             st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
+        if rlc_metas:
+            st, rlc_states = rlc.update(st, carry['rlc_states'], rlc_previous, ranks=ranks)
         reference_out = ports.references(st, port_table_arg, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -488,6 +499,8 @@ def run_uniform_slab_loop(
         probe_out = _sample_probes_shmap(st, ranks=ranks)
 
         updated = {"fdtd": st, "debye": db_st, "lorentz": lr_st}
+        if rlc_metas:
+            updated['rlc_states'] = rlc_states
         updated["tfsf"] = incident
         updated["records"] = records.update(carry["records"], st, dt, _step_idx,
                                              ranks=ranks, previous=record_previous)
@@ -519,6 +532,8 @@ def run_uniform_slab_loop(
         carry_init["tfsf"] = tfsf_line
         carry_init["records"] = records.initial()
         carry_init['ports'] = ports.initial
+        if rlc_metas:
+            carry_init['rlc_states'] = initial(rlc_metas, layout, mesh, sharded_state.ex.dtype)
         def _run_cpml(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             cpml_params_arg, pec_mask_arg, tfsf_tables_arg, port_table_arg,
@@ -561,6 +576,8 @@ def run_uniform_slab_loop(
         carry_init["tfsf"] = tfsf_line
         carry_init["records"] = records.initial()
         carry_init['ports'] = ports.initial
+        if rlc_metas:
+            carry_init['rlc_states'] = initial(rlc_metas, layout, mesh, sharded_state.ex.dtype)
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             pec_mask_arg, tfsf_tables_arg, port_table_arg,

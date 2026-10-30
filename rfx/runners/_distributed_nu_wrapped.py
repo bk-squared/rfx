@@ -16,7 +16,7 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 devices, occupancy, checkpoint_every, n_warmup,
                 emit_time_series, gather_final_state, material_drive,
                 debye=None, lorentz=None, cpml=False, cpml_state=None, port_plan=None,
-                prepare_only=False, slab_records=None):
+                prepare_only=False, slab_records=None, rlc_metas=()):
     """Prepare local invariants; optionally defer steps until cell inputs die."""
     devices = jax.devices()[:sg.n_devices] if devices is None else devices
     if len(devices) != sg.n_devices:
@@ -31,7 +31,7 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
     setup = build_setup(grid, materials, layout, mesh, n_steps, sources, probes,
         pec_mask=pec_mask, occupancy=occupancy, debye=debye, lorentz=lorentz,
         cpml=cpml, cpml_state=cpml_state, emit_time_series=emit_time_series,
-        material_drive=material_drive, port_plan=port_plan)
+        material_drive=material_drive, port_plan=port_plan, rlc_metas=rlc_metas)
     invariants, carry = split(setup.invariants, setup.carry_init, layout, mesh,
                                waveforms=setup.src_waveforms, dt=grid.dt)
     waves = invariants['drives'].waves

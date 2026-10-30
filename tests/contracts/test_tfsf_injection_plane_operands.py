@@ -217,6 +217,18 @@ def test_closed_box_distributed_injection_plane(obj, closed_box_controls, monkey
         assert not started
 
 
+@pytest.mark.parametrize('entry', ['run', 'fwd'])
+@pytest.mark.parametrize('obj', ['series_RL', 'R_only'])
+def test_closed_box_rlc_refusal_matches_one_device(entry, obj):
+    # Pin the realized RLC operand on both entries; folded R keeps its refusal.
+    messages = []
+    for path in ('uniform', 'distributed'):
+        with pytest.raises(ValueError, match='non-vacuum material found at') as caught:
+            execute(scene(obj, kind='box'), f'{entry}_{path}')
+        messages.append(str(caught.value))
+    assert messages[0] == messages[1]
+
+
 @pytest.mark.parametrize('obj', INVENTORY)
 def test_off_plane_controls(obj):
     with warnings.catch_warnings():

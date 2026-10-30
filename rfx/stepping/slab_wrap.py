@@ -193,6 +193,9 @@ def wrap(step, layout, mesh, *, table, port_table=None):
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
     def local(carry, xs, invariants, *, rank):
+        local_context = replace(context, slab_rlc=(layout, rank))
+        if context.use_lumped_rlc:
+            carry = dict(carry, rlc_states=jax.tree.map(lambda a: a[0], carry['rlc_states']))
         def h(frame):
             frame.st = _exchange_h_ghosts_nu(frame.st, mesh, layout.n_devices, ranks=rank, local=True)
 
@@ -218,7 +221,7 @@ def wrap(step, layout, mesh, *, table, port_table=None):
                 if key in carry:
                     carry[key] = jax.tree.map(lambda a: a[0], carry[key])
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
-        advance = make_graded_step(context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
+        advance = make_graded_step(local_context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
         from rfx import _realized
         if _realized.ACTIVE is None:
             carry, record = advance(carry, xs, inputs)
@@ -233,6 +236,8 @@ def wrap(step, layout, mesh, *, table, port_table=None):
             for key in ('wire_sparams', 'sparam_time_records'):
                 if key in carry:
                     carry[key] = jax.tree.map(lambda a: a[None], carry[key])
+        if context.use_lumped_rlc:
+            carry['rlc_states'] = jax.tree.map(lambda a: a[None], carry['rlc_states'])
         return carry, jax.lax.psum(record, 'x')
 
     def mapped(carry, xs, invariants, *, ranks):

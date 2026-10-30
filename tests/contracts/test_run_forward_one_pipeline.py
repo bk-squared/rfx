@@ -120,6 +120,9 @@ ASSEMBLY_ROWS = (
     ('PW-closed', 'uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
+    # RLC now pins admitted run/forward assembly on both multi-device meshes.
+    ('R-rlc', 'multi-device-graded'),
+    ('R-rlc', 'multi-device-uniform'),
     ('R-rlc', 'uniform'),
     ('S-field', 'graded'),
     ('S-field', 'multi-device-graded'),
@@ -239,6 +242,9 @@ FIELD_ROWS = (
     ('PW-closed', 'uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
+    # Equal requests now compare admitted RLC records on both slab pipelines.
+    ('R-rlc', 'multi-device-graded'),
+    ('R-rlc', 'multi-device-uniform'),
     ('R-rlc', 'uniform'),
     ('S-field', 'graded'),
     ('S-field', 'multi-device-graded'),
@@ -323,8 +329,7 @@ BOTH_REFUSE_ROWS = (
     ('PW-oblique', 'graded'),
     ('PW-oblique', 'multi-device-graded'),
     ('PW-oblique', 'multi-device-uniform'),
-    ('R-rlc', 'multi-device-graded'),
-    ('R-rlc', 'multi-device-uniform'),
+    # RLC moved to the admitted assembly/field comparisons above.
 )
 
 # Item 20: only common time_series differences on this L2 pair
@@ -347,9 +352,8 @@ def directions(declaration):
 
 
 # Both entries refuse, but from two guards, not one check both call
-# (rfx-core-desk 2026-10-27). The graded multi-device MSL and RLC rows left
-# with #2076 and the coaxial port's 8 rows with #2075: both entries now refuse
-# each of them from one shared check.
+# (rfx-core-desk 2026-10-27). MSL and coaxial port refusals now share one
+# check; RLC is admitted and compared in the tables above.
 TWO_GUARD_REFUSALS = {
 }
 
@@ -526,6 +530,7 @@ def check_fields(declaration, path, direction=None):
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
+    ('R-rlc', 'multi-device-graded'), ('R-rlc', 'multi-device-uniform'),
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),

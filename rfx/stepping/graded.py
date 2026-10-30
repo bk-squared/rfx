@@ -83,6 +83,7 @@ class GradedStepContext:
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
     cpml_spacings: tuple | None = None
+    slab_rlc: tuple | None = None
 
 
 @dataclass
@@ -182,7 +183,10 @@ def make_graded_step(
         # series element is solved together with its edge field).
         frame.rlc_e_prev = (
             tuple(getattr(frame.st, m.component)[m.i, m.j, m.k] for m in ctx.rlc_metas)
-            if ctx.use_lumped_rlc else ())
+            if ctx.use_lumped_rlc and ctx.slab_rlc is None else ())
+        if ctx.use_lumped_rlc and ctx.slab_rlc is not None:
+            from rfx.stepping.slab_lumped import read
+            frame.rlc_e_prev = read(frame.st, ctx.rlc_metas, *ctx.slab_rlc)
 
         # E^n on the slab, before anything in this step writes E (the H
         # update below does not touch it). Slab-sized so the reverse-mode
@@ -329,8 +333,11 @@ def make_graded_step(
         frame.new_rlc_states = None
         if ctx.use_lumped_rlc:
             from rfx.stepping.lumped import update_rlc_elements
-            frame.st, frame.new_rlc_states = update_rlc_elements(
-                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev)
+            from rfx.stepping.slab_lumped import update
+            solve = update_rlc_elements if ctx.slab_rlc is None else update
+            frame.st, frame.new_rlc_states = solve(
+                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev,
+                *(() if ctx.slab_rlc is None else ctx.slab_rlc))
 
     def sources(frame: GradedFrame):
         # Sources (point sources + wire port excitation)

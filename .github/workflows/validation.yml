@@ -320,6 +320,15 @@ jobs:
           tests/unit/runners/test_distributed_uniform_directivity_parity.py
           tests/unit/runners/test_distributed_tfsf_slab.py
 
+      - name: Run three-device uniform and graded CPML lumped RLC S4 contracts
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -s -p no:cacheprovider -o addopts=""
+          tests/contracts/test_multidevice_lumped_rlc.py -k "cpml and S4"
+
       - name: Run four-device closed-box TF/SF cases
         if: ${{ !cancelled() }}
         env:

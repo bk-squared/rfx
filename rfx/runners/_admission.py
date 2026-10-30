@@ -507,8 +507,8 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
-    ("_lumped_rlc", "R"): _NO_SHEETS,
-    ("_lumped_rlc", "series_RL"): _NO_SHEETS,
+    ("_lumped_rlc", "R"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
+    ("_lumped_rlc", "series_RL"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
     ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
     ("_tfsf", "closed_box"): frozenset({"run_uniform", "fwd_uniform"}),
     ("_refinement", "slab"): frozenset(),
@@ -538,6 +538,9 @@ _ADMITTED_ON: dict[Row, frozenset] = {
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    # Both graded entries carry folded R and stateful series RL elements.
+    ('_lumped_rlc', 'R'),
+    ('_lumped_rlc', 'series_RL'),
     ('_dft_planes', 'dft_plane'),
     ('_flux_monitors', 'flux'),
     ('_ntff', 'ntff_box'),
