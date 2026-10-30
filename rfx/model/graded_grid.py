@@ -1030,6 +1030,30 @@ def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
     traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal32[first])
 
 
+def _assert_traced_window_total(profile, nominal, window, axis):
+    """Keep downstream waveguide planes fixed, within the declared D2 bound.
+
+    This checks realized values, not tangent directions. Only tangents that
+    preserve each window's total describe planes fixed in physical metres.
+    """
+    from rfx._traced_check import traced_check
+    windows = window if isinstance(window[0], tuple) else (window,)
+    for lo, hi in windows:
+        expected = float(np.sum(nominal[lo:hi]))
+        tolerance = float(4 * np.finfo(np.float32).eps * (hi - lo)
+                          * np.max(nominal[lo:hi]))
+        realized = jnp.sum(jnp.asarray(profile, dtype=jnp.float32)[lo:hi])
+
+        def check(total, target=expected, bound=tolerance):
+            if not abs(float(total) - float(target)) <= float(bound):
+                raise ValueError(
+                    f"waveguide ports: nominal_profiles= {axis!r} traced window "
+                    f"total changed: realized {float(total)!r} m, nominal "
+                    f"{float(target)!r} m, tolerance {float(bound)!r} m.")
+
+        traced_check("waveguide ports", "fixed window total", check, realized)
+
+
 def _assert_traced_index_matches_realized(
     d_arr, total_pad: int, pad_lo: int, pos: float, nominal_idx: int,
     axis: str, declared: bool = False,

@@ -50,6 +50,7 @@ from rfx._grid_metric import (
     NODE_TOUCH_REL, cells_crossed, is_one_cell_size, nearest_node_index,
 )
 from rfx.core.jax_utils import is_tracer
+from rfx.model.graded_admission import host_cells, traced_cell_mask
 from rfx.diagnostic_records import Diagnostic, from_legacy, for_legacy_issue
 
 
@@ -67,9 +68,11 @@ def local_cell(grid, axis, x):
     cell over an interval); this one is for preflight tolerances only.
     """
     cells = grid.cells(axis)
-    if is_tracer(cells):
+    if is_tracer(cells) and traced_cell_mask(grid, axis) is None:
         return grid.boundary_cell(axis, "lo")
-    index = grid.index_of(axis, x)
+    cells = host_cells(grid, axis)
+    from rfx.model.waveguide_mesh import host_index
+    index = host_index(grid, axis, x)
     if index == 0 or len(cells) == 1:
         return float(cells[0])
     if index == len(cells) - 1:
@@ -183,8 +186,9 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
     if n <= 0:
         return 0.0
     arr = getattr(grid, {"x": "dx_arr", "y": "dy_arr", "z": "dz"}[ax], None)
-    if arr is not None and not is_tracer(arr) and np.ndim(arr) == 1:
-        a = np.asarray(arr, dtype=float)
+    if arr is not None and np.ndim(arr) == 1 and (
+            not is_tracer(arr) or traced_cell_mask(grid, ax) is not None):
+        a = np.asarray(host_cells(grid, ax, store=True), dtype=float)
         # NonUniformGrid pads its cell-size arrays to the NODE count and
         # carries one trailing duplicate bounding cell (#562), so the hi-face
         # pad is the n entries BEFORE that duplicate, not the last n.

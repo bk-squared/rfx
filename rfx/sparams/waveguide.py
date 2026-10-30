@@ -36,6 +36,7 @@ from rfx.model.thin_conductors import conductivity_envelope
 from rfx.sparams._waveguide_planes import resolve_reported_planes
 import copy
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -76,6 +77,26 @@ if TYPE_CHECKING:  # pragma: no cover
     from rfx.api import Simulation
 
 
+from rfx.model.waveguide_mesh import flux_mesh_entry
+
+
+@jax.custom_jvp
+def _flux_power_ratio(numerator, denominator):
+    """Keep the primal division; avoid squaring tiny reference powers in AD."""
+    return numerator / denominator
+
+
+@_flux_power_ratio.defjvp
+def _flux_power_ratio_jvp(primals, tangents):
+    numerator, denominator = primals
+    d_numerator, d_denominator = tangents
+    ratio = _flux_power_ratio(numerator, denominator)
+    # Mesh deformation traces the reference as well as the device. Powers
+    # can be ~1e-24 in float32: d**-2 overflows even when dq is finite.
+    return ratio, (d_numerator - ratio * d_denominator) / denominator
+
+
+@flux_mesh_entry
 def compute_waveguide_s_matrix(
     self,
     *,
@@ -251,7 +272,18 @@ def compute_waveguide_s_matrix(
         discipline; it does NOT make arbitrary compact junctions
         valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
         the current waveguide evidence and scope.
+
+        On a graded mesh, flux normalization admits a traced x profile only
+        with ``nominal_profiles={"x": NominalProfile(cells, traced_cells=window)}``.
+        The window must avoid the port planes and interior ends and retain
+        its nominal total width. Only total-preserving tangents describe
+        derivatives with the port planes fixed in physical metres; a tangent
+        changing that total instead moves downstream nodes with the mesh.
+        Material rasterization is a cell-centre step test on realized nodes.
+        ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
+    from rfx.boundaries.features import refuse_traced_guide_mesh
+    refuse_traced_guide_mesh(self, "compute_waveguide_s_matrix")
     resolve_field_dtype(self._precision)
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, unsupported=True)
@@ -1410,7 +1442,7 @@ def _compute_waveguide_s_matrix_nu(
                     # d(sqrt)/dx = inf would leak 0*inf=nan through the
                     # backward pass; primal stays exactly sqrt(x) for
                     # x>0 and exactly 0 at x=0.
-                    p_ratio = P_num / safe_P_inc
+                    p_ratio = _flux_power_ratio(P_num, safe_P_inc)
                     p_ok = p_ratio > 0.0
                     mag = jnp.where(
                         p_ok,
@@ -1502,6 +1534,9 @@ def _compute_waveguide_s_matrix_nu(
 # ::test_no_public_simulation_method_leaks_a_mixin_class_name`` pins it.
 # ---------------------------------------------------------------------------
 compute_waveguide_s_matrix.__qualname__ = "_SparamMixin.compute_waveguide_s_matrix"
+# ``flux_mesh_entry`` wraps the calculator, and Python names the INNER function
+# in a bad-keyword TypeError; give it the name the rewrite gives the wrapper.
+compute_waveguide_s_matrix.__wrapped__.__qualname__ = "Simulation.compute_waveguide_s_matrix"
 _compute_waveguide_s_matrix_nu.__qualname__ = (
     "_SparamMixin._compute_waveguide_s_matrix_nu"
 )

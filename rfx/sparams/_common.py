@@ -24,6 +24,8 @@ import time.
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning
+from rfx.model.graded_admission import host_cells
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -406,15 +408,8 @@ def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
     recorded plane positions -- does not drag in its neighbour.
     """
     axis = str(cfg.normal_axis)
-    if axis == "x":
-        d_full = grid.dx_arr_f64 if getattr(grid, "dx_arr_f64", None) is not None else grid.dx_arr
-        pad_lo, pad_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
-    elif axis == "y":
-        d_full = grid.dy_arr_f64 if getattr(grid, "dy_arr_f64", None) is not None else grid.dy_arr
-        pad_lo, pad_hi = int(grid.pad_y_lo), int(grid.pad_y_hi)
-    else:
-        d_full = grid.dz_f64 if getattr(grid, "dz_f64", None) is not None else grid.dz
-        pad_lo, pad_hi = int(grid.pad_z_lo), int(grid.pad_z_hi)
+    d_full = host_cells(grid, axis)
+    pad_lo, pad_hi = int(getattr(grid, f"pad_{axis}_lo")), int(getattr(grid, f"pad_{axis}_hi"))
     cells = np.asarray(interior_cells(np.asarray(d_full, dtype=np.float64), pad_lo, pad_hi, periodic=axis in grid.periodic_axes),
                        dtype=np.float64)
     planes = (float(cfg.source_x_m), float(cfg.reference_x_m), float(desired_plane_m))
@@ -2044,7 +2039,7 @@ def _warn_thin_absorber_vs_guide_wavelength(
             f"({depth / lambda_g:.2f} lambda_g)"
             for side, n, depth in thin
         )
-        dx = min(float(grid.boundary_cell(axis, side)) for side, _, _ in thin)
+        dx = min(float(host_cells(grid, axis)[0 if side == "lo" else -1]) for side, _, _ in thin)
         warnings.warn(
             f"compute_waveguide_s_matrix: absorber on the {axis} propagation "
             f"axis is thinner than the documented "

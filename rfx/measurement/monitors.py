@@ -5,6 +5,8 @@ with the same block/component/weight prefix sum to one accumulated moment;
 E_prev reads the saved state, not the current field. Geometry weights are the
 realized monitor's volume/displacement weights derived from grid.cells.
 """
+
+from rfx.model.graded_admission import host_cells
 from itertools import product
 from functools import lru_cache
 from contextlib import nullcontext
@@ -68,7 +70,10 @@ def ntff_owner(grid, box):
     """Expand the normal interpolation and tangential midpoint averages."""
     bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
     channels = []
-    cells = [np.asarray(grid.cells(a)) for a in range(3)]
+    from rfx.model.graded_admission import refuse_window_cells
+    for a in range(3):
+        refuse_window_cells(grid, a, slice(None), "waveguide ports NTFF owner")
+    cells = [np.asarray(host_cells(grid, a)) for a in range(3)]
     for axis, side in product(range(3), range(2)):
         face = 'xyz'[axis] + ('_lo', '_hi')[side]
         plane = bounds[axis][side]

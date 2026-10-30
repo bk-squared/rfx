@@ -1,6 +1,8 @@
 """Flux quadrature on realized nodes, including full-plane storage conventions."""
 import numpy as np
 
+from rfx.model.graded_admission import host_cells, refuse_window_cells
+
 
 def axis_weights(nodes, lo, hi, *, nodal, periodic=False, extrusion=None):
     """Integrate a cell window; full planes retain a zero-weight high ghost.
@@ -58,13 +60,23 @@ def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, 
     from rfx.model.graded_grid import NonUniformGrid
     from rfx.probes.probes import init_flux_monitor
 
-    if isinstance(grid, NonUniformGrid) and any(grid.is_traced(a) for a in range(3)):
+    traced = isinstance(grid, NonUniformGrid) and any(grid.is_traced(a) for a in range(3))
+    if traced:
+        from rfx.model.waveguide_mesh import _flux_entry
         from rfx._traced_refusal import TracedStructureRefusal
-        raise TracedStructureRefusal(
-            "A flux monitor on a mesh with traced cell widths cannot assemble "
-            "its area and normal weights. Use a concrete mesh.")
-    coords = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
-              else coords_from_uniform_grid(grid))
+        if not _flux_entry.get() or any(grid.is_traced(a) for a in range(3) if a != axis):
+            raise TracedStructureRefusal(
+                "A flux monitor on a mesh with traced cell widths cannot assemble "
+                "its area and normal weights. Use a concrete mesh; waveguide ports "
+                "require nominal_profiles= and fixed monitor cells.")
+        refuse_window_cells(grid, axis, slice(max(0, index - 1), index + 1),
+                            "waveguide ports flux monitor")
+        from rfx.geometry.rasterize_grid import GridCoords, _axis_node_positions
+        coords = GridCoords(*(_axis_node_positions(host_cells(grid, a), getattr(grid, f"pad_{a}_lo"))
+                              for a in "xyz"), grid.shape)
+    else:
+        coords = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
+                  else coords_from_uniform_grid(grid))
     tangential = [a for a in range(3) if a != axis]
     periodic_axes = (getattr(grid, 'periodic_axes', '') if periodic is None else
                      ''.join(a for a, enabled in zip('xyz', periodic) if enabled))
@@ -72,17 +84,17 @@ def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, 
     for a in tangential:
         x = np.asarray(getattr(coords, 'xyz'[a]), dtype=float)
         if 'xyz'[a] in periodic_axes and len(x) > 1:
-            x = np.r_[x, x[-1] + np.asarray(grid.cells(a))[-1]]
+            x = np.r_[x, x[-1] + np.asarray(host_cells(grid, a))[-1]]
         nodes.append(x)
     normal = np.asarray(getattr(coords, 'xyz'[axis]), dtype=float)
-    normal_cells = np.asarray(grid.cells(axis))
+    normal_cells = np.asarray(host_cells(grid, axis))
     # Include the grid's existing high fence-post/ghost provider, as for the
     # tangential periodic closing coordinate. It has no physical box extent.
     normal = np.r_[normal, normal[-1] + normal_cells[-1]]
     h_weights = normal_weights(normal, index, uniform=np.all(normal_cells == normal_cells[0]))
     return init_flux_monitor(axis, index, freqs, grid.shape,
-                             np.asarray(grid.cells(tangential[0])),
-                             np.asarray(grid.cells(tangential[1])),
+                             np.asarray(host_cells(grid, tangential[0])),
+                             np.asarray(host_cells(grid, tangential[1])),
                              node_coords=tuple(nodes), periodic_axes=periodic_axes,
                              pmc_faces=pmc_faces, normal_h_weights=h_weights, **kwargs)
 

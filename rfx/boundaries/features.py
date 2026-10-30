@@ -7,6 +7,7 @@ Admission never changes mesh metrics.
 from __future__ import annotations
 
 from rfx.errors import RfxRefusal, RfxWarning
+from rfx.model.graded_admission import host_cells
 
 from dataclasses import replace
 import inspect
@@ -187,7 +188,9 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
         length = float(sim._domain[index])
         if hasattr(grid, "dx_arr_f64"):
             from rfx.model.graded_grid import interior_cells
-            widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[index]
+            from rfx.model.graded_admission import traced_cell_mask
+            widths = (host_cells(grid, index) if traced_cell_mask(grid, index) is not None
+                      else (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[index])
             cells = interior_cells(widths, getattr(grid, f"pad_{axis}_lo"),
                                    getattr(grid, f"pad_{axis}_hi"))
             n, solved = len(cells), float(sum(cells))
@@ -195,7 +198,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
         else:
             span = grid.interior[index]
             n = span.stop - span.start - 1
-            cell = float(grid.cells(axis)[span.start])
+            cell = float(host_cells(grid, axis)[span.start])
             solved = n * cell
         rel = solved / length - 1
         if abs(rel) <= .01:
@@ -332,14 +335,7 @@ def _admit_graded_guide(sim, lane, edges=True):
 
 
 def refuse_traced_guide_mesh(sim, lane):
-    """Refuse a waveguide port on a mesh whose cell widths are traced.
-
-    The port's planes, aperture, mode, absorber depth and flux planes are all
-    read from host cell widths, and the flux monitor refuses traced cells, so
-    no derivative with respect to a cell width reaches its S. Both waveguide
-    admissions call this first, so the refusal names the ports before any
-    host read raises a raw JAX error.
-    """
+    """Admit only fixed-plane windowed x meshes in the flux S-matrix scope."""
     from rfx.core.jax_utils import is_tracer
     profiles = (sim._dx_profile, sim._dy_profile, sim._dz_profile)
     traced = [axis for axis, profile in zip("xyz", profiles) if is_tracer(profile)]
@@ -347,15 +343,12 @@ def refuse_traced_guide_mesh(sim, lane):
         traced.insert(0, "dx")
     if not sim._waveguide_ports or not traced:
         return
-    from rfx._traced_refusal import TracedStructureRefusal
+    from rfx.model.waveguide_mesh import admit_traced_window
     names = ", ".join(repr(entry.name or number)
                       for number, entry in enumerate(sim._waveguide_ports))
-    raise TracedStructureRefusal(
+    admit_traced_window(sim, traced,
         f"{lane}: waveguide port(s) {names} on a mesh whose {'/'.join(traced)} cell "
-        "widths are traced (mesh as a design variable): the port reads its planes, mode "
-        "aperture and flux planes from host cell widths, so a derivative with respect to "
-        "a cell width cannot reach its S. Build the mesh from concrete widths; a "
-        "permittivity can still be differentiated through eps_override.")
+        "widths are traced (permittivity remains differentiable through eps_override)")
 
 
 def _refuse_periodic_guide(sim, faces):
@@ -410,8 +403,8 @@ def waveguide_segment_cells(cfg, grid):
     endpoints = [h, cfg.x_index, cfg.ref_x]
     if cfg.segment_planes:
         nodes = np.asarray(_axis_node_positions(
-            grid.cells(cfg.normal_axis), getattr(grid, f"pad_{cfg.normal_axis}_lo")))
-        centres = nodes + np.asarray(grid.cells(cfg.normal_axis)) / 2
+            host_cells(grid, cfg.normal_axis), getattr(grid, f"pad_{cfg.normal_axis}_lo")))
+        centres = nodes + np.asarray(host_cells(grid, cfg.normal_axis)) / 2
         endpoints.extend(int(np.searchsorted(centres, p, side="left") - 1)
                          if p >= nodes[cfg.x_index] else
                          int(np.searchsorted(centres, p, side="right"))
@@ -452,7 +445,8 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
     # H corrects cell x_index - 1 (+) or x_index (-). Its front node,
     # shared with the source plane, is x_index in either direction.
     nodes = [cfg.x_index, cfg.ref_x]
-    nodes.extend(grid.index_of(cfg.normal_axis, p) for p in cfg.segment_planes)
+    from rfx.model.waveguide_mesh import host_index
+    nodes.extend(host_index(grid, cfg.normal_axis, p) for p in cfg.segment_planes)
     edge_spatial = list(spatial)
     edge_spatial[normal] = slice(min(nodes), max(nodes) + 1)
     edge_spatial = tuple(edge_spatial)

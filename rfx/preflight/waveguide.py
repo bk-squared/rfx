@@ -56,6 +56,8 @@ the path, and a pure code-motion leg touches one fewer file.
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning
+from rfx.model.graded_admission import host_cells
+
 from rfx.stepping.step_count import steps_for_periods
 import math
 
@@ -110,7 +112,7 @@ def _transverse_cell_size(grid, axis_name) -> float:
     Profiled simulations take the declared-geometry route before this
     helper is called (``_check_waveguide_port_evanescent``).
     """
-    return float(grid.cells(axis_name)[0])
+    return float(host_cells(grid, axis_name)[0])
 
 
 def _port_transverse_spans(self, entry, grid, realized=None):
@@ -226,7 +228,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         }
         try:
             slc, aperture = self._range_to_slice(
-                value_range, self._domain[axis_idx], float(grid.cells("x")[0]), n_axis,
+                value_range, self._domain[axis_idx], float(host_cells(grid, "x")[0]), n_axis,
                 grid.axis_pads[axis_idx], getattr(grid, f"pad_{'xyz'[axis_idx]}_hi"),
             )
         except ValueError as exc:
@@ -732,8 +734,8 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
             # to a dy-derived span would be the cubic assumption wearing a
             # label (repo engineering principle 2).
             d_axis = _transverse_cell_size(grid, axis_name)
-            d_label = (f"dx={grid.cells('x')[0] * 1e3:.4f} mm"
-                       if d_axis == float(grid.cells("x")[0])
+            d_label = (f"dx={host_cells(grid, 'x')[0] * 1e3:.4f} mm"
+                       if d_axis == float(host_cells(grid, "x")[0])
                        else f"d{axis_name}={d_axis * 1e3:.4f} mm")
             if rec["aperture"] is None:
                 _w.warn(
@@ -1725,7 +1727,7 @@ def _validate_cfg_port_index_mirror_covariance(
                             cell = local_cell(grid, axis, coordinate)
                         except ValueError:
                             side = "lo" if coordinate < 0 else "hi"
-                            ref_cells.append(float(grid.boundary_cell(axis, side)))
+                            ref_cells.append(float(host_cells(grid, axis)[0 if side == "lo" else -1]))
                         else:
                             ref_cells.append(cell)
                     tol = 0.5 * min(ref_cells)

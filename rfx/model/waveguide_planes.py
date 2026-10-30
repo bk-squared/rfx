@@ -1,6 +1,8 @@
 """Where a waveguide port measures, computed from the declaration for admission (#1913)."""
 from __future__ import annotations
 
+from rfx.model.graded_admission import host_cells
+
 import numpy as np
 
 
@@ -17,7 +19,7 @@ def offset_plane(source_m, source_index, offset, dx, *, grid=None, axis="x"):
     """Signed cell offset, integrating primal spacing on a graded axis."""
     if grid is None:
         return source_m + offset * dx
-    cells = np.asarray(grid.cells(axis))
+    cells = np.asarray(host_cells(grid, axis))
     target = source_index + offset
     lo, hi = sorted((source_index, target))
     return source_m + float(np.sum(cells[lo:hi])) * (1.0 if offset >= 0 else -1.0)
@@ -26,11 +28,12 @@ def offset_plane(source_m, source_index, offset, dx, *, grid=None, axis="x"):
 def entry_planes(entry, grid):
     """Source and measured reflection plane, without solving a mode."""
     axis = entry.direction[1]
-    index = grid.index_of(axis, entry.x_position)
+    from rfx.model.waveguide_mesh import host_index
+    index = host_index(grid, axis, entry.x_position)
     if hasattr(grid, "dx_arr"):
         # Match the NU builder's interior-edge cumulative sum exactly.
         pad = getattr(grid, f"pad_{axis}_lo")
-        cells = np.asarray(grid.cells(axis))
+        cells = np.asarray(host_cells(grid, axis))
         source = float(np.insert(np.cumsum(cells[pad:]), 0, 0.0)[index - pad])
         metric_grid = grid
     else:
@@ -38,6 +41,6 @@ def entry_planes(entry, grid):
         metric_grid = None
     sign = 1 if entry.direction.startswith("+") else -1
     reference = offset_plane(source, index, sign * entry.ref_offset,
-                             float(grid.cells(axis)[index]),
+                             float(host_cells(grid, axis)[index]),
                              grid=metric_grid, axis=axis)
     return source, reference

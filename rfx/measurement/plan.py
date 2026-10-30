@@ -20,6 +20,8 @@ an availability explanation, never invented run() channels.
 """
 from __future__ import annotations
 
+from rfx.model.graded_admission import host_cells
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, replace
 from itertools import product
@@ -133,9 +135,12 @@ def _index(grid, position):
 
 def _plane_nodes(grid, axis, index, component, region=None, weights=None):
     axes = [a for a in range(3) if a != axis]
-    sizes = tuple(len(grid.cells(a)) for a in axes)
+    sizes = tuple(len(host_cells(grid, a)) for a in axes)
     lo, hi, low, high = region or (0, sizes[0], 0, sizes[1])
-    cells = [np.asarray(grid.cells(a)) for a in axes]
+    from rfx.model.graded_admission import refuse_window_cells
+    for a, start, stop in zip(axes, (lo, low), (hi, high)):
+        refuse_window_cells(grid, a, slice(start, stop), "waveguide ports plane owner")
+    cells = [np.asarray(host_cells(grid, a)) for a in axes]
     nodes = []
     for u, v in product(range(lo, hi), range(low, high)):
         idx = [0, 0, 0]
@@ -211,7 +216,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         index = _index(grid, tuple(point))[axis]
         tangential = [a for a in range(3) if a != axis]
         region = resolve_flux_region(grid, entry, sim._domain)
-        bounds = (0, len(grid.cells(tangential[0])), 0, len(grid.cells(tangential[1])))
+        bounds = (0, len(host_cells(grid, tangential[0])), 0, len(host_cells(grid, tangential[1])))
         if region is not None:
             index = region['normal_index']
             bounds = tuple(v for span in region['cell_slices'] for v in span)

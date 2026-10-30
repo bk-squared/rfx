@@ -359,3 +359,38 @@ def traced_cell_mask(grid, axis, padded: bool = True):
     if not padded:
         return interior
     return np.pad(interior, (pad_lo, pad_hi + duplicate), mode="edge")
+
+
+def host_cells(grid, axis, *, store=False):
+    """Host widths in the precision previously read by a metric consumer.
+
+    By default this is the concrete float64 spine (``grid.cells``);
+    ``store=True`` preserves the solver's float32 widths (``dx_arr``,
+    ``dy_arr``, ``dz``). A traced axis with a declared deformation window
+    returns its padded nominal widths in that same precision; consumers
+    refuse reads within the window, and waveguide admission checks its
+    total so downstream physical coordinates remain fixed. A traced axis
+    without a window returns the traced widths unchanged, as before.
+    """
+    index = "xyz".index(axis) if isinstance(axis, str) else int(axis)
+    stored = (getattr(grid, "dx_arr", None), getattr(grid, "dy_arr", None),
+              getattr(grid, "dz", None))[index]
+    if hasattr(grid, "is_traced") and grid.is_traced(axis):
+        widths = nominal_cells(grid, axis, padded=True)
+        if widths is None or traced_cell_mask(grid, axis) is None:
+            return stored if store else grid.cells(axis)
+        return np.asarray(widths, dtype=np.float32 if store else np.float64)
+    if store and stored is not None and not np.isscalar(stored):
+        return np.asarray(stored)
+    return np.asarray(grid.cells(axis), dtype=np.float64)
+
+
+def refuse_window_cells(grid, axis, selection, feature):
+    """Refuse a host metric that needs a cell in a declared deformation window."""
+    if not hasattr(grid, "is_traced") or not grid.is_traced(axis):
+        return
+    mask = traced_cell_mask(grid, axis)
+    if mask is None or np.any(mask[selection]):
+        raise TracedStructureRefusal(
+            f"{feature}: nominal_profiles= on axis {axis!r} must keep every "
+            "cell read by this host metric outside traced_cells.")

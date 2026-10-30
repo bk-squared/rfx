@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from rfx.errors import ConfigurationWarning
+from rfx.model.graded_admission import host_cells
+
 from rfx._grid_metric import field_index
 import warnings
 from dataclasses import replace
@@ -60,9 +62,9 @@ def assemble_interface_eps_nu(sim, grid, materials, *, high_wall: tuple[bool, bo
 
     _validate_interface_eps_nu(sim)
     nodes = coords_from_nonuniform_grid(grid)
-    widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
-    if any(d is None for d in widths):
+    if any(d is None for d in (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)):
         raise ValueError("interface_eps='dual_average' requires the exact float64 grid spine")
+    widths = tuple(host_cells(grid, axis) for axis in "xyz")
     centres = [np.asarray(x) + np.asarray(d) / 2 for x, d in zip(nodes[:3], widths)]
     # The bounding node has no outgoing real cell: copy the last centre.
     for x in centres:
@@ -251,11 +253,10 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
 
 def _range_to_slice_nu(grid, axis, value_range):
     """Runner node aperture and physical span, shared with the geometry record."""
-    d_arr_jnp = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
     n_axis = grid.shape["xyz".index(axis)]
     pad_lo = getattr(grid, f"pad_{axis}_lo")
     pad_hi = getattr(grid, f"pad_{axis}_hi")
-    d_np = np.asarray(d_arr_jnp)
+    d_np = host_cells(grid, axis, store=True)
     # Cell-edge positions in physical coords (interior only, edge=0 at first
     # interior face). Length = n_interior + 1.
     interior = interior_cells(d_np, pad_lo, pad_hi, periodic=axis in grid.periodic_axes)
@@ -331,11 +332,11 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     # Use the cumulative cell-edge position corresponding to the snapped cell
     # index along the port-normal axis.
     if normal_axis == "x":
-        d_axis_np = np.asarray(grid.dx_arr)
+        d_axis_np = host_cells(grid, "x", store=True)
     elif normal_axis == "y":
-        d_axis_np = np.asarray(grid.dy_arr)
+        d_axis_np = host_cells(grid, "y", store=True)
     else:
-        d_axis_np = np.asarray(grid.dz)
+        d_axis_np = host_cells(grid, "z", store=True)
     _pad_lo_axis = getattr(grid, f"pad_{normal_axis}_lo")
     _pad_hi_axis = getattr(grid, f"pad_{normal_axis}_hi")
     _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis, periodic=normal_axis in grid.periodic_axes)

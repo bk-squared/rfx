@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model.graded_admission import host_cells
+
 from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
@@ -626,9 +628,9 @@ def init_waveguide_port(
     u_axis_name = v_axis_name = None
     u_grid_size = v_grid_size = -1
     if grid_obj is not None:
-        dx_arr_np = np.asarray(grid_obj.dx_arr)
-        dy_arr_np = np.asarray(grid_obj.dy_arr)
-        dz_arr_np = np.asarray(grid_obj.dz)
+        dx_arr_np = host_cells(grid_obj, "x", store=True)
+        dy_arr_np = host_cells(grid_obj, "y", store=True)
+        dz_arr_np = host_cells(grid_obj, "z", store=True)
         if normal_axis == "x":
             u_widths_np = dy_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
@@ -792,11 +794,11 @@ def init_waveguide_port(
     # uniform path this reduces to offset * dx bit-identically.
     if grid_obj is not None:
         if normal_axis == "x":
-            d_axis = np.asarray(grid_obj.dx_arr)
+            d_axis = host_cells(grid_obj, "x", store=True)
         elif normal_axis == "y":
-            d_axis = np.asarray(grid_obj.dy_arr)
+            d_axis = host_cells(grid_obj, "y", store=True)
         else:
-            d_axis = np.asarray(grid_obj.dz)
+            d_axis = host_cells(grid_obj, "z", store=True)
 
         def _cum_offset(from_idx: int, to_idx: int) -> float:
             if to_idx == from_idx:
