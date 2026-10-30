@@ -95,13 +95,7 @@ MOVED = [
      'rfx.sources.tfsf_oblique_open.measure_incident_spectrum moved to rfx.measurement.incident.measure_incident_spectrum; import it from there. The old path will be removed in rfx 3.0.'),
 ]
 OWNED = [
-    ('rfx.stepping', 'core_step_invariants', 'rfx.stepping.uniform_setup'),
-    ('rfx.stepping', 'make_core_step', 'rfx.stepping.uniform_setup'),
-    ('rfx.stepping', 'run_nonuniform', 'rfx.stepping.graded_loop'),
-    ('rfx.stepping', 'run_nonuniform_until_decay', 'rfx.stepping.graded_loop'),
-    ('rfx.stepping', 'run_uniform_loop', 'rfx.stepping.uniform_loop'),
-    ('rfx.stepping', 'run_uniform_until_decay', 'rfx.stepping.uniform_loop'),
-    ('rfx.stepping', 'scan_with_progress', 'rfx.stepping.progress_scan'),
+    ('rfx.materials', 'update_e_debye', 'rfx.stepping.poles'),
 ]
 
 
