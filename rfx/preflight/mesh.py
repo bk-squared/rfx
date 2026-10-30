@@ -40,9 +40,9 @@ THE THREE CLASS-BODY CONSTANTS DO NOT MOVE. ``_MULTIBAND_RATIO_CAP``,
 ``_INPLANE_RATIO_CAP`` and ``_AXIS_OF_COMPONENT`` are assignments in the
 ``_PreflightMixin`` class body, read as ``self.<NAME>`` by four of the bodies
 below and -- for the first two -- read off the CLASS by
-``tests/unit/nonuniform/test_multiband_nu_envelope.py:329``, which asserts the
-two caps are DIFFERENT numbers so that a single shared constant cannot
-silently re-couple the in-plane lock to the z one. Moving them here would keep
+``tests/unit/nonuniform/test_multiband_nu_envelope.py``, which pins each cap
+(both 1.4 since 2026-10-29, as two constants) so that a single shared constant
+cannot silently re-couple the in-plane lock to the z one. Moving them here would keep
 every ``self.`` read working (the method travels with the constant) while
 breaking that test, and no module-level namespace lock would see it happen,
 because they are not module-level names. They stay in the facade, the moved
@@ -671,9 +671,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                else self._INPLANE_RATIO_CAP)
         scope = ("validated multi-band grading cap"
                  if ax_name == "z" else
-                 "in-plane grading threshold (the validated 1.4 "
-                 "multi-band cap is a z-axis envelope: no witness in "
-                 "it grades an in-plane axis)")
+                 "validated in-plane grading cap")
         if max_ratio > cap + 1e-6:
             _w.warn(
                 PreflightWarning(
@@ -684,14 +682,14 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                     f"mesh'). WHY: stability is unaffected (dt is the "
                     f"global min-cell CFL, sufficient on any tensor "
                     f"grid), but per-transition accuracy is witnessed "
-                    f"only along z and only up to ratio 1.4 — the -54 dB "
+                    f"only up to ratio 1.4 — the -54 dB "
                     f"reflection class at 30 cells/wavelength (it scales "
                     f"as (dz/lambda)^2), against -44 dB measured at "
                     f"ratio 2.0. COST: an unquantified reflection and "
                     f"grading-dispersion error at that transition. "
                     f"REMEDY: split it into ratio<={cap:g} steps (e.g. "
                     f"rfx.smooth_grading) to stay inside the "
-                    f"{'validated envelope' if ax_name == 'z' else 'pre-existing in-plane threshold (no in-plane envelope is validated)'}, "
+                    f"validated envelope, "
                     f"or accept it and say so in the report. STALE-IF: "
                     f"the support-matrix row raises the cap.",
                     code="nu_grading_ratio_beyond_validated_cap",

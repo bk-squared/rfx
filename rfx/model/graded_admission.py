@@ -184,11 +184,11 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     # at the float-accumulation class, and 2nd-order supraconvergence
     # preserved on a fixture whose graded axis carries ~90 % of the
     # error budget.
-    # dx/dy STAY AT 1.3: every witness in that battery grades z and
-    # holds the transverse mesh uniform (the harness takes a scalar
-    # transverse cell), so there is no in-plane provenance for moving
-    # an in-plane lock — SPEC-00 0.2-4. The 2026-08-29 adversarial
-    # review found this axis overclaim in the docs; it lived here too.
+    # dx/dy stayed at 1.3 from 2026-08-29 (no in-plane witness then)
+    # and moved to 1.4 on 2026-10-29 on in-plane witnesses at 1.40:
+    # transition reflection on x and y (e5_x/e5_y), and on a cavity graded
+    # in plane, second-order resonances and 1e6-step energy (rfx-archive
+    # records/20261029-inplane-cap-1p4; see the caps in api/_preflight.py).
     # Beyond the cap this warning still fires, and preflight adds the
     # richer advisory nu_grading_ratio_beyond_validated_cap with the
     # accuracy class on both sides.
@@ -196,13 +196,9 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
             ("dz_profile", dz_profile, multiband_ratio_cap,
              "the validated multi-band grading cap"),
             ("dx_profile", dx_profile, inplane_ratio_cap,
-             "the in-plane grading threshold — the validated "
-             f"{multiband_ratio_cap:g} multi-band cap is a "
-             "z-axis envelope and no witness grades an in-plane axis"),
+             "the validated in-plane grading cap"),
             ("dy_profile", dy_profile, inplane_ratio_cap,
-             "the in-plane grading threshold — the validated "
-             f"{multiband_ratio_cap:g} multi-band cap is a "
-             "z-axis envelope and no witness grades an in-plane axis")):
+             "the validated in-plane grading cap")):
         if (_profile is not None and not is_tracer(_profile)
                 and len(_profile) > 1):
             import warnings as _w

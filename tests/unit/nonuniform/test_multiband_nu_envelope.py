@@ -285,50 +285,44 @@ def _ctor_ratio_warnings(axis, prof):
     return [str(x.message) for x in w if "adjacent cell ratio" in str(x.message)]
 
 
-@pytest.mark.parametrize("axis", ["x", "y"])
-def test_inplane_grading_lock_stays_at_1_3(axis):
-    """REVERT-PROOF for the BL1 in-plane lock (note WP6R.8 / WP6R.13).
+@pytest.mark.parametrize("axis", ["x", "y", "z"])
+def test_grading_cap_is_1_4_on_every_axis(axis):
+    """The in-plane cap moved 1.3 -> 1.4 on in-plane witnesses at 1.40
+    (2026-10-29: e5_x/e5_y reflection; rfx-archive
+    records/20261029-inplane-cap-1p4, pinned by
+    test_inplane_grading_witness.py). It was held at 1.3 from 2026-08-29
+    (note WP6R.8, finding BL1) because no witness graded an in-plane axis.
 
-    WP6b moved the abrupt-grading threshold 1.3 -> 1.4 on ALL THREE axes;
-    WP6R.8 reverted the in-plane half, because every witness in the
-    multi-band battery grades z with a UNIFORM transverse mesh, so there
-    is no in-plane provenance for moving an in-plane lock (SPEC-00
-    §0.2-4). Nothing locked that revert: moving ``_INPLANE_RATIO_CAP``
-    and both constructor caps back to 1.4 left the suite green.
-
-    The discriminating ratio is 1.35 — inside the witnessed z cap, above
-    the unwitnessed in-plane threshold. On x/y it MUST be flagged by both
-    the constructor and preflight; the same profile on z must be clean.
-    Mutating either in-plane cap to 1.4 fails this test.
+    A profile stepping at exactly 1.40 must be clean on every axis, on
+    both the constructor and preflight paths; one stepping at 1.45 must
+    be flagged on every axis, and an in-plane message must name the
+    in-plane cap. Moving either in-plane cap back to 1.3 (1.40 flagged)
+    or past 1.45 (1.45 clean) fails this test.
     """
     mm = 1e-3
-    r = 1.35
-    prof = np.array([1, 1, 1, r, r, r, 1, 1, 1], float) * mm
+    at_cap = np.array([1, 1, 1, 1.4, 1.4 ** 2, 1.4, 1, 1, 1], float) * mm
+    assert _axis_advisories(axis, at_cap) == [], (
+        f"d{axis}_profile stepping at 1.40 is inside the validated cap")
+    assert _ctor_ratio_warnings(axis, at_cap) == []
 
-    codes = _axis_advisories(axis, prof)
+    r = 1.45
+    beyond = np.array([1, 1, 1, r, r, r, 1, 1, 1], float) * mm
+    codes = _axis_advisories(axis, beyond)
     assert "nu_grading_ratio_beyond_validated_cap" in codes, (
-        f"d{axis}_profile at ratio {r} is above the in-plane threshold "
-        f"(1.3) and must draw the preflight advisory; got {codes}")
-    msgs = _ctor_ratio_warnings(axis, prof)
-    assert msgs, (
-        f"d{axis}_profile at ratio {r} must draw the constructor "
-        f"abrupt-grading warning")
-    assert "1.3" in msgs[0], msgs
-    # ...and the 1.4 z cap must NOT leak into the in-plane message.
-    assert "in-plane" in msgs[0], msgs
-
-    # Same profile on z: witnessed, therefore silent on both paths.
-    assert _axis_advisories("z", prof) == [], (
-        "ratio 1.35 is inside the witnessed z cap and must be clean")
-    assert _ctor_ratio_warnings("z", prof) == []
+        f"d{axis}_profile at ratio {r} is above the 1.4 cap and must draw "
+        f"the preflight advisory; got {codes}")
+    msgs = _ctor_ratio_warnings(axis, beyond)
+    assert msgs and "(> 1.4, " in msgs[0], msgs  # the cap, not the printed ratio 1.450
+    if axis != "z":
+        assert "in-plane" in msgs[0], msgs
 
 
-def test_inplane_and_z_caps_are_distinct_values():
-    """The two caps are DIFFERENT numbers by design; a single shared
-    constant would silently re-couple the in-plane lock to the z one."""
+def test_inplane_and_z_caps_are_separate_constants():
+    """Two constants, each pinned: a single shared constant would silently
+    re-couple the in-plane cap to the z one."""
     from rfx.api._preflight import _PreflightMixin as _PM
     assert _PM._MULTIBAND_RATIO_CAP == 1.4
-    assert _PM._INPLANE_RATIO_CAP == 1.3
+    assert _PM._INPLANE_RATIO_CAP == 1.4
 
 
 # ---------------------------------------------------------------------------
