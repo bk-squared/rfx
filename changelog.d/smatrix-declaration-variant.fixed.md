@@ -1,0 +1,5 @@
+### Fixed — the MSL, mixed-port and waveguide S-matrix calculators no longer rewrite the caller's Simulation while they run (#PR)
+
+- Each drive now runs on a private shallow copy of the Simulation with its own ports, probes and DFT planes, instead of
+  swapping those lists on the caller's object and restoring them afterwards. A callback, another thread, or an
+  exception during the calculation sees the Simulation the user declared. S-parameters are bit-identical to before.
