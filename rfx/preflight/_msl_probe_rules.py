@@ -189,8 +189,8 @@ def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
         for ge in sim._geometry:
             try:
                 (lo0, lo1, lo2), (hi0, hi1, hi2) = ge.shape.bounding_box()
-            except Exception:
-                # Shape without a bounding_box() (or a degenerate one):
+            except NotImplementedError:
+                # Shape without a bounding_box() implementation:
                 # skip it for the estimate rather than fail port setup.
                 continue
             if not (

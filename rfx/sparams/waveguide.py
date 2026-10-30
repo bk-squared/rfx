@@ -474,7 +474,7 @@ def compute_waveguide_s_matrix(
             from rfx.preflight.waveguide import resolve_preflight_port_configs
             _nu_cfgs = resolve_preflight_port_configs(self, _nu_grid, _nu_cfgs,
                 eps_override=eps_override, sigma_override=sigma_override)
-        except Exception as _exc:  # noqa: BLE001 - reported, not swallowed
+        except (ValueError, NotImplementedError, KeyError, IndexError) as _exc:
             import warnings as _w
             _w.warn(
                 "compute_waveguide_s_matrix: could not evaluate the far-port "

@@ -697,7 +697,7 @@ def _wire_port_cell_centers(self, pe):
             pos[axis] = 0.5 * (pos[axis] + nodes[axis][cell[axis] + 1])
             centers.append(tuple(pos))
         return centers, len(cells) // 2
-    except Exception:
+    except (ValueError, IndexError):
         return None
 
 def _validate_cfg_floating_single_cell_port(self, _w) -> None:
@@ -743,7 +743,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
             continue
         try:
             mspec = self._resolve_material(enclosing.material_name)
-        except Exception:
+        except KeyError:
             continue
         eps_r = getattr(mspec, "eps_r", 1.0)
         if is_tracer(eps_r) or float(eps_r) <= 1.0 + 1e-3:
@@ -919,7 +919,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     if grid is None:
         try:
             grid = sim._build_realized_grid()
-        except Exception:
+        except (ValueError, IndexError):
             return []     # the lane that builds it refuses it, with its reason
     nonuniform = isinstance(grid, NonUniformGrid)
     if nonuniform:
