@@ -477,7 +477,7 @@ def _ports(sim, ctx, assembled):
 
 def realized_geometry(sim):
     """Build once per preflight context and declaration snapshot, without stepping."""
-    from rfx.api._declarations import declaration_key
+    from rfx._declarations import declaration_key
 
     ctx = sim._campaign_ctx()
     key = (ctx, declaration_key(sim))
