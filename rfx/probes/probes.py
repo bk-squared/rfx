@@ -894,11 +894,8 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
     ``warn_if_nonpassive_lumped_s11`` tracer-safety pattern) and never
     changes the returned value.
     """
-    import jax as _jax
-    try:
-        if isinstance(flux, _jax.core.Tracer):
-            return
-    except Exception:
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(flux):
         return
     if flux.dtype != jnp.float32:
         return  # complex128 accumulators (scoped x64) don't flush this way
@@ -1764,17 +1761,11 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     perturbs an AD/optimization run, only the eager research call.
     """
     import numpy as np
-    import jax as _jax
-    try:
-        if isinstance(s_params, _jax.core.Tracer):
-            return
-    except Exception:
-        pass
-    try:
-        mag = np.abs(np.asarray(s_params))
-        f = np.asarray(freqs)
-    except Exception:
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(s_params) or is_tracer(freqs):
         return
+    mag = np.abs(np.asarray(s_params))
+    f = np.asarray(freqs)
     if mag.size == 0:
         return
     nonfinite = ~np.isfinite(mag)
@@ -1782,12 +1773,8 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     if not (over.any() or nonfinite.any()):
         return
     worst = float(np.nanmax(mag)) if np.isfinite(mag).any() else float("nan")
-    bad_f = []
-    try:
-        bad_cols = np.unique(np.where(over | nonfinite)[-1])
-        bad_f = [f"{float(f[c]) / 1e9:.3f}" for c in bad_cols[:6] if c < f.size]
-    except Exception:
-        pass
+    bad_cols = np.unique(np.where(over | nonfinite)[-1])
+    bad_f = [f"{float(f[c]) / 1e9:.3f}" for c in bad_cols[:6] if c < f.size]
     # Describe the actual trigger accurately: a non-finite bin is its own
     # failure mode (don't report a misleadingly-small finite max for it).
     if nonfinite.any():

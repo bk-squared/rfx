@@ -1190,18 +1190,10 @@ def _warn_if_nonpassive_smatrix(
         s = getattr(result, "S", None)
     if s is None:
         return
-    try:
-        if isinstance(s, jax.core.Tracer):
-            return
-    except Exception:
-        pass
-    try:
-        s_np = np.asarray(s)
-        f_np = np.asarray(result.freqs)
-    except Exception:
-        # Traced / non-materializable — never let a diagnostic break the
-        # numeric return path.
+    if is_tracer(s) or is_tracer(result.freqs):
         return
+    s_np = np.asarray(s)
+    f_np = np.asarray(result.freqs)
 
     if refused_positions is not None and np.any(refused_positions):
         _warn_partial_nonpassive(

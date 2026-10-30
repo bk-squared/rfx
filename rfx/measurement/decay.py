@@ -28,6 +28,7 @@ from __future__ import annotations
 from rfx.errors import AccuracyWarning, RfxRefusal
 
 import math
+from typing import NamedTuple
 from dataclasses import dataclass, field
 
 import jax
@@ -602,15 +603,24 @@ def _relative_dc(samples, dt):
     return abs(s_int) / denom, s_int
 
 
+class DCNotEvaluated(NamedTuple):
+    """A soft drive whose user waveform could not be evaluated for DC."""
+
+    label: str
+    waveform: str
+    error: str
+
+
 def dc_census(sim, *, dt, n_table):
     """Each soft drive's waveform DC over the planned table.
 
     Rows ``(label, class name, relative DC, sum s dt, t_done)`` for every
-    soft source (``impedance == 0`` excited port entries) and excited MSL
+    evaluated soft source (``impedance == 0`` excited port entries) and excited MSL
     port (the same soft-Ez deposit), with ``relative DC = |sum s(t_n) dt| /
     sum |s(t_n)| dt`` over ``n_table`` steps and ``t_done = t0 + 4.5 tau``
     (None when the waveform has no ``tau``). A soft current source deposits
-    ``sum s dt`` as a static end-charge (issue #388).
+    ``sum s dt`` as a static end-charge (issue #388). Failed waveform calls
+    produce a ``DCNotEvaluated`` row with the exception type and text.
     """
     from rfx.core.jax_utils import is_tracer
 
@@ -627,10 +637,14 @@ def dc_census(sim, *, dt, n_table):
         wf = getattr(pe, "waveform", None)
         if wf is None or isinstance(wf, str):
             continue
+        label = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
         try:
             s = np.asarray(wf(jnp.asarray(t)), dtype=np.float64)
-        except Exception:
-            continue  # non-vectorizable CustomWaveform etc. -- skip
+        except (TimeoutError,):
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded in DCNotEvaluated.error
+            rows.append(DCNotEvaluated(label, type(wf).__name__, f"{type(exc).__name__}: {exc}"))
+            continue
         dc = _relative_dc(s, dt) if s.shape == t.shape else None
         if dc is None:
             continue
@@ -646,7 +660,6 @@ def dc_census(sim, *, dt, n_table):
                 t0 = 3.0 * tau
             # The differentiated Gaussian is below 1.4e-8 of its amplitude there.
             t_done = t0 + 4.5 * tau
-        label = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
         rows.append((label, type(wf).__name__, dc[0], dc[1], t_done))
     return rows
 
@@ -679,7 +692,12 @@ def warn_dc_floor(sim, *, dt, n_table):
     """
     import warnings
 
-    for label, name, rel_dc, s_int, t_done in dc_census(sim, dt=dt, n_table=n_table):
+    for row in dc_census(sim, dt=dt, n_table=n_table):
+        if isinstance(row, DCNotEvaluated):
+            warnings.warn(f"soft source at {row.label}: waveform {row.waveform} DC not evaluated: "
+                          f"{row.error}", AccuracyWarning, stacklevel=3)
+            continue
+        label, name, rel_dc, s_int, t_done = row
         if rel_dc <= DC_ADVISE:
             continue
         if t_done is not None and n_table * float(dt) < t_done:
@@ -778,8 +796,12 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     h_share = u_h / tot
     if h_share >= 1e-2:
         return
-    named = [f"{label}: {name}, relative DC {rel:.2e}"
-             for label, name, rel, _, _ in soft_drives if rel > DC_ADVISE]
+    named = []
+    for row in soft_drives:
+        if isinstance(row, DCNotEvaluated):
+            named.append(f"{row.label}: {row.waveform}, DC not evaluated: {row.error}")
+        elif row[2] > DC_ADVISE:
+            named.append(f"{row[0]}: {row[1]}, relative DC {row[2]:.2e}")
     if not named:
         lossy = array_lossy(materials) if lossy is None else lossy
         # A conductor relaxes within a step (eps/sigma < dt): not a lossy medium here.
@@ -804,6 +826,6 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
         f"(H-share {h_share:.1e}): a static charge left by a soft drive holds the energy "
         "above the threshold; it neither radiates nor is absorbed by CPML. "
         "Soft drives with relative DC above "
-        f"{DC_ADVISE:g}: {'; '.join(named) if named else 'none found'}. "
+        f"{DC_ADVISE:g} or not evaluated: {'; '.join(named)}. "
         f"Remedies: {REMEDIES}.",
         AccuracyWarning, stacklevel=3)
