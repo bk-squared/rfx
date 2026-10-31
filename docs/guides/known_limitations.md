@@ -216,7 +216,7 @@ Tracker: #1632
 
 ### Subpixel smoothing with `"kottke_pec"` leaves a late field around a closed curved metal body, so its scattering depends on the record length.
 
-Tracker: #1651
+Tracker: #1651, #2291
 
 With `subpixel_smoothing="kottke_pec"`, a plane wave on a PEC sphere (ka 6, cells of λ/20, 8–11 GHz) leaves a field of 3–5 % of the peak outside the body after the pulse has passed.
 This field stays to the end of the record instead of decaying.
