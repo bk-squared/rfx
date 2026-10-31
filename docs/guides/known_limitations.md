@@ -400,7 +400,7 @@ The field increment a source adds on its edge is the update's coefficient times 
 
 - A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge 1/w times harder than the update does, w being the edge's open fraction. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) the launched wave, and with it every absolute field and probe amplitude, reads 2.7 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.6 % with 0.75 mm cells; the excess falls in proportion to the cell size. |S11| and |S21| moved by at most 3e-3, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
 - A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
-- A plane-wave source (`add_tfsf_source`) on a smoothed or conformal edge is not measured; planned for 2.1.
+- A plane-wave source (`add_tfsf_source`) refuses a smoothed or conformal edge on its injection planes, on every path (`tests/contracts/test_tfsf_vacuum_planes.py::test_treated_edges_on_injection_planes`).
 
 Any fix is 2.1. Until then, read absolute amplitudes from a port beside a conformal wall as high by up to these amounts, or put the walls on mesh nodes. Measured 2026-10-29; record kept with the project.
 

@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 VACUUM_MESSAGE = (
@@ -118,3 +119,60 @@ def test_traced_x_cell_sizes_refused():
     assert str(caught.value) == (
         "TF/SF requires host x cell widths; a traced propagation "
         "profile (mesh as design variable) is not supported")
+
+
+@pytest.mark.parametrize("mesh,source,treatment,entry,placement", [
+    pytest.param(mesh, source, treatment, entry, "crossing",
+                 id=f"{mesh}-{source}-{treatment}-{entry}-crossing")
+    for mesh, source, treatments in (
+        ("uniform", "slab", ("subpixel", "kottke_pec", "conformal_pec", "full_tensor")),
+        ("uniform", "methodB", ("subpixel", "kottke_pec", "conformal_pec",
+                                "boundary_conformal", "full_tensor")),
+        ("graded", "slab", ("subpixel",)),
+    )
+    for treatment in treatments
+    for entry in (("run",) if treatment in ("conformal_pec", "boundary_conformal")
+                  else ("run", "forward"))
+] + [
+    pytest.param("uniform", "closed_box", treatment, "run", "inside",
+                 id=f"uniform-closed_box-{treatment}-run-inside")
+    for treatment in ("subpixel", "kottke_pec", "conformal_pec",
+                      "boundary_conformal", "full_tensor")
+])
+def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, placement):
+    inside = placement == "inside"
+    wall = treatment == "boundary_conformal" and not inside
+    options = {"dz_profile": [.00018] * 12 + [.00022] * 12} if mesh == "graded" else {}
+    boundary = (BoundarySpec(x="cpml", y=Boundary("pec", "pec", conformal=True),
+                             z="periodic") if wall else "cpml")
+    sim = Simulation(freq_max=100e9, domain=(.0048, .00487 if wall else .0048, .0048),
+                     dx=.0002, cpml_layers=4, boundary=boundary, snap="declared", **options)
+    source_options = ({"method": "methodB", "angle_deg": 20.} if source == "methodB"
+                      else {"closed_box": True} if source == "closed_box" else {})
+    sim.add_tfsf_source(f0=50e9, bandwidth=.5, margin=4, polarization="ez",
+                        direction="+x", **source_options)
+    if not wall:
+        # Four pad cells and margin four put x_lo at x=0.8 mm (node 8).
+        # The off-node facets cross that plane; inside boxes sit at 2.4 mm.
+        # A full transverse slab includes pads and preserves slab invariance.
+        if inside:
+            lo, hi = (.00227,) * 3, (.00267,) * 3
+        else:
+            lo, hi = (.00067, -.002, -.002), (.00107, .007, .007)
+        dielectric = treatment in ("subpixel", "full_tensor")
+        if dielectric:
+            sim.add_material("dielectric", eps_r=4.)
+        sim.add(Box(lo, hi), material="dielectric" if dielectric else "pec")
+    kwargs = {"compute_s_params": False} if entry == "run" else {"checkpoint": False}
+    if treatment in ("subpixel", "kottke_pec", "full_tensor"):
+        kwargs["subpixel_smoothing"] = True if treatment == "subpixel" else treatment
+    elif treatment == "conformal_pec" or inside:
+        # A domain wall cannot move inside TF; its control is an interior
+        # conformal PEC box. Closed box also admits the full-tensor control.
+        kwargs["conformal_pec"] = True
+    if inside:
+        result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+        assert np.isfinite(np.asarray(result.time_series)).all()
+    else:
+        with pytest.raises(ValueError, match=r"requires vacuum.*x_lo(?:-1)?:"):
+            getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
