@@ -393,15 +393,7 @@ class RingdownResult(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
-def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
-    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
-    a = np.asarray(arr)
-    if a.ndim == 1:
-        a = a[:, None]
-    if a.shape != (nf, n_ch):
-        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
-                         f"or ({nf},) for a single channel")
-    return a
+from rfx.measurement.ringdown_tail import _given_spectra
 
 
 def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> np.ndarray:
@@ -1159,14 +1151,17 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
-        full, n_int = result.time_series, len(self.probe_keys)
+        full = result.time_series
         ts_all = np.asarray(full)
+        n_int = len(self.probe_keys)
         if ts_all.ndim != 2 or ts_all.shape != (self.n_steps, n_user + n_int):
             raise RuntimeError(
                 f"run(ringdown=...): the run returned a time series of shape "
                 f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
-        stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
+        stripped = _user_geometry(result._replace(
+            time_series=full[:, :n_user]),
+            n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
             warnings.warn(
@@ -2472,7 +2467,8 @@ class RingdownForward(RingdownRun):
         return self._finish_forward(result, n_user)
 
     def _finish_forward(self, result, n_user: int):
-        full, n_int = result.time_series, len(self.probe_keys)
+        full = result.time_series
+        n_int = len(self.probe_keys)
         if tuple(full.shape) != (self.n_steps, n_user + n_int):
             raise RuntimeError(
                 f"forward(ringdown=...): the call returned a time series of shape "
