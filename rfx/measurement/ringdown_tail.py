@@ -70,3 +70,14 @@ def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
         raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
                          f"or ({nf},) for a single channel")
     return a
+
+
+def completion_tail(model, n_last, freqs, *, unit_tol=1e-6):
+    """Infinite-sum tail with unresolved non-static poles omitted."""
+    from dataclasses import replace
+    from rfx.measurement.ringdown_resolution import completion_poles
+
+    _, keep = completion_poles(model, n_last + 1, unit_tol)
+    if not np.all(keep):
+        model = replace(model, s=model.s[keep], c=model.c[keep])
+    return tail_dft(model, n_last, freqs)

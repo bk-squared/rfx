@@ -1,7 +1,7 @@
-### Fixed — Unresolved ring-down poles no longer extend the settling horizon (#PR)
+### Fixed — Unresolved ring-down poles receive a symmetric tail bound (#PR)
 
-The WR-90 filter trial could report undetermined settling because a pole whose
-decay the identification could not resolve set an enormous growth-judge horizon.
-Such poles now use their in-window sinusoid share for either sign of the fitted
-rate and are excluded from aggregate tails. Resolved growing and decaying poles
-keep their tail checks; long-horizon diagnostics use finite log-space arithmetic.
+Poles whose decay or growth the identification cannot resolve no longer set the
+settling horizon. Both signs receive the kept-growing tail bound through twice
+the horizon, with the identification-band check and log-space arithmetic.
+Their unbounded infinite-sum tails are omitted from completed spectra, including
+run(ringdown=) and forward(ringdown=). The S-parameter in-window report is retained.

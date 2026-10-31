@@ -58,7 +58,7 @@ def _rounding_only_records(records, groups):
 
 _POLE_RULE = (
     "The symmetric resolution edge is |Re(s) dt| = log1p(unit_tol)/D. "
-    "Sub-resolution poles use only the in-window sinusoid rule, not an aggregate tail. "
+    "Unresolved poles of either sign use the judge's tail bound, never an aggregate tail. "
     "Kept non-static growing poles use judge_growing_poles: tail share through "
     "twice the model decay horizon (at least the record length), bar 1e-2, "
     "with (1 + unit_tol)^(2H/D) <= 2. For each discarded growing or non-decaying "
@@ -74,13 +74,12 @@ def _pole_contributions(model, series, bins, denominator, record_s, *, growth=No
     from rfx.measurement.ringdown_tail import plain_dft
 
     window = series[model.n_ref:model.n_ref + model.n_window]
-    classes = pole_classes(model)
     indices = {'discarded growing': [], 'non-decaying sinusoidal': []}
     for k in range(len(model.s)):
         pole = model.pole(k)
         if _static_pole(pole, record_s, 1e-6):
             continue
-        if classes[k] == 0:
+        if abs(model.s[k].real * model.dt) < 1e-12:
             indices['non-decaying sinusoidal'].append(k)
     for k, pole_s in enumerate(model.s_growing):
         pole = RingdownPole(float(pole_s.imag / (2*np.pi)), 0.,
@@ -94,7 +93,7 @@ def _pole_contributions(model, series, bins, denominator, record_s, *, growth=No
     time = np.arange(len(window)) * model.dt
     if growth is None:
         growth = judge_growing_poles(model, round(record_s / model.dt), bins, denominator)
-    values = {"kept non-static growing": growth.share_per_bin}
+    values = {"kept non-static growing": growth.growing_share_per_bin}
     for rule, selected in indices.items():
         value = np.zeros(len(bins))
         if rule == 'non-decaying sinusoidal':
