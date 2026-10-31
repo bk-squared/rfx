@@ -721,8 +721,8 @@ adjacent ratio within the cap, and the cells summing exactly to the declared
 length (`tests/unit/nonuniform/test_band_profile_builder.py`). The builder
 guarantees the mesh, not the accuracy of a result on it.
 
-**The ratio warning.** Above 1.4 on `dz_profile` (1.3 on `dx_profile` /
-`dy_profile`) the mesh still runs; `Simulation(...)` warns and preflight adds
+**The ratio warning.** Above 1.4 on any axis (`dx_profile`, `dy_profile`,
+`dz_profile`) the mesh still runs; `Simulation(...)` warns and preflight adds
 `nu_grading_ratio_beyond_validated_cap`. Both are advisory.
 
 **What the checks show.** The checks run in closed PEC boxes, except the
@@ -749,7 +749,10 @@ field. Results: record kept with the project; shortened arms of the energy, sing
   (`tests/unit/nonuniform/test_multiband_nu_envelope.py::test_fs4_supraconvergence_full`).
 - *In-plane.* With fine bands on x and y, a cavity frequency agrees with its
   closed form, and the transition reflection follows the same law on x and y
-  as on z.
+  as on z. At ratio 1.4 on x and y, the transition reflection stays inside the
+  same window as on z, and an air-filled PEC cavity graded on x and y converges
+  at second order (error at most 1.2 times that at 1.3) with its energy bounded
+  over 10⁶ steps.
 - *Gradients.* `jax.grad` with respect to layer thickness, permittivity, band
   width (x, y, z) and band position (x) agrees with central finite differences
   within their own error, with the time-step dependence included. The thickness
@@ -765,9 +768,10 @@ field. Results: record kept with the project; shortened arms of the energy, sing
   an in-plane absorbing face.
 - *Time step.* The time step follows the smallest cell everywhere. A fine band
   buys cells, not time steps; local time stepping is not implemented.
-- *Ratios above 1.4* (1.3 in-plane) are flagged, not validated.
-- *In-plane:* the energy, round-trip and order checks; other ratios; dielectric
-  interiors; ports, plane waves and waveguide results on an in-plane graded mesh.
+- *Ratios above 1.4* on any axis are flagged, not validated.
+- *In-plane:* the round trip; E along the graded axis; a dielectric fill and
+  materials across a transition; ports, plane waves, absorbers and waveguide
+  results on an in-plane graded mesh.
 - *Results.* None of this says an S-parameter, flux, far-field or port result on
   a multi-band mesh is accurate; each keeps the status of its own row above.
 - *Convergence on a loaded structure.* On a dielectric-loaded microstrip-class
