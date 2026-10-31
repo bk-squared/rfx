@@ -274,9 +274,9 @@ def _sphere(*, ports=False):
                             y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec"))
         sim = _base(lane, ref=ref, boundary=spec, source=None if ports else "field")
         if ports:
-            for x in (4, 8):
-                sim.add_port(mm(x, 6, 6), "ez", impedance=50.0, waveform=WAVEFORM)
-        sim.add(Sphere(center=mm(6, 6, 6), radius=1.2e-3), material="pec")
+            # One port matches forward's S11-only request.
+            sim.add_port(mm(4, 6, 6), "ez", impedance=50.0, waveform=WAVEFORM)
+        sim.add(Sphere(center=mm(6.3, 6.2, 6.1), radius=1.7e-3), material="pec")
         return sim
     return build
 
@@ -408,7 +408,8 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_boundary_spec", "conformal_s_matrix"): Feature(
         _sphere(ports=True), read=_s_params,
         run_kwargs=lambda lane: (dict(compute_s_params=True, s_param_freqs=np.array([4e9, 5e9, 6e9]))
-                                 if lane == "run_uniform" else {})),
+                                 if lane == "run_uniform" else
+                                 dict(port_s11_freqs=np.array([4e9, 5e9, 6e9])) if lane == "fwd_uniform" else {})),
     ("_boundary_spec", "absorbing_lid"): Feature(_lid, steps=lambda lane: LID_STEPS),
     ("_periodic_axes", "periodic"): _boundary({"boundary": _PERIODIC_Y}, boundary={
         "run_uniform": ("periodic-xy", "run"), "fwd_uniform": ("periodic-xy", "forward")}),
@@ -449,6 +450,7 @@ def _run(sim, lane, feature, *, entry=None):
             kwargs.update(compute_s_params=False)
             kwargs.update(feature.run_kwargs(entry))
             return sim.run(**kwargs)
+        kwargs.update(feature.run_kwargs(entry))
         kwargs["checkpoint"] = False
         if entry in ("fwd_distributed", "fwd_distributed_nu"):
             kwargs.update(distributed=True, devices=_devices())
@@ -900,28 +902,16 @@ def test_the_refusal_names_lanes_that_carry_the_rest_of_the_model(attr, feature,
 _CONFORMAL_S = ("_boundary_spec", "conformal_s_matrix")
 
 
-@pytest.mark.parametrize("call,refused", [
-    ({}, True),
-    ({"compute_s_params": True}, True),
-    ({"compute_s_params": False}, False),
-    ({"conformal_pec": False}, False),
+@pytest.mark.parametrize("call", [
+    {},
+    {"compute_s_params": True},
+    {"compute_s_params": False},
+    {"conformal_pec": False},
 ], ids=["default", "s_params", "no_s_params", "staircase_override"])
-def test_conformal_s_matrix_is_refused_only_when_run_computes_it(call, refused):
-    """Conformal walls and lumped ports on the uniform run(). Its lumped-port
-    S-matrix comes from a path with no conformal update (#1299), so a call
-    that computes it against conformal fields (the default with ports, or
-    compute_s_params=True) is refused. compute_s_params=False computes none,
-    and conformal_pec=False asks for staircase fields as well as a staircase
-    S-matrix: both run, and give what the same call gives with admission
-    switched off, bit for bit."""
+def test_conformal_s_matrix_is_carried_when_run_computes_it(call):
+    """Admission preserves conformal fields and requested lumped-port S bytes."""
     kwargs = dict(n_steps=N_STEPS, skip_preflight=True, **call)
     sim = _build(FEATURES[_CONFORMAL_S], "run_uniform", True)
-    if refused:
-        with pytest.raises(NotImplementedError) as exc, warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            sim.run(**kwargs)
-        assert T.cell(*_CONFORMAL_S, "run_uniform").raises in str(exc.value)
-        return
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         got = sim.run(**kwargs)

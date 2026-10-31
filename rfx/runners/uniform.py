@@ -828,7 +828,7 @@ def run_uniform(
         )
         s_params, _, s_settling = compute_lumped_wire_s_matrix_via_scan(
             sim, s_param_freqs, n_steps=sp_n_steps,
-            conformal_pec=conformal_pec,
+            conformal_pec=conformal_pec, conformal_min_weight=conformal_min_weight,
             return_settling=True,
             skip_preflight=True,
             subpixel_smoothing=subpixel_smoothing,

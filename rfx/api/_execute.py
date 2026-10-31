@@ -1507,15 +1507,13 @@ class _ExecuteMixin:
                 checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
                 emit_time_series=emit_time_series, ringdown=ringdown)
         checkpoint = True if checkpoint is None else checkpoint
-        # No forward lane (and so no optimize()) applies Dey-Mittra weights.
-        self._refuse_conformal_boundary(
-            {"fwd_uniform": "uniform forward",
-             "fwd_nonuniform": "non-uniform forward",
-             "fwd_distributed_nu": "distributed non-uniform forward",
-             }.get(plan.lane, plan.lane),
-            entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
-            instead="use run() on a uniform mesh to keep conformal PEC "
-                    "for a forward-only result")
+        if plan.lane != "fwd_uniform" or self._solver == "adi":
+            self._refuse_conformal_boundary(
+                {"fwd_uniform": "uniform forward", "fwd_nonuniform": "non-uniform forward",
+                 "fwd_distributed_nu": "distributed non-uniform forward"}.get(plan.lane, plan.lane),
+                entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
+                instead="use run() on a uniform mesh to keep conformal PEC "
+                        "for a forward-only result")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
@@ -2006,7 +2004,7 @@ class _ExecuteMixin:
         from rfx.geometry.conformal import validate_conformal_min_weight
         validate_conformal_min_weight(conformal_min_weight)
         self._resolve_field_dtype()
-        admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box)
+        admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box, conformal_pec)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
         refuse_tfsf_decay_without_source_off(self, until_decay)

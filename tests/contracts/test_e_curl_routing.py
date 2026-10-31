@@ -300,9 +300,7 @@ def test_each_graded_port_sample_reads_two_neighbors(component, idx):
                                           ("conformal", "uniform")])
 def test_smoothed_checkpoint_scan_uses_complete_curl(feature, mesh):
     # These front doors build the actual smoothing tensors/weights, then
-    # execute the differentiable checkpointed scan. Simulation.forward has
-    # no subpixel keyword and refuses conformal PEC; do not label this as
-    # public forward() support.
+    # execute the differentiable checkpointed scan through run().
     sim = model(feature, mesh)
     kwargs = dict(n_steps=2, skip_preflight=True, compute_s_params=False,
                   checkpoint=True)

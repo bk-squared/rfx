@@ -62,7 +62,7 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
 
 def compute_lumped_wire_s_matrix_via_scan(
     sim, freqs, *, n_steps=None, return_vi_dump=False,
-    return_refplane_diagnostics=False, conformal_pec=None, devices=None,
+    return_refplane_diagnostics=False, conformal_pec=None, conformal_min_weight=0.1, devices=None,
     _main_wire_record=False,
     return_settling=False,
     _forward_port_s11=False,
@@ -112,9 +112,8 @@ def compute_lumped_wire_s_matrix_via_scan(
         because pre-injection drive reference voltages are not recorded.
     conformal_pec : bool or None
         As in ``run()``: ``None`` reads ``Boundary(conformal=True)``. The
-        production scan has no conformal update, so a conformal request on a
-        model with PEC to conform is refused before the first step; ``False``
-        asks for staircase PEC (#1299).
+        production scan forms the same default conformal operands as run().
+        An explicit ``False`` asks for staircase PEC.
 
     Returns
     -------
@@ -180,7 +179,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         _pec_wires: list = []
         from rfx.model.conductors import realized_conductors, assembled_materials
         conductors = realized_conductors(sim, grid)
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = assembled_materials(
+        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, _ = assembled_materials(
             conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
             pec_wires=_pec_wires)
         _pec_sheets = tuple(_pec_sheets)
@@ -312,7 +311,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 lorentz_spec,
                 n_steps=n_steps,
                 checkpoint=False,
-                pec_mask=pec_mask,
+                pec_mask=pec_mask, pec_shapes=pec_shapes,
+                conformal_min_weight=conformal_min_weight,
                 pec_sheets=_pec_sheets,
                 pec_wires=_pec_wires,
                 port_s11_freqs=freqs,

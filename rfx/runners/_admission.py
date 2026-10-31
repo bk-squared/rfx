@@ -517,8 +517,8 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_boundary", "upml"): _UNIFORM_YEE,
     ("_pec_faces", "pec_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
-    ("_boundary_spec", "conformal_s_matrix"): frozenset(),
+    ("_boundary_spec", "conformal"): _UNIFORM_YEE,
+    ("_boundary_spec", "conformal_s_matrix"): _UNIFORM_YEE,
     ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
     ("_periodic_axes", "periodic"): _UNIFORM_YEE | {"run_nonuniform", "fwd_nonuniform"},
     ("_cpml_layers", "layers"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
@@ -648,6 +648,8 @@ _CALCULATOR_ROWS = {
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
         ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'conformal'),
+        ('_boundary_spec', 'conformal_s_matrix'),
         ('_boundary_spec', 'absorbing_lid'),
         ('_periodic_axes', 'periodic'),
         ('_cpml_layers', 'layers'),
@@ -688,6 +690,8 @@ _CALCULATOR_ROWS = {
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
         ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'conformal'),
+        ('_boundary_spec', 'conformal_s_matrix'),
         ('_boundary_spec', 'absorbing_lid'),
         ('_periodic_axes', 'periodic'),
         ('_cpml_layers', 'layers'),
@@ -871,16 +875,9 @@ ADMITS: dict[str, frozenset] = {
 }
 
 
-# A row the call decides as well as the declaration. run() computes the
-# lumped/wire S-matrix, through a path with no conformal update (#1299), only
-# when compute_s_params is not False (rfx/runners/uniform.py); called with
-# compute_s_params=False it computes none, and the conformal walls it does
-# carry are all there is. Called with conformal_pec=False, the override
-# run() documents, the fields are staircase as well as the S-matrix, so
-# nothing declared is dropped. The gate reads the call's static arguments,
-# never a traced value, and a call that passes none is judged as the default
-# call. An explicit conformal_pec=True on a model with no PEC to conform is a
-# no-op on every lane (Simulation._has_pec_to_conform), so it asks for nothing.
+# The call decides whether a declared conformal model requests an S-matrix.
+# Explicit staircase overrides and models without PEC ask for no conformal
+# operands. The floor rule remains confined to its existing run lanes.
 FLOOR_VALUE = "cut_cell_floor"
 # Run-level operand declaration: uniform Yee device and waveguide reference scans.
 FLOOR_LANES = frozenset({"run_uniform", "waveguide_s_matrix"})
@@ -1224,6 +1221,8 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
         refuse_distributed_sources(sim, lane)
+    if lane in {"s_matrix_scan", "mixed_s_matrix"}:
+        _refuse_traced_conformal_shapes(sim, (run_args or {}).get("conformal_pec"))
     refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
@@ -1453,7 +1452,16 @@ def _no_shape_tangent_jvp(primals, tangents):
         "(with subpixel_smoothing only in a closed PEC domain).")
 
 
-def guard_shape_tangents(sim):
+def _refuse_traced_conformal_shapes(sim, conformal=None):
+    if not (sim._boundary_spec.conformal_faces() if conformal is None else conformal):
+        return
+    from rfx.geometry.rasterize_grid import refuse_traced_conformal_shape
+    for entry in sim._geometry:
+        if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
+            refuse_traced_conformal_shape(entry.shape)
+
+
+def guard_shape_tangents(sim, conformal=None):
     """Attach the tangent refusal before any lane realizes declared shapes.
 
     Concrete leaves and entries retain their identity. Dataclass fields and
@@ -1475,6 +1483,7 @@ def guard_shape_tangents(sim):
             return guarded if any(a is not b for a, b in zip(value, guarded)) else value
         return value
 
+    _refuse_traced_conformal_shapes(sim, conformal)
     for index, entry in enumerate(sim._geometry):
         if is_dataclass(entry.shape):
             shape = guard(entry.shape)
@@ -1482,12 +1491,12 @@ def guard_shape_tangents(sim):
                 sim._geometry[index] = replace(entry, shape=shape)
 
 
-def admit_traced_run(sim, until_decay=None, decay_max_steps=None, radiated_flux_box=None):
+def admit_traced_run(sim, until_decay=None, decay_max_steps=None, radiated_flux_box=None, conformal=None):
     """Refuse an unused flux stop and preserve source/shape fences before dispatch."""
     from rfx.measurement.decay import refuse_radiated_flux_stop
     refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
     _refuse_transformed_extended_tfsf(sim._tfsf, until_decay, decay_max_steps)
-    guard_shape_tangents(sim)
+    guard_shape_tangents(sim, conformal)
 
 
 def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,

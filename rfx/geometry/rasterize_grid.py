@@ -778,6 +778,16 @@ class TracedShapeDimensionError(TracedStructureRefusal, jax.errors.Concretizatio
         TracedStructureRefusal.__init__(self, message)
 
 
+def refuse_traced_conformal_shape(shape):
+    """Keep traced PEC geometry out of host conformal table formation."""
+    from rfx.geometry.smoothing import _shape_parameters
+    declared = getattr(shape, "declared", shape)
+    if any(is_tracer(value) for value in _shape_parameters(declared)):
+        raise TracedShapeDimensionError(
+            f"conformal PEC {type(declared).__name__} has traced shape parameters; "
+            "use concrete geometry outside jit/vmap.")
+
+
 def _box_zero_axes(lo, hi):
     if any(is_tracer(v) for corner in (lo, hi) for v in corner):
         raise TracedShapeDimensionError(

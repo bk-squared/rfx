@@ -431,7 +431,7 @@ def compute_mixed_s_matrix(
     # drive run (materials do not depend on excite flags).
     _mx_pec_sheets: list = []
     _mx_pec_wires: list = []
-    materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
+    materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, _ = \
         self._assemble_materials(
             grid, pec_sheets=_mx_pec_sheets, pec_wires=_mx_pec_wires)
     # #931 §1.9: realized wall planes locate the trace, not cells.
@@ -726,7 +726,7 @@ def compute_mixed_s_matrix(
 
             raw = self._forward_from_materials(
                 grid, materials, debye_spec, lorentz_spec,
-                n_steps=n_steps, checkpoint=False, pec_mask=pec_mask,
+                n_steps=n_steps, checkpoint=False, pec_mask=pec_mask, pec_shapes=pec_shapes,
                 pec_sheets=tuple(_mx_pec_sheets),
                 pec_wires=tuple(_mx_pec_wires),
                 port_s11_freqs=freqs_arr,

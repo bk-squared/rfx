@@ -31,6 +31,8 @@ EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
 ASSEMBLY_ROWS = (
+    ('C-conformal', 'uniform'),
+    ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
@@ -130,6 +132,8 @@ ASSEMBLY_ROWS = (
 )
 
 FIELD_ROWS = (
+    ('C-conformal', 'uniform'),
+    ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
@@ -291,7 +295,9 @@ ADMISSION_ROWS = (
 )
 
 
-BOTH_REFUSE_ROWS = (
+BOTH_REFUSE_ROWS = tuple((declaration, path)
+                         for declaration in ('C-conformal', 'P-conformal')
+                         for path in ('graded', 'multi-device-graded', 'multi-device-uniform')) + (
     ('B-periodic', 'multi-device-graded'),
     ('B-periodic', 'multi-device-uniform'),
     ('B-upml', 'graded'),
@@ -525,7 +531,7 @@ def check_fields(declaration, path, direction=None):
     classify(declaration, path, 'L2', differences, ids)
 
 
-ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
+ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-conformal', 'P-conformal') or row in (
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),

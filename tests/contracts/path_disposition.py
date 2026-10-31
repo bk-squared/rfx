@@ -279,7 +279,7 @@ CONFORMAL = dict(
     run_adi=_conformal("ADI (solver='adi') lane"),
     run_distributed=_conformal("distributed multi-device lane"),
     run_distributed_nu=_conformal("distributed multi-device lane"),
-    fwd_uniform=_conformal("uniform forward lane"),
+    fwd_uniform=carries("the same default conformal operands as run_uniform"),
     fwd_nonuniform=_conformal("non-uniform forward lane"),
     fwd_distributed_nu=_conformal("distributed non-uniform forward lane"),
     fwd_adi=_conformal("uniform forward lane"),
@@ -852,9 +852,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             **CONFORMAL,
         ),
         "conformal_s_matrix": lanes(
-            run_uniform=admission("Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix", RUN_U,
-                                  "the lumped-port S-matrix run() returns came from "
-                                  "_forward_from_materials, which staircases (#1299)"),
+            run_uniform=carries("lumped/wire S-matrix uses the conformal forward scan"),
             **CONFORMAL,
         ),
         # A closed PEC box with a CPML lid on z_hi, against the all-PEC box.
@@ -1536,8 +1534,8 @@ CALCULATOR_CELLS = {
         'material_fit': carries('sim_run resolves the PMC faces from the grid through resolve_wall_faces'),
     },
     ('_boundary_spec', 'conformal'): {
-        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='Boundary(conformal=True) or conformal_pec=True'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True'),
+        's_matrix_scan': carries('uniform forward scan forms the same default conformal operands as run()'),
+        'mixed_s_matrix': carries('uniform forward scan forms the same default conformal operands as run()'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='Boundary(conformal=True) or conformal_pec=True'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True'),
@@ -1547,8 +1545,8 @@ CALCULATOR_CELLS = {
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='Boundary(conformal=True) or conformal_pec=True'),
     },
     ('_boundary_spec', 'conformal_s_matrix'): {
-        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
+        's_matrix_scan': carries('uniform forward scan forms the same default conformal operands as run()'),
+        'mixed_s_matrix': carries('uniform forward scan forms the same default conformal operands as run()'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),

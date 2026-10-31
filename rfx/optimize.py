@@ -427,6 +427,8 @@ def optimize(
         For ``n_starts>1`` this is the winning restart's result
         (``loss_history`` is that restart's own trajectory).
     """
+    if sim._boundary_spec.conformal_faces() and sim._has_pec_to_conform():
+        raise NotImplementedError("optimize() refuses conformal PEC before time stepping")
     resolve_field_dtype(sim._precision)
     if n_starts < 1:
         raise ValueError(f"optimize: n_starts must be >= 1, got {n_starts}")

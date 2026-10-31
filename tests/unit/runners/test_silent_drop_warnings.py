@@ -401,10 +401,6 @@ def _optimize(sim, **kw):
 
 CONFORMAL_PATHS = {
     # path: (call, entry, lane label)
-    "forward-uniform": (
-        lambda: _conformal_cavity(True).forward(
-            n_steps=8, checkpoint=False, skip_preflight=True),
-        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "forward-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
@@ -414,15 +410,24 @@ CONFORMAL_PATHS = {
             n_steps=8, checkpoint=False, skip_preflight=True,
             distributed=True, devices=_devices()),
         "the differentiable forward solve (forward/optimize or an S-matrix override)", "distributed non-uniform forward"),
-    "optimize": (
-        lambda: _optimize(_conformal_cavity(True), skip_preflight=True),
-        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "waveguide-nonuniform": (
         lambda: _wr90_sim(debye=False, conformal=True,
                           dz=np.full(4, 0.00254)).compute_waveguide_s_matrix(
             n_steps=20, normalize=True),
         "compute_waveguide_s_matrix()", "non-uniform waveguide S-matrix"),
 }
+
+
+def test_uniform_forward_carries_conformal_boundary():
+    sim = _conformal_cavity(True)
+    forward = sim.forward(n_steps=8, checkpoint=False, skip_preflight=True)
+    ran = sim.run(n_steps=8, compute_s_params=False, skip_preflight=True)
+    np.testing.assert_array_equal(forward.time_series, ran.time_series)
+
+
+def test_optimize_refuses_conformal_at_entry():
+    with pytest.raises(NotImplementedError, match=r"optimize\(\).*conformal PEC"):
+        _optimize(_conformal_cavity(True), skip_preflight=True)
 
 
 @pytest.mark.parametrize("path", list(CONFORMAL_PATHS))

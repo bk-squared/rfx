@@ -136,7 +136,7 @@ def no_steps(monkeypatch):
     assert len(calls) == 0
 
 
-@pytest.mark.parametrize("route", ["topology", "mixed", "vmap"])
+@pytest.mark.parametrize("route", ["topology", "vmap"])
 def test_calculator_refuses_conformal_before_steps(route, no_steps):
     sim = _mixed(True) if route == "mixed" else _sim(True)
     with pytest.raises(NotImplementedError):
@@ -191,19 +191,21 @@ def test_upml_refuses_kappa_before_steps(route, no_steps):
 @pytest.mark.parametrize("ports", ["lumped", "wire"])
 @pytest.mark.parametrize("declaration,argument", [(False, True), (True, None)])
 @pytest.mark.parametrize("compute", [None, True])
-def test_run_refuses_conformal_s_matrix_before_steps(
-    ports, declaration, argument, compute, no_steps
+def test_run_carries_conformal_s_matrix(
+    ports, declaration, argument, compute
 ):
     sim = _sim(declaration, ports=ports)
-    with pytest.raises(NotImplementedError):
-        sim.run(
-            n_steps=N_STEPS,
-            skip_preflight=True,
-            conformal_pec=argument,
-            compute_s_params=compute,
-            s_param_n_steps=N_STEPS,
-            s_param_freqs=jnp.array([4e9, 5e9, 6e9]),
-        )
+    ran = sim.run(
+        n_steps=N_STEPS, skip_preflight=True, conformal_pec=argument,
+        compute_s_params=compute, s_param_n_steps=N_STEPS,
+        s_param_freqs=jnp.array([4e9, 5e9, 6e9]))
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    scanned, _ = compute_lumped_wire_s_matrix_via_scan(
+        _sim(declaration, ports=ports), jnp.array([4e9, 5e9, 6e9]),
+        n_steps=N_STEPS, conformal_pec=argument, skip_preflight=True)
+    np.testing.assert_array_equal(ran.s_params, scanned)
+    assert np.asarray(ran.s_params).tobytes() == np.asarray(scanned).tobytes()
+    assert np.all(np.isfinite(scanned))
 
 
 def _identical(a, b):
@@ -367,9 +369,8 @@ def test_conformal_request_without_pec_runs_as_staircase(kind):
 
 
 # Every in-package caller of Simulation._forward_from_materials, the uniform
-# forward scan with no Dey-Mittra update (#1299). A new caller fails
-# test_forward_scan_callers_are_listed until it is added here, and so is
-# checked for the refusal below.
+# forward scan. A new caller fails test_forward_scan_callers_are_listed
+# until it is added here and checked for its admission below.
 _SCAN_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin.forward": "forward",
     "rfx/probes/sparam_driver.py:compute_lumped_wire_s_matrix_via_scan": "driver",
@@ -411,7 +412,7 @@ def _scan_call(route, sim, **kw):
     if route == "driver":
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
-        return compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=N_STEPS, **kw)
+        return compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=N_STEPS, skip_preflight=True, **kw)
     if route == "mixed":
         return sim.compute_mixed_s_matrix(
             n_steps=N_STEPS, skip_preflight=True, magnitude_channel="wave")
@@ -423,12 +424,12 @@ def _scan_call(route, sim, **kw):
             sim, region, lambda r: jnp.sum(r.time_series**2),
             n_iterations=1, verbose=False, skip_preflight=True)
     grid = sim._build_grid()
-    mats, debye, lorentz, pec, _, _, _ = sim._assemble_materials(grid)
+    mats, debye, lorentz, pec, shapes, _, _ = sim._assemble_materials(grid)
     return sim._forward_from_materials(
-        grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, **kw)
+        grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, pec_shapes=shapes, **kw)
 
 
-@pytest.mark.parametrize("route", sorted(_SCAN_CALLERS.values()) + ["direct"])
+@pytest.mark.parametrize("route", ["topology"])
 def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
     if route == "mixed":
         sim = _mixed(True)
@@ -437,6 +438,12 @@ def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
     assert sim._has_pec_to_conform()
     with pytest.raises(NotImplementedError, match="conformal"):
         _scan_call(route, sim)
+
+
+@pytest.mark.parametrize("route", ["forward", "driver", "mixed", "direct"])
+def test_forward_scan_carries_conformal(route):
+    sim = _mixed(True) if route == "mixed" else _sim(True, ports="lumped" if route == "driver" else None)
+    assert _scan_call(route, sim) is not None
 
 
 def test_forward_scan_explicit_staircase_passes():

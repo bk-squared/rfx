@@ -137,6 +137,9 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         from rfx.geometry.conformal import warn_conformal_model
         from rfx.model.conformal_rules import conformal_fractions_from_table
         warn_conformal_model(conformal)
+        from rfx.geometry.rasterize_grid import refuse_traced_conformal_shape
+        for shape in pec_shapes:
+            refuse_traced_conformal_shape(shape)
         table = build_cell_table(grid, pec_shapes)
         conformal_weights, conformal_areas = conformal_fractions_from_table(table, grid, conformal)
 
