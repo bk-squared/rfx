@@ -360,6 +360,7 @@ def auto_configure(
     waveform=None,
     thin_conductors=(),
     domain: tuple[float, float, float] | None = None,
+    dt_override: float | None = None,
 ) -> SimConfig:
     """Derive all simulation parameters from geometry + frequency range.
 
@@ -592,6 +593,9 @@ def auto_configure(
         dt = 0.99 / (C0 * math.sqrt(1/dx**2 + 1/dx**2 + 1/dz_min**2))
     else:
         dt = 0.99 * dx / (C0 * math.sqrt(3))
+
+    if dz_profile is None and dt_override is not None:
+        dt = float(dt_override)
 
     # 5. Number of steps
     # Source time: the pulse completes at t0 + cutoff*tau = 2*t0

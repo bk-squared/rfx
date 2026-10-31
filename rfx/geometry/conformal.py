@@ -59,13 +59,17 @@ CONFORMAL_MODEL_ADVISORY = (
     "0.7); judge a curved body by a mesh series (docs/guides/known_limitations.md).")
 
 
-def warn_conformal_model():
-    """Warn on a conformal run that a curved body converges only first order (#1651).
+def warn_conformal_model(conformal_pec=None):
+    """Warn with the selected conformal model's measured limitations (#1651).
 
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
     """
-    warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=3)
+    message = ('conformal_pec="cut_cell_floor" uses the declared reduced step and a q**2 '
+               'cut-face area floor; see the q-specific sphere measurements in '
+               'docs/guides/support_matrix.md' if conformal_pec == "cut_cell_floor"
+               else CONFORMAL_MODEL_ADVISORY)
+    warnings.warn(message, AccuracyWarning, stacklevel=3)
 
 
 # ---------------------------------------------------------------------------

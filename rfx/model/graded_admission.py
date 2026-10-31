@@ -85,7 +85,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     Concrete x/y profiles set their extents. A concrete z profile checks a
     positive declared z, or supplies it when absent; a traced profile needs
     the caller's concrete extent. The dt pin
-    is refused without a profile and ``dt_min_cell`` without a pin.
+    is checked by the grid builder; ``dt_min_cell`` needs a pin.
     Nominal widths are float64 arrays; windowed axes retain their
     :class:`NominalProfile` declaration so admission is idempotent.
     """
@@ -135,14 +135,6 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     elif any(d <= 0 for d in domain):
         raise ValueError(f"domain dimensions must be positive, got {domain}")
 
-    # Pinned time step (non-uniform lane only); see the ``dt`` parameter.
-    if dt is not None and dz_profile is None and dx_profile is None \
-            and dy_profile is None:
-        raise ValueError(
-            "dt= pins the non-uniform lane's time step and needs at least "
-            "one of dz_profile / dx_profile / dy_profile; the uniform "
-            "lane derives its step in Grid.courant_dt."
-        )
     if dt is None and dt_min_cell is not None:
         raise ValueError("dt_min_cell= has no effect without dt=")
 

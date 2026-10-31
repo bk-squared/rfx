@@ -49,6 +49,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         lane=lane,
         diagnostics=_diagnostics,
     )
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(self, "run_distributed", conformal_pec)
     _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
     # Resolve the default as the one-device lane of this mesh does: the
     # uniform runner computes S for every impedance port, the non-uniform

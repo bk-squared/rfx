@@ -418,6 +418,8 @@ def _check_numerical_dispersion(self) -> None:
 
     inv_sq = sum(1.0 / di ** 2 for di in d)
     dt_cfl = 0.99 / (C0 * math.sqrt(inv_sq))
+    if not self._uses_nonuniform_mesh and self._dt_pin is not None:
+        dt_cfl = float(self._dt_pin)
     omega = 2.0 * math.pi * self._freq_max
 
     errors = {}

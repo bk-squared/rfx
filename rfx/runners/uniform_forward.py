@@ -105,6 +105,8 @@ def _forward_from_materials(
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,
         conformal_pec=False, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(self, "fwd_uniform", conformal_pec, grid=grid)
     _conformal = (bool(self._boundary_spec.conformal_faces())
                   if conformal_pec is None else bool(conformal_pec))
     from rfx.model.tensor_operands import refuse_full_tensor_conformal

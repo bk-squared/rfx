@@ -214,12 +214,12 @@ class Simulation(
         off the declaration; "declared" warns and keeps it. Traced dz_profile is
         judged only with nominal_profiles (1e-9); without it the sum is unjudged.
     dt : float or None
-        Concrete time step (s) for the NON-UNIFORM lane, used instead of
-        the Courant step derived from the smallest cell. ``None`` (the
-        default) keeps the derived step and is byte-identical to before;
-        passing it without any of ``dz_profile`` / ``dx_profile`` /
-        ``dy_profile`` is refused, because the uniform lane derives its own
-        step in ``Grid.courant_dt``.
+        Concrete time step (s); None keeps the derived Courant step.
+        On uniform meshes only run(conformal_pec="cut_cell_floor") admits a pin:
+        dt=q * Grid.courant_dt(realized_dx, ndim), q=0.5 or 0.25 (relative 1e-9).
+        ndim is 2 for 2-D Yee and 3 otherwise. The pin is checked after mesh realization.
+        Other uniform entries refuse a pin. On graded meshes it replaces the
+        Courant step derived from the smallest cell, with the existing stability checks.
 
         Why it exists: the derived step is a function of ``min(cell)``, so a
         mesh that is a design variable moves ``dt`` as it deforms and every

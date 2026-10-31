@@ -298,9 +298,9 @@ def test_a_traced_step_is_refused():
 
 
 def test_pinning_a_step_on_the_uniform_lane_is_refused():
-    with pytest.raises(ValueError, match="needs at least one of"):
-        Simulation(freq_max=40e9, domain=(1e-2, 1e-2, 1e-2), dx=DX,
-                   dt=float(DT_PIN))
+    sim = Simulation(freq_max=40e9, domain=(1e-2, 1e-2, 1e-2), dx=DX, dt=float(DT_PIN))
+    with pytest.raises(NotImplementedError, match="cut_cell_floor"):
+        sim.run(n_steps=1, skip_preflight=True)
 
 
 # --------------------------------------------------------------------------

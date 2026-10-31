@@ -137,6 +137,8 @@ def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, 
     sim, call = calculator_case(calculator)
     # Uniform Yee fixtures: these settings are unread on the base routes
     # (except material fit's existing interface-rule refusal).
+    if attr == "_dt_pin":
+        value = .5 * sim._build_grid().dt
     setattr(sim, attr, value)
 
     def forbidden(*args, **kwargs):
@@ -145,8 +147,11 @@ def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, 
     monkeypatch.setattr(jax.lax, "scan", forbidden)
     with pytest.raises(NotImplementedError) as caught:
         call()
-    assert A.CALCULATOR_WORDS[calculator] in str(caught.value)
-    assert words in str(caught.value)
+    if attr == "_dt_pin":
+        assert 'cut_cell_floor' in str(caught.value)
+    else:
+        assert A.CALCULATOR_WORDS[calculator] in str(caught.value)
+        assert words in str(caught.value)
     assert "does not carry" in str(caught.value)
 
 
@@ -209,13 +214,17 @@ def test_fit_hands_declared_faces_to_the_kernel(monkeypatch, wall):
 @pytest.mark.parametrize("graded", [False, True])
 def test_waveguide_timestep_gate(attr, value, graded, monkeypatch):
     sim = _guide(nonuniform=graded)
+    if attr == "_dt_pin" and not graded:
+        value = .5 * sim._build_grid().dt
     setattr(sim, attr, value)
     assert ((attr, "") in A.refused(sim, "waveguide_s_matrix")) is not graded
     if not graded:
         def forbidden(*args, **kwargs):
             pytest.fail("uniform waveguide reached a scan with an unread dt control")
         monkeypatch.setattr(jax.lax, "scan", forbidden)
-        with pytest.raises(NotImplementedError, match="compute_waveguide_s_matrix.*does not carry"):
+        expected = ('cut_cell_floor.*does not carry' if attr == '_dt_pin' else
+                    'compute_waveguide_s_matrix.*does not carry')
+        with pytest.raises(NotImplementedError, match=expected):
             sim.compute_waveguide_s_matrix(n_steps=4)
 
 
@@ -326,7 +335,7 @@ def test_run_kerr_fields_only_reaches_main_scan(monkeypatch):
 def test_devices_s_matrix_admission_precedes_distributed_runner(monkeypatch):
     from types import SimpleNamespace
     sim, _ = calculator_case("s_matrix_scan")
-    sim._dt_pin = 1e-12
+    sim._dt_pin = .5 * sim._build_grid().dt
     monkeypatch.setattr(Simulation, "_dispatch_plan", lambda *args, **kwargs:
                         SimpleNamespace(lane="run_distributed", n_steps=4))
 
@@ -334,7 +343,7 @@ def test_devices_s_matrix_admission_precedes_distributed_runner(monkeypatch):
         pytest.fail("distributed runner entered before S-matrix admission")
 
     monkeypatch.setattr("rfx.runners.distributed_v2.run_distributed", forbidden)
-    with pytest.raises(NotImplementedError, match=r"run\(\).*pinned time step.*compute_s_params=False"):
+    with pytest.raises(NotImplementedError, match='cut_cell_floor'):
         sim.run(n_steps=4, devices=[jax.devices()[0]], skip_preflight=True)
 
 

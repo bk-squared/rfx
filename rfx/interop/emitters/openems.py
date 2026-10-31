@@ -132,7 +132,7 @@ import textwrap
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
-from rfx.interop._errors import UnsupportedDesignFeature
+from rfx.interop._errors import UnsupportedDesignFeature, _refuse, refuse_openems_floor
 
 __all__ = [
     "OPENEMS_EMITTER_VERSION",
@@ -166,22 +166,6 @@ _LINE_TOL_REL = 1.0e-9
 _AXES = ("x", "y", "z")
 _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _SUPPORTED_SHAPE_KINDS = ("box", "cylinder")
-
-
-# ---------------------------------------------------------------------------
-# Refusal
-# ---------------------------------------------------------------------------
-
-def _refuse(construct: str, reason: str) -> UnsupportedDesignFeature:
-    """Refusal naming the construct first, then why it cannot be projected.
-
-    Per decision D4 of the design note the emitter refuses rather than
-    approximating, and per the task's refusal contract the message must name
-    the construct so a reader knows what to remove or which target to use.
-    """
-    return UnsupportedDesignFeature(
-        f"openEMS emitter cannot project {construct}: {reason}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1141,6 +1125,7 @@ def plan_openems_projection(
         )
 
     solver = _require_mapping(_get(document, "solver", "document"), "solver")
+    refuse_openems_floor(solver)
     if str(_get(solver, "solver", "solver")) != "yee":
         raise _refuse(
             f"solver={_get(solver, 'solver', 'solver')!r}",

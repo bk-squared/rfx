@@ -37,6 +37,9 @@ def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
     reason and replacement for a KNOWN removed one (see
     ``_REMOVED_FORWARD_KWARGS``) instead of leaking ``_ExecuteMixin`` (the
     internal mixin, not the public ``Simulation.forward`` surface)."""
+    if removed_kwargs.get("conformal_pec") == "cut_cell_floor":
+        from rfx.runners._admission import refuse_forward_floor
+        refuse_forward_floor()
     parts = []
     for name in removed_kwargs:
         reason = _REMOVED_FORWARD_KWARGS.get(name)

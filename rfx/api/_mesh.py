@@ -172,6 +172,8 @@ class _MeshMixin:
             materials=materials_dict,
             boundary=self._boundary,
             domain=self._declared_mesh["_domain"],
+            dt_override=(self._dt_pin if all(self._declared_mesh[key] is None
+                         for key in ("_dx_profile", "_dy_profile", "_dz_profile")) else None),
             # #931 §1.9: a sheet's PLANE is a z feature even though its zero
             # thickness is not — the profile must leave a mesh line there.
             thin_conductors=self._thin_conductors,
