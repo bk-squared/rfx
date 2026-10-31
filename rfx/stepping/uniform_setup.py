@@ -56,6 +56,8 @@ def _update_e_with_optional_dispersion(
     stencil_order: int = 2,
     bloch: tuple | None = None,
     boundary=None,
+    frame=None,
+    owned=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -86,14 +88,16 @@ def _update_e_with_optional_dispersion(
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
                                   dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall,
+                        frame=frame, owned=owned), None, None
 
     if debye is not None and lorentz is None:
         from rfx.stepping.poles import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
-            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary)
+            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary,
+            frame=frame, owned=owned)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
@@ -101,7 +105,8 @@ def _update_e_with_optional_dispersion(
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
-            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary)
+            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary,
+            frame=frame, owned=owned)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz update.
@@ -121,7 +126,7 @@ def _update_e_with_optional_dispersion(
     hx, hy, hz = state.hx, state.hy, state.hz
 
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 

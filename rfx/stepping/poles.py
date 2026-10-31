@@ -19,6 +19,7 @@ def update_e_debye(
     dx: float,
     periodic: tuple = (False, False, False),
     boundary=None,
+    *, frame=None, owned=None,
 ) -> tuple[FDTDState, DebyeState]:
     """E-field update with Debye ADE dispersion.
 
@@ -45,7 +46,7 @@ def update_e_debye(
 
     # curl(H) via backward differences
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
     # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
     # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component (#1260)
@@ -73,6 +74,7 @@ def update_e_lorentz(
     dx: float,
     periodic: tuple = (False, False, False),
     boundary=None,
+    *, frame=None, owned=None,
 ) -> tuple[FDTDState, LorentzState]:
     """E-field update with Lorentz/Drude ADE dispersion.
 
@@ -104,7 +106,7 @@ def update_e_lorentz(
 
     # curl(H)
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
     # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
     px_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,

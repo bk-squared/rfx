@@ -90,7 +90,10 @@ def make_uniform_step(
     ``design_hook`` retains the adjoint's (previous, updated) -> (state, record)
     contract, immediately after the E/design-box update. Additional ``hooks``
     consume the same transient frame after the built-in attachments at each
-    point. The returned callable retains the simulation runner's signature.
+    point, or before them when slab invariants are present. The slab E
+    exchange follows the PEC mask and sources because a neighbour's next H
+    update reads the completed seam plane. The returned callable retains the
+    simulation runner's signature.
     """
     from rfx.boundaries import pec as pec_walls
     from rfx.core import drives as core_drives
@@ -107,11 +110,22 @@ def make_uniform_step(
     grid = ctx.grid
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     high_wall = unpadded_high_walls(grid)
+    slab = 'owns_x' in invariants
+    face_args = (dict(frame=ctx.x_face_frame, owned=invariants['owns_x'])
+                 if slab else {})
+    if slab:
+        high_wall = (False, *high_wall[1:])
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
     cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
     _sheet_coeffs = invariants["sheet_coeffs"]
     from rfx.boundaries.electric_coefficient import dispersive_curl, in_loop_loss
+
+    def absorb(kernel, state, psi, **kwargs):
+        if 'cpml_x' in invariants:
+            from rfx.stepping.slab_cpml import apply
+            return apply(kernel, ctx, invariants, state, psi, **kwargs)
+        return kernel(state, ctx.cpml_params, psi, grid, ctx.cpml_axes, **kwargs)
 
     if ctx.use_sheet_impedance:
         from rfx.stepping.conductors import (
@@ -167,8 +181,8 @@ def make_uniform_step(
                 for cfg_meta in ctx.waveguide_meta:
                     frame.st = _apply_wg_h(frame.st, cfg_meta, frame.step_idx, dt, dx)
             if ctx.use_cpml:
-                frame.st, frame.cpml_new = ctx.apply_cpml_h(
-                    frame.st, ctx.cpml_params, frame.carry["cpml"], grid, ctx.cpml_axes,
+                frame.st, frame.cpml_new = absorb(
+                    ctx.apply_cpml_h, frame.st, frame.carry["cpml"],
                     materials=materials, periodic=periodic)
             # After CPML-H, intersect the old full-node (smooth) or pairwise
             # (binary) mask with H whose every curl driver is frozen. This
@@ -243,6 +257,7 @@ def make_uniform_step(
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
                     boundary=ctx.curl_boundary,
+                    **face_args,
                 )
 
             # #1179 design box: redo the E update at the design cells with
@@ -280,8 +295,8 @@ def make_uniform_step(
                 for cfg_meta in ctx.waveguide_meta:
                     frame.st = _apply_wg_e(frame.st, cfg_meta, frame.step_idx, dt, dx)
             if ctx.use_cpml:
-                frame.st, frame.cpml_new = ctx.apply_cpml_e(
-                    frame.st, ctx.cpml_params, frame.cpml_new, grid, ctx.cpml_axes,
+                frame.st, frame.cpml_new = absorb(
+                    ctx.apply_cpml_e, frame.st, frame.cpml_new,
                     materials=materials,
                     inv_eps_r_update=cpml_inv_eps_r,
                     e_loss=in_loop_loss(invariants["e_loss"], dt),
@@ -363,7 +378,11 @@ def make_uniform_step(
                     _sheet_coeffs)
 
             if ctx.use_pec_faces:
-                frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen)
+                if slab:
+                    frame.st = pec_walls.apply_pec_faces(
+                        frame.st, ctx.pec_faces_frozen, **face_args)
+                else:
+                    frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen)
 
         if ctx.use_lumped_rlc:
             frame.st, frame.new_rlc_states = ctx.update_rlc_elements(
@@ -381,7 +400,8 @@ def make_uniform_step(
         # off-diagonal incident-wave denominator and the byte-frozen
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
-        refs = pre_injection_samples(frame.st, port_specs, lambda component, mid: dx)
+        refs = pre_injection_samples(frame.st, port_specs, lambda component, mid: dx,
+                                     table=invariants.get('port_table'))
         frame.wire_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'wire']
         frame.lumped_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'lumped']
         if ctx.use_wire_sparams:
@@ -445,11 +465,15 @@ def make_uniform_step(
         frame.port_samples = []
         if port_specs:
             dtype = frame.st.ex.dtype
-            if dtype not in port_tables:
+            table = invariants.get('port_table')
+            if table is None and dtype not in port_tables:
                 port_tables[dtype] = port_table(grid, port_specs, nu=False,
                                                boundary=ctx.curl_boundary, dtype=dtype)
-            port_values = project(frame.st, port_tables[dtype])
-            frame.port_samples = stack_samples(port_values, port_specs, (*frame.wire_ref_samples, *frame.lumped_ref_samples))
+            port_values = project(frame.st, port_tables[dtype] if table is None else table)
+            refs = (*frame.wire_ref_samples, *frame.lumped_ref_samples)
+            if not ctx.port_record_vref:
+                refs = tuple(jnp.zeros_like(a) for a in refs)
+            frame.port_samples = stack_samples(port_values, port_specs, refs)
         if ctx.use_wire_sparams:
             frame.new_wire_accs = []
             for accs, wp_meta, (v_ref_new, phase) in zip(
@@ -518,9 +542,12 @@ def make_uniform_step(
                 )
 
         # Probe samples
-        samples = [getattr(frame.st, pc)[pi, pj, pk]
-                   for pi, pj, pk, pc in ctx.prb_meta]
-        frame.probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
+        if 'probe_table' in invariants:
+            frame.probe_out = project(frame.st, invariants['probe_table'])
+        else:
+            samples = [getattr(frame.st, pc)[pi, pj, pk]
+                       for pi, pj, pk, pc in ctx.prb_meta]
+            frame.probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
         # NTFF accumulation
         if ctx.use_ntff:
@@ -614,7 +641,8 @@ def make_uniform_step(
         HookPoint.STEP_END: (step_end,),
     }
     for point, extra in (hooks or {}).items():
-        attachments[point] += tuple(extra)
+        attachments[point] = (tuple(extra) + attachments[point] if slab
+                              else attachments[point] + tuple(extra))
     kernels = {
         Kernel.H_UPDATE: h_update,
         Kernel.H_BOUNDARY: h_boundary,

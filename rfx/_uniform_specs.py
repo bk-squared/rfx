@@ -380,6 +380,9 @@ class _StepContext:
     # ---- arrays / coeffs / configs ----
     fast_coeffs: Any = None
     cpml_params: Any = None
+    cpml_grid: Any = None
+    cpml_spacings: Any = None
+    x_face_frame: Any = None
     cpml_axes: str = ""
     upml_coeffs: Any = None
     tfsf_cfg: Any = None
@@ -409,6 +412,7 @@ class _StepContext:
     flux_meta: tuple = ()
     waveguide_meta: tuple = ()
     port_record_specs: tuple | None = None
+    port_record_vref: bool = True
     wire_sparam_meta: tuple = ()
     lumped_sparam_meta: tuple = ()
     rlc_meta: tuple = ()
