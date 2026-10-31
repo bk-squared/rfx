@@ -8,3 +8,5 @@
   the finite columns as a lower bound. S and every result field are unchanged.
 - Expect it on `compute_waveguide_s_matrix(normalize=True)` with a reflecting structure: that matrix puts reflection
   and transmission on different reference planes (#2308). The microstrip driver's warning is unchanged.
+- With `normalize=False`, a strong reflector (a PEC short) reads |S11| about 3 % above 1 from the documented Yee
+  impedance mismatch and now warns; `normalize="flux"` corrects that mismatch.
