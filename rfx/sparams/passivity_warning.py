@@ -56,7 +56,7 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
 
 def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
                                   passivity_tol: float = 0.10) -> None:
-    """Tracer-safe passivity self-check for lumped/wire port S11 (issue #206 sib).
+    """Tracer-safe passivity self-check for lumped/wire port S11.
 
     ``run(compute_s_params=True)`` and ``forward(port_s11_freqs=...)`` for
     lumped/wire ports assemble S11 from the eager single-cell extractor, but —
