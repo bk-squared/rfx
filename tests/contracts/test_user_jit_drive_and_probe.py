@@ -292,6 +292,26 @@ def test_s_drive_and_reference(path, kind, evidence):
     _compare(path, kind, 'run', False, evidence, spectrum=True)
 
 
+@pytest.mark.parametrize('options,exception,fragment', [
+    pytest.param(dict(until_decay=.1, decay_max_steps=32, decay_min_steps=0,
+                      decay_check_interval=8), ValueError,
+                 'cannot be computed before the loop', id='host-until-decay'),
+    pytest.param(dict(n_steps=32, report_every=16), ValueError,
+                 'report_every', id='host-report-every'),
+])
+def test_host_control_keeps_its_user_jit_behavior(options, exception, fragment, evidence):
+    """These existing host paths remain outside the concrete setup region."""
+    try:
+        sim = _scene('uniform', 'point')
+        with pytest.raises(exception, match=fragment) as refusal:
+            jax.jit(lambda: sim.run(skip_preflight=True, compute_s_params=False,
+                                   **options).time_series)()
+        evidence.update(status='pass', refusal=_error_details(refusal.value))
+    except Exception as error:
+        evidence.update(status='fail', **_error_details(error))
+        raise
+
+
 # Literal message fragments are independent of implementation admission helpers.
 REFUSALS = []
 for _entry in ('run', 'forward'):
