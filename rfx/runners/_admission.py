@@ -1598,5 +1598,5 @@ def refuse_tfsf_decay_without_source_off(sim, until_decay):
     if until_decay is not None and sim._tfsf is not None:
         from rfx.sources.sources import CustomWaveform
         if isinstance(sim._tfsf.waveform, CustomWaveform):
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
