@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # A value is a column of the table, "internal to <columns>" or
 # "grid-level: <why>" for a function that takes a Grid, not a Simulation.
 KERNEL_CALLERS = {
-    "rfx/api/_execute.py:_ExecuteMixin.run":
+    "rfx/runners/run.py:run_after_admission":
         "internal to run_uniform, run_nonuniform, run_subgridded, run_adi, run_distributed, run_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin.forward":
         "internal to fwd_uniform, fwd_nonuniform, fwd_distributed, fwd_distributed_nu",

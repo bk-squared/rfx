@@ -400,6 +400,7 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
             distributed = devices is not None and len(devices) > 1
             if (kwargs.get("until_decay") is not None
                     or kwargs.get("report_every") is not None
+                    or kwargs.get("until_identified", False) is not False
                     or self._refinement is not None):
                 return entry(self, *args, **kwargs)
         if _setup_evaluated_at_trace_time(distributed=distributed):
