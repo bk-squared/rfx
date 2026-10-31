@@ -94,7 +94,7 @@ TEXT_8 = (
     "h_sub=254µm). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT "
     'RUN PATH (subpixel_smoothing=False and no conformal PEC face — the shipped defaults):'
     ' a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces '
-    '(lattice ownership contract), and a foil trace declared as a SHEET (zero-'
+    '(lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md), and a foil trace declared as a SHEET (zero-'
     'thickness Box / add_thin_conductor) is one node plane; neither enters '
     '``pec_occupancy_override``. That is NOT a blanket exemption — two opt-in lanes DO '
     "give a hard PEC box fractional cell occupancy: subpixel_smoothing='kottke_pec' (the "
@@ -484,7 +484,7 @@ TEXT_42 = (
     "h_sub=254µm). A hard ``Box(material='pec')`` avoids that specific bug ON THE DEFAULT "
     'RUN PATH (subpixel_smoothing=False and no conformal PEC face — the shipped defaults):'
     ' a PEC Box is a VOLUME that occupies whole primal cells with walls on both faces '
-    '(lattice ownership contract), and a foil trace declared as a SHEET (zero-'
+    '(lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md), and a foil trace declared as a SHEET (zero-'
     'thickness Box / add_thin_conductor) is one node plane; neither enters '
     '``pec_occupancy_override``. That is NOT a blanket exemption — two opt-in lanes DO '
     "give a hard PEC box fractional cell occupancy: subpixel_smoothing='kottke_pec' (the "

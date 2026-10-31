@@ -307,7 +307,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     return spectra, aux
 
 
-# Lazy compatibility exports avoid a cycle with the moved implementation.
+# Deprecated compatibility exports warn and resolve to the measurement implementation.
 _LAZY_EXPORTS = {
     "plain_dft": "rfx.measurement.ringdown_tail_jax",
     "tail_dft": "rfx.measurement.ringdown_tail_jax",

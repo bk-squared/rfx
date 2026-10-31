@@ -29,7 +29,7 @@ import numpy as np
 
 from rfx import Grid, Simulation, Sphere, compute_rcs
 from rfx.geometry import rasterize
-from rfx.materials import MaterialArrays
+from rfx.core.yee import MaterialArrays
 
 
 C0 = 299_792_458.0

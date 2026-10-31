@@ -20,7 +20,9 @@
       {
         "code": "pec_faces_finite_pec",
         "loc": null,
-        "numbers": [],
+        "numbers": [
+          20260906.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_faces_with_finite_pec"
       },
@@ -46,6 +48,7 @@
           22.86,
           140.0,
           0.61,
+          20260906.0,
           8.0,
           -10.0,
           50.0,
@@ -70,6 +73,7 @@
           11.0,
           1.0,
           1.0,
+          20260906.0,
           -90.0,
           21.0,
           0.22,

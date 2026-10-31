@@ -1,14 +1,12 @@
 """Material definitions and property arrays."""
 
-from rfx.core.yee import MaterialArrays, init_materials  # noqa: F401
-from rfx.materials.debye import DebyePole, DebyeCoeffs, DebyeState, init_debye
-from rfx.stepping.poles import update_e_debye
+from rfx.core.yee import MaterialArrays as _MaterialArrays
 
 import jax.numpy as jnp
 
 
-def set_material(materials: MaterialArrays, mask, *,
-                 eps_r=None, sigma=None, mu_r=None) -> MaterialArrays:
+def set_material(materials: _MaterialArrays, mask, *,
+                 eps_r=None, sigma=None, mu_r=None) -> _MaterialArrays:
     """Set material properties where mask is True.
 
     Parameters
@@ -36,3 +34,20 @@ def set_material(materials: MaterialArrays, mask, *,
             mu_r=jnp.where(mask, mu_r, materials.mu_r)
         )
     return materials
+
+
+# Compatibility imports warn and resolve to the owning module on every access.
+_LAZY_EXPORTS = {
+    "MaterialArrays": "rfx.core.yee",
+    "init_materials": "rfx.core.yee",
+    "DebyePole": "rfx.materials.debye",
+    "DebyeCoeffs": "rfx.materials.debye",
+    "DebyeState": "rfx.materials.debye",
+    "init_debye": "rfx.materials.debye",
+    "update_e_debye": "rfx.stepping.poles",
+}
+
+
+def __getattr__(name):
+    from rfx._moved_names import resolve_moved
+    return resolve_moved(__name__, _LAZY_EXPORTS, name)

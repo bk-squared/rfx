@@ -1134,7 +1134,7 @@ def plan_openems_projection(
     if _get(document, "refinement", "document") is not None:
         raise _refuse(
             "add_refinement(...) (SBP-SAT subgrid)",
-            "the subgrid path is an rfx research prototype, falsified in 3D"
+            "the subgrid path is an rfx research prototype, falsified in 3D (docs/design_notes/geometry_setup_interop.md)"
             " and outside the public support scope. The design note is "
             "explicit: round-trip it for rfx, never project it outward, because "
             "its presence in a foreign setup would read as a validated capability",
