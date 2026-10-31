@@ -19,9 +19,12 @@ from rfx.stepping.slab_view import (UniformSlabView, uniform_slab_rows, uniform_
 
 
 def stage_x_widths(grid, rows, mesh):
-    widths = (np.asarray(grid.dx_f64, dtype=grid.dx_arr.dtype)
-              if isinstance(grid.dx_arr, jax.core.Tracer) and grid.dx_f64 is not None
-              else np.asarray(grid.dx_arr))
+    if hasattr(grid, 'dx_arr'):
+        widths = (np.asarray(grid.dx_f64, dtype=grid.dx_arr.dtype)
+                  if isinstance(grid.dx_arr, jax.core.Tracer) and grid.dx_f64 is not None
+                  else np.asarray(grid.dx_arr))
+    else:
+        widths = np.full(grid.shape[0], grid.dx, dtype=np.float32)
     if widths.shape[0] == grid.shape[0] - 1:
         widths = np.concatenate((widths, widths[-1:]))
     return stack_and_place(widths, rows, mesh)

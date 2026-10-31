@@ -8,13 +8,12 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.core.yee import FDTDState
-from rfx.measurement.projector import ComponentTerms, SampleTable
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
 from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
-from rfx.stepping.slab_measurements import _nodes, cut_probe_table
+from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -187,8 +186,6 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def wrap(step, layout, mesh, *, table, port_table=None):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
-    components = tuple(term.component for term in table.components)
-    n_channels, channel_names = table.n_channels, table.channel_names
     context = replace(step.context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
@@ -204,15 +201,9 @@ def wrap(step, layout, mesh, *, table, port_table=None):
         if inputs.get('e_loss') is not None:
             inputs['e_loss'] = (*inputs['e_loss'], False)
         inputs['drives'] = jax.tree.map(lambda a: a[0], inputs['drives'])
-        terms, order, ids = jax.tree.map(lambda a: a[0], inputs['probe_table'])
-        inputs['probe_table'] = SampleTable(tuple(
-            ComponentTerms(component, *part) for component, part in zip(components, terms)),
-            n_channels, channel_names, order, ids)
+        inputs['probe_table'] = local_table(table, inputs['probe_table'])
         if port_table is not None:
-            parts, port_order, port_ids = jax.tree.map(lambda a: a[0], inputs['port_table'])
-            inputs['port_table'] = SampleTable(tuple(
-                ComponentTerms(term.component, *part) for term, part in zip(port_table.components, parts)),
-                port_table.n_channels, port_table.channel_names, port_order, port_ids)
+            inputs['port_table'] = local_table(port_table, inputs['port_table'])
             carry = dict(carry)
             for key in ('wire_sparams', 'sparam_time_records'):
                 if key in carry:

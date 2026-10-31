@@ -9,28 +9,25 @@ from rfx.measurement.port_sampler import (
     pre_injection_samples, ref_dft_update, wire_dft_update, lumped_dft_update,
     stack_samples,
 )
-from rfx.measurement.projector import ComponentTerms, SampleTable, port_table, port_owners, project
+from rfx.measurement.projector import port_table, port_owners, project
 from rfx.measurement.time_records import from_owners
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.slab import place
-from rfx.stepping.slab_measurements import cut_probe_table, sum_partials
+from rfx.stepping.slab_measurements import cut_probe_table, sum_partials, local_table
 
 
 _STATE_SPEC = FDTDState(*(P('x'),) * 6, step=P())
 
 
-class UniformSlabPorts:
-    """Small P('x') payloads; fields are sampled only on their owning slab."""
+class UniformPortPlan:
+    """Canonical port tables and result metadata shared by both slab loops."""
 
-    def __init__(self, grid, entries, specs, boundary, layout, mesh, n_steps,
-                 dtype, freqs, *, record_vref=True):
+    def __init__(self, grid, entries, specs, boundary, dtype, freqs):
         from rfx._uniform_specs import WirePortSParamSpec, LumpedPortSParamSpec
         self.specs = tuple(specs)
-        self.mesh, self.dt = mesh, grid.dt
-        self.record_vref = record_vref
+        self.dt = grid.dt
         self.owners = port_owners(grid, specs, nu=False, boundary=boundary)
         self.table = port_table(grid, specs, nu=False, boundary=boundary, dtype=dtype)
-        self.payload = cut_probe_table(self.table, layout, mesh) if specs else ()
         self.metadata = []
         if freqs is not None:
             bins = jnp.asarray(freqs, dtype=jnp.float32)
@@ -40,6 +37,25 @@ class UniformSlabPorts:
                     WirePortSParamSpec(*mid, pe.component, bins, pe.impedance, cells, pe.excite)
                     if kind == 'wire' else
                     LumpedPortSParamSpec(*mid, pe.component, bins, pe.impedance, pe.excite))
+    def assemble(self, final, *, multi_process=False):
+        if multi_process and final:
+            from jax.experimental import multihost_utils
+            final = multihost_utils.process_allgather(final, tiled=True)
+        accs = final.get('wire_sparam_accs', ()) + final.get('lumped_sparam_accs', ())
+        wire, lumped = pack_port_records(
+            [s[2] for s in self.specs] if self.metadata else (), accs, self.metadata)
+        return dict(wire_port_sparams=wire, lumped_port_sparams=lumped,
+                    sparam_time_records=from_owners(final.get('sparam_time_records', ()), self.owners))
+
+
+class UniformSlabPorts(UniformPortPlan):
+    """Small P('x') payloads for the retained closed-box TFSF loop."""
+
+    def __init__(self, grid, entries, specs, boundary, layout, mesh, n_steps,
+                 dtype, freqs, *, record_vref=True):
+        super().__init__(grid, entries, specs, boundary, dtype, freqs)
+        self.mesh, self.record_vref = mesh, record_vref
+        self.payload = cut_probe_table(self.table, layout, mesh) if specs else ()
         initial = {}
         if specs:
             initial['sparam_time_records'] = tuple(jnp.zeros(
@@ -54,10 +70,7 @@ class UniformSlabPorts:
             jnp.broadcast_to(a, (layout.n_devices,) + a.shape), NamedSharding(mesh, P('x'))), initial)
 
     def local_table(self, payload):
-        parts, order, ids = jax.tree.map(lambda a: a[0], payload)
-        return SampleTable(tuple(ComponentTerms(t.component, *p)
-                           for t, p in zip(self.table.components, parts)),
-                           self.table.n_channels, self.table.channel_names, order, ids)
+        return local_table(self.table, payload)
 
     def references(self, state, payload, *, ranks):
         if not self.specs:
@@ -99,13 +112,3 @@ class UniformSlabPorts:
 
     def reduce(self, final, *, ranks):
         return sum_partials(final, self.mesh, ranks)
-
-    def assemble(self, final, *, multi_process=False):
-        if multi_process and final:
-            from jax.experimental import multihost_utils
-            final = multihost_utils.process_allgather(final, tiled=True)
-        accs = final.get('wire_sparam_accs', ()) + final.get('lumped_sparam_accs', ())
-        wire, lumped = pack_port_records(
-            [s[2] for s in self.specs] if self.metadata else (), accs, self.metadata)
-        return dict(wire_port_sparams=wire, lumped_port_sparams=lumped,
-                    sparam_time_records=from_owners(final.get('sparam_time_records', ()), self.owners))
