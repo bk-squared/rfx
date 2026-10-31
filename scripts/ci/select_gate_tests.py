@@ -79,6 +79,22 @@ def directly_imports(source: str, modules: set[str], filename: str = "<test>") -
     return False
 
 
+def string_literals(source: str, filename: str, *, exclude_docstrings: bool = False) -> set[str]:
+    tree = ast.parse(source, filename=filename)
+    docstrings = set()
+    if exclude_docstrings:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                if (node.body and isinstance(node.body[0], ast.Expr)
+                        and isinstance(node.body[0].value, ast.Constant)
+                        and isinstance(node.body[0].value.value, str)):
+                    docstrings.add(node.body[0].value)
+    # ast.walk also visits the Constant parts of JoinedStr (f-strings).
+    return {node.value for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and node not in docstrings}
+
+
 def model_building_tests(test_sources: Mapping[str, str]) -> set[str]:
     modules = {name: path for path in test_sources
                if (name := test_module_name(path)) is not None}
@@ -132,6 +148,8 @@ class Selection:
     model_changed: bool
     model_building_files: int
     model_building_seconds: float
+    message_literal_files: int
+    message_literal_seconds: float
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
@@ -152,6 +170,8 @@ class Selection:
             f"recorded {self.test_module_seconds:.6f} s",
             *([f"model-building tests added: {self.model_building_files} files, "
                f"recorded {self.model_building_seconds:.6f} s"] if self.model_changed else []),
+            f"message-literal tests added: {self.message_literal_files} files, "
+            f"recorded {self.message_literal_seconds:.6f} s",
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"source-scan tests that run: {self.source_scan_run_count} tests, "
@@ -179,7 +199,7 @@ class Selection:
 
 def select_tests(
     changed_paths: Iterable[str], test_sources: Mapping[str, str], durations: Mapping[str, float],
-    *, central_paths: bool = False,
+    *, central_paths: bool = False, module_sources: Mapping[str, str] | None = None,
 ) -> Selection:
     """Pure selection over repo-relative paths, source text, and recorded nodeids.
 
@@ -192,6 +212,15 @@ def select_tests(
     modules = {name for path in changed if (name := module_name(path)) is not None}
     test_modules = {name for path in changed if (name := test_module_name(path)) is not None}
     test_importers = set()
+    module_literals = set()
+    for path, source in (module_sources or {}).items():
+        if path not in changed or module_name(path) is None:
+            continue
+        try:
+            module_literals.update(string_literals(source, path, exclude_docstrings=True))
+        except SyntaxError:
+            continue
+    message_tests = set()
     candidates = set(edited)
     invalid = set()
     for path in tests:
@@ -201,6 +230,13 @@ def select_tests(
             imports_changed = directly_imports(test_sources[path], modules, path)
             if test_modules and directly_imports(test_sources[path], test_modules, path):
                 test_importers.add(path)
+            if module_literals and any(
+                literal in message
+                for value in string_literals(test_sources[path], path)
+                if len(literal := value.strip()) >= 16 and " " in literal
+                for message in module_literals
+            ):
+                message_tests.add(path)
         except SyntaxError:
             # Let pytest report the broken file, even without an import match.
             invalid.add(path)
@@ -235,6 +271,8 @@ def select_tests(
     )
     model_added = model_building_tests(test_sources) - candidates if model_changed else set()
     candidates.update(model_added)
+    message_added = message_tests - candidates
+    candidates.update(message_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
     totals: dict[str, float] = defaultdict(float)
     for nodeid, seconds in durations.items():
@@ -248,6 +286,7 @@ def select_tests(
     always_on_added &= selected
     test_module_added &= selected
     model_added &= selected
+    message_added &= selected
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
@@ -297,6 +336,7 @@ def select_tests(
         len(always_on_added), sum(totals[path] for path in sorted(always_on_added)),
         len(test_module_added), sum(totals[path] for path in sorted(test_module_added)),
         model_changed, len(model_added), sum(totals[path] for path in sorted(model_added)),
+        len(message_added), sum(totals[path] for path in sorted(message_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),
@@ -327,6 +367,28 @@ def read_test_sources(root: Path) -> dict[str, str]:
     return sources
 
 
+def read_module_sources(paths: Iterable[str], root: Path, head: str | None) -> dict[str, str]:
+    paths = [path for path in paths if module_name(path) is not None]
+    sources = {}
+    if head and paths:
+        # Read the requested head, including files absent from the working tree.
+        existing = subprocess.check_output(
+            ["git", "ls-tree", "-r", "--name-only", "-z", head, "--", *paths],
+            cwd=root, text=True,
+        ).split("\0")
+        for path in existing:
+            if path:
+                sources[path] = subprocess.check_output(
+                    ["git", "show", f"{head}:{path}"], cwd=root, text=True,
+                )
+    elif not head:
+        for path in paths:
+            if (root / path).is_file():
+                with tokenize.open(root / path) as handle:
+                    sources[path] = handle.read()
+    return sources
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True)
@@ -337,10 +399,12 @@ def main() -> int:
                         help="include runners/autodiff for central path changes")
     args = parser.parse_args()
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
+    paths = changed_paths(args.base, args.head, root)
     result = select_tests(
-        changed_paths(args.base, args.head, root), read_test_sources(root),
+        paths, read_test_sources(root),
         json.loads(args.durations.read_text(encoding="utf-8")),
         central_paths=args.central_paths,
+        module_sources=read_module_sources(paths, root, args.head),
     )
     if args.summary:
         args.summary.write_text(result.summary(), encoding="utf-8")
