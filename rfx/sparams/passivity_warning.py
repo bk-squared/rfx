@@ -17,7 +17,7 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
     A diagonal-only array gives a lower bound, not the full matrix norm.
     Observed columns likewise give a lower bound when drives are missing.
     A bin with non-finite columns is judged on its remaining finite columns.
-    Concrete measurement only: tracing and unavailable host values are skipped.
+    Tracers are skipped; a host conversion error propagates.
     """
     if is_tracer(s_params) or is_tracer(freqs):
         return
@@ -89,6 +89,7 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     tracer with no concrete value, so the check is skipped entirely — it never
     perturbs an AD/optimization run, only the eager research call.
     """
+    warn_if_singular_value_exceeds_one(s_params, freqs, extractor=extractor)
     import numpy as np
     from rfx.core.jax_utils import is_tracer
     if is_tracer(s_params) or is_tracer(freqs):

@@ -165,14 +165,14 @@ def test_partial_shapes_and_nonfinite_bins(shape):
     assert "lower bound from the finite columns" not in str(seen[0].message)
 
 
-def test_tracers_and_unavailable_values_are_skipped():
+def test_tracers_are_skipped_and_conversion_errors_propagate():
     class Unavailable:
         def __array__(self, *args, **kwargs):
             raise ValueError("no host value")
 
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always")
-        for s in (Unavailable(), None, np.empty((0,)), np.full((2, 2, 3), np.nan)):
+        for s in (None, np.empty((0,)), np.full((2, 2, 3), np.nan)):
             warn_if_singular_value_exceeds_one(s, FREQS, extractor="unavailable")
 
         def traced(s):
@@ -181,3 +181,5 @@ def test_tracers_and_unavailable_values_are_skipped():
 
         np.testing.assert_allclose(jax.grad(traced)(jnp.ones(3)), np.ones(3), atol=1e-7)
     assert not seen
+    with pytest.raises(ValueError, match="no host value"):
+        warn_if_singular_value_exceeds_one(Unavailable(), FREQS, extractor="unavailable")
