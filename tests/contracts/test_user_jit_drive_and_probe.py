@@ -32,15 +32,18 @@ DX_GUIDE = np.r_[np.ones(10), [.9, 1.1, .95, 1.05, .9, 1.1, 1.05, .95, 1.3],
 DZ_MSL = np.r_[np.full(6, .5), .5 * 1.25 ** np.arange(1, 6)] * 1e-3
 
 
-XFAILS = dict.fromkeys((29, 30, 31, 32, 41), pytest.mark.xfail(
+XFAILS = dict.fromkeys((
+    'multi-uniform-lumped-run', 'multi-uniform-lumped-forward',
+    'multi-uniform-wire-run', 'multi-uniform-wire-forward', 'uniform-lumped-eps-forward',
+), pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
 
 
 def _row(path, kind, entry, *, eps=False, always=False):
     name = f'{path}-{kind}{"-eps" if eps else ""}-{entry}'
     marks = [] if always else [pytest.mark.slow]
-    if len(ROWS) + 1 in XFAILS:
-        marks.append(XFAILS[len(ROWS) + 1])
+    if name in XFAILS:
+        marks.append(XFAILS[name])
     if path.startswith('multi-'):
         marks.append(pytest.mark.distributed)
     return pytest.param(path, kind, entry, eps, id=name, marks=marks)
@@ -67,8 +70,11 @@ for _path in ('uniform', 'graded', 'multi-graded'):
         ROWS.append(_row(_path, _kind, 'forward', eps=True,
                          always=_path == 'multi-graded' and _kind == 'lumped'))
 
-# Preserve the original row numbering while moving row 33 to REFUSALS.
-del ROWS[32]
+ROWS = [row for row in ROWS if row.id != 'multi-uniform-tfsf-closed-forward']
+
+assert not (XFAILS.keys() - {row.id for row in ROWS}), (
+    f'XFAILS contains unknown row ids: {sorted(XFAILS.keys() - {row.id for row in ROWS})}'
+)
 
 
 def _devices(path):
