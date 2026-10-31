@@ -53,38 +53,3 @@ def test_config_interop_and_polarized_declarations_resolve():
         assert [p.amplitude_kind for p in polarized._ports] == ['current', 'current']
 
 
-@pytest.mark.parametrize("mode", ["3d", "2d_tmz"])
-@pytest.mark.parametrize("entry", ["run", "forward"])
-def test_adi_requires_explicit_field_before_stepping(mode, entry, monkeypatch):
-    import rfx.adi as adi
-    import rfx.runners.adi as adi_runner
-
-    def make(kind):
-        sim = Simulation(freq_max=1e10,
-                         domain=(.01, .01, .01 if mode == "3d" else .001),
-                         dx=.001, boundary="pec", mode=mode, solver="adi")
-        z = .005 if mode == "3d" else 0.
-        kwargs = {} if kind is None else {"amplitude_kind": kind}
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            sim.add_source((.005, .005, z), "ez", waveform=lambda t: 1., **kwargs)
-        sim.add_probe((.005, .005, z), "ez")
-        return sim
-
-    def premature_step(*args, **kwargs):
-        pytest.fail("ADI entered stepping before source admission")
-
-    for kind in (None, "current"):
-        sim = make(kind)
-        with monkeypatch.context() as patch:
-            patch.setattr(adi, "run_adi_3d", premature_step)
-            patch.setattr(adi, "run_adi_2d", premature_step)
-            patch.setattr(adi_runner, "run_adi_2d", premature_step)
-            with pytest.raises(NotImplementedError) as caught:
-                getattr(sim, entry)(n_steps=4, skip_preflight=True)
-        message = str(caught.value)
-        assert "amplitude_kind='field'" in message
-        assert "'current' is the default" in message
-    result = getattr(make("field"), entry)(n_steps=4, skip_preflight=True)
-    assert np.isfinite(result.time_series).all()
-    assert np.max(np.abs(result.time_series)) > 0

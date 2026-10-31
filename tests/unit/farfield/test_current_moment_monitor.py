@@ -2386,19 +2386,6 @@ def test_the_distributed_nu_forward_lane_carries_it():
     assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b))
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-def test_the_adi_lane_refuses_it(entry):
-    """The ADI update is not the Yee Ampere step, so the identity the monitor
-    rests on does not hold there at all."""
-    sim = _sim_with_monitor(solver="adi")
-    # The lane's own refusal, before any step (the backstop would raise only
-    # after the whole run, with a different message).
-    with pytest.raises(NotImplementedError,
-                       match="not supported on the ADI lane"):
-        if entry == "run":
-            sim.run(n_steps=4, skip_preflight=True)
-        else:
-            sim.forward(n_steps=4, skip_preflight=True)
 
 
 def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():

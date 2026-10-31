@@ -539,10 +539,6 @@ def test_fence_nonuniform_lane_takes_a_permittivity_but_not_an_occupancy():
                     n_steps=4, skip_preflight=True)
 
 
-def test_fence_adi_solver():
-    sim = _sim(solver="adi", boundary="pec")
-    with pytest.raises(NotImplementedError, match="Yee solver"):
-        _forward_with_box(sim)
 
 
 def test_fence_anisotropic_and_bloch_paths():

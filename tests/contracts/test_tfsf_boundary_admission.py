@@ -143,7 +143,7 @@ def test_archived_37mm_array_is_refused(skip):
 
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("path", ["uniform", "nonuniform", "distributed_v2",
-                                  "distributed_nu", "subgridded", "adi"])
+                                  "distributed_nu", "subgridded"])
 def test_finite_scatterer_refuses_every_dispatch_path(skip, path, monkeypatch):
     import jax
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}

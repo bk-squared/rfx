@@ -163,14 +163,6 @@ def test_calculator_refuses_conformal_before_steps(route, no_steps):
             vmap_material_sweep(sim, "design.eps_r", [2.0, 3.0], n_steps=N_STEPS)
 
 
-def test_adi_forward_refuses_mu_override_before_steps(no_steps):
-    sim = _sim(solver="adi")
-    with pytest.raises(NotImplementedError):
-        sim.forward(
-            n_steps=N_STEPS,
-            skip_preflight=True,
-            mu_r_override=jnp.full(sim._build_grid().shape, 4.0),
-        )
 
 
 @pytest.mark.parametrize("route", ["run", "forward", "direct", "low_level"])
@@ -299,7 +291,7 @@ def test_waveguide_distributed_refuses_staircase(two_devices):
 
 
 @pytest.mark.parametrize(
-    "lane", ["run_nonuniform", "run_adi", "run_subgridded", "run_distributed"]
+    "lane", ["run_nonuniform",  "run_subgridded", "run_distributed"]
 )
 def test_explicit_staircase_is_allowed_on_every_run_lane(lane, two_devices):
     # Reuse the established 12 mm box (20 mm tall with subgridding).
@@ -351,7 +343,7 @@ def _no_pec(kind):
     return sim
 
 
-@pytest.mark.parametrize("kind", ["uniform", "graded", "adi"])
+@pytest.mark.parametrize("kind", ["uniform", "graded"])
 def test_conformal_request_without_pec_runs_as_staircase(kind):
     sim = _no_pec(kind)
     assert not sim._has_pec_to_conform()

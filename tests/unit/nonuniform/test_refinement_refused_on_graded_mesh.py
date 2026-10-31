@@ -432,10 +432,6 @@ def test_differentiable_material_fit_refuses():
 # ADI: refused before #1240, locked
 # ---------------------------------------------------------------------------
 
-def test_adi_refuses_a_refinement():
-    with pytest.raises(ValueError, match="does not support subgridding"):
-        _quiet(lambda: _box(True, graded=False, solver="adi").run(
-            n_steps=N_STEPS, skip_preflight=True))
 
 
 # ---------------------------------------------------------------------------

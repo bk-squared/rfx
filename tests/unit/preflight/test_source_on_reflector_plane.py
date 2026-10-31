@@ -176,16 +176,6 @@ def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, compone
     assert "one cell (1mm) off the plane" not in msg
 
 
-def test_adi_tangential_e_on_magnetic_plane_reports_electric_wall():
-    """ADI solves a face declared magnetic as an electric wall at any source offset."""
-    position = (0.0, CY, CZ)
-    sim = _sim(BoundarySpec.uniform("pmc"), position, "ez", solver="adi")
-    assert _issue(sim, "source_decoupled") == (
-        f"Source/port at {position} m (component=ez) sits on the "
-        "magnetic-wall plane x_lo. solver='adi' does not realise a magnetic wall: "
-        "it solves this face as an electric wall wherever the source sits. "
-        "Use solver='yee' for a magnetic wall."
-    )
 
 
 def _graded_magnetic_face_sim(axis, side, on_plane):

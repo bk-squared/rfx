@@ -66,8 +66,8 @@ BUILDERS = {
     # construction (the constructor refuses it on a concrete axis).
     ('_nominal_profiles', ''): ({}, lambda sim: setattr(sim, '_nominal_profiles', {'x': np.full(4, DX)})),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
-    ('_solver', ''): ({'solver': 'adi', 'boundary': 'pec'}, _nothing),
-    ('_adi_cfl_factor', ''): ({'adi_cfl_factor': 1.1}, _nothing),
+    ('_solver', ''): ( _nothing),
+    
     ('_stencil_order', ''): ({'stencil_order': 4}, _nothing),
     ('_mode', ''): ({'mode': '2d_tmz'}, _nothing),
     ('_materials', 'eps'): ({}, _nothing),

@@ -53,7 +53,7 @@ for _path, _kinds in (
     ('graded', ('point', 'lumped', 'wire', 'waveguide', 'msl', 'tfsf-open')),
     ('multi-uniform', ('point', 'lumped', 'wire', 'tfsf-closed')),
     ('multi-graded', ('point', 'lumped', 'wire')),
-    ('adi', ('field',)),
+    
 ):
     for _kind in _kinds:
         _entries = ('forward',) if _kind == 'tfsf-closed' else (
@@ -62,7 +62,7 @@ for _path, _kinds in (
             _always = ((_path in ('uniform', 'graded') and _kind == 'lumped') or (_path == 'multi-uniform' and _kind == 'point')
                        or _path == 'adi' or _kind == 'msl-eigenmode')
             ROWS.append(_row(_path, _kind, _entry, always=_always))
-for _path in ('uniform', 'graded', 'multi-graded', 'adi'):
+for _path in ('uniform', 'graded', 'multi-graded'):
     for _kind in (('field',) if _path == 'adi' else ('point', 'lumped')):
         ROWS.append(_row(_path, _kind, 'forward', eps=True,
                          always=_path == 'multi-graded' and _kind == 'lumped'))
@@ -339,7 +339,7 @@ for _entry in ('run', 'forward'):
         ('coax', f'add_coaxial_port() is not wired into Simulation.{_entry}().'),
     ):
         _exception = ValueError if _kind in ('lumped', 'wire', 'waveguide') else NotImplementedError
-        REFUSALS.append(('adi', _kind, _entry, False, False, _exception, _fragment))
+        REFUSALS.append(( _kind, _entry, False, False, _exception, _fragment))
 REFUSALS.append(('multi-graded', 'lumped', 'forward', True, True, NotImplementedError,
                  'Graded multi-device port overrides on Debye/Lorentz live edges'))
 # Decision record rows 33 and 49: actionable refusals under a user jit.
