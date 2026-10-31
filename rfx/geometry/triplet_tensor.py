@@ -72,9 +72,8 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
     if signed_distance is None:
         from rfx.geometry.node_tensor import _union
 
-        fill_length = None if cell_lengths is None else (
-            (sum(cell_lengths[0]) * sum(cell_lengths[1]) * sum(cell_lengths[2]) / 8)
-            ** (1.0 / 3.0))
+        fill_length = (None if cell_lengths is None else
+                       tuple((minus + plus) / 2 for minus, plus in cell_lengths))
         _, normal, signed_distance = _union(
             xp, grid, shapes, nodes, distance=True, fill_length=fill_length)
     dtype = np.float64 if xp is np else getattr(signed_distance, 'dtype', jnp.float32)

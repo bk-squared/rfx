@@ -1167,6 +1167,37 @@ def _fallback_masks(shapes, mask_fn) -> dict:
     return {id(s): mask_fn(s) for s in shapes if not _has_sdf(s)}
 
 
+def _normal_cell_length(xp, extents, normal):
+    """Project box extents onto the normal; preserve the scalar cubic path."""
+    if not isinstance(extents, tuple):
+        return extents
+    s = sum((n * d) ** 2 for n, d in zip(normal, extents))
+    safe = xp.where(s > 0, s, 1.0)
+    # Zero normals at interior symmetry points need both a finite sqrt
+    # derivative and a positive divisor for the clipped fill fraction.
+    fallback = xp.maximum(xp.maximum(extents[0], extents[1]), extents[2])
+    return xp.where(s > 0, xp.sqrt(safe), fallback)
+
+
+def _cell_width_pairs(xp, sizes, periodic_axes):
+    """Broadcast preceding/current primal widths at each node."""
+    lengths = []
+    for axis, size in enumerate(sizes):
+        plus = xp.asarray(size)
+        minus = (xp.roll(plus, 1) if 'xyz'[axis] in periodic_axes else
+                 xp.concatenate((plus[:1], plus[:-1])))
+        shape = tuple(len(plus) if a == axis else 1 for a in range(3))
+        lengths.append((minus.reshape(shape), plus.reshape(shape)))
+    return tuple(lengths)
+
+
+def _yee_cell_extents(lengths):
+    """Primal width along an E component, dual widths across it."""
+    return {comp: tuple(plus if axis == component else (minus + plus) / 2
+                        for axis, (minus, plus) in enumerate(lengths))
+            for component, comp in enumerate(('ex', 'ey', 'ez'))}
+
+
 def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
@@ -1184,9 +1215,11 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
         bodies are not double-smoothed.
     sample_coords : {"ex" | "ey" | "ez": (X, Y, Z)}
         Broadcastable coordinate arrays at each component's Yee position.
-    cell_len : scalar or broadcastable array
-        Local cell length normalising SDF -> fill fraction,
-        ``f = clip(0.5 - sdf / cell_len, 0, 1)``.
+    cell_len : scalar or dict of per-component (dx, dy, dz) arrays
+        Cubic width, or averaging-cell extents at each sample. The latter
+        give ``L = sqrt(sum((n_axis * d_axis)**2))`` for the selected normal,
+        and ``f = clip(0.5 - sdf / L, 0, 1)``. This linear fill is exact for
+        flat axis-aligned faces and approximate for oblique interfaces.
     eps : (eps_ex, eps_ey, eps_ez)
         Starting (background) arrays; returned updated.
     masks : {id(shape): bool mask or None}
@@ -1245,7 +1278,9 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                     best_nz = xp.where(closer, n_z, best_nz)
 
             # Fill fraction from union SDF
-            f = xp.clip(0.5 - sdf_union / cell_len, 0.0, 1.0)
+            extents = cell_len[comp] if isinstance(cell_len, dict) else cell_len
+            length = _normal_cell_length(xp, extents, (best_nx, best_ny, best_nz))
+            f = xp.clip(0.5 - sdf_union / length, 0.0, 1.0)
 
             # Fix #1: fully-inside voxels get bulk eps, no smoothing
             inside = f >= 1.0
@@ -1299,9 +1334,8 @@ def compute_smoothed_eps_nonuniform(
     cell-size arrays from ``nu_grid`` for both coordinate placement
     (per-axis half-cell offsets) and SDF fill-fraction normalisation.
 
-    Fill-fraction normalisation uses the geometric mean of the three
-    local cell sizes — first-order accurate for non-cubic Yee cells, in
-    line with the SDF-to-fill approximation in the uniform path.
+    Fill-fraction normalisation uses the averaging-cell extent along the
+    interface normal: primal along the E component, dual across it.
 
     Concrete inputs are evaluated in host float64 and cast once (#833);
     a traced axis (mesh as design variable) keeps traced arithmetic.
@@ -1364,15 +1398,7 @@ def compute_smoothed_eps_nonuniform(
 
     node_x, node_y, node_z = (xp.asarray(a) for a in coords[:3])
     centre_x, centre_y, centre_z = (xp.asarray(a) for a in centres[:3])
-    dx_arr, dy_arr, dz_arr = (xp.asarray(d) for d in cell_sizes)
-
-    # Local-cell characteristic length (geometric mean of three cell
-    # widths) — used to normalise SDF → fill fraction. Anisotropic cell
-    # geometry: this is a first-order approximation, mirroring the
-    # uniform-path single-dx normalisation.
-    dx_loc = (dx_arr[:, None, None]
-              * dy_arr[None, :, None]
-              * dz_arr[None, None, :]) ** (1.0 / 3.0)
+    extents = _yee_cell_extents(_cell_width_pairs(xp, cell_sizes, nu_grid.periodic_axes))
 
     # Per-component half-cell offsets along the COMPONENT axis only:
     # Ex sits at (centre_x, node_y, node_z); Ey at (node_x, centre_y,
@@ -1386,7 +1412,7 @@ def compute_smoothed_eps_nonuniform(
     acc_dtype = np.float64 if host else jnp.float32
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
-    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, masks, grid=nu_grid)
+    eps = _kottke_smooth(xp, shapes, sample, extents, eps, masks, grid=nu_grid)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
