@@ -305,15 +305,3 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     aux = {"s_pencil": s0, "mask": mask, "delta_s": ds, "s": s, "c": c, "c0": c0,
            "n_real": jnp.sum(mask), "k_max": K, "n_start": n_start, "n_record": n}
     return spectra, aux
-
-
-# Deprecated compatibility exports warn and resolve to the measurement implementation.
-_LAZY_EXPORTS = {
-    "plain_dft": "rfx.measurement.ringdown_tail_jax",
-    "tail_dft": "rfx.measurement.ringdown_tail_jax",
-}
-
-
-def __getattr__(name):
-    from rfx._moved_names import resolve_moved
-    return resolve_moved(__name__, _LAZY_EXPORTS, name)
