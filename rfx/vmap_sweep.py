@@ -31,6 +31,12 @@ Limitations
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.api import Simulation
+
 from rfx.errors import ConfigurationWarning
 from rfx._precision import resolve_field_dtype
 from rfx.stepping.vmap_scan import _build_vmap_scan_fn
@@ -696,9 +702,9 @@ def _build_full_scan_fn(
 # ---------------------------------------------------------------------------
 
 def vmap_material_sweep(
-    sim,
+    sim: Simulation,
     param_name: str,
-    param_values,
+    param_values: ArrayLike,
     *,
     n_steps: int | None = None,
     num_periods: float = 20.0,

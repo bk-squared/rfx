@@ -7,6 +7,15 @@ customization or saving.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.core.yee import FDTDState
+    from rfx.farfield import FarFieldResult
+    from rfx.grid import Grid
+    from rfx.nonuniform import NonUniformGrid
+    from rfx.rcs import RCSResult
+
 from rfx.errors import ConfigurationWarning
 import warnings
 
@@ -16,8 +25,8 @@ from rfx._plotting import _pyplot
 
 
 def plot_field_slice(
-    state,
-    grid,
+    state: FDTDState,
+    grid: Grid | NonUniformGrid,
     *,
     component: str = "ez",
     axis: str = "z",
@@ -1049,7 +1058,7 @@ def plot_s_params(
 
 
 def plot_radiation_pattern(
-    ff,
+    ff: FarFieldResult,
     *,
     freq_idx: int = 0,
     phi_idx: int = 0,
@@ -1136,7 +1145,7 @@ def plot_time_series(
 
 
 def plot_rcs(
-    rcs_result,
+    rcs_result: RCSResult,
     *,
     freq_idx: int = 0,
     phi_idx: int = 0,

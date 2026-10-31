@@ -1140,7 +1140,7 @@ def validate_subgrid_setup(
     )
 
 
-def validate_subgrid(self, *, mode: str | None = None):
+def validate_subgrid(self, *, mode: str | None = None) -> SubgridValidationReport:
     """Return the production-envelope validation report for subgridding.
 
         Every mode reports the subgridded lane as unsupported because it is

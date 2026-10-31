@@ -17,6 +17,11 @@ Usage
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 from rfx._precision import resolve_field_dtype
 
 from dataclasses import dataclass
@@ -32,8 +37,8 @@ from rfx._plotting import _pyplot
 # ---------------------------------------------------------------------------
 
 def richardson_extrapolation(
-    values,
-    dx_values,
+    values: ArrayLike,
+    dx_values: ArrayLike,
     expected_order: float = 2.0,
 ) -> tuple[float, float]:
     """Richardson extrapolation to estimate the grid-independent value.
@@ -264,7 +269,7 @@ class ConvergenceResult:
 
 def convergence_study(
     sim_factory: Callable,
-    dx_values,
+    dx_values: ArrayLike,
     metric_fn: Callable,
     *,
     n_steps: int | None = None,

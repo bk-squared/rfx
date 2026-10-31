@@ -10,6 +10,11 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import jax
+
 from rfx.errors import RfxRefusal
 
 from rfx._grid_metric import nearest_uniform_index
@@ -181,10 +186,10 @@ class _CompileMixin:
 
     def conductor_mask(
         self,
-        grid=None,
+        grid: Grid | NonUniformGrid | None = None,
         *,
         sigma_threshold: float | None = None,
-    ):
+    ) -> jax.Array:
         """Return the FULL conductor cell footprint of this simulation.
 
         A surface-impedance (``surface_impedance_f0``) thin
