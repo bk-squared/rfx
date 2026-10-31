@@ -76,7 +76,8 @@ def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None
     from rfx.boundaries.pmc import magnetic_update_fields
     hx, hy, hz = magnetic_update_fields((hx, hy, hz), magnetic_factors)
 
-    return state._replace(hx=hx, hy=hy, hz=hz)
+    return state._replace(hx=hx.astype(state.hx.dtype),
+                          hy=hy.astype(state.hy.dtype), hz=hz.astype(state.hz.dtype))
 
 
 def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=None):
@@ -107,9 +108,10 @@ def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=Non
         - (hx - backward(hx, 1)) / dx
     )
 
-    ex = ca_x * state.ex + cb_x * curl_x
-    ey = ca_y * state.ey + cb_y * curl_y
-    ez = ca_z * state.ez + cb_z * curl_z
+    # Match the one-device update: compute first, round once to field storage.
+    ex = (ca_x * state.ex + cb_x * curl_x).astype(state.ex.dtype)
+    ey = (ca_y * state.ey + cb_y * curl_y).astype(state.ey.dtype)
+    ez = (ca_z * state.ez + cb_z * curl_z).astype(state.ez.dtype)
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
@@ -118,7 +120,7 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=
     """E update with Debye ADE on a local slab (always non-periodic).
 
     Per E component (#1260), the single-device body's arithmetic
-    (``rfx.materials.debye.debye_e_component``) without its dtype narrowing.
+    (``rfx.materials.debye.debye_e_component``), including carry narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
     def backward(h, axis):
@@ -129,11 +131,14 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=
     curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
     ex_new, px_new = debye_e_component(debye_coeffs, 0, state.ex, curl_x,
-                                       debye_state.px)
+                                       debye_state.px, state.ex.dtype,
+                                       jnp.promote_types(debye_state.px.dtype, state.ex.dtype))
     ey_new, py_new = debye_e_component(debye_coeffs, 1, state.ey, curl_y,
-                                       debye_state.py)
+                                       debye_state.py, state.ey.dtype,
+                                       jnp.promote_types(debye_state.py.dtype, state.ey.dtype))
     ez_new, pz_new = debye_e_component(debye_coeffs, 2, state.ez, curl_z,
-                                       debye_state.pz)
+                                       debye_state.pz, state.ez.dtype,
+                                       jnp.promote_types(debye_state.pz.dtype, state.ez.dtype))
 
     new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
     new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
@@ -144,7 +149,7 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundar
     """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
 
     Per E component (#1260), as ``rfx.stepping.poles.update_e_lorentz``
-    without its dtype narrowing.
+    including its carry dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
     def backward(h, axis):
@@ -155,19 +160,19 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundar
     curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
     px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev)
+                                 lor_state.px_prev, jnp.promote_types(lor_state.px.dtype, state.ex.dtype))
     py_new = lorentz_p_component(lorentz_coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev)
+                                 lor_state.py_prev, jnp.promote_types(lor_state.py.dtype, state.ey.dtype))
     pz_new = lorentz_p_component(lorentz_coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev)
+                                 lor_state.pz_prev, jnp.promote_types(lor_state.pz.dtype, state.ez.dtype))
 
     dpx = jnp.sum(px_new - lor_state.px, axis=0)
     dpy = jnp.sum(py_new - lor_state.py, axis=0)
     dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
 
-    ex_new = lorentz_e_component(lorentz_coeffs, 0, state.ex, curl_x, dpx)
-    ey_new = lorentz_e_component(lorentz_coeffs, 1, state.ey, curl_y, dpy)
-    ez_new = lorentz_e_component(lorentz_coeffs, 2, state.ez, curl_z, dpz)
+    ex_new = lorentz_e_component(lorentz_coeffs, 0, state.ex, curl_x, dpx, state.ex.dtype)
+    ey_new = lorentz_e_component(lorentz_coeffs, 1, state.ey, curl_y, dpy, state.ey.dtype)
+    ez_new = lorentz_e_component(lorentz_coeffs, 2, state.ez, curl_z, dpz, state.ez.dtype)
 
     new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
     new_lor = LorentzState(
@@ -236,18 +241,20 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
 
     p_l_new = tuple(lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c],
-                                        p_l_prev[c]) for c in range(3))
+                                        p_l_prev[c], jnp.promote_types(p_l[c].dtype, e_old[c].dtype))
+                    for c in range(3))
     e_new, p_d_new = [], []
     for c in range(3):
         dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
         ca, cb, cc_d, cc_l = mixed_e_component_coeffs(
             debye_coeffs, lorentz_coeffs, c, dt)
         e_c = (ca * e_old[c] + cb * curls[c]
-               + jnp.sum(cc_d * p_d[c], axis=0) - cc_l * dp_l)
+               + jnp.sum(cc_d * p_d[c], axis=0) - cc_l * dp_l).astype(e_old[c].dtype)
         e_new.append(e_c)
         beta_c = per_component(debye_coeffs.beta, "beta")[c]
-        p_d_new.append(debye_coeffs.alpha * p_d[c]
+        p_d_new.append((debye_coeffs.alpha * p_d[c]
                        + beta_c * (e_c[None] + e_old[c][None]))
+                      .astype(jnp.promote_types(p_d[c].dtype, e_old[c].dtype)))
 
     new_fdtd = state._replace(ex=e_new[0], ey=e_new[1], ez=e_new[2],
                               step=state.step + 1)

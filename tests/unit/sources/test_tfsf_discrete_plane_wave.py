@@ -61,7 +61,7 @@ def test_appendix_h_incident_record_and_shared_dft(pol, direction, reference_ind
                     for c in range(3))
         return st, value
     _, prior = jax.lax.scan(prior_step, zero, jnp.arange(300, dtype=jnp.int32))
-    record = np.asarray(record_incident_line(cfg, 300, DT, indices, cfg.incidence['e_hat']))
+    record = np.asarray(record_incident_line(cfg, state, 300, DT, indices, cfg.incidence['e_hat']))
     assert record.dtype == np.float32
     np.testing.assert_array_equal(record.view(np.uint32), np.asarray(prior).view(np.uint32))
     frequencies = np.linspace(8e9, 12e9, 9)

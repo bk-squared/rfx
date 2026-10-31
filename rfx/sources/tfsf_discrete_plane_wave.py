@@ -362,7 +362,7 @@ def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
         raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    record = record_incident_line(cfg, n_steps, dt, indices, cfg.incidence["e_hat"])
+    record = record_incident_line(cfg, state, n_steps, dt, indices, cfg.incidence["e_hat"])
     return np.asarray(transform(record, freqs, dt, kind="E",
                                 time_shift=-1 if reference_index is None else 0))
 
