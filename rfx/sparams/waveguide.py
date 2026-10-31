@@ -292,7 +292,11 @@ def compute_waveguide_s_matrix(
         warnings.warn(
             "compute_waveguide_s_matrix(normalize=False): S21 and "
             "S-parameter phase include Yee numerical dispersion. "
-            "For S21 accuracy and reciprocity use normalize=True. "
+            "normalize=True removes it from S21 by referring transmission "
+            "to a separate run while reflection stays at the port plane, so "
+            "its reflection and transmission do not share reference planes; "
+            "where the matrix is used as a whole (cascading, de-embedding) "
+            "use normalize='flux'. "
             "For |S11| of strong reflectors (PEC short, resonators) "
             "normalize=False is more accurate — see the normalize "
             "parameter docstring.", AccuracyWarning,
