@@ -44,7 +44,7 @@ so these are directivities, not realized gains.
 
 The gradient is the derivative of the simulated result itself, taken through every
 time step. On a 2.3 GHz patch antenna, the value and the gradient over 43,008 design
-cells take 1.4 times as long as the simulation alone.
+cells take about 2.6 times as long as the simulation alone (rfx v2.0.0, one RTX A6000).
 
 <figure data-rfx="media">
   <video data-rfx="loop" autoplay muted loop playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_poster.png" aria-label="Sensitivity of |S11| to the permittivity of each substrate cell of a patch antenna">
@@ -71,7 +71,7 @@ cells take 1.4 times as long as the simulation alone.
 
 <div data-rfx="cards">
   <section data-rfx="card">
-    <a href="/rfx/showcase/sensitivity-map/"><img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_site.png" loading="lazy" alt="Map of the derivative of |S11|² with respect to the permittivity of each substrate cell under a patch antenna, beside its |S11| curve and its |E_z|² map" /></a>
+    <a href="/rfx/showcase/sensitivity-map/"><img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_poster.png" loading="lazy" alt="Map of the derivative of |S11|² with respect to the permittivity of each substrate cell under a patch antenna (earlier rfx 1.8.0 run, 4-cell mesh)" /></a>
     <h3>Which cells move the match?</h3>
     <p>One reverse pass maps the sensitivity of a patch antenna's |S11| to every substrate cell.</p>
     <p><small>up to 555,984 cells, one pass</small></p>

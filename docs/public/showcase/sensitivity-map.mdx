@@ -6,7 +6,7 @@ sidebar:
 ---
 
 A 39.7 × 49.25 mm patch on 3.175 mm RT/Duroid 5880 (εr 2.2), fed by a 50 Ω
-probe, resonates near 2.36 GHz. We ask how |S11| at f_t, 1 % above the
+probe, has its return-loss minimum near 2.36 GHz. We ask how |S11| at f_t, 1 % above the
 return-loss minimum, changes when the permittivity of any one substrate cell
 changes. rfx answers for every cell under and around the patch with one
 forward and one reverse pass: 20,592 cells on a mesh of 4 cells through the
@@ -26,11 +26,8 @@ rfx v2.0.0.
   <div><strong>21 s</strong> <span>value and gradient on one RTX A6000 (2.5× a forward run, 4-cell mesh)</span></div>
 </div>
 
-<figure data-rfx="media">
-  <img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_site.png" loading="lazy" alt="The sensitivity map, |S11| with f_r and f_t marked, and the |E_z|² panel" />
-</figure>
 
-<p data-rfx="note">The loop and the figure above are from the earlier rfx 1.8.0 run on the 4-cell mesh. A film from the v2.0.0 runs will replace them.</p>
+<p data-rfx="note">The loop above is from the earlier rfx 1.8.0 run on the 4-cell mesh. A film from the v2.0.0 runs will replace it.</p>
 
 ## What the map shows
 
@@ -43,7 +40,7 @@ predicts for the TM010 mode: a local permittivity change shifts the resonance in
 proportion to the local |E_z|², and E_z of this mode peaks at the radiating
 edges and vanishes on the centre line. The map summed through the substrate and |E_z(f_t)|² from the same run
 correlate at r = 0.966 on the 12-cell mesh (0.948 on the 4-cell mesh). The sign is the expected one: raising εr lowers
-the resonance, which moves the return-loss minimum further below 2.356 GHz and
+the resonance, which moves the return-loss minimum further below f_t and
 raises |S11| there.
 
 ## Three meshes
@@ -65,11 +62,11 @@ quotes no |S11| level.
 - Simulation time, on the 12-cell mesh: repeating the gradient with a 1.5×
   longer simulation time changes the judged block sums by at most 7.6×10⁻⁵
   and the whole gradient by 2.7×10⁻⁴, relative.
-- Settling: at every frequency read, on every mesh, the field left after the
-  record adds at most 3.1×10⁻⁴ of the recorded value.
+- Settling: on every mesh, the port signals left after the record add at
+  most 3.1×10⁻⁴ of their largest recorded value over the band.
 - The same board is solved by rfx and by openEMS in the repository's
-  cross-solver test `tests/crossval/rt5880_patch/`: the resonance differs by
-  0.097 % and the input resistance at resonance by 0.42 %; that test does not
+  cross-solver test `tests/crossval/rt5880_patch/`: the frequency of the
+  input-resistance peak differs by 0.097 % and the resistance there by 0.42 %; that test does not
   judge the dip depth.
 
 <p data-rfx="note">This map is for this board; it is not a manufacturing tolerance or a statement about other boards.</p>
