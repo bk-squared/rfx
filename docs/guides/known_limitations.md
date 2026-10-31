@@ -611,11 +611,11 @@ What to do: for a bit-for-bit comparison with one device on x86, use a PEC wall 
 Tracker: #1230
 
 A conductor drawn to an absorbing boundary is continued through the absorber, so
-a grounded board stays grounded inside it. When any mesh axis is traced
-(`dz_profile` and its siblings under `jax.grad`), nothing is continued and a
-`UserWarning` says so: the conductor then stops at the absorber entrance. Draw the
-ground past the domain face by the absorber thickness, which fills every absorber
-cell except the outermost row on the +x and +y faces.
+a grounded board stays grounded inside it.
+With the mesh as a design variable (a `dx_profile`, `dy_profile` or `dz_profile` traced under `jax.grad`, `jax.jvp` or `jax.jit`), a conductor that reaches an absorbing face stops at the absorber entrance instead of continuing into it, and one warning says so.
+On a grounded-board test at the default 16 absorber layers, this changed S11 by 5–9 % of its peak and its gradient by 6–8 %, independent of absorber depth.
+Workaround: keep that mesh axis concrete (pass the profile as a NumPy array) for such a run.
+A refusal replaces the warning in 2.0.1.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ### A plane wave requires compatible transverse faces and an invariant absorber replacement.
