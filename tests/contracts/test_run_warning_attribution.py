@@ -1,6 +1,7 @@
 """Solve warnings name this caller despite runner, decorator and JAX frames."""
 import functools
 import inspect
+import os
 import warnings
 
 import jax
@@ -36,6 +37,17 @@ def test_stacklevel_counts_from_warn_caller():
     assert warning.filename == __file__
     assert warning.lineno == line
 
+
+
+@pytest.mark.parametrize("filename", [os.path.join("myjax", "user_mod.py"), "<ipython-input-1-abc>"])
+def test_user_frame_is_judged_by_module_not_path(filename):
+    # A user folder ending in "jax" and an IPython cell are the user's code.
+    code = compile("warnings.warn('user code', stacklevel=user_stacklevel())\n", filename, "exec")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        exec(code, {"__name__": "__main__", "warnings": warnings, "user_stacklevel": user_stacklevel})
+    warning, = caught
+    assert (warning.filename, warning.lineno) == (filename, 1)
 
 @pytest.mark.parametrize("case,text", [
     ("min-steps", "zero energy checks"),
