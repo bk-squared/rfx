@@ -768,14 +768,8 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     nodes = (coords.x, coords.y, coords.z)
     traced_axes = tuple(a for a, n in enumerate(nodes) if is_tracer(n))
     if traced_axes:
-        reason = ("mesh axis " + ", ".join("xyz"[a] for a in traced_axes)
-                  + " is traced; conductor continuation is disabled on every face")
-        findings = [UnextendableShape(
-            shape, traced_axes[0], "all", reason, conductor=True)]
-        if unextendable is not None:
-            unextendable.extend(findings)
-        else:
-            warn_unextendable_shapes(findings)
+        from rfx.geometry._traced_conductor import refuse_traced_conductor_at_absorber
+        refuse_traced_conductor_at_absorber(sim, grid, shape, traced_axes)
         return shape
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
