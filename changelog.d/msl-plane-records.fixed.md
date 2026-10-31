@@ -1,0 +1,9 @@
+### Fixed — MSL and mixed-port S-matrix runs kept a per-time-step copy of every user DFT plane; they now record only the port planes the settling check reads (#PR)
+
+- `compute_msl_s_matrix` and `compute_mixed_s_matrix` allocated, for every plane added with
+  `add_dft_plane_probe`, an array of n_steps × plane cells on the device. On a synthetic line with
+  8 user planes of 5,329 cells, peak host memory grew by 2.8 GB from 2,000 to 8,000 steps; a large
+  plane on a long run ran out of GPU memory.
+- A user plane on these runs now costs only its frequency accumulator, as on a plain `run()`.
+  S, the plane accumulators and `settling_db` are unchanged.
+- `dft_time_records` of these runs holds only the port planes the settling check reads.
