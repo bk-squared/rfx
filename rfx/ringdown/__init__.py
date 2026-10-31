@@ -125,6 +125,7 @@ import numpy as np
 
 from rfx.measurement.ringdown_model import RingdownModel, RingdownPole, _as_2d, _cmul
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+from rfx.measurement.ringdown_resolution import _static_pole, _zero_frequency
 
 # Import the module explicitly for its matrix-pencil planning helpers.
 _harminv = import_module("rfx.harminv")
@@ -564,28 +565,6 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     value = float(np.max(np.abs(np.asarray(obs(spectra), dtype=np.complex128)
                                 - np.asarray(obs(spectra_long), dtype=np.complex128))))
     return EarlyStartWitness(value, spectra_long, model_long, n_long)
-
-
-def _zero_frequency(f_hz: float, record_s: float) -> bool:
-    """``|f| < 1 / record``: the record cannot tell this pole's frequency from DC.
-
-    The one definition the growing-pole exemption (:func:`growing_poles`) and
-    the early stop's floor (:func:`_floor_pole`) share.
-    """
-    return abs(float(f_hz)) < 1.0 / float(record_s)
-
-
-def _static_pole(p: RingdownPole, record_s: float, unit_tol: float) -> bool:
-    """A static field: ``|f| < 1 / record`` and ``|1 - |lambda|| < unit_tol``.
-
-    A field left behind in a closed box identifies as a pole the record cannot
-    tell from DC (:func:`_zero_frequency`) on the unit circle to rounding
-    (rfx #1254, the Q 533 cavity). The one definition the growing-pole
-    exemption (:func:`growing_poles`) and the early stop's floor
-    (:func:`_floor_pole`) share; a decaying low-frequency mode is not one.
-    """
-    return (_zero_frequency(p.f_hz, record_s)
-            and abs(p.abs_lambda - 1.0) < float(unit_tol))
 
 
 # ---------------------------------------------------------------------------
