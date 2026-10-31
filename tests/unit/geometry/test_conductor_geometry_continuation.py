@@ -301,9 +301,9 @@ def test_occupied_layer_reaches_without_a_declared_face(axis, side, kind):
 
 
 
-def test_one_traced_mesh_axis_keeps_every_conductor_face_declared():
+def test_one_traced_mesh_axis_refuses_every_reached_absorbing_face():
     import jax
-    import jax.numpy as jnp
+    from rfx._traced_refusal import TracedStructureRefusal
 
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2, dz_profile=np.ones(8))
@@ -318,21 +318,12 @@ def test_one_traced_mesh_axis_keeps_every_conductor_face_declared():
     @jax.jit
     def traced(dz):
         traced_grid = grid._replace(dz=dz)
-        first_findings, second_findings = [], []
-        first = continued_conductor_shape(sim, traced_grid, shape, unextendable=first_findings)
-        second = continued_conductor_shape(sim, traced_grid, shape, unextendable=second_findings)
-        assert len(first_findings) == len(second_findings) == 1
-        from rfx.geometry.smoothing import warn_unextendable_shapes
-        warn_unextendable_shapes(first_findings)
-        return jnp.asarray((first.corner_lo, first.corner_hi,
-                            second.corner_lo, second.corner_hi))
+        continued_conductor_shape(sim, traced_grid, shape, unextendable=[])
+        return dz
 
-    with pytest.warns(UserWarning, match="mesh axis z is traced") as caught:
-        actual = np.asarray(traced(grid.dz))
-    assert len(caught) == 1
-    assert not hasattr(sim, "_conductor_traced_warning")
-    traced.clear_cache()
-    with pytest.warns(UserWarning, match="mesh axis z is traced"):
+    with pytest.raises(TracedStructureRefusal, match="x-lo, x-hi, y-lo, y-hi") as caught:
         traced(grid.dz)
-    np.testing.assert_array_equal(actual, np.asarray([
-        (0., 0., 2.), (8., 8., 6.), (0., 0., 2.), (8., 8., 6.)]))
+    assert "mesh axis z is traced" in str(caught.value)
+    assert "dz_profile" in str(caught.value)
+    with pytest.raises(TracedStructureRefusal):
+        traced(grid.dz)
