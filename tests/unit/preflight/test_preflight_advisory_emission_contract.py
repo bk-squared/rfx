@@ -53,7 +53,7 @@ S2. The per-ENTRY-POINT classification below (``EMISSION_CLASSIFICATION``).
     ``preflight()``/``_auto_preflight()`` at all, regardless of which
     check would have fired. Classification is cross-checked against a
     measured call-graph (AST walk, following same-class ``self.foo()``
-    calls transitively), in BOTH directions: a stale ``"auto"`` claim
+    and resolved module-function calls transitively), in BOTH directions: a stale ``"auto"`` claim
     that no longer calls preflight fails, and a stale ``"diagnostic_only"``
     claim that NOW calls preflight (a silent re-widening of the
     unreachable set -- the exact failure mode #737 exists to stop) also
@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import pytest
 import ast
+import importlib
 import inspect
 import textwrap
 from rfx.optimize import optimize as _optimize_fn
@@ -498,7 +499,7 @@ DIAGNOSTIC_ONLY = "diagnostic_only"  # produces a result; calls neither
 # directions (test_emission_classification_matches_measured_reachability).
 EMISSION_CLASSIFICATION = {
     "Simulation.run": (
-        AUTO, "calls self._auto_preflight() directly, rfx/api/_execute.py"),
+        AUTO, "calls self._auto_preflight() through rfx.runners.run.run_after_admission (rfx/runners/run.py)"),
     "Simulation.forward": (
         AUTO, "calls self._auto_preflight() directly, rfx/api/_execute.py"),
     "optimize.optimize": (
@@ -581,20 +582,28 @@ def _exported_surface() -> dict:
 def _reaches_preflight(func, _seen=None) -> bool:
     """Does ``func`` call preflight()/_auto_preflight()/preflight_sparameters
     anywhere in its own body, or transitively through a same-class
-    ``self.<method>(...)`` call chain?
+    ``self.<method>(...)`` or resolved module-function call chain?
 
     AST-based (no execution): walks ``self.foo(...)`` calls and, when
     ``foo`` resolves to another method on ``Simulation``'s MRO, recurses
     into it (memoized against ``_seen`` to bound cycles). This is what
     makes S2 real teeth rather than a one-hop grep -- an indirection added
     between an entry point and the actual preflight call is still caught.
+    Plain-name calls resolve through body-local from-imports (including
+    aliases), then globals. Only Python functions in rfx are followed;
+    decorated functions are unwrapped before inspecting their bodies.
     """
+    func = inspect.unwrap(func)
+    module_name = getattr(func, "__module__", "") or ""
+    if not inspect.isfunction(func) or not (
+            module_name == "rfx" or module_name.startswith("rfx.")):
+        return False
     if _seen is None:
         _seen = set()
     qualname = getattr(func, "__qualname__", repr(func))
-    if qualname in _seen:
+    if func in _seen:
         return False
-    _seen.add(qualname)
+    _seen.add(func)
 
     owner_name = qualname.rsplit(".", 1)[0] if "." in qualname else None
     owner_cls = None
@@ -604,10 +613,33 @@ def _reaches_preflight(func, _seen=None) -> bool:
             break
 
     tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
+    parameters = tree.body[0].args.posonlyargs + tree.body[0].args.args
+    if owner_cls is None and parameters and parameters[0].arg in {"self", "sim"}:
+        owner_cls = Simulation
+    local_imports = {
+        alias.asname or alias.name: (node, alias.name)
+        for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         f = node.func
+        if isinstance(f, ast.Name):
+            if f.id in local_imports:
+                imported, name = local_imports[f.id]
+                module_name = importlib.util.resolve_name(
+                    "." * imported.level + (imported.module or ""),
+                    func.__globals__.get("__package__"),
+                )
+                if not (module_name == "rfx" or module_name.startswith("rfx.")):
+                    continue
+                callee = getattr(importlib.import_module(module_name), name, None)
+            else:
+                callee = func.__globals__.get(f.id)
+            if inspect.isfunction(callee) and _reaches_preflight(callee, _seen):
+                return True
+            continue
         # Bound methods called as ``self.foo(...)`` (Simulation methods) or
         # ``sim.foo(...)`` (the module-level orchestrators optimize() /
         # topology_optimize(), which take the Simulation as a parameter
@@ -646,6 +678,15 @@ def test_every_functional_entry_point_is_emission_classified():
         "Remove them from the table in "
         "tests/unit/preflight/test_preflight_advisory_emission_contract.py."
     )
+
+
+@pytest.mark.source_scan
+def test_run_body_calls_auto_preflight_itself():
+    """One hop: the broad scan also finds conditional preflight calls deeper on the multi-device route."""
+    from rfx.runners.run import run_after_admission
+    tree = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(run_after_admission))))
+    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+               and n.func.attr == "_auto_preflight" for n in ast.walk(tree))
 
 
 @pytest.mark.source_scan

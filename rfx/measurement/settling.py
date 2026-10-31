@@ -1,6 +1,7 @@
 """Settling measurements from named port records."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import math
@@ -141,7 +142,7 @@ def warn_postrun_energy_witness(
                 "no field energy was recorded — the source may not have "
                 "coupled (position off-grid, wrong component, or zero "
                 "amplitude)", AccuracyWarning,
-                stacklevel=4,
+                stacklevel=user_stacklevel(),
             )
             return
 
@@ -161,7 +162,7 @@ def warn_postrun_energy_witness(
                     "truncated; Harminv/DFT/NTFF quantities may carry "
                     "transient error; consider until_decay or more periods"
                     "", AccuracyWarning,
-                    stacklevel=4,
+                    stacklevel=user_stacklevel(),
                 )
         return
 
@@ -177,7 +178,7 @@ def warn_postrun_energy_witness(
             "no field energy was recorded — the source may not have "
             "coupled (position off-grid, wrong component, or zero "
             "amplitude)", AccuracyWarning,
-            stacklevel=4,
+            stacklevel=user_stacklevel(),
         )
 
 
@@ -268,7 +269,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             f"{witness['reason']}. This {operation} requests NTFF and/or "
             "field-DFT output, so its truncation is unguarded; "
             "settling_db is None, which is not a pass.", AccuracyWarning,
-            stacklevel=4,
+            stacklevel=user_stacklevel(),
         )
     elif witness.get("source_dominated"):
         # A RUNTIME warning, not a preflight advisory: the emission
@@ -287,7 +288,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             "is a source turn-off measurement, so this "
             f"{operation}'s NTFF/field-DFT output is effectively "
             "unguarded.", AccuracyWarning,
-            stacklevel=4,
+            stacklevel=user_stacklevel(),
         )
     return result
 

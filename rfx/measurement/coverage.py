@@ -1,5 +1,6 @@
 """Record-end coverage of returned frequency-domain accumulators."""
 from rfx.errors import AccuracyWarning
+from rfx._warning_origin import user_stacklevel
 from dataclasses import dataclass
 from itertools import product
 
@@ -115,5 +116,5 @@ def warn_uncovered(witness):
               if db is None or db != db else "record-end settling coverage")
     warnings.warn(f"{prefix}: {failed['name']}: {failed['verdict']} "
                   f"(record step {failed['n_record']}, end step {failed['end_step']})",
-                  AccuracyWarning, stacklevel=4)
+                  AccuracyWarning, stacklevel=user_stacklevel())
     return True

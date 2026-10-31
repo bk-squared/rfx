@@ -27,8 +27,14 @@ def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_reco
         and len(wire_ports) == 1
         and bool(result.wire_port_sparams)
     )
+    if _single_lumped_main_record or _single_wire_fastpath:
+        pairs = result.lumped_port_sparams if _single_lumped_main_record else result.wire_port_sparams
+        from rfx.core.jax_utils import is_tracer
+        if any(is_tracer(channel) for _, channels in pairs for channel in channels):
+            raise NotImplementedError(
+                "run() cannot assemble port S-parameters inside a user jax.jit; "
+                "use forward() with port_s11_freqs or call run() directly (plain call).")
     if _single_lumped_main_record:
-        pairs = result.lumped_port_sparams
         s_params = np.asarray(port_s_from_record(
             [channels for _, channels in pairs], [meta for meta, _ in pairs],
             wire_mode=False))
@@ -37,7 +43,6 @@ def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_reco
     elif _single_wire_fastpath:
         # The main record supplies the complete one-wire matrix. Multiple
         # wire ports need the driver to measure the off-diagonal columns.
-        pairs = result.wire_port_sparams
         s_params = np.asarray(port_s_from_record(
             [channels for _, channels in pairs], [meta for meta, _ in pairs],
             wire_mode=True))

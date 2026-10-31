@@ -6,6 +6,7 @@ via a coordinate-provider abstraction.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, RfxRefusal
 
@@ -193,7 +194,7 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             "which flips half-open inclusion at node-aligned faces"
             ". Build the grid with make_nonuniform_grid, or set the "
             "spine fields from the float64 profile.",
-            ExactNodeSpineMissingWarning, stacklevel=2)
+            ExactNodeSpineMissingWarning, stacklevel=user_stacklevel())
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 

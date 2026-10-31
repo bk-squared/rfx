@@ -9,6 +9,7 @@ error is first order, a radius about 0.2 cell large against the staircase's 0.7.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import warnings
@@ -65,7 +66,7 @@ def warn_conformal_model():
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
     """
-    warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=3)
+    warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=user_stacklevel())
 
 
 # ---------------------------------------------------------------------------

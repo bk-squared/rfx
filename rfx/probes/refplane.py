@@ -58,6 +58,7 @@ accumulators).
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import warnings
@@ -581,7 +582,7 @@ def decompose_wire_s_matrix_with_reference_planes(
                     "canonical thru). The plane off-diagonals may be "
                     "biased; increase reference_plane_cells so both planes "
                     "(N and 2N cells) sit >= 10 cells from every port.",
-                    AccuracyWarning, stacklevel=2)
+                    AccuracyWarning, stacklevel=user_stacklevel())
             out1, in1 = refplane_split(v1, i1, zc[p], outboard_signs[p])
             out2, in2 = refplane_split(v2, i2, zc[p], outboard_signs[p])
             d_sep = int(plane_offsets[p]) * float(dx)

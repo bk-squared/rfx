@@ -42,6 +42,7 @@ placement there is refused/flagged by preflight P1.9 (geometry-in-CPML).
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, RfxRefusal
 
@@ -957,5 +958,5 @@ def warn_sheet_planes_inside_dielectric(sheets, eps_r) -> None:
             "dielectric bodies up to the sheet plane, or move the sheet to "
             "the interface. Nothing is re-sampled.",
             AccuracyWarning,
-            stacklevel=3,
+            stacklevel=user_stacklevel(),
         )
