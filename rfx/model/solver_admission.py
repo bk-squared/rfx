@@ -12,7 +12,7 @@ def admit_solver(solver, adi_cfl_factor=None):
     """Refuse removed declarations before any grid is built."""
     if adi_cfl_factor is not None:
         raise ValueError(ADI_REMOVED)
-    if solver not in {"yee"}:
+    if solver not in ("yee",):
         if solver == "adi":
             raise ValueError(ADI_REMOVED)
         raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")

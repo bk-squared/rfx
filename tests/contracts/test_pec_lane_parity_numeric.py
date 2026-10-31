@@ -6,10 +6,6 @@ SHEET, and no solver lane applied it — a sheet owns no cell, and every
 solve entry took only ``pec_mask``. A simulation with a sheet-declared
 ground plane ran as if the metal were not there.
 
-So this file drives the actual lanes and compares fields. ADI's unstable
-interior-PEC projection is refused; its contract below pins that refusal
-and checks that declared sheets and wires still reach the shared owner.
-
 Battery, on a 20 mm PEC-walled box at dx = 1 mm with an Ez source below
 the conductor and a probe above it:
 

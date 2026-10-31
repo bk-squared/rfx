@@ -32,8 +32,7 @@ def model(path='uniform_run', *, boundary='pec'):
     kw = {}
     if 'graded' in path:
         kw['dy_profile'] = np.array([1] + [.9, 1.1] * 7 + [1]) * DX
-    if path.startswith('adi'):
-        kw['solver'] = 'adi'
+    pass
     sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, boundary=boundary, **kw)
     if path.startswith('subgrid'):
         sim.add_refinement((0, DOMAIN[2]), ratio=2, validation='off')
@@ -124,8 +123,7 @@ def test_b2_path_zero_sets(path, record_property):
 @pytest.mark.parametrize('case', WALL_CASES)
 @pytest.mark.parametrize('amplitude_kind', ('current', 'field'))
 def test_b3_soft_wall(path, case, amplitude_kind):
-    if path.startswith('adi') and amplitude_kind == 'current':
-        pytest.skip('ADI does not take current-amplitude sources')
+    pass
     face, position, component = case
     sim = model(path)
     pos = tuple(v * DX for v in position)
@@ -278,7 +276,7 @@ def test_b3_control_admission(path, case):
     sim = model(path, boundary=boundary)
     component = 'ex' if case == 'normal' else 'ez'
     sim.add_source((DX if case == 'inside' else 0, 7 * DX, 5 * DX), component,
-                   amplitude_kind='field' if path.startswith('adi') else 'current')
+                   amplitude_kind='current')
     sim.add_probe((4 * DX, 7 * DX, 5 * DX), component)
     sim.add_probe((13 * DX, 9 * DX, 4 * DX), component)
     result = execute(sim, path, steps=2)
@@ -288,7 +286,7 @@ def test_b3_control_admission(path, case):
 
 @pytest.mark.parametrize('solver', ('yee'))
 def test_private_material_forward_refuses(solver):
-    sim = model('adi_forward' if solver == 'adi' else 'uniform_forward')
+    sim = model('uniform_forward')
     sim.add_source((0, 7 * DX, 5 * DX), 'ez', amplitude_kind='field')
     grid = sim._build_grid()
     root = realized_conductors(sim, grid)

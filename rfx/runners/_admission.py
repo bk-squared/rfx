@@ -462,6 +462,7 @@ _NO_SHEETS = _OTHER_RUNNERS - {"run_subgridded", "run_distributed"}
 _PEC_EDGES = _NO_SHEETS | {"run_distributed"} | _DISTRIBUTED_NU
 
 _ADMITTED_ON: dict[Row, frozenset] = {
+    ("_solver", ""): frozenset(),
     ("_freq_max", ""): _OTHER_RUNNERS,
     ("_domain", ""): _OTHER_RUNNERS,
     ("_dx", ""): _OTHER_RUNNERS,
@@ -1240,7 +1241,7 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     default_requested = (
         compute_s_params is None
         and sim._refinement is None
-       
+
         and any(pe.impedance != 0.0
                 and (not sim._uses_nonuniform_mesh or pe.extent is not None
                      or getattr(pe, "excite", True)) for pe in sim._ports)

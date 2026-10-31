@@ -5,8 +5,7 @@ Two named, boundary- and mesh-INDEPENDENT amplitude kinds:
 ``'current'``
     The waveform is a current moment I(t) in A·m; realized as
     ``E += Cb * I / dV`` on every path and boundary
-    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``; ADI refuses
-    ``'current'`` and requires explicit ``'field'``;
+    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``;
     ``dV`` = local cell volume). This is the non-uniform path's native convention
     (Meep-style, resolution-independent injected power) and the declaration default.
 

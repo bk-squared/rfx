@@ -236,7 +236,7 @@ def test_radius_refuses_dispersive_board_before_step(lane, kind, monkeypatch):
                                    "distributed_v2", "distributed_nu", "upml"])
 def test_unsupported_radius_path_refuses_before_first_step(entry, monkeypatch):
     from rfx.runners.distributed_v2 import run_distributed
-    options = dict(solver="adi") if entry.startswith("adi") else {}
+    options = {}
     if entry == "distributed_nu":
         options["dx_profile"] = np.full(12, .0005)
     sim = Simulation(freq_max=30e9, domain=(.006,)*3, dx=.0005,
@@ -252,8 +252,6 @@ def test_unsupported_radius_path_refuses_before_first_step(entry, monkeypatch):
         elif entry == "distributed_nu":
             sim.forward(n_steps=1, distributed=True, devices=jax.devices("cpu")[:2],
                         skip_preflight=True)
-        elif entry == "adi_forward":
-            sim.forward(n_steps=1, skip_preflight=True)
         else:
             sim.run(n_steps=1, skip_preflight=True)
 

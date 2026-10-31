@@ -1253,8 +1253,7 @@ def require_accumulated_current_moments(sim, result, context: str) -> None:
 
     The per-lane refusals (:func:`refuse_current_moment_monitor`) name the
     lanes known not to accumulate the monitor, and a list like that is only as
-    complete as the last person to add a runner made it: the ADI lane was
-    missing from it until a reviewer ran one. This is the check that does not
+    complete as the last person to add a runner made it. This check does not
     need the list. It sits where ``run()`` and ``forward()`` hand their result
     back, and refuses a result whose ``current_moment_data`` is empty although
     a monitor was declared. It costs the whole run before it fires, so the

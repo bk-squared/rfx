@@ -2051,6 +2051,9 @@ def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
     # Older documents use defaults for optional solver keys they do not carry.
     document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
+    if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:
+        document = {**document, "solver": {key: value for key, value in document["solver"].items()
+                                          if key != "adi_cfl_factor"}}
     if _equal(rebuilt, document):
         return
     where = _first_difference(rebuilt, document) or "<unknown>"

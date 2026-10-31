@@ -621,28 +621,6 @@ def test_hy_probe_inside_thick_pec_volume_still_warns():
     )
 
 
-# ---------------------------------------------------------------------------
-# Item #3 (LLM-naive-usage audit) — pec_boundary_open advisory: R2-STOP lock.
-#
-# The audit asked whether the ``pec_boundary_open`` advisory
-# (``_validate_cfg_pec_boundary_open_structure``) should be UNGATED from its
-# ``self._ntff is not None`` condition so an open radiator read via a near-field
-# probe / S11 alone (no NTFF box) also warns. Investigation (2026-07-09)
-# R2-STOPPED that ungating: NTFF is the SOLE radiation-intent signal on the
-# Simulation config (there is no directivity / far-field / "radiate" flag), so
-# a source (and/or a finite PEC object) inside a ``boundary="pec"`` domain is
-# config-IDENTICAL between an open radiator that mistakenly used PEC and a
-# legitimate closed cavity / internal-PEC numerics test. The committed suite is
-# full of the latter — e.g. ``test_adi.py::
-# test_simulation_adi_internal_pec_geometry_masks_ez`` (PEC Box in a pec box +
-# source), ``test_extract_s_matrix_pec_mask.py``, ``test_conformal.py::
-# test_api_conformal_flag`` (PEC cylinder in a pec box + port). Any broadening
-# that catches the footgun would false-alarm all of them, and a false-alarming
-# preflight erodes trust worse than the silent gap. These tests LOCK that
-# decision: the NTFF-declared open radiator still warns; the valid closed
-# structures must stay silent so a future well-meaning ungating cannot regress
-# them unnoticed.
-# ---------------------------------------------------------------------------
 def test_pec_boundary_open_still_warns_when_ntff_declared():
     """Radiation intent (an NTFF box) + boundary='pec' must still warn —
     the existing, principled gate is preserved by the R2-STOP."""
@@ -657,11 +635,7 @@ def test_pec_boundary_open_still_warns_when_ntff_declared():
 
 
 def test_pec_cavity_with_internal_pec_object_stays_silent():
-    """FALSE-POSITIVE lock: a source + finite PEC object inside a pec box
-    (the ``test_adi`` internal-PEC-masks-Ez / ``test_conformal`` patterns) is a
-    VALID closed structure and must NOT emit pec_boundary_open. This is the
-    population that any ntff-ungating would false-alarm — the reason #3 was
-    R2-STOPPED."""
+    """Shared checks for the supported solver paths."""
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                      boundary="pec")
     sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.01)), material="pec")

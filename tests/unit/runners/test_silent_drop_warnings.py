@@ -1,18 +1,5 @@
 """A ``Simulation.run`` argument a lane does not implement is refused.
 
-Before 2.0 the distributed, non-uniform, subgridded and ADI lanes warned
-that an argument "is silently ignored" and ran without it, so the result
-was a different computation from the one requested: a staircase PEC
-instead of the Dey-Mittra conformal boundary (``conformal_pec``), scalar
-eps at interfaces instead of the smoothed tensor (``subpixel_smoothing``),
-a fixed ``n_steps`` instead of a run to decay (``until_decay``), no field
-snapshot (``snapshot``), a full AD tape instead of checkpointing
-(``checkpoint``), an S-parameter record of the wrong length
-(``s_param_n_steps``). Each of those now raises ``NotImplementedError``
-naming the argument and the lane, before any time step. The rows below pin
-every (lane x argument) pair that refuses; the controls pin that the same
-argument still runs on a lane that implements it.
-
 ``report_every`` only prints progress, so it stays a warning.
 
 The file keeps its old name because other files cite it. It also carries
@@ -109,7 +96,7 @@ LANES = {
     "non-uniform": (_nu_sim, "non-uniform mesh", {}),
     "distributed": (_distributed_sim, "distributed multi-device", None),
     "subgridded": (_subgrid_sim, "subgridded (SBP-SAT)", {}),
-    
+
 }
 
 REFUSED = [

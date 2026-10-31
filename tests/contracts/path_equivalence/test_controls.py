@@ -150,7 +150,7 @@ def test_refusal_tripwire_covers_query_and_message(monkeypatch, stage):
     from types import SimpleNamespace
     from . import execution
     cell = SimpleNamespace(id='refusal-canary', equivalence=False, row=('_freq_max', ''),
-                           refused='run_adi', graded=False, steps=0)
+                           refused='run_uniform', graded=False, steps=0)
     monkeypatch.setattr(execution, 'build', lambda *args, **kwargs: object())
     monkeypatch.setitem(admission.DETECTORS, cell.row, lambda sim: True)
     monkeypatch.setattr(admission, 'refused', lambda *args: [cell.row])
@@ -169,7 +169,7 @@ def test_assembly_fingerprint_preserves_caller_and_message():
     from pathlib import Path
     from .reporting import fingerprint
     root = Path(__file__).resolve().parents[3]
-    message = f'ValueError: classified, but {root}/rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector.'
+    message = f'ValueError: classified, but {root}/rfx/runners/_admission.py:804 in _material_guard() passed no pec_sheets/pec_wires collector.'
     expected = message.replace(str(root) + '/', '')
     assert fingerprint(message) == expected
     assert fingerprint(message.replace(':804', ':805')) != expected

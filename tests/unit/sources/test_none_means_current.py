@@ -1,4 +1,4 @@
-"""Declaration defaults and ADI field-only admission (#1373)."""
+"""Shared checks for the supported solver paths."""
 import warnings
 
 import numpy as np

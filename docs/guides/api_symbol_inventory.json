@@ -4,12 +4,6 @@
     "ADCompiledMemoryCertificate": {
       "kind": "class"
     },
-    "ADIState2D": {
-      "kind": "class"
-    },
-    "ADIState3D": {
-      "kind": "class"
-    },
     "ADMemoryActionHint": {
       "kind": "class"
     },
@@ -321,38 +315,6 @@
     },
     "WireSpec": {
       "kind": "class"
-    },
-    "adi_step_2d": {
-      "kind": "function",
-      "params": [
-        "ez",
-        "hx",
-        "hy",
-        "eps_r",
-        "sigma",
-        "dt",
-        "dx",
-        "dy",
-        "ez_pec_mask"
-      ]
-    },
-    "adi_step_3d": {
-      "kind": "function",
-      "params": [
-        "ex",
-        "ey",
-        "ez",
-        "hx",
-        "hy",
-        "hz",
-        "eps_r",
-        "sigma",
-        "dt",
-        "dx",
-        "dy",
-        "dz",
-        "pec_edge_masks"
-      ]
     },
     "analyze_features": {
       "kind": "function",
@@ -1911,46 +1873,6 @@
         "port_record_specs"
       ]
     },
-    "run_adi_2d": {
-      "kind": "function",
-      "params": [
-        "ez",
-        "hx",
-        "hy",
-        "eps_r",
-        "sigma",
-        "dt",
-        "dx",
-        "dy",
-        "n_steps",
-        "sources",
-        "probes",
-        "ez_pec_mask",
-        "cpml_params",
-        "cpml_state"
-      ]
-    },
-    "run_adi_3d": {
-      "kind": "function",
-      "params": [
-        "ex",
-        "ey",
-        "ez",
-        "hx",
-        "hy",
-        "hz",
-        "eps_r",
-        "sigma",
-        "dt",
-        "dx",
-        "dy",
-        "dz",
-        "n_steps",
-        "sources",
-        "probes",
-        "pec_edge_masks"
-      ]
-    },
     "run_batch_with_manifest": {
       "kind": "function",
       "params": [
@@ -2276,15 +2198,6 @@
       "params": [
         "freq",
         "z_target"
-      ]
-    },
-    "thomas_solve": {
-      "kind": "function",
-      "params": [
-        "a",
-        "b",
-        "c",
-        "d"
       ]
     },
     "topology_optimize": {

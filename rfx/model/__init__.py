@@ -86,6 +86,7 @@ from rfx.model.waveguide_waveform import (
 )
 
 __all__ = [
+    "admit_solver",
     "admit_graded_profiles",
     "admit_thin_conductor",
     "apply_material_overrides",
@@ -138,3 +139,5 @@ __all__ = [
     "with_graded_edge_keep",
     "with_sheet_layout_reports",
 ]
+
+from rfx.model.solver_admission import admit_solver  # noqa: F401

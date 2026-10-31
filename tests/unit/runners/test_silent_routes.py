@@ -43,8 +43,7 @@ def _sim(
      snap="declared")
     assert_declared_wall_warning(sim)
     z_shift = 0.004 if periodic_tfsf else 0.0
-    if solver != "adi":
-        sim.add(Sphere(center=(0.0061, 0.0062, 0.0064 + z_shift), radius=0.0012), material="pec")
+    sim.add(Sphere(center=(0.0061, 0.0062, 0.0064 + z_shift), radius=0.0012), material="pec")
     sim.add_material("design", eps_r=2.0)
     if not tfsf:
         sim.add(Box((0.002, 0.002, 0.002), (0.003, 0.004, 0.004)), material="design")
@@ -320,25 +319,21 @@ def _no_pec(kind):
     nothing."""
     kw = dict(freq_max=10e9, domain=(0.0123, 0.0131, 0.0127), dx=0.001,
               cpml_layers=4, boundary="cpml")
-    if kind == "adi":
-        kw["solver"] = "adi"
-        kw["boundary"] = "pec"
+    pass
     if kind == "graded":
         kw["dz_profile"] = np.array([0.001] * 6 + [0.0007] * 4 + [0.001] * 4)
         kw["domain"] = (0.0123, 0.0131, float(np.sum(kw["dz_profile"])))
     sim = Simulation(**kw, snap="declared")
     assert_declared_wall_warning(sim)
     sim.add_material("d", eps_r=2.0)
-    # ADI refuses a material interface (#1373): its dielectric fills the box.
-    lo, hi = (((0.0, 0.0, 0.0), kw["domain"]) if kind == "adi"
-              else ((0.002, 0.002, 0.002), (0.004, 0.004, 0.004)))
+    lo, hi = (((0.002, 0.002, 0.002), (0.004, 0.004, 0.004)))
     sim.add(Box(lo, hi), material="d")
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     if kind == "uniform":
         sim.add_port((0.006, 0.006, 0.006), "ez", impedance=50.0, waveform=pulse)
     else:
         sim.add_source((0.006, 0.006, 0.006), "ez", waveform=pulse,
-                       amplitude_kind="field" if kind == "adi" else None)
+                       amplitude_kind=None)
     sim.add_probe((0.008, 0.006, 0.006), "ez")
     return sim
 

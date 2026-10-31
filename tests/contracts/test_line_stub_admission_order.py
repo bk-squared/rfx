@@ -35,15 +35,7 @@ def test_uninspectable_shape_defers_to_execution_checks(method, monkeypatch):
         getattr(sim, method)(skip_preflight=True)
 
 
-@pytest.mark.parametrize('method,match', [
-    ('run', 'not wired'), ('forward', 'not wired'),
-    ('_forward_from_materials', 'Conformal PEC'),
-    ('compute_msl_s_matrix', "solver='adi'"),
-    ('compute_mixed_s_matrix', 'at least one sparam-eligible'),
-    ('compute_coaxial_line_reflection', 'constructs the complete line'),
-    ('compute_coaxial_two_port', 'constructs the complete line'),
-    ('compute_coax_msl_transition', 'exactly one add_coaxial_port'),
-])
+@pytest.mark.parametrize('method,match', [('run', 'not wired'), ('forward', 'not wired'), ('_forward_from_materials', 'Conformal PEC'), ('compute_mixed_s_matrix', 'at least one sparam-eligible'), ('compute_coaxial_line_reflection', 'constructs the complete line'), ('compute_coaxial_two_port', 'constructs the complete line'), ('compute_coax_msl_transition', 'exactly one add_coaxial_port')])
 def test_declaration_refusal_precedes_stub_mesh_planning(method, match, monkeypatch):
     sim = Simulation(domain=(.02, .01, .01), dx=.001, freq_max=10e9,
                      boundary='cpml', cpml_layers=2)
@@ -52,8 +44,6 @@ def test_declaration_refusal_precedes_stub_mesh_planning(method, match, monkeypa
     kwargs = {}
     if method in ('run', 'forward') or method.startswith('compute_coaxial'):
         sim.add_coaxial_port((.005, .005, .004), face='bottom')
-    if method == 'compute_msl_s_matrix':
-        sim._solver = 'adi'
     if method == 'compute_coax_msl_transition':
         kwargs['junction_x'] = .01
     if method == '_forward_from_materials':

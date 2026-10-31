@@ -334,10 +334,6 @@ def test_c6_other_refusals(monkeypatch,refusal):
     elif refusal=='distributed':
         with pytest.raises(NotImplementedError,match="takes none of forward\\(\\)'s override or design arguments"):
             sim.forward(distributed=True,**kwargs)
-    elif refusal=='adi':
-        sim._solver='adi'
-        with pytest.raises(ValueError,match="solver='adi' does not support pec_occupancy_override"):
-            sim.forward(**kwargs)
     else:
         sim.add_refinement(z_range=(.003,.007),ratio=2)
         with pytest.raises(NotImplementedError,match='refinement|subgrid'):

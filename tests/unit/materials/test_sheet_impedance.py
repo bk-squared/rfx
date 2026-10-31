@@ -607,21 +607,12 @@ def test_g9_distributed_runners_refuse():
 
 
 def test_g9_refusal_helper_message_names_the_lane():
-    """UNIT test of the helper's message formatting ONLY.
-
-    It proves nothing about whether any lane calls the helper: delete
-    ``refuse_f0_sheets(self._thin_conductors, "ADI run()")`` from
-    ``rfx/api/_execute.py`` and this test stays green (measured
-    2026-08-19) while ``sim.run(solver="adi")`` stops refusing. The
-    call-site proofs live in ``tests/unit/materials/test_sheet_impedance.py``.
-    """
+    """UNIT test of the helper's message formatting ONLY."""
     tc = ThinConductor(shape=Box((0, 0, 0), (1e-3, 1e-3, 0)),
                        sigma_bulk=1e4, thickness=35e-6,
                        surface_impedance_f0=F0)
     with pytest.raises(ValueError, match="subgridded"):
         refuse_f0_sheets([tc], "subgridded (SBP-SAT) run()")
-    with pytest.raises(ValueError, match="ADI"):
-        refuse_f0_sheets([tc], "ADI run()")
     refuse_f0_sheets([], "anything")   # no sheets -> no raise
 
 
@@ -1135,8 +1126,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         ("tests.unit.runners.test_forward_subpixel_smoothing",
          "test_surface_impedance_smoothing_refusal_matches_run"),
     # --- refuse_f0_sheets(...) call sites ---
-    ("rfx/runners/uniform_forward.py", "_forward_from_materials", "ADI forward"):
-        (__name__),
     ("rfx/runners/_distributed_nu_execute.py", "dispatch_forward",
      "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),

@@ -11,6 +11,7 @@ import pytest
 
 from tests.contracts.boundary_compare import BoundaryDeparture, classify, compare_values, departures
 from tests.contracts.boundary_fields import measure, measured_fields
+from tests.contracts.boundary_cases import ENTRIES
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,7 +23,7 @@ WALLED_DEFAULT_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query",
 GUIDE_REFUSAL_ENTRIES = WALLED_DEFAULT_ENTRIES | {"nonuniform"}
 CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
          if c["case"] == "waveguide-cpml" and c["entry"] in GUIDE_REFUSAL_ENTRIES else c
-         for c in BASELINE["cells"]]
+         for c in BASELINE["cells"] if c["entry"] in ENTRIES]
 
 
 def backed(cell):
@@ -89,9 +90,7 @@ def measured(case, entry):
 
 
 def floquet_refused(entry):
-    """#1944 supersedes B1's floquet cells: they record explicit CPML lateral faces
-    silently made periodic, which a Floquet port now refuses by name. The graded-z
-    and ADI refusals fire first, at registration and construction. Keep B1 immutable."""
+    """Shared checks for the supported solver paths."""
     match = {"nonuniform": "do not support non-uniform z mesh"}.get(entry, "requires periodic lateral faces")
     with pytest.raises(ValueError, match=match):
         measured("floquet", entry)
@@ -124,11 +123,6 @@ def test_no_unlisted_departures(cell):
         assert all(face in message for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
         assert "declare boundary=" in message and "'y': 'pec'" in message and "'z': 'pec'" in message
         return
-    # The public sponge refusal supersedes B1; retain the historical record.
-    if adi_absorber_cell(cell["case"], cell["entry"]):
-        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
-            measured(cell["case"], cell["entry"])
-        return
     # #1465 supersedes B1's subgrid refusal reason; the two construction /
     # preflight refusals still occur before lane admission. Keep B1 immutable.
     if cell["entry"] == "subgridded" and cell["case"] not in ("upml", "waveguide-pmc"):
@@ -152,7 +146,6 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                                 pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
             for cell in CELLS if cell["status"] == "MEASURED"
-            and not adi_absorber_cell(cell["case"], cell["entry"])
             and cell["case"] != "floquet"  # refused since #1944; pinned in test_no_unlisted_departures
             and not (cell["case"] == "tfsf" and cell["entry"] != "nonuniform")
             for departure in cell["departures"]]

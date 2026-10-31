@@ -367,7 +367,6 @@ LOCK_PROVENANCE = {
         "tests/unit/nonuniform/test_nonuniform_upml_guard.py,"
         "tests/unit/nonuniform/test_nu_port_sigma_dual_spacing.py,"
         "tests/unit/ports/test_msl_realized_port_contract.py,"
-        "tests/unit/preflight/test_adi_preflight.py,"
         "tests/unit/preflight/test_flux_region_preflight.py,"
         "tests/unit/preflight/test_inverse_design_preflight.py,"
         "tests/unit/preflight/test_pec_face_short_of_domain_wall.py,"
@@ -1483,10 +1482,7 @@ _FIXTURES = (
      lambda: _inverse_design("_sane_sim"),
      {"check_ad_memory": True, "n_steps_for_memory": 1000,
       "available_memory_gb": 0.5}, None),
-    # -- 25-28. ADI / non-uniform grading / flux windows / PEC-to-wall ------
-    # #1448 ADI default CFL 5 -> 2: measured adi_3d_accuracy count 1 -> 0.
-    # The retained conductor refusal now calls factor 5 the former default.
-    
+
     ("nu_grading_beyond_cap",
      lambda: _nu_grading_sim(np.array([1, 1, 1, 2, 2, 2, 1, 1, 1]) * _MM),
      {}, None),
@@ -1680,7 +1676,7 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
             "coax_msl_instrument": "signal x +5.83%, arms y +2.69%, trace y +11.67%",
             "stack_snapped_patch": "patch x/y +11.67%",
             "tie_stack": "sheets x/y +5.83%",
-            
+
             "msl_conductor_plane_mismatch": "trace y +17.5%",
             "coax_junction_short": "trace y +11.67%",
             "refplane_near_field": "trace x/y +2.06%/+7%",

@@ -105,14 +105,11 @@ def test_scoped_coax_gate_accepts_the_existing_plain_issue_list():
 @pytest.mark.parametrize('lane', [ 'subgridded', 'disjoint'])
 def test_auxiliary_lanes_attach_their_refusal_and_family_records(lane):
     sim = structure()
-    if lane == 'adi':
-        sim._solver = 'adi'
-    else:
-        sim.add_refinement(
-            z_range=(U, 3 * U),
-            ratio=2,
-            topology="stage2_disjoint_3d" if lane == "disjoint" else "overlap_z_slab",
-        )
+    sim.add_refinement(
+        z_range=(U, 3 * U),
+        ratio=2,
+        topology="stage2_disjoint_3d" if lane == "disjoint" else "overlap_z_slab",
+    )
     with pytest.raises((ValueError, NotImplementedError)) as caught:
         sim.run(
             n_steps=2,
@@ -273,8 +270,6 @@ def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
     if lane == 'graded':
         count = round(sim._domain[2] / step)
         sim._dz_profile = np.full(count, sim._domain[2] / count)
-    elif lane == 'adi':
-        sim._solver = 'adi'
     else:
         sim.add_refinement(
             z_range=(step, 3 * step),

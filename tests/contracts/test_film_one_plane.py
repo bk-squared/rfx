@@ -292,9 +292,9 @@ def test_c6_graded_sigma_gradient():
 CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/stepping/slab_update.py', 'cpml_h_materials'): (2, 'H-only local/vacuum means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/stepping/slab_graded_legacy_loop.py', 'run_graded_legacy_slab_loop._apply_cpml_h_shmap._h'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
-    
-    
-    
+
+
+
     ('rfx/checkpoint.py', 'load_materials'): (1, '**records loads sigma_film per component from HDF5'),
     ('rfx/core/yee.py', 'init_materials'): (1, 'initial cell construction precedes the shared film fold'),
     ('rfx/geometry/rasterize_grid.py', 'rasterize_geometry'): (1, 'initial cell construction precedes the shared film fold'),
@@ -326,11 +326,11 @@ CONSTRUCTOR_EXCEPTIONS = {
 # Every exact cell-sigma read, including typed exclusions, is classified.
 SIGMA_READS = {
     ('rfx/_realized.py', 'scalar_electric', 'materials'): (1, 'arithmetic into coefficient / observed scalar operands'),
-    
+
     ('rfx/api/_compile.py', '_CompileMixin._has_pec_to_conform', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/api/_compile.py', '_CompileMixin.conductor_mask', 'materials'): (1, 'threshold / conductor cell footprint'),
     ('rfx/api/_mesh.py', '_MeshMixin._auto_configure_mesh', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    
+
     ('rfx/artifacts.py', '_material_summary', 'material'): (1, 'report text / safe scalar conversion'),
     ('rfx/auto_config.py', 'analyze_features', 'mat'): (1, 'documented dict of MaterialSpec or dict at :136; no assembled grid input'),
     ('rfx/boundaries/features.py', 'resolve_waveguide_section_medium', 'materials'): (2, 'port-section medium judge: per-component conductivity over the section is compared with zero and refused, never assembled into a coefficient'),
@@ -386,7 +386,7 @@ SIGMA_READS = {
     ('rfx/preflight/realization.py', '_CampaignStaticsContext.entry_realizations', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/measurement/rcs.py', 'compute_rcs', 'materials'): (1, 'passing on: zeros_like for vacuum reference shape'),
     ('rfx/runners/_admission.py', '', 'm'): (1, 'explicit sigma operand; see classified constructor and shared realization reach'),
-    
+
     ('rfx/geometry/smoothing.py', 'warn_curved_high_contrast', 'sim._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material: PEC-threshold test that skips conductors in the advisory; not assembled cells'),
     ('rfx/runners/_admission.py', '_pec_shapes', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/runners/_admission.py', '_placed', 'material'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
@@ -557,7 +557,7 @@ def test_c6_two_device_graded_port_records(forward):
 @pytest.mark.parametrize('lane', [ 'subgrid'])
 def test_c4_existing_path_refusals(lane):
     sim = Simulation(freq_max=10e9, domain=(.012, .012, .012), dx=H,
-                     boundary='pec', **({'solver': 'adi'} if lane == 'adi' else {}))
+                     boundary='pec', **({}))
     sim.add_thin_conductor(Box((.006, .002, .002), (.006, .010, .010)),
                            sigma_bulk=1000., thickness=1e-5)
     if lane == 'subgrid':

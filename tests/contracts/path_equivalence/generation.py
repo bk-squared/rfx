@@ -80,7 +80,7 @@ def generate(builders):
 
 # Filled from the measured cold-solve cost of passing 12-step candidates.
 PR_CHOICES = {
-    
+
     "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
     "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
     "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
@@ -112,7 +112,6 @@ PR_CHOICES = {
 }
 
 
-# Experimental ADI/subgrid refusals remain weekly unless selected as a cause witness.
 PR_REFUSAL_LANES = frozenset((
     'run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
     'run_distributed', 'run_distributed_nu', 'fwd_distributed_nu',

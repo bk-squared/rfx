@@ -11,20 +11,6 @@ current-driven graded lane, is about 2e17, above that threshold. The fix is
 ``rfx.core.yee.si_value_eps_r_grad``, which keeps the SI value bit for bit
 and differentiates the same coefficients written in eps_r units.
 
-The invariant pinned here is not a value. The objective is quadratic in its
-scale, so for a power-of-two ``s``, ``grad(s**2 * L) == s**2 * grad(L)``
-exactly in float32 unless something overflows or underflows on the way. Each
-row compares the gradient at two cotangent scales on either side of the
-threshold that ``origin/main`` crossed. Measured on these models on
-``origin/main`` (0d20666a, JAX 0.10.2), non-finite cells: the uniform lane
-0 at ``2**60``, 804 of 3375 at ``2**80``, 2522 at ``2**90``; the same with
-UPML 1407 at ``2**90``, with PEC/PMC faces 1342 of 1815; the graded lane 0
-at ``2**0``, 552 at ``2**20``, 2710 at ``2**40``, and 2712 on
-``forward(distributed=True)``; the 2-D ADI lane all 441 at every scale; the
-3-D ADI lane 0 at ``2**0``, the first 5 of 9261 at ``2**8`` (an objective
-of 3.2e-3, so about 1 after scaling), 4251 at ``2**30``, 7942 at ``2**60``.
-The #1357 fixture has 16 at cotangent 1.
-
 Finite and scale-exact is not the same as right, so each builder's float32
 tangent is also compared with its SI spelling's derivative in float64
 (``test_builder_tangent_is_the_si_derivative``).
@@ -43,8 +29,8 @@ import numpy as np
 import pytest
 
 import rfx.stepping.yee as stepping_yee
-import rfx.adi
-import rfx.stepping.adi
+
+
 import rfx.boundaries.cpml
 import rfx.boundaries.upml
 import rfx.core.yee
@@ -69,14 +55,11 @@ pytestmark = [
 DX = 1e-3
 REL_TOL = 1e-5
 
-# log2 of the cotangent on L, per lane: (small, large). The large one is past
-# where origin/main overflowed; on the 2-D ADI lane both were. "upml" and
-# "walls" are the uniform lane with other boundaries: UPML's own E
-# coefficients (1407 non-finite cells at 2**90 before they were routed), and
-# PEC/PMC faces, which have no coefficient builder of their own.
-SCALES = {"uniform": (0, 90), "upml": (0, 90), "walls": (0, 90),
-          "nu": (-40, 40), "distributed_nu": (-40, 40),
-          "adi_2d": (0, 60), "adi_3d": (0, 60)}
+SCALES = {"uniform": (0, 90),
+         "upml": (0, 90),
+         "walls": (0, 90),
+         "nu": (-40, 40),
+         "distributed_nu": (-40, 40)}
 
 def _model(lane, material):
     kw = {"boundary": "cpml"}
@@ -87,27 +70,7 @@ def _model(lane, material):
     if lane == "walls":
         kw["boundary"] = BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
                                       y=Boundary(lo="pmc", hi="cpml"), z="cpml")
-    if lane.startswith("adi"):
-        three_d = lane == "adi_3d"
-        sim = Simulation(freq_max=10e9, domain=(12e-3, 12e-3, 12e-3 if three_d else DX),
-                         dx=DX, boundary="pec", solver="adi",
-                         mode="3d" if three_d else "2d_tmz")
-        z = 6e-3 if three_d else 0.0
-        if material == "sigma":
-            # origin/main's half-vacuum lossy slab: ADI refuses it in 2.0
-            # (#1373), so its rows are strict xfails that XPASS in 2.1.
-            sim.add_material("m", eps_r=2.0, sigma=0.2)
-            sim.add(Box((7e-3, 2e-3, 0.0), (10e-3, 10e-3, 12e-3 if three_d else DX)),
-                    material="m")
-        elif material == "fill":
-            # The same lossy material over the whole domain: the homogeneous
-            # fill ADI carries in 2.0.
-            sim.add_material("m", eps_r=2.0, sigma=0.2)
-            sim.add(Box((0.0, 0.0, 0.0), (12e-3, 12e-3, 12e-3 if three_d else DX)),
-                    material="m")
-        sim.add_source((5e-3, 6e-3, z), "ez", amplitude_kind="field")
-        sim.add_probe((8e-3, 6e-3, z), "ez")
-        return sim
+    pass
     sim = Simulation(freq_max=15e9, domain=(6e-3, 6e-3, 6e-3), dx=DX,
                      cpml_layers=4, **kw)
     if material != "vacuum":
@@ -171,23 +134,7 @@ def _assert_finite_and_scale_invariant(grads, exps):
         assert err <= REL_TOL, f"cotangent 2**{k}: {err:.3e} of the peak"
 
 
-@pytest.mark.parametrize("lane", ["adi_2d", "adi_3d"])
-def test_adi_scalar_override_gradient_is_scale_invariant(lane):
-    """The ADI lane-level overflow check, always on in 2.0: the derivative with
-    respect to a scalar (homogeneous) eps override of a lossy fill inside
-    CPML, at cotangents 2**0 and 2**60. The SI spelling's
-    ``(MU_0*eps*dx**2)**-2`` overflowed here (#1357)."""
-    exps = (0, 60)
-    n_steps = {"adi_2d": 24, "adi_3d": 16}[lane]
 
-    def loss(e):
-        ts = _model(lane, "fill").forward(n_steps=n_steps, eps_override=e,
-                                          skip_preflight=True).time_series
-        return jnp.sum(ts ** 2)
-
-    _, vjp = jax.vjp(loss, jnp.float32(1.0))
-    grads = [np.asarray(vjp(jnp.float32(2.0 ** k))[0]) for k in exps]
-    _assert_finite_and_scale_invariant(grads, exps)
 
 
 def test_issue_1357_fixture_gradient_is_finite():
@@ -196,39 +143,16 @@ def test_issue_1357_fixture_gradient_is_finite():
     _assert_finite_and_scale_invariant(grads, (0, -40))
 
 
-# Each model is half vacuum (sigma = 0, where 0*inf became NaN) and half a
-# lossy or dispersive slab, inside CPML (or UPML, or PEC/PMC and CPML faces).
-# ADI refuses that slab and a traced array override (#1373, 2.0): its rows keep
-# origin/main's slab as strict xfails, which XPASS once ADI's interface
-# permittivity is fixed (2.1). The always-on ADI check meanwhile is
-# test_adi_scalar_override_gradient_is_scale_invariant below.
-_ADI_REFUSED = pytest.mark.xfail(
-    strict=True, raises=NotImplementedError,
-    reason="#1373: ADI refuses a traced array override in 2.0")
+
 # The dispersive rows are split by pole kind to identify each builder: a Debye-only or Lorentz-only model uses that builder's
 # own ca/cb, a model with both uses the mixed update (dt/gamma_total).
-@pytest.mark.parametrize("lane, material", [
-    ("uniform", "sigma"),
-    ("upml", "sigma"),
-    ("walls", "sigma"),
-    ("nu", "sigma"),
-    pytest.param("adi_2d", "sigma", marks=_ADI_REFUSED),
-    pytest.param("adi_3d", "sigma", marks=_ADI_REFUSED),
-    ("distributed_nu", "sigma"),
-    pytest.param("uniform", "debye", marks=pytest.mark.slow),
-    pytest.param("uniform", "lorentz", marks=pytest.mark.slow),
-    pytest.param("uniform", "debye+lorentz", marks=pytest.mark.slow),
-    pytest.param("nu", "debye+lorentz", marks=pytest.mark.slow),
-    pytest.param("distributed_nu", "debye", marks=pytest.mark.slow),
-    pytest.param("distributed_nu", "lorentz", marks=pytest.mark.slow),
-    pytest.param("distributed_nu", "debye+lorentz", marks=pytest.mark.slow),
-])
+@pytest.mark.parametrize("lane, material", [("uniform", "sigma"), ("upml", "sigma"), ("walls", "sigma"), ("nu", "sigma"), ("distributed_nu", "sigma"), pytest.param("uniform", "debye", marks=pytest.mark.slow), pytest.param("uniform", "lorentz", marks=pytest.mark.slow), pytest.param("uniform", "debye+lorentz", marks=pytest.mark.slow), pytest.param("nu", "debye+lorentz", marks=pytest.mark.slow), pytest.param("distributed_nu", "debye", marks=pytest.mark.slow), pytest.param("distributed_nu", "lorentz", marks=pytest.mark.slow), pytest.param("distributed_nu", "debye+lorentz", marks=pytest.mark.slow)])
 def test_gradient_is_scale_invariant(lane, material, request):
     kw = {}
     if lane == "distributed_nu":
         kw = dict(distributed=True, devices=request.getfixturevalue("two_devices"))
     exps = SCALES[lane]
-    n_steps = {"adi_2d": 24, "adi_3d": 16}.get(lane, 40)
+    n_steps = {}.get(lane, 40)
     grads = _gradients(lambda: _model(lane, material), exps, n_steps=n_steps, **kw)
     _assert_finite_and_scale_invariant(grads, exps)
 
@@ -300,12 +224,7 @@ def _dispersion_cases(dtype):
 
 
 def _builder_cases():
-    """``name -> (fn(eps_r), eps_r, cotangent)``. Each cotangent is above the
-    one where the builder's SI spelling overflowed (about 2.6e16 on a Cb; any
-    cotangent on the ADI couplings; about 1e27 through the inverse-eps,
-    ``1/eps`` and ``eps/dt`` forms, where ``dt`` multiplies the cotangent
-    first) and below where field-unit arithmetic (a curl's ``1/dx``) would
-    overflow on its own."""
+    """Shared checks for the supported solver paths."""
     rng = np.random.default_rng(1357)
     shape = (5, 6, 7)
     mats = _materials(rng, shape)
@@ -313,56 +232,42 @@ def _builder_cases():
     st = init_state(shape)
     st = st._replace(**{c: jnp.asarray(rng.standard_normal(shape), jnp.float32)
                         for c in ("ex", "ey", "ez", "hx", "hy", "hz")})
-    m2 = _materials(rng, (12, 12, 1))
-    eps2, sig2 = m2.eps_r[:, :, 0], m2.sigma[:, :, 0]
-    f2 = [jnp.asarray(rng.standard_normal((12, 12)), jnp.float32) for _ in range(3)]
-    params_2d, cpml_2d = rfx.adi.init_adi_cpml_2d(3, dt, dx, dx, 12, 12)
-    cpml_2d = jax.tree.map(
-        lambda a: jnp.asarray(rng.standard_normal(a.shape), jnp.float32), cpml_2d)
+    # Preserve the random stream for the surviving coefficient fixtures.
+    _materials(rng, (12, 12, 1))
+    for _ in range(3):
+        rng.standard_normal((12, 12))
+    for shape_ in [(3, 12)] * 4 + [(12, 3)] * 4:
+        rng.standard_normal(shape_)
     sheet = jnp.full(shape, 4e4, jnp.float32).at[0].set(0.0)
     upml_grid = Simulation(freq_max=15e9, domain=(3e-3, 3e-3, 3e-3), dx=DX,
                            boundary="upml", cpml_layers=3)._build_grid()
     m3 = _materials(rng, upml_grid.shape)
-    return {
-        **{name: (lambda e, fn=fn, sigma=sigma: fn(e, sigma), eps, 1e24)
+    return {**{name: (lambda e, fn=fn, sigma=sigma: fn(e, sigma), eps, 1e24)
            for name, (fn, eps, sigma) in _dispersion_cases(jnp.float32).items()},
-        "e_update_coeffs": (
+           "e_update_coeffs": (
             lambda e: rfx.core.yee.e_update_coeffs(e, mats.sigma, dt), mats.eps_r, 1e24),
-        "precompute_coeffs": (
+           "precompute_coeffs": (
             lambda e: rfx.core.yee.precompute_coeffs(mats._replace(eps_r=e), dt, dx, high_wall=(False, False, False)),
             mats.eps_r, 1e24),
-        "update_e_aniso": (
+           "update_e_aniso": (
             lambda e: stepping_yee.update_e_aniso(st, mats, e, e, e, dt, dx, high_wall=(False, False, False)).ex,
             mats.eps_r, 1e24),
-        "update_e_aniso_inv": (
+           "update_e_aniso_inv": (
             lambda e: stepping_yee.update_e_aniso_inv(
                 st, mats, 1.0 / e, 1.0 / e, 1.0 / e, dt, dx, high_wall=(False, False, False)).ez, mats.eps_r, 1e28),
-        "adi_step_2d": (
-            lambda e: rfx.adi.adi_step_2d(*f2, e, sig2, 5 * dt, dx, dx)[0], eps2, 1e20),
-        "adi_step_3d": (
-            lambda e: rfx.adi.adi_step_3d(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
-                                          e, mats.sigma, 5 * dt, dx, dx, dx)[2],
-            mats.eps_r, 1e20),
-        "apply_adi_cpml_2d": (
-            lambda e: rfx.adi.apply_adi_cpml_2d(*f2, params_2d, cpml_2d, e, dt, dx, dx)[0],
-            eps2, 1e31),
-        "sheet_update_coeffs": (
+           "sheet_update_coeffs": (
             lambda e: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, mats._replace(eps_r=e), dt), mats.eps_r, 1e24),
-        "edge_update_denominator": (
+           "edge_update_denominator": (
             # This raw-array fixture has no wall face.
             lambda e: rfx.lumped.edge_update_denominator(
                 mats._replace(eps_r=e), (2, 3, 3), "ez", dt, grid=SimpleNamespace()), mats.eps_r, 1e30),
-        "init_upml": (
+           "init_upml": (
             lambda e: rfx.boundaries.upml.init_upml(
-                upml_grid, m3._replace(eps_r=e))[:6], m3.eps_r, 1e24),
-    }
+                upml_grid, m3._replace(eps_r=e))[:6], m3.eps_r, 1e24)}
 
 
-@pytest.mark.parametrize("name", [
-    "e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv",
-    "adi_step_2d", "adi_step_3d", "apply_adi_cpml_2d", "sheet_update_coeffs",
-    "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
+@pytest.mark.parametrize("name", ["e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv", "sheet_update_coeffs", "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
 def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
     """The builder's eps VJP at a cotangent past its SI overflow is finite
     and is exactly ``2**100`` times the VJP at ``2**-100`` of it."""
@@ -389,7 +294,7 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
 
 # The modules that import the helper by name. The distributed runners import
 # it inside their CPML functions, from rfx.core.yee, at call time.
-_IMPORTERS = (rfx.core.yee, rfx.stepping.yee, rfx.boundaries.cpml, rfx.boundaries.upml, rfx.stepping.adi,
+_IMPORTERS = (rfx.core.yee, rfx.stepping.yee, rfx.boundaries.cpml, rfx.boundaries.upml,
               rfx.materials.thin_conductor, rfx.lumped,
               rfx.materials.debye, rfx.materials.lorentz)
 
@@ -398,37 +303,16 @@ def _si_only(si_fn, eps_r_fn, *args):
     return si_fn(*args)
 
 
-# Always on: 3-D ADI, the lane where a value-level combination was measured to
-# move the bits. The other lanes (about 35 s on CPU together) run in the slow
-# lane; test_helper_returns_si_bits_and_the_eps_r_derivative pins the value
-# bitwise at the helper itself on every run.
-@pytest.mark.parametrize("lane", [
-    *(pytest.param(lane, marks=pytest.mark.slow)
-      for lane in ("uniform", "upml", "nu", "distributed_nu", "adi_2d")),
-    "adi_3d"])
+@pytest.mark.parametrize("lane", [*(pytest.param(lane, marks=pytest.mark.slow)
+      for lane in ("uniform", "upml", "nu", "distributed_nu"))])
 def test_forward_bits_are_the_si_spelling(lane, monkeypatch, request):
-    """A forward run is bit-identical to the same run with the helper replaced
-    by its SI function: the helper adds nothing to the forward graph. On the
-    3-D ADI lane a value-level combination (``stop_gradient(si) + (r -
-    stop_gradient(r))``, exactly ``si`` in isolation) moved the trace by
-    1.6e-6 of its peak, because XLA's algebraic simplifier rewrote the SI
-    arithmetic differently once the graph had changed.
-
-    What this does not pin: the builders' own refactors (the SI arithmetic
-    moved into ``*_si`` functions, ``update_e_aniso`` through
-    ``e_update_coeffs``, the ADI 2-D ``ce`` hoist, UPML's ``eps_0`` moved into
-    its spellings) against the code before #1357. Those were compared with
-    ``origin/main`` once, bitwise, when #1357 was reviewed."""
+    """Shared checks for the supported solver paths."""
     kw = {}
     if lane == "distributed_nu":
         kw = dict(distributed=True, devices=request.getfixturevalue("two_devices"))
 
     def run():
-        # No override: the materials are compile-time constants, which is
-        # where the simplifier acts (a traced eps_override leaves it nothing
-        # to fold).
-        # ADI carries only a homogeneous fill (#1373).
-        material = "fill" if lane.startswith("adi") else "sigma"
+        material = "sigma"
         return np.asarray(_model(lane, material).forward(
             n_steps=40, skip_preflight=True, **kw).time_series)
 
@@ -470,30 +354,6 @@ def test_helper_returns_si_bits_and_the_eps_r_derivative():
 
 # --- the tangent is the SI derivative -------------------------------------
 
-# Rows above pin that each builder's eps gradient is finite and scales
-# exactly; neither says it is the RIGHT derivative. A wrong eps_r spelling
-# (a term dropped from UPML's Cb denominator, ADI's ce written over eps_r
-# instead of eps_plus_r) keeps the forward bits and a finite, scale-exact
-# gradient, and was green in every gate. Here each builder's float32 JVP,
-# which goes through the eps_r spelling, is compared with the JVP of the same
-# builder with the helper replaced by its SI function (``_si_only``) and run
-# in float64 on the same float32-rounded inputs, where the SI spelling's
-# derivative is exact to ~1e-16 and cannot overflow.
-#
-# Tolerance: 9 float32 ULP of the tangent's peak (per output leaf), the
-# repo's cross-trace budget. A tangent is a short chain of float32 ops
-# (a division, a sum or two), each rounded to 0.5 ULP of its own value, so
-# the error is a few ULP of the peak: measured at most 5.4 ULP (3-D ADI, through
-# its tridiagonal solves), 2.6 on every other row.
-#
-# The sheet row's inputs are chosen well-conditioned. Its B =
-# -expm1(-x2)/sigma_tot, x2 = sigma_tot*dt/(EPS_0*eps_r), has
-# dB/dsigma = (dt/EPS_0/eps_r) * (exp(-x2) - (1 - exp(-x2))/x2) / sigma_tot,
-# a difference that cancels as x2 -> 0: its float32 error relative to the
-# peak grows like 1/x2 in EITHER spelling (over 40 draws with background
-# sigma in [0, 20] S/m: up to 423 ULP for both the eps_r and the float32 SI
-# spelling). So the row's lossy background cells carry sigma in [10, 40] S/m
-# (x2 >= 0.36; at most 3.4 ULP over 40 draws) and the sheet cells 4e4 S/m.
 JVP_TOL_ULP = 9.0
 
 
@@ -521,10 +381,12 @@ def _jvp_cases(dtype):
     dt, dx = 1.9e-12, DX
     shape = (5, 6, 7)
     m, st = mats(shape), fields(shape)
-    m2 = mats((12, 12, 1))
-    f2 = [arr(rng.standard_normal((12, 12))) for _ in range(3)]
-    params_2d, cpml_2d = rfx.adi.init_adi_cpml_2d(3, dt, dx, dx, 12, 12)
-    cpml_2d = jax.tree.map(lambda a: arr(rng.standard_normal(a.shape)), cpml_2d)
+    # Preserve the random stream for the surviving coefficient fixtures.
+    mats((12, 12, 1))
+    for _ in range(3):
+        rng.standard_normal((12, 12))
+    for shape_ in [(3, 12)] * 4 + [(12, 3)] * 4:
+        rng.standard_normal(shape_)
     sheet = arr(np.where(rng.uniform(size=shape) > 0.5, 4e4, 0.0))
     sheet_sigma = arr(np.where(rng.uniform(size=shape) > 0.5,
                                rng.uniform(10.0, 40.0, shape), 0.0))
@@ -537,54 +399,41 @@ def _jvp_cases(dtype):
     cparams, cstate = rfx.boundaries.cpml.init_cpml(cpml_grid)
     cstate = jax.tree.map(lambda a: arr(rng.standard_normal(a.shape)), cstate)
     yee = rfx.core.yee
-    return {
-        **_dispersion_cases(dtype),
-        "e_update_coeffs": (
+    return {**_dispersion_cases(dtype),
+           "e_update_coeffs": (
             lambda e, s: yee.e_update_coeffs(e, s, dt), m.eps_r, m.sigma),
-        "precompute_coeffs": (
+           "precompute_coeffs": (
             lambda e, s: yee.precompute_coeffs(m._replace(eps_r=e, sigma=s), dt, dx, high_wall=(False, False, False)),
             m.eps_r, m.sigma),
-        "update_e_aniso": (
+           "update_e_aniso": (
             lambda e, s: yee.update_e_aniso(st, m._replace(sigma=s), e, 0.5 * e + 1.0,
                                             2.0 * e, dt, dx, high_wall=(False, False, False))[:3],
             m.eps_r, m.sigma),
-        "update_e_aniso_inv": (
+           "update_e_aniso_inv": (
             lambda e, s: yee.update_e_aniso_inv(st, m._replace(sigma=s), 1.0 / e,
                                                 0.5 / e, 1.0 / (e + 1.0), dt, dx, high_wall=(False, False, False))[:3],
             m.eps_r, m.sigma),
-        "adi_step_2d": (
-            lambda e, s: rfx.adi.adi_step_2d(*f2, e, s, 5 * dt, dx, dx),
-            m2.eps_r[:, :, 0], m2.sigma[:, :, 0]),
-        "adi_step_3d": (
-            lambda e, s: rfx.adi.adi_step_3d(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
-                                             e, s, 5 * dt, dx, dx, dx),
-            m.eps_r, m.sigma),
-        "apply_adi_cpml_2d": (
-            lambda e, s: rfx.adi.apply_adi_cpml_2d(*f2, params_2d, cpml_2d, e, dt,
-                                                   dx, dx)[:3],
-            m2.eps_r[:, :, 0], m2.sigma[:, :, 0]),
-        "apply_cpml_e": (
+           "apply_cpml_e": (
             lambda e, s: rfx.boundaries.cpml.apply_cpml_e(
                 stc, cparams, cstate, cpml_grid,
                 materials=mc._replace(eps_r=e, sigma=s))[0][:3],
             mc.eps_r, mc.sigma),
-        "apply_cpml_e[inv_eps_r_update]": (
+           "apply_cpml_e[inv_eps_r_update]": (
             lambda e, s: rfx.boundaries.cpml.apply_cpml_e(
                 stc, cparams, cstate, cpml_grid, materials=mc._replace(sigma=s),
                 inv_eps_r_update=(1.0 / e, 0.5 / e, 1.0 / (e + 1.0)))[0][:3],
             mc.eps_r, mc.sigma),
-        "sheet_update_coeffs": (
+           "sheet_update_coeffs": (
             lambda e, s: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, m._replace(eps_r=e, sigma=s), dt), m.eps_r, sheet_sigma),
-        "edge_update_denominator": (
+           "edge_update_denominator": (
             # This raw-array fixture has no wall face.
             lambda e, s: rfx.lumped.edge_update_denominator(
                 m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt, grid=SimpleNamespace()),
             m.eps_r, m.sigma),
-        "init_upml": (
+           "init_upml": (
             lambda e, s: rfx.boundaries.upml.init_upml(
-                upml_grid, mu._replace(eps_r=e, sigma=s))[:6], mu.eps_r, mu.sigma),
-    }
+                upml_grid, mu._replace(eps_r=e, sigma=s))[:6], mu.eps_r, mu.sigma)}
 
 
 def _jvp(name, dtype):
@@ -592,7 +441,6 @@ def _jvp(name, dtype):
     rng = np.random.default_rng(1)
     t_e = jnp.asarray(rng.standard_normal(eps.shape).astype(np.float32), dtype)
     t_s = jnp.asarray(rng.standard_normal(sigma.shape).astype(np.float32), dtype)
-    # Jitted: the ADI rows' eager tridiagonal solves cost seconds op by op.
     t = jax.jit(lambda *p: jax.jvp(fn, p[:2], p[2:])[1])(eps, sigma, t_e, t_s)
     return [np.asarray(leaf, np.float64) for leaf in jax.tree.leaves(t)]
 
@@ -626,11 +474,7 @@ def si_float64_jvp(monkeypatch):
     return run
 
 
-@pytest.mark.parametrize("name", [
-    "e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv",
-    "adi_step_2d", "adi_step_3d", "apply_adi_cpml_2d", "apply_cpml_e",
-    "apply_cpml_e[inv_eps_r_update]", "sheet_update_coeffs",
-    "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
+@pytest.mark.parametrize("name", ["e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv", "apply_cpml_e", "apply_cpml_e[inv_eps_r_update]", "sheet_update_coeffs", "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
 def test_builder_tangent_is_the_si_derivative(name, si_float64_jvp):
     """float32 JVP (eps_r spelling) == float64 JVP of the SI spelling, to
     9 float32 ULP of each output's tangent peak."""
