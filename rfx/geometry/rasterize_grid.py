@@ -20,6 +20,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx._traced_refusal import TracedStructureRefusal
 from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
+from rfx.geometry.cell_table.nodes import _axis_node_positions, _uniform_axis_nodes
 from rfx.geometry.csg import Box, Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
@@ -73,20 +74,6 @@ class ExactNodeSpineMissingWarning(AccuracyWarning):
     """
 
 
-def _uniform_axis_nodes(n: int, pad: int, dx: float) -> np.ndarray:
-    """Exact E-node positions for a uniform axis: host float64, flag-independent.
-
-    ``(i - pad) * dx`` per node in float64 — bit-identical to the x64=1
-    realization verified against the Box half-open convention (#802). This is
-    THE uniform node formula: ``csg._grid_coords``, ``coords_from_uniform_grid``
-    and the uniform-valued branch of ``_axis_node_positions`` all call it, so
-    the uniform and non-uniform lanes cannot rasterize a uniform-valued axis
-    differently (#807 class). Before this builder existed the repo carried
-    three hand-copies that each rounded differently in float32.
-    """
-    return (np.arange(n, dtype=np.float64) - pad) * float(dx)
-
-
 def coords_from_uniform_grid(grid) -> GridCoords:
     """Extract E-NODE coordinates from a uniform Grid.
 
@@ -103,32 +90,6 @@ def coords_from_uniform_grid(grid) -> GridCoords:
                       y=_uniform_axis_nodes(ny, pad_y, dx),
                       z=_uniform_axis_nodes(nz, pad_z, dx),
                       shape=(nx, ny, nz))
-
-
-def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
-    """E-node positions for a padded cell-size array.
-
-    The nodes this grid steps sit on cell EDGES, not centres: the
-    non-uniform E update divides by ``2/(d[i-1]+d[i])``, the dual spacing
-    of a node straddling cells ``i-1`` and ``i``. Node ``cpml`` (the first
-    interior one) is the origin, so the interior spans
-    ``[0, sum(interior d)]`` and the last interior node lands exactly on
-    the requested domain face — the same convention
-    ``coords_from_uniform_grid`` uses (``(arange - pad) * dx``).
-
-    Until #562 this returned cell CENTRES, half a cell off the nodes the
-    stencil differences and half a cell off the uniform builder, which put
-    every rasterized material half a cell away from the fields acting on
-    it and (with the missing bounding node) made a PEC-bounded guide one
-    cell narrower than requested.
-    """
-    d = np.asarray(d_arr, dtype=np.float64)
-    if d.size and bool(np.all(d == d[0])):
-        # Uniform-valued axis: closed form, bitwise-equal to the uniform
-        # builder by construction — the lane-equality guarantee (#807).
-        return _uniform_axis_nodes(d.size, cpml, float(d[0]))
-    edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
-    return edges[:-1] - edges[cpml]                   # n nodes, origin at cpml
 
 
 def coords_from_nonuniform_grid(grid) -> GridCoords:

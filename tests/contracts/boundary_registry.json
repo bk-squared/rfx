@@ -402,17 +402,17 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/geometry/conformal_cells.py",
+      "file": "rfx/model/conformal_rules.py",
       "function": "conformal_b_floor",
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/geometry/conformal_cells.py",
+      "file": "rfx/geometry/cell_table/body.py",
       "function": "face_fraction.polygon",
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/geometry/conformal_cells.py",
+      "file": "rfx/model/conformal_rules.py",
       "function": "sc_clamp",
       "kind": "roll/diff"
     },

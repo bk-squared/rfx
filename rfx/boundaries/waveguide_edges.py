@@ -57,8 +57,10 @@ def default_conformal_weights(sim, grid, root):
     if not pec_shapes:
         return None
     if sim._dt_pin is not None:
-        from rfx.geometry.conformal_cells import compute_conformal_fractions
-        return compute_conformal_fractions(grid, pec_shapes, conformal_pec="cut_cell_floor")[0]
+        from rfx.geometry.cell_table import build_cell_table
+        from rfx.model.conformal_rules import conformal_fractions_from_table
+        table = build_cell_table(grid, pec_shapes)
+        return conformal_fractions_from_table(table, grid, "cut_cell_floor")[0]
     from rfx.geometry.conformal import clamp_conformal_weights, compute_conformal_weights_sdf
     return clamp_conformal_weights(*compute_conformal_weights_sdf(grid, pec_shapes), 0.1)
 
