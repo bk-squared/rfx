@@ -776,7 +776,7 @@ class Simulation(
         position: tuple[float, float, float],
         component: str = "ez",
         *,
-        waveform: Callable[[float], float] | None = None,
+        waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
         amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
@@ -971,7 +971,7 @@ class Simulation(
         pin_radius: float = 0.635e-3,
         outer_radius: float = 2.055e-3,
         impedance: float = 50.0,
-        waveform: Callable[[float], float] | None = None,
+        waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
         terminates: object = None,
     ) -> "Simulation":
         """Add an SMA-style coaxial probe port.
