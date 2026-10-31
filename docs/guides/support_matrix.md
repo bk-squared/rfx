@@ -156,11 +156,11 @@ default's steps:
 | 0.375 | +0.20 | +0.0197 | 0.040 |
 
 The convergence-order target (order >= 1.5) was not met.
-Source: `rfx-archive/rfx/records/20261030-1651-option-b/` at `c0d9bcafa`.
+Source: internal record 20261030-1651-option-b.
 
 At q = 0.25, the offset is about -0.002 cell at 0.5 and 0.375 mm, at the fit's
 resolution, about 1/100 of the default; four times the default's steps.
-Source: `rfx-archive/rfx/records/20261030-1651-floor-f-three-mesh/` at `c7359611f`.
+Source: internal record 20261030-1651-floor-f-three-mesh.
 No convergence order is claimed here.
 
 Uniform 3-D and 2-D Yee `run()` and uniform waveguide S-matrix device/reference
