@@ -18,6 +18,14 @@ Usage
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from collections.abc import Callable
+    from collections.abc import Iterable
+    from rfx.materials.thin_conductor import ThinConductor
+
 from rfx.errors import ConfigurationWarning
 import math
 from dataclasses import dataclass, field
@@ -135,7 +143,7 @@ def _sheet_z_plane(shape) -> float | None:
 
 
 def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6,
-                     thin_conductors=()) -> FeatureInfo:
+                     thin_conductors: Iterable[ThinConductor] | None = ()) -> FeatureInfo:
     """Extract critical dimensions and material properties from geometry.
 
     Parameters
@@ -357,8 +365,8 @@ def auto_configure(
     margin_override: float | None = None,
     n_steps_override: int | None = None,
     max_memory_mb: float | None = None,
-    waveform=None,
-    thin_conductors=(),
+    waveform: Callable[[ArrayLike], ArrayLike] | None = None,
+    thin_conductors: Iterable[ThinConductor] | None = (),
     domain: tuple[float, float, float] | None = None,
 ) -> SimConfig:
     """Derive all simulation parameters from geometry + frequency range.
@@ -656,7 +664,7 @@ def simulation_auto(
     freq_range: tuple[float, float],
     *,
     accuracy: str = "standard",
-    **kwargs,
+    **kwargs: object,
 ) -> "Simulation":
     """Create a Simulation with auto-derived parameters.
 

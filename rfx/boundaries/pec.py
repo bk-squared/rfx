@@ -9,6 +9,14 @@ volumes, sheets and wires.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from collections.abc import Sequence
+    from rfx.stepping.slab_view import SlabView, UniformSlabView
+    import jax
+
 from dataclasses import dataclass, replace
 
 import jax.numpy as jnp
@@ -670,8 +678,8 @@ def _slab_sheets(sheets, view, end):
     return cut
 
 
-def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
-                            periodic=(False, False, False), *, view=None):
+def realized_pec_edge_masks(cell_mask: jax.Array | np.ndarray | None, sheets: Iterable[SheetSpec] | None = (), wires: Iterable[WireSpec] | None = (),
+                            periodic: Sequence[bool] = (False, False, False), *, view: SlabView | UniformSlabView | None = None) -> tuple[jax.Array, ...]:
     """The one function that turns conductor geometry into PEC E edges.
 
     Parameters
@@ -739,8 +747,8 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
     return tuple(out)
 
 
-def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
-                         periodic=(False, False, False)):
+def realized_wall_planes(edge_masks: Sequence[jax.Array | np.ndarray], axis: int, *, ij: Sequence[int] | None = None, region: Sequence[slice] | None = None,
+                         periodic: Sequence[bool] = (False, False, False)) -> list[int]:
     """Sorted node-plane indices along ``axis`` where a tangential wall exists.
 
     A plane ``k`` counts when some E component tangential to ``axis`` (the
@@ -787,7 +795,7 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
         in_plane = tangential
         for t in tangential:
             m = np.asarray(edge_masks[t], dtype=bool)
-            idx = [None, None, None]
+            idx: list[int | slice | None] = [None, None, None]
             idx[in_plane[0]] = i
             idx[in_plane[1]] = j
             idx[axis] = slice(None)
@@ -817,7 +825,7 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
 _COMPONENT_INDEX = {"ex": 0, "ey": 1, "ez": 2, "x": 0, "y": 1, "z": 2, 0: 0, 1: 1, 2: 2}
 
 
-def edge_is_pec(edge_masks, component, i, j, k) -> bool:
+def edge_is_pec(edge_masks: Sequence[jax.Array | np.ndarray], component: str | int, i: int, j: int, k: int) -> bool:
     """True iff the E edge ``component`` at index ``(i, j, k)`` is PEC.
 
     ``component`` is ``"ex"``/``"ey"``/``"ez"``, ``"x"``/``"y"``/``"z"`` or

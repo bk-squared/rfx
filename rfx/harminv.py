@@ -400,7 +400,7 @@ def matrix_pencil_from_probe(
     freq_range: tuple[float, float],
     *,
     source_decay_time: float = 0.0,
-    **kwargs,
+    **kwargs: float | int | str | bool,
 ) -> list[MatrixPencilMode]:
     """Extract resonances from a simulation probe via the matrix pencil method.
 

@@ -14,6 +14,11 @@ References:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 from rfx.errors import RfxRefusal
 
 from typing import NamedTuple
@@ -355,7 +360,7 @@ def make_ntff_box(
     grid: Grid,
     corner_lo: tuple[float, float, float],
     corner_hi: tuple[float, float, float],
-    freqs,
+    freqs: ArrayLike,
     *,
     collocation: str = "face_centre",
 ) -> NTFFBox:

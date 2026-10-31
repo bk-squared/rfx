@@ -19,8 +19,8 @@ Usage
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning
-import inspect
-import math
+import inspect; import math; from typing import TYPE_CHECKING
+if TYPE_CHECKING: from rfx.realized_geometry import RealizedGeometry; from rfx.sources.sources import ModulatedGaussian
 import json
 import jax
 from collections.abc import Callable, Mapping, Sequence
@@ -756,7 +756,7 @@ class Simulation(
             shape=shape, material_name=material))
         return self
 
-    def realized_geometry(self):
+    def realized_geometry(self) -> RealizedGeometry:
         """Return the immutable host record of this configuration's built geometry.
 
         Build only: entities, solved sheet spans, signed face residuals in
@@ -766,7 +766,7 @@ class Simulation(
         """
         return _realized_geometry_fn(self)
 
-    def fidelity_report(self, print_report: bool = True):
+    def fidelity_report(self, print_report: bool = True) -> list[dict[str, object]]:
         """Input-fidelity audit: declared vs solved, per entity, in input
         units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`
         (design rule: never predicts result-side impact; rasterization,
@@ -780,7 +780,7 @@ class Simulation(
         position: tuple[float, float, float],
         component: str = "ez",
         *,
-        waveform=None,
+        waveform: Callable[[jax.Array], jax.Array] | None = None,
         amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
@@ -862,7 +862,7 @@ class Simulation(
         position: tuple[float, float, float],
         *,
         polarization: str | tuple = "ez",
-        waveform=None,
+        waveform: GaussianPulse | ModulatedGaussian | None = None,
         amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a polarized point source.
@@ -975,8 +975,8 @@ class Simulation(
         pin_radius: float = 0.635e-3,
         outer_radius: float = 2.055e-3,
         impedance: float = 50.0,
-        waveform=None,
-        terminates=None,
+        waveform: Callable[[jax.Array], jax.Array] | None = None,
+        terminates: object = None,
     ) -> "Simulation":
         """Add an SMA-style coaxial probe port.
 
@@ -1245,7 +1245,7 @@ class Simulation(
         excite: bool = True,
         direction: str | None = None,
         reference_plane_cells: int | None = None,
-        terminates=None,
+        terminates: object = None,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -1416,7 +1416,7 @@ class Simulation(
         name: str | None = None,
         mode: str = "laplace",
         eps_r_sub: float | None = None,
-        terminates=None,
+        terminates: object = None,
     ) -> "Simulation":
         """Add a microstrip-line (MSL) port spanning the full trace cross-section.
 
@@ -1940,7 +1940,7 @@ class Simulation(
             )
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
-    def boundary_model(self, *, rcs: bool = False):
+    def boundary_model(self, *, rcs: bool = False) -> object:
         """Return the B1 face declaration with the current feature requirements.
 
         No runner consumes this descriptor in B1. ``rcs=True`` collects the
@@ -2205,7 +2205,7 @@ class Simulation(
         self,
         corner_lo: tuple[float, float, float],
         corner_hi: tuple[float, float, float],
-        freqs=None,
+        freqs: Sequence[float] | np.ndarray | jax.Array | None = None,
         n_freqs: int = 50,
     ) -> "Simulation":
         """Add a near-to-far-field transform box for radiation patterns.
@@ -2230,9 +2230,9 @@ class Simulation(
         corner_lo: tuple[float, float, float],
         corner_hi: tuple[float, float, float],
         block_size: float,
-        freqs,
+        freqs: Sequence[float] | np.ndarray | jax.Array,
         order: int = 2,
-        margin_cells=0,
+        margin_cells: int | tuple[int, int, int] = 0,
         off_cells: int = 0,
     ) -> "Simulation":
         """Accumulate the structure's own current as block moments, in-loop.
@@ -2310,7 +2310,7 @@ class Simulation(
 
     # ---- build helpers ----
 
-    def freeze_mesh(self):
+    def freeze_mesh(self) -> Grid | NonUniformGrid:
         """Finalize mesh spacing/profiles and extent, returning the selected grid.
 
         Call after adding mesh-driving materials/geometry and before placing
