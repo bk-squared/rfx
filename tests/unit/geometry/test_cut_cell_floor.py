@@ -1,5 +1,5 @@
 """Hand arithmetic, same-process main control, and closed-box energy for the floor."""
-import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -35,11 +35,14 @@ def test_hand_faces():
             np.testing.assert_array_equal(got, want)
 
 
+# Sources of rfx/grid.py and rfx/geometry/conformal_cells.py at main fa8e0eaf5, frozen because
+# CI checks out depth 1 (no history to `git show`).
+BASE = Path(__file__).resolve().parents[2] / "data" / "base_fa8e0eaf5"
+
 def test_default_operands_and_dt_match_main_in_process():
     old = {}
     for name in ('grid', 'geometry/conformal_cells'):
-        source = subprocess.check_output(
-            ['git', 'show', f'fa8e0eaf5:rfx/{name}.py'], text=True)
+        source = (BASE / f'{name}.py.txt').read_text()
         namespace = {'__name__': 'rfx.' + name.replace('/', '.')}
         exec(compile(source, f'main:{name}', 'exec'), namespace)
         old[name] = namespace
