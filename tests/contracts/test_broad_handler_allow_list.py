@@ -9,7 +9,7 @@ import pytest
 # One row per handler, including repeated handlers in the same function.
 # Reasons describe the accepted debt, not an exemption for future handlers.
 ALLOW_LIST = (
-    ('rfx/_ringdown_jax.py', 'host_poles', 'pending B1c: recorded diagnostic'),
+    ('rfx/ringdown/_jax.py', 'host_poles', 'pending B1c: recorded diagnostic'),
     ('rfx/api/_ad_carry.py', 'read_carry', 're-raises with context'),
     ('rfx/api/_ad_carry.py', 'linear_accumulators', 'pending B1c: recorded diagnostic'),
     ('rfx/api/_ad_memory.py', '_ad_memory_static_accounting', 'pending B1b: grid/check fallback'),
@@ -95,8 +95,8 @@ ALLOW_LIST = (
     ('rfx/realized_placement.py', '_sources', 'pending B1c: recorded diagnostic'),
     ('rfx/realized_placement.py', '_probes', 'pending B1c: recorded diagnostic'),
     ('rfx/realized_placement.py', '_probes', 'pending B1c: recorded diagnostic'),
-    ('rfx/ringdown.py', '_judge_record', 'pending B1c: recorded diagnostic'),
-    ('rfx/ringdown.py', '_error_witnesses', 'pending B1c: recorded diagnostic'),
+    ('rfx/ringdown/__init__.py', '_judge_record', 'pending B1c: recorded diagnostic'),
+    ('rfx/ringdown/__init__.py', '_error_witnesses', 'pending B1c: recorded diagnostic'),
     ('rfx/sources/_laplace.py', '_solve_laplace_2d', 'pending B1c: environment probe'),
     ('rfx/sparams/waveguide.py', 'compute_waveguide_s_matrix', 'pending B1b: grid/check fallback'),
     ('rfx/stepping/rank.py', '_staged_by_enclosing_program', 'pending B1c: environment probe'),
