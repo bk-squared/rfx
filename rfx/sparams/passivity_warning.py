@@ -12,10 +12,11 @@ TOL = 1e-2
 
 
 def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> None:
-    """Warn once when a finite returned S bin exceeds the spectral tolerance.
+    """Warn once when finite columns of returned S exceed the spectral tolerance.
 
     A diagonal-only array gives a lower bound, not the full matrix norm.
     Observed columns likewise give a lower bound when drives are missing.
+    A bin with non-finite columns is judged on its remaining finite columns.
     Concrete measurement only: tracing and unavailable host values are skipped.
     """
     if is_tracer(s_params) or is_tracer(freqs):
@@ -25,15 +26,24 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
     if s.ndim not in (1, 2, 3) or not s.size or f.ndim != 1 or s.shape[-1] != f.size:
         return
     lower_bound = ""
+    dropped = np.zeros(f.size, dtype=bool)
     if s.ndim == 3:
-        from rfx.sparams._common import _sigma_max_excess
-        excess = _sigma_max_excess(s)
+        excess = np.full(f.size, np.nan)
+        for k in range(f.size):
+            matrix = s[:, :, k]
+            keep = np.all(np.isfinite(matrix), axis=0)
+            dropped[k] = not np.all(keep)
+            if np.any(keep):
+                sig = np.linalg.svd(matrix[:, keep].astype(np.complex128), compute_uv=False)
+                excess[k] = max(float(sig[0]) - 1.0, 0.0)
         if s.shape[0] != s.shape[1]:
             lower_bound = " (observed-column lower bound of sigma_max)"
     elif s.ndim in (1, 2):
         magnitude = np.abs(s)
         if s.ndim == 2:
-            magnitude = np.max(magnitude, axis=0)
+            keep = np.isfinite(s)
+            dropped = ~np.all(keep, axis=0)
+            magnitude = np.max(np.where(keep, magnitude, -np.inf), axis=0)
             lower_bound = " (diagonal-only lower bound of sigma_max)"
         excess = magnitude - 1.0
     else:
@@ -42,6 +52,8 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
     over = finite & (excess > TOL)
     if not np.any(over):
         return
+    if np.any(dropped & over):
+        lower_bound += " (lower bound from the finite columns)"
     k = int(np.argmax(np.where(finite, excess, -np.inf)))
     warnings.warn(
         f"{extractor}: the returned S is not passive at {int(over.sum())} of "

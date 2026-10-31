@@ -164,9 +164,9 @@ def compute_mixed_s_matrix(
       audits the RAW matrix, and is the check that a wrong diagonal
       trips.
     * The returned ``S`` warns (``AccuracyWarning``, nothing changed)
-      where its largest singular value exceeds ``1 + 1e-2``, on fully
-      finite bins only: a bin holding a refused (NaN) position is not
-      checked, and a projected ``S`` (``enforce_passivity=True``) is
+      where its largest singular value exceeds ``1 + 1e-2``; on a bin
+      with a refused (NaN) column, the finite columns are judged as a
+      lower bound. A projected ``S`` (``enforce_passivity=True``) is
       clipped to 1 first. Read ``S_raw`` for the measured matrix.
     * With ``magnitude_channel="wave"``, off-diagonal magnitudes that
       RECEIVE at a lumped/wire port cell inherit the
