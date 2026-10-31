@@ -1362,6 +1362,11 @@ def _finalize_sparam_result(
         passivity_tol=passivity_tol,
         check_reciprocity=check_reciprocity,
     )
+    from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+    s = getattr(result, "s_params", None)
+    if s is None:
+        s = getattr(result, "S", None)
+    warn_if_singular_value_exceeds_one(s, result.freqs, extractor=extractor)
     return result
 
 

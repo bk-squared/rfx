@@ -1150,6 +1150,10 @@ def compute_mixed_s_matrix(
             passivity_tol=0.10,
             refused_positions=refused_positions,
         )
+        from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+        warn_if_singular_value_exceeds_one(
+            result.S, result.freqs, extractor="compute_mixed_s_matrix",
+        )
         # RECIPROCITY WITNESS — the only independent runtime check on
         # the flux channel (review finding: the shared passivity audit
         # above is structurally inert here, because column power is an
