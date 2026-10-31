@@ -7,7 +7,7 @@ sidebar:
 
 <section data-rfx="hero">
   <p>rfx is an open-source 3-D FDTD simulator for RF and microwave engineering, written in JAX. Write a loss on S-parameters, a radiation pattern or a field, and rfx returns its derivative with respect to the permittivity of every cell in a design region, from one forward and one reverse simulation. An optimiser can then shape a design cell by cell.</p>
-  <p data-rfx="actions"><code>pip install "rfx-fdtd>=2.0.0rc1"</code> <a href="/rfx/showcase/">See the showcase →</a> <a href="https://github.com/bk-squared/rfx">GitHub</a></p>
+  <p data-rfx="actions"><code>pip install "rfx-fdtd>=2.0"</code> <a href="/rfx/showcase/">See the showcase →</a> <a href="https://github.com/bk-squared/rfx">GitHub</a></p>
 </section>
 
 ## A printable lens, designed by gradient
@@ -62,7 +62,7 @@ cells take 1.4 times as long as the simulation alone.
   </div>
   <div>
     <strong>2×10⁻⁵</strong>
-    <p>Largest relative difference between the reverse-mode gradient and central finite differences on the patch (float64). Finite differences cannot see an error from the record length, so the gradient was also repeated with a 1.5× longer simulation time: the block sums moved by at most 5.4×10⁻⁴.</p>
+    <p>Largest relative difference between the reverse-mode gradient and central finite differences on the patch (float64). Finite differences cannot see an error from the record length, so the gradient was also repeated with a 1.5× longer simulation time: the gradient sums over the four blocks large enough to judge moved by at most 5.4×10⁻⁴.</p>
     <a href="/rfx/showcase/sensitivity-map/">How the gradient was checked →</a>
   </div>
 </div>

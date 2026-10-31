@@ -18,9 +18,9 @@ The website identifies its source version; select the release matching your inst
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
 | Check whether a result is supported | [Support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md) · [S-parameter limits](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters) · [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) |
 
-## Release status: 2.0 release candidate
+## Release status: 2.0
 
-rfx 2.0 is in release candidates; the install lines below take the newest one on PyPI. What 2.0 changes for a user:
+rfx 2.0.0 is the current release. What 2.0 changes for a user:
 
 - **An input a solver path does not implement is refused, never dropped.** If `run()`,
   `forward()` or an S-parameter calculator routes your model to a path that does not
@@ -43,14 +43,13 @@ rfx 2.0 is in release candidates; the install lines below take the newest one on
 ## Install
 
 ```bash
-pip install rfx-fdtd            # latest stable release
-pip install "rfx-fdtd>=2.0.0rc1"   # 2.0 release candidate
+pip install "rfx-fdtd>=2.0"
 ```
 
 For GPU execution, use a compatible JAX/CUDA installation:
 
 ```bash
-pip install "jax[cuda12]" "rfx-fdtd>=2.0.0rc1"
+pip install "jax[cuda12]" "rfx-fdtd>=2.0"
 ```
 
 For the development version, clone this repository and run `pip install -e ".[dev]"`.

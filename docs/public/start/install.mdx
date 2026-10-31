@@ -11,12 +11,11 @@ rfx needs Python 3.11 or newer. The PyPI package is `rfx-fdtd`, and the import
 name is `rfx`.
 
 ```bash
-pip install "rfx-fdtd>=2.0.0rc1"
+pip install "rfx-fdtd>=2.0"
 ```
 
-rfx 2.0 is a release candidate, so name its version: a plain
-`pip install rfx-fdtd` installs the latest stable release, 1.7.0, which these
-pages do not describe.
+These pages describe rfx 2.0. rfx 1.x (1.7.0 on PyPI) stays installable as
+`pip install "rfx-fdtd<2"`; these pages do not describe it.
 
 This installs JAX and jaxlib (CPU), NumPy, SciPy, matplotlib and h5py. rfx
 asks for JAX from 0.10.2 up to, not including, 0.11.2: pip picks 0.11.1 on
@@ -29,7 +28,7 @@ rfx runs on whatever device JAX finds. For an NVIDIA GPU, install the CUDA
 build of JAX:
 
 ```bash
-pip install "jax[cuda12]" "rfx-fdtd>=2.0.0rc1"
+pip install "jax[cuda12]" "rfx-fdtd>=2.0"
 python -c "import jax; print(jax.devices())"   # should list a CUDA device
 ```
 
