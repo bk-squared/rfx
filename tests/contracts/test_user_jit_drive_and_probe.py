@@ -32,11 +32,8 @@ DX_GUIDE = np.r_[np.ones(10), [.9, 1.1, .95, 1.05, .9, 1.1, 1.05, .95, 1.3],
 DZ_MSL = np.r_[np.full(6, .5), .5 * 1.25 ** np.arange(1, 6)] * 1e-3
 
 
-XFAILS = dict.fromkeys((1, 3, 5, 15, 29, 30, 31, 32, 40, 43), pytest.mark.xfail(
+XFAILS = dict.fromkeys((29, 30, 31, 32, 43), pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
-XFAILS.update(dict.fromkeys((17, 19, 50), pytest.mark.xfail(
-    strict=True, raises=jax.errors.ConcretizationTypeError,
-    reason="#2241 graded port assembly calls float() on a traced cell spacing under a user jit (rfx/model/graded_ports.py:77)")))
 
 
 def _row(path, kind, entry, *, eps=False, always=False):
@@ -287,7 +284,7 @@ def test_drive_and_probe(path, kind, entry, eps, evidence):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('path,kind', [pytest.param('graded', 'wire', id='U5-graded-wire-S', marks=XFAILS[50])])
+@pytest.mark.parametrize('path,kind', [pytest.param('graded', 'wire', id='U5-graded-wire-S')])
 def test_s_drive_and_reference(path, kind, evidence):
     _compare(path, kind, 'run', False, evidence, spectrum=True)
 
