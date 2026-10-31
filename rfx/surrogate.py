@@ -16,6 +16,12 @@ Typical workflow::
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.api import Simulation
+    from rfx.sweep import SweepResult
+
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +32,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 def export_training_data(
-    sweep_result,
+    sweep_result: SweepResult,
     *,
     output_path: str | Path,
     format: str = "npz",
@@ -143,7 +149,7 @@ def _sheet_footprint_on_samples(shape, x, y, z, *, name):
 
 
 def export_geometry_sdf(
-    sim,
+    sim: Simulation,
     *,
     resolution: float = 1e-3,
 ) -> np.ndarray:

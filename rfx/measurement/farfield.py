@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 from rfx._precision import HIGHEST
 from rfx.farfield import ETA_0
 from rfx.farfield import FarFieldResult
@@ -226,14 +231,14 @@ def compute_far_field(
 
 
 def compute_far_field_jax(
-    ntff_data,
-    box,
-    grid,
-    theta,
-    phi,
+    ntff_data: NTFFData,
+    box: NTFFBox,
+    grid: Grid,
+    theta: ArrayLike,
+    phi: ArrayLike,
     *,
     max_phase_bytes: float = 4e9,
-):
+) -> FarFieldResult:
     """JAX-differentiable far-field computation for use inside jax.grad.
 
     Same physics as ``compute_far_field`` — including its face-cell sample

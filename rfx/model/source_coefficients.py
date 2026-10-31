@@ -1,6 +1,14 @@
 """Run-specific source coefficient selection and absorber admission."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from collections.abc import Callable
+    from rfx.core.yee import MaterialArrays
+    from collections.abc import Sequence
+
 from rfx.errors import RfxRefusal
 
 from rfx._grid_metric import field_index
@@ -232,8 +240,8 @@ def current_source_volume(grid, position_ijk, component):
     return dx_local * dy_local * dz_local, grid_traced
 
 
-def make_current_source(grid: NonUniformGrid, position_ijk, component,
-                        waveform_fn, n_steps, materials, amplitude_kind=None):
+def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], component: str,
+                        waveform_fn: Callable[[jax.Array], ArrayLike], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
     """Create a properly normalized current source for non-uniform grid.
 
     The waveform specifies CURRENT (Amperes). The E-field addition is:

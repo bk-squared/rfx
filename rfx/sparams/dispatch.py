@@ -58,6 +58,16 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.api._spec import CoaxMSLTransitionResult
+    from rfx.api._spec import CoaxialLineReflectionResult
+    from rfx.api._spec import CoaxialTwoPortResult
+    from rfx.api._spec import MSLSMatrixResult
+    from rfx.api._spec import MixedSMatrixResult
+    from rfx.api._spec import WaveguideSMatrixResult
+
 from rfx._precision import resolve_field_dtype
 
 from typing import TYPE_CHECKING
@@ -367,7 +377,7 @@ def s_matrix_lane(self, *, method: str | None = None, lane: str | None = None) -
     return resolved
 
 
-def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None, **kwargs):
+def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None, **kwargs: object) -> WaveguideSMatrixResult | MSLSMatrixResult | CoaxialLineReflectionResult | CoaxialTwoPortResult | CoaxMSLTransitionResult | MixedSMatrixResult:
     """Compute S-parameters on whichever method this simulation's ports select.
 
     A single entry point over the per-family calculators. It inspects the

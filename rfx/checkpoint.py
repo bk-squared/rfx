@@ -9,6 +9,11 @@ Supports saving and restoring:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.grid import Grid
+
 from pathlib import Path
 
 import jax.numpy as jnp
@@ -30,7 +35,7 @@ def _require_h5py():
         )
 
 
-def save_state(path: str | Path, state: FDTDState, grid=None) -> None:
+def save_state(path: str | Path, state: FDTDState, grid: Grid | None = None) -> None:
     """Save FDTD state to an HDF5 file.
 
     Parameters

@@ -7,6 +7,14 @@ interactive/publication-quality rendering.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.core.yee import FDTDState
+    from rfx.grid import Grid
+    from rfx.nonuniform import NonUniformGrid
+    from rfx.api import Simulation
+
 import numpy as np
 
 from rfx._plotting import _pyplot
@@ -52,7 +60,7 @@ def _box_faces(p0, p1, color="C0", alpha=0.3):
 
 
 def plot_geometry_3d(
-    sim,
+    sim: Simulation,
     *,
     show_domain: bool = True,
     show_ports: bool = True,
@@ -282,8 +290,8 @@ def _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_lab
 # ---------------------------------------------------------------------------
 
 def plot_field_3d(
-    state,
-    grid,
+    state: FDTDState,
+    grid: Grid | NonUniformGrid,
     *,
     component: str = "ez",
     threshold: float = 0.1,
@@ -431,8 +439,8 @@ def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, s
 # ---------------------------------------------------------------------------
 
 def save_field_vtk(
-    state,
-    grid,
+    state: FDTDState,
+    grid: Grid | NonUniformGrid,
     filename: str,
     *,
     components: tuple[str, ...] = ("ex", "ey", "ez", "hx", "hy", "hz"),

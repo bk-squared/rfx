@@ -36,6 +36,11 @@ Key concepts
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.api import Simulation
+
 from rfx.errors import AccuracyWarning
 from rfx._precision import resolve_field_dtype
 
@@ -347,7 +352,7 @@ def _get_beta(iteration: int, schedule: list[tuple[int, float]]) -> float:
 # ---------------------------------------------------------------------------
 
 def topology_optimize(
-    sim,
+    sim: Simulation,
     design_region: TopologyDesignRegion,
     objective: Callable,
     *,
