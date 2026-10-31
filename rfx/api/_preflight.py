@@ -1436,9 +1436,9 @@ class _PreflightMixin:
         if self._geometry and not self._uses_nonuniform_mesh:
             try:
                 homogeneous = _adi_homogeneous(self, None)
-            except Exception:   # assembly errors are reported by their own checks
-                homogeneous = True
-            if not homogeneous:
+            except (ValueError, NotImplementedError, KeyError, IndexError):
+                homogeneous = None
+            if homogeneous is False:
                 from rfx.adi import ADI_INTERFACE_MESSAGE
                 _w.warn(PreflightErrorWarning(
                     ADI_INTERFACE_MESSAGE,

@@ -192,10 +192,11 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
         # under the same slug, so the caller saw the paragraph twice. One
         # source when both would fire; check 4 is the fuller of the two.
         return
-    grid = None
     try:
         grid = self._build_realized_grid()
-    except Exception:  # noqa: BLE001 - preflight collects, never crashes
+    except (TimeoutError,):
+        raise
+    except Exception:  # noqa: BLE001 - recorded in MSLProbeClearance.status/note
         grid = None
     entries = list(getattr(self, "_msl_ports", ()) or ())
     resolver = getattr(self, "_resolve_msl_probe_entries", None)
@@ -209,7 +210,9 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
     for pe in entries:
         try:
             record = msl_probe_clearance_for_port(self, pe, grid)
-        except Exception as exc:  # noqa: BLE001
+        except (TimeoutError,):
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded in msl.probe_clearance_scan_failed
             _w.warn(
                 PreflightWarning(
                     msl_diagnostic(
@@ -576,13 +579,7 @@ def _check_msl_port_geometry(
 ) -> None:
     """MSL port setup correctness checks (issue: silent Z0 / |S11| bias).
 
-    Microstrip Z0 and |S11| are extremely sensitive to lateral box
-    size and substrate resolution. Wrong setup can give 15-30% Z0
-    bias or anti-convergent mesh-conv with no error message.
-    Catches the common mistakes here so users find them in <1 min
-    instead of after a full mesh sweep.
-
-    Checks per MSL port (1, 2 + 2b/2c, 3, 4 + 4a/4b, 5):
+    Check clearance, substrate resolution and probe placement before a mesh sweep.
 
     1. **Lateral clearance** from trace edge to nearest absorbing
        boundary (CPML/PML) or PEC sidewall must be ≥ 2·h_sub.
@@ -696,9 +693,9 @@ def _check_msl_port_geometry(
     # above, which mirrors production rasterization exactly for the
     # same reason — so every check below quotes the coordinates
     # ``compute_msl_s_matrix`` actually samples. Defensive: preflight
-    # must never crash a run over a diagnostics helper, so a failed
-    # grid build falls back to the pre-fix continuous formula at the
-    # site below rather than raising or skipping checks 4/4a/4b.
+    # records a failed grid build in the clearance status/note while
+    # the other checks use the continuous formula below. A timeout
+    # propagates instead of becoming a fallback for checks 4/4a/4b.
     from rfx.sources.msl_port import (
         _MSL_AXIS_INDEX as _MSL_AX,
         msl_axis_roles as _msl_axis_roles,
@@ -708,7 +705,9 @@ def _check_msl_port_geometry(
     )
     try:
         _msl_grid = self._build_realized_grid()
-    except Exception:
+    except (TimeoutError,):
+        raise
+    except Exception:  # noqa: BLE001 - recorded in MSLProbeClearance.status/note
         _msl_grid = None
 
     # Issue #752 / #766 review: one rasterization for all ports.
