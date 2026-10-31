@@ -5,7 +5,7 @@ import pytest
 from rfx.core.yee import MU_0
 from rfx.core.yee import init_materials
 from rfx.model.materials import with_components
-from rfx.subgridding import jit_runner as runner
+from rfx.stepping import subgrid_coupling as runner
 from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
 
 

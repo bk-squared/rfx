@@ -34,7 +34,7 @@ PRINT_SITES = {
     ("topology.py", "topology_optimize"): "explicit output API or user-flagged output",
     ("preflight/_impl.py", "_preflight_impl"): "preflight report rendering",
     ("api/_preflight.py", "preflight_sparameters"): "preflight report rendering",
-    ("subgridding/runner.py", "run_subgridded"): "subgridding progress line",
+    ("stepping/subgrid_loop.py", "run_subgridded_loop"): "subgridding progress line",
 }
 
 CUSTOM_BASES = [
