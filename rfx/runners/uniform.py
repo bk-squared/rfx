@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -696,7 +698,7 @@ def run_uniform(
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
-            record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
+            record_dft=time_recorded_dft_selection(sim),
             flux_monitors=flux_monitors,
             waveguide_ports=waveguide_ports,
             ntff=ntff_box,
@@ -735,7 +737,7 @@ def run_uniform(
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
-            record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
+            record_dft=time_recorded_dft_selection(sim),
             flux_monitors=flux_monitors,
             waveguide_ports=waveguide_ports,
             ntff=ntff_box,
@@ -873,9 +875,7 @@ def run_uniform(
         dt=sim_result.dt,
         sparam_time_records=sim_result.sparam_time_records,
         sparam_read_ids=sparam_read_ids,
-        dft_time_records={
-            entry.name: rec for entry, rec in zip(sim._dft_planes, sim_result.dft_time_records or ())
-        },
+        dft_time_records=named_plane_records(sim, sim_result.dft_time_records),
         settling_db=s_settling["db"] if s_settling else None,
         settling_witness=s_settling,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),

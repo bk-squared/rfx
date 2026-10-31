@@ -580,6 +580,7 @@ def compute_mixed_s_matrix(
     )
 
     saved_dft = list(self._dft_planes)
+    saved_time_planes = getattr(self, "_time_recorded_dft_planes", None)
     saved_msl = list(self._msl_ports)
     saved_ports = list(self._ports)
     saved_probes = list(self._probes)
@@ -723,6 +724,11 @@ def compute_mixed_s_matrix(
                     jnp.asarray(freqs_arr),
                 ))
                 names.append(nm)
+
+            self._time_recorded_dft_planes = (
+                {name + f"_ez{q}" for p, name in enumerate(names) for q in range(len(probe_xs[p]))}
+                | {name for pairs in h_names for pair in pairs for name in pair}
+            )
 
             raw = self._forward_from_materials(
                 grid, materials, debye_spec, lorentz_spec,
@@ -1210,6 +1216,10 @@ def compute_mixed_s_matrix(
             }
         return result
     finally:
+        if saved_time_planes is None:
+            self.__dict__.pop("_time_recorded_dft_planes", None)
+        else:
+            self._time_recorded_dft_planes = saved_time_planes
         self._dft_planes = saved_dft
         self._msl_ports = saved_msl
         self._ports = saved_ports
