@@ -73,6 +73,7 @@ ALLOW_LIST = (
     ('rfx/preflight/msl_reflector.py', 'msl_nearest_downstream_reflector', 'pending B1b: per-entry check'),
     ('rfx/preflight/ntff.py', '_validate_ntff_inverse_design', 'pending B1c: environment probe'),
     ('rfx/preflight/waveguide.py', '_waveguide_setup_planes', 'pending B1b: grid/check fallback'),
+    ('rfx/sparams/waveguide.py', 'compute_waveguide_s_matrix', 'recorded in the UNCHECKED AccuracyWarning'),
     ('rfx/preflight/waveguide.py', '_waveguide_port_cutoff_reading', 'pending B1c: recorded diagnostic'),
     ('rfx/profiling.py', 'profile_forward', 'pending B1b: grid/check fallback'),
     ('rfx/realized_geometry.py', '_build_record', 'pending B1c: recorded diagnostic'),

@@ -41,7 +41,7 @@ CASES = [
     ("half_node", ValueError, False),
     ("waveguide_setup", ValueError, True),
     ("profiling", ValueError, True),
-    ("waveguide_sparams", ValueError, False),
+    ("waveguide_sparams", ValueError, True),
     ("auto_probe_bounds", NotImplementedError, False),
     ("dispersive_material", KeyError, False),
     ("thin_bounds", NotImplementedError, False),
