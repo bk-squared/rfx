@@ -277,7 +277,6 @@ def test_absolute_sigma_matches_po_at_gate_grid(theta_inc):
     po = _po_sigma(np.array([np.radians(180.0 - theta_inc)]), theta_inc,
                    n_w * DX, 2 * DX, LAM)[0]
     delta_db = 10 * np.log10(sigma_peak / po)
-    print(f"theta_inc={theta_inc:g} deg: Delta={delta_db:+.6f} dB vs PO")
     delta_pin = {20.0: 0.0833, 40.0: 0.1583}[theta_inc]
     assert abs(delta_db - delta_pin) <= 0.03, (
         f"absolute sigma vs PO drifted: {delta_db:+.6f} dB at "

@@ -187,8 +187,7 @@ run otherwise, naming the faces that don't clear it.
   if you need a larger offset. The pattern and specular direction are validated.
   For the 2.2-wavelength plate at 20° and 40°, four settled meshes from λ/30
   to λ/120 give a specular RCS +0.08 to +0.16 dB from physical optics at 5 GHz,
-  converged within 0.006 dB from λ/60 to λ/120 (rfx-archive
-  rfx/records/20261031-oblique-rcs-level-1991).
+  converged within 0.006 dB from λ/60 to λ/120.
   The oblique model is 2.5-D (periodic in z), so the returned RCS
   belongs to a strip of height 2 `dx`; scale by (L_z / (2 dx))² for a strip
   of height L_z.
