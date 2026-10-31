@@ -141,6 +141,11 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
              else jnp.zeros((n_steps, 0), jnp.float32))
     port_carry = {key: carry.pop(key) for key in _PORT_CARRY if key in carry}
     inputs, carry = split(inputs, carry, layout, mesh, waveforms=waves, dt=grid.dt)
+    if ctx.use_pec_edges:
+        row = jnp.arange(layout.n_devices * layout.nx_local) % layout.nx_local
+        real = (row >= layout.ghost_width) & (row < layout.nx_local - layout.ghost_width)
+        inputs['pec_edge_masks'] = jax.tree.map(
+            lambda mask: mask & real[:, None, None], inputs['pec_edge_masks'])
     carry.update(staged)
     carry.update(jax.tree.map(lambda a: place(jnp.broadcast_to(a,
         (layout.n_devices,) + a.shape), NamedSharding(mesh, P('x'))), port_carry))
