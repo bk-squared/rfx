@@ -262,7 +262,7 @@ def test_outside_coordinate_reports_domain_and_wall(path, x, face):
 
 CONTROL_PATHS = [(path, case) for path in PATHS
                  for case in ('normal', 'inside', 'cpml', 'pmc', 'periodic')
-                 if not (path.startswith(( 'subgrid')) and
+                 if not (path.startswith('subgrid') and
                          case not in ('normal', 'inside'))
                  and not (path.startswith('distributed') and case in ('pmc', 'periodic'))
                  and not ('graded' in path and case == 'periodic')]
@@ -284,7 +284,7 @@ def test_b3_control_admission(path, case):
     assert np.all(np.isfinite(result.time_series))
 
 
-@pytest.mark.parametrize('solver', ('yee'))
+@pytest.mark.parametrize('solver', ('yee',))
 def test_private_material_forward_refuses(solver):
     sim = model('uniform_forward')
     sim.add_source((0, 7 * DX, 5 * DX), 'ez', amplitude_kind='field')

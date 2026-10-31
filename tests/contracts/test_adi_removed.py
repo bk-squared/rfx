@@ -10,7 +10,6 @@ import pytest
 
 import rfx
 from rfx.interop import design_to_dict, simulation_from_design
-from rfx.model.solver_admission import ADI_REMOVED
 
 
 NAMES = ("ADIState2D", "ADIState3D", "thomas_solve", "adi_step_2d",
@@ -29,21 +28,27 @@ def test_constructor_refuses_adi(graded):
     options = {"dz_profile": np.full(10, .001)} if graded else {}
     with pytest.raises(ValueError) as caught:
         declaration(solver="adi", **options)
-    assert str(caught.value) == ADI_REMOVED
+    assert "removed in 2.1" in str(caught.value)
+    assert 'solver="yee" on a graded mesh' in str(caught.value)
+    assert "local refinement where it is supported" in str(caught.value)
 
 
 @pytest.mark.parametrize("factor", [2.0, 0, False, "unused"])
 def test_factor_refuses_any_value(factor):
     with pytest.raises(ValueError) as caught:
         declaration(adi_cfl_factor=factor)
-    assert str(caught.value) == ADI_REMOVED
+    assert "removed in 2.1" in str(caught.value)
+    assert 'solver="yee" on a graded mesh' in str(caught.value)
+    assert "local refinement where it is supported" in str(caught.value)
 
 
 @pytest.mark.parametrize("name", NAMES)
 def test_removed_attribute(name):
     with pytest.raises(AttributeError) as caught:
         getattr(rfx, name)
-    assert ADI_REMOVED in str(caught.value)
+    assert "removed in 2.1" in str(caught.value)
+    assert 'solver="yee" on a graded mesh' in str(caught.value)
+    assert "local refinement where it is supported" in str(caught.value)
 
 
 def test_old_yee_document_ignores_factor():
@@ -61,7 +66,9 @@ def test_old_adi_document_refuses():
     document["solver"].update(solver="adi", adi_cfl_factor=2.0)
     with pytest.raises(ValueError) as caught:
         simulation_from_design(document)
-    assert ADI_REMOVED in str(caught.value)
+    assert "removed in 2.1" in str(caught.value)
+    assert 'solver="yee" on a graded mesh' in str(caught.value)
+    assert "local refinement where it is supported" in str(caught.value)
 
 
 def test_deleted_modules_have_no_importers():

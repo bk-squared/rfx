@@ -71,7 +71,10 @@ def generate(builders):
                                   None if equivalent else b if on_a else a, steps))
     # These paths are outside equivalence scope: only their refusals run.
     for row, admitted in admission._ADMITTED_ON.items():
-        for lane in (  'run_subgridded'):
+        # The constructor refuses every non-Yee solver.
+        if row == ('_solver', ''):
+            continue
+        for lane in ('run_subgridded',):
             if lane not in admitted:
                 assert row in builders, f'S0 missing refusal builder: {row}'
                 cells.append(Cell(row, lane, 'refusal', False, False, lane, 0))

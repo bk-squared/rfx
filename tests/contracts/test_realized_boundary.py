@@ -110,7 +110,7 @@ def compare_departures(problems):
 def test_no_unlisted_departures(cell):
     if cell["case"] == "floquet":
         return floquet_refused(cell["entry"])
-    if cell["case"] == "tfsf" and cell["entry"] not in ("nonuniform"):
+    if cell["case"] == "tfsf" and cell["entry"] not in ("nonuniform",):
         # #1945 supersedes B1's explicit CPML replacement, at registration.
         with pytest.raises(ValueError, match="y_lo='cpml'.*z_hi='cpml'"):
             measured(cell["case"], cell["entry"])
