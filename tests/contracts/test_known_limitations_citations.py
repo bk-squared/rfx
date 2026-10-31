@@ -94,8 +94,8 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
 # the "Solver lanes" section; OPEN, checked by the session leader that day.
 # 2026-10-11 (2.0 documentation pass): the ADI-interface entry left with its
-# section -- the refusal is pinned by
-# tests/unit/runners/test_adi_material_interface_refusal.py and is a row in the
+# section -- the former material-interface refusal was covered by tests
+# and recorded in the
 # support matrix's Refused inputs table -- and its #1373 arrow moved to the
 # occupancy entry, whose Tracker is the same open issue. #1501 left with the
 # weekly-lane entry: a red scheduled lane is not a defect a user meets (lead
