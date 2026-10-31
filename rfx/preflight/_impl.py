@@ -27,6 +27,7 @@ def _preflight_impl(
     available_memory_gb: float | None = None,
     _conductors=None,
     _tfsf_material_overrides=(),
+    _conformal_run=None,
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
     import warnings
@@ -36,6 +37,15 @@ def _preflight_impl(
         import copy
         self = copy.copy(self)
         self._waveguide_call_overrides = _tfsf_material_overrides
+    if _conformal_run is not None:
+        # run() passes its resolved conformal_pec: cut-cell conformal PEC solves
+        # PEC Box faces at their drawn planes (#1651).
+        import copy
+        from rfx.boundaries.features import share_wall_warning_history
+        run_copy = copy.copy(self)
+        share_wall_warning_history(self, run_copy)
+        self = run_copy
+        self._conformal_run_call = bool(_conformal_run)
     if _conductors is not None:
         # Execution lends its assembled, pre-port products for this call only.
         # Bind the legacy validators to an isolated reader, never the public
@@ -268,7 +278,8 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
 
 
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
-                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=()):
+                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=(),
+                   conformal=None):
     """Emit a UserWarning if preflight finds issues (issue #66).
 
     Called automatically at the start of ``forward()``, ``optimize()``,
@@ -300,10 +311,11 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     # A validator bug must propagate, rather than become an advisory.
     if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
+            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides,
+            _conformal_run=conformal)
     else:
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                     _conductors=conductors)
+                                     _conductors=conductors, _conformal_run=conformal)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:

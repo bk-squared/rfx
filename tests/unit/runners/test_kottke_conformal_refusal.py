@@ -37,7 +37,7 @@ def _scene(entry, source, *, pec=True):
         **({"dz_profile": np.full(12, .001)}
            if entry in ("graded", "distributed_nu") else {}))
     if pec:
-        shape = (Cylinder((.0061, .0058, .006), .0017, .012, "z") if two_d
+        shape = (Cylinder((.0061, .0058, 0.), .0017, .012, "z") if two_d
                  else Sphere((.0061, .0058, .0057), .0017))
         sim.add(shape, material="pec")
     if entry == "subgridded":

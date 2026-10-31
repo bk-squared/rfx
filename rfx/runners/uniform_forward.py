@@ -199,7 +199,7 @@ def _forward_from_materials(
                 r_val=_v.get("R"), c_val=_v.get("C"),
             )
 
-    aniso_eps, aniso_inv_eps, _, unextendable = form_tensor_operands(
+    aniso_eps, aniso_inv_eps, _, unextendable, _ = form_tensor_operands(
         self, grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal=False, conformal_min_weight=0.1, pec_shapes=pec_shapes)
     if subpixel_smoothing:

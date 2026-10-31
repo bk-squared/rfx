@@ -492,6 +492,7 @@ def extract_waveguide_s_matrix_flux(
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
     ref_aniso_eps: tuple | None = None,
+    ref_conformal: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     ref_materials_per_port: "list | None" = None,
@@ -657,13 +658,17 @@ def extract_waveguide_s_matrix_flux(
         _ref_edges = (
             None if ref_pec_edge_masks_per_port is None
             else ref_pec_edge_masks_per_port[drive_idx])
+        from rfx.model.tensor_operands import reference_conformal_materials
+        ref_mat = reference_conformal_materials(
+            grid, ref_mat_drive, ref_conformal, periodic)
         ref_result = run_simulation(
-            grid, ref_mat_drive, n_steps,
+            grid, ref_mat, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
             waveguide_ports=ref_cfgs,
             flux_monitors=_make_flux_monitors(),
             aniso_eps=ref_aniso_eps,
             aniso_inv_eps=ref_aniso_inv_eps,
+            conformal_weights=None if ref_conformal is None else ref_conformal[0],
             pec_edge_masks=_ref_edges,
             checkpoint=_flux_checkpoint,
             checkpoint_segments=checkpoint_segments,
@@ -801,6 +806,7 @@ def extract_waveguide_s_params_normalized(
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
     ref_aniso_eps: tuple | None = None,
+    ref_conformal: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
@@ -936,11 +942,16 @@ def extract_waveguide_s_params_normalized(
         # #677: the vacuum REFERENCE deliberately runs with NO sheet ctx
         # (explicit strip — vacuum materials alone do not strip a sheet
         # that no longer rides materials.sigma).
+        from rfx.model.tensor_operands import reference_conformal_materials
+        ref_mat = reference_conformal_materials(
+            grid, ref_materials, ref_conformal, periodic)
         ref_result = run_simulation(
-            grid, ref_materials, n_steps,
+            grid, ref_mat, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
             waveguide_ports=ref_cfgs,
+            aniso_eps=ref_aniso_eps,
             aniso_inv_eps=ref_aniso_inv_eps,
+            conformal_weights=None if ref_conformal is None else ref_conformal[0],
             checkpoint=_norm_checkpoint,
             checkpoint_segments=checkpoint_segments,
             field_dtype=field_dtype,
@@ -1224,6 +1235,7 @@ def extract_multimode_s_matrix_flux(
     aniso_eps: tuple | None = None,
     conformal_weights: tuple | None = None,
     ref_aniso_eps: tuple | None = None,
+    ref_conformal: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     pec_edge_masks: tuple | None = None,
@@ -1329,12 +1341,16 @@ def extract_multimode_s_matrix_flux(
             for idx, cfg in enumerate(flat_cfgs)
         ]
         ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+        from rfx.model.tensor_operands import reference_conformal_materials
+        ref_mat = reference_conformal_materials(
+            grid, ref_materials, ref_conformal, periodic)
         ref_result = run_simulation(
-            grid, ref_materials, n_steps,
+            grid, ref_mat, n_steps,
             debye=ref_debye, lorentz=ref_lorentz,
             waveguide_ports=ref_cfgs,
             aniso_eps=ref_aniso_eps,
             aniso_inv_eps=ref_aniso_inv_eps,
+            conformal_weights=None if ref_conformal is None else ref_conformal[0],
             field_dtype=field_dtype,
             **common_run_kw,
         )

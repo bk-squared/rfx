@@ -544,10 +544,10 @@ class _ExecuteMixin:
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
-        prepare=False, distributed=False, tfsf_material_overrides=(),
+        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None,
     ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
+        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
@@ -1909,11 +1909,9 @@ class _ExecuteMixin:
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
         conformal_pec : bool or None
-            Conformal PEC (eps/w on cut E edges; first order, enlarges a curved
-            body, #1651). None reads Boundary(conformal=True); False is staircase.
+            Cut-cell conformal PEC (#1651); None reads Boundary(conformal=True).
         conformal_min_weight : float
-            Minimum cut-edge weight; caps its permittivity at eps/conformal_min_weight.
-            Default 0.1. Recommended range: 0.05-0.3.
+            Legacy; only the default 0.1 is accepted (the SC clamp replaced it).
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation
             distributed across those devices using 1D slab decomposition
@@ -2002,6 +2000,8 @@ class _ExecuteMixin:
         -------
         Result
         """
+        from rfx.geometry.conformal import validate_conformal_min_weight
+        validate_conformal_min_weight(conformal_min_weight)
         self._resolve_field_dtype()
         admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box)
         validate_exchange_interval(exchange_interval)
@@ -2051,7 +2051,7 @@ class _ExecuteMixin:
         _line_stub_scope = _line_stub_admit(self, s_param_freqs)
 
         _distributed_run = devices is not None and len(devices) > 1
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run, conformal=bool(conformal_pec))
         _diagnostics = _solve_assembly.diagnostics
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----

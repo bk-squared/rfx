@@ -1,16 +1,11 @@
-"""Conformal PEC weights for E edges cut by a PEC surface (the shipped model, #1651).
+"""Conformal PEC as partially filled cells: E free lengths, H free areas, and the SC clamp (#1651).
 
-Each E edge gets a weight from the signed distance ``sdf`` of its midpoint to the
-PEC surface (negative inside), w = clip(0.5 + sdf/dx, 0, 1), raised to at least
-0.1 where w > 0. This is not the edge's open fraction (the two differ by up to 0.5).
-  - 1.0: normal update
-  - 0.0: the edge is metal (E forced to zero after each update)
-  - 0 < w < 1: the edge stays live with permittivity eps_eff = eps_r / w_clamped
-
-So a cut edge's update coefficient Cb is multiplied by w; H is not changed. This is
-not the Dey-Mittra scheme (Dey & Mittra, IEEE MGWL 7(9), 273-275, 1997), which keeps
-the E update and shrinks the cut H-face areas. The live cut edges form a
-high-permittivity skin that makes a curved body electrically larger (#1651).
+Each E edge cut by a PEC surface gets permittivity eps/lbar, lbar its PEC-free length (from the signed distances at its
+two end nodes); each H face gets permeability mu*sbar, sbar its PEC-free area (marching squares on its corner nodes);
+edges with lbar = 0 are metal. This is the partially-filled-cell form of Dey and Mittra (Zagorodnov, Schuhmann and
+Weiland, JCP 225 (2007) eq. 12). The SC clamp lbar <= 2 min(sbar of the four faces at the edge) (ibid. eqs. 25-26)
+keeps the ordinary time step. Measured: a flat wall sits at its drawn plane within 1e-2 cell; on a PEC sphere the
+error is first order, a radius about 0.2 cell large against the staircase's 0.7.
 """
 
 from __future__ import annotations
@@ -22,7 +17,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.geometry.smoothing import _get_sdf_fn, _yee_coords
+from rfx.geometry.conformal_cells import compute_conformal_fractions
 from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
 
 
@@ -58,16 +53,14 @@ def _signed_distance_cylinder(x, y, z, center, radius, height, axis="z"):
 
 
 CONFORMAL_MODEL_ADVISORY = (
-    "conformal PEC realizes each cut E edge as permittivity eps/w, with w = 0.5 + (signed "
-    "distance of the edge midpoint to the surface)/dx, clipped to [0, 1] and raised to 0.1 "
-    "(not the edge's open fraction): a high-permittivity skin about one cell thick that makes "
-    "a metal body electrically larger; on a PEC sphere it is further from the converged "
-    "answer than the staircase at every mesh measured. Do not use it for accuracy until "
-    "the fix lands (docs/guides/known_limitations.md).")
+    "conformal PEC uses partially filled cells (eps/lbar on cut E edges, mu*sbar on cut H "
+    "faces, the SC clamp): a flat wall sits at its drawn plane, but a curved body converges "
+    "only first order, solved about 0.2 cell larger in radius on a PEC sphere (staircase "
+    "0.7); judge a curved body by a mesh series (docs/guides/known_limitations.md).")
 
 
 def warn_conformal_model():
-    """Warn on every conformal run that the conformal-PEC model enlarges a body (#1651).
+    """Warn on a conformal run that a curved body converges only first order (#1651).
 
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
@@ -79,116 +72,25 @@ def warn_conformal_model():
 # Vectorized SDF-based conformal weight computation (Phase 1)
 # ---------------------------------------------------------------------------
 
-def compute_conformal_weights_sdf(
-    grid: Grid,
-    pec_shapes: list,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Vectorized conformal weight computation using SDF.
+def compute_conformal_weights_sdf(grid: Grid, pec_shapes: list):
+    """Compatibility E operands: node free lengths after the SC clamp.
 
-    For each E-field component (Ex, Ey, Ez), compute a weight from the signed
-    distance at the edge midpoint; it is not the edge's open fraction.
-
-    w = 1.0: fully free (normal update)
-    w = 0.0: fully PEC (E forced to zero)
-    0 < w < 1: live edge with permittivity eps/w (Cb multiplied by w)
-
-    Uses SDF: w = clip(0.5 + sdf/dx, 0, 1) evaluated at Yee-offset positions.
-    For multiple PEC shapes, weights are combined via element-wise minimum
-    (union of PEC regions).
-
-    Parameters
-    ----------
-    grid : Grid
-    pec_shapes : list of Shape objects with known SDF (Box, Sphere, Cylinder).
-        Shapes without SDF fall back to mask-based binary weights.
-
-    Returns
-    -------
-    (w_ex, w_ey, w_ez) : each shape grid.shape, values in [0, 1]
-        1.0 = fully outside PEC, 0.0 = fully inside PEC.
+    Call ``compute_conformal_fractions`` when forming H operands too.
     """
-    nx, ny, nz = grid.shape
-    dx = grid.dx
-    half = dx * 0.5
+    return compute_conformal_fractions(grid, pec_shapes)[0]
 
-    if not pec_shapes:
-        ones = jnp.ones((nx, ny, nz), dtype=jnp.float32)
-        return ones, ones, ones
 
-    # Build Yee-offset 3D coordinate arrays
-    x, y, z = _yee_coords(grid)
-    X = x[:, None, None] * jnp.ones((1, len(y), 1))
-    Y = jnp.ones((len(x), 1, 1)) * y[None, :, None] * jnp.ones((1, 1, len(z)))
-    Z = jnp.ones((len(x), len(y), 1)) * z[None, None, :]
+def validate_conformal_min_weight(value):
+    """The old floor is no longer a physics input; refuse nondefault requests."""
+    if value != 0.1:
+        raise NotImplementedError(
+            'conformal_min_weight is replaced by the SC clamp; only the ignored default 0.1 is accepted')
 
-    # Start with all free space
-    w_ex = jnp.ones((nx, ny, nz), dtype=jnp.float32)
-    w_ey = jnp.ones((nx, ny, nz), dtype=jnp.float32)
-    w_ez = jnp.ones((nx, ny, nz), dtype=jnp.float32)
 
-    for shape in pec_shapes:
-        sdf_fn = _get_sdf_fn(shape)
-
-        if sdf_fn is not None:
-            # Vectorized SDF evaluation at Yee-offset positions
-            # SDF convention: negative inside shape, positive outside
-            # Weight = clip(0.5 + sdf/dx, 0, 1) at the edge midpoint (not the open fraction)
-            from rfx._periodic import periodic_sdf
-            sdf_ex = periodic_sdf(grid, shape, (X + half, Y, Z), sdf_fn, xp=jnp)
-            sdf_ey = periodic_sdf(grid, shape, (X, Y + half, Z), sdf_fn, xp=jnp)
-            sdf_ez = periodic_sdf(grid, shape, (X, Y, Z + half), sdf_fn, xp=jnp)
-
-            w_ex_shape = jnp.clip(0.5 + sdf_ex / dx, 0.0, 1.0)
-            w_ey_shape = jnp.clip(0.5 + sdf_ey / dx, 0.0, 1.0)
-            w_ez_shape = jnp.clip(0.5 + sdf_ez / dx, 0.0, 1.0)
-        else:
-            # Fallback: binary weights from mask (staircase for unknown shapes)
-            mask = shape.mask(grid).astype(jnp.float32)
-            w_ex_shape = 1.0 - mask
-            w_ey_shape = 1.0 - mask
-            w_ez_shape = 1.0 - mask
-
-        # Union of PEC: take minimum weight (most PEC)
-        w_ex = jnp.minimum(w_ex, w_ex_shape)
-        w_ey = jnp.minimum(w_ey, w_ey_shape)
-        w_ez = jnp.minimum(w_ez, w_ez_shape)
-
+def clamp_conformal_weights(w_ex, w_ey, w_ez, w_min=0.1):
+    """Accept the former default; node geometry already applies the SC clamp."""
+    validate_conformal_min_weight(w_min)
     return w_ex, w_ey, w_ez
-
-
-def clamp_conformal_weights(
-    w_ex: jnp.ndarray,
-    w_ey: jnp.ndarray,
-    w_ez: jnp.ndarray,
-    w_min: float = 0.1,
-) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Clamp small conformal weights to bound the cut-edge permittivity.
-
-    A cut edge gets permittivity eps/w, so very small weights (w -> 0+)
-    would give it an unbounded permittivity (Cb multiplied by w). Weights
-    are clamped to a minimum threshold, capping it at eps/w_min.
-
-    w_clamped = where(w > 0, max(w, w_min), 0)
-
-    Cells with w=0 (fully inside PEC) remain at zero.
-    Cells with w=1 (fully outside PEC) remain at one.
-
-    Parameters
-    ----------
-    w_ex, w_ey, w_ez : jnp.ndarray
-        Conformal weights in [0, 1].
-    w_min : float
-        Minimum weight threshold. Default 0.1 (standard practice in
-        production FDTD codes). Recommended range: 0.05-0.3.
-
-    Returns
-    -------
-    (w_ex_clamped, w_ey_clamped, w_ez_clamped) : each same shape as input.
-    """
-    def _clamp(w):
-        return jnp.where(w > 0.0, jnp.maximum(w, w_min), 0.0)
-
-    return _clamp(w_ex), _clamp(w_ey), _clamp(w_ez)
 
 
 # ---------------------------------------------------------------------------
@@ -316,18 +218,10 @@ def compute_conformal_weights(
 
 
 def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
-    """Modify eps_r on the edges cut by conformal PEC (#1651).
+    """Form eps/lbar once before stepping; zero-length edges keep eps.
 
-    For cut edges (0 < w < 1), the effective permittivity is
-    scaled by 1/w:
-
-        eps_eff = eps_r / w_clamped
-
-    This multiplies the edge's Cb by w; it is not the Dey-Mittra method.
-    Applied ONCE at setup, not every timestep.
-
-    Weights should be clamped via ``clamp_conformal_weights`` before
-    calling this function, which bounds the permittivity at eps_r / w_min.
+    The zero masks enforce metal edges. The SC clamp is applied to the
+    lengths during geometry formation, together with the H face areas.
 
     Parameters
     ----------

@@ -1021,6 +1021,17 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)
     wall_faces = _cavity_wall_faces(ctx)
+    # Cut-cell conformal PEC solves a Box face at its drawn plane (#1651).
+    # run() passes its resolved flag; a bare preflight() reads the declared walls.
+    conformal = getattr(ctx.sim, "_conformal_run_call", None)
+    if conformal is None:
+        conformal = bool(ctx.sim._boundary_spec.conformal_faces())
+
+    def solved_plane(a, e, k, kind, drawn):
+        if conformal and kind.startswith("PEC Box face"):
+            return drawn
+        return _sheet_solved_plane(ctx, a, e, k, drawn)
+
     results = []
     for a in range(3):
         planes = []
@@ -1062,8 +1073,8 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                 if not overlap.any():
                     continue
                 drawn = g_hi - g_lo
-                z1 = _sheet_solved_plane(ctx, a, e1, k1, 0.5 * (lo1 + g_lo))
-                z2 = _sheet_solved_plane(ctx, a, e2, k2, 0.5 * (g_hi + hi2))
+                z1 = solved_plane(a, e1, k1, kind1, 0.5 * (lo1 + g_lo))
+                z2 = solved_plane(a, e2, k2, kind2, 0.5 * (g_hi + hi2))
                 solved = z2 - z1
                 # A gap inside the rasterizer's on-lattice band is float dust
                 # (11*dx - 10*dx), not a cavity: faces drawn touching.

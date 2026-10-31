@@ -39,9 +39,8 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         sim.add_lumped_rlc((.007, .006, .010), component="ez", C=1e-13,
                            R=100, topology="parallel")
     if cut_capacitor:
-        # An Ez capacitor on the node just outside the cut x wall (x = 6 dx),
-        # where the Ez weight is fractional (0 < w < 1).
-        sim.add_lumped_rlc((6/1024, 8/1024, 10.5/1024), component="ez",
+        # An Ex capacitor crosses the declared x wall at x = .0057.
+        sim.add_lumped_rlc((5.5/1024, 8/1024, 10/1024), component="ex",
                            C=1e-13, topology="parallel")
     sim.add_source((.007, .005, .008), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=5e9, bandwidth=.8))
@@ -138,10 +137,10 @@ def test_capacitor_on_a_cut_edge_is_added_after_the_weight_division():
     # A lumped C is a device on its edge, not volume: the conformal 1/w
     # scales the volume mean only, and the capacitor is added afterwards.
     result = _run(True, cut=True, cut_capacitor=True)
-    eps, w = result["eps"][2], result["weights"][2]
+    eps, w = result["eps"][0], result["weights"][0]
     f32 = np.float32
-    mean = result["volume_mean"][2].astype(f32)
-    stamp = result["lumped_eps"][2].astype(f32)
+    mean = result["volume_mean"][0].astype(f32)
+    stamp = result["lumped_eps"][0].astype(f32)
     w = w.astype(f32)
     on_cut = (stamp != 0) & (w > 0) & (w < 1) & result["live"][2]
     assert np.count_nonzero(on_cut) == 1

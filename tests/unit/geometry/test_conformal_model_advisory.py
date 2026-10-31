@@ -1,4 +1,4 @@
-"""A run with conformal PEC says that its model enlarges a metal body (#1651)."""
+"""The PFC/SC model retains its accuracy-under-measurement advisory (#1651)."""
 
 import warnings
 
@@ -20,14 +20,15 @@ def _advisories(conformal):
         warnings.simplefilter("always")
         _sim().run(n_steps=4, conformal_pec=conformal, compute_s_params=False,
                    skip_preflight=True)
-    return [w for w in caught if "conformal PEC realizes each cut E edge" in str(w.message)]
+    return [w for w in caught if "conformal PEC uses partially filled cells" in str(w.message)]
 
 
 def test_conformal_run_warns_once_and_names_the_limitation():
     found = _advisories(True)
     assert len(found) == 1
     text = str(found[0].message)
-    assert "eps/w" in text and "known_limitations" in text
+    assert all(part in text for part in ("eps/lbar", "mu*sbar", "SC clamp", "drawn plane",
+                                         "first order", "known_limitations"))
 
 
 def test_staircase_run_does_not_warn():
