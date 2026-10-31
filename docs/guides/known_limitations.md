@@ -437,6 +437,19 @@ The field increment a source adds on its edge is the update's coefficient times 
 
 Any fix is 2.1. Until then, read absolute amplitudes from a port beside a conformal wall as high by up to these amounts, or put the walls on mesh nodes. Measured 2026-10-29; record kept with the project.
 
+### `compute_waveguide_s_matrix(normalize=True)` on a reflecting two-port returns a matrix whose phases do not belong to one set of reference planes.
+
+Tracker: #2308
+
+`normalize=True` keeps reflection at the port plane and refers transmission to a separate reference run.
+On a reflecting two-port, each column of the returned matrix carries the right total power, and `|S11|` equals `|S22|`.
+The relative phase between reflection and transmission is not that of one set of reference planes.
+Using the matrix as a whole is therefore wrong: cascading it with another network, de-embedding it, or forming the response to a combined excitation.
+On a synthetic lossless dielectric slab in a PEC-walled guide (4.5–8 GHz), every column carries power 0.998–1.002 while the largest singular value of S reaches 1.414.
+A lossless network has 1 at every frequency.
+`normalize` defaults to False, so only calls that set it are affected.
+When phase matters, use `normalize=False` or `normalize="flux"` (on a graded mesh only `"flux"`, because `normalize=False` is refused there): on the repository's validated waveguide fixtures (matched load with its full absorber, PEC short, a reflecting obstacle with flux normalization) their largest singular value stays at or below 1.0066 (record kept with the project).
+
 ### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/sparams/test_settling_witness.py::test_settling_populated_and_truncation_warning_fires)
