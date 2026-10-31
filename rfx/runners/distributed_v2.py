@@ -592,8 +592,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx.model.source_coefficients import dispersive_drive_model
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
                                             in_program=mesh.devices.size < 2)
-    with jax.ensure_compile_time_eval():
-        sources = sources.resolve(drive_materials)
+    sources = sources.resolve(drive_materials)
     del wire_edges, drive_materials
 
     # Map source/probe global indices to (device_id, local_index)
