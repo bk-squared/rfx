@@ -18,7 +18,7 @@
     {
       "id": "sensitivity-map",
       "title": "Which cells move a patch antenna's match?",
-      "question": "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of each of 20,592 substrate cells of a probe-fed patch.",
+      "question": "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of every substrate cell of a probe-fed patch: 555,984 cells on the finest of three meshes.",
       "route": "/rfx/showcase/sensitivity-map/",
       "markdown": "/rfx/markdown/showcase/sensitivity-map.md",
       "rfx_commits": ["655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"],
@@ -108,80 +108,6 @@
       ]
     },
     {
-      "id": "descent-to-optimum",
-      "title": "Descend through FDTD to a closed-form optimum",
-      "question": "Adam, driven by gradients through the FDTD solve, finds the layer permittivities of a three-layer anti-reflection coating within 1.1 % of the transfer-matrix optimum.",
-      "route": "/rfx/showcase/descent-to-optimum/",
-      "markdown": "/rfx/markdown/showcase/descent-to-optimum.md",
-      "rfx_commits": ["655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"],
-      "sources": [
-        {
-          "folder": "ar-coating",
-          "base_url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/",
-          "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
-          "question": "Does Adam through the differentiable FDTD solve reach the transfer-matrix optimum's X-band mean reflection for a three-layer coating on eps_r = 12, with the gradient checked against central differences?",
-          "result_json": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/result.json",
-          "files": [
-            {"name": "ar_coating.mp4", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/ar_coating.mp4", "bytes": 495402, "sha256": "4f4fdde1087ca7a0450e879a0031b6730ff764daffba9c43d439d7f86cfcedf1"},
-            {"name": "ar_coating_site.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/ar_coating_site.png", "bytes": 172823, "sha256": "84af71294b07643f7b52eeb0eca8c338ba2e2c4b75201df975e356c3208c0050"},
-            {"name": "ar_coating_social.mp4", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/ar_coating_social.mp4", "bytes": 498211, "sha256": "ac73488a7c48780b2a2730a127dc9852c91f59e3d25900245a8b16a4784d50b8"},
-            {"name": "ar_coating_social.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/ar_coating_social.png", "bytes": 121020, "sha256": "7602d4b8795b381e0e8437affea06d4478e8c74bb1720e0dd677987d4d8a174f"},
-            {"name": "fd_start.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/fd_start.json", "bytes": 2169, "sha256": "190bfc8d492d13d1073c35aab855c6a575a4f3f3c7903aa095a668f73fff8436"},
-            {"name": "gates.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/gates.json", "bytes": 481, "sha256": "5bc03716f9f986744e73bc7d7de6a78a8c4bdddc0db5d323e81af27a0e1c84bf"},
-            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/iterations.npz", "bytes": 24580, "sha256": "8966c1f73035fd67764679ce0fce2504dfe9894b1c525422b03512dd9260d142"},
-            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/record_length_witness.json", "bytes": 797, "sha256": "a471078c39b061287e7669793060c4c8647e4ef8ccbadf2807d68a10c5218884"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/result.json", "bytes": 8485, "sha256": "eb8c87fb975c612e2ac78205f7787c27277cc3cd04f9574b873be6b5fb6dc9a6"},
-            {"name": "tmm.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/tmm.json", "bytes": 1411, "sha256": "a5b18f875c833581597ccf635c86253fa39200afc632c68165b8c95fe1518415"},
-            {"name": "tmm_curves.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/tmm_curves.npz", "bytes": 3658, "sha256": "8a92096760179ac83c0423248f3b884c78a7dd776f50a07fe2ea992a0423ea81"}
-          ]
-        }
-      ],
-      "headlines": [
-        {"quantity": "largest layer-permittivity gap to the transfer-matrix optimum", "printed": "1.1", "value": 1.074779795496239, "unit": "%", "routes": ["/rfx/showcase/descent-to-optimum/", "/rfx/", "/rfx/showcase/"], "from": "ar-coating/gates.json final_eps_r vs tmm.json optimum_eps_r"},
-        {"quantity": "transfer-matrix band-mean |R|^2 of the final design above the optimum", "printed": "0.1", "value": 0.11422161168317402, "unit": "%", "routes": ["/rfx/showcase/descent-to-optimum/"], "from": "ar-coating/iterations.npz tmm_cost51[-1] vs result.json claim 'TMM optimum X-band mean |R|^2'"},
-        {"quantity": "Adam steps", "printed": "60", "value": 60, "unit": "steps", "routes": ["/rfx/showcase/descent-to-optimum/"], "from": "ar-coating/result.json model.adam.iters"}
-      ]
-    },
-    {
-      "id": "forward-checks",
-      "title": "The forward model, next to openEMS",
-      "question": "The input impedance of the RT/Duroid 5880 patch and |S21| of a microstrip open-stub notch filter, solved by rfx and openEMS on the same boards.",
-      "route": "/rfx/showcase/forward-checks/",
-      "markdown": "/rfx/markdown/showcase/forward-checks.md",
-      "rfx_commits": ["b46a8220775b67f8720fb13c3e256c01cf7d6883"],
-      "sources": [
-        {
-          "folder": "forward-patch",
-          "base_url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/",
-          "rfx_commit": "b46a8220775b67f8720fb13c3e256c01cf7d6883",
-          "question": "The rfx curves of the RT/Duroid 5880 probe-fed patch antenna, one 50 ohm wire port at the rung its cross-validation test judges, beside the reference records it reads.",
-          "result_json": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/result.json",
-          "files": [
-            {"name": "forward_curves_rt5880_patch_site.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/forward_curves_rt5880_patch_site.png", "bytes": 172912, "sha256": "1dbdc7e03cbf45bc87d21a9d9d9b7d578b293481151078fe530e4896d3731965"},
-            {"name": "forward_curves_rt5880_patch_social.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/forward_curves_rt5880_patch_social.png", "bytes": 140722, "sha256": "76c298ca842366ca841a0adaec07ddf723aa440524b44a466af7fa9633243c9d"},
-            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/reference_curves.npz", "bytes": 112514, "sha256": "2be9b4ff1263bc452ebf6c82551ad3d2ef47a68f98d62683ac8b88ab58e31968"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/result.json", "bytes": 4802, "sha256": "f9fb4e7d70262cc84701046566a75bfdb4b2444ce8001d7fbd27062a766d4113"},
-            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-patch/rfx_curves.npz", "bytes": 36794, "sha256": "80f7190b7e0ecaf0ec57e1297f7539afa57f7c13a7e1d055d281cd21e4f355d5"}
-          ]
-        },
-        {
-          "folder": "forward-notch",
-          "base_url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/",
-          "rfx_commit": "b46a8220775b67f8720fb13c3e256c01cf7d6883",
-          "question": "The rfx curves of the microstrip open-stub notch filter, two MSL ports at the rung its cross-validation test judges, beside the reference records it reads.",
-          "result_json": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/result.json",
-          "files": [
-            {"name": "forward_curves_msl_notch_filter_site.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/forward_curves_msl_notch_filter_site.png", "bytes": 132517, "sha256": "490723c1fe6e037851bde19fcdd07c4b0d5fb0ae1216cb8f38bd0b580de85939"},
-            {"name": "forward_curves_msl_notch_filter_social.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/forward_curves_msl_notch_filter_social.png", "bytes": 114321, "sha256": "12870e7025ba52baf4260b5e6c2df5f5d4bafc6688717b6f7c3f8eb1685df5b7"},
-            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/reference_curves.npz", "bytes": 201324, "sha256": "e3c89521fc9d778feb0d1c09417686c1e8d336f970af7abde2f813a54be44ad9"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/result.json", "bytes": 4651, "sha256": "7bbb01e9ecdbc47f1001dacd011c72f8a8758d3fa058177920182e1f5b2e207e"},
-            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/forward-notch/rfx_curves.npz", "bytes": 26854, "sha256": "f47c451b5799c3454c021a6c18dffb13ce97e81f9d4b692f6fd6d782d2b0b167"}
-          ]
-        }
-      ],
-      "headlines": []
-    },
-    {
       "id": "grin-lens",
       "title": "A 3-D-printable lens, designed by gradient",
       "question": "Gradient descent through the FDTD solve and the far-field transform shapes a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) from a uniform block, raising a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz.",
@@ -203,7 +129,6 @@
             {"name": "grin_lens_film_poster.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/grin_lens_film_poster.png", "bytes": 567380, "sha256": "852495efabe08da474cae4973406e5d65770d51b6e30eea28ddc97248cb57895"},
             {"name": "grin_lens_start.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/grin_lens_start.png", "bytes": 573486, "sha256": "beafb8023943cf9f29bc6436bacf0ac343885713b056f3d555c13c33012b0f6c"},
             {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/iterations.npz", "bytes": 16458366, "sha256": "a821633d8b04ed21b29829fcfc548d5ca1c20f98b564275814cb0670d9ef7449"},
-            {"name": "lens_cuts.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/lens_cuts.png", "bytes": 402686, "sha256": "5e0665e487a09b8bb7157c7efc0de39cc1ab08858d38c7265456c3d0c68b972a"},
             {"name": "lens_iterations.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/lens_iterations.png", "bytes": 190886, "sha256": "cab5ae2c3b89396487f7940800c7771bc8f54b42d1e28fe580cf847cd003d6dc"},
             {"name": "lens_mesh.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/lens_mesh.png", "bytes": 196449, "sha256": "17ea66fd33cf2b1349f6ac5a8e2cb6b1e2afa0c855c0a0b668416c575cdd255b"},
             {"name": "lens_slices.png", "url": "https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/lens_slices.png", "bytes": 135886, "sha256": "3d6c5c30c851f45d349dc73e0c88dc24a5ff9a6cb0177be55d625da69cda327d"},

@@ -1,15 +1,17 @@
 ---
 title: "Which cells move a patch antenna's match?"
-description: "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of each of 20,592 substrate cells of a probe-fed patch."
+description: "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of every substrate cell of a probe-fed patch: 555,984 cells on the finest of three meshes."
 sidebar:
   order: 3
 ---
 
 A 39.7 × 49.25 mm patch on 3.175 mm RT/Duroid 5880 (εr 2.2), fed by a 50 Ω
-probe, resonates near 2.3 GHz. We ask how |S11| at 2.356 GHz, 1 % above the
+probe, has its return-loss minimum near 2.36 GHz. We ask how |S11| at f_t, 1 % above the
 return-loss minimum, changes when the permittivity of any one substrate cell
-changes. rfx answers for all 20,592 cells under and around the patch with one
-forward and one reverse pass.
+changes. rfx answers for every cell under and around the patch with one
+forward and one reverse pass: 20,592 cells on a mesh of 4 cells through the
+substrate, 555,984 cells on a mesh of 12. All numbers on this page are from
+rfx v2.0.0.
 
 <figure data-rfx="media">
   <video data-rfx="loop" autoplay muted loop playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_poster.png" aria-label="Sensitivity of |S11| to the permittivity of each substrate cell of the patch">
@@ -19,40 +21,55 @@ forward and one reverse pass.
 </figure>
 
 <div data-rfx="tiles">
-  <div><strong>20,592</strong> <span>design cells</span></div>
-  <div><strong>2×10⁻⁵</strong> <span>worst reverse-mode vs finite-difference difference (float64)</span></div>
-  <div><strong>24 s</strong> <span>value and gradient on one RTX A6000 (1.4× a forward run)</span></div>
+  <div><strong>555,984</strong> <span>design cells on the finest of three meshes</span></div>
+  <div><strong>2×10⁻⁵</strong> <span>worst reverse-mode vs finite-difference difference (float64, 4-cell mesh)</span></div>
+  <div><strong>21 s</strong> <span>value and gradient on one RTX A6000 (2.5× a forward run, 4-cell mesh)</span></div>
 </div>
 
-<figure data-rfx="media">
-  <img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_site.png" loading="lazy" alt="The sensitivity map, |S11| with f_r and f_t marked, and the |E_z|² panel" />
-</figure>
+
+<p data-rfx="note">The loop above is from the earlier rfx 1.8.0 run on the 4-cell mesh. A film from the v2.0.0 runs will replace it.</p>
 
 ## What the map shows
 
-The derivative is positive wherever it is significant and concentrated in two
-bands, under and just outside the two radiating edges; along the centre line
-between them it is about 450 times weaker. That is what cavity perturbation
+The derivative is positive wherever it is significant: the cells with a
+positive derivative carry 0.9998 of the summed magnitude on the 12-cell mesh.
+It is concentrated in two bands, under and just outside the two radiating
+edges; along the centre line between them it is about 540 times weaker (450
+on the 4-cell mesh). That is what cavity perturbation
 predicts for the TM010 mode: a local permittivity change shifts the resonance in
 proportion to the local |E_z|², and E_z of this mode peaks at the radiating
-edges and vanishes on the centre line. The map and |E_z(2.356 GHz)|² from the
-same run correlate at r = 0.948. The sign is the expected one: raising εr lowers
-the resonance, which moves the return-loss minimum further below 2.356 GHz and
+edges and vanishes on the centre line. The map summed through the substrate and |E_z(f_t)|² from the same run
+correlate at r = 0.966 on the 12-cell mesh (0.948 on the 4-cell mesh). The sign is the expected one: raising εr lowers
+the resonance, which moves the return-loss minimum further below f_t and
 raises |S11| there.
+
+## Three meshes
+
+The map is solved on meshes of 4, 8 and 12 cells through the substrate. From
+one mesh to the next the normalised map changes by 0.078 and then 0.036, and
+the maps correlate at r = 0.995 and then 0.999, so the map converges. The
+return-loss minimum moves by +0.75 % and then +0.23 %. The depth of the |S11|
+dip does not converge with this board's probe: the wire probe has no radius,
+so its series reactance grows with every refinement. This page therefore
+quotes no |S11| level.
 
 ## How the gradient was checked
 
-- Finite differences: six blocks of cells chosen before the run (at the
-  radiating edges, on the centre line, outside the patch). On the four large
-  enough to judge, reverse mode and central differences agree to
-  2.4×10⁻⁶–1.9×10⁻⁵ relative, in float64.
-- Simulation time: repeating the gradient with a 1.5× longer simulation time
-  changes those block sums by at most 5.4×10⁻⁴.
+- Finite differences, on the 4-cell mesh: six blocks of cells chosen before
+  the run (at the radiating edges, on the centre line, outside the patch). On
+  the four large enough to judge, reverse mode and central differences agree
+  to 2.4×10⁻⁶–1.9×10⁻⁵ relative, in float64.
+- Simulation time, on the 12-cell mesh: repeating the gradient with a 1.5×
+  longer simulation time changes the judged block sums by at most 7.6×10⁻⁵
+  and the whole gradient by 2.7×10⁻⁴, relative.
+- Settling: on every mesh, the port signals left after the record add at
+  most 3.1×10⁻⁴ of their largest recorded value over the band.
 - The same board is solved by rfx and by openEMS in the repository's
-  cross-solver test `tests/crossval/rt5880_patch/` (see
-  [forward checks](/rfx/showcase/forward-checks/)).
+  cross-solver test `tests/crossval/rt5880_patch/`: the frequency of the
+  input-resistance peak differs by 0.097 % and the resistance there by 0.42 %; that test does not
+  judge the dip depth.
 
-<p data-rfx="note">This map is for this board on a mesh of 4 cells through the substrate, whose resonance is 0.91 % below the finest mesh's; it is not a manufacturing tolerance or a statement about other boards.</p>
+<p data-rfx="note">This map is for this board; it is not a manufacturing tolerance or a statement about other boards.</p>
 
 ## What the code looks like
 
@@ -79,6 +96,8 @@ v, g = jax.jit(jax.value_and_grad(J))(eps_bg)
 
 ## Downloads
 
+From the earlier rfx 1.8.0 run on the 4-cell mesh:
+
 <ul data-rfx="downloads">
   <li><a href="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/gradient_full.npz">gradient_full.npz</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/ez2_mid.npz">ez2_mid.npz</a></li>
@@ -91,10 +110,9 @@ v, g = jax.jit(jax.value_and_grad(J))(eps_bg)
 <details data-rfx="evidence">
   <summary>Records behind the numbers</summary>
   <ul>
-    <li>rfx commit <a href="https://github.com/bk-squared/rfx/commit/655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277">655b1fc6</a> (checks) and <a href="https://github.com/bk-squared/rfx/commit/b46a8220775b67f8720fb13c3e256c01cf7d6883">b46a8220</a> (board builder)</li>
-    <li>the pre-declaration note <a href="https://github.com/bk-squared/rfx/blob/main/docs/design_notes/20260927_showcase_predeclaration.md">docs/design_notes/20260927_showcase_predeclaration.md</a></li>
-    <li>f_t = 1.01 × the |S11| minimum (2.333099 GHz → 2.356430 GHz, |S11(f_t)| = −12.57 dB on the rising flank)</li>
+    <li>rfx v2.0.0; every number on this page comes from runs on that release (record kept with the project)</li>
+    <li>f_t = 1.01 × the |S11| minimum: 2.356171 → 2.379733 GHz on the 12-cell mesh, 2.333100 → 2.356431 GHz on the 4-cell mesh</li>
     <li>FD step Δεr = 0.1 on blocks of 3 × 3 cells through the 4-cell substrate (36 cells, 2.4 × 2.4 mm); judged blocks are those with |FD| ≥ 10 % of the largest</li>
-    <li>418 of 20,592 cells have a negative derivative, the largest 0.30 % of the maximum</li>
+    <li>on the 12-cell mesh, 13,389 of 555,984 cells have a negative derivative, the most negative 1.75 % of the maximum</li>
   </ul>
 </details>

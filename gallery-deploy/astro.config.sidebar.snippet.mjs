@@ -12,17 +12,13 @@
 // After `export_public_docs_to_gitops.py` refreshes seed-pages/rfx/, the
 // gallery .mdx pages land at:
 //   seed-pages/rfx/gallery/index.mdx            -> slug "rfx/gallery"
-//   seed-pages/rfx/gallery/multilayer_fresnel.mdx -> slug "rfx/gallery/multilayer_fresnel"
 //   seed-pages/rfx/gallery/waveguide_wr90.mdx   -> slug "rfx/gallery/waveguide_wr90"
-//   seed-pages/rfx/gallery/patch_antenna.mdx    -> slug "rfx/gallery/patch_antenna"
 
 {
   label: "Gallery",
   items: [
     "rfx/gallery",
-    "rfx/gallery/multilayer_fresnel",
     "rfx/gallery/waveguide_wr90",
-    "rfx/gallery/patch_antenna",
   ],
 },
 
