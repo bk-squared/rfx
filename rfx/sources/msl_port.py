@@ -495,7 +495,8 @@ def _axis_cell_size(grid, axis: str, idx: int) -> float:
     ``getattr(grid, "dx_profile")`` path below would fall through to the scalar
     BOUNDARY ``grid.dx`` for every cell — the wrong-cell bug. Read the real
     per-cell array first. On a uniform ``Grid`` (not a ``NonUniformGrid``) this
-    branch is skipped and the legacy behaviour is byte-identical.
+    branch is skipped. A uniform ``Grid`` may carry ``*_profile`` attributes
+    (tests inject them); use those when present, otherwise its scalar spacing.
     """
     from rfx.nonuniform import NonUniformGrid
     if isinstance(grid, NonUniformGrid):
@@ -505,12 +506,9 @@ def _axis_cell_size(grid, axis: str, idx: int) -> float:
     profile_attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
     profile = getattr(grid, profile_attr, None)
     if profile is not None:
-        try:
-            n = int(profile.shape[0])
-        except Exception:
-            return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
+        n = int(np.asarray(profile).shape[0])
         clamped = max(0, min(idx, n - 1))
-        return float(profile[clamped])
+        return float(np.asarray(profile)[clamped])
     # Fallback for axis-specific scalar (Grid doesn't carry .dy/.dz today)
     return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
 
