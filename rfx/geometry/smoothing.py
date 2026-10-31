@@ -1171,7 +1171,12 @@ def _normal_cell_length(xp, extents, normal):
     """Project box extents onto the normal; preserve the scalar cubic path."""
     if not isinstance(extents, tuple):
         return extents
-    return xp.sqrt(sum((n * d) ** 2 for n, d in zip(normal, extents)))
+    s = sum((n * d) ** 2 for n, d in zip(normal, extents))
+    safe = xp.where(s > 0, s, 1.0)
+    # Zero normals at interior symmetry points need both a finite sqrt
+    # derivative and a positive divisor for the clipped fill fraction.
+    fallback = xp.maximum(xp.maximum(extents[0], extents[1]), extents[2])
+    return xp.where(s > 0, xp.sqrt(safe), fallback)
 
 
 def _cell_width_pairs(xp, sizes, periodic_axes):

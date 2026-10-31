@@ -6,6 +6,8 @@ component and dual across it. Host float64 tolerance: 1e-12 absolute;
 traced float64 tolerance: 1e-12 absolute. Cubic float32 is bit-identical
 with the closed-form scalar-dx result on main (no stored oracle).
 """
+import warnings
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -13,6 +15,9 @@ import pytest
 
 from rfx import Box, GaussianPulse, Simulation, Sphere
 from rfx.geometry.node_tensor import compute_node_tensor_eps
+from rfx.geometry.rasterize_grid import (
+    centres_from_nonuniform_grid, coords_from_nonuniform_grid,
+)
 from rfx.geometry.smoothing import (
     compute_inv_eps_tensor_diag, compute_smoothed_eps, compute_smoothed_eps_nonuniform,
 )
@@ -111,6 +116,39 @@ def test_full_tensor_node_dual_fill_and_midpoint_fallback(axis):
             expected = fill / 4 + 1 - fill if component == axis else 1 / (4 * fill + 1 - fill)
             np.testing.assert_allclose(actual.nodes.xi[component],
                                        np.broadcast_to(expected, grid.shape), rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize('node_tensor', [False, True], ids=['yee-ez', 'node-tensor'])
+def test_zero_normal_radius_gradient(node_tensor):
+    _, grid, _ = slab_case(2, 'noncubic')
+    with enable_x64(True):
+        nodes = coords_from_nonuniform_grid(grid)
+        centres = centres_from_nonuniform_grid(grid, nodes)
+        center = (float(nodes[0][4]), float(nodes[1][4]),
+                  float(nodes[2][3] if node_tensor else centres[2][2]))
+
+        def build(radius):
+            shapes = [(Sphere(center, radius), 4.)]
+            if node_tensor:
+                return compute_node_tensor_eps(grid, shapes, field_dtype=jnp.float64)
+            return compute_smoothed_eps_nonuniform(grid, shapes)
+
+        def loss(radius):
+            return sum(jnp.sum(a) for a in build(radius))
+
+        radius, step = 0.35e-3, 1e-8
+        gradient = jax.grad(loss)(radius)
+        assert np.isfinite(gradient)
+        # Independent central finite difference of the public host build;
+        # no normal or cell-length implementation helper supplies the oracle.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always', RuntimeWarning)
+            host = build(radius)
+            upper = sum(np.sum(np.asarray(a)) for a in build(radius + step))
+            lower = sum(np.sum(np.asarray(a)) for a in build(radius - step))
+        assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        assert all(np.isfinite(np.asarray(a)).all() for a in host)
+        np.testing.assert_allclose(gradient, (upper - lower) / (2 * step), rtol=1e-3, atol=0)
 
 
 def test_forward_with_traced_shape_on_profile_mesh():
