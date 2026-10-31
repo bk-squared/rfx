@@ -255,3 +255,25 @@ def test_empty_wrapper_still_returns_open_owners():
     grid = _graded(_geometric_profiles())
     for arrays in compute_conformal_fractions(grid, [], clamp=False):
         assert all(np.all(a == 1.) and a.shape == grid.shape for a in arrays)
+
+
+def test_periodic_graded_halos_mirror_real_owners():
+    profiles = [np.full(12, .001), np.full(12, .001),
+                .001 * np.array([1., 2., 3., 2., 1.5, 2.5])]
+    grid = _graded(profiles, periodic='z')
+    table = build_cell_table(grid, [Sphere((.006, .006, .0005), .003)])
+    for field in ('lengths', 'areas', 'edge_part_counts', 'face_part_counts'):
+        for axis, values in enumerate(getattr(table, field)):
+            # The high owner uses the trailing node as its far endpoint.
+            for halo, physical in ((0, grid.nz), (grid.nz + 1, 1)):
+                assert np.array_equal(values[:, :, halo], values[:, :, physical]), (field, axis, halo)
+    assert any(np.any((values[:, :, 1] > 0.) & (values[:, :, 1] < 1.))
+               for values in table.lengths)
+
+
+def test_body_inside_coarse_cell_holds_no_node():
+    profile = np.r_[np.full(4, .0005), np.full(3, .004), np.full(4, .0005)]
+    grid = _graded([profile.copy() for _ in range(3)])
+    center = sum(profile[:5]) + .5 * profile[5]
+    with pytest.raises(NotImplementedError, match='the Sphere holds no grid node'):
+        build_cell_table(grid, [Sphere((center,) * 3, .0009)])

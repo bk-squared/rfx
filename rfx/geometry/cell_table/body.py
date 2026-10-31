@@ -102,7 +102,7 @@ def build_cell_table(grid, pec_shapes):
         grid = grid._replace(domain=domain)
     from rfx.geometry.smoothing import _get_sdf_fn
 
-    lines, widths, lattice = [], [], []
+    lines, widths, max_widths, lattice = [], [], [], []
     for axis, cells in enumerate(axis_cells):
         cells = np.asarray(cells, dtype=np.float64)
         uniform = bool(np.all(cells == cells[0]))
@@ -118,10 +118,18 @@ def build_cell_table(grid, pec_shapes):
             line = np.full_like(line, nodes[0])  # The collapsed lane repeats its physical slice.
             lattice[-1] = (None, None, uniform)
         elif periodic:
+            if not uniform:
+                line[0] = nodes[0] - end_width
+                line[-1] = nodes[-1] + end_width + float(cells[0])
             lattice[-1] = (line, float(grid.domain[axis]), uniform)
             line = np.mod(line, float(grid.domain[axis]))
+            if not uniform:
+                # Copy wrapped physical nodes to avoid seam roundoff in the halos.
+                line[0] = line[-3]
+                line[-2:] = line[1:3]
         lines.append(line)
         widths.append(width)
+        max_widths.append(float(np.max(cells)))
     coords = np.meshgrid(*lines, indexing='ij', sparse=True)
     sdf = np.full(tuple(len(line) for line in lines), np.inf, dtype=np.float64)
     from rfx.geometry.csg import Box, PolylineWire
@@ -141,7 +149,7 @@ def build_cell_table(grid, pec_shapes):
         # The node-holding verdict reads the lattice without the trailing halo node,
         # which only the floor rule's slice uses.
         held = np.broadcast_to(shape_sdf, sdf.shape)[:-1, :-1, :-1]
-        if not np.any(held < -1e-9 * min(widths)) and np.min(held) < max(widths):
+        if not np.any(held < -1e-9 * min(widths)) and np.min(held) < max(max_widths):
             if isinstance(sheet, Box):  # On node planes its staircase faces are exact.
                 _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this PEC Box')
                 continue
