@@ -681,6 +681,15 @@ def test_every_functional_entry_point_is_emission_classified():
 
 
 @pytest.mark.source_scan
+def test_run_body_calls_auto_preflight_itself():
+    """One hop: the broad scan also finds conditional preflight calls deeper on the multi-device route."""
+    from rfx.runners.run import run_after_admission
+    tree = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(run_after_admission))))
+    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+               and n.func.attr == "_auto_preflight" for n in ast.walk(tree))
+
+
+@pytest.mark.source_scan
 def test_emission_classification_matches_measured_reachability():
     surface = _exported_surface()
     for name, (category, citation) in EMISSION_CLASSIFICATION.items():
