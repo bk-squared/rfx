@@ -1,0 +1,31 @@
+name: rfx-msl-thru-mesh-conv
+description: "MSL eigenmode push, premise test: matched-thru |S11| vs dx (80->20um, static-Laplace source) to decide MESH-limited (eigenmode futile, R2-STOP) vs MODE-limited (eigenmode justified). vessl run create -f scripts/vessl_msl_thru_mesh_conv.yaml"
+tags: [rfx, msl, eigenmode, mesh-convergence, sparameter-validation]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  cd /root/workspace/byungkwan-workspace/research/rfx
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$(pwd)" || true
+  echo "=== MSL matched-thru |S11| mesh-convergence (mode-vs-mesh bottleneck test) ==="
+  date
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
+  python -c "import jax, rfx; print('jax_backend', jax.default_backend(), 'rfx', getattr(rfx,'__version__','unknown'))"
+  # dx = h_sub/n (n = 3,4,6,8,10,12 substrate cells) so h_sub/dx is INTEGER --
+  # avoids the [0.10,0.40] mixed-cell danger zone that would confound the mesh
+  # trend with a cell-alignment artifact (preflight-flagged). h_sub=254um.
+  python scripts/diagnostics/msl_thru_mesh_convergence.py \
+    --dx-list-um 84.667,63.5,42.333,31.75,25.4,21.167 \
+    --output .omx/physics-gate/2026-06-16-msl-thru-mesh-conv/msl_thru_mesh_convergence.json
+  echo "=== DONE ==="
