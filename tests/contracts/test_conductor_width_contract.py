@@ -118,8 +118,6 @@ def test_record_and_context_cells(monkeypatch, lane, model):
                                    'fwd_distributed_nu',   'run_subgridded'])
 def test_refused_cells_and_distributed_dc_record(lane, model):
     sim = _record_model(model)
-    # A DC lossy conductor is admitted on the multi-device paths, uniform and graded
-    # (rfx/runners/_admission.py, '_thin_conductors'/'lossy_sheet' rows); ADI and subgridded refuse it.
     if (model == 'dc' and lane in ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu')
             or model == 'pec' and lane in ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu')):
         admit(sim, lane)

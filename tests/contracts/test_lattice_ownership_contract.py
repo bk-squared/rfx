@@ -908,17 +908,7 @@ def test_add_thin_conductor_takes_both_sheet_spellings_and_lands_on_one_plane():
 
 
 def test_domain_boundary_pec_is_not_a_conductor_body():
-    """§1.8 scope fence, in code rather than prose.
-
-    ``BoundarySpec`` faces / ``apply_pec`` / ``apply_pec_faces`` zero the
-    tangential E on the face plane and are NOT bodies: they own no cell,
-    no sheet and no wire, and ``realized_pec_edge_masks`` never produces
-    them. cv09, cv10, cv14, cv24, ``adi_solver_demo``, ``hello_world`` and
-    ``resonance_harminv`` are the controls that must not move, and
-    fourteen files in the oracle/lock group rest on the domain rule, so a
-    well-meaning unification of the two would move every one of them
-    silently. This is the tripwire.
-    """
+    """§1.8 scope fence, in code rather than prose."""
     from rfx.boundaries.pec import apply_pec_faces, realized_pec_edge_masks
 
     shape = (6, 6, 6)

@@ -67,7 +67,7 @@ BUILDERS = {
     ('_nominal_profiles', ''): ({}, lambda sim: setattr(sim, '_nominal_profiles', {'x': np.full(4, DX)})),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
     ('_solver', ''): ( _nothing),
-    
+
     ('_stencil_order', ''): ({'stencil_order': 4}, _nothing),
     ('_mode', ''): ({'mode': '2d_tmz'}, _nothing),
     ('_materials', 'eps'): ({}, _nothing),

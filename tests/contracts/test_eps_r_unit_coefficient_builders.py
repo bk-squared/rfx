@@ -1,15 +1,5 @@
 """Every traced E-coefficient builder takes its reverse pass in eps_r units (#1357).
 
-The E coefficients were written in SI units, ``eps = eps_r*EPS_0`` and a
-division by it. The forward VALUE is fine. The reverse pass is not: the VJP of
-``x/eps`` multiplies the cotangent by ``eps**-2`` (about 1.3e22), so a float32
-cotangent above about 2.6e16 on Cb overflowed, and ``0*inf`` gave NaN on every
-lossless cell. Whether it fired depended only on the objective's scale; the
-#1357 fixture (a sum of squared probe fields on the graded-mesh lane, about
-2e17) had 16 non-finite gradient cells. On the ADI lane the SI coupling
-``half_dt**2/(MU_0*eps*dx*dx)`` squares a number near 1e-23, so its eps
-gradient was non-finite at any scale.
-
 The fix is one helper, ``rfx.core.yee.si_value_eps_r_grad(si_fn, eps_r_fn,
 *args)``. It returns the SI spelling's value bit for bit and takes the
 derivative from the same coefficients written in eps_r units.
@@ -70,9 +60,9 @@ BUILDERS = {
         "the CPML psi coefficient dt/eps",
     ("rfx/boundaries/upml.py", "init_upml"):
         "UPML's Ca/Cb (_e_coeffs)",
-    
-    
-    
+
+
+
     ("rfx/materials/thin_conductor.py", "sheet_update_coeffs"):
         "the resistive sheet's exponential-stepping A/B",
     ("rfx/lumped.py", "edge_update_denominator"):
@@ -121,9 +111,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
     ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
-    
-    
-    
+
+
+
     ("rfx/auto_config.py", "auto_configure"): _HOST,
     ("rfx/boundaries/cpml.py", "_cpml_profile"):
         "the CPML profile: sigma_max and b = exp(-(sigma/kappa + alpha)*dt/EPS_0)",

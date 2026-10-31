@@ -32,9 +32,7 @@ MAIN_REFUSALS = {
     'differentiable_material_fit': (NotImplementedError, "precision='float64'.*Use precision='float32'"),
     **{name: (ValueError, "requires precision='float32'") for name in (
         'compute_coaxial_line_reflection', 'compute_coaxial_two_port', 'compute_coax_msl_transition')},
-    **{name: (NotImplementedError, "precision|float32") for name in (
-        'vmap_material_sweep',  'forward_adi', 'run_nonuniform',
-        'forward_nonuniform', 'forward_distributed', 'run_distributed', 'driver_distributed')},
+    **{name: (NotImplementedError, "precision|float32") for name in ('vmap_material_sweep', 'run_nonuniform', 'forward_nonuniform', 'forward_distributed', 'run_distributed', 'driver_distributed')},
     'run_subgridded': (NotImplementedError, 'subgrid|SBP|precision'),
 }
 REFUSES = tuple(MAIN_REFUSALS)
@@ -102,10 +100,6 @@ def model(precision, entry):
                      excite=i == 0 or not entry.startswith('forward'),
                      **({'extent': .003} if 'wire' in entry else {}))
     sim.add_probe((.009, .006, .006), 'ez')
-    if entry.endswith('_adi'):
-        sim._ports.clear()
-        sim.add_source((.006,.006,.006), 'ez', amplitude_kind='field')
-        sim._solver = 'adi'
     if entry.endswith('_nonuniform') or entry == 'forward_distributed':
         sim._dz_profile = np.full(4,.003)
     if entry in ('run_nonuniform','forward_nonuniform','forward_distributed'):
@@ -205,7 +199,7 @@ def invoke(sim, entry):
     if entry == 'forward_distributed':
         kw['distributed'] = True
     if entry.startswith('forward'):
-        return sim.forward(port_s11_freqs=None if entry in ('forward_nonuniform','forward_distributed','forward_waveguide','forward_tfsf','forward_msl','forward_adi') else FREQS, **kw)
+        return sim.forward(port_s11_freqs=None if entry in ('forward_nonuniform', 'forward_distributed', 'forward_waveguide', 'forward_tfsf', 'forward_msl') else FREQS, **kw)
     if entry in ('run_tfsf', 'run_msl'):
         kw['compute_s_params'] = False
     return sim.run(s_param_freqs=None if entry in ('run_nonuniform','run_waveguide','run_tfsf','run_msl') else FREQS, **kw)

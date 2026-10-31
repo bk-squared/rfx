@@ -167,8 +167,6 @@ def test_d4_declaration_refusals(kind):
                    boundary='cpml', cpml_layers=8)
     if kind == 'graded':
         options['dz_profile'] = [DX] * 24
-    elif kind == 'adi':
-        options.update(solver='adi', boundary='pec')
     elif kind == '2d':
         options.update(mode='2d_tmz', domain=(.024, .024, DX))
     elif kind == 'order4':

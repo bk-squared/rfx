@@ -53,17 +53,17 @@ for _path, _kinds in (
     ('graded', ('point', 'lumped', 'wire', 'waveguide', 'msl', 'tfsf-open')),
     ('multi-uniform', ('point', 'lumped', 'wire', 'tfsf-closed')),
     ('multi-graded', ('point', 'lumped', 'wire')),
-    
+
 ):
     for _kind in _kinds:
         _entries = ('forward',) if _kind == 'tfsf-closed' else (
             ('run',) if _kind == 'msl-eigenmode' else ('run', 'forward'))
         for _entry in _entries:
             _always = ((_path in ('uniform', 'graded') and _kind == 'lumped') or (_path == 'multi-uniform' and _kind == 'point')
-                       or _path == 'adi' or _kind == 'msl-eigenmode')
+                       or _kind == 'msl-eigenmode')
             ROWS.append(_row(_path, _kind, _entry, always=_always))
 for _path in ('uniform', 'graded', 'multi-graded'):
-    for _kind in (('field',) if _path == 'adi' else ('point', 'lumped')):
+    for _kind in (('point', 'lumped')):
         ROWS.append(_row(_path, _kind, 'forward', eps=True,
                          always=_path == 'multi-graded' and _kind == 'lumped'))
 
@@ -80,20 +80,18 @@ def _devices(path):
 
 
 def _scene(path, kind, *, refusal=False, debye=False):
-    graded, adi = path.endswith('graded'), path == 'adi'
+    graded = path.endswith('graded')
     msl, guide, tfsf = kind.startswith('msl'), kind == 'waveguide', kind.startswith('tfsf')
     domain = (24.3e-3, 13.4e-3, 11.6e-3)
     mesh = {'dx_profile': DX} if graded else {}
-    boundary = 'pec' if adi else 'cpml'
-    layers, dx = (0 if adi else 3), 1e-3
-    if guide and not adi:
+    boundary = 'cpml'
+    layers, dx = 3, 1e-3
+    if guide:
         domain = (24.3e-3, 20.4e-3, 10.6e-3)
         boundary = {'x': 'cpml', 'y': 'pec', 'z': 'pec'}
         if graded:
             mesh = {'dx_profile': DX_GUIDE}
-    if guide and adi:
-        boundary, layers = 'cpml', 3
-    if msl and not adi:
+    if msl:
         domain = (24.3e-3, 12.4e-3, float(DZ_MSL.sum()) if graded else 8.3e-3)
         mesh = {'dz_profile': DZ_MSL} if graded else {}
     if tfsf:
@@ -101,8 +99,8 @@ def _scene(path, kind, *, refusal=False, debye=False):
         mesh = {'dx_profile': np.r_[np.full(7, 2.), 1.8, 2.2,
                                    2.3, np.full(6, 2.)] * 1e-3} if graded else {}
     sim = Simulation(freq_max=16e9, domain=domain, dx=dx, boundary=boundary,
-                     cpml_layers=layers, solver='adi' if adi else 'yee',
-                     snap='declared' if adi or guide else 'strict', **mesh)
+                     cpml_layers=layers, solver='yee',
+                     snap='declared' if guide else 'strict', **mesh)
     pulse = GaussianPulse(f0=5.1e9, bandwidth=.9)
     near, far = (6.3e-3, 4.2e-3, 4.3e-3), (15.2e-3, 7.3e-3, 6.2e-3)
     if kind in ('point', 'field'):
@@ -143,8 +141,6 @@ def _scene(path, kind, *, refusal=False, debye=False):
 
 
 def _input_eps(sim, path):
-    if path == 'adi':
-        return jnp.float32(1.5)
     # Public mesh finalization supplies only input shape; never an expected value.
     return jnp.full(sim.freeze_mesh().shape, 2.5, dtype=jnp.float32)
 
@@ -330,16 +326,6 @@ for _entry in ('run', 'forward'):
         ('multi-graded', 'tfsf-open', _entry, False, False, NotImplementedError,
          'TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane'),
     ])
-    for _kind, _fragment in (
-        ('point', "ADI implements only amplitude_kind='field'"),
-        ('lumped', "solver='adi' currently supports only add_source()-style soft sources"),
-        ('wire', "solver='adi' currently supports only add_source()-style soft sources"),
-        ('waveguide', 'solver="adi" refuses absorbing boundaries'),
-        ('msl', 'a microstrip port (add_msl_port)'),
-        ('coax', f'add_coaxial_port() is not wired into Simulation.{_entry}().'),
-    ):
-        _exception = ValueError if _kind in ('lumped', 'wire', 'waveguide') else NotImplementedError
-        REFUSALS.append(( _kind, _entry, False, False, _exception, _fragment))
 REFUSALS.append(('multi-graded', 'lumped', 'forward', True, True, NotImplementedError,
                  'Graded multi-device port overrides on Debye/Lorentz live edges'))
 # Decision record rows 33 and 49: actionable refusals under a user jit.
@@ -362,14 +348,7 @@ REFUSALS.extend([
 ])
 def test_refused_under_user_jit(path, kind, entry, eps, debye, exception, fragment, spectrum, evidence):
     try:
-        if path == 'adi' and kind == 'waveguide':
-            # ADI refuses every CPML scene at construction, before port admission.
-            with pytest.raises(exception, match=re.escape(fragment)) as refusal:
-                jax.jit(lambda: _call(_scene(path, kind), path, entry))()
-            evidence.update(status='pass', refusal_stage='CPML scene construction',
-                            refusal=_error_details(refusal.value))
-            return
-        sim = _scene(path, kind, refusal=path == 'adi' or path.startswith('multi-'),
+        sim = _scene(path, kind, refusal=path.startswith('multi-'),
                      debye=debye)
         value = _input_eps(sim, path) if eps else None
         with pytest.raises(exception, match=re.escape(fragment)) as refusal:
