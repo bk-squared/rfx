@@ -33,7 +33,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, resolve_run_conformal
+from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, resolve_run_conformal, refuse_tfsf_decay_without_source_off
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
@@ -2009,11 +2009,7 @@ class _ExecuteMixin:
         admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
-        if until_decay is not None and self._tfsf is not None:
-            from rfx.sources.sources import CustomWaveform
-            if isinstance(self._tfsf.waveform, CustomWaveform):
-                raise NotImplementedError(
-                    "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
+        refuse_tfsf_decay_without_source_off(self, until_decay)
         if until_identified is not False:
             from rfx.ringdown import refuse_until_identified
             until_identified = refuse_until_identified(
