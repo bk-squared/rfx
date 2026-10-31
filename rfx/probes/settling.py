@@ -37,7 +37,7 @@ def _cell_of(grid, position, component=None):
         position = tuple(float(c) for c in position)
         idx = (field_index(grid, position, component) if component is not None
                else _resolve_position_to_index(grid, position))
-    except Exception:
+    except ValueError:
         # A drive or probe declared outside the built grid cannot be
         # co-located with anything; position_to_index raises there.
         return None

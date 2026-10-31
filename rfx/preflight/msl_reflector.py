@@ -152,7 +152,9 @@ def msl_nearest_downstream_reflector(
         if resolve_material is not None:
             try:
                 mat = resolve_material(material_name)
-            except Exception:
+            except (TimeoutError,):
+                raise
+            except Exception:  # noqa: BLE001 - recorded in unevaluated
                 unevaluated.append(
                     f"geometry entry with material {material_name!r}: the "
                     f"material could not be resolved, so its conductivity is "
@@ -181,7 +183,9 @@ def msl_nearest_downstream_reflector(
             return None, None
         try:
             lo, hi = bbox()
-        except Exception as exc:
+        except (TimeoutError,):
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded in unevaluated
             unevaluated.append(
                 f"{what} ({type(shape).__name__}): bounding_box() raised "
                 f"{type(exc).__name__}, so it cannot be placed on the line")

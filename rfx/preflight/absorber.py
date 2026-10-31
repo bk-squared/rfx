@@ -245,7 +245,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
     for idx, entry in enumerate(self._geometry):
         try:
             mat = self._resolve_material(entry.material_name)
-        except Exception:
+        except KeyError:
             continue
         pole_txts, risk = _classify_poles(mat)
         if not pole_txts:
@@ -1084,7 +1084,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
         grid = (self._build_nonuniform_grid()
                 if any(p is not None for p in profiles)
                 else self._build_grid())
-    except Exception:
+    except (ValueError, IndexError):
         # Preflight never turns a configuration problem into a crash here:
         # whatever makes the grid unbuildable has its own check, and this
         # advisory has nothing to say without realized pads.
@@ -1093,7 +1093,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     from rfx.geometry.smoothing import smoothed_shape_pairs
     try:
         _pairs, unextendable = smoothed_shape_pairs(self, grid)
-    except Exception:
+    except (ValueError, NotImplementedError, KeyError, IndexError):
         return
     if not unextendable:
         return
@@ -1407,7 +1407,7 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
 
     try:
         realized_depths = self._preflight_face_layers()
-    except Exception:
+    except ValueError:
         # Whatever makes the boundary spec unreadable has its own check; this
         # advisory has nothing to say without per-face layer counts.
         return []
@@ -1422,7 +1422,7 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
             continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except Exception:
+        except NotImplementedError:
             continue
         for ax in range(min(3, len(self._domain))):
             axis_name = "xyz"[ax]

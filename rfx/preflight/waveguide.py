@@ -1284,9 +1284,9 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
     they are the part that can raise. ``preflight_sparameters`` is a
     BEFORE-the-run safety call, so a builder exception here is reported as
     a warning-severity ``waveguide_setup_audit_skipped`` issue naming the
-    exception and the audits are skipped — never re-raised, which would
-    turn a check meant to save a doomed run into the thing that stops a
-    healthy one. The exception is named rather than swallowed: an advisory
+    exception and the audits are skipped. Timeouts propagate so a worker's
+    cancellation signal cannot become an unchecked audit. Other failures
+    are named rather than swallowed: an advisory
     that can fail silently is the failure mode these checks exist to catch
     (the #576 precedent on the sibling absorber advisory).
     """
@@ -1324,7 +1324,9 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
                                                       int(n_steps))
                     for e in entries]
         cfgs = resolve_preflight_port_configs(self, grid, cfgs)
-    except Exception as exc:  # noqa: BLE001 - reported, not swallowed
+    except (TimeoutError,):
+        raise
+    except Exception as exc:  # noqa: BLE001 - recorded in waveguide_setup_audit_skipped
         _w.warn(PreflightWarning(
             "the waveguide setup audits (record length vs the far-boundary "
             "round trip, the port-index mirror covariance, and the "
