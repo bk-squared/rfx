@@ -9,6 +9,7 @@ import sys
 
 import numpy as np
 
+from rfx._declarations import declaration_root
 from rfx.preflight.msl_codes import msl_diagnostic, msl_text, stub_diagnostic, msl_error
 from rfx.geometry.csg import Box, declared_bounds
 from rfx.geometry.port_termination import conductor_entries
@@ -290,7 +291,8 @@ def _active_band(sim):
     try:
         while frame is not None:
             scope = frame.f_locals.get('_line_stub_scope')
-            if isinstance(scope, _ReadScope) and (scope.simulation is sim or all(
+            if isinstance(scope, _ReadScope) and (scope.simulation is sim
+                    or declaration_root(scope.simulation) is declaration_root(sim) or all(
                     hasattr(sim, name) and getattr(scope.simulation, name, None) is getattr(sim, name)
                     for name in ('_geometry', '_msl_ports', '_coaxial_ports'))):
                 band = scope.band

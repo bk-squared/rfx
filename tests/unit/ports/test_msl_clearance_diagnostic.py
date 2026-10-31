@@ -6,7 +6,6 @@ field evolution with manufactured DFTs; no FDTD accuracy claim is made.
 from __future__ import annotations
 
 from dataclasses import replace
-from types import MethodType
 
 import numpy as np
 import pytest
@@ -288,7 +287,7 @@ def test_mixed_result_contains_only_msl_records_in_registration_order(monkeypatc
                      n_probe_offset=10, n_probe_spacing=2, n_probes=3)
     sim.add_port(position=(4 * U, 6 * U, U), component="ez", impedance=50.0, terminates=2)
     fake = _fake_forward_mixed_z_profile({k: 1.0 for k in range(grid.nz)}, 1)
-    monkeypatch.setattr(sim, "_forward_from_materials", MethodType(fake, sim))
+    monkeypatch.setattr(Simulation, "_forward_from_materials", fake)
     result = sim.compute_mixed_s_matrix(freqs=np.array([0.8e9, 1.2e9]), n_steps=1,
                                        num_periods=1, magnitude_channel="wave",
                                        enforce_passivity=False, skip_preflight=True)

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx.api import _declarations as declarations
+from rfx import _declarations as declarations
 
 
 POINT = (0.005, 0.005, 0.005)
