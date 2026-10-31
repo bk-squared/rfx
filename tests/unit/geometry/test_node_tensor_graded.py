@@ -48,7 +48,8 @@ def test_w0_metrics_and_weights(periodic):
         inverse = getattr(grid, f'inv_d{name}')
         np.testing.assert_array_equal(inverse, (1 / dual).astype(np.float32))
     duals = [(m + p) / 2 for m, p in expected]
-    np.testing.assert_array_equal(fill, (duals[0] * duals[1] * duals[2]) ** (1 / 3))
+    for actual, reference in zip(fill, duals):
+        np.testing.assert_array_equal(actual, reference)
     weights = triplet_weights(np, lengths)
     maximum = 0.
     for a in range(3):

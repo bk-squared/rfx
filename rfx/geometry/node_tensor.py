@@ -55,20 +55,13 @@ def uniform_cell(grid):
 
 
 def node_metrics(grid):
-    """Node-local (minus, plus) cell lengths and dual-volume fill length."""
+    """Node-local (minus, plus) cell lengths and per-axis dual extents."""
     from rfx.geometry.rasterize_grid import cell_sizes_from_nonuniform_grid
 
     sizes = cell_sizes_from_nonuniform_grid(grid)
     xp = np if smooth._host_path(*sizes) else jnp
-    lengths = []
-    for axis, size in enumerate(sizes):
-        plus = xp.asarray(size)
-        minus = (xp.roll(plus, 1) if 'xyz'[axis] in grid.periodic_axes else
-                 xp.concatenate((plus[:1], plus[:-1])))
-        shape = tuple(len(plus) if a == axis else 1 for a in range(3))
-        lengths.append((minus.reshape(shape), plus.reshape(shape)))
-    dual = [(minus + plus) / 2 for minus, plus in lengths]
-    return tuple(lengths), (dual[0] * dual[1] * dual[2]) ** (1.0 / 3.0)
+    lengths = smooth._cell_width_pairs(xp, sizes, grid.periodic_axes)
+    return lengths, tuple((minus + plus) / 2 for minus, plus in lengths)
 
 
 def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
@@ -86,7 +79,8 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
             union = xp.minimum(union, sdf)
-    h = uniform_cell(grid) if fill_length is None else fill_length
+    h = (uniform_cell(grid) if fill_length is None else
+         smooth._normal_cell_length(xp, fill_length, normal))
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
     return result + (union,) if distance else result
 
@@ -116,9 +110,9 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     graded = isinstance(grid, NonUniformGrid)
     coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
     lengths, fill_length = node_metrics(grid) if graded else (None, None)
-    cell_len = fill_length if graded else uniform_cell(grid)
+    cell_lengths = fill_length if graded else (uniform_cell(grid),)
     masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
-    host = smooth._host_path(*coords[:3], cell_len, background_eps,
+    host = smooth._host_path(*coords[:3], *cell_lengths, background_eps,
                             *(e for _, e in shapes),
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),
                             *masks.values())
@@ -133,7 +127,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
                       for axis, a in enumerate(centres[:3])]
         samples = {name: tuple(centres_1d[b] if b == a else nodes_1d[b] for b in range(3))
                    for a, name in enumerate(('ex', 'ey', 'ez'))}
-        mid_length = (lengths[0][1] * lengths[1][1] * lengths[2][1]) ** (1.0 / 3.0)
+        mid_length = smooth._yee_cell_extents(lengths)
         midpoint = smooth._kottke_smooth(
             xp, shapes, samples, mid_length,
             tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3)),
@@ -184,7 +178,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         guard_count = guard_count + xp.sum(guards & touched, dtype=xp.int32)
         bulk = xp.where(f > 0, ~interface, bulk)
         for axis, sample in enumerate(samples.values()):
-            fm, _ = _union(xp, grid, supported, sample, fill_length=mid_length)
+            fm, _ = _union(xp, grid, supported, sample,
+                           fill_length=mid_length[('ex', 'ey', 'ez')[axis]] if graded else None)
             mid_bulk[axis] = xp.where(fm > 0, fm >= 1, mid_bulk[axis])
     periodic = tuple(a in grid.periodic_axes or (a == 'z' and getattr(grid, 'is_2d', False))
                      for a in 'xyz')
