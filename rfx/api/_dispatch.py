@@ -361,7 +361,7 @@ def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
     return not distributed and _staged_by_an_outer_trace()
 
 
-def _declaration_setup_at_trace_time(entry):
+def _declaration_setup_at_trace_time(entry=None, *, run=False):
     """Give a shared forward entry the set-up / time-stepping boundary.
 
     ``forward()`` and the entries its single-device lanes share with the
@@ -382,13 +382,27 @@ def _declaration_setup_at_trace_time(entry):
     concrete: inside an eager ``jax.shard_map`` the probe still reads True
     there, and the entry then runs its body outside the region, exactly as
     before #1225, instead of re-entering without end.
+
+    The post-admission run entry uses ``devices=`` to select distributed
+    calls. Its host-controlled decay/progress and subgrid paths retain their
+    existing execution context; only the fixed single-device scans enter.
     """
+    if entry is None:
+        return functools.partial(_declaration_setup_at_trace_time, run=run)
+
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
         self._resolve_field_dtype()
         guard_shape_tangents(self)
-        if _setup_evaluated_at_trace_time(
-                distributed=bool(kwargs.get("distributed", False))):
+        distributed = bool(kwargs.get("distributed", False))
+        if run:
+            devices = kwargs.get("devices")
+            distributed = devices is not None and len(devices) > 1
+            if (kwargs.get("until_decay") is not None
+                    or kwargs.get("report_every") is not None
+                    or self._refinement is not None):
+                return entry(self, *args, **kwargs)
+        if _setup_evaluated_at_trace_time(distributed=distributed):
             from rfx.core.jax_utils import declaration_setup
             with declaration_setup():
                 if not _staged_by_an_outer_trace():
