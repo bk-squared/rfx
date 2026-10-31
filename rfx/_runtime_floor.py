@@ -7,8 +7,8 @@ from rfx.errors import ConfigurationWarning
 
 MIN_PYTHON = (3, 11)
 MIN_JAX = "0.10.2"
-# Install cap and runtime warning (#2116): from jaxlib 0.11.2 the CPU time step runs 2.3-3x slower; import does not refuse newer jax.
-JAX_TESTED_BELOW = "0.11.2"
+# Install cap and runtime warning (#2125); import still accepts newer JAX.
+JAX_TESTED_BELOW = "0.12"
 JAX_BELOW = JAX_TESTED_BELOW
 
 
