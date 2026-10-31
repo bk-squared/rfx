@@ -50,14 +50,11 @@ SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
 HOME, INDEX = "/rfx/", "/rfx/showcase/"
 MAP, COST = "/rfx/showcase/sensitivity-map/", "/rfx/showcase/gradient-cost/"
-DESCENT, FORWARD = "/rfx/showcase/descent-to-optimum/", "/rfx/showcase/forward-checks/"
 
 #: Showcase pages: case id -> (page source, share folders the page draws on).
 CASES = {
     "sensitivity-map": ("docs/public/showcase/sensitivity-map.mdx", ("patch-sensitivity",)),
     "gradient-cost": ("docs/public/showcase/gradient-cost.mdx", ("patch-sensitivity",)),
-    "descent-to-optimum": ("docs/public/showcase/descent-to-optimum.mdx", ("ar-coating",)),
-    "forward-checks": ("docs/public/showcase/forward-checks.mdx", ("forward-patch", "forward-notch")),
 }
 CASES.update({
     "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens", "grin-lens-fan")),
@@ -152,10 +149,6 @@ def headlines(share: Share) -> dict[str, list[dict]]:
     """Every number the pages print in a tile, a card, the proof strip or the
     cost table, by case."""
     patch = share.json("patch-sensitivity", "result.json")
-    ar = share.json("ar-coating", "result.json")
-    gates = share.json("ar-coating", "gates.json")
-    tmm = share.json("ar-coating", "tmm.json")
-    iterations = share.npz("ar-coating", "iterations.npz")
     src = "patch-sensitivity/result.json"
     boxes = patch["model"]["boxes"]
     fd64 = [c["value"] for c in patch["claims"]
@@ -209,22 +202,6 @@ def headlines(share: Share) -> dict[str, list[dict]]:
         ]
     out["gradient-cost"] = cost
 
-    final, optimum = gates["final_eps_r"], tmm["optimum_eps_r"]
-    out["descent-to-optimum"] = [
-        h("largest layer-permittivity gap to the transfer-matrix optimum",
-          100 * max(abs(f / o - 1) for f, o in zip(final, optimum)), "%", fixed(1),
-          (DESCENT, HOME, INDEX), "ar-coating/gates.json final_eps_r vs tmm.json optimum_eps_r"),
-        h("transfer-matrix band-mean |R|^2 of the final design above the optimum",
-          100 * (float(iterations["tmm_cost51"][-1]) / _claim(ar, "TMM optimum X-band mean |R|^2") - 1),
-          "%", fixed(1), (DESCENT,),
-          "ar-coating/iterations.npz tmm_cost51[-1] vs result.json claim 'TMM optimum X-band mean |R|^2'"),
-        h("Adam steps", ar["model"]["adam"]["iters"], "steps", comma, (DESCENT,),
-          "ar-coating/result.json model.adam.iters"),
-    ]
-    # The two forward numbers were computed on rfx 1.8.0 under the settling check before #1426;
-    # they are withdrawn until the cases are re-measured under the current one (#1471).
-    # Restore with: out["forward-checks"] = forward_headlines(share, h)
-    out["forward-checks"] = []
     lens = share.json("grin-lens", "mesh_trend.json")
     designed = lens["reported"]["boresight_dbi"][-1]
     feed = lens["no_lens"]["boresight_dbi"][-1]
@@ -310,7 +287,10 @@ def build(share: Share) -> dict:
                 "folder": folder, "base_url": base, "rfx_commit": entry["rfx_commit"],
                 "question": record["question"], "result_json": base + "result.json",
                 "files": [{"name": name, "url": base + name, "bytes": rec["bytes"],
-                           "sha256": rec["sha256"]} for name, rec in sorted(entry["files"].items())],
+                           "sha256": rec["sha256"]} for name, rec in sorted(entry["files"].items())
+                           if folder != "grin-lens" or not name.endswith(".png")
+                           or name in {"grin_lens_fan.png", "grin_lens_film_poster.png", "grin_lens_start.png",
+                                       "lens_iterations.png", "lens_mesh.png", "lens_slices.png"}],
             })
         cases.append({
             "id": case, "title": meta["title"], "question": meta["description"],
