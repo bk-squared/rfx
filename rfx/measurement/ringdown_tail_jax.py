@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from rfx._ringdown_jax import DFT_BLOCK, working_dtypes
+from rfx.ringdown._jax import DFT_BLOCK, working_dtypes
 
 
 def plain_dft(y, dt, freqs, block=DFT_BLOCK):
