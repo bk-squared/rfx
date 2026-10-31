@@ -86,6 +86,7 @@ sim.add_probe((0.030, 0.015, 0.015), "ez")
 | `freeze_mesh()` | `Grid` or `NonUniformGrid` | Fix the mesh now, so you can read grid indices before placing more geometry. |
 | `plan_mesh(*, n_steps=None, available_memory_gb=None, sparameter_calculator=None, ...)` | `MeshPlan` | A serializable summary of the mesh, memory estimate and checks. See [Automation](/rfx/api/functions/). |
 | `mesh_intelligence_report(...)` | `MeshIntelligenceReport` | Grid, preflight issues and AD memory in one report. |
+| `clear_inspection_cache()` | `None` | Free the cached preflight assembly context, realized-geometry record and coax stamp after inspection; the next call that needs them rebuilds them. Solves release them automatically. |
 
 ```python
 report = sim.preflight()
