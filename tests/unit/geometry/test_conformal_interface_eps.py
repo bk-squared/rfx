@@ -231,9 +231,10 @@ def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
     import jax.numpy as jnp
     from rfx import Box, GaussianPulse, Simulation
 
-    def build():
+    def build(pec_occupancy_model="edge_keep"):
         sim = Simulation(freq_max=10e9, domain=(13 / 1024, 16.7 / 1024, 19.2 / 1024),
-                         dx=1 / 1024, boundary="pec", snap="declared")
+                         dx=1 / 1024, boundary="pec", snap="declared",
+                         pec_occupancy_model=pec_occupancy_model)
         assert_declared_wall_warning(sim)
         sim.add_material("diel", eps_r=4.0)
         sim.add(Box((.0041, .0032, .0063), (.0094, .0106, .0148)), material="diel")
@@ -243,8 +244,7 @@ def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
         return sim
 
     plain = np.asarray(build().forward(n_steps=240, skip_preflight=True).time_series)
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
-    sim = build()
+    sim = build(pec_occupancy_model="kottke")
     zeros = jnp.zeros(sim._build_grid().shape, jnp.float32)
     lane = np.asarray(sim.forward(n_steps=240, skip_preflight=True,
                                   pec_occupancy_override=zeros).time_series)

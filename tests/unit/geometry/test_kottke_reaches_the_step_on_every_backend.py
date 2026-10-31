@@ -87,7 +87,7 @@ def _told_it_is_on_a_gpu(monkeypatch):
 
 
 def test_the_occupancy_tensor_of_forward_is_not_dropped_either(monkeypatch):
-    """forward() with RFX_PEC_OCC_KOTTKE=1 turns the occupancy into the same
+    """forward() with pec_occupancy_model="kottke" turns the occupancy into the same
     inverse tensor and hands the step no occupancy, so nothing else kept it
     off the baked path: the CONDUCTOR was dropped (probe 0.79 of its peak
     away from the general path)."""
@@ -95,7 +95,7 @@ def test_the_occupancy_tensor_of_forward_is_not_dropped_either(monkeypatch):
 
     def trace(occupancy):
         sim = Simulation(freq_max=20e9, domain=(0.024, 0.020, 0.016), dx=1e-3,
-                         boundary="pec", cpml_layers=0)
+                         boundary="pec", cpml_layers=0, pec_occupancy_model="kottke")
         sim.add_source((0.004, 0.005, 0.004), "ez", amplitude_kind="current")
         sim.add_probe((0.019, 0.014, 0.011), "ez")
         with warnings.catch_warnings():
@@ -104,7 +104,6 @@ def test_the_occupancy_tensor_of_forward_is_not_dropped_either(monkeypatch):
                                  skip_preflight=True, checkpoint=False)
         return np.asarray(result.time_series)[:, 0].astype(np.float64), sim
 
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
     empty, sim = trace(None)
     occ = np.zeros(sim._build_grid().shape, np.float32)
     occ[10:14, 8:12, 6:10] = 0.7

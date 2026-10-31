@@ -45,6 +45,7 @@ DECLARATIONS = (
     ("_adi_cfl_factor", "value"),
     ("_stencil_order", "value"),
     ("_interface_eps", "value"),
+    ("_pec_occupancy_model", "value"),
     ("_snap", "value"),
     ("_dt_pin", "value"),
     ("_dt_min_cell", "value"),

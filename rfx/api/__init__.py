@@ -117,6 +117,7 @@ from rfx.api._validators import (  # noqa: E402
     _require_positive_finite_scalar,
     _positive_divisors,
     _preflight_json_safe,
+    _validate_constructor_choices,
     _validate_residual_context,
 )
 
@@ -335,6 +336,7 @@ class Simulation(
         stencil_order: int = 2,
         interface_eps: str = "sampled",
         snap: str = "strict",
+        pec_occupancy_model: str = "edge_keep",
         **_removed_kwargs,
     ):
         if "pec_faces" in _removed_kwargs:
@@ -347,15 +349,9 @@ class Simulation(
                 f"Simulation() got unexpected keyword arguments: {sorted(_removed_kwargs)}"
             )
         from rfx.boundaries import normalize_boundary
-        from rfx.runners.nonuniform import INTERFACE_EPS_RULES
 
-        if snap not in ("strict", "declared"):
-            raise ValueError(f"snap must be 'strict' or 'declared', got {snap!r}")
-        self._snap = snap
-
-        if interface_eps not in INTERFACE_EPS_RULES:
-            raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
-        self._interface_eps = interface_eps
+        self._snap, self._interface_eps, self._pec_occupancy_model = _validate_constructor_choices(
+            snap, interface_eps, pec_occupancy_model)
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;

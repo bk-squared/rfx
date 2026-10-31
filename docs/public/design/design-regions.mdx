@@ -162,7 +162,7 @@ run is long enough for it is a separate check
 | a port in a permittivity box without `design_box_holds_ports=True`; a soft or magnetic source, an RLC element or a surface-impedance sheet in the box | all | hold the ports, or move the source out |
 | a design box whose update window lies on or next to a plane wave's injection planes (the window counts as non-vacuum, whatever values it holds), an occupancy or whole-grid override that puts a dielectric or a finite block there, or a finite block under an open plane wave (not uniform across its side faces) | uniform and graded mesh | keep the design clear of the planes; `closed_box=True` on a uniform mesh for one object |
 | a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | all | put the shape's material in a design box or a whole-grid override and differentiate that |
-| an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with the opt-in Kottke occupancy tensor (`RFX_PEC_OCC_KOTTKE=1`) | all | one kind of box per call, clear of ports |
+| an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with the opt-in Kottke occupancy tensor (`pec_occupancy_model="kottke"`) | all | one kind of box per call, clear of ports |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read.
 

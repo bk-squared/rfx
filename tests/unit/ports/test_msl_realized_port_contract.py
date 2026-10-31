@@ -18,7 +18,7 @@ DX = 1e-3
 def _model(*, direction="+x", nonuniform=False, ground=6., top=10.,
            ground_thickness=0., trace_thickness=0., ground_kind="pec",
            trace_kind="pec", domain_ground=None, trace_width=(10., 14.),
-           trace_length=None, port_top=None, port_ground=None):
+           trace_length=None, port_top=None, port_ground=None, pec_occupancy_model="edge_keep"):
     profiles = (np.full(24, DX), np.full(24, 1.2*DX),
                 np.array([DX]*4+[.5*DX]*8+[1.5*DX]*12))
     nodes = tuple(np.r_[0., np.cumsum(a)] for a in profiles) if nonuniform else None
@@ -33,7 +33,7 @@ def _model(*, direction="+x", nonuniform=False, ground=6., top=10.,
         bc = BoundarySpec(x="cpml", y="cpml", z=("periodic" if domain_ground == "periodic"
                           else Boundary(lo=domain_ground, hi="cpml")))
     kwargs = dict(dx_profile=profiles[0], dy_profile=profiles[1], dz_profile=profiles[2]) if nonuniform else {}
-    sim = Simulation(freq_max=5e9, domain=domain, dx=DX, cpml_layers=0, boundary=bc, **kwargs)
+    sim = Simulation(freq_max=5e9, domain=domain, dx=DX, cpml_layers=0, boundary=bc, pec_occupancy_model=pec_occupancy_model, **kwargs)
     lo, hi = coord(2, ground), coord(2, top)
 
     def conductor(shape, kind):
@@ -261,7 +261,6 @@ def test_forward_reserves_every_cell_that_owns_the_source_edge(direction, width_
         assert not realized_pec_edge_masks(actual > .5)[2][edge]
         raise Captured
 
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "0")
     monkeypatch.setattr(stepping, "run", capture)
     with pytest.raises(Captured):
         sim.forward(n_steps=4, pec_occupancy_override=occupancy, skip_preflight=True)
@@ -290,7 +289,6 @@ def test_forward_density_reservation_preserves_derivatives_outside_the_port(monk
             return result.args[0]
         raise AssertionError("forward never reached the stepper")
 
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "0")
     monkeypatch.setattr(stepping, "run", capture)
     value, derivative = jax.value_and_grad(observe)(jnp.array([.7, .4]))
     assert value == pytest.approx(1.2)
@@ -301,7 +299,7 @@ def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
     import jax.numpy as jnp
     import rfx.geometry.smoothing as smoothing
     import rfx.simulation as stepping
-    sim, _ = _model()
+    sim, _ = _model(pec_occupancy_model="kottke")
     grid = sim._build_grid()
     # Four cells of lateral Laplace padding: trace ends at w=14,
     # last fringe source at w=18. Its positive w=19 neighbour is NOT
@@ -327,7 +325,6 @@ def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
         assert len(driven) == 1 and np.max(np.abs(driven[0].waveform)) > 0.
         raise Captured
 
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
     monkeypatch.setattr(smoothing, "kottke_inv_eps_from_occupancy", observe)
     monkeypatch.setattr(stepping, "run", capture)
     with pytest.raises(Captured):

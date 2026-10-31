@@ -1929,10 +1929,9 @@ def test_refuses_kottke_pec_and_accepts_the_other_conductor_updates():
 
 
 def test_refuses_the_kottke_occupancy_lane(monkeypatch):
-    sim = _guard_sim()
+    sim = _guard_sim(pec_occupancy_model="kottke")
     occ = np.zeros(sim._build_grid().shape, dtype=np.float32)
     occ[12, 12, 12] = 1.0
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
     with pytest.raises(NotImplementedError, match="zeroes H"):
         sim.forward(pec_occupancy_override=jnp.asarray(occ), n_steps=4,
                     skip_preflight=True)

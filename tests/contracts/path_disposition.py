@@ -930,6 +930,24 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         fwd_adi=admission("interface_eps='dual_average'", FWD_ADI, "it was not read (#1339)"),
     )},
 
+    # Applied only with a forward() occupancy input; its admission is checked
+    # with that call argument in test_pec_occupancy_model.py, not by DETECTORS.
+    "_pec_occupancy_model": {"kottke": lanes(
+        run_uniform=not_reachable("run() takes no occupancy input"),
+        run_nonuniform=not_reachable("run() takes no occupancy input"),
+        run_subgridded=not_reachable("run() takes no occupancy input"),
+        run_adi=not_reachable("run() takes no occupancy input"),
+        run_distributed=not_reachable("run() takes no occupancy input"),
+        run_distributed_nu=not_reachable("run() takes no occupancy input"),
+        fwd_uniform=carries("select_occupancy_operator selects the Kottke tensor for PEC occupancy"),
+        fwd_nonuniform=refuses("Kottke occupancy requires the uniform lane",
+                               raises="single-device uniform forward"),
+        fwd_distributed_nu=refuses("Kottke occupancy requires the uniform lane",
+                                   raises="single-device uniform forward"),
+        fwd_adi=refuses("ADI refuses the occupancy override",
+                        raises="solver='adi' does not support pec_occupancy_override"),
+    )},
+
     # -------------------------------------------------------- mesh profiles
     **{profile: {"graded": lanes(
         run_uniform=not_reachable("a dx/dy/dz profile sends the model to the graded lane"),
@@ -1017,7 +1035,7 @@ ROW_CLASS: dict[str, str] = {
     **{attr: BOOKKEEPING for attr in (
         "_internal_probe_indices", "_msl_auto_offset_min",
         "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model", "_boundary_explicit", "_snap",
-        "_boundary_scalar_spec")},
+        "_boundary_scalar_spec", "_pec_occupancy_model")},
     **{attr: OBSERVER for attr in (
         "_probes", "_dft_planes", "_flux_monitors", "_ntff", "_current_moments")},
     **{attr: PHYSICS for attr in (
@@ -1603,6 +1621,17 @@ CALCULATOR_CELLS = {
         'vmap_sweep_batched': carries('rfx/vmap_sweep.py: _build_full_scan_fn and rfx/stepping/vmap_scan.py: _build_vmap_scan_fn'),
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
+    ('_pec_occupancy_model', 'kottke'): {
+        's_matrix_scan': not_reachable('the S-matrix scan takes no occupancy input'),
+        'mixed_s_matrix': not_reachable('the mixed S-matrix takes no occupancy input'),
+        'topology_optimize': carries('topology embeds the design in full-grid PEC occupancy for the uniform forward solve'),
+        'waveguide_s_matrix': not_reachable('the waveguide calculator takes no occupancy input'),
+        'coaxial_line_reflection': not_reachable('the coaxial calculator takes no occupancy input'),
+        'coaxial_two_port': not_reachable('the coaxial calculator takes no occupancy input'),
+        'coax_msl_transition': not_reachable('the coaxial transition takes no occupancy input'),
+        'vmap_sweep_batched': not_reachable('the material sweep takes no occupancy input'),
+        'material_fit': not_reachable('material fitting takes no occupancy input'),
+    },
     ('_interface_eps', 'dual_average'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises="interface_eps='dual_average'"),
         'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="interface_eps='dual_average'"),
@@ -1741,6 +1770,8 @@ for _features in TABLE.values():
         if "run_distributed" in _cells:
             _cells["fwd_distributed"] = _cells["run_distributed"]
 TABLE["_coaxial_ports"]["coax_port"]["fwd_distributed"] = FWD_COAX
+TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
+    "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")
 
 
 def cell(attr: str, feature: str, path: str) -> Cell:
