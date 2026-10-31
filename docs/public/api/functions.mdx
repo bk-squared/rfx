@@ -104,8 +104,8 @@ print(len(graded), f"{graded.sum() * 1e3:.3f} mm")   # longer: cells were insert
 planes: the total length and every interface are exact. `smooth_grading`
 **adds** cells, so the total length and the positions after the inserted
 cells change. Recompute your layer coordinates from the final profile's
-cumulative sum. Use `max_ratio=1.4` along z and 1.3 in-plane; rfx has been
-checked up to those ratios, and preflight flags larger ones.
+cumulative sum. `max_ratio` defaults to 1.3; rfx has been checked up to 1.4 on every
+axis, and preflight flags larger ratios.
 
 ## Limits
 
