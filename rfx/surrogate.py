@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rfx.api import Simulation
     from rfx.sweep import SweepResult
+    from rfx.vmap_sweep import VmapSweepResult
 
 from pathlib import Path
 
@@ -32,7 +33,7 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 def export_training_data(
-    sweep_result: SweepResult,
+    sweep_result: SweepResult | VmapSweepResult,
     *,
     output_path: str | Path,
     format: str = "npz",
