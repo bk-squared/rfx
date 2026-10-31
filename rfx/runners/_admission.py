@@ -1591,3 +1591,12 @@ def admit_sheet_layout_lane(sim, *, distributed):
 def refuse_forward_floor():
     """Name the run-only value before forward's generic unknown-keyword check."""
     raise RfxUnsupported('forward() refuses conformal_pec="cut_cell_floor"; use uniform run()')
+
+
+def refuse_tfsf_decay_without_source_off(sim, until_decay):
+    """Require a known TFSF source-off time for decay stopping."""
+    if until_decay is not None and sim._tfsf is not None:
+        from rfx.sources.sources import CustomWaveform
+        if isinstance(sim._tfsf.waveform, CustomWaveform):
+            raise NotImplementedError(
+                "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
