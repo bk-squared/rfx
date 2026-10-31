@@ -166,7 +166,6 @@
       "required": [
         "precision",
         "solver",
-        "adi_cfl_factor",
         "stencil_order",
         "interface_eps",
         "dt_pin",
