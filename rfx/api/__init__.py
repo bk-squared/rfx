@@ -2232,7 +2232,7 @@ class Simulation(
         block_size: float,
         freqs: Sequence[float] | np.ndarray | jax.Array,
         order: int = 2,
-        margin_cells: int | tuple[int, int, int] = 0,
+        margin_cells: int | Sequence[int] = 0,
         off_cells: int = 0,
     ) -> "Simulation":
         """Accumulate the structure's own current as block moments, in-loop.
