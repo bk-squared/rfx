@@ -87,6 +87,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx._uniform_specs import _StepContext
     from rfx.core.drives import drive_layout
     from rfx.measurement import init_uniform_records
+    from rfx.model.electric_metrics import stage_forward_materials
     from rfx.stepping.graded import graded_probe_table
     from rfx.stepping.slab import cut, place
     from rfx.stepping.slab_setup import stage_dispersion
@@ -94,8 +95,10 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.stepping.uniform_setup import _build_step_setup, core_step_invariants
     from jax.sharding import NamedSharding
 
-    debye = stage_dispersion(materials, grid.dt, debye_spec, grid, layout, mesh, 'debye')
-    lorentz = stage_dispersion(materials, grid.dt, lorentz_spec, grid, layout, mesh,
+    pole_materials = (stage_forward_materials(materials, layout, mesh, uniform=True)
+                      if debye_spec is not None or lorentz_spec is not None else materials)
+    debye = stage_dispersion(pole_materials, grid.dt, debye_spec, grid, layout, mesh, 'debye')
+    lorentz = stage_dispersion(pole_materials, grid.dt, lorentz_spec, grid, layout, mesh,
                               'lorentz', debye_spec=debye_spec)
     if lorentz is not None:
         from rfx.materials.lorentz import mark_judged
