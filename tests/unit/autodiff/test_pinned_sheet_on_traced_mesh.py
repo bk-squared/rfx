@@ -124,7 +124,8 @@ def test_a_metric_sheet_on_a_traced_mesh_is_still_refused():
         sim = Simulation(freq_max=40e9,
                          domain=(N_X * DX, N_Y * DX, N_Z * DX), dx=DX,
                          dx_profile=_prof_x(delta), cpml_layers=CPML,
-                         boundary="cpml")
+                         boundary="cpml",
+                         nominal_profiles={"x": _prof_x(0.5 * DX)})
         sim.add_thin_conductor(Box((I_LO * DX, J_LO * DX, Z_PATCH),
                                    (I_HI * DX, J_HI * DX, Z_PATCH)))
         sim.add_source((3 * DX, 8 * DX, K_MID * DX), "ez",
