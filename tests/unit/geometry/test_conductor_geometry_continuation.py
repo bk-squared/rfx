@@ -317,13 +317,53 @@ def test_one_traced_mesh_axis_refuses_every_reached_absorbing_face():
 
     @jax.jit
     def traced(dz):
-        traced_grid = grid._replace(dz=dz)
-        continued_conductor_shape(sim, traced_grid, shape, unextendable=[])
+        traced_sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                                boundary="cpml", cpml_layers=2, dz_profile=dz,
+                                dt=1e-12, dt_min_cell=1.)
+        continued_conductor_shape(traced_sim, traced_sim._build_nonuniform_grid(),
+                                  shape, unextendable=[])
         return dz
 
     with pytest.raises(TracedStructureRefusal, match="x-lo, x-hi, y-lo, y-hi") as caught:
-        traced(grid.dz)
+        traced(np.ones(8))
     assert "mesh axis z is traced" in str(caught.value)
     assert "dz_profile" in str(caught.value)
     with pytest.raises(TracedStructureRefusal):
-        traced(grid.dz)
+        traced(np.ones(8))
+
+
+@pytest.mark.parametrize("axis", range(3))
+@pytest.mark.parametrize("side", ("lo", "hi"))
+@pytest.mark.parametrize("nominal,gap,refused", [
+    (None, 1., True), (None, 1.1, False),
+    ([2., 2., 1., 1., .5, .5, .5, .5], 1.5, True),
+    ([2., 2., 1., 1., .5, .5, .5, .5], 2.1, False),
+    ([.5] * 16, .75, False),
+])
+def test_traced_conductor_reach_uses_largest_declared_cell(axis, side, nominal, gap, refused):
+    import jax
+    from rfx._traced_refusal import TracedStructureRefusal
+
+    name = "xyz"[axis]
+    lo, hi = [3.] * 3, [5.] * 3
+    if side == "lo":
+        lo[axis] = gap
+    else:
+        hi[axis] = 8. - gap
+    shape = Box(tuple(lo), tuple(hi))
+
+    @jax.jit
+    def traced(profile):
+        sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                         boundary="cpml", cpml_layers=2, dt=1e-12, dt_min_cell=.5,
+                         nominal_profiles=None if nominal is None else {name: nominal},
+                         **{f"d{name}_profile": profile})
+        continued_conductor_shape(sim, sim._build_nonuniform_grid(), shape)
+        return profile
+
+    profile = np.ones(8) if nominal is None else np.array(nominal)
+    if refused:
+        with pytest.raises(TracedStructureRefusal, match=f"{name}-{side}"):
+            traced(profile)
+    else:
+        np.testing.assert_array_equal(traced(profile), profile)

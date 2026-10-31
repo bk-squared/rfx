@@ -769,7 +769,7 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     traced_axes = tuple(a for a, n in enumerate(nodes) if is_tracer(n))
     if traced_axes:
         from rfx.geometry._traced_conductor import refuse_traced_conductor_at_absorber
-        refuse_traced_conductor_at_absorber(sim, grid, shape, traced_axes)
+        refuse_traced_conductor_at_absorber(sim, grid, shape)
         return shape
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
