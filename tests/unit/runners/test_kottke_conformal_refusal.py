@@ -18,7 +18,9 @@ def _scene(entry, source, *, pec=True, dt=None):
         if source == "B":
             boundary["y"] = Boundary("pec", "pec", conformal=True)
         sim = Simulation(freq_max=9e9, domain=(.12, .04, .02), dx=.002,
-                         boundary=boundary, cpml_layers=10, dt=dt)
+                         boundary=boundary, cpml_layers=10, dt=dt,
+                         **({"dz_profile": np.full(10, .002)}
+                            if entry == "waveguide_graded" else {}))
         if pec:
             sim.add(Cylinder((.0601, .0198, .0097), .0033, .008, "z"),
                     material="pec")
@@ -105,6 +107,8 @@ def test_combination_refused_before_step(monkeypatch, entry, source):
     # All other reachable rows name both inputs; no implementation text is imported.
     match = (r"conformal_pec" if entry == "graded" else
              r"(?s)(?=.*subpixel_smoothing)(?=.*kottke_pec)(?=.*conformal_pec)")
+    if entry.startswith("waveguide") and source == "K":
+        match = r"conformal_pec=True.*Boundary\(conformal=True\)"
     with pytest.raises(NotImplementedError, match=match):
         _invoke(entry, source)
 
@@ -185,6 +189,21 @@ def test_waveguide_controls_run(smoothing, source):
     result = _invoke("waveguide", source, smoothing=smoothing)
     assert result.s_params.shape == (2, 2, 3)
     assert np.isfinite(np.asarray(result.s_params)).all()
+
+
+@pytest.mark.parametrize("entry", ["waveguide", "waveguide_graded"])
+@pytest.mark.parametrize("value", [True, False, "staircase"])
+def test_waveguide_conformal_keyword_refused_before_admission(monkeypatch, entry, value):
+    from rfx.errors import RfxUnsupported
+    from rfx.model import tensor_operands
+
+    sim = _scene(entry, "none")
+    monkeypatch.setattr(A, "admit_conformal_floor", _no_step)
+    monkeypatch.setattr(tensor_operands, "form_tensor_operands", _no_step)
+    with pytest.raises(RfxUnsupported, match=r"Boundary\(conformal=True\)") as caught:
+        sim.compute_waveguide_s_matrix(conformal_pec=value, n_steps=1, skip_preflight=True)
+    assert f"conformal_pec={value!r}" in str(caught.value)
+    assert 'the keyword only takes "cut_cell_floor"' in str(caught.value)
 
 
 def test_cut_cell_floor_admission_paths():
