@@ -75,8 +75,8 @@ def _override(sim, eps_line: float):
     return jnp.asarray(eps, dtype=jnp.float32)
 
 
-def test_shift_follows_the_solved_line_not_the_declaration():
-    sim, _ = _build_planted_sim(1.0)
+def test_shift_follows_the_solved_line_not_the_declaration(monkeypatch):
+    sim, _ = _build_planted_sim(monkeypatch, 1.0)
     S = np.asarray(_compute(sim, eps_override=_override(sim, 3.0)).S, dtype=np.complex128)
     want, frozen = _expected(3.0), _expected(DECLARED)
     # The fixture can tell the two lines apart by far more than the tolerance.
@@ -84,8 +84,8 @@ def test_shift_follows_the_solved_line_not_the_declaration():
     np.testing.assert_allclose(S, want, atol=2e-5 * np.max(np.abs(want)))
 
 
-def test_gradient_carries_the_plane_term():
-    sim, _ = _build_planted_sim(1.0)
+def test_gradient_carries_the_plane_term(monkeypatch):
+    sim, _ = _build_planted_sim(monkeypatch, 1.0)
     eps0 = _noop_eps_override(sim)
     k = len(FREQS) - 1
 
@@ -100,8 +100,8 @@ def test_gradient_carries_the_plane_term():
     assert abs(g_ad - g_fd) <= 2e-3 * abs(g_fd), (g_ad, g_fd)
 
 
-def test_override_varying_along_the_shifted_length_is_refused_by_port_name():
-    sim, _ = _build_planted_sim(1.0)
+def test_override_varying_along_the_shifted_length_is_refused_by_port_name(monkeypatch):
+    sim, _ = _build_planted_sim(monkeypatch, 1.0)
     eps = np.asarray(_override(sim, DECLARED)).copy()
     grid = sim._build_grid()
     i_mid = grid.position_to_index((2 * U + 5 * U, 0, 0))[0]  # between port 1's feed and probe 0
@@ -110,8 +110,8 @@ def test_override_varying_along_the_shifted_length_is_refused_by_port_name():
         _compute(sim, eps_override=jnp.asarray(eps))
 
 
-def test_override_without_values_is_refused_under_jit():
-    sim, _ = _build_planted_sim(1.0)
+def test_override_without_values_is_refused_under_jit(monkeypatch):
+    sim, _ = _build_planted_sim(monkeypatch, 1.0)
     eps0 = _noop_eps_override(sim)
     with pytest.raises(TracedStructureRefusal, match="must check that it is uniform"):
         jax.jit(lambda e: _compute(sim, eps_override=e).S)(eps0)
