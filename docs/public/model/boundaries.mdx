@@ -111,8 +111,9 @@ of them:
   the model and the message names the nearest `dx` that fits;
   `snap="declared"` runs it with a `wall_axis_off_node` warning. When you leave
   `dx` unset, rfx looks for a cell size that fits the walls, no smaller than
-  0.75 of the one it would otherwise choose; if none fits, it refuses and names
-  the largest `dx` that does. A WR-90 cross-section,
+  0.75 of the one it would otherwise choose. If none fits, it refuses and names
+  the largest smaller `dx` that does, searching down to 1/16 of its own choice;
+  below that the message says no fitting spacing was found. A WR-90 cross-section,
   22.86 × 10.16 mm, fits at `dx = 1.27 mm` (18 × 8 cells) and is refused at
   1 mm, where 10.16 mm would be solved as 10 mm.
 - **An axis with absorbing faces** is covered by whole cells and can be solved
@@ -163,10 +164,12 @@ array) is not set on the boundary itself but by the source that needs it:
   with a warning, and on a graded mesh you declare them explicitly.
 - **Plane wave from a slab source.** On each axis across the beam, the two
   faces must be periodic, or both the matching wall (PEC on the faces normal to
-  E, PMC on the faces normal to H), or both absorbing, which is the default.
-  Walls and absorbers there are solved as periodic, absorber layers included,
-  and preflight warns (`tfsf_transverse_periodic`): along that axis you model
-  an infinite array of your structure. A structure that is not uniform along
+  E, PMC on the faces normal to H), or both absorbing. On the uniform mesh
+  the faces the source wraps (y and z; z only for `method="methodB"`) are solved
+  as periodic: leave `boundary` out or pass
+  `boundary="cpml"`, and preflight warns (`tfsf_transverse_periodic`); along
+  that axis you model an infinite array of your structure. CPML, PMC or PEC
+  declared on such a face is refused there, naming the faces. The graded mesh solves the declared faces as declared. A structure that is not uniform along
   such an axis is refused; declare the axis `"periodic"` to solve an array on
   purpose, or use `closed_box=True` for a finite scatterer. A mixed pair is
   refused. This uniformity check applies at normal incidence. At an angle, the
@@ -191,7 +194,7 @@ the solver path checks that it implements every face (refusals, below).
 |---|---|---|---|
 | an axis closed by walls on both faces (PEC, PMC or zero-depth faces), without a cell profile, whose length is more than 1 % off a whole number of cells | uniform and graded mesh | refused under the default `snap="strict"`; the message names the nearest `dx` that fits | that `dx`, or `snap="declared"` to run with a warning |
 | `"pmc"` face | ADI, subgridded | refused | a uniform or graded mesh, on one device or several |
-| `"pmc"` face with lumped or wire ports | graded mesh on several devices | refused | run on one device |
+| `"pmc"` face with a wire port or lumped-port S (on a graded mesh, with any port or frequency-domain record) | several devices, either mesh | refused | run on one device |
 | `"periodic"` axis | multi-device, ADI, subgridded | refused | run on one device |
 | on a periodic axis: a graded cell profile along it, a plane wave, `interface_eps="dual_average"` or Bloch phases | graded mesh | refused | keep the cell size constant along the axis; run plane waves on a periodic cell on a uniform mesh |
 | `extract_s_matrix` or `extract_s_matrix_wire` on a model with a periodic axis | all | refused: they solved six PEC walls | `run(compute_s_params=True)` |
@@ -203,6 +206,7 @@ the solver path checks that it implements every face (refusals, below).
 | a waveguide port with no CPML face | all | refused when the port is added | use CPML |
 | a Floquet port scanned off normal | all | refused | normal incidence only |
 | a slab plane wave with a mixed pair of side faces, or (at normal incidence) a structure not uniform along a side axis that is not periodic | all | refused | declare that axis `"periodic"`, or use `closed_box=True` |
+| an open plane wave with CPML, PMC or PEC declared on a side face it wraps (y and z; z only for `method="methodB"`) | uniform mesh | refused, naming the faces | declare those faces `"periodic"`, leave `boundary` out, use `closed_box=True`, or a graded mesh |
 | `closed_box=True` plane wave in a PEC domain | all | refused | `boundary="cpml"` |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the

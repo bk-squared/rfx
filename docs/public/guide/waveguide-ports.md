@@ -229,8 +229,11 @@ graded mesh it is a target segment count.
   same-guide junctions under the far-port conditions above. Phase is
   validated on fewer configurations than magnitude.
 - **Ports with different cross-sections** are outside the validated scope.
-  S is a ratio of each port's own modal waves, so it equals a power-wave S only
-  when all ports share one cross-section and mode.
+  Between ports in one medium, S is a ratio of each port's own modal waves, so
+  it equals a power-wave S only when all ports share one cross-section and
+  mode. Between ports in different media (an empty port facing a filled one),
+  `normalize=False` returns power waves, `(b_i / a_j)·√(Z_j / Z_i)`;
+  `normalize=True` and `"flux"` refuse unequal media.
 - **Compact junctions** give non-physical matrices even with
   `port_reference_sims`. Keep the far-port conditions.
 - **Graded meshes** refuse `normalize=False`; use `"flux"` (or `True`). Graded-mesh waveguide results
@@ -238,6 +241,7 @@ graded mesh it is a target segment count.
 - **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
   uniform mesh and no material override. Each reference's port sections are
   admitted as on a direct entry: a port inside a PEC block is refused (give it a
-  closed air pocket instead), and so is a dispersive material.
+  closed air pocket instead), and so is a dispersive material or a
+  surface-impedance sheet.
 - Full scope, with the comparisons behind it, is in the
   [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).

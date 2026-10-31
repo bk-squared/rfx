@@ -38,6 +38,32 @@ export PYTHON="${PYTHON:-python3}"
 export RFX_CHANGELOG_CONTEXT=pre-landing
 BODY_PATH="${1:-}"
 
+# An explicit environment value wins, including an explicit empty JSON array.
+label_source="PR_LABELS_JSON environment"
+if [ -z "${PR_LABELS_JSON:-}" ]; then
+  PR_LABELS_JSON='[]'
+  label_source="default (no readable PR body)"
+  if [ -f "$BODY_PATH" ] && [ -r "$BODY_PATH" ]; then
+    PR_LABELS_JSON=$("$PYTHON" - "$BODY_PATH" <<'PYEOF'
+import json
+import sys
+
+labels = []
+with open(sys.argv[1], encoding="utf-8") as body:
+    for line in body:
+        if line.startswith("Labels:"):
+            labels = [name.strip() for name in line[len("Labels:"):].split(",")
+                      if name.strip()]
+            break
+print(json.dumps(labels))
+PYEOF
+    ) || exit 1
+    label_source="$BODY_PATH (first Labels: line; [] if absent)"
+  fi
+fi
+export PR_LABELS_JSON
+echo "gate labels: $PR_LABELS_JSON; source: $label_source"
+
 # What the changelog, data-budget and file-size gates diff against. CI uses the PR's base
 # and head shas; locally the merge base with origin/main is the same question.
 CHANGELOG_BASE="${CHANGELOG_BASE:-origin/main}"
@@ -80,23 +106,21 @@ begin 2
 # validates fragment names and headings, which is a different question: it never
 # notices a missing fragment on an rfx/ change, nor a CHANGELOG.md edit without
 # the release label, and those are the two rules CI actually enforces.
-# PR_LABELS_JSON is empty locally, which is the strict reading (no release
-# label), and that is the right default for a pre-push check.
+# Labels come from the environment or PR body; no labels is the strict default.
 # It is silent on success, so say what was asked: a green step that printed
 # nothing is indistinguishable from a step that did not run.
 echo "fragment required? $CHANGELOG_BASE...$CHANGELOG_HEAD"
 "$PYTHON" scripts/ci/check_changelog_fragment.py \
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
-echo "  ok — a fragment exists for every rfx/ change, and CHANGELOG.md is untouched"
+echo "  ok — changelog fragment and release-label rules passed"
 # Fragment names and headings, which the workflow leaves to the release run.
 "$PYTHON" scripts/changelog/assemble.py --check --allow-topic || fail
 ) || step_failed
 
 begin 3
 (
-# The SAME script the data-budget step of guards-and-preflight runs. Locally
-# PR_LABELS_JSON is empty, so the exception label never applies here: a red
-# step means CI will be red until the records move or the label is applied.
+# The SAME script the data-budget step of guards-and-preflight runs, using
+# the same exported labels as the changelog-fragment step.
 "$PYTHON" scripts/ci/check_data_budget.py \
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
 ) || step_failed

@@ -99,9 +99,10 @@ outside is the structure's response alone.
 | `margin` | 3 | cells between the injection planes and the absorber |
 
 The injection planes must lie in vacuum. With `closed_box=False` the planes
-span the domain, and the faces across the beam are solved as periodic, so the
-structure is repeated along them; a structure that is not uniform across them
-is refused unless you declare those faces periodic. See
+span the domain. On the uniform mesh the faces across the beam are solved as
+periodic, so the structure is repeated along them; CPML, PMC or PEC declared
+on those faces is refused. A structure that is not uniform across them is
+refused unless you declare those faces periodic. See
 [Boundaries](/rfx/model/boundaries/#rules-that-ports-and-plane-waves-put-on-the-boundary)
 for the rule. For a single scatterer use `closed_box=True`.
 
@@ -160,8 +161,8 @@ checks that it implements the source (below).
 | a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
 | anything other than vacuum on or next to an injection plane: a dielectric (even a near-vacuum one), a dispersive or Kerr medium, a PEC volume, a sheet, a wire, a lumped element or a design region | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
 | a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
-| a plane wave | several devices, either mesh | runs on one device, with a warning; `Result.diagnostics` records it | — |
-| a plane wave at an angle with an NTFF box, DFT planes, flux monitors, `snapshot=` or `until_decay=` | uniform mesh | refused | probes and the final `state`, a fixed `n_steps`, or `compute_rcs` for scattering |
+| a plane wave on several devices, other than a closed box (`closed_box=True`) at normal incidence on a uniform mesh | several devices, either mesh | refused by name; nothing runs on one device in its place | one device, or the closed box as [Multiple devices](/rfx/run/multi-device/) describes |
+| a plane wave at an angle on the Bloch path (`angle_deg` ≠ 0 with the default `method="bloch"`) with an NTFF box, DFT planes, flux monitors, `snapshot=` or `until_decay=` | uniform mesh | refused | probes and the final `state`, a fixed `n_steps`, or `compute_rcs` for scattering; for one scatterer, a closed box at an angle (`closed_box=True` with `theta_deg`/`phi_deg`) takes all five |
 | a soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire), or tangential in a declared PEC wall face | all | refused | move the source off the metal and at least one cell inside the domain, or use a port |
 | a drive whose pulse samples to zero at every time step (usually `bandwidth` given in Hz) | all, and `preflight()` | refused | give `bandwidth` as a fraction of `f0` |
 | `GaussianPulse(cutoff=...)` below 2.5 | when the pulse is created | refused | keep the default `cutoff=3` |
@@ -180,6 +181,16 @@ checks that it implements the source (below).
 - A closed-box plane wave in vacuum reproduces the incident pulse inside the
   box, and outside it the field stays below 9 float32 rounding steps of the
   pulse peak (`tests/unit/sources/test_tfsf_closed_box.py`).
+- A closed-box plane wave at 30° and at (45°, 30°) in vacuum is the lattice
+  plane wave along the direction `sim.tfsf_incidence()` reports. On a 1 mm mesh
+  at 8–12 GHz its wavenumber differs from the analytic wave by 9e-5 to 7.9e-4,
+  4× less with half the cell, and its amplitude is 0.1–0.5 % below normal
+  incidence (`tests/oracle/test_oblique_closed_box_plane_wave.py`). With an
+  NTFF box, the oblique closed-box source on a 120 mm PEC trihedral converged
+  at second order over three grids, and its backscatter is within 0.10 dB of
+  an independent full-wave reference at 5 and 15 GHz (one structure, no
+  always-on test; record kept with the project). No incident spectrum is
+  formed for an oblique box: normalize by an empty-box run.
 
 ## See also
 

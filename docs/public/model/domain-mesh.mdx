@@ -277,9 +277,12 @@ use a fixed `n_steps` there.
   run or an external reference.
 - **Grading ratios** above 1.4 in z, or 1.3 in x and y, are outside the
   validated range. Preflight warns.
-- **TFSF along a graded axis:** preflight warns, because the scattered-field
-  region picks up a spurious field (about 0.7 of the total-field peak with no
-  scatterer). Normal incidence along ±x needs a uniform x axis.
+- **TFSF along a graded x axis:** normal incidence runs. The incident line
+  uses the realized x cells, and with no scatterer the scattered-field region
+  reads within 1×10⁻⁵ of the total-field peak (measured 7×10⁻⁶), as on
+  uniform cells
+  (`tests/unit/preflight/test_graded_axis_findings.py`). A closed
+  box or an oblique wave on a graded x is refused.
 - **Microstrip probes on a graded feed:** the automatic probe offset and
   spacing are counted in cells under the port, and recounted at run time.
   Keep the feed region uniform if you want predictable probe positions.

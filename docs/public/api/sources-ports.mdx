@@ -63,8 +63,8 @@ circular polarization from this source has not been verified. Don't use it to
 report axial ratio or sense.
 
 For the plane wave on a graded mesh, only normal incidence along `+x` or `-x`
-is valid, and only when x itself is uniform. A graded x axis still runs, with
-a preflight warning. Far-field and RCS use is covered in
+is valid. x may be graded: the incident line is built on the realized x cells.
+A closed box or an oblique wave on a graded x is refused. Far-field and RCS use is covered in
 [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
 
 ## Ports
@@ -164,6 +164,8 @@ a short probe array downstream of the feed.
   centre.
 - `direction`: `"+x"`, `"-x"`, `"+y"` or `"-y"`. The substrate normal is always
   z.
+- `impedance`: the port's reference impedance in ohms. S is referred to it;
+  the line's analytic impedance is reported as `line_impedances`.
 - `mode`: `"laplace"` (default, quasi-TEM) or `"uniform"`. `"eigenmode"` is
   x-only and outside the documented scope.
 - `n_probe_offset`, `n_probe_spacing`: in cells. When left at `None` on a
@@ -217,7 +219,9 @@ add_waveguide_port(x_position, *, x_range=None, y_range=None, z_range=None,
 arguments across that axis give the guide aperture. An aperture that spans
 the whole cross-section needs PEC on the transverse faces and an absorber on
 the port axis only (`boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an
-x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. Waveguide ports
+x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. A
+smaller aperture needs a conductor on every edge: draw PEC walls there, or a bare
+edge is refused on both meshes. Waveguide ports
 need `mode="3d"`, and cannot share a simulation with lumped ports.
 
 ```python
@@ -243,8 +247,11 @@ add_coaxial_port(position, face="top", *, pin_length=0.005,
 ```
 
 The coaxial calculators build their own line, TEM source, probe planes and
-termination. The port supplies only the x/y centre, `face`, the two radii and
-the waveform. See the complete example below.
+termination. The port supplies the x/y centre, `face`, the two radii, the
+waveform and `impedance`, the reference `compute_coaxial_two_port` refers S to
+(the line's TEM impedance is reported as `line_impedances`;
+`compute_coaxial_line_reflection` returns Γ at the line and does not use it).
+See the complete example below.
 
 ## S-parameter calculators
 

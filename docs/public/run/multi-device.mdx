@@ -11,9 +11,10 @@ A model too large for one GPU, or too slow on one, can be split over several
 devices. rfx cuts the domain into slabs along x, gives each device one slab,
 and exchanges the fields on the faces between slabs after every time step. The
 result is the one-device model to within float32 rounding. The
-[support page](/rfx/support/) lists multi-device runs as not documented: rfx
-makes no accuracy statement for them beyond the comparisons with one device
-under [How rfx checks it](#how-rfx-checks-it).
+[support page](/rfx/support/) lists multi-device runs as supported within the
+limits below: each result is compared with a one-device run of the same model
+(see [How rfx checks it](#how-rfx-checks-it)), and an input the split run does
+not carry is refused by name.
 
 ## How to use it
 
@@ -69,8 +70,10 @@ What to know:
   differentiates them with respect to the permittivity, conductivity and PEC
   overrides.
 - On a uniform mesh, `forward(distributed=True)` runs the declared model as it
-  is: it takes no override or design arguments, gives no gradient through its
-  port S, and cannot run inside `jax.jit`.
+  is: it takes no override or design arguments and gives no gradient through
+  its port S. It runs inside a user `jax.jit` and returns the same probe
+  records as a direct call; port S-parameters (`port_s11_freqs`) inside
+  `jax.jit` are refused by name.
 - `exchange_interval` must be 1 (the default): the slabs exchange fields every
   step.
 - Splitting is along x only. A domain whose x size does not divide evenly is
@@ -90,9 +93,10 @@ makes XLA encode each device's position in a way CUDA graphs reject. rfx
 refuses that call with a message that gives both ways out: call
 `run(devices=...)` / `forward(distributed=True)`, and `jax.grad` of it, without
 `jax.jit`; or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`
-set before JAX is imported. On CPU this rule does not apply, but
-`forward(distributed=True)` on a uniform mesh refuses an enclosing `jax.jit` on
-every platform.
+set before JAX is imported. On CPU this rule does not apply. Where an enclosing
+`jax.jit` is admitted, a uniform-mesh run returns the same fields and probe
+records as a direct call, and port S-parameters inside it are refused by name:
+call the run directly for S.
 
 ## How rfx checks it
 
@@ -134,7 +138,7 @@ step. These are refused:
 | `solver="adi"`, `interface_eps="dual_average"` | all multi-device | the default solver and interface rule |
 | devices from several JAX processes | graded mesh, `run(devices=...)` | one process, or `forward(distributed=True)` for the probe signals |
 | an outer `jax.jit` on GPUs with command buffers on | all multi-device | see the outer-jit rule |
-| a Drude or Lorentz medium whose material values or cell sizes are traced by an outer `jax.jit` or a nested `jax.vmap` (the time-step limit cannot be checked inside a multi-device program) | all multi-device | the call without `jax.jit` (`jax.grad` or one `jax.vmap` alone is checked), or one device |
+| a Drude or Lorentz medium whose material values or cell sizes are traced by an outer `jax.jit` or a nested `jax.vmap` (the time-step limit cannot be checked inside a multi-device program; concrete values are checked, also for a medium that spans several slabs) | all multi-device | the call without `jax.jit` (`jax.grad` or one `jax.vmap` alone is checked), or one device |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
 [support page](/rfx/support/) lists them per solver path.

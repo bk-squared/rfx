@@ -18,9 +18,9 @@ The website identifies its source version; select the release matching your inst
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
 | Check whether a result is supported | [Support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md) · [S-parameter limits](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters) · [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) |
 
-## Release status: 2.0 release candidate
+## Release status: 2.0
 
-`2.0.0rc1` is the first release candidate of rfx 2.0. What 2.0 changes for a user:
+rfx 2.0.0 is the current release. What 2.0 changes for a user:
 
 - **An input a solver path does not implement is refused, never dropped.** If `run()`,
   `forward()` or an S-parameter calculator routes your model to a path that does not
@@ -33,21 +33,23 @@ The website identifies its source version; select the release matching your inst
   model. What is supported, and within which limits, is in the
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md); what is currently wrong is in
   [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).
-- **Python 3.11 or newer**, with JAX and jaxlib 0.10.2 or newer. Python 3.10 users stay on 1.x (1.7.0 on PyPI, 1.8.0 on the GitHub releases).
-- Multi-device (distributed) execution is not part of 2.0's supported set; it is planned
-  for 2.1.
+- **Python 3.11 or newer**, with JAX and jaxlib from 0.10.2 up to, not including, 0.11.2: pip installs 0.11.1 on Python 3.12 or newer and 0.10.2 on Python 3.11 (jaxlib 0.11.2 and 0.12.0 run the CPU time step 2.3–3× slower). Python 3.10 users stay on 1.x (1.7.0 on PyPI, 1.8.0 on the GitHub releases).
+- **Multi-device runs are supported within the limits in the support matrix.**
+  `run(devices=...)` and `forward(distributed=True)` cut the grid into equal slabs along x
+  and are compared with a one-device run of the same model. Lumped RLC elements and
+  surface-impedance sheets are refused on multi-device runs in 2.0 (planned for 2.1), and
+  the support matrix lists the other inputs these runs refuse by name.
 
 ## Install
 
 ```bash
-pip install rfx-fdtd            # latest stable release
-pip install "rfx-fdtd>=2.0.0rc1"   # 2.0 release candidate
+pip install "rfx-fdtd>=2.0"
 ```
 
 For GPU execution, use a compatible JAX/CUDA installation:
 
 ```bash
-pip install "jax[cuda12]" "rfx-fdtd>=2.0.0rc1"
+pip install "jax[cuda12]" "rfx-fdtd>=2.0"
 ```
 
 For the development version, clone this repository and run `pip install -e ".[dev]"`.

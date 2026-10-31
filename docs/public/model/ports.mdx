@@ -295,8 +295,9 @@ builds and preflights this board without solving it in the tutorial; the
 calculation above runs it. The tutorial's live generic-port S11 examples
 use `S11_STEPS = 600` each. This board is coarse for speed, so check the fitted
 Z0 against the closed form.
-S11 and S21 use the measured V and I with the analytic Z0, not the fitted
-Z0. Refine before you quote Z0.
+S11 and S21 use the measured V and I, referred to each port's declared
+`impedance=` (default 50 Ω); the fitted Z0 does not enter S. Refine before
+you quote Z0.
 
 Getting an accurate microstrip result:
 
@@ -316,7 +317,9 @@ Getting an accurate microstrip result:
 ## Waveguide ports
 
 `add_waveguide_port` launches a TE or TM mode of a rectangular aperture and
-decomposes the fields into that mode. Its aperture defines the guide. A port
+decomposes the fields into that mode. Its aperture defines the guide, and
+every aperture edge needs a conductor: draw PEC walls on the edges of a smaller
+aperture, or a bare edge is refused. A port
 that spans the whole cross-section uses the transverse domain faces as the
 guide walls, so declare them PEC and put the absorber on the port axis only;
 on a uniform mesh `boundary="cpml"` on every face is refused.
@@ -330,6 +333,17 @@ guide.add_waveguide_port(0.09, mode=(1, 0), mode_type="TE", direction="-x",
                          f0=10e9, bandwidth=0.5, name="port2")
 print(guide.s_matrix_lane())
 ```
+
+The 23 × 10 mm cross-section is 23 × 10 whole cells at 1 mm. A cross-section
+between walls must be within 1 % of whole cells, or the default
+`snap="strict"` refuses it and names a cell size that fits: a real WR-90,
+22.86 × 10.16 mm, is refused at 1 mm and 2 mm and fits at 1.27 mm (see
+[Boundaries](/rfx/model/boundaries/)). The port's section, from the cell just
+behind its source through its reference plane, must hold one homogeneous, isotropic, lossless
+medium: an empty guide, or a fill that spans it wall to wall, whose cutoff,
+propagation constant and impedance the port then uses. Anything else there
+(a partial or lossy fill, metal, a sheet, a lumped element, a design region)
+is refused; start it beyond the reference plane.
 
 Compute the matrix with `guide.compute_waveguide_s_matrix(normalize=...)`.
 `waveform="differentiated_gaussian"` is refused on waveguide ports: its
@@ -404,8 +418,7 @@ Getting an accurate result:
   no external comparison yet. ADI, subgridding and TFSF are refused.
 - **Coax** calculators are checked on one
   geometry family, and only azimuthally symmetric discontinuities.
-- **TFSF on a graded axis:** preflight warns, because the scattered-field
-  region picks up a spurious field (about 0.7 of the total-field peak with no
-  scatterer). Normal incidence along ±x needs a uniform x axis.
+- **TFSF on a graded x axis:** normal incidence runs, with the incident line
+  on the realized x cells; a closed box or an oblique wave there is refused.
 - Detailed scope for every port family is in the
   [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).

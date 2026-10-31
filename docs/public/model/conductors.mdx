@@ -112,6 +112,13 @@ and `run()` refuses it (`sheet_effective_size`; see
 | `sigma_bulk < 1e6` (resistive film, ink) | lossy sheet with conductivity `sigma_bulk * thickness / d`, preserving the sheet resistance 1/(σ·t) |
 | `surface_impedance_f0=f0` | resistive sheet with Rs = √(π f0 μ0 / σ_bulk), same footprint and edges as the PEC sheet |
 
+A lossy film takes the cells of its plane whose centres lie inside its
+drawing, so it is solved where it is drawn. A gap drawn between two lossy
+films on one plane stays open at any width, as between metal sheets: the film
+that covers less of the boundary row gives it up, so the gap is solved at least
+one cell wide. On a traced mesh, two films on one plane within one cell of
+each other are refused (`dc_film_traced_pair`).
+
 On every sheet `eps_r` stays 1: a PEC or surface-impedance sheet and a pinned
 sheet refuse any other value, or a traced one, when you declare them, and a lossy
 film refuses it when the run starts. Declare the dielectric around a sheet with
@@ -208,7 +215,9 @@ came from:
   scattering examples use it on purpose because TFSF illumination takes
   material arrays directly.
 - **Subpixel smoothing and conformal PEC** (`subpixel_smoothing="kottke_pec"`,
-  `conformal_pec=True`) use their own weights near curved metal.
+  `conformal_pec=True`) use their own weights near curved metal. Subpixel
+  smoothing averages dielectrics only: the fill around a PEC body (a via, a
+  coax pin, a post) keeps its permittivity.
 
 Coax conductors built by the coaxial port are realized PEC, not a σ fill; see
 [Sources and Ports](/rfx/model/ports/#coaxial-ports).

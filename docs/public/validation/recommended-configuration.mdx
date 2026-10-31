@@ -51,7 +51,7 @@ conductor that runs into the absorber unterminated.
 
 | Configuration | What to know |
 |---|---|
-| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/model/domain-mesh/). A plane wave along a graded axis leaks into the scattered-field region (preflight warns); normal incidence along x needs a uniform x axis. `add_refinement` is refused on a graded mesh. |
+| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/model/domain-mesh/). A plane wave on a graded mesh runs at normal incidence along x, graded or not; oblique incidence and a closed box on a graded x are refused. `add_refinement` is refused on a graded mesh. |
 | Local refinement, `add_refinement` | Refused by default; with `validation="research"` it takes effect only through `run()` on a uniform mesh, with a warning. `forward()`, `optimize()`, `topology_optimize()` and the S-parameter calculators refuse a refined model. |
 | Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Lumped RLC elements, MSL ports, refinements and Kerr materials are refused. |
 | Differentiable design | The objective is a proxy. Check the final design with a converged forward run of the RF quantity you report. |

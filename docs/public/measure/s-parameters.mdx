@@ -375,9 +375,13 @@ if msl.reliable is not None:        # None when the run was traced by JAX
 ```
 
 The fitted `msl.Z0` and `msl.beta` are diagnostics. S is formed from the
-measured voltages and currents with the analytic line impedance as reference,
-so a warning that the fitted Z0 deviates from Hammerstad–Jensen does not by
-itself change S. Refine the mesh before quoting Z0.
+measured voltages and currents: the waves at the line's analytic impedance
+(`msl.line_impedances`), then referred to each port's declared `impedance=`
+(`msl.reference_impedances`, default 50 Ω). A warning that the fitted Z0
+deviates from Hammerstad–Jensen does not by itself change S. To read the line
+itself (β from a two-line S21 phase, for example), bring S back with
+`rfx.renormalize_power_waves(S, msl.reference_impedances, msl.line_impedances)`.
+Refine the mesh before quoting Z0.
 
 S is referred to the feed plane you declared with `add_msl_port`, not to the
 first voltage probe further in. rfx moves the phase over the realized distance

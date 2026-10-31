@@ -64,7 +64,7 @@ Two paths are outside the 2.0 supported scope:
 | Far field / RCS (NTFF) | **limited** | The cases in [Far field and RCS](/rfx/measure/far-field-and-rcs/). |
 | Plane wave (`add_tfsf_source`) | **limited** | Propagation along x, in 3-D or 2-D (TMz/TEz), with CPML. Oblique incidence only in the plane set by the polarization. |
 | Graded meshes | **limited by feature** | See [graded meshes](#graded-meshes). |
-| Multi-device runs (`devices=`) | **not documented** | Splitting a model over devices is for memory and speed, not a separate accuracy claim. Several inputs are refused; see the refused-input tables. |
+| Multi-device runs (`devices=`) | **supported** | Within the limits of the support matrix. Each record is compared with a one-device run of the same model. Inputs a multi-device run does not carry are refused by name, never dropped: lumped RLC elements, surface-impedance sheets, waveguide, microstrip, coaxial and Floquet ports, periodic axes, Kerr materials, an open-slab plane wave on a uniform mesh and any plane wave on a graded mesh. See the refused-input tables. |
 | Subgridding (`add_refinement`) | **not documented** | Refused by default; see [solver paths](#solver-paths). |
 | ADI (`solver="adi"`) | **experimental** | See [solver paths](#solver-paths). |
 | Floquet / Bloch ports | **experimental** | Normal incidence on a single-device uniform mesh. No high-level S-parameter API. |
@@ -105,7 +105,7 @@ accurate.
 | Lumped R/L/C + graded mesh | **limited** | The elements take part in the update. Component-value gradients are not documented. |
 | Lumped and wire-port S11 + graded mesh | **limited** | `forward(port_s11_freqs=...)`, on one device or several; `run(compute_s_params=True)` forms lumped S, and by default when every port is lumped and exactly one is driven. |
 | DFT plane or flux monitor + graded mesh | **experimental** | Runs; no general accuracy statement. |
-| Plane wave + graded mesh | **experimental** | Normal incidence along ±x with x uniform, through `run()` and `forward()`. Oblique incidence, incidence along ±z, a closed box and a `CustomWaveform` are refused. |
+| Plane wave + graded mesh | **experimental** | Normal incidence along ±x, through `run()` and `forward()`; x may be graded. Oblique incidence, incidence along ±z, a closed box and a `CustomWaveform` are refused. |
 | Waveguide S-matrix + graded mesh | **experimental** | Single mode, `normalize=True` or `"flux"`. With `boundary` omitted a full-aperture guide is refused; declare the walls. A reference-plane shift across cells of more than one size is refused. |
 | Microstrip S-matrix + graded mesh | **experimental** | `mode="laplace"` / `"uniform"`; regression checks only. `mode="eigenmode"` is refused. |
 | Coaxial port + graded mesh | **unsupported** | Refused. |

@@ -67,6 +67,15 @@ The [machine-readable index](https://github.com/bk-squared/rfx/blob/main/example
 | 12 | [`inverse_design/differentiable_s11_design.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/differentiable_s11_design.py) | `jax.grad` through `compute_waveguide_s_matrix`, checked against central finite differences | CPML; two WR-90 waveguide ports |
 | 13 | [`tutorials/artifact_report_demo.py`](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/artifact_report_demo.py) | exporting a shareable scene, mesh and preflight metadata, a report and a manifest | PEC box; lumped port and probe; no FDTD run |
 
+Six of these scripts are run end to end by a test that checks their output:
+`materials_and_dispersion`, `antenna_farfield_pattern`, `ports_and_sparams_101`,
+`run_control_and_fields`, `rcs_scattering` and `resonance_harminv`. Some of these
+tests bound physics, such as the dipole's directivity, a cavity mode's error and
+the backscatter ratio; others check the advisories and that values are finite.
+`hello_world` runs end to end with a check that its output is finite. Every
+other script is checked only for what it builds, not for what it prints, so a
+"checked against" in the table is what the script reports, not a test result.
+
 Read the preflight output of every script. Its warnings name the conditions
 that would make a result wrong: a lossless resonator, a layer that landed on
 the wrong cells, a run cut off before the field rang down.

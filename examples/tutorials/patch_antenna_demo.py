@@ -212,11 +212,11 @@ AIR_ABOVE = 84.0e-3
 # 2.2147 GHz and D = 6.71 dBi at the 40 mm cross mode, not at the design mode
 # this demo reports.)
 #
-# Why not run(until_decay=...): its total-interior-energy stop cannot fire on
-# this fixture — the soft current feed leaves a static charge field across
-# the patch-ground gap (~1% of peak interior energy) that neither radiates
-# nor is absorbed by CPML, so a decay-terminated run walks to its step cap.
-# See issue #388.
+# run(until_decay=1e-3) also stops on this fixture: the interior energy fell to
+# 1e-3 of its after-drive value at step 48 850, 1.9 times the 25 832 steps of
+# NUM_PERIODS, and the probe fell to 1e-3 of its peak (measured 2026-10-27).
+# The static charge field of issue #388 came from the old pulse's DC content;
+# the default GaussianPulse integrates to zero since 2.0.
 NUM_PERIODS = 125
 
 # Far-field bins: a ladder around the expected coarse-grid resonance plus one

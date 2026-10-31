@@ -74,7 +74,7 @@ The four states:
 |---|---|---|
 | `pass` | At every frequency the result reads, the estimated part of the value beyond the end of the run is at most 1 % of the value (−40 dB). | Nothing for the simulation time. Check the mesh next. |
 | `fail` | At some frequency that share is above 1 %. `worst_freq_hz` names it. | Run longer, or use [tail extrapolation](#tail-extrapolation-by-matrix-pencil). |
-| `undetermined` | The check could not be formed: the source was still on at the end of the run, the part of the run after the source is too short to fit, no decaying term was found, the two fits disagree on whether a frequency passes, a growing term was found, or the fit would exceed its memory bound. `reason` says which. | Not a pass. Run longer; if the reason is a growing term, look for an instability first. |
+| `undetermined` | The check could not be formed: the source was still on at the end of the run, the field had not yet passed a far-field box, DFT plane, flux monitor or current-moment monitor (`coverage` names it, and `run()` warns once), the part of the run after the source is too short to fit, no decaying term was found, the two fits disagree on whether a frequency passes, a growing term was found, or the fit would exceed its memory bound. `reason` says which. | Not a pass. Run longer; if the reason is a growing term, look for an instability first. |
 | `absent` | The run reads nothing at a frequency (no S-parameters, DFT planes, flux or far field; only probe time series), or a far-field box or DFT plane is read with no probe recording the fields it comes from. | Not a pass. With probe time series alone, judge their decay yourself, as in [Quick Start](/rfx/start/first-simulation/). For a far-field box or DFT plane, add a probe away from every source and port, somewhere the field is live. |
 
 `result.settling_db` is the worst share in dB; it is NaN or `None` when the
@@ -103,15 +103,17 @@ constant ε/σ afterwards. That field is quasi-static, outside the band, and the
 record stays correct; the stop record says what ended the run.
 
 In a closed PEC box the energy does not decay. There the uniform-mesh path
-watches a single field sample instead, which is sound only for a lossy or
-radiating structure, and the graded mesh refuses `until_decay`. Use a fixed
+watches a single field sample instead, from the end of the drive, which is
+sound only for a lossy or radiating structure, and the graded mesh refuses `until_decay`. Use a fixed
 `n_steps` in closed structures and in convergence studies. Read the settling
 check after a run stopped by `until_decay`, as after any other.
 
 On absorbing boundaries, `run(until_decay=..., radiated_flux_box=((x0, y0, z0),
 (x1, y1, z1)))` stops on the power flowing out through a box around the
-structure instead of the energy inside. Field that does not radiate does not
-hold it back. The default pulse leaves no static charge at a current source,
+structure instead of the energy inside. Like the energy stop it starts reading
+only after the drive has ended. Field that does not radiate does not hold it
+back. `radiated_flux_box` needs a positive `until_decay` and an absorbing
+boundary (`cpml` or `upml`); otherwise `run()` raises `ValueError`. The default pulse leaves no static charge at a current source,
 so its field does not hold back either stop.
 
 ## Tail extrapolation by matrix pencil
@@ -160,7 +162,9 @@ rfx fits the poles still present in the time signal after the source ends, on
 the second half of the run (or from the source's end if that is later), and
 computes the part of the value that lies beyond the end of the run. It does the
 same fit on a second window and requires the two to agree on which frequencies
-pass. A term that does not change with time (a static field left by the source)
+pass. For a plane wave, the source's end for each record is the end of the
+waveform plus the travel time from the source plane to each corner of the
+plane-wave box and from there to that record, so an echo from the target is not read as ringing. A term that does not change with time (a static field left by the source)
 is exempt, because it does not ring. A growing term above 1 % of a frequency's
 value makes the result `undetermined`. The frequencies read are those every
 spectral output of the result stores: S-parameter frequencies, DFT planes, flux
@@ -190,6 +194,7 @@ error bound.
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
 | `until_decay` | multi-device (`devices=`), ADI, subgridded | refused before the first step: these paths run exactly `n_steps` | set `n_steps` or `num_periods` |
+| `radiated_flux_box` without a positive `until_decay`, or on a closed boundary | all | `ValueError`: the box only selects the radiated-flux stop | a positive `until_decay` with `cpml` or `upml`; for a fixed-length measurement, `add_flux_monitor()` |
 | `until_decay` with a plane-wave source driven by a `CustomWaveform` | all | refused: the waveform has no time at which it is off | set `n_steps` |
 | `until_decay` | graded mesh with closed boundaries | refused: a closed domain's energy does not decay and the graded path has no single-sample fallback | set `n_steps`, or use absorbing boundaries |
 | a flux monitor with `dft_window="hann"` or `"tukey"`, with `until_decay` | uniform and graded mesh | refused: a window needs the run's length in advance | the default `dft_window="rect"`, or `n_steps` |
@@ -203,6 +208,10 @@ error bound.
 | `ringdown=` with more than one wire port | uniform mesh | refused: the uniform path builds the S-matrix from separate per-port runs | use a graded mesh, where one run fills the driven column |
 | `ringdown=` with `compute_s_params=False` | all | refused: there is nothing to complete | drop one of the two |
 | `ringdown=` when a source is on in the fit window | all | refused before the run | delay `window_start`, or run longer |
+| `until_identified=True` without `ringdown=` | all | `ValueError` | pass `ringdown=RingdownSpec(...)` |
+| `until_identified=True` with `until_decay=` | all | `ValueError`: two rules for where the record ends | pass one; with `until_identified`, `n_steps` is the longest record |
+| `until_identified=True` with `snapshot=`, a DFT plane or a flux monitor | all | refused: their accumulators are laid out for `n_steps` before the run | `run(n_steps=..., ringdown=...)` with a fixed record |
+| `until_identified=True` with an NTFF box or a current-moment monitor | all | refused: the stop completes only the wire-port S, so the far field would come from a record cut while the structure still rings | `run(n_steps=..., ringdown=...)` with a record long enough for the far field |
 
 ## Where it is tested
 
