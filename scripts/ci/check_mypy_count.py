@@ -3,12 +3,14 @@
 
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 REPO = Path(__file__).resolve().parents[2]
 BASELINE = "scripts/ci/mypy_baseline.txt"
-ERROR_SUMMARY = re.compile(r"Found (\d+) errors? in \d+ files?(?: \(checked \d+ source files?\))?")
+ERROR_SUMMARY = re.compile(r"Found (\d+) errors? in \d+ files?(?: \((?:checked \d+ source files?|errors prevented further checking)\))?")
 SUCCESS_SUMMARY = re.compile(r"Success: no issues found in \d+ source files?")
 
 
@@ -17,10 +19,14 @@ def main() -> int:
         baseline = int((REPO / BASELINE).read_text().strip())
         if baseline < 0:
             raise ValueError("baseline must be nonnegative")
-        result = subprocess.run(
-            [sys.executable, "-m", "mypy", "rfx"], cwd=REPO,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        )
+        cache_dir = tempfile.mkdtemp(prefix="rfx-mypy-")
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "mypy", "rfx", "--cache-dir", cache_dir], cwd=REPO,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            )
+        finally:
+            shutil.rmtree(cache_dir)
     except (OSError, ValueError) as error:
         print(f"mypy check failed: {error}", file=sys.stderr)
         return 2

@@ -25,7 +25,7 @@ def run_gate(tmp_path, monkeypatch, capsys):
         baseline.write_text(f"{limit}\n")
 
         def fake_mypy(args, **kwargs):
-            assert args == [sys.executable, "-m", "mypy", "rfx"]
+            assert args[:4] == [sys.executable, "-m", "mypy", "rfx"]
             assert kwargs["cwd"] == tmp_path
             return subprocess.CompletedProcess(args, returncode, output)
 
@@ -78,3 +78,36 @@ def test_crash_preserves_output_and_exits_two(run_gate, output, returncode):
     assert code == 2
     assert output in captured.err
     assert captured.out == ""
+
+
+def test_errors_prevented_further_checking_summary(run_gate):
+    code, output = run_gate("Found 1382 errors in 80 files (errors prevented further checking)\n")
+    assert code == 0
+    assert output.out == "mypy errors: 1382 (baseline 1382)\n"
+
+
+@pytest.mark.parametrize("crashes", [False, True])
+def test_fresh_cache_is_removed(tmp_path, monkeypatch, capsys, crashes):
+    monkeypatch.setattr(gate, "REPO", tmp_path)
+    baseline = tmp_path / gate.BASELINE
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("0\n")
+    caches = []
+
+    def fake_mypy(args, **kwargs):
+        assert args[:5] == [sys.executable, "-m", "mypy", "rfx", "--cache-dir"]
+        cache = Path(args[5])
+        assert cache.is_dir()
+        assert not list(cache.iterdir())
+        assert cache not in caches
+        caches.append(cache)
+        (cache / "cache-entry").write_text("stale")
+        if crashes:
+            raise OSError("mypy failed to start")
+        return subprocess.CompletedProcess(args, 0, "Success: no issues found in 1 source file\n")
+
+    monkeypatch.setattr(gate.subprocess, "run", fake_mypy)
+    for _ in range(2):
+        assert gate.main() == (2 if crashes else 0)
+        assert not caches[-1].exists()
+    capsys.readouterr()

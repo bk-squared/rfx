@@ -19,8 +19,8 @@ Usage
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning
-import inspect; import math; from typing import TYPE_CHECKING
-if TYPE_CHECKING: from rfx.realized_geometry import RealizedGeometry; from rfx.sources.sources import ModulatedGaussian
+import inspect
+import math
 import json
 import jax
 from collections.abc import Callable, Mapping, Sequence
@@ -34,9 +34,9 @@ import numpy as np
 from rfx.grid import Grid, C0  # noqa: F401
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 from rfx.sources import tfsf_discrete_plane_wave as _discrete_plane_wave
-from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
+from rfx.realized_geometry import realized_geometry as _realized_geometry_fn, RealizedGeometry
 from rfx.fidelity import fidelity_report as _fidelity_report
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
@@ -60,7 +60,7 @@ from rfx.sources.waveguide_port import (
 )
 from rfx.boundaries.spec import BoundarySpec
 from rfx.boundaries import refresh_boundary_model, require_floquet_lateral_faces
-from rfx.boundaries.model import DEFAULT_BOUNDARY
+from rfx.boundaries.model import DEFAULT_BOUNDARY, BoundaryModel
 
 # ---------------------------------------------------------------------------
 # Leaf data structures — moved to rfx/api/_spec.py (Part B Stage 0).
@@ -776,7 +776,7 @@ class Simulation(
         position: tuple[float, float, float],
         component: str = "ez",
         *,
-        waveform: Callable[[jax.Array], jax.Array] | None = None,
+        waveform: Callable[[float], float] | None = None,
         amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
@@ -971,7 +971,7 @@ class Simulation(
         pin_radius: float = 0.635e-3,
         outer_radius: float = 2.055e-3,
         impedance: float = 50.0,
-        waveform: Callable[[jax.Array], jax.Array] | None = None,
+        waveform: Callable[[float], float] | None = None,
         terminates: object = None,
     ) -> "Simulation":
         """Add an SMA-style coaxial probe port.
@@ -1936,7 +1936,7 @@ class Simulation(
             )
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
-    def boundary_model(self, *, rcs: bool = False) -> object:
+    def boundary_model(self, *, rcs: bool = False) -> BoundaryModel:
         """Return the B1 face declaration with the current feature requirements.
 
         No runner consumes this descriptor in B1. ``rcs=True`` collects the
