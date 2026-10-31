@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import rfx
-from rfx._ringdown_pencil import IdentificationMemoryRefused
+from rfx.ringdown._pencil import IdentificationMemoryRefused
 from rfx._traced_refusal import TracedStructureRefusal
 from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.boundaries.spec import Boundary, BoundarySpec

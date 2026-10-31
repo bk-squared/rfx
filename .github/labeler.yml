@@ -157,8 +157,8 @@
       - any-glob-to-any-file:
           - "rfx/profiling.py"
           - "rfx/_precision.py"
-          - "rfx/ringdown.py"
-          - "rfx/_ringdown_jax.py"
+          - "rfx/ringdown/__init__.py"
+          - "rfx/ringdown/_jax.py"
           # Built-in waveforms and soft sources; the default pulse is acceleration's
           # (lead 2026-10-12). The TF/SF plane wave stays under lane:absorber.
           - "rfx/sources/sources.py"

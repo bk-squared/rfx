@@ -175,7 +175,7 @@ def test_run_completion_does_not_swallow_refusal(monkeypatch):
 def test_forward_callback_does_not_swallow_refusal(monkeypatch):
     import jax
     import jax.numpy as jnp
-    from rfx import _ringdown_jax as rj
+    from rfx.ringdown import _jax as rj
 
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', 1)
     y = record(200).real
@@ -230,7 +230,7 @@ def test_we_refusal_preserves_synthetic_completion(monkeypatch):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
     from tests.unit.sparams.test_ringdown_run import _box, FREQS
-    from rfx import _ringdown_jax as rj
+    from rfx.ringdown import _jax as rj
 
     # At 1200 steps both windows reject FIR q=6 for insufficient capacity:
     # main: n=600, C=2, L=198, M=402, k=396; WE: n=900, L=297, M=603, k=594.

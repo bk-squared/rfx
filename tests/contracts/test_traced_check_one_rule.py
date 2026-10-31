@@ -373,7 +373,7 @@ def _callback_references(source):
 
 
 def _assert_callback_references_allowed(root):
-    allowed = {"_traced_check.py", "_ringdown_jax.py"}
+    allowed = {"_traced_check.py", "ringdown/_jax.py"}
     forbidden = []
     for path in sorted(root.rglob("*.py")):
         if path.relative_to(root).as_posix() in allowed:
@@ -453,12 +453,14 @@ def test_callback_guard_resolves_name_uses_and_ignores_unrelated_names():
     )
 
 
-@pytest.mark.parametrize("name", ["_traced_check.py", "_ringdown_jax.py"])
+@pytest.mark.parametrize("name", ["_traced_check.py", "ringdown/_jax.py"])
 def test_callback_guard_exempts_only_root_owners(tmp_path, name):
+    (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / name).write_text("import jax; jax.debug.callback")
     _assert_callback_references_allowed(tmp_path)
     nested = tmp_path / "nested"
     nested.mkdir()
+    (nested / name).parent.mkdir(parents=True, exist_ok=True)
     (nested / name).write_text("import jax; jax.debug.callback")
     with pytest.raises(AssertionError, match="jax.debug.callback"):
         _assert_callback_references_allowed(tmp_path)

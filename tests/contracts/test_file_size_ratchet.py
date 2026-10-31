@@ -275,3 +275,63 @@ def test_current_legacy_baseline_fails(tree, capsys):
     del data["counts"]
     path.write_text(json.dumps(data))
     assert run(tree, capsys)[0] == 1
+
+
+@pytest.mark.parametrize("head", ["", "HEAD"], ids=["working-tree", "snapshot"])
+@pytest.mark.parametrize("case,expected,message", [
+    ("module", 0, ""),
+    ("rename", 0, ""),
+    ("unrelated", 1, "rfx/nested/b.py: baseline unlisted, count 20 in proposed baseline"),
+    ("raised", 1, "rfx/nested/b.py: baseline 20, count 21 in proposed baseline"),
+    ("below-similarity", 1, "rfx/nested/b.py: baseline unlisted, count 20 in proposed baseline"),
+    ("source-present", 1, "rfx/nested/a/__init__.py: baseline unlisted, count 20 in proposed baseline"),
+    ("reuse", 1, "rfx/nested/b.py: baseline unlisted, count 20 in proposed baseline"),
+    ("count-growth", 1, "rfx/nested/b.py: baseline 20, count 21"),
+])
+def test_moved_entry_inherits_only_its_old_cap(tree, capsys, head, case, expected, message):
+    write_tree(tree, files={"rfx/nested/a.py": 20}, count=20)
+    original = b"".join(f"old_{i:02d} = {i:02d}\n".encode() for i in range(20))
+    source = tree / "rfx/nested/a.py"
+    source.write_bytes(original)
+    gate.git(tree, "init", "-q", "--template=")
+    gate.git(tree, "config", "user.name", "Ratchet tests")
+    gate.git(tree, "config", "user.email", "tests@example.invalid")
+    gate.git(tree, "config", "commit.gpgsign", "false")
+    gate.git(tree, "config", "core.hooksPath", "/dev/null")
+    gate.git(tree, "add", ".")
+    gate.git(tree, "commit", "-qm", "Base baseline")
+    base = gate.git(tree, "rev-parse", "HEAD").decode().strip()
+
+    path = ("rfx/nested/a/__init__.py" if case in ("module", "source-present", "reuse")
+            else "rfx/nested/b.py")
+    target = tree / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if case == "source-present":
+        target.write_bytes(original)
+    else:
+        source.rename(target)
+    if case in ("module", "unrelated", "reuse"):
+        target.write_bytes(original.replace(b"old_", b"new_"))
+    elif case == "rename":
+        target.write_bytes(original.replace(b"old_19", b"new_19"))
+    elif case == "below-similarity":
+        target.write_bytes(original.replace(b"old_0", b"new_0"))
+    elif case in ("raised", "count-growth"):
+        target.write_bytes(original + b"extra = 1\n")
+    files = {path: 21 if case == "raised" else 20}
+    if case == "source-present":
+        files["rfx/nested/a.py"] = 20
+    elif case == "reuse":
+        (tree / "rfx/nested/b.py").write_bytes(original)
+        files["rfx/nested/b.py"] = 20
+    (tree / gate.BASELINE).write_text(json.dumps({
+        "counts": "code-lines", "cap": 2, "files": files,
+    }))
+    gate.git(tree, "add", ".")
+    if head:
+        gate.git(tree, "commit", "-qm", "Moved baseline")
+        # Snapshot checks must ignore subsequent working-tree contents.
+        target.write_bytes(b"dirty = 1\n" * 30)
+    code, err = run(tree, capsys, "--base", base, "--head", head)
+    assert code == expected
+    assert err == (message + "; split the file rather than raise the number.\n" if message else "")

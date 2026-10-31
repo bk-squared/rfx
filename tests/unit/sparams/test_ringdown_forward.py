@@ -50,7 +50,7 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse
-from rfx import _ringdown_jax as rj
+from rfx.ringdown import _jax as rj
 from rfx import ringdown as rd
 from rfx.ringdown import RingdownSpec, gradient_witness
 from rfx.sources.sources import CWSource
