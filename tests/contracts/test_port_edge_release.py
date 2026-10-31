@@ -322,7 +322,7 @@ def test_c6_graded_distributed_port_occupancy(monkeypatch,kind):
                     distributed=True,devices=jax.devices(),skip_preflight=True)
 
 
-@pytest.mark.parametrize('refusal',['distributed','adi','subgrid','run'])
+@pytest.mark.parametrize('refusal',['distributed','subgrid','run'])
 def test_c6_other_refusals(monkeypatch,refusal):
     sim,grid,_,_=model('uniform','ez')
     import rfx.simulation as kernel

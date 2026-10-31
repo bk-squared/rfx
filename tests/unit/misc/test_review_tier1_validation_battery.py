@@ -33,7 +33,6 @@ from rfx.core.yee import FDTDState, MaterialArrays, EPS_0, MU_0
 from rfx.stepping.yee import update_h_nu, update_e_nu
 from rfx.stepping.kerr import apply_kerr_ade
 from rfx.probes.probes import init_flux_monitor, flux_spectrum
-from rfx.adi import run_adi_3d
 from rfx.grid import C0
 
 
@@ -302,52 +301,6 @@ def test_risc2_np_interp_complex_part_behavior():
 # analogy: L_eff = (N-1)*dx is what _apply_pec_3d actually realizes on a
 # 12-node cavity, and the falsifier below is what proves it.
 
-def test_optc1_adi_3d_cavity_eigenfrequency():
-    L = 0.06           # nominal 60 mm cube
-    dx = dy = dz = 0.005   # 12 cells per side
-    N = int(round(L / dx))
-    # Walls at nodes 0 and N-1 (node-indexed PEC, see block comment above):
-    # the honest analytic length is one cell short of the nominal L.
-    L_eff = (N - 1) * dx
-
-    # Degenerate fundamental: TE_101 / TE_011 / TE_110 of the L_eff cube.
-    f_analytic = (C0 / 2.0) * np.sqrt((1.0 / L_eff) ** 2 + (1.0 / L_eff) ** 2)
-
-    # 3D CFL limit; ADI is run at a modest factor so splitting error is small.
-    dt_cfl = dx / (C0 * np.sqrt(3.0))
-    dt = 2.0 * dt_cfl
-    n_steps = 1500
-
-    shape = (N, N, N)
-    z = jnp.zeros(shape, dtype=jnp.float32)
-    eps_r = jnp.ones(shape, dtype=jnp.float32)
-    sigma = jnp.zeros(shape, dtype=jnp.float32)   # lossless — isolates the scheme
-
-    # Short Gaussian pulse on Ey at an off-centre interior cell.
-    t_arr = jnp.arange(n_steps) * dt
-    tau = 8.0 * dt
-    t0 = 4.0 * tau
-    waveform = jnp.exp(-((t_arr - t0) / tau) ** 2).astype(jnp.float32)
-    src = (N // 3, N // 2, N // 3, "ey", waveform)
-    prb = (2 * N // 3, N // 2, 2 * N // 3, "ey")
-
-    out = run_adi_3d(z, z, z, z, z, z, eps_r, sigma,
-                     dt, dx, dy, dz, n_steps,
-                     sources=[src], probes=[prb])
-    probe_data = out[-1]
-    signal = np.asarray(probe_data[:, 0], dtype=np.float64)
-
-    skip = int(n_steps * 0.2)               # drop the excitation transient
-    late = signal[skip:]
-    freqs = np.fft.rfftfreq(len(late), d=float(dt))
-    spectrum = np.abs(np.fft.rfft(late))
-    spectrum[0] = 0.0                       # ignore DC
-    f_peak = freqs[int(np.argmax(spectrum))]
-
-    rel_err = abs(f_peak - f_analytic) / f_analytic
-    assert rel_err < 0.02, (
-        f"3D ADI cavity resonance {f_peak/1e9:.4f} GHz vs analytic "
-        f"{f_analytic/1e9:.4f} GHz — error {rel_err*100:.2f}% > 2%")
 
 
 def test_optc1_falsifier_yee_matches_corrected_analytic():

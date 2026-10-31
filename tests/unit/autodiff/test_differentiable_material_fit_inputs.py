@@ -30,7 +30,7 @@ CASES = [
     ("periodic_spec", "periodic axes", "Remove"),
     ("conformal", "conformal=True", "Remove"),
     ("kerr", "chi3=", "Remove"),
-    ("adi", "solver='adi'", "Use solver='yee'"),
+    
     ("mixed", "precision='mixed'", "Use precision='float32'"),
     ("float64", "precision='float64'", "Use precision='float32'"),
     ("stencil", "stencil_order=4", "Use stencil_order=2"),

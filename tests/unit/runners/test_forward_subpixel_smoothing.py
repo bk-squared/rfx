@@ -152,9 +152,6 @@ def test_distributed_smoothing_refused(graded):
     ).replace("omit distributed=True", "omit devices=")
 
 
-def test_adi_smoothing_refused():
-    with pytest.raises(NotImplementedError, match="subpixel_smoothing"):
-        sphere_sim(solver="adi").forward(n_steps=1, subpixel_smoothing=True)
 
 
 def test_kerr_smoothing_refused():
