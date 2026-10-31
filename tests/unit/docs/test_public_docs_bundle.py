@@ -427,6 +427,10 @@ def test_agent_index_has_descriptions_and_omits_manual_pages():
     pages = [dict(route=route, title=route, markdown_url=f'https://example/{route}.md',
                   description=f'About {route}')
              for route in ('guide/start', 'agent/auto-config', 'agent/overview')]
+    for page in pages:
+        if page['route'].startswith('agent/'):
+            page['source_path'] = f"docs/{page.pop('route')}.mdx"
+            page['markdown_only'] = True
     lines = bundle.agent_index(pages)
     assert lines[0] == '## For coding agents'
     assert 'agent/overview' in lines[2]
@@ -448,7 +452,8 @@ def test_agent_links_resolve_to_published_alternates_and_pinned_guides():
                               base_url='https://remilab.ai/rfx', source_sha='a' * 40)
 
 
-def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(tmp_path, monkeypatch):
+@pytest.fixture
+def built_bundle(tmp_path, monkeypatch):
     import types
     import check_api_reference
 
@@ -459,8 +464,8 @@ def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(tmp_p
     agents.mkdir(parents=True)
     manual = public / 'index.mdx'
     manual.write_text('---\ntitle: Manual\ndescription: Start here.\n---\nManual body.')
-    agent = agents / 'overview.mdx'
-    agent.write_text('---\ntitle: Agent overview\ndescription: Plan a simulation.\n---\nAgent body.')
+    for name in bundle.PUBLIC_AGENT_PAGES:
+        (agents / name).write_text(f'---\ntitle: Agent {Path(name).stem}\ndescription: Plan a simulation.\n---\nAgent body.')
     private = agents / 'working-on-rfx.mdx'
     private.write_text('Internal coordination must not publish.')
     (public / 'site_map.json').write_text('{"groups": []}')
@@ -469,7 +474,7 @@ def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(tmp_p
         path.parent.mkdir(exist_ok=True)
         path.write_text('{}')
     monkeypatch.setattr(bundle, 'check_source', lambda *args: 'a' * 40)
-    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: {manual, agent, private})
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: {manual, private, *agents.glob('*.mdx')})
     monkeypatch.setattr(bundle, 'toolchain', lambda: {})
     monkeypatch.setitem(sys.modules, 'pdoc', types.SimpleNamespace(__version__='fixture'))
     monkeypatch.setattr(bundle, 'api_inventory', lambda *args: {'package_version': 'fixture', 'symbols': []})
@@ -485,7 +490,14 @@ def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(tmp_p
     monkeypatch.setattr(bundle.subprocess, 'run', render)
     output = tmp_path / 'bundle'
     manifest = bundle.build(root, output, 'https://remilab.ai/rfx', 'development', None)
-    assert {p['route'] for p in manifest['pages']} == {'', 'agent/overview'}
+    monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files', lambda *args: {manual})
+    return root, output, manifest
+
+
+def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(built_bundle):
+    _, output, manifest = built_bundle
+    assert {p['route'] for p in manifest['pages'] if not p.get('markdown_only')} == {''}
+    assert {Path(p['source_path']).name for p in manifest['pages'] if p.get('markdown_only')} == bundle.PUBLIC_AGENT_PAGES
     files = output / 'files'
     index = (files / 'llms.txt').read_text()
     assert index.index('## For coding agents') < index.index('## Manual and examples')
@@ -497,3 +509,28 @@ def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(tmp_p
         assert (files / path).read_text() in full
     assert 'Internal coordination' not in full
     bundle.validate_bundle(output)
+
+
+def test_manifest_routes_resolve_to_exported_pages(built_bundle, tmp_path):
+    root, output, manifest = built_bundle
+    destination = tmp_path / 'snapshot/rfx'
+    export_snapshot(root, destination, output)
+    exported = {p.relative_to(destination).as_posix() for p in destination.rglob('*') if p.is_file()}
+
+    def page_files(route):
+        return {f'{route}.{ext}' if route else f'index.{ext}' for ext in ('md', 'mdx')} | {
+            f'{route}/index.{ext}' if route else f'index.{ext}' for ext in ('md', 'mdx')}
+
+    agents = []
+    for page in manifest['pages']:
+        if 'route' in page:
+            assert page_files(page['route']) & exported, page
+        if page.get('markdown_only'):
+            assert 'route' not in page
+            agents.append(Path(page['source_path']).name)
+            assert not page_files(f"agent/{Path(page['source_path']).stem}") & exported
+            prefix = manifest['base_url'] + '/'
+            assert page['markdown_url'].startswith(prefix)
+            assert (output / 'files' / page['markdown_url'].removeprefix(prefix)).is_file()
+    assert len(agents) == len(bundle.PUBLIC_AGENT_PAGES)
+    assert set(agents) == bundle.PUBLIC_AGENT_PAGES
