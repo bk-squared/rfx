@@ -554,16 +554,23 @@ runs are bit-identical, and on arm64 CPUs both walls give bit-identical runs. Th
 What to do: for a bit-for-bit comparison with one device on x86, use a PEC wall or one device.
 → [#2086](https://github.com/bk-squared/rfx/issues/2086)
 
-### With the mesh as a design variable, a ground plane still ends at the absorber.
+### With the mesh as a design variable, a conductor that reaches or ends within one cell of an absorbing face is refused.
 
 Tracker: #1230
 
 A conductor drawn to an absorbing boundary is continued through the absorber, so
 a grounded board stays grounded inside it. When any mesh axis is traced
-(`dz_profile` and its siblings under `jax.grad`), nothing is continued and a
-`UserWarning` says so: the conductor then stops at the absorber entrance. Draw the
-ground past the domain face by the absorber thickness, which fills every absorber
-cell except the outermost row on the +x and +y faces.
+(`dz_profile` and its siblings under `jax.grad` or `jax.jit`), a conductor whose
+concrete declared extent reaches or ends within one cell of an absorbing face is
+now refused before stepping. The cell is that face's edge cell from the concrete
+profile, the nominal profile for a traced axis (including windowed profiles), or
+the declared uniform cell when there is no profile. A traced axis with an absorber
+needs `nominal_profiles` for any conductor with finite declared extent on that
+axis, even one clear of every face. Declare that nominal profile or pass the
+axis's profile as a concrete NumPy array for this run. The earlier
+silent cut changed S11 by 5–9 % of its peak and its gradient by 6–8 % on a
+grounded-board test at 16 absorber layers. Those equal-length records were not
+settled; these are measured record differences, not settled-error estimates.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ### A plane wave requires compatible transverse faces and an invariant absorber replacement.

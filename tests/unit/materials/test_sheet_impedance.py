@@ -2116,6 +2116,9 @@ def test_occupancy_guard_does_not_break_the_traced_mesh_path():
         sim.add_thin_conductor(_box_sheet(NU_Z, NU_FOOT),
                                sigma_bulk=SIGMA_BULK, thickness=THICKNESS,
                                surface_impedance_f0=F0)
+    # The traced z axis has absorber cells; its edge cell comes from the
+    # nominal profile (the primal at scale = 1).
+    sim._nominal_profiles = {"z": np.asarray(NU_DZ)}
 
     def loss(scale):
         sim._dz_profile = base * scale
