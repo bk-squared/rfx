@@ -470,7 +470,7 @@ def harminv_from_probe(
     freq_range: tuple[float, float],
     *,
     source_decay_time: float = 0.0,
-    **kwargs,
+    **kwargs: float | int | str | bool,
 ) -> list[MatrixPencilMode]:
     """Deprecated alias for matrix_pencil_from_probe."""
     warnings.warn(
