@@ -542,6 +542,18 @@ Each value's `settling_db`, `settling_witness` and `dt` come back per value and 
 What to do: pass `dx=` so every value shares one grid and time step; or use `parametric_sweep()`, which returns each
 value's full `Result`.
 
+### The settling check cannot judge a record that holds a very slowly decaying pole, so a longer record does not help.
+
+Tracker: #2319
+
+When the identified poles of a record include a growing one, the settling check asks whether its tail, over twice the time the decaying poles need to fall to 1 % of their size, stays within 1 % of the record's spectrum.
+A significant pole that decays by less than about 9×10⁻⁷ per step (at the decimation factor 15 of the case below), but not so slowly that it counts as a steady sinusoid, makes that time longer than the identification can resolve.
+The check then reports `undetermined` with the reason `growing-pole judge cannot judge: decay horizon is longer than the identification resolves growth: H=…, D=…, band_factor=… > 2`, or, for a pole decaying by less than about 9×10⁻¹⁰ per step, `growing-pole judge cannot judge: non-finite growing pole share or band_factor; H=…, D=…, band_factor=inf`. H is that time in steps and D the decimation factor.
+Extending the record does not change the verdict.
+Seen on v2.0.0 on the WR-90 waveguide filter design start (`scripts/showcase/design_filter.py --stage trial`, a uniform εr 1.5 insert and a second start): every port record was undetermined at the declared record (15,252 steps) and again at 1.5× that, the longest the design step allows, so the design descent did not start; the empty guide passes.
+Which pole causes it on that structure is not yet identified.
+No workaround is known. The published filter and its numbers come from a run on rfx main of 2026-10-05, before v2.0.0.
+
 ## Absorbing boundaries
 
 ### Magnetic faces require the single-device second-order Yee image.
