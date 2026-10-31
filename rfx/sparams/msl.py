@@ -878,10 +878,7 @@ def compute_msl_s_matrix(
                     and hz_plane.shape == hy_plane.shape
                 )
                 # Closed Ampere-loop current ∮H·dl around the trace
-                # conductor. The pre-S1 inline
-                # integral summed the bottom Hy leg only and undercounted
-                # I by ~1.5x, inflating the de-embedded Z0 to ~74 vs the
-                # ~48 ohm analytic value. msl_loop_current closes the
+                # conductor. msl_loop_current closes the
                 # contour (bottom/top Hy legs + left/right Hz legs) and
                 # carries the +x current-sign convention.
                 k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]

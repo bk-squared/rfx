@@ -212,7 +212,7 @@ def register_msl_plane_probes(
         instrumenting; we read its descriptor from ``sim._msl_ports``.
     port_index : int
         Index into ``sim._msl_ports``.
-    freqs: (n_freqs) jnp.ndarray
+    freqs : (n_freqs,) jnp.ndarray
         Target frequencies — same convention as ``add_dft_plane_probe``.
     name_prefix : str, optional
         Prefix for the seven registered DFT-plane names. Default
@@ -432,7 +432,8 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     ``plane_name`` names the retained right Hy plane; its left neighbour
     and both Hz planes are registered by :func:`register_msl_plane_probes`.
     Interpolate each physically stamped H pair to the voltage E-node. Missing bracketing metadata or data is an error.
-    A single Hy slab undercounts by ~1.5x compared with the closed loop. The shared DFT owns the half-step phase; this projector
+    A single Hy slab undercounts by ~1.5x compared with the closed loop. The shared DFT owns the half-step phase; this
+    projector
     calls :func:`rfx.sources.msl_port.msl_loop_current` directly with the
     SAME trace span ``compute_msl_s_matrix`` uses, so the sign
     convention comes from ``msl_loop_current``/``msl_axis_roles`` alone —
@@ -630,15 +631,15 @@ def extract_msl_nprobe(
     v : (n_freqs, N) complex
         Voltage phasors at the N probe planes (probe index is the last
         axis).  ``x[n]`` is the position of column ``n``.
-    x: (N) real
+    x : (N,) real
         Probe positions in metres along the propagation axis.  May be a
         signed coordinate; only differences enter the model.
-    i1: (n_freqs) complex
+    i1 : (n_freqs,) complex
         Line current at probe 0 (used for the absolute Z0 recovery).
-    beta0: (n_freqs) real or complex
+    beta0 : (n_freqs,) real or complex
         Analytic Hammerstad-Jensen propagation-constant guess per
         frequency, ``ω·√ε_eff/c``.  Anchors the β scan (stage a).
-    z0_hj: float or (n_freqs), optional
+    z0_hj : float or (n_freqs,), optional
         Analytic Hammerstad-Jensen Z0.  When provided it is returned in
         the result dict for the honesty-guard sanity check; the extractor
         itself does not depend on it.
@@ -646,15 +647,15 @@ def extract_msl_nprobe(
     Returns
     -------
     dict with keys
-        ``s11``: (n_freqs) complex — γ/α at the probe-0 reference plane.
-        ``z0``: (n_freqs) complex — (α − γ)/I1.
-        ``alpha``: (n_freqs) complex — forward wave amplitude at x=0.
-        ``gamma``: (n_freqs) complex — backward wave amplitude at x=0.
-        ``beta``: (n_freqs) complex — fitted propagation constant.
-        ``q``: (n_freqs) complex — ``exp(-jβΔ)`` for the honesty
+        ``s11``   : (n_freqs,) complex — γ/α at the probe-0 reference plane.
+        ``z0``    : (n_freqs,) complex — (α − γ)/I1.
+        ``alpha`` : (n_freqs,) complex — forward wave amplitude at x=0.
+        ``gamma`` : (n_freqs,) complex — backward wave amplitude at x=0.
+        ``beta``  : (n_freqs,) complex — fitted propagation constant.
+        ``q``     : (n_freqs,) complex — ``exp(-jβΔ)`` for the honesty
                      guard, Δ = x[1] − x[0].  ``|q| < 1`` when healthy.
-        ``residual``: (n_freqs) real — per-frequency L2 fit residual.
-        ``beta_railed``: (n_freqs) bool — True where the β scan failed
+        ``residual`` : (n_freqs,) real — per-frequency L2 fit residual.
+        ``beta_railed`` : (n_freqs,) bool — True where the β scan failed
                      to bracket its optimum (raw argmin at a window-edge
                      node, or refined β within half a grid step of a
                      window limit).  The returned ``beta``/``z0`` at such

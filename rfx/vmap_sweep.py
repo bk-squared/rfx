@@ -159,7 +159,11 @@ def _extend_batched_cpml_pad(
     byte-identical to what ``Simulation.run()`` builds for that same
     swept value.
 
-    **Why ``jax.vmap`` and not a hand-written batched copy.** ``_assemble_materials`` applies a per-transverse-cell hi-face fallback: if the naive interior-edge column is vacuum but the column one further in is not, it replicates from that inner column, recovering the node a ``Box`` flush with the domain's hi face loses to half-open ``[lo, hi)`` rasterization. A separate per-face edge-slice copy disagreed for that geometry: ``run()``'s x-hi pad read material while the batched path read vacuum. Sharing the assembly rule prevents that divergence.
+    **Why ``jax.vmap`` and not a hand-written batched copy.** ``_assemble_materials`` applies a per-transverse-cell
+    hi-face fallback: if the naive interior-edge column is vacuum but the column one further in is not, it replicates
+    from that inner column, recovering the node a ``Box`` flush with the domain's hi face loses to half-open ``[lo,
+    hi)`` rasterization. A separate per-face edge-slice copy disagreed for that geometry: ``run()``'s x-hi pad read
+    material while the batched path read vacuum. Sharing the assembly rule prevents that divergence.
 
     ``vmap`` is what makes reuse possible at all. The shared helper slices
     axes 0/1/2 and evaluates its vacuum predicate on whole transverse
@@ -295,7 +299,8 @@ def _build_batched_materials(
     cells only, via ``Shape.mask``. Unlike the global case, ``mask`` is
     False everywhere in the CPML padding (padding cells sit outside the
     physical domain ``Shape.mask`` tests against), so the padding is
-    handled separately below via ``_extend_batched_cpml_pad`` (for why that now routes through the package's single shared
+    handled separately below via ``_extend_batched_cpml_pad`` (for why that now routes through the package's single
+    shared
     pad rule rather than a second copy of it): without it, every swept
     batch element would run against a pad matched to the BASE material
     instead of its own.
@@ -487,7 +492,7 @@ def _build_full_scan_fn(
     has_coaxial_ports = len(getattr(sim, "_coaxial_ports", []) or []) > 0
 
     # Allowlist guard: the vmap scan bodies implement ONLY pec/periodic
-    # walls, CPML, and  DFT plane probes. Anything below must
+    # walls, CPML, and DFT plane probes. Anything below must
     # take the sequential fallback (return None) or it would be SILENTLY
     # DROPPED from the swept runs:
     #   - boundary='upml': neither scan body applies a UPML step, so the

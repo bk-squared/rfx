@@ -83,7 +83,8 @@ def update_e_lorentz(
     Dtype note
     -----------------------
     Both outputs are narrowed back to the dtype of the carry they came from,
-    the ``rfx.core.yee.update_e`` idiom: let the body derive its dtype from the carry. Allocation-site promotion alone does
+    the ``rfx.core.yee.update_e`` idiom: let the body derive its dtype from the carry. Allocation-site promotion alone
+    does
     NOT close this scan: ``ca``/``cb``/``cc`` and (masked) ``a``/``b``/``c``
     are built at setup time from ``dt``, which is ``grid.dt``, a **numpy
     float64 scalar** — and numpy scalars are STRONGLY typed in JAX where

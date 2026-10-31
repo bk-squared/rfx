@@ -43,7 +43,8 @@ def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
     (``~5*h_sub``) that ``rfx.api.Simulation.add_msl_port`` already applies to
     AUTO ``n_probe_offset``. Driver-time recounting uses the runway cell
     unless the ladder crosses a grading ramp; that fallback can fall short.
-    Here ``dx_m`` is the runway cell size. The derivation below explains the scale and margin; advisories also cover explicit offsets and method-level ladders that under-provision it.
+    Here ``dx_m`` is the runway cell size. The derivation below explains the scale and margin; advisories also cover
+    explicit offsets and method-level ladders that under-provision it.
 
     Derivation (measured on the settled attempt-3 witness run VESSL
     369367257533; committed dump ``scripts/diagnostics/

@@ -126,7 +126,7 @@ def fresnel_reflection_coefficient(
         Extraction frequency in Hz.
     dt : float
         Time step in seconds.
-    probe_distances: (n_probes) float array
+    probe_distances : (n_probes,) float array
         Distance from each probe to the reference plane, in metres, positive when
         the probe is in FRONT of (before) the plane. This is where you choose the
         reference plane — Γ's phase is reported relative to it. A residual ~half-

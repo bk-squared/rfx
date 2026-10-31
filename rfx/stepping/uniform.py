@@ -500,7 +500,7 @@ def make_uniform_step(
                 )
                 # TFSF-style H and E corrections are applied earlier in their respective Yee
                 # sub-steps (canonical TFSF slots). This samples `st` AFTER source injection
-                # above; the waveguide-port sampling convention needs its own validation.
+                # above.
                 cfg_updated = update_waveguide_port_probe(cfg, frame.st, dt, dx)
                 frame.new_waveguide_port_accs.append(
                     (

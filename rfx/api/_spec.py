@@ -1488,20 +1488,20 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
-    reference_impedances: (n_ports) float, optional
+    reference_impedances : (n_ports,) float, optional
         Positive real R values S is referenced to (each port's declared
         ``impedance=``), in ohms and in port_names order. Distinct from the
         fitted Z0 and the source/load resistances. Present on generated
         results; None is retained for manually constructed legacy result objects.
-    line_impedances: (n_ports) float, optional
+    line_impedances : (n_ports,) float, optional
         Analytic Hammerstad-Jensen line Z0 (ohms) the waves are formed at.
-    freqs: (n_freqs) float
+    freqs : (n_freqs,) float
         Frequency grid in Hz.
     Z0 : (n_ports, n_freqs) complex
         Characteristic impedance extracted via the N-probe SVD
         least-squares wave-decomposition fit,
         per driven-port run (``Z0[i, :]`` is from run with port i driven).
-    beta: (n_freqs) complex
+    beta : (n_freqs,) complex
         Propagation constant β from the N-probe least-squares fit at the first port's run.
     reliable : (n_ports, n_freqs) bool, optional
         Relative low-signal mask. ``reliable[p, k]`` is False when both
@@ -1552,7 +1552,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         ``n_probe_offset`` alone moves the probes toward the reflector.
         ``rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`` is the single text
         every warning about this condition embeds.
-    settling_db: (n_ports) float, optional
+    settling_db : (n_ports,) float, optional
         Per-drive pole-tail amplitude share in dB over modal voltage,
         loop-current, and witness-probe records at the extraction bins.
     S_raw : (n_ports, n_ports, n_freqs) complex, optional
@@ -1560,14 +1560,14 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         ``None`` on the default path, where ``S`` already IS that matrix;
         set only when ``enforce_passivity=True`` clipped something, so no
         information is discarded by enforcing the bound.
-    passivity_correction: (n_freqs) float, optional
+    passivity_correction : (n_freqs,) float, optional
         Per-frequency amount clipped by the passivity projection:
         ``max(sigma_max(S_raw(f)) - 1, 0)``. ``None`` unless
         ``enforce_passivity=True`` actually clipped a bin — it records
         what the projection REMOVED, so on the default path there is
         nothing for it to record and ``sigma_max_excess`` is the field to
         read.
-    sigma_max_excess: (n_freqs) float, optional
+    sigma_max_excess : (n_freqs,) float, optional
         Per-frequency ``max(sigma_max(S(f)) - 1, 0)`` of the RAW
         extraction, measured before any opt-in projection and filled on
         every concrete call (``None`` only while tracing, which has no
@@ -1584,7 +1584,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         whole sweep, measured in POWER (``max(sigma_max^2 - 1, 0)``). This
         field is per frequency and in amplitude. The two names differ so
         the numbers are not read as interchangeable; do not compare them.
-    port_names: tuple[str,...]
+    port_names : tuple[str, ...]
     assembly : str, optional
         Which rule produced ``S`` — ``"multi_drive_solve"`` (normal:
         ``S = B·A⁻¹`` over all drives) or
@@ -1595,7 +1595,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         that port is not matched. Read the Returns section of
         :func:`rfx.sparams.msl.compute_msl_s_matrix` before trusting a
         fallback result. ``None`` while tracing.
-    cond_a: (n_freqs) float, optional
+    cond_a : (n_freqs,) float, optional
         Per-frequency condition number of the power-wave drive matrix ``A``
         (one common row scale cancels from this condition number). Bounds
         DEGENERACY of the drive system only — it is **not** a reliability
@@ -1922,31 +1922,31 @@ class CoaxMSLTransitionResult:
         ``s_params[j, i, :]`` = response at port *j* driving port *i*.
         Port order is ALWAYS ``("coax", "msl")`` — port 0 = coax, port 1 =
         MSL (see ``port_names``).
-    freqs: (n_freqs) float
+    freqs : (n_freqs,) float
     port_names : tuple of str
         Always ``("coax", "msl")``.
-    reference_planes: (2) float
+    reference_planes : (2,) float
         ``[junction_z_m, junction_x_m]`` — the coax port's own z reference
         plane and the MSL port's own x reference plane. Both are placed AT
         the physical launch discontinuity (see class docstring); they are
         NOT on a shared axis and must not be subtracted from one another.
-    z0_ref: (2) float
+    z0_ref : (2,) float
         Power-wave reference impedance of ``s_params`` per port: the
         registered coax and MSL ``impedance=``.
-    line_impedances: (2) float
+    line_impedances : (2,) float
         ``[z0_coax_ohm, z0_msl_ohm]`` the waves (and ``a_inc``/``b_out``) are
         formed at: analytic coax TEM Z0
         (:func:`rfx.sources.coaxial_port.coaxial_tem_characteristic_impedance`)
         and analytic Hammerstad-Jensen microstrip Zc
         (:func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`).
-    cond_a: (n_freqs) float
+    cond_a : (n_freqs,) float
         Per-frequency condition number of the two-drive incident-wave
         matrix, RAW (same contract as :class:`CoaxialTwoPortResult`'s own
         ``cond_a``). On a mixed-family lane this is dominated by the two
         drives' unrelated source-amplitude SCALES (see the finding above)
         and is NOT a reliable geometric-degeneracy discriminant here —
         use ``cond_a_equilibrated`` for that.
-    cond_a_equilibrated: (n_freqs) float
+    cond_a_equilibrated : (n_freqs,) float
         Condition number of the SAME incident-wave matrix after dividing
         each drive's own column by its own norm — invariant to per-drive
         amplitude scale, so it isolates genuine geometric near-parallelism
@@ -2005,10 +2005,10 @@ class CoaxMSLTransitionResult:
         stub's own ladder reads ``ladder_split_gamma_dev`` 0.11-0.34 on every
         run of this family — the known 1 mm-span alpha-identification limit — so a bar tight enough to catch the MSL ladder would refuse
         the coax ladder for a different defect.
-    settling_db: (2) float
+    settling_db : (2,) float
         Per-drive pole-tail amplitude share in dB over recorded voltage
         ladders and witness probes at the extraction bins.
-    status: str
+    status : str
         ``"experimental"`` always (this lane makes no pass/fail physics
         claim beyond what the calling test's own predeclared gate states;
         unlike :class:`CoaxialTwoPortResult` there is no committed accuracy
@@ -2017,7 +2017,7 @@ class CoaxMSLTransitionResult:
         Present only when the caller opted in via
         :meth:`~rfx.api._sparams._SparamMixin.compute_coax_msl_transition`'s
         ``extra_flux_monitors=``; ``None`` otherwise. Per-drive Poynting-flux
-        spectra, ``{"coax"|"msl": {monitor_name: (n_monitor_freqs) float64}}``
+        spectra, ``{"coax"|"msl": {monitor_name: (n_monitor_freqs,) float64}}``
         (net flux, positive = +axis). DIAGNOSTIC ONLY — read-only DFT
         accumulation that does not enter the S-parameter math.
     ladder_voltages : dict or None
@@ -2030,15 +2030,15 @@ class CoaxMSLTransitionResult:
 
         ``coax_ladder_v`` (2, n_coax, n_freqs) complex128, indexed
         ``[drive, probe, freq]`` (drive 0 = coax driven, 1 = MSL driven);
-        ``coax_ladder_z_m`` (n_coax) float64 probe-plane z in DOMAIN metres
+        ``coax_ladder_z_m`` (n_coax,) float64 probe-plane z in DOMAIN metres
         (CPML pad removed, the same array fed to the assembler);
-        ``coax_ladder_k`` (n_coax) int64 PADDED grid z-indices;
+        ``coax_ladder_k`` (n_coax,) int64 PADDED grid z-indices;
         ``msl_ladder_v`` (2, n_msl, n_freqs) complex128 ``[drive, probe,
-        freq]``; ``msl_ladder_x_m`` (n_msl) float64 probe-plane x in domain
-        metres (strictly increasing); ``msl_ladder_i`` (n_msl) int64 padded
+        freq]``; ``msl_ladder_x_m`` (n_msl,) float64 probe-plane x in domain
+        metres (strictly increasing); ``msl_ladder_i`` (n_msl,) int64 padded
         grid x-indices; ``drive_order`` ``("coax", "msl")``; ``ref_coax_m``
         / ``ref_msl_m`` float, each port's own reference plane (identical to
-        ``reference_planes``); ``z0_ref`` (2) float64 copy of ``line_impedances``.
+        ``reference_planes``); ``z0_ref`` (2,) float64 copy of ``line_impedances``.
 
         DIAGNOSTIC ONLY, and label-FREE: these are modal voltages, not
         wave amplitudes — no incident/outgoing role is assigned here (see

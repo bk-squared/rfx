@@ -689,9 +689,7 @@ def init_waveguide_port(
     # tests/oracle/test_waveguide_port_validation_battery.py is a LIVE, currently
     # green committed gate under DROP, not xfail. The block comment above that test ("Test 6 —
     # Mesh convergence of |S21|...") attributes jitter to Box.mask_on_coords closed-closed
-    # semantics rather than the DROP weight. The receive-side multi-mode extractor (per the
-    # dead-end note's recommendation) remains the path to recovering
-    # PEC-short closure without capping it via the half-weight kludge.
+    # semantics rather than the DROP weight.
     #
     # The hi-face drop (``hi_face_is_wall``) does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
     # hand ``WaveguidePort`` the guide's CELL span, which ends one

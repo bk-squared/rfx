@@ -9,7 +9,17 @@ import tokenize
 import pytest
 
 
-HISTORY = re.compile(r"#\d+\b|(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
+HISTORY = re.compile(
+    r"https?://github\.com/[^/\s]+/rfx/(?:issues|pull)/\d+\b"
+    r"|#\d+\b|\b(?:issue\s+|PR\s+|gh-)\d+\b"
+    r"|(?<!\d)\d{4}-\d{2}(?:-\d{2})?(?![\d-])"
+    r"|(?<!\d)\d{4}/\d{2}/\d{2}(?!\d)",
+    re.IGNORECASE,
+)
+URL = re.compile(r"https?://[^\s<>`\"']+")
+RFX_TRACKER_URL = re.compile(
+    r"https?://github\.com/[^/\s]+/rfx/(?:issues|pull)(?:/|$)", re.IGNORECASE,
+)
 # A date embedded in a cited document's filename is path data, not prose
 # chronology. Pin the entire path and require the exception to remain used.
 KEEP = {
@@ -57,6 +67,10 @@ def _history(source, relative):
             if entry[0] == relative and entry[1] in text:
                 used.add(entry)
                 text = text.replace(entry[1], " " * len(entry[1]))
+        # External citations may contain dates or numeric URL fragments.
+        # Mask only those URLs; rfx tracker links remain subject to HISTORY.
+        text = URL.sub(lambda match: match.group() if RFX_TRACKER_URL.match(match.group())
+                       else " " * len(match.group()), text)
         for match in HISTORY.finditer(text):
             line = token.start[0] + text[:match.start()].count("\n")
             violations.append(f"{relative}:{line}: {match.group()}")
@@ -81,8 +95,18 @@ def test_source_carries_no_tracker_history():
     ("VALUE = 1  # Fixed in #123\n", "sample.py:1: #123"),
     ('def sample():\n    """Added 2026-05-08."""\n    pass\n',
      "sample.py:2: 2026-05-08"),
-], ids=["comment-tracker", "docstring-date"])
-def test_two_history_mutations_are_detected(mutation, expected):
+    ("# https://github.com/bk-squared/rfx/issues/123\n",
+     "sample.py:1: https://github.com/bk-squared/rfx/issues/123"),
+    ('"""See https://github.com/bk-squared/rfx/pull/45."""\n',
+     "sample.py:1: https://github.com/bk-squared/rfx/pull/45"),
+    ('"""Added 2026-04."""\n', "sample.py:1: 2026-04"),
+    ("# Fixed in issue 123\n", "sample.py:1: issue 123"),
+    ('"""Added in PR 45."""\n', "sample.py:1: PR 45"),
+    ("# See gh-123\n", "sample.py:1: gh-123"),
+    ('"""Added 2026/05/08."""\n', "sample.py:1: 2026/05/08"),
+], ids=["comment-tracker", "docstring-date", "issue-url", "pull-url",
+        "year-month", "issue-number", "pr-number", "gh-number", "slash-date"])
+def test_history_mutations_are_detected(mutation, expected):
     assert _history(mutation, "sample.py")[0] == [expected]
 
 
@@ -104,3 +128,13 @@ class Sample:
     path = next(iter(KEEP))
     assert _history(f'"""See {path[1]}."""', path[0]) == ([], {path})
     assert _history(f'"""See {path[1]}."""', "elsewhere.py")[0]
+
+
+@pytest.mark.parametrize("citation", [
+    "https://example.org/2026-04/paper#123",
+    "https://github.com/other/project/issues/123#456",
+    "issue683_decomposer_flip_predeclaration.md",
+    "20261030-record.md",
+])
+def test_external_citations_and_compact_document_ids_are_kept(citation):
+    assert _history(f'"""See {citation}."""', "sample.py") == ([], set())

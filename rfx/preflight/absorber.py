@@ -186,7 +186,12 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
     parameter choice covered the factorial. Guarded by
     tests/unit/boundaries/test_cpml_pad_material_extension.py.
 
-    Trigger: ANY pole family — Debye, Lorentz of any Q, Drude — whose geometry touches an absorbing face. Even a non-resonant Debye material can move a recovery observable past its gate when the pad carries its statics without its poles: a controlled pad-rule swap toggles the pinned and failing states digit-for-digit (``docs/design_notes/issue808_debye_pad_predeclaration.md``). The pad state is an input-fidelity fact for every dispersive face-toucher; resonance-risk families additionally receive divergence wording. One aggregated advisory per simulation.
+    Trigger: ANY pole family — Debye, Lorentz of any Q, Drude — whose geometry touches an absorbing face. Even a
+    non-resonant Debye material can move a recovery observable past its gate when the pad carries its statics without
+    its poles: a controlled pad-rule swap toggles the pinned and failing states digit-for-digit
+    (``docs/design_notes/issue808_debye_pad_predeclaration.md``). The pad state is an input-fidelity fact for every
+    dispersive face-toucher; resonance-risk families additionally receive divergence wording. One aggregated advisory
+    per simulation.
     """
     if self._boundary not in ("cpml", "upml"):
         return
@@ -659,7 +664,8 @@ def _validate_cfg_absorber_placement(
     "inside" the absorber when its coordinate is genuinely outside
     that interval.
 
-    Interior coordinates close to an absorber still need a proximity advisory. Two regression fixtures pin this: ``tests/unit/preflight/test_run_preflight_parity.py`` (a probe one
+    Interior coordinates close to an absorber still need a proximity advisory. Two regression fixtures pin this:
+    ``tests/unit/preflight/test_run_preflight_parity.py`` (a probe one
     cell inside a 0.02m domain was the run()-parity fixture's only
     warning trigger) and ``tests/unit/sparams/test_msl_internal_probe_advisories.py::
     test_user_probe_advisories_and_332_still_fire`` (the
@@ -818,7 +824,9 @@ def _validate_cfg_geometry_in_cpml(
     the per-axis thresholds above already carry `cpml_thick_xyz[ax]
     == 0` on those axes and the check naturally skips.
 
-    Every rfx grid builder pads CPML exterior to the requested domain (see :func:`_absorber_boundary_for_axis`). A Box entirely within ``[0, d]`` does not stand inside the absorber. This check reports a bounding box extending to a negative coordinate or past ``domain_extent``, into the exterior pad.
+    Every rfx grid builder pads CPML exterior to the requested domain (see :func:`_absorber_boundary_for_axis`). A Box
+    entirely within ``[0, d]`` does not stand inside the absorber. This check reports a bounding box extending to a
+    negative coordinate or past ``domain_extent``, into the exterior pad.
 
     reporting change: one warning per crossed AXIS naming the
     entry count, the worst offender and its overshoot distance, instead of
@@ -1019,7 +1027,8 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     axis-aligned Cylinder ARE continued; a PEC volume is continued by neither
     lane; a dispersive material at an absorber face is
     ``_validate_cfg_dispersive_pole_at_absorber_face``'s subject (pole masks
-    are deliberately never continued -- pole-extension divergence and unmatched promoted statics); and a traced mesh axis has no concrete node positions to test,
+    are deliberately never continued -- pole-extension divergence and unmatched promoted statics); and a traced mesh
+    axis has no concrete node positions to test,
     the same precedent ``_validate_cfg_graded_box_rasterization`` sets.
 
     Declared vs solved, in input units: which entry reaches which face, and
@@ -1254,7 +1263,8 @@ def _realized_clearance_cells(distance: float, dx: float) -> int:
     nearest node plane (lattice ownership contract), so the clearance
     the solver sees is the rounded cell count.
 
-    They disagree on exactly the arm this check was calibrated against. The isolated-patch rig carries a uniform -0.1-cell registration nudge, so a conductor inset by
+    They disagree on exactly the arm this check was calibrated against. The isolated-patch rig carries a uniform
+    -0.1-cell registration nudge, so a conductor inset by
     two cells declares its face at ``1.9 * dx``: ``_coord_near_absorber`` reads
     that as within two cells (it is, by 0.1 of one), while the solver rasterizes
     it onto node 2 and the arm SETTLES. Scoring the declared float would fire on

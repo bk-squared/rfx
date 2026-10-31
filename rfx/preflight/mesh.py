@@ -747,7 +747,8 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
     A lossy sheet folds into ``materials.sigma`` at ONE E node along its
     normal, and the length that node's sigma acts over is the DUAL spacing
     ``(d[k-1]+d[k])/2`` — not either adjacent cell. Where the two adjacent
-    cells are equal the distinction is invisible, so a fold dividing by the primal cell ``d[k]`` conceals the error: every uniform mesh and every NU node away from a step
+    cells are equal the distinction is invisible, so a fold dividing by the primal cell ``d[k]`` conceals the error:
+    every uniform mesh and every NU node away from a step
     agrees. This check surfaces the case that does not agree.
 
     Advisory tier, concrete profiles only, LOSSY sheets only — a PEC thin

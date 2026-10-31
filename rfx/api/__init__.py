@@ -478,7 +478,8 @@ class Simulation(
         # by the interop design-IR contract (rfx/interop/_design.py
         # _PINNED_RECORDS), and neither of these is design state.
         #   _msl_auto_offset_min: port name -> the upstream-only lower
-        #     edge stored when n_probe_offset was auto-resolved; the interval solve in compute_msl_s_matrix starts from it.
+        #     edge stored when n_probe_offset was auto-resolved; the interval solve in compute_msl_s_matrix starts from
+        #     it.
         #   _msl_auto_probe_spacing: port name -> the registration-time
         #     Hammerstad-Jensen eps_eff estimate, stored when
         #     n_probe_spacing was auto. The span solve in
@@ -557,7 +558,7 @@ class Simulation(
 
         # Per-face CPML thickness runs end-to-end
         # via the padded-profile engine in rfx/boundaries/cpml.py.
-        # Boundary.lo_thickness /.hi_thickness are
+        # Boundary.lo_thickness / .hi_thickness are
         # consumed by _build_grid → Grid.face_layers → init_cpml.
 
 

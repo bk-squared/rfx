@@ -263,7 +263,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
     Parameters
     ----------
-    inv_dx_h, inv_dy_h, inv_dz_h: (N) arrays
+    inv_dx_h, inv_dy_h, inv_dz_h : (N,) arrays
         H-update inverse spacing ``inv_d_h[k] = 1/d[k]`` for k<N-1,
         ``inv_d_h[N-1] = 0`` on non-periodic axes; periodic axes use 1/d
         everywhere. Built by
@@ -320,7 +320,7 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
     Parameters
     ----------
-    inv_dx, inv_dy, inv_dz: (N) arrays
+    inv_dx, inv_dy, inv_dz : (N,) arrays
         E-update inverse spacing ``inv_d_e[k] = 2/(d[k-1]+d[k])`` for
         k>=1, ``inv_d_e[0] = 1/d[0]``. Built by
         ``rfx.nonuniform._profile_to_inv_arrays`` (first return value).

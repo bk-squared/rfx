@@ -29,7 +29,8 @@ are in parallel along the edge exactly like the conductivities, and a pole
 has one τ_p wherever it is present, so the edge is itself a Debye medium
 with those averaged parameters. ``ca``/``cb``/``cc``/``beta`` are therefore
 3-tuples ``(x, y, z)``; ``alpha`` depends on τ_p only and stays one array
-per pole. Using one value per cell for all three components would put the whole grid on a cell-owned rule whenever any material is dispersive.
+per pole. Using one value per cell for all three components would put the whole grid on a cell-owned rule whenever any
+material is dispersive.
 
 References:
     Taflove & Hagness, "Computational Electrodynamics", 3rd ed., Ch. 9

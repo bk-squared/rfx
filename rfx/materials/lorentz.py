@@ -253,7 +253,7 @@ def init_lorentz(
     Parameters
     ----------
     poles : list of LorentzPole
-    materials: MaterialArrays (eps_r = ε_∞) with its lumped records
+    materials : MaterialArrays (eps_r = ε_∞) with its lumped records
     dt : float
     mask : optional spatial mask
     field_dtype : jnp dtype, optional

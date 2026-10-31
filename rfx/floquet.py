@@ -158,7 +158,7 @@ def extract_floquet_modes(
         Grid cell size (metres).
     Lx, Ly : float
         Unit cell periods (metres).
-    freqs: (n_freqs) array
+    freqs : (n_freqs,) array
         Frequencies.
     theta_deg, phi_deg : float
         Scan angles (degrees).
@@ -318,7 +318,7 @@ def compute_floquet_s_params(
         reflected / transmitted waves: a naive single-run soft-source drive
         does NOT (a bidirectional source leaves no pure-forward monitor plane),
         so ``|S11|`` from such a drive can exceed 1. Do not build accuracy
-        claims on it. Tracking: https://github.com/bk-squared/rfx/issues/141
+        claims on it.
 
         **Drive-isolation scoping:** the obvious fix — a
         two-run empty-vs-device reference subtraction (``E_scat = E_dev −
@@ -351,7 +351,7 @@ def compute_floquet_s_params(
         Cell size.
     Lx, Ly : float
         Unit cell periods.
-    freqs: (n_freqs) array
+    freqs : (n_freqs,) array
         Frequencies.
     theta_deg, phi_deg : float
         Scan angles.

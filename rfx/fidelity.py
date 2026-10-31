@@ -159,7 +159,8 @@ def fidelity_report(sim, print_report: bool = True):
     the only row a cavity/waveguide model has, since there the box IS the
     geometry. Its per-axis ``n_cells`` / ``realized_extent_um`` are the
     wall-to-wall CELL count and length, i.e. ``cells_spanning(L, dx)`` cells,
-    not the ``+ 1`` node count the grid allocates. ``cells_spanning`` snaps ratios within a few ULP of an integer to it, avoiding a cell no declared Box reaches. An axis the solve
+    not the ``+ 1`` node count the grid allocates. ``cells_spanning`` snaps ratios within a few ULP of an integer to it,
+    avoiding a cell no declared Box reaches. An axis the solve
     does not have — ``z`` under ``mode="2d_tmz"``, where ``grid.nz == 1``
     and the declared ``Lz`` is ignored — is not compared: that axis dict
     carries a ``note`` key (rendered by the printed report) instead of a

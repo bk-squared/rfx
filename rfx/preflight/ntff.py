@@ -19,10 +19,8 @@ Two edges leave this module and both are attribute lookups on the composed
 ``Simulation``, so neither costs an import: ``_validate_ntff_inverse_design``
 calls ``self._campaign_ctx`` (realization, still in the facade) and
 ``self._validate_ntff_small_ground_plane`` (intra-module). Its one
-cross-family module-global read, ``_absorber_boundary_for_axis``, is a
-``_common`` leaf that leg 0 already moved -- which is why
-``rfx/preflight/absorber.py``'s docstring used to say this check "stays in
-the facade" and, as of this leg, no longer does.
+cross-family module-global read, ``_absorber_boundary_for_axis``, is
+imported from ``rfx.preflight._common``.
 """
 
 from __future__ import annotations

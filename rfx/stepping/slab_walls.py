@@ -37,29 +37,18 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
     runners; ``ShardedNUGrid.nx_local`` is that same quantity and
     ``ShardedNUGrid.nx_per_rank`` is NOT.
 
-    This is ``distributed_v2.py::_apply_pec_shmap`` verbatim from the ``@partial`` down. ``distributed_nu.py`` carried a
-    copy whose kernel differed in exactly one token -- its own parameter
-    spelling -- plus three comments; the rename in the preceding commit
-    made the two normalised-AST hashes equal
-    (``29aeb6858fb45082...``) and the NU copy's richer face comments are
-    folded into this docstring.
-
     **This function does not encode a hook point.** Callers own their
     ordering; this function only applies the faces. Both runners now call
     it AFTER source injection and BEFORE the E ghost exchange
     (``distributed_v2.step_fn_pec`` stage 5, ``distributed_nu`` stage 7).
-    Calling it after the exchange has also been measured. The
-    measurement (``scripts/diagnostics/issue1041_v2_step_order.py``) found
-    the ``exchange``/``face`` half of that divergence INERT on v2 -- with
+    ``scripts/diagnostics/issue1041_v2_step_order.py`` found that swapping
+    face application and the E ghost exchange is inert on v2: with
     the source away from the seam the two orderings are bit-identical on
     every probe sample and all six final field arrays -- because the y/z
     faces above are written on every x row INCLUDING the ghosts, and the
     x_lo / x_hi faces act on rank 0's first and rank N-1's last real cell,
-    whose exchanged copies the receiving rank discards. What was NOT inert
-    was the ``exchange``/``source`` half, and the exchange moved for that.
-
-    The retired pmap lane had its own ``_apply_pec_local``; that implementation sat at the same point in its step body, for the
-    same measured reason. The remaining shard_map runners agree on that hook.
+    whose exchanged copies the receiving rank discards. Swapping source
+    injection and the E ghost exchange does change the result.
     """
 
     if pec_faces is None:

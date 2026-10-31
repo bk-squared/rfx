@@ -58,7 +58,6 @@ from rfx.sources.sources import CustomWaveform
 # -111.8 dB over the measured 2--30 GHz band and both faces at dx = 1 mm.
 # Ten cells return -87.4 dB; the auxiliary requirement is -105 dB.
 # Keep the normal-incidence target R = 1e-6 and restore the 20-cell depth.
-#
 AUX_N_CPML_1D = 20
 AUX_CPML_ORDER_1D = 3       # rfx/boundaries/cpml.py _cpml_profile default
 AUX_CPML_KAPPA_MAX_1D = 1.0
@@ -292,7 +291,7 @@ def init_tfsf(
         Electric-field polarization for the incident plane wave.
     direction : "+x" or "-x"
         Propagation direction along the x-axis.
-    angle_deg: float
+    angle_deg : float
         Signed oblique angle in degrees away from the x-axis. Positive
         angles tilt toward the positive transverse axis. Non-zero angles
         dispatch to the 2D-aux grid and produce a **narrowband** (single-f0)

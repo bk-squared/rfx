@@ -3,7 +3,8 @@
 The ports family asks what the LATTICE does to a
 port after it is drawn: whether a coaxial pin meets registered PEC at its
 junction plane and is shorted by geometry rather than by the port,
-where ``reference_plane_cells`` puts the measurement planes, which of a port's, source's or probe's field components the realized
+where ``reference_plane_cells`` puts the measurement planes, which of a port's, source's or probe's field components the
+realized
 PEC edge set has FROZEN (with the dead-cell
 advisories, the end-gap finding and the non-uniform skip), and
 whether a single-cell port is floating mid-substrate with nothing to drive

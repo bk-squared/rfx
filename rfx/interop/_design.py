@@ -60,7 +60,7 @@ rfx already has four setup serialisers and every one of them is box-level:
 - ``rfx/artifacts.py::build_scene_artifact`` (``rfx-scene-artifact-v1``) — a
   provenance/report summary that self-declares it is "not a CAD export";
 - ``rfx/config/_shapes.py`` — the YAML config CLI, ``_SUPPORTED_SHAPES =
-  ("box")``;
+  ("box",)``;
 - the experiment document of the former studio layer (``rfx-experiment/v1``,
   box-only, geometry carried as ``bounds_m``) — moved out of this package with
   studio; named here because this module was shaped to fold into its successor.

@@ -12,7 +12,8 @@ from rfx.core.yee import lumped_components
 def design_box_bounds(bounds, grid):
     """``(bounds, realized cell counts)`` of a design box on this grid.
 
-    One spelling for the permittivity box and the occupancy box: the REALIZED cell counts are what a design array must match,
+    One spelling for the permittivity box and the occupancy box: the REALIZED cell counts are what a design array must
+    match,
     and a box that is empty or leaves the grid is an error, not a clamp.
     """
     i0, i1, j0, j1, k0, k1 = (int(v) for v in bounds)

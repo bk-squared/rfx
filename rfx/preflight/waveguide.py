@@ -345,7 +345,6 @@ _WAVEGUIDE_UV_AXES = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
 #       0.25     91 x 41    3731    4.79 s      1.02 GB
 #       0.125   183 x 81   14823  127.21 s     10.73 GB
 #
-#
 # 2000 cells admits the 0.5 mm row and refuses the 0.25 mm one, which puts the
 # worst admitted case around 1.5 s. Above it the row quotes the ANALYTIC cutoff
 # of the realized aperture and says so; the discrete eigenvalue differs from it
@@ -969,7 +968,9 @@ def _check_waveguide_port_evanescent(self) -> None:
     """Warn when measurement frequencies cross a cutoff on the
     RASTERIZED grid, not the declared geometry.
 
-    Derive ``a``/``b`` from the grid the solve builds, not only the declared ``entry.*_range`` / ``self._domain``. On ``examples/inverse_design/differentiable_s11_design.py`` with dx = 2 mm and declared WR-90 a = 22.860 mm, the realized aperture is 22.000 mm. Reading only the declaration misses that discrepancy.
+    Derive ``a``/``b`` from the grid the solve builds, not only the declared ``entry.*_range`` / ``self._domain``. On
+    ``examples/inverse_design/differentiable_s11_design.py`` with dx = 2 mm and declared WR-90 a = 22.860 mm, the
+    realized aperture is 22.000 mm. Reading only the declaration misses that discrepancy.
 
     Now uses :meth:`_port_transverse_spans` for both:
     - the lower-bound checks (source / measurement at-or-below
@@ -1068,19 +1069,17 @@ def _validate_cfg_waveguide_reference_plane(
     preferably inside a uniform-cross-section segment of guide so the
     modal decomposition is defined.
 
-    P2.7 (obsolete): PMC / PEC + CPML on the same axis used to emit
-    a warning for the architectural offset between the reflector
-    plane and the user domain edge. The per-face allocation (2026-04) closed that gap on both
-    the uniform (rfx/grid.py) and non-uniform (rfx/nonuniform.py)
-    paths via per-face ``pad_{axis}_{lo,hi}`` allocation. The
-    warning is retained as a no-op anchor so external references
-    ("[P2.7]") don't break and as a reminder that the fix is
-    regression-locked via tests/unit/runners/test_silent_drop_warnings.py and
+    P2.7 is a no-op anchor for external references ("[P2.7]"). Per-face
+    ``pad_{axis}_{lo,hi}`` allocation aligns PMC / PEC reflector planes
+    with the user domain edge on both uniform (rfx/grid.py) and
+    non-uniform (rfx/nonuniform.py) paths. This is regression-locked via
+    tests/unit/runners/test_silent_drop_warnings.py and
     tests/unit/boundaries/test_boundary_pmc_hi_faces.py.
 
     Three emission sites and their scope
     -----------------------------------
-    Site 3 (device overlap) reads the geometry entry's shape bounds; ``_GeometryEntry`` itself has no ``bounds`` attribute.
+    Site 3 (device overlap) reads the geometry entry's shape bounds; ``_GeometryEntry`` itself has no ``bounds``
+    attribute.
 
     Sites 1 and 2 stay as deliberate no-ops, re-measured rather than
     assumed:

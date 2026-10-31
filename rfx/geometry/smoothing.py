@@ -1020,7 +1020,8 @@ def _yee_coords(grid: Grid):
     - Ey lives at (i, j+0.5, k)
     - Ez lives at (i, j, k+0.5)
 
-    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to reach a centre. Subtracting from a node displaces the smoothed voxel by half a cell. Derive centres FROM nodes, never the reverse.
+    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to reach a centre. Subtracting from a node
+    displaces the smoothed voxel by half a cell. Derive centres FROM nodes, never the reverse.
     """
     # Keep the coordinate construction in the shared host-float64 node
     # builder.  Constructing ``jnp.arange`` here made the Kottke SDF sample
@@ -1396,7 +1397,8 @@ def compute_smoothed_eps(
 
     Concrete inputs (host node spine, Python-float shape parameters and
     permittivities) are evaluated in host float64 and cast to the active
-    JAX dtype once, so the result does not depend on ``jax_enable_x64``; a traced shape parameter keeps traced ``jax.numpy`` arithmetic.
+    JAX dtype once, so the result does not depend on ``jax_enable_x64``; a traced shape parameter keeps traced
+    ``jax.numpy`` arithmetic.
 
     Parameters
     ----------

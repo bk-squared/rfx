@@ -126,7 +126,7 @@ def msl_line_beta_z0(width: float, height: float, eps_r, freqs):
     :func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`, written
     in ``jnp`` so that ``eps_r`` may be a tracer (the permittivity an
     ``eps_override`` sets under the port line). The width/height branch is on
-    Python floats. Returns ``beta`` (n_freqs) rad/m and the scalar ``Z0``.
+    Python floats. Returns ``beta`` (n_freqs,) rad/m and the scalar ``Z0``.
     """
     from rfx.grid import C0 as c0
     er = jnp.asarray(eps_r)

@@ -951,7 +951,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
       ``N = sum(volume * ez_profile**2)`` uses the Ez control volumes.
       For ``Ez = ez_profile * V`` this dissipates ``V**2 / Z0``.
 
-    The conductivity is stamped on the Ez (substrate-normal) edges only; until then it also damped Ex and Ey at the same nodes, a loss
+    The conductivity is stamped on the Ez (substrate-normal) edges only; until then it also damped Ex and Ey at the same
+    nodes, a loss
     the stated resistance did not describe. It does not establish a matched termination for an arbitrary field or
     certify that the Laplace profile is a propagating Maxwell mode.
 
@@ -1566,12 +1567,13 @@ def msl_loop_current(
     dy_arr, dz_arr : array
         Per-cell sizes along the ``a`` / ``b`` axes (uniform or
         non-uniform).
-    direction: str
+    direction : str
         Propagation direction, one of :data:`MSL_SUPPORTED_DIRECTIONS`.
         The raw contour integral is negated for POSITIVE-going ports
         (``"+x"``, ``"+y"``) and left as-is for negative-going ones.
 
-        **Sign convention.** The returned ``I`` is positive for a forward quasi-TEM wave (``Z0 = V/I > 0``) only for a POSITIVE-going port. The contour is traversed
+        **Sign convention.** The returned ``I`` is positive for a forward quasi-TEM wave (``Z0 = V/I > 0``) only for a
+        POSITIVE-going port. The contour is traversed
         right-handedly about ``+p_hat`` regardless of the direction sign,
         so the raw integral is the current along ``+p_hat`` for both
         signs; negating it only on positive-going ports leaves a
@@ -1596,7 +1598,9 @@ def msl_loop_current(
         ``|alpha| >> |gamma|`` at both ports on drive 0 and the reverse
         on drive 1.
 
-        On the shipped fixture (VESSL 369367257265), the two ports read |Gamma| 0.1799 and 0.1759, reproduced to 4 decimals by the cell-aligned and ±y-rotated variants. The fitted Zc is 41.9 Ω against the Hammerstad-Jensen 47.9 Ω, a dx bias rather than evidence of a termination error. The passive port's reflection remains unexplained.
+        On the shipped fixture (VESSL 369367257265), the two ports read |Gamma| 0.1799 and 0.1759, reproduced to 4
+        decimals by the cell-aligned and ±y-rotated variants. The fitted Zc is 41.9 Ω against the Hammerstad-Jensen 47.9
+        Ω, a dx bias rather than evidence of a termination error. The passive port's reflection remains unexplained.
 
     Axis generality
     ----------------------------
@@ -1625,7 +1629,7 @@ def msl_loop_current(
 
     Returns
     -------
-    (n_freqs) complex line current ``I(f)``.
+    (n_freqs,) complex line current ``I(f)``.
     """
     n_y = int(hy_plane.shape[1])
     n_z = int(hy_plane.shape[2])

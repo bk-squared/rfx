@@ -33,7 +33,7 @@ def renormalize_power_waves(S, z_from, z_to):
     the formula is applied per frequency bin. A jax array (or tracer) is
     transformed with ``jnp`` and stays differentiable; a NumPy array is
     transformed with NumPy at its own precision. ``z_from`` and ``z_to`` are
-    ``(n)`` real positive impedances; either may be traced (a line impedance
+    ``(n,)`` real positive impedances; either may be traced (a line impedance
     that depends on a design variable), and then every port is transformed
     with ``jnp`` and the value checks are left to the caller; the NaN-column
     confinement below then does not apply.
@@ -119,7 +119,7 @@ def _concrete(z):
 def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
     """Say once per port when the declared reference is far from the line Z0.
 
-    ``ports`` is ``((label, declared_ohm, line_ohm),...)``. The
+    ``ports`` is ``((label, declared_ohm, line_ohm), ...)``. The
     declared ``impedance=`` is the reference of the returned S (exact for
     real references), so the gap is not an extraction error: a line whose Z0
     is far from the reference reflects at the port plane by

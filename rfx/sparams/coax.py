@@ -547,7 +547,7 @@ def compute_coaxial_two_port(
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
     .. note::
-        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
+        Production edits to this lane need the PI's approval. **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
         family companion where this row lives). Covered: the two-port
         through-line class on this single coax geometry family, bracketed
@@ -655,7 +655,7 @@ def compute_coaxial_two_port(
     ``._flux_monitors``); each internal drive run then accumulates the
     requested Poynting-flux planes, and per-drive spectra come back
     name-keyed on ``result.flux_monitors``
-    (``{port_name: {monitor_name: (n_monitor_freqs) float64}}``, net
+    (``{port_name: {monitor_name: (n_monitor_freqs,) float64}}``, net
     flux, positive = +axis). The S-parameter math is untouched — the
     non-perturbation witness (S bit-identical with and without
     monitors) is gated in
@@ -1207,7 +1207,7 @@ def compute_coax_msl_transition(
         simulation with the same domain. Per-drive net Poynting-flux spectra
         are returned in ``result.flux_monitors``, keyed by ``"coax"`` or
         ``"msl"``, then monitor name, with float64 arrays of shape
-        ``(n_monitor_freqs)``. Positive flux points along the positive axis.
+        ``(n_monitor_freqs,)``. Positive flux points along the positive axis.
         These monitors do not alter S. Monitors registered on this simulation
         are refused.
     return_ladder_voltages : bool, optional
@@ -1661,11 +1661,8 @@ def compute_coax_msl_transition(
     warn_line_reference_mismatch("compute_coax_msl_transition()", (
         ("coax", port.impedance, z_tem), ("msl", msl_pe.impedance, z0_msl)))
 
-    # MSL-side probe ladder is independent of the coax-side one (issue
-    # leg 4 attempt 2) -- default to the coax values so an
-    # existing caller (attempt 1's committed fixture) sees byte-
-    # identical behavior when these new parameters are left unset.
-    # Independent ladder parameters (moved from the API docstring): the
+    # The MSL-side probe ladder is independent of the coax-side one.
+    # Unset MSL ladder parameters default to the coax values. The
     # microstrip ladder may need a meaningful fraction of a guided wavelength,
     # while the short coax stub cannot host that span. Separate optional
     # parameters decouple those extents; None retains the shared defaults.

@@ -1295,7 +1295,7 @@ def decompose_lumped_s_matrix(v, i, z0, v_ref=None):
     v, i : (n_ports, n_ports, n_freqs) complex
         ``v[j, i]`` / ``i[j, i]`` are the V/I DFT phasors at receive port *i*
         when driving port *j* (FDTD sign convention, ``V = -E·dx``).
-    z0: (n_ports) real
+    z0 : (n_ports,) real
         Per-port reference impedance.
     v_ref : (n_ports, n_ports, n_freqs) complex or None
         PRE-injection drive-sample phasors. Presence selects the whole-port
@@ -1429,9 +1429,9 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
     v, i : (n_ports, n_ports, n_freqs) complex
         ``v[j, i]`` / ``i[j, i]`` are the midpoint-cell V/I DFT phasors at
         receive port *i* when driving port *j* (FDTD sign convention).
-    z0: (n_ports) real
+    z0 : (n_ports,) real
         Per-port total reference impedance.
-    port_cell_counts: (n_ports) int
+    port_cell_counts : (n_ports,) int
         Number of wire cells per port (for per-cell impedance normalization).
     v_port : (n_ports, n_ports, n_freqs) complex or None
         Whole-port gap-voltage DFT phasors (``v_port[j, i]`` at receive
@@ -1695,16 +1695,16 @@ def extract_lumped_s11(
 
     Parameters
     ----------
-    v_dft: (n_freqs) complex
+    v_dft : (n_freqs,) complex
         Accumulated port voltage DFT (FDTD sign convention).
-    i_dft: (n_freqs) complex
+    i_dft : (n_freqs,) complex
         Accumulated port current DFT.
     z0 : float
         Reference impedance (ohms). Default 50.
 
     Returns
     -------
-    s11: (n_freqs) complex
+    s11 : (n_freqs,) complex
     """
     denom = v_dft - z0 * i_dft
     safe_denom = jnp.where(jnp.abs(denom) > 0.0, denom, jnp.ones_like(denom))
@@ -1726,7 +1726,7 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     band edges), NOT that the device is exotic. Surface it so an eager
     analysis / optimizer setup does not trust or chase those bins.
 
-    ``s_params``: ``(n_freqs)`` single port, or ``(n_ports, n_freqs)`` per-port
+    ``s_params``: ``(n_freqs,)`` single port, or ``(n_ports, n_freqs)`` per-port
     diagonal S_ii. ``passivity_tol`` matches the repo standard (0.10) so mild
     float32 noise just above 1.0 is not flagged.
 

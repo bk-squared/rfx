@@ -605,7 +605,8 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall: tuple[boo
     here, once, about the cell-owned lane's. The coefficients stay inside
     the loop: built here instead, the permittivity gradient of a 1.5e16
     objective came back non-finite at four cells next to the current sources
-    (``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``; the mechanism was not established; the same test also exposed a float32 overflow of ``Cb``'s reverse pass). ``jax.checkpoint`` recomputes
+    (``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``; the mechanism was not established; the same test
+    also exposed a float32 overflow of ``Cb``'s reverse pass). ``jax.checkpoint`` recomputes
     this mean in the backward pass instead of keeping it on the tape.
     """
     @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),

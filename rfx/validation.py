@@ -595,7 +595,8 @@ def replay_smatrix_from_vi_dump(
     ``"driven_terminal"`` is ``(V_fdtd - Z0 I)/(V_fdtd + Z0 I)`` with
     ``V_fdtd = -V``, for a dump whose stored voltage sign makes the pair
     inconsistent AT THE DRIVEN PORT while keeping the off-diagonal role
-    channel right — which is the case for rfx's own lumped-port dump with the driven-terminal metadata (scripts/diagnostics/lumped_port_known_load_line.py; on that
+    channel right — which is the case for rfx's own lumped-port dump with the driven-terminal metadata
+    (scripts/diagnostics/lumped_port_known_load_line.py; on that
     known-load line ``b/a`` at a driven port reads 4.757 where the closed
     form is 0.333, the reciprocal of the physical reflection).  Such a dump
     says so in its metadata; see :func:`replay_smatrix_from_port_vi_dump`.

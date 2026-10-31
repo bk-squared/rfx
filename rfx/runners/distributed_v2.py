@@ -413,7 +413,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # instead of replicating them.
     multi_process = _spans_other_processes(devices)
 
-    # Resolve PMC faces (T8, 2026-04). ``BoundarySpec.pmc_faces()`` returns
+    # Resolve PMC faces. ``BoundarySpec.pmc_faces()`` returns
     # a set; freeze it so it is safely closed-over by the traced scan
     # bodies below.
     _pmc_faces_frozen = frozenset(

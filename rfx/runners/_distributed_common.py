@@ -316,9 +316,8 @@ from rfx.stepping.slab_walls import apply_pec_face_shmap
 
 # Shared realized-PEC cell-mask kernel for distributed runners. Call
 # ``rfx.boundaries.pec.realized_pec_edge_masks`` rather than re-spelling the
-# neighbour rule: ``tests/contracts/test_pec_single_owner_lock.py`` pins
-# that single owner so periodic seams and volume/sheet realization cannot
-# drift between lanes.
+# neighbour rule, so periodic seams and volume/sheet realization share
+# a single owner across lanes.
 
 
 from rfx.stepping.slab_walls import apply_pec_mask_shmap

@@ -36,7 +36,8 @@ accidental tidiness anyone is free to undo: ``PreflightReport`` is a ``list``
 subclass, so it preserves emission order, and the snapshot lock renders it.
 Grouping this sequence by family would reorder advisories in 65 committed
 reports. So :data:`CORE_CONFIG_CHECKS` is transcribed from the call sequence
-and left in it; a lock in ``tests/locks/`` pins the names, in order, against a literal tuple in ``tests/locks/test_preflight_registry_sequence.py``.
+and left in it; a lock in ``tests/locks/`` pins the names, in order, against a literal tuple in
+``tests/locks/test_preflight_registry_sequence.py``.
 
 Why the adapters are lambdas rather than a uniform signature
 -----------------------------------------------------------

@@ -145,7 +145,8 @@ def _adam_multistart(
 ):
     """Best-of multi-start Adam with optional best-iterate + step-clamp.
 
-    Generic promotion of the MSL open-stub example's ``_multistart_adam``.  The three knobs are all OPT-IN and, with a single
+    Generic promotion of the MSL open-stub example's ``_multistart_adam``.  The three knobs are all OPT-IN and, with a
+    single
     start (``len(latent_inits) == 1``), ``best_iterate=False`` and
     ``step_clamp=None``, this runs the hand-rolled Adam loop with the exact
     same arithmetic as the legacy inline ``optimize()`` loop. With
@@ -478,7 +479,7 @@ def optimize(
             grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
-    # Per-face clamp (2026-04): using the symmetric ``pad_{axis}`` would
+    # Per-face clamp: using the symmetric ``pad_{axis}`` would
     # over-clamp a design region against a PMC/PEC reflector face whose
     # ``pad_lo`` or ``pad_hi`` is 0. Clamp each side to its own pad.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)

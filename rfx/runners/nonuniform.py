@@ -137,7 +137,7 @@ def build_nonuniform_grid(
     ``dx_profile`` / ``dy_profile`` are optional; when omitted the
     corresponding axis is uniform with spacing ``dx`` across
     ``domain``. ``pec_faces`` / ``pmc_faces`` force per-face pad=0 on
-    the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
+    the listed faces.
     ``dt`` / ``dt_min_cell`` pin a concrete time step across a mesh
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
     ``nominal_profiles`` is handed to it unchanged.
@@ -574,7 +574,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         One static box whose E update is redone from its own
         (usually traced) permittivity, so reverse-mode AD keeps box-shaped
         arrays per timestep instead of grid-shaped ones. The graded-mesh
-        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``; ``rfx.model.resolve_design_box``, called from
+        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``; ``rfx.model.resolve_design_box``, called
+        from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
     lane : str

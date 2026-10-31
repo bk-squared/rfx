@@ -9,7 +9,8 @@ def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
     ``pec_mask | (sheet footprints)`` — the footprint is the
     cells of the PEC VOLUMES union the footprints of the SHEETS.  Neither
     an f0 sheet nor a PEC sheet contributes to ``pec_mask``
-    or to ``materials.sigma``, so a bare ``pec_mask`` makes a sheet-traced transmission line look like an empty cross-section.  ``sheet_ctx.sigma_sheet`` is ``> 0`` exactly on the f0
+    or to ``materials.sigma``, so a bare ``pec_mask`` makes a sheet-traced transmission line look like an empty
+    cross-section.  ``sheet_ctx.sigma_sheet`` is ``> 0`` exactly on the f0
     sheet cells; PEC sheets arrive as ``SheetSpec``s.
 
     Returns ``pec_mask`` unchanged when there is nothing to add, or when

@@ -475,7 +475,8 @@ def apply_thin_conductor(
         raises: the lane would otherwise simulate no sheet at all (the
         vaporized-metal class).
     sheet_specs : list or None
-        Collector for surface-impedance (``surface_impedance_f0``) sheets. An f0-mode conductor no longer touches the material arrays;
+        Collector for surface-impedance (``surface_impedance_f0``) sheets. An f0-mode conductor no longer touches the
+        material arrays;
         when a list is passed, a :class:`SheetImpedanceSpec` is appended to
         it for the caller to assemble into a runtime
         :class:`SheetImpedanceCtx`. When ``None`` (legacy callers), the f0
@@ -793,7 +794,7 @@ def has_f0_sheets(thin_conductors) -> bool:
     """True when any registered thin conductor is in surface-impedance mode.
 
     The single predicate run lanes use to REFUSE f0 sheets they cannot
-    apply (distributed, subgridded, ADI,...). Since the sheet
+    apply (distributed, subgridded, ADI, ...). Since the sheet
     does not enter ``materials.sigma``, a lane that ignores the ctx would
     silently simulate NO sheet at all (the vaporized-metal class), so
     unsupported lanes must call this and raise loudly.

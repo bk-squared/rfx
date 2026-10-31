@@ -88,7 +88,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
 
     With ``reduce_devices=False``, returns ``(n_devices, len(drives))``
     on the slab axis without a collective; non-owner entries are zero.
-    The default returns a replicated ``(len(drives))`` float32 vector: every device
+    The default returns a replicated ``(len(drives),)`` float32 vector: every device
     computes its own four-cell mean, the owner's is kept by the mask and
     ``psum`` hands it to all. The arithmetic is
     :func:`rfx.nonuniform.current_source_cb`'s eps_r-units formula, the one the
@@ -311,7 +311,8 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
     STRUCTURALLY INERT: with every E and H coefficient zero there, no
     field evolves in the pad cells regardless of what the PEC-mask
     padding does, and the wall stays exactly where the single-device
-    grid put it (re-deriving would move the trailing H zero from real node ``nx-1`` to padded index ``nx_padded-1``, leaving the real boundary cell's H term live).
+    grid put it (re-deriving would move the trailing H zero from real node ``nx-1`` to padded index ``nx_padded-1``,
+    leaving the real boundary cell's H term live).
 
     Parameters
     ----------
@@ -323,15 +324,15 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
 
     Returns
     -------
-    inv_dx_e_global: (nx_padded) np.ndarray
+    inv_dx_e_global : (nx_padded,) np.ndarray
         E-update inverse spacing — mean ``2/(d[k-1]+d[k])`` (leading
         ``1/d[0]``), zero in the pad region. Consumed by
         ``_update_e_local_nu``.
-    inv_dx_h_global: (nx_padded) np.ndarray
+    inv_dx_h_global : (nx_padded,) np.ndarray
         H-update inverse spacing — local ``1/d[k]`` (zero at real
         boundary node ``nx-1`` AND throughout the pad region).
         Consumed by ``_update_h_local_nu``.
-    dx_padded: (nx_padded) np.ndarray
+    dx_padded : (nx_padded,) np.ndarray
         The cell-size profile (float32), pad region filled with the
         boundary cell size for diagnostics (e.g. CPML dx_boundary) —
         this is geometry bookkeeping only; it does NOT feed the E/H

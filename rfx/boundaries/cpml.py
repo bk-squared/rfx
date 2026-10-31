@@ -309,7 +309,8 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     all-no-op ``_cpml_noop_profile``. An axis narrower than the budget
     cannot hold that buffer — the face slices ``[:n]`` / ``[-n:]`` silently
     shrink to the axis extent while the length-``n`` profile does not, and
-    the scan dies on ``mul got incompatible shapes for broadcasting``. Reachable two ways, both with a per-face ``BoundarySpec``:
+    the scan dies on ``mul got incompatible shapes for broadcasting``. Reachable two ways, both with a per-face
+    ``BoundarySpec``:
     an axis whose faces are all PEC/PMC (no padding at all, so its extent is
     just the interior), or an absorbing axis whose per-face
     ``lo_thickness`` / ``hi_thickness`` is well below the budget.
@@ -384,7 +385,7 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     So "pads of 0" on such an axis means "the grid allocates no padding
     cells", not "there is no absorber", and clamping on it thinned a real
     8-layer absorber to 1. Measured on
-    ``rfx.run(Grid(freq_max=10e9, domain=(0.02)*3, cpml_axes="z"), …)``
+    ``rfx.run(Grid(freq_max=10e9, domain=(0.02,)*3, cpml_axes="z"), …)``
     for 200 steps: field digest ``d5ffa08245a4cb82`` before this guard's
     second clause and ``4da793698805a454`` with the one-sided guard, with
     residual E energy dropping 1.6401e+01 -> 8.3653e+00 (-49%). Both
@@ -459,7 +460,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
         ``"z_lo"``, ``"z_hi"``.  Default: None (CPML on all faces).
     pmc_faces : set of str or None
-        Faces carrying a PMC reflector (per-face padding, 2026-04 — puts
+        Faces carrying a PMC reflector (per-face padding puts
         ``pad=0`` cells on that side of the axis). Like ``pec_faces``
         these faces receive a no-op CPML profile — otherwise the
         ``apply_cpml_e/h`` slices ``[:, :n, :]`` etc. would apply

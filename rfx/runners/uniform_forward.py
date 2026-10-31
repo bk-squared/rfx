@@ -327,11 +327,10 @@ def _forward_from_materials(
                     grid, wp, n_steps=n_steps,
                     pec_edge_masks=pec_edge_masks_local)
             wp_cells = _wire_port_cells(grid, wp)
-            # Clear PEC mask/occupancy at LIVE wire cells only (issue
-            # commit 2). Dead extent cells stay PEC — the old
-            # all-cells clearing punched a one-cell in-plane
-            # conductivity hole in the DUT conductor. Only live edges
-            # publish incident cells for occupancy release.
+            # Clear PEC mask/occupancy at LIVE wire cells only.
+            # Dead extent cells stay PEC: clearing them would punch a
+            # one-cell in-plane conductivity hole in the DUT conductor.
+            # Only live edges publish incident cells for occupancy release.
             from rfx.sources.sources import _wire_port_live_cells
             _, wp_live_flags, _ = _wire_port_live_cells(
                 grid, wp, pec_edge_masks_local)

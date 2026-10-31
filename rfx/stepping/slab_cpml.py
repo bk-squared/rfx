@@ -263,7 +263,8 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
-    READ-ONLY input threaded into the inner shard for material-aware CPML.  Like ``eps_r`` in the E-variant it gets one extra ``P("x")``
+    READ-ONLY input threaded into the inner shard for material-aware CPML.  Like ``eps_r`` in the E-variant it gets one
+    extra ``P("x")``
     in ``in_specs`` only and is not returned.  ``None`` reproduces the
     vacuum coefficient bit-identically.
 

@@ -154,7 +154,8 @@ def _shift_modal_waves(
     phase flips: we convert to local via ``local_shift = shift_m *
     step_sign`` and apply the same formula.
 
-    Use ``step_sign`` for the propagation direction: unconditionally applying the "+x" formula gives the wrong sign for negative-direction ports and only half-corrects reference-plane phase shifts.
+    Use ``step_sign`` for the propagation direction: unconditionally applying the "+x" formula gives the wrong sign for
+    negative-direction ports and only half-corrects reference-plane phase shifts.
     """
     if shift_m == 0.0:
         return forward, backward
@@ -508,7 +509,9 @@ def extract_waveguide_s_matrix_flux(
     PEC realization: interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
     (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
-    the shared ``apply_pec_edges``.  Folding a PEC cell mask into ``sigma = 1e10`` would damp only the components indexed by the occupied cell, omitting the far face of a one-cell-thick wall or iris.  An empty-guide REFERENCE run gets no interior edge
+    the shared ``apply_pec_edges``.  Folding a PEC cell mask into ``sigma = 1e10`` would damp only the components
+    indexed by the occupied cell, omitting the far face of a one-cell-thick wall or iris.  An empty-guide REFERENCE run
+    gets no interior edge
     masks; per-port reference geometry supplies its own.
 
 
@@ -816,7 +819,9 @@ def extract_waveguide_s_params_normalized(
     PEC realization: interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
     (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
-    the shared ``apply_pec_edges``.  Folding a PEC cell mask into ``sigma = 1e10`` would damp only the components indexed by the occupied cell, omitting the far face of a one-cell-thick wall or iris.  An empty-guide REFERENCE run gets no interior edge
+    the shared ``apply_pec_edges``.  Folding a PEC cell mask into ``sigma = 1e10`` would damp only the components
+    indexed by the occupied cell, omitting the far face of a one-cell-thick wall or iris.  An empty-guide REFERENCE run
+    gets no interior edge
     masks; per-port reference geometry supplies its own.
 
 

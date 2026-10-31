@@ -46,7 +46,7 @@ class WirePortSParamSpec(NamedTuple):
         midpoint of the LIVE wire run (identical to the
         historical all-extent midpoint when no extent cell is dead).
     component: 'ez', 'ex', or 'ey'.
-    freqs: (n_freqs) frequency array.
+    freqs: (n_freqs,) frequency array.
     impedance: port reference impedance (Z0).
     live_cells: static tuple of (i, j, k) LIVE wire cells for
         the whole-port gap-voltage accumulator
@@ -79,11 +79,11 @@ class LumpedPortSParamSpec(NamedTuple):
     ----------
     i, j, k : int
         Lumped port cell index.
-    component: str
+    component : str
         E-field component ("ex", "ey", or "ez").
-    freqs: (n_freqs) jnp.ndarray
+    freqs : (n_freqs,) jnp.ndarray
         Frequencies (Hz) at which to accumulate V and I DFTs.
-    impedance: float
+    impedance : float
         Port reference impedance Z0 (ohms).
     excite : bool
         Whether this port is genuinely driven in THIS pass.  A driven port

@@ -630,7 +630,7 @@ def run_nonuniform_distributed_pec(
          local_i = (i % nx_per_rank) + ghost_width``.
     probes : list of ProbeSpec, optional
         Same routing as sources.
-    n_devices: int
+    n_devices : int
         Required.  Must match ``sharded_grid.n_devices``.
     exchange_interval : int, optional
         Reserved for Phase 2E batched exchange; only ``1`` is supported.

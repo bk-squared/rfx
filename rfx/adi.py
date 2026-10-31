@@ -858,7 +858,8 @@ class ADIState3D(NamedTuple):
 def _apply_pec_3d(ex, ey, ez, pec_edge_masks=None):
     """Zero tangential E on all 6 domain faces + the realized PEC edges.
 
-    ``pec_edge_masks`` is the ``(Mx, My, Mz)`` triple from ``rfx.boundaries.pec.realized_pec_edge_masks``; apply each mask to its own field component.
+    ``pec_edge_masks`` is the ``(Mx, My, Mz)`` triple from ``rfx.boundaries.pec.realized_pec_edge_masks``; apply each
+    mask to its own field component.
     """
     # x-faces: Ey, Ez = 0
     ey = ey.at[0, :, :].set(0.0)

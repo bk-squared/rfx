@@ -37,7 +37,9 @@ class GridCoords(NamedTuple):
     that PEC/geometry act on. ``coords_from_fine_grid`` genuinely returns cell
     CENTRES for the subgrid fine region (subgrid-fenced, unchanged).
 
-    Consumers must derive the centre FROM the node (``centre = node + d/2``). Subtracting ``d/2`` from node coordinates silently displaces every smoothed voxel by half a cell. Any producer must state which coordinate convention it returns.
+    Consumers must derive the centre FROM the node (``centre = node + d/2``). Subtracting ``d/2`` from node coordinates
+    silently displaces every smoothed voxel by half a cell. Any producer must state which coordinate convention it
+    returns.
 
     **Dtype contract**: concrete producers return HOST float64
     numpy arrays — exact node positions, independent of ``jax_enable_x64``.
@@ -108,7 +110,9 @@ def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
     the requested domain face — the same convention
     ``coords_from_uniform_grid`` uses (``(arange - pad) * dx``).
 
-    Cell centres are half a cell off the nodes the stencil differences and the uniform builder uses. Using them for node-based rasterization displaces materials from the fields acting on them; omitting the bounding node also narrows a PEC-bounded guide by one cell.
+    Cell centres are half a cell off the nodes the stencil differences and the uniform builder uses. Using them for
+    node-based rasterization displaces materials from the fields acting on them; omitting the bounding node also narrows
+    a PEC-bounded guide by one cell.
     """
     d = np.asarray(d_arr, dtype=np.float64)
     if d.size and bool(np.all(d == d[0])):
@@ -1446,7 +1450,8 @@ def extend_cpml_pad_materials(
     the interior-edge slice outward, as if the geometry continued beyond
     the domain.
 
-    Single shared implementation for the uniform (``rfx/api/_compile.py``) and non-uniform (``rfx/runners/nonuniform.py``) assemblers, so their pad-extension rules cannot drift independently.
+    Single shared implementation for the uniform (``rfx/api/_compile.py``) and non-uniform
+    (``rfx/runners/nonuniform.py``) assemblers, so their pad-extension rules cannot drift independently.
 
     **Hi-face fallback.** ``rfx.geometry.csg.Box``'s volume-branch
     rasterization is deliberately half-open, ``[lo, hi)``, over node
@@ -1495,7 +1500,8 @@ def extend_cpml_pad_materials(
     therefore a checked precondition of this fallback, not a belief about
     its caller.
 
-    **Repair the dropped node as well as the pad.** Writing only to the pad leaves the dropped node as vacuum, a one-cell film between the structure and its matched absorber:
+    **Repair the dropped node as well as the pad.** Writing only to the pad leaves the dropped node as vacuum, a
+    one-cell film between the structure and its matched absorber:
     ``[material][vacuum][pad = material]``. Measured on a 1-D plane-wave
     fixture (eps_r=4 filling the domain, reflection isolated by field-level
     DFT subtraction against the same fixture with the box drawn half a cell
@@ -1523,7 +1529,8 @@ def extend_cpml_pad_materials(
     and reach the same state through the float32 knife edge instead, which
     an array-pattern repair covers and a rasterizer edit would not.
 
-    **Do not extend dispersion-pole masks into CPML pads.** Extending Debye/Lorentz masks to match an edge-touching material across the band turns a stable simulation
+    **Do not extend dispersion-pole masks into CPML pads.** Extending Debye/Lorentz masks to match an edge-touching
+    material across the band turns a stable simulation
     into a divergent one for an edge-touching structure carrying a
     high-Q Lorentz pole (Q~60): the same 20,000-step fixture that decays
     with statics-only extension and without extension
@@ -1539,7 +1546,8 @@ def extend_cpml_pad_materials(
     extension is naively reintroduced.
 
     **Pole-carrying columns get NO hi-face fallback promotion.**
-    Promoting a dispersive structure's statics alone at the hi face gives the pad and the dropped boundary node eps_inf without its poles, a material absent from the declared model. Measured on a committed observable: a face-touching
+    Promoting a dispersive structure's statics alone at the hi face gives the pad and the dropped boundary node eps_inf
+    without its poles, a material absent from the declared model. Measured on a committed observable: a face-touching
     Debye slab's differentiable recovery moved from its pinned
     delta_eps 3.330 (11% err) to 3.969 (32%, past the 20% gate), and a
     controlled pad-rule swap (geometry, observation and optimizer held
@@ -1549,9 +1557,9 @@ def extend_cpml_pad_materials(
     are suppressed for that transverse cell: the hi pad takes the naive
     outer-column copy (background) and the dropped node stays as
     rasterized. Lo faces are deliberately NOT gated: the
-    lo pad replicates a boundary column the material genuinely occupies,
-     the discriminator's identity
-    arm measured that removing it too moves the same recovery's tau to
+    lo pad replicates a boundary column the material genuinely occupies.
+    The discriminator's identity arm measured that removing it too moves
+    the same recovery's tau to
     64% error — "less pad material" is not automatically better; the
     committed envelopes pin the lo-statics state. Callers that pass no mask allow hi-face fallback promotion.
 

@@ -51,7 +51,7 @@ from rfx.api._spec import (
 
 # Module-level flag so the distributed=True UserWarning fires exactly once
 # per process. Reset to False on import and set to True on the first
-# ``Simulation.forward(distributed=True,...)`` call. The flag belongs to
+# ``Simulation.forward(distributed=True, ...)`` call. The flag belongs to
 # this module because ``forward`` uses ``global
 # _DISTRIBUTED_FIRST_CALL_WARNED``, which binds to this namespace.
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
@@ -1680,7 +1680,8 @@ class _ExecuteMixin:
         # forward run (PEC wins on overlapping edges).  The PEC
         # sheets AND WIRES belong in that realization too — they own no
         # cell, so the "is there any PEC?" question cannot be asked of
-        # ``pec_mask`` and the sheet list alone.  Passing ``pec_edge_masks=None`` for a filament-only model lets the lossy operator write field back onto the wire's PEC edge.
+        # ``pec_mask`` and the sheet list alone.  Passing ``pec_edge_masks=None`` for a filament-only model lets the
+        # lossy operator write field back onto the wire's PEC edge.
         #
         # ``periodic=`` on the OUTER call is the same requirement:
         # the builder realizes the f0 footprint's own edges, and on a

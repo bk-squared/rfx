@@ -459,7 +459,7 @@ def compute_rcs(
     if _oblique:
         # Method B hardcodes its own waveform (t0=40·dt, tau=12·dt modulated
         # Gaussian) and its source->aux launch response is theta-dependent, so
-        # the analytic normal-path spectrum is the wrong denominator (issue
+        # the analytic normal-path spectrum is the wrong denominator (measured
         # sigma inflated +6.58 dB at theta=20 deg, +4.51 dB at 40 deg
         # on the gate grid). Normalize by the MEASURED 1D-aux spectrum instead
         # — a standalone replay of the same aux the box injects from.

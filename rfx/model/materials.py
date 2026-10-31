@@ -140,7 +140,9 @@ def assemble_cells(
         padding, and vacuum at any boundary node the rasterizer dropped.
         Unpadded high walls are handled by the component consumers.
 
-        The shared pad-extension rule also repairs the dropped hi-face boundary node, an interior cell not covered by ``Shape.mask``. Re-extending already-extended arrays lets a batched sweep inherit the base material there instead of its swept value. Supply unextended arrays so each swept element receives the complete shared rule.
+        The shared pad-extension rule also repairs the dropped hi-face boundary node, an interior cell not covered by
+        ``Shape.mask``. Re-extending already-extended arrays lets a batched sweep inherit the base material there
+        instead of its swept value. Supply unextended arrays so each swept element receives the complete shared rule.
 
     Returns
     -------
@@ -262,7 +264,6 @@ def assemble_cells(
             # tracer, which refuses. Assembly is handed a built ``grid``
             # and must not plan a mesh. ``domain`` is a required
             # constructor argument, so the declaration is always there.
-            #
             if _check_pad_fill and not is_tracer(mask):
                 assert_declared_span_is_filled(
                     entry.material_name, entry.shape, mask, grid,
@@ -349,7 +350,7 @@ def assemble_cells(
     # Extend statics only, before thin folds. Never extend poles or Kerr;
     # pole occupancy gates hi-face static promotion.
     if include_cpml_pad_extension:
-        # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Periodic
+        # Per-face allocation: (pad_{axis}_lo / _hi). Periodic
         # faces and unpadded high walls stay untouched. Absorbing faces
         # continue the material into the pad. The depth matches the actual
         # allocation on that face (``pad_*_lo`` or ``pad_*_hi``).
@@ -991,7 +992,8 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
       on its faces, and its plus-side layer is written because a cell's value
       reaches the edges on its plus faces. The box lane then equals what
       ``update_e`` would do with the design values in ``materials``.
-    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (the sheet lane: one conductivity per Yee edge, component ``c`` at the
+    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (the sheet lane: one conductivity per Yee edge,
+    component ``c`` at the
       same box index). It is taken as-is and NOT averaged again: it replaces
       the edge conductivity at the box indices, and every other edge in the
       window -- the plus-side layer included -- keeps the background edge

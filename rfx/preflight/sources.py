@@ -240,7 +240,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     builds either. ADI's
     ``adi_cfl_factor`` is not in it, so on ADI the actual dt is larger.
 
-    Issue 1668: every excited drive is judged -- sources and lumped, wire
+    Every excited drive is judged -- sources and lumped, wire
     and MSL ports by their waveform, coaxial ports by their excitation,
     and TF/SF sources, waveguide and Floquet ports by the waveform class of
     their waveform name at their own f0 and bandwidth. A pulse with
@@ -249,7 +249,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``undriven_pulse``); one that still has samples gets the warning.
     """
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
-    # Issue 1668: judge against the realized dt of a grid that already
+    # Judge against the realized dt of a grid that already
     # exists -- the one the campaign context holds when preflight built it.
     # Never create a context, grid or assembly state here (admit() calls
     # this outside preflight, and a failed assembly must not be retried);

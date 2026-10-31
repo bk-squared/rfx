@@ -117,7 +117,10 @@ periodic uniform axis      ``grid.Grid``; ``core.yee`` roll           N=L/dx cel
 The CPML row is the one open defect left in this table; it is listed as what
 the code does now, not as what it is entitled to.
 
-Each half of the waveguide port's one-sided TFSF boundary reads the plane it acts on. The half-cell reference shift still stores the boundary scalar as ``cfg.dx`` (``sources.waveguide_port``, at config build), so a port in a refined band shifts by half the boundary cell where its own half-cell is smaller. On the WR-90 band that is 2.16, 3.55 and 4.74 degrees of phase at 8.2, 10.3 and 12.4 GHz. It does not reach a normalized S-parameter.
+Each half of the waveguide port's one-sided TFSF boundary reads the plane it acts on. The half-cell reference shift
+still stores the boundary scalar as ``cfg.dx`` (``sources.waveguide_port``, at config build), so a port in a refined
+band shifts by half the boundary cell where its own half-cell is smaller. On the WR-90 band that is 2.16, 3.55 and 4.74
+degrees of phase at 8.2, 10.3 and 12.4 GHz. It does not reach a normalized S-parameter.
 
 The CPML row is the one worth reading twice, because the gap is narrower than
 "one scalar everywhere". Four of the six per-face slots are filled from two

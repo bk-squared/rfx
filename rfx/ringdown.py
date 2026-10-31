@@ -2182,8 +2182,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
             return (loss(r.ringdown.s_params), loss(r.ringdown.s_params_long)), r.ringdown
 
         (l, l_long), pullback, rd_out = jax.vjp(both, p, has_aux=True)
-        (g) = pullback((1.0, 0.0))
-        (g_long) = pullback((0.0, 1.0))
+        (g,) = pullback((1.0, 0.0))
+        (g_long,) = pullback((0.0, 1.0))
         w = gradient_witness(g, g_long, ringdown=rd_out)
     """
     import jax

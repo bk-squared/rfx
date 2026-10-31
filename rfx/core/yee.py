@@ -34,7 +34,8 @@ class FDTDState(NamedTuple):
 class MaterialArrays(NamedTuple):
     """Material property arrays on the grid.
 
-    ``eps_r`` and ``sigma`` are VOLUME properties of the cell, and an E component takes the mean of them over the four cells its edge touches.
+    ``eps_r`` and ``sigma`` are VOLUME properties of the cell, and an E component takes the mean of them over the four
+    cells its edge touches.
     A lumped element is not a volume: a port's 50 ohm load, an RLC resistor or
     capacitor is a device across ONE edge, folded into the cell's sigma / eps_r
     as an equivalent so that the old cell-owned update produced the right edge
@@ -50,7 +51,8 @@ class MaterialArrays(NamedTuple):
     or a grid-shaped array holding the stamps of the elements that sit on
     component ``c``'s edge. :func:`component_e_materials` averages the volume
     (``eps_r`` minus every stamp) and adds each stamp back at its own cell, to
-    ITS OWN component only. Adding a component-less record back to all three would mean a 50 ohm port on Ez was also a 50 ohm resistor on
+    ITS OWN component only. Adding a component-less record back to all three would mean a 50 ohm port on Ez was also a
+    50 ohm resistor on
     the Ex and Ey edges leaving its node (a centre-fed dipole's resonance
     +0.34 % at lambda/43, the feed-tip radial field pinned to 0.03 of the gap
     field on the two loaded sides against 0.37 on the free one).
@@ -240,7 +242,7 @@ def cell_owned_component_materials(materials):
     components, so a stamp in that total loads all three edges at its node.
     This returns, per component ``c``, the cell total minus the stamps that
     belong to the OTHER two components: the volume stays cell-owned (that lane's rule) and each lumped element loads its
-    own edge only. With no record it returns ``(eps_r)*3, (sigma)*3``.
+    own edge only. With no record it returns ``(eps_r,)*3, (sigma,)*3``.
     """
     eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
     sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
@@ -312,7 +314,8 @@ def ade_state_dtype(field_dtype=None):
     ``preflight()`` reports as ``precision_float64_without_x64``.
 
     NOTE the complex row is a policy statement, not a supported lane: the
-    dispersive branches of ``update_e_dispersive`` ignore the Bloch phase, so oblique-Bloch + dispersion is unsupported and still raises a
+    dispersive branches of ``update_e_dispersive`` ignore the Bloch phase, so oblique-Bloch + dispersion is unsupported
+    and still raises a
     carry-dtype mismatch rather than closing on wrong physics.
     """
     base = jnp.result_type(float) if field_dtype is None else jnp.dtype(field_dtype)
@@ -577,7 +580,8 @@ def _material_bwd_neighbour(arr, ax, periodic, *, high_wall: tuple[bool, bool, b
     ``jnp.roll(arr, 1, axis=ax)`` on a periodic axis and on a length-1 axis
     (the 2-D lane's self-adjacency) — value for value what
     ``rfx.boundaries.pec._shift(arr, ax, periodic, +1)`` returns there, so the
-    edge-average below and the PEC incidence rule wrap the same way (pinned by ``test_edge_averaged_materials``'s periodic test).
+    edge-average below and the PEC incidence rule wrap the same way (pinned by ``test_edge_averaged_materials``'s
+    periodic test).
 
     Off a periodic axis the two rules differ, and must: ``_shift`` pads with
     ZERO because "no conductor outside the lattice" is the right reading of an

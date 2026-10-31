@@ -144,7 +144,7 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
 def msl_solve_s_from_waves(wave_a, wave_b):
     """Solve ``S = B·A⁻¹`` from wave amplitudes recorded on every drive.
 
-    ``wave_a[d][j]`` / ``wave_b[d][j]`` are ``(n_freqs)`` forward / backward
+    ``wave_a[d][j]`` / ``wave_b[d][j]`` are ``(n_freqs,)`` forward / backward
     wave amplitudes at port ``j`` while port ``d`` was driven.  With every
     port driven the system ``b = S a`` is square:
 
@@ -1739,9 +1739,9 @@ def _assemble_mixed_power_wave_s(
        belong, acting on two quantities contaminated by the passive port's echo
        (``|S10·γ|/|S11m|`` = 19.0-38.1×; closed form matches the solve to
        1.8e-7). Substituting the solved diagonal makes the flux channel
-       WORSE, not better: reciprocity 10.53 % shipped -> 23.29 % solved
-       , and assembling the whole mixed lane by the
-       solve moves the shipped flux witness 9.80 % -> 9.85 % — no physical
+       WORSE, not better: reciprocity 10.53 % shipped -> 23.29 % solved,
+       and assembling the whole mixed lane by the solve moves the shipped
+       flux witness 9.80 % -> 9.85 % — no physical
        gain. Extending the solve here is therefore inert, not blocked.
 
        The lane's reciprocity residual (9-10 %) remains unexplained: neither mixed-lane
@@ -1790,9 +1790,9 @@ def _assemble_mixed_power_wave_s(
         FDTD-sign V/I DFT phasors at each lumped/wire port per run.
     v0_msl, i_msl : (n_runs, n_msl, n_freqs) complex
         MSL probe-0 line voltage and closed-Ampere-loop current per run.
-    z0_lw: (n_lw) float — full registered port impedances.
-    n_live_lw: (n_lw) int — wire live-cell counts (1s for lumped).
-    z0_hj_msl: (n_msl) float — analytic Hammerstad-Jensen Z0 per port.
+    z0_lw : (n_lw,) float — full registered port impedances.
+    n_live_lw : (n_lw,) int — wire live-cell counts (1s for lumped).
+    z0_hj_msl : (n_msl,) float — analytic Hammerstad-Jensen Z0 per port.
     wire_mode : bool — True when the lumped/wire family is wire ports.
     drive_plan : list of ("lw"|"msl", local_idx) — run order.
 
@@ -2050,7 +2050,7 @@ def _assemble_coaxial_two_port_from_voltages(
 
     Parameters
     ----------
-    z_planes_bot_m, z_planes_top_m: (n_bot), (n_top) float
+    z_planes_bot_m, z_planes_top_m : (n_bot,), (n_top,) float
         Equally spaced axial probe-plane positions (metres) for the bottom
         (port 2) and top (port 1) arrays.
     ref_bot_m, ref_top_m : float
@@ -2150,7 +2150,7 @@ def _assemble_coaxial_two_port_from_voltages(
     as one. The sibling lane copied THIS lane's constant onto the opposite
     geometry and inverted its whole S-matrix.
 
-    The lane is **validated with scope** in ``docs/guides/sparameter_support_matrix.md``. The geometry-based fixtures in ``tests/_wave_convention.py::_plant_ladder_voltages_physical`` pin the constant above independently of the extractor's own labels; the wrong-convention mirror asserts the exact ``inv(S_true)`` signature.
+    The lane is **validated with scope** in ``docs/guides/sparameter_support_matrix.md``. Production edits to this lane need the PI's approval. The geometry-based fixtures in ``tests/_wave_convention.py::_plant_ladder_voltages_physical`` pin the constant above independently of the extractor's own labels; the wrong-convention mirror asserts the exact ``inv(S_true)`` signature.
 
     AD note
     ---------------------
@@ -2434,7 +2434,7 @@ def _assemble_coax_msl_transition_from_voltages(
 
     Parameters
     ----------
-    z_coax_planes_m, x_msl_planes_m: (n_coax), (n_msl) float
+    z_coax_planes_m, x_msl_planes_m : (n_coax,), (n_msl,) float
         Equally spaced axial probe-plane positions (metres) for the coax
         port (port array 0, along z) and the MSL port (port array 1, along
         x). Each family's own axis — these are NOT on a shared coordinate.
@@ -2456,7 +2456,7 @@ def _assemble_coax_msl_transition_from_voltages(
     -------
     s_params, cond_a, cond_a_equilibrated, recurrence_residual, fit_residual, gamma, a_inc, b_out
         ``s_params`` is ``(2, 2, n_freqs)``, port order ``(coax, msl)``.
-        ``cond_a`` / ``cond_a_equilibrated`` are ``(n_freqs)`` (see above).
+        ``cond_a`` / ``cond_a_equilibrated`` are ``(n_freqs,)`` (see above).
         ``recurrence_residual`` / ``fit_residual`` / ``gamma`` / ``a_inc`` /
         ``b_out`` are ``(2, 2, n_freqs)`` indexed ``[port_array, drive,
         freq]`` (port array 0 = coax, 1 = msl) — ``a_inc``/``b_out`` are the

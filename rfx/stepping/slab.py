@@ -34,7 +34,8 @@ FILL = {
     'debye_state': Fill(0., 0.),  # Initial/exterior Debye polarization is zero.
     'lorentz_ca': Fill(1., 1.),  # Vacuum E decay, from init_lorentz.
     'lorentz_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt.
-    'lorentz_cc': Fill('1/eps0', '1/eps0'),  # 1/cc must stay finite in mixed ADE backward; zero caused NaN eps gradients.
+    # 1/cc must stay finite in mixed ADE backward; zero caused NaN eps gradients.
+    'lorentz_cc': Fill('1/eps0', '1/eps0'),
     'lorentz_a': Fill(0., 0.),  # No exterior pole recurrence.
     'lorentz_b': Fill(0., 0.),  # No exterior previous-polarization recurrence.
     'lorentz_c': Fill(0., 0.),  # No exterior E-to-polarization coupling.
@@ -320,7 +321,8 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
 @lru_cache(maxsize=None)
 def _vacuum_dispersion_values(kind, n_poles, dt):
     """Per field, the coefficient ``init_debye`` / ``init_lorentz`` give ONE
-    vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``: Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, alpha = beta = 0``;
+    vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``: Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0,
+    alpha = beta = 0``;
     Lorentz ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, a = b = c = 0``.
 
     No pole reaches the cell (all-False masks), so the pole parameters do not

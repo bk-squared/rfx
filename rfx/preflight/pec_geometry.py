@@ -119,7 +119,8 @@ _CAMPAIGN_MAX_OFFENDERS = 5
 # permittivity as the Yee E update. ``conformal_eps_correction`` sets
 # ``aniso_eps`` to ``eps/w`` at wall cells; using staircase
 # ``materials.eps_r`` for psi instead amplifies the field in the pads. In
-# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``, threading that permittivity changes |S21| at dx 3 / 2 /
+# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``, threading that
+# permittivity changes |S21| at dx 3 / 2 /
 # 1.5 mm from 0.7564 / 0.6974 / NaN to 0.7796 / 0.6974 / 0.7274. These are
 # stability measurements; accuracy verdicts obtained with the coefficient
 # mismatch do not establish the conformal methods' accuracy.

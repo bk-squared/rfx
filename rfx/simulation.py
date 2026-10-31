@@ -175,7 +175,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     waveform_fn : callable(t) -> value
     n_steps : int
     materials : MaterialArrays (for Cb computation at source cell)
-    amplitude_kind: 'field' | 'current' | None
+    amplitude_kind : 'field' | 'current' | None
     """
     from rfx.model import uniform_source_table
     idx = _grid_metric.field_index(grid, position, component)

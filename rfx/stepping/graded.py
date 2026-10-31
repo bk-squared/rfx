@@ -389,14 +389,12 @@ def make_graded_step(
         # had failed to load the port), and the once-UNEXAMINED Ampere
         # identity was examined in the same run (section 7).
         #
-        # The uniform lane (rfx/simulation.py wire block) flipped to this
-        # same POST slot for its physical V/I/V_port channels, with the
-        # pre-injection drive sample kept as a separate calibration
-        # reference channel for its off-diagonal decomposition
-        # (
+        # The uniform lane uses this same POST slot for its physical
+        # V/I/V_port channels, with a pre-injection drive sample as a separate
+        # calibration reference for its off-diagonal decomposition (see
         # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
-        # This lane's decomposition was calibrated in the POST frame
-        # directly, so it needs NO reference channel and NO change.
+        # This lane's decomposition is calibrated in the POST frame directly,
+        # so it needs no separate reference channel.
         #
         # PASSIVE ports are unaffected either way: I reads H only, and the
         # source loop writes E only, at the SOURCE cell.

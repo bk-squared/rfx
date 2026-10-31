@@ -1091,7 +1091,7 @@ class _NoWarnings:
 
 
 def refuse_undriven_drives(sim) -> None:
-    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    """Refuse a drive whose pulse is not resolved by dt (its
     table, sampled at dt over the pulse, holds no value above 1e-6 of its
     amplitude), on entries that run no preflight. The same check preflight
     runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``

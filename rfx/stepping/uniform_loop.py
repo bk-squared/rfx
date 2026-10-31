@@ -529,7 +529,6 @@ def run(
             # multi-hour solve emits progress. The carry threads through
             # untouched (DFT accumulators, port/flux/monitor state, NTFF
             # compensation), so this is a continuation and not a re-solve.
-            #
             final_carry, outputs = scan_with_progress(
                 body, carry_init, xs,
                 n_steps=n_steps,

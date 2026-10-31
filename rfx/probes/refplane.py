@@ -11,8 +11,7 @@ port-cell extractor: 33-47% off).  This module measures port waves at
 reference planes instead of at the port cells, for the OFF-DIAGONAL
 S-matrix entries only.
 
-Method (all conventions measured/anchored in the Phase-0 lane; constants in
-the Phase-0 comment — do not re-derive):
+Method (conventions anchored by the closed-box flux measurement above):
 
 * Plane V = vertical-E GAP line integral at an integer Yee plane N cells
   outboard (into the DUT) along the line axis — over the port's
@@ -21,7 +20,7 @@ the Phase-0 comment — do not re-derive):
   in-trace Ez edge of a one-cell-thick PEC trace is NOT zeroed by the
   staircase mask convention and carries ~0.21 of the gap field, so an
   untrimmed port-extent integral mis-scales V by ~0.89 (which cancels in
-  S but corrupts the reported Zc; Phase-0 measured 47.9-48.6 ohm with
+  S but corrupts the reported Zc; measured 47.9-48.6 ohm with
   the 2-cell gap integral).
 * Plane I = average of the two adjacent Ampere loops around the signal
   trace at the half-planes (plane -/+ dx/2), centring I on the V plane
@@ -31,7 +30,7 @@ the Phase-0 comment — do not re-derive):
 * The shared DFT kernel stamps H-derived current at the Yee half-step,
   applying ``exp(+j*omega*dt/2)`` relative to E exactly once.  Comparator anchor: this
   collapses the receive-cell Ohm-law phase from +0.008..+0.018 to ~0
-  (measured, Phase 0).
+  (measured).
 * Forward/backward split with a MEASURED two-plane line-invariant
   ``Zc^2 = (V1^2 - V2^2)/(I1^2 - I2^2)`` (exact for any load on a uniform
   line; measured 47.9-48.6 ohm on the canonical thru — never assume the
@@ -531,7 +530,7 @@ def decompose_wire_s_matrix_with_reference_planes(
         pairs and all slot-0 pairs are recorded).  These are the
         NON-de-embedded waves at the plane — the zero-free-parameter
         conservation identity ``(|out|^2 - |inc|^2)/Re(Zc)`` equals the
-        net line power there (Phase-0 falsifier F2).
+        net line power there.
     """
     from rfx.probes.probes import decompose_wire_s_matrix
 

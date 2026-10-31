@@ -259,7 +259,8 @@ def edge_update_denominator(materials, cell, component, dt,
     ``sigma[i, j, k]`` instead is the single-cell value, which differs from
     what the update uses wherever the four cells around the edge are not one
     material: on an eps 1|4 surface the edge is 2.5 and the cell 4, and a
-    series 100 ohm element then realized 160 ohm, a parallel 2 nH 3.2 nH. Where the four cells are one material the two reads are
+    series 100 ohm element then realized 160 ohm, a parallel 2 nH 3.2 nH. Where the four cells are one material the two
+    reads are
     the same floats, so vacuum and uniform-dielectric fixtures keep their
     bytes.
 

@@ -120,7 +120,8 @@ def measure_incident_spectrum(
     ``n_steps`` and DFTs the recorded ``e1d`` at the aux index onto which the
     box centre projects.  This is the incident spectral amplitude the 4-edge
     box actually injects, so using it as the RCS normalization captures what an
-    analytic waveform DFT cannot. The measurements below use the auxiliary timing preceding declared-pulse timing (gate grid f0=5 GHz, dx=2 mm):
+    analytic waveform DFT cannot. The measurements below use the auxiliary timing preceding declared-pulse timing (gate
+    grid f0=5 GHz, dx=2 mm):
 
     * the then-hardcoded ``t0=40·dt, tau=12·dt`` modulated Gaussian instead of the
       normal path's assumed differentiated Gaussian (+8.83 dB at f0 — the

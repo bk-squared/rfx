@@ -131,7 +131,8 @@ from rfx.preflight._common import (
 # ---------------------------------------------------------------------------
 # Phase 3 re-export surface (leg 1).
 #
-# The MSL probe-clearance geometry block and the MSL check-2c constants are defined in ``rfx.preflight.msl``. They are re-bound as module globals of
+# The MSL probe-clearance geometry block and the MSL check-2c constants are defined in ``rfx.preflight.msl``. They are
+# re-bound as module globals of
 # THIS module for the three reasons the leg-0 block above lists, plus a fourth
 # that belongs to this family alone:
 #
@@ -167,7 +168,8 @@ from rfx.preflight.msl import (
 # ---------------------------------------------------------------------------
 # Phase 3 re-export surface (leg 2).
 #
-# The five gate constants and the banner that derives them are defined in ``rfx.preflight.pec_geometry``. They are re-bound as module
+# The five gate constants and the banner that derives them are defined in ``rfx.preflight.pec_geometry``. They are
+# re-bound as module
 # globals of THIS module for the reasons the leg-0 block above lists -- the
 # namespace is pinned by set equality, and 17 files import names from here.
 #
@@ -648,7 +650,8 @@ class _PreflightMixin:
 
     # ------------------------------------------------------------------
     # the three realization ACCESSORS -- the production
-    # assembly call and the port-side pair that reads it -- are defined in ``rfx/preflight/realization.py`` and are bound back here, AT THE
+    # assembly call and the port-side pair that reads it -- are defined in ``rfx/preflight/realization.py`` and are
+    # bound back here, AT THE
     # POSITION they held in this class body. Position is not cosmetic --
     # ``_validate_simulation_config`` calls its checks in a fixed sequence
     # and the resulting advisory ORDER is the observable
@@ -1888,7 +1891,8 @@ class _PreflightMixin:
     from rfx.preflight.realization import _campaign_ctx, _validate_cfg_assembly
     # ------------------------------------------------------------------
     # the campaign-statics umbrella, its four
-    # checks and the per-declaration realization findings are defined in ``rfx/preflight/pec_geometry.py`` -- one contiguous
+    # checks and the per-declaration realization findings are defined in ``rfx/preflight/pec_geometry.py`` -- one
+    # contiguous
     # class-body block -- and are bound back here at the position they
     # held, for the reason the conformal block above gives.
     #

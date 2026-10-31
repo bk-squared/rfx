@@ -78,7 +78,7 @@ class NonUniformGrid(NamedTuple):
     inv_dx_h: jnp.ndarray  # (nx,) — H update: 1/dx[i]; [nx-1]=0
     inv_dy_h: jnp.ndarray  # (ny,) — H update: 1/dy[j]; [ny-1]=0
     inv_dz_h: jnp.ndarray  # (nz,) — H update: 1/dz[k]; [nz-1]=0
-    # Per-face CPML padding (PMC+CPML composition fix, 2026-04)
+    # Per-face CPML padding for PMC+CPML composition
     pad_x_lo: int = 0
     pad_x_hi: int = 0
     pad_y_lo: int = 0
@@ -410,7 +410,7 @@ class NonUniformGrid(NamedTuple):
 def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     """Pad a 1-D cell-size profile with CPML cells on each end.
 
-    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04 —
+    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation —
     a PMC/PEC face gets 0 cells on that side while the opposing CPML
     face keeps its allocation). If ``pad_hi`` is omitted the symmetric
     ``pad_lo`` count is used on both ends (pre-per-face-allocation behaviour).
@@ -802,7 +802,7 @@ def make_nonuniform_grid(
     dx : float
         Boundary cell size (also used for CPML padding and as the
         uniform-xy spacing when no xy profile is provided).
-    cpml_layers: int
+    cpml_layers : int
         Number of CPML cells added to each face (when that face is
         absorbing — see ``pec_faces`` / ``pmc_faces``).
     dx_profile, dy_profile : 1D arrays or None
@@ -813,8 +813,7 @@ def make_nonuniform_grid(
         Face labels (``x_lo``, ``x_hi``, ``y_lo``, ``y_hi``, ``z_lo``,
         ``z_hi``) where the boundary is PEC / PMC. Per-face pad count
         is forced to 0 on these faces so the reflector plane aligns
-        with the user domain edge. Added 2026-04 to close the
-        PMC+CPML composition gap on the non-uniform mesh path.
+        with the user domain edge.
     cpml_axes : str
         Axes that participate in CPML allocation (default ``"xyz"``).
         Per-face allocation still applies; an axis absent from
@@ -1147,7 +1146,8 @@ def _axis_position_to_index(
     """Padded index of the node nearest ``pos`` on ``axis``, clamped.
 
     The node is the one ``index_of`` names: ``nearest_node_index`` on the
-    node line the conductors are rasterized on, a tie to the lower node. Two legacy behaviours stay here and not in ``index_of``:
+    node line the conductors are rasterized on, a tie to the lower node. Two legacy behaviours stay here and not in
+    ``index_of``:
     a coordinate outside the interior CLAMPS to the end node, and a traced
     axis answers from a nominal mesh.
 

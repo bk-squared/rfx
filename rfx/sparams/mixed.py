@@ -1,6 +1,7 @@
 """The mixed-family S-matrix calculator.
 
-``compute_mixed_s_matrix`` is the lumped/wire + MSL two-family driver. ``rfx/api/_sparams.py`` binds this module-level function onto ``_SparamMixin`` as ``Simulation.compute_mixed_s_matrix``.
+``compute_mixed_s_matrix`` is the lumped/wire + MSL two-family driver. ``rfx/api/_sparams.py`` binds this module-level
+function onto ``_SparamMixin`` as ``Simulation.compute_mixed_s_matrix``.
 
 ``self`` is still the :class:`rfx.api.Simulation` instance: the function is a
 module-level ``def`` whose first parameter is ``self``, not a free function with
@@ -357,13 +358,11 @@ def compute_mixed_s_matrix(
     probe_clearance = tuple(msl_probe_clearance_for_port(
         self, pe, grid, probe_coordinates=xs,
     ) for pe, xs in zip(entries, probe_xs))
-    # Probe-LADDER validation. The S1
-    # V*I split records probe 0 only, but v1 must not silently accept
-    # a ladder the validated MSL lane rejects: attempt 1 registered a
-    # "+x"-facing port whose default ladder (offset 31 + 4x12 cells)
-    # ran past the declared domain; msl_probe_x_coords_n CLAMPS such
-    # coordinates, and the surviving probe-0 plane sat 1.1 mm from
-    # the trace's open end at the domain edge (a Box is rasterized
+    # Probe-LADDER validation. The V*I split records probe 0 only, but
+    # must not silently accept a ladder the validated MSL lane rejects.
+    # msl_probe_x_coords_n clamps coordinates outside the declared domain.
+    # A probe near the domain edge can sample the trace's open end
+    # (a Box is rasterized
     # only inside the declared domain — the trace does NOT continue
     # into the CPML padding, so every boundary-touching trace has an
     # OPEN end there). The plane then measures the open-stub
@@ -739,8 +738,8 @@ def compute_mixed_s_matrix(
                 i_lw[run_idx, i_port, :] = np.asarray(vi[1])
                 if wire_mode:
                     # Pre-injection drive-sample reference channel (vi[4]): the wire wave
-                    # algebra is calibrated against this sample; passive samples are slot-
-                    # invariant. A shorter tuple marks a lane without a separate v_ref channel
+                    # algebra is calibrated against this sample; passive samples are
+                    # slot-invariant. A shorter tuple marks a lane without a separate v_ref channel
                     # (the NU lane): it samples POST-injection and its decomposer is calibrated
                     # in that frame, so vi[0] is that lane's correct drive reference.
                     vref_lw[run_idx, i_port, :] = np.asarray(
@@ -874,21 +873,13 @@ def compute_mixed_s_matrix(
         # of z0 = (alpha - gamma)/I1. Measured on one fixture: the
         # fitted sign differs between num_periods=4 and 20.
         #
-        # The SECOND half of what this comment used to allege — that
-        # `msl_loop_current`'s docstring ("the returned I is positive
-        # for a forward quasi-TEM wave") and compute_msl_s_matrix's
-        # dir_sign comment ("a -x port's fitted z0 inherits a
-        # negative sign") describe OPPOSITE conventions — is resolved by the
-        # direction-dependent convention in msl_loop_current's docstring. Own-drive
+        # msl_loop_current uses a direction-dependent convention. Own-drive
         # diagonal on the committed thru fixture:
         # Re((alpha-gamma)/I1) = +57.52 ohm at the "+x" port and
         # -57.56 ohm at the "-x" port (same magnitude to 0.08%), so
-        # the comment described the code and the docstring's
-        # blanket claim was scoped wrong. The lane is self-consistent
-        # about it: |S11|=|S22| to 5 decimals, reciprocity 1.27e-05,
-        # column power <= 0.99998, both reported Z0 positive. No code
-        # changed. The beta-branch instability above is separate and
-        # still stands.
+        # the lane is self-consistent: |S11|=|S22| to 5 decimals,
+        # reciprocity 1.27e-05, column power <= 0.99998, both reported
+        # Z0 positive. The beta-branch instability above is separate.
         #
         # The measurement (VESSL 369367257265, driver
         # scripts/diagnostics/msl_passive_port_reflection.py) found: the two ports read

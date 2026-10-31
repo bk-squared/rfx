@@ -234,14 +234,11 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             # Passive (excite=False) ports contribute just the σ
             # resistive termination above, acting as a matched load.
             #
-            # the V/I reference cell is the midpoint of the
-            # LIVE run, not of the raw extent. A dead extent cell (inside
-            # PEC) carries essentially no port current
-            # (|I_dead|/|I_mid| = 0.003-0.03 measured on the thru),
-            # so an all-extent midpoint landing on a dead cell read a
-            # quenched Ampere loop as the port current. With no dead
-            # cells the live midpoint is bit-identical to the historical
-            # all-extent midpoint.
+            # The V/I reference cell is the midpoint of the LIVE run.
+            # A dead extent cell inside PEC carries essentially no port
+            # current, so a midpoint landing on it would read a quenched
+            # Ampere loop. With no dead cells the live midpoint is identical
+            # to the all-extent midpoint.
             _live_cells = tuple(
                 c for c, live in zip(_cells_ijk, live_flags) if live)
             conductors = publish_port_release(conductors, _live_cells,

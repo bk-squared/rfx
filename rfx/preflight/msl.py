@@ -82,7 +82,7 @@ from rfx.preflight._common import (
 # MSL check 2c retains its existing 8.3% geometry-advisory threshold.
 # Its historical derivation used 0.05 / 0.601 from a Hammerstad-Jensen
 # comparison of dielectric-mask extents. That extent is not the conductor
-# gap under  PEC-volume ownership. Keep the heuristic unchanged,
+# gap under PEC-volume ownership. Keep the heuristic unchanged,
 # but neither the old sensitivity nor the threshold is a current Z0 bound.
 # The two legacy constants remain available to existing internal consumers.
 _MSL_REALIZED_THICKNESS_Z0_SENSITIVITY = 0.601
@@ -626,11 +626,11 @@ def _check_msl_port_geometry(
        bbox therefore cannot stand in for the conductor-plane gap or an
        electrical-width correction to Hammerstad-Jensen.
 
-       The old declared-board percentages and realized-board
-       Hammerstad-Jensen anchor use float32-derived geometry rather than the exact node spine; neither an old percentage
-       nor a live geometry rebuild paired with frozen Z0 establishes a
-       current bound. Preserve the artifacts; any quantitative re-solve
-       needs a new, consistently qualified geometry/measurement record.
+       The old declared-board percentages and realized-board Hammerstad-Jensen
+       anchor are historical records: their extraction and geometry changed
+       later. Neither an old percentage nor a live geometry rebuild paired with
+       frozen Z0 establishes a current bound. Preserve the artifacts; any quantitative
+       re-solve needs a new, consistently qualified geometry/measurement record.
 
     3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
        Source-side CPML reflection inflates |S11| if the port is
@@ -973,22 +973,15 @@ def _check_msl_port_geometry(
         # as a SHEET (zero-thickness Box / add_thin_conductor) is one
         # node plane with no cell at all and enters nothing either.
         #
-        # this used to say "this build has no
-        # anisotropic/subpixel eps assembly — rfx/api/__init__.py's
-        # Simulation docstring". Both halves were wrong. rfx DOES have
-        # subpixel eps assembly: ``subpixel_smoothing`` (bool | str,
+        # Subpixel eps assembly is available: ``subpixel_smoothing`` (bool | str,
         # default False) reaches ``rfx/runners/uniform.py``, where
         # ``"kottke_pec"`` builds an inverse-permittivity tensor over
         # the dielectric AND PEC shapes (uniform.py:241-269) and a
         # plain truthy value calls ``compute_smoothed_eps``
         # (uniform.py:271-278); the Stage-1 conformal PEC lane
         # (``conformal_pec``, uniform.py:281-300) likewise gives PEC
-        # shapes fractional cell weights. And the cited docstring line
-        # is inside ``stencil_order``'s parameter description — it
-        # says stencil_order=4 is unsupported WITH subpixel/conformal
-        # eps, which presupposes those lanes exist rather than denying
-        # them. What is actually true, and all that is claimed here
-        # and in the message: on the shipped defaults
+        # shapes fractional cell weights. ``stencil_order=4`` is unsupported
+        # with subpixel/conformal eps. On the shipped defaults
         # (``subpixel_smoothing=False``; ``conformal_pec=None`` ->
         # ``bool(self._boundary_spec.conformal_faces())`` = False
         # absent an explicit ``Boundary(conformal=True)`` —
@@ -1511,8 +1504,7 @@ def _check_msl_port_geometry(
         # only two registries -- MSL ports
         # (self._msl_ports) and lumped/wire ports (self._ports);
         # self._coaxial_ports and self._waveguide_ports also carry a
-        # feed / reference plane but are out of scope here (issue
-        # review, disclosed rather than fixed).
+        # feed / reference plane but are out of scope here.
         _span_lo, _span_hi = (
             (x_feed, x_deep) if _dir_sign > 0 else (x_deep, x_feed)
         )

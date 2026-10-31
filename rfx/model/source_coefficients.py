@@ -168,7 +168,8 @@ def current_source_cb(eps_r_c, sigma_c, dt):
     source feeds, from that edge's ``(eps_r, sigma)``.
 
     ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
-    four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`. Concrete and traced inputs use the same jnp arithmetic,
+    four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`. Concrete and traced inputs use the same
+    jnp arithmetic,
     keeping a traced permittivity on the tape (GEO-C3).
     The one spelling of the drive coefficient: :func:`make_current_source`
     and the distributed graded forward, which builds it inside its jitted

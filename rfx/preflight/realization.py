@@ -188,8 +188,7 @@ class _RealizedPEC:
                                     periodic=self.periodic)
 
     def is_pec_edge(self, component, i, j, k) -> bool:
-        # thin delegate; named differently from the owner so the single-owner
-        # lock (tests/contracts/test_pec_single_owner_lock.py) reads one rule
+        # Delegate PEC-edge ownership to the shared boundary rule.
         from rfx.boundaries.pec import edge_is_pec
         return edge_is_pec(self.edges, component, i, j, k)
 
