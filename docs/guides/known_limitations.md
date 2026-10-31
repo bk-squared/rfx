@@ -198,6 +198,20 @@ No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propa
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
+### Subpixel smoothing on cells that are not cubes gives a flat dielectric interface the wrong smoothed permittivity.
+
+Tracker: #2293
+
+`subpixel_smoothing=True` on a mesh whose cells are not cubes gives a dielectric interface a smoothed permittivity that differs from the Kottke value.
+This covers any graded mesh (`dx_profile`, `dy_profile` or `dz_profile`) and a uniform mesh with dz different from dx.
+On a graded mesh the smoothed value also varies along a flat interface.
+Measured on a flat eps_r 4 slab whose interface normal is x, with dx = dy = 0.2 mm:
+- Cubic cells: exact.
+- A constant dz of 0.18 / 0.22 / 0.30 mm: off by 2.6 / 2.3 / 9.2 %.
+- A mesh graded along the interface, with dz of 0.18 mm in one region and 0.22 mm in another (also 0.15 and 0.25 mm, and 0.12 and 0.30 mm): off by up to 2.6 / 7.3 / 13.4 %. The error differs between the two regions, so it varies along the interface by up to 26 %.
+The effect on S-parameters and resonances is not yet measured.
+Until a fix lands (planned for 2.0.1), use cubic cells where smoothing is on, or leave `subpixel_smoothing` off (the default).
+
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
