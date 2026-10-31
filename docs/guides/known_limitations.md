@@ -449,6 +449,7 @@ On a synthetic lossless dielectric slab in a PEC-walled guide (4.5–8 GHz), eve
 A lossless network has 1 at every frequency.
 `normalize` defaults to False, so only calls that set it are affected.
 When phase matters, use `normalize=False` or `normalize="flux"` (on a graded mesh only `"flux"`, because `normalize=False` is refused there): on the repository's validated waveguide fixtures (matched load with its full absorber, PEC short, a reflecting obstacle with flux normalization) their largest singular value stays at or below 1.007 (record kept with the project).
+From 2.0.1, `compute_waveguide_s_matrix` warns when the largest singular value of the returned S exceeds 1.01, with the number of such bins and the worst one; the slab above triggers it.
 
 ### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
