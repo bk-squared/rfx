@@ -34,7 +34,7 @@ keep committed binaries small; do not commit multi-hundred-MB media.
 
 In the rfx repo (branch `feat/gallery-mvp`):
 
-- Gallery pages live at `docs/public/gallery/{index,multilayer_fresnel,waveguide_wr90,patch_antenna}.mdx`.
+- Gallery pages live at `docs/public/gallery/{index,waveguide_wr90}.mdx`.
 - They are NOT added to `docs/public/site_map.json` (its CI gate
   `scripts/check_public_docs_manifest.py` only allows `rfx/guide*` slugs). They
   follow the `examples/`/`validation/` precedent: files exist + linked from
@@ -111,8 +111,6 @@ docker compose --env-file deploy/obsidian-stack/.env \
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://remilab.ai/rfx/gallery/   # expect 200
-curl -s -o /dev/null -w "%{http_code}\n" \
-  https://remilab.ai/rfx/gallery/assets/multilayer_fresnel/sparams.png      # expect 200
 git -C /root/workspace/byungkwan-workspace/infra/remilab-sites-gitops rev-parse HEAD
 ```
 

@@ -11,9 +11,9 @@ An absorbing boundary represents an open environment. A conducting wall sends
 waves back into the model. Start the movie and watch the same pulse in both:
 the open box becomes quiet while reflections keep crossing the closed box.
 
-<video controls playsinline preload="none" poster="/rfx/gallery/assets/current-visuals/boundary-reflection.png" aria-label="A pulsed electric field leaves an open CPML domain on the left and reflects inside a PEC box on the right" style="width:100%;height:auto;">
-  <source src="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4" type="video/mp4" />
-  <a href="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4">Download the field movie</a>
+<video controls playsinline preload="none" poster="/rfx/examples/assets/teaching/boundary-reflection.png" aria-label="A pulsed electric field leaves an open CPML domain on the left and reflects inside a PEC box on the right" style="width:100%;height:auto;">
+  <source src="/rfx/examples/assets/teaching/boundary-reflection.mp4" type="video/mp4" />
+  <a href="/rfx/examples/assets/teaching/boundary-reflection.mp4">Download the field movie</a>
 </video>
 
 The lower plot is the electric field at the green probe. The vertical cursor
@@ -40,11 +40,11 @@ values remain in the download. This is a 2D field cross-section, not a finite
 
 ## Run this example
 
-Download the [complete generator](/rfx/gallery/assets/current-visuals/field_movies.py).
+Download the [complete generator](/rfx/examples/assets/teaching/field_movies.py).
 It uses `Simulation`, `SnapshotSpec`, and the physical coordinates and frame
 times in `Result.snapshot_axes`. It also generates the
-[dielectric interface](/rfx/gallery/dielectric-interface/) and
-[cavity standing wave](/rfx/gallery/cavity-standing-wave/).
+[dielectric interface](/rfx/examples/teaching/dielectric-interface/) and
+[cavity standing wave](/rfx/examples/teaching/cavity-standing-wave/).
 
 For the solver version used here:
 
@@ -53,7 +53,7 @@ git clone https://github.com/bk-squared/rfx.git
 cd rfx
 git checkout a9054338616b91bb1364699882c2530fa29a0048
 python -m pip install -e .
-curl -fLO https://remilab.ai/rfx/gallery/assets/current-visuals/field_movies.py
+curl -fLO https://remilab.ai/rfx/examples/assets/teaching/field_movies.py
 # Install ffmpeg using your operating system's package manager.
 JAX_PLATFORMS=cpu PYTHONPATH=. python field_movies.py \
   --case boundary-reflection --output field-movies
@@ -66,9 +66,9 @@ errors. These two vacuum models returned no preflight findings.
 
 ## Download and explore
 
-- [Probe CSV, in seconds and V/m](/rfx/gallery/assets/current-visuals/boundary-reflection.csv)
-- [Selected field arrays and all probe samples, NPZ](/rfx/gallery/assets/current-visuals/boundary-reflection.npz)
-- [Model, normalization, preflight and checksums, JSON](/rfx/gallery/assets/current-visuals/boundary-reflection.json)
+- [Probe CSV, in seconds and V/m](/rfx/examples/assets/teaching/boundary-reflection.csv)
+- [Selected field arrays and all probe samples, NPZ](/rfx/examples/assets/teaching/boundary-reflection.npz)
+- [Model, normalization, preflight and checksums, JSON](/rfx/examples/assets/teaching/boundary-reflection.json)
 
 The small NPZ contains every 16th movie frame at full spatial resolution,
 with its actual coordinate arrays, step numbers and time stamps. Re-running

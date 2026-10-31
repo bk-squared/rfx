@@ -12,9 +12,9 @@ the rectangle; after the drive becomes quiet, its field pattern continues to
 change sign with nearly fixed nodal lines. Watch the entire domain, then follow
 the green probe in the trace below.
 
-<video controls playsinline preload="none" poster="/rfx/gallery/assets/current-visuals/cavity-standing-wave.png" aria-label="The electric field changes sign in a closed rectangular PEC cavity while the standing-wave pattern remains in place" style="width:100%;height:auto;">
-  <source src="/rfx/gallery/assets/current-visuals/cavity-standing-wave.mp4" type="video/mp4" />
-  <a href="/rfx/gallery/assets/current-visuals/cavity-standing-wave.mp4">Download the cavity movie</a>
+<video controls playsinline preload="none" poster="/rfx/examples/assets/teaching/cavity-standing-wave.png" aria-label="The electric field changes sign in a closed rectangular PEC cavity while the standing-wave pattern remains in place" style="width:100%;height:auto;">
+  <source src="/rfx/examples/assets/teaching/cavity-standing-wave.mp4" type="video/mp4" />
+  <a href="/rfx/examples/assets/teaching/cavity-standing-wave.mp4">Download the cavity movie</a>
 </video>
 
 ## From geometry to field
@@ -41,7 +41,7 @@ animated afterward.
 ## Reproduce and change it
 
 Use the pinned solver installation and generator download in
-[the boundary example](/rfx/gallery/boundary-reflection/#run-this-example), then:
+[the boundary example](/rfx/examples/teaching/boundary-reflection/#run-this-example), then:
 
 ```bash
 JAX_PLATFORMS=cpu PYTHONPATH=. python field_movies.py \
@@ -59,10 +59,10 @@ ring-down measurement.
 
 ## Data and scope
 
-- [Probe CSV, seconds and V/m](/rfx/gallery/assets/current-visuals/cavity-standing-wave.csv)
-- [Selected field frames and all probe samples, NPZ](/rfx/gallery/assets/current-visuals/cavity-standing-wave.npz)
-- [Preflight, source settings, normalization and checksums, JSON](/rfx/gallery/assets/current-visuals/cavity-standing-wave.json)
-- [Complete runnable generator](/rfx/gallery/assets/current-visuals/field_movies.py)
+- [Probe CSV, seconds and V/m](/rfx/examples/assets/teaching/cavity-standing-wave.csv)
+- [Selected field frames and all probe samples, NPZ](/rfx/examples/assets/teaching/cavity-standing-wave.npz)
+- [Preflight, source settings, normalization and checksums, JSON](/rfx/examples/assets/teaching/cavity-standing-wave.json)
+- [Complete runnable generator](/rfx/examples/assets/teaching/field_movies.py)
 
 The download retains every 16th actual movie frame with its native spatial
 coordinates and time stamps. Local regeneration retains all frames. Preflight
@@ -73,4 +73,4 @@ This is an introductory 2D illustration with one mesh and one simulation time.
 Finite output and correct snapshot axes were checked. Mesh convergence, modal
 frequency accuracy and physical Q were not measured. For the distinction
 between open and closed boundaries, compare
-[the pulse reflection example](/rfx/gallery/boundary-reflection/).
+[the pulse reflection example](/rfx/examples/teaching/boundary-reflection/).

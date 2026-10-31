@@ -1,12 +1,12 @@
 ---
 title: "Showcase"
-description: "Results computed with rfx, each with an independent check: a patch antenna's sensitivity map, the cost of a gradient, gradient descent to a closed-form optimum, a printable lens and a printed waveguide filter."
+description: "Results computed with rfx, each with an independent check: a patch antenna's sensitivity map, the cost of a gradient, a printable lens and a printed waveguide filter."
 sidebar:
   order: 2
 ---
 
 Each case below was checked by something other than the gradient itself: finite
-differences, a longer simulation, a closed-form optimum, or finer meshes. The
+differences, a longer simulation, or finer meshes. The
 figures, loops and data are downloadable, and each case has a machine-readable
 result.json.
 
@@ -26,13 +26,6 @@ result.json.
     <a href="/rfx/showcase/gradient-cost/">Read the case →</a>
   </section>
   <section data-rfx="card">
-    <a href="/rfx/showcase/descent-to-optimum/"><img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/ar-coating/ar_coating_site.png" loading="lazy" alt="Reflection of a three-layer anti-reflection coating, its layer permittivities over the Adam iterations, and the band-mean reflection against the transfer-matrix optimum" /></a>
-    <h3>Descend to the closed-form optimum</h3>
-    <p>Adam through the FDTD solve finds the three layer permittivities of a broadband anti-reflection coating.</p>
-    <p><small>within 1.1 % of the transfer-matrix optimum</small></p>
-    <a href="/rfx/showcase/descent-to-optimum/">Read the case →</a>
-  </section>
-  <section data-rfx="card">
     <a href="/rfx/showcase/grin-lens/"><img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/grin-lens/grin_lens_film_poster.png" loading="lazy" alt="A frame of the lens film: the designed lens cut open above the dipole and its focused beam, boresight directivity 19.0 dBi" /></a>
     <h3>Design a printable lens</h3>
     <p>Gradient descent shapes a printable graded-index lens to narrow a small feed’s beam.</p>
@@ -47,7 +40,3 @@ result.json.
     <a href="/rfx/showcase/waveguide-filter/">Read the case →</a>
   </section>
 </div>
-
-More cases are being recomputed with the current code: the waveguide dielectric
-taper and the beam-steering dielectric cover from the 2026 paper. Their original
-films are kept in [the archive](/rfx/gallery/) until then.
