@@ -51,18 +51,18 @@ cells take 1.4 times as long as the simulation alone.
     <source src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity.mp4" type="video/mp4" />
     <a href="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity.mp4">Download the loop (MP4)</a>.
   </video>
-  <figcaption>One reverse pass through a 2.3 GHz patch antenna on RT/Duroid 5880: how much each of 20,592 substrate cells moves |S11| at 2.356 GHz. The map is strongest under the two radiating edges and nearly zero along the centre line, the field pattern of the TM010 mode. <a href="/rfx/showcase/sensitivity-map/">Read the case →</a></figcaption>
+  <figcaption>One reverse pass through a 2.3 GHz patch antenna on RT/Duroid 5880: how much each substrate cell moves |S11| 1 % above the return-loss minimum (earlier rfx 1.8.0 loop on the 4-cell mesh). The map is strongest under the two radiating edges and nearly zero along the centre line, the field pattern of the TM010 mode. <a href="/rfx/showcase/sensitivity-map/">Read the case →</a></figcaption>
 </figure>
 
 <div data-rfx="proof">
   <div>
-    <strong>1.4×</strong>
-    <p>Value and gradient over 12,400 to 43,008 design cells, compared with one forward run on the same RTX A6000. Central differences would take 4.9 to 16.8 days.</p>
+    <strong>2.5×</strong>
+    <p>Value and gradient over 12,400 to 43,008 design cells, compared with one forward run on the same RTX A6000 (rfx v2.0.0). Central differences would take 2.4 to 8.2 days.</p>
     <a href="/rfx/showcase/gradient-cost/">What a gradient costs →</a>
   </div>
   <div>
     <strong>2×10⁻⁵</strong>
-    <p>Largest relative difference between the reverse-mode gradient and central finite differences on the patch (float64). Finite differences cannot see an error from the record length, so the gradient was also repeated with a 1.5× longer simulation time: the gradient sums over the four blocks large enough to judge moved by at most 5.4×10⁻⁴.</p>
+    <p>Largest relative difference between the reverse-mode gradient and central finite differences on the patch (float64, 4-cell mesh). Finite differences cannot see an error from the record length, so the gradient was also repeated with a 1.5× longer simulation time on the 12-cell mesh: the gradient sums over the four blocks large enough to judge moved by at most 7.6×10⁻⁵.</p>
     <a href="/rfx/showcase/sensitivity-map/">How the gradient was checked →</a>
   </div>
 </div>
@@ -74,14 +74,13 @@ cells take 1.4 times as long as the simulation alone.
     <a href="/rfx/showcase/sensitivity-map/"><img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/patch_sensitivity_site.png" loading="lazy" alt="Map of the derivative of |S11|² with respect to the permittivity of each substrate cell under a patch antenna, beside its |S11| curve and its |E_z|² map" /></a>
     <h3>Which cells move the match?</h3>
     <p>One reverse pass maps the sensitivity of a patch antenna's |S11| to every substrate cell.</p>
-    <p><small>20,592 cells, one pass</small></p>
+    <p><small>up to 555,984 cells, one pass</small></p>
     <a href="/rfx/showcase/sensitivity-map/">Read the case →</a>
   </section>
   <section data-rfx="card">
-    <a href="/rfx/showcase/gradient-cost/"><img src="https://remilab.cnu.ac.kr/share/52f0a897c27d/patch-sensitivity/gradient_cost_site.png" loading="lazy" alt="Bar chart of wall time on an RTX A6000 for a forward run, the value and gradient, and central differences, for three design regions" /></a>
     <h3>What a gradient costs</h3>
     <p>Time and memory for the value and gradient against a forward run, as the design region grows.</p>
-    <p><small>24 s vs 4.9–16.8 days</small></p>
+    <p><small>21 s vs 2.4–8.2 days</small></p>
     <a href="/rfx/showcase/gradient-cost/">Read the case →</a>
   </section>
 </div>
