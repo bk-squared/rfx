@@ -319,6 +319,7 @@ def test_one_traced_mesh_axis_refuses_every_reached_absorbing_face():
     def traced(dz):
         traced_sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                                 boundary="cpml", cpml_layers=2, dz_profile=dz,
+                                nominal_profiles={"z": np.ones(8)},
                                 dt=1e-12, dt_min_cell=1.)
         continued_conductor_shape(traced_sim, traced_sim._build_nonuniform_grid(),
                                   shape, unextendable=[])
@@ -334,13 +335,14 @@ def test_one_traced_mesh_axis_refuses_every_reached_absorbing_face():
 
 @pytest.mark.parametrize("axis", range(3))
 @pytest.mark.parametrize("side", ("lo", "hi"))
-@pytest.mark.parametrize("nominal,gap,refused", [
-    (None, 1., True), (None, 1.1, False),
-    ([2., 2., 1., 1., .5, .5, .5, .5], 1.5, True),
-    ([2., 2., 1., 1., .5, .5, .5, .5], 2.1, False),
-    ([.5] * 16, .75, False),
+@pytest.mark.parametrize("nominal,gap,refuse_lo,refuse_hi", [
+    (None, 1., True, True), (None, 1.1, True, True),
+    ([1.] * 8, 1., True, True), ([1.] * 8, 1.1, False, False),
+    ([2., 2., 1., 1., .5, .5, .5, .5], 1.5, True, False),
+    ([2., 2., 1., 1., .5, .5, .5, .5], 2.1, False, False),
+    ([.5] * 16, .75, False, False),
 ])
-def test_traced_conductor_reach_uses_largest_declared_cell(axis, side, nominal, gap, refused):
+def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap, refuse_lo, refuse_hi):
     import jax
     from rfx._traced_refusal import TracedStructureRefusal
 
@@ -362,8 +364,45 @@ def test_traced_conductor_reach_uses_largest_declared_cell(axis, side, nominal, 
         return profile
 
     profile = np.ones(8) if nominal is None else np.array(nominal)
+    refused = refuse_lo if side == "lo" else refuse_hi
     if refused:
-        with pytest.raises(TracedStructureRefusal, match=f"{name}-{side}"):
+        match = f"nominal_profiles for axis {name}" if nominal is None else f"{name}-{side}"
+        with pytest.raises(TracedStructureRefusal, match=match):
             traced(profile)
     else:
         np.testing.assert_array_equal(traced(profile), profile)
+
+
+@pytest.mark.parametrize("axis", range(3))
+@pytest.mark.parametrize("side,refused", [("lo", True), ("hi", False)])
+@pytest.mark.parametrize("device_array", [False, True])
+def test_traced_grid_nodes_use_concrete_profile_edges_and_name_axis(axis, side, refused, device_array):
+    import jax
+    from rfx._traced_refusal import TracedStructureRefusal
+
+    name = "xyz"[axis]
+    # Concrete x/y profiles require matching boundary cells; z permits unequal edges.
+    profile = np.array([2., 2., 1., 1., .5, .5, .5, .5]) if axis == 2 else np.ones(8)
+    if device_array:
+        profile = jax.numpy.asarray(profile)
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2, **{f"d{name}_profile": profile})
+    grid = sim._build_nonuniform_grid()
+    lo, hi = [3.] * 3, [5.] * 3
+    if side == "lo":
+        lo[axis] = 1.5 if axis == 2 else .5  # Inside the declared first cell.
+    else:
+        hi[axis] = 6.5  # Clear of the declared last cell (.5 on z, 1 on x/y).
+    shape = Box(tuple(lo), tuple(hi))
+    field = ("dx_arr", "dy_arr", "dz")[axis]
+
+    @jax.jit
+    def traced(cells):
+        continued_conductor_shape(sim, grid._replace(**{field: cells}), shape)
+        return cells
+
+    if refused:
+        with pytest.raises(TracedStructureRefusal, match=f"mesh axis {name} is traced"):
+            traced(getattr(grid, field))
+    else:
+        np.testing.assert_array_equal(traced(getattr(grid, field)), getattr(grid, field))
