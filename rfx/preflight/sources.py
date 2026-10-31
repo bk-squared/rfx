@@ -138,25 +138,16 @@ def _validate_cfg_source_on_reflector_plane(
                 if face_kind == "PMC":
                     if comp_field == "e" and is_tangential:
                         # The image couples the face node to the reflected interior.
-                        if self._solver == "adi":
-                            msg = (
-                                f"Source/port at {pos} m (component={pe.component}) "
-                                f"sits on the magnetic-wall plane {face}. "
-                                f"solver='adi' does not realise a magnetic wall: "
-                                f"it solves this face as an electric wall wherever "
-                                f"the source sits. Use solver='yee' for a magnetic wall."
-                            )
-                        else:
-                            msg = (
-                                f"Source/port at {pos} m (component={pe.component}) "
-                                f"sits on the magnetic-wall plane {face}. The "
-                                f"Yee magnetic image keeps tangential E "
-                                f"on the declared face coupled to the interior. "
-                                f"Face sources and lumped/wire ports describe the full symmetric "
-                                f"object, including its reflected half. Distributed lumped/wire "
-                                f"measurements remain unsupported. Waveguide ports "
-                                f"refuse them because their aperture mode solver is PEC-only."
-                            )
+                        msg = (
+                            f"Source/port at {pos} m (component={pe.component}) "
+                            f"sits on the magnetic-wall plane {face}. The "
+                            f"Yee magnetic image keeps tangential E "
+                            f"on the declared face coupled to the interior. "
+                            f"Face sources and lumped/wire ports describe the full symmetric "
+                            f"object, including its reflected half. Distributed lumped/wire "
+                            f"measurements remain unsupported. Waveguide ports "
+                            f"refuse them because their aperture mode solver is PEC-only."
+                        )
                     elif comp_field == "e" and not is_tangential:
                         msg = (
                             f"Source/port at {pos} m (component={pe.component}) "
@@ -239,8 +230,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``dt`` is that of the realized grid an existing campaign context holds
     (uniform or graded; preflight builds it before this check), else the
     uniform-lane Courant estimate from the preflight ``dx``; the check never
-    builds either. ADI's
-    ``adi_cfl_factor`` is not in it, so on ADI the actual dt is larger.
+    builds either.
 
     Issue 1668: every excited drive is judged -- sources and lumped, wire
     and MSL ports by their waveform, coaxial ports by their excitation,

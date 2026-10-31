@@ -278,11 +278,6 @@ def compute_mixed_s_matrix(
             "compute_mixed_s_matrix() is not supported with SBP-SAT "
             "subgridding."
         ), _diagnostics)
-    if self._solver == "adi":
-        raise diagnostic_refusal(RfxUnsupported(
-            "compute_mixed_s_matrix() is not supported with "
-            "solver='adi'; use the uniform Yee solver."
-        ), _diagnostics)
 
     n_lw = len(lw_entries)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj

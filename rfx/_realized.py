@@ -117,7 +117,7 @@ def owned(start, count):
 
 def enter(sim, lane):
     ACTIVE.sim = sim
-    ACTIVE.lane = "fwd_adi" if lane == "fwd_uniform" and sim._solver == "adi" else lane
+    ACTIVE.lane = lane
 
 
 def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
