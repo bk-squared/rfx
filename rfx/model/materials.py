@@ -990,6 +990,73 @@ def validate_dispersion(realized, poles, dt):
         raise ValueError("realized ADE coefficients have different pole parameters")
 
 
+def _design_box_constant_ca(bounds, sigma_box, materials, shape, held_edges=(), *, grid=None):
+    """Prove constant Ca for each complete write-window component (#2217).
+
+    A cell conductivity override keeps all three derivatives. An edge tuple
+    may release a component only when its entry and the background are both
+    concrete and exactly zero. Checking the entire background write window
+    also covers every coefficient restored on a held edge, even when the
+    edge tuple overwrites its load before that restoration.
+
+    Realize only concrete conductivity here, using the same edge-material
+    rule as the coefficient builder. Compile-time evaluation keeps a closed
+    background concrete under jit(grad); epsilon is irrelevant to this proof.
+    Traced inputs are never coerced to host values or assumed lossless.
+    """
+    import numpy as np
+    from rfx.core.yee import component_e_materials, map_lumped
+    from rfx.model.design_box import design_box_window
+
+    per_edge = isinstance(sigma_box, (tuple, list))
+    if sigma_box is not None and not per_edge:
+        return (False,) * 3
+    eligible = ((True,) * 3 if not per_edge else tuple(
+        not is_tracer(s) and bool(np.all(np.asarray(s) == 0))
+        for s in sigma_box))
+    sigma = materials.sigma
+    stamps = materials.sigma_lumped
+    films = lumped_components(materials.sigma_film)
+    if not any(eligible) or any(is_tracer(a) for a in
+                               jax.tree.leaves((sigma, stamps))):
+        return (False,) * 3
+    eligible = tuple(ok and not is_tracer(f)
+                     for ok, f in zip(eligible, films))
+    if not any(eligible):
+        return (False,) * 3
+    _, win, inner, _ = design_box_window(bounds, shape)
+    with jax.ensure_compile_time_eval():
+        widths = electric_cell_sizes(grid)
+        if any(is_tracer(d) for d in jax.tree.leaves(widths)):
+            return (False,) * 3
+        widths = None if widths is None else tuple(
+            None if d is None else d[w] for d, w in zip(widths, win))
+        walls = tuple(wall and w.stop == n for wall, w, n in
+                      zip(unpadded_high_walls(grid), win, shape))
+        sigma = jnp.asarray(sigma)[win]
+        background = MaterialArrays(
+            eps_r=jnp.ones_like(sigma), sigma=sigma, mu_r=None,
+            sigma_lumped=map_lumped(
+                stamps, lambda a: jnp.asarray(a)[win].astype(sigma.dtype)),
+            sigma_film=tuple(None if f is None or is_tracer(f) else
+                             jnp.asarray(f)[win] for f in films))
+        _, edge_sigma = component_e_materials(
+            background, (False,) * 3, high_wall=walls, cell_sizes=widths)
+        candidates = [edge_sigma]
+        if held_edges:
+            # Held coefficients restore the original stamp precision, while
+            # the override stage casts stamps to the cell sigma precision.
+            held_background = background._replace(sigma_lumped=map_lumped(
+                stamps, lambda a: jnp.asarray(a)[win]))
+            _, held_sigma = component_e_materials(
+                held_background, (False,) * 3, high_wall=walls, cell_sizes=widths)
+            candidates.append(held_sigma)
+        return tuple(ok and all(not is_tracer(row[c]) and
+                                bool(np.all(np.asarray(row[c][inner]) == 0))
+                                for row in candidates)
+                     for c, ok in enumerate(eligible))
+
+
 def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
                             held_edges=(), *, grid=None):
     """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
@@ -1088,6 +1155,10 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
                    for a, b, m in zip(ca, bg, masks))
         cb = tuple(c if m is None else jnp.where(m, b[1][inner], c)
                    for c, b, m in zip(cb, bg, masks))
+    constant_ca = _design_box_constant_ca(
+        bounds, sigma_box, materials, shape, held, grid=grid)
+    ca = tuple(jax.lax.stop_gradient(a) if constant else a
+               for a, constant in zip(ca, constant_ca))
     return write_bounds, ca, cb
 
 
