@@ -18,7 +18,7 @@
     {
       "id": "sensitivity-map",
       "title": "Which cells move a patch antenna's match?",
-      "question": "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of each of 20,592 substrate cells of a probe-fed patch.",
+      "question": "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of every substrate cell of a probe-fed patch: 555,984 cells on the finest of three meshes.",
       "route": "/rfx/showcase/sensitivity-map/",
       "markdown": "/rfx/markdown/showcase/sensitivity-map.md",
       "rfx_commits": ["655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"],
