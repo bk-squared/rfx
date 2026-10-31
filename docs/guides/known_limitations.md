@@ -243,7 +243,7 @@ at its drawn plane. Effect on S-parameters, resonance frequencies and RCS: not m
 A finer mesh shrinks the region affected near an edge. On a sphere at radius 4.3, 8.6 and 17.2 cells it also shrinks
 the share of nearly tangent cells: the faces off by more than 0.1 of a face were 17, 4 and 6, while the cut faces grew
 16x. The largest deviation does not shrink. Judge a body with edges, or a curved body, by a mesh series of at least
-three refinements. Measured 2026-10-31 with the conformal update of #2240; record kept with the project.
+three refinements. Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); record kept with the project.
 
 ### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
 
