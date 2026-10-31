@@ -446,7 +446,7 @@ def test_patch_edgefed_s11_passive_and_match():
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=280.0)
     _trunc = [
         str(w.message) for w in _settling
-        if "#332" in str(w.message) or "ring-down truncated" in str(w.message)
+        if "ring-down truncated" in str(w.message)
     ]
     print("[PATCH-EDGEFED/118-SETTLING] framework #332 ring-down energy witness: "
           f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")
