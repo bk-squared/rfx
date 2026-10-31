@@ -38,6 +38,20 @@ def test_variant_in_place_append_is_private(attr, form):
             assert all(x is y for x, y in zip(getattr(sim, a), getattr(variant, a)))
 
 
+def test_variant_root_preserves_line_stub_scope_and_isolates_unrelated_simulation():
+    from rfx.preflight.line_stub import _ReadScope, _active_band
+
+    sim = model()
+    variant = declaration_variant(sim)
+    nested = declaration_variant(variant)
+    assert variant._declaration_root is sim
+    assert nested._declaration_root is sim
+    _line_stub_scope = _ReadScope(sim, (1e9, 2e9))
+    assert _active_band(variant) == (1e9, 2e9)
+    assert _active_band(nested) == (1e9, 2e9)
+    assert _active_band(model()) is None
+
+
 def test_variant_replacements_and_cache_release():
     sim = model()
     cache_names = [a for a, reason in NOT_DECLARATIONS if reason == "cache"]
