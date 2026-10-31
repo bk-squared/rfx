@@ -201,12 +201,6 @@ REVIEWED = {
 
     # WRITE targets. The script creates the directory and writes into it; it
     # never expects to find anything there, so a clone losing the path is fine.
-    "scripts/archive/cpml_reflectivity_sweep.py":
-        (1, "output path, written after os.makedirs"),
-    "scripts/archive/issue31_patch_validation.py":
-        (1, "figure output directory, written after os.makedirs"),
-    "scripts/archive/issue48_uniform_patch_ffrp.py":
-        (1, "figure output directory, written after os.makedirs"),
     "scripts/memory_reduction_planning_artifact.py":
         (1, "argparse default for --output, a write target"),
     "validation/research/subgrid/13_subgrid_material_validation.py":
@@ -218,8 +212,6 @@ REVIEWED = {
     "examples/inverse_design/multilayer_ar_coating.py":
         (1, "load_meep_reference returns None when the file is absent"),
     "scripts/diagnostics/build_msl_openems_sparameter_comparison.py":
-        (1, "argparse default for an external reference that was never tracked"),
-    "scripts/diagnostics/compare_msl_thru_openems_reference.py":
         (1, "argparse default for an external reference that was never tracked"),
 }
 
