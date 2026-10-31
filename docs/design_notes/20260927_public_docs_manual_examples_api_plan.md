@@ -50,7 +50,7 @@ RFX 사이트를 **시각적 사례로 가능성을 발견하고 → 작은 예�
 
 - [공개 문서 소유권과 제외 정책](../guides/public_docs_architecture.md)
 - [현재 landing](../public/index.mdx), [Examples](../public/examples/index.mdx),
-  [Gallery](../public/gallery/index.mdx), [패치 진단의 범위](../public/gallery/patch_antenna.mdx)
+  [Gallery](../public/gallery/index.mdx), 패치 진단의 범위(gallery/patch_antenna.mdx, 2.0에서 삭제되어 저장소에 없음)
 - [갤러리 생성기](../../scripts/precompute_gallery_artifacts.py),
   [route 검사](../../scripts/check_public_docs_manifest.py),
   [배포 exporter](../../scripts/export_public_docs_to_gitops.py)
