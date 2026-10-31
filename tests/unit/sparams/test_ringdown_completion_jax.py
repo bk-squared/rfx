@@ -1,4 +1,4 @@
-"""The traced ring-down completion (``rfx._ringdown_jax``) against an analytic oracle (issue #1254).
+"""The traced ring-down completion (``rfx.ringdown._jax``) against an analytic oracle (issue #1254).
 
 Physics. A record made of damped oscillations whose frequencies, dampings and
 amplitudes depend on a parameter ``p`` has a known infinite-record DFT and a
@@ -43,7 +43,7 @@ import numpy as np
 import pytest
 
 import rfx.measurement.ringdown_tail as ringdown_tail
-from rfx import _ringdown_jax as rj
+from rfx.ringdown import _jax as rj
 from rfx import ringdown as rd
 from tests._x64_compat import enable_x64
 

@@ -99,10 +99,10 @@ if TYPE_CHECKING:
 
 from rfx._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
-from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
-from rfx._ringdown_growth_judge import (
+from rfx.ringdown._sensitivity import sensitivity_truncation_error, required_t_over_tau
+from rfx.ringdown._growth_judge import (
     GROWING_POLE_RULE, GrowingPoleJudgement, growing_poles, judge_growing_poles)
-from rfx._ringdown_pencil import (
+from rfx.ringdown._pencil import (
     IdentificationMemoryRefused,
     _check_run_identification_memory,
     _witness_identification,
@@ -2204,7 +2204,7 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
         plan = ringdown._ctx.plan
         r_long = float(plan.source_ratio_long)
         tol = float(plan.spec.source_off_tol)
-        from rfx import _ringdown_jax as rj
+        from rfx.ringdown import _jax as rj
         from rfx.core.jax_utils import is_tracer
         status = ringdown._status
         if not is_tracer(status):
@@ -2267,7 +2267,7 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
 
 def _status_reason(code: int, consistency=None, *, kept_count, pole_budget) -> str:
     """Why a traced completion is NaN, from its status code."""
-    from rfx import _ringdown_jax as rj
+    from rfx.ringdown import _jax as rj
     code = int(code)
     if code == rj.STATUS_FAILED:
         return "the host identification failed"
@@ -2488,7 +2488,7 @@ class RingdownForward(RingdownRun):
         import jax
         import jax.numpy as jnp
 
-        from rfx import _ringdown_jax as rj
+        from rfx.ringdown import _jax as rj
         from rfx.core.dft_utils import half_step_current_phase
 
         metas = tuple(meta for meta, _accs in (result.wire_port_sparams or ()))
