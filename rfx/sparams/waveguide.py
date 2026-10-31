@@ -104,6 +104,7 @@ def compute_waveguide_s_matrix(
     num_periods: float = 20.0,
     normalize: bool | str = False,
     subpixel_smoothing: bool | str = False,
+    conformal_pec: bool | str | None = None,
     eps_override: "jnp.ndarray | None" = None,
     sigma_override: "jnp.ndarray | None" = None,
     checkpoint_segments: int | None = None,
@@ -186,6 +187,12 @@ def compute_waveguide_s_matrix(
         the host for every ``normalize`` value and is outside the
         differentiable chain; ``eps_override`` / ``sigma_override``
         differentiation is single-mode only.
+    conformal_pec : bool, str or None
+        None follows Boundary(conformal=True); True/False explicitly selects
+        conformal PEC. "cut_cell_floor" uses true edge lengths and floored
+        cut-face areas on uniform device and boundary-wall reference scans.
+        It requires Simulation(dt=q * Grid.courant_dt(realized_dx)), q=0.5
+        or 0.25, and refuses custom port_reference_sims.
     checkpoint_segments : int or None
         Segmented gradient checkpointing for the **uniform** waveguide
         AD path.  Splits the ``n_steps`` scan
@@ -282,6 +289,13 @@ def compute_waveguide_s_matrix(
         Material rasterization is a cell-centre step test on realized nodes.
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(self, "waveguide_s_matrix", conformal_pec, smoothing=subpixel_smoothing)
+    if conformal_pec is None:
+        conformal_pec = bool(self._boundary_spec.conformal_faces())
+    if conformal_pec == "cut_cell_floor" and port_reference_sims is not None:
+        raise NotImplementedError('conformal_pec="cut_cell_floor" cannot carry port_reference_sims; '
+                                  'use the uniform boundary-wall reference')
     from rfx.boundaries.features import refuse_traced_guide_mesh
     refuse_traced_guide_mesh(self, "compute_waveguide_s_matrix")
     resolve_field_dtype(self._precision)
@@ -387,7 +401,7 @@ def compute_waveguide_s_matrix(
     from rfx.boundaries.pmc import refuse_waveguide_pmc
     refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix")
+    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
     if port_reference_sims is not None:
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
@@ -575,7 +589,7 @@ def compute_waveguide_s_matrix(
     _wg_pec_wires = tuple(_wg_pec_wires)
     from rfx.model.tensor_operands import refuse_full_tensor_conformal
     refuse_full_tensor_conformal(
-        subpixel_smoothing, self._boundary_spec.conformal_faces(), pec_shapes)
+        subpixel_smoothing, conformal_pec, pec_shapes)
     # The smoothed tensor (Stage 1 and "kottke_pec") is built from the DECLARED
     # shapes and replaces the cell permittivity in the E update, so an
     # eps_override would never reach the solve: S came back identical with a
@@ -602,8 +616,7 @@ def compute_waveguide_s_matrix(
         self._refuse_unsupported_run_kwargs(
             "waveguide S-matrix with Debye/Lorentz materials", {
                 "subpixel_smoothing": subpixel_smoothing,
-                "conformal_pec": bool(
-                    self._boundary_spec.conformal_faces() and pec_shapes),
+                "conformal_pec": conformal_pec if pec_shapes else False,
             },
             instead="remove the Debye/Lorentz poles",
             entry="compute_waveguide_s_matrix()",
@@ -794,7 +807,7 @@ def compute_waveguide_s_matrix(
     )
     aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas = form_tensor_operands(
         self, grid, materials, subpixel_smoothing=subpixel_smoothing,
-        conformal=self._boundary_spec.conformal_faces(), conformal_min_weight=0.1,
+        conformal=conformal_pec, conformal_min_weight=0.1,
         pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
     if subpixel_smoothing:
         from rfx.geometry.smoothing import warn_unextendable_shapes
@@ -808,6 +821,7 @@ def compute_waveguide_s_matrix(
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
+        conformal_pec=conformal_pec,
         reference_eps=float(reference_medium.eps_r))
 
     if has_multimode and _wg_sheet_ctx is not None:

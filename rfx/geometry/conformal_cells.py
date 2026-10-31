@@ -81,6 +81,32 @@ def sc_clamp(lengths, areas):
     return tuple(result)
 
 
+def conformal_b_floor(lengths, areas, q):
+    """Raise cut H faces to q**2 times their largest bounding E edge.
+
+    A face normal to ``normal`` at a node has two edges along each
+    in-plane axis: at that node and one node higher along the other
+    in-plane axis. Missing high-side edges supply zero; geometry supplies
+    a high halo so every returned physical face has all four edges.
+    Neither lengths nor uncut (zero or one) areas are changed.
+    """
+    result = []
+    for normal, area in enumerate(areas):
+        largest = np.zeros_like(area)
+        for axis in range(3):
+            if axis == normal:
+                continue
+            transverse = 3 - axis - normal
+            high = np.roll(lengths[axis], -1, axis=transverse).copy()
+            end = [slice(None)] * 3
+            end[transverse] = -1
+            high[tuple(end)] = 0.
+            largest = np.maximum(largest, np.maximum(lengths[axis], high))
+        result.append(np.where((area > 0) & (area < 1),
+                               np.maximum(area, q**2 * largest), area))
+    return tuple(result)
+
+
 def _refuse_off_lattice_box(box, lattice, widths, domain, what):
     """A Box with no node inside gives the cut cells nothing; only its staircase faces exist.
 
@@ -102,8 +128,12 @@ def _refuse_off_lattice_box(box, lattice, widths, domain, what):
                     'move it onto node planes, refine the mesh, or use conformal_pec=False')
 
 
-def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
+def compute_conformal_fractions(grid, pec_shapes, *, clamp=True, conformal_pec=None):
     """Return E free lengths and H free areas on the uniform Yee lattice."""
+    floor = conformal_pec == "cut_cell_floor"
+    if floor:
+        from rfx.grid import Grid
+        q = float(grid.dt) / Grid.courant_dt(grid.dx, 2 if grid.is_2d else 3)
     if not pec_shapes:
         ones = (jnp.ones(grid.shape, dtype=jnp.float32),) * 3
         return ones, ones
@@ -115,6 +145,8 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
         width = float(cells[0])
         nodes = _axis_node_positions(cells, getattr(grid, f'pad_{"xyz"[axis]}_lo'))
         line = np.concatenate(([nodes[0] - width], nodes, [nodes[-1] + width]))
+        if floor:
+            line = np.concatenate((line, [nodes[-1] + 2 * width]))
         lattice.append((line, None))
         if axis == 2 and getattr(grid, 'is_2d', False):
             line = np.full_like(line, nodes[0])  # The collapsed lane repeats its physical slice.
@@ -164,7 +196,10 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
                 corner[a] = slice(1, None)
             corners.append(sdf[tuple(corner)])
         areas.append(face_fraction(corners, (widths[u], widths[v])))
-    if clamp:
+    if floor:
+        areas = conformal_b_floor(lengths, areas, q)
+    elif clamp:
         lengths = sc_clamp(lengths, areas)
-    return tuple(tuple(jnp.asarray(a[1:, 1:, 1:], dtype=jnp.float32) for a in arrays)
+    physical = (slice(1, -1),) * 3 if floor else (slice(1, None),) * 3
+    return tuple(tuple(jnp.asarray(a[physical], dtype=jnp.float32) for a in arrays)
                  for arrays in (lengths, areas))

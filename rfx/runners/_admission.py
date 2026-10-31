@@ -881,6 +881,53 @@ ADMITS: dict[str, frozenset] = {
 # never a traced value, and a call that passes none is judged as the default
 # call. An explicit conformal_pec=True on a model with no PEC to conform is a
 # no-op on every lane (Simulation._has_pec_to_conform), so it asks for nothing.
+FLOOR_VALUE = "cut_cell_floor"
+# Run-level operand declaration: uniform Yee device and waveguide reference scans.
+FLOOR_LANES = frozenset({"run_uniform", "waveguide_s_matrix"})
+
+
+def admit_conformal_floor(sim, lane, conformal=None, *, smoothing=False, grid=None):
+    """Keep a uniform pin and its operand declaration together on every entry."""
+    floor = conformal == FLOOR_VALUE
+    uniform_pin = not sim._uses_nonuniform_mesh and sim._dt_pin is not None
+    if floor and (lane not in FLOOR_LANES or sim._uses_nonuniform_mesh
+                  or sim._solver != "yee" or sim._refinement is not None
+                  or smoothing in ("kottke_pec", "full_tensor") or sim._stencil_order != 2):
+        raise RfxUnsupported(
+            f'conformal_pec="cut_cell_floor" is not implemented on {lane} '
+            f'with subpixel_smoothing={smoothing!r}; use uniform single-device Yee, stencil_order=2')
+    if uniform_pin and (not floor or lane not in FLOOR_LANES):
+        raise RfxUnsupported(
+            'a uniform dt= pin requires run(conformal_pec="cut_cell_floor"); '
+            f'{lane} does not carry this declaration')
+    if floor:
+        grid = sim._build_grid() if grid is None else grid
+        if sim._dt_pin is None:
+            from rfx.grid import Grid
+            ordinary = Grid.courant_dt(grid.dx, 2 if grid.is_2d else 3)
+            raise RfxUnsupported(
+                'conformal_pec="cut_cell_floor" requires an explicit uniform pin: '
+                f'dt=0.5 * Grid.courant_dt ({0.5 * ordinary!r} s) or '
+                f'dt=0.25 * Grid.courant_dt ({0.25 * ordinary!r} s)')
+
+
+def resolve_run_conformal(sim, conformal_pec, devices, smoothing):
+    # ---- Stage 1 conformal PEC auto-routing ----
+    # When the user passes ``conformal_pec=None`` (default), derive
+    # it from ``BoundarySpec.conformal_faces()``: any axis declared
+    # ``Boundary(conformal=True)`` flips conformal_pec on. Explicit
+    # True/False from the caller is preserved as a power-user
+    # override (e.g. for A/B regression diagnosis).
+    if conformal_pec is None:
+        conformal_pec = bool(sim._boundary_spec.conformal_faces())
+    lane = ("run_distributed" if devices is not None and len(devices) > 1 else
+            "run_subgridded" if sim._refinement is not None else
+            "run_adi" if sim._solver == "adi" else
+            "run_nonuniform" if sim._uses_nonuniform_mesh else "run_uniform")
+    admit_conformal_floor(sim, lane, conformal_pec, smoothing=smoothing)
+    return conformal_pec
+
+
 def _conformal_requested(sim, run_args) -> bool:
     conformal = run_args.get("conformal_pec")
     if conformal is None:
@@ -974,6 +1021,10 @@ def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
     admits, gates, decided = ADMITS[lane], LANE_GATES.get(lane, {}), {}
     out = []
     for row in active(sim, run_args):
+        if (row == ("_dt_pin", "") and lane in FLOOR_LANES
+                and not sim._uses_nonuniform_mesh
+                and (run_args or {}).get("conformal_pec") == FLOOR_VALUE):
+            continue
         if row in admits:
             continue
         gate = gates.get(row)
@@ -1151,6 +1202,8 @@ def refuse_coaxial_port(sim, entry: str) -> None:
     """The one coaxial-port refusal of ``run()`` and ``forward()`` (#2075),
     raised before mesh planning while no time-stepping lane admits the row;
     ``entry`` selects the advice."""
+    if entry == "forward":
+        admit_conformal_floor(sim, "fwd_uniform")
     row = ("_coaxial_ports", "coax_port")
     if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
                                       for lane in LANES):
@@ -1167,6 +1220,8 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
+                          smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
         refuse_distributed_sources(sim, lane)
     refuse_undriven_drives(sim)
@@ -1531,3 +1586,8 @@ def admit_sheet_layout_lane(sim, *, distributed):
     if not sim._uses_nonuniform_mesh or sim._solver == 'adi' or sim._refinement is not None:
         from rfx.runners.uniform_forward import refuse_sheet_layout
         refuse_sheet_layout()
+
+
+def refuse_forward_floor():
+    """Name the run-only value before forward's generic unknown-keyword check."""
+    raise RfxUnsupported('forward() refuses conformal_pec="cut_cell_floor"; use uniform run()')

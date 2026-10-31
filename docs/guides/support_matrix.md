@@ -133,6 +133,44 @@ count; the measurement (record kept with the project)
 uses a fitted single-device baseline rather than a direct single-device timing
 for the large box.
 
+## Conformal PEC: cut-cell floor opt-in (v2.1)
+
+The default conformal PEC retains its SC-clamped edge lengths and ordinary step.
+`run(conformal_pec="cut_cell_floor")` keeps the true free edge lengths and raises
+only cut-face areas to `max(sbar, q**2 * max(bounding edge lengths))`.
+Declare the step explicitly with `Simulation(..., dt=0.5 * Grid.courant_dt(dx))`
+or `dt=0.25 * Grid.courant_dt(dx)`. The ratio is checked against the realized
+spacing within relative 1e-9; for 2-D Yee use `Grid.courant_dt(dx, ndim=2)`.
+Every other uniform pin, a pin without this opt-in, or the opt-in without a pin
+is refused. An explicit `n_steps` remains a count of steps and covers half or
+one quarter of the ordinary physical duration.
+
+At q = 0.5, the 9 mm PEC sphere over 8–12 GHz is first order. Its one-radius
+offset against Mie is about +0.02 cell, about 1/9 of the default, at twice the
+default's steps:
+
+| Cell (mm) | Default offset (cell) | q = 0.5 offset (cell) | q = 0.5 backscatter max error (dB) |
+|---|---|---|---|
+| 0.75 | +0.19 | +0.0212 | 0.098 |
+| 0.5 | +0.18 | +0.0212 | 0.063 |
+| 0.375 | +0.20 | +0.0197 | 0.040 |
+
+The convergence-order target (order >= 1.5) was not met.
+Source: `rfx-archive/rfx/records/20261030-1651-option-b/` at `c0d9bcafa`.
+
+At q = 0.25, the offset is about -0.002 cell at 0.5 and 0.375 mm, at the fit's
+resolution, about 1/100 of the default; four times the default's steps.
+Source: `rfx-archive/rfx/records/20261030-1651-floor-f-three-mesh/` at `c7359611f`.
+No convergence order is claimed here.
+
+Uniform 3-D and 2-D Yee `run()` and uniform waveguide S-matrix device/reference
+scans carry the floor. The waveguide calculator takes the same run-level
+`conformal_pec="cut_cell_floor"` and explicit `Simulation(dt=...)` declarations.
+`forward()`, graded, multi-device, subgridded, ADI,
+`subpixel_smoothing="kottke_pec"`, and openEMS export refuse the value by name.
+`Boundary(conformal=...)` takes no string opt-in. Existing conformal restrictions,
+including lumped/wire S-matrices and dispersive E updates, still apply.
+
 ## Refused inputs
 
 rfx refuses an input it would not solve, before the first time step, so a model
@@ -219,6 +257,7 @@ Left out of these tables, each for one reason:
 | `boundary='upml'` | `_boundary/upml` | supported | refused | refused | refused (waveguide_s_matrix) | Use `boundary='cpml'`. |
 | A magnetic (PMC) face | `_boundary_spec/pmc_face` | supported | supported | supported | refused (waveguide_s_matrix, vmap_sweep_batched) | The waveguide S-matrix and the batched sweep refuse it; a multi-device run refuses it together with a wire port or lumped-port S on either mesh, and with any port or frequency-domain record on a graded mesh. |
 | Conformal PEC (`Boundary(conformal=True)` or `conformal_pec=True`) | `_boundary_spec/conformal` | supported (run); refused (forward) | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, vmap_sweep_batched, material_fit) | It is solved by a single-device uniform `run()` only. |
+| Conformal PEC cut-cell floor (`conformal_pec="cut_cell_floor"`) | `_dt_pin` + run-level value | supported (uniform Yee run); refused (forward) | refused | refused | supported (uniform waveguide device/reference); refused elsewhere | Explicit q=0.5 or 0.25 Courant pin; see [measured offsets and limits](#conformal-pec-cut-cell-floor-opt-in-v21). |
 | Conformal PEC together with a lumped or wire-port S-matrix request | `_boundary_spec/conformal_s_matrix` | refused | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, vmap_sweep_batched, material_fit) | Request the S-matrix without conformal PEC. |
 | A periodic axis | `_periodic_axes/periodic` | supported | supported (constant cell size along the axis; refused with a graded profile along it, a plane wave or `interface_eps='dual_average'`) | refused | refused (waveguide_s_matrix) | Run it on one device; on a graded mesh keep the periodic axis's cell size constant. |
 | `cpml_kappa_max` other than 1 | `_cpml_kappa_max/kappa` | supported | refused | supported (uniform); refused (graded) | — | Leave `cpml_kappa_max=1` on a graded mesh. |

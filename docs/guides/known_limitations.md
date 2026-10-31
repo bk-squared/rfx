@@ -223,6 +223,7 @@ backscatter errors were larger than the staircase's at each of three meshes, and
 `subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until a fix lands (planned for 2.1), use the staircase and judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
+The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
 Tracker: #1651
 
 ### `run()` inside a user `jax.jit` does not always reproduce plain `run()`

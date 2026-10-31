@@ -163,7 +163,19 @@ def _build_uniform_grid(sim, axes):
         sim._domain, physical, dx, automatic=sim._declared_mesh["_dx"] is None,
         wall_axes="".join(a for a in "xyz" if kinds[a] == "wall"
                           and not (a == "z" and sim._mode.startswith("2d"))))
-    return Grid(**kwargs, dx=dx, periodic_axes=periodic, boundary_depths=depths)
+    grid = Grid(**kwargs, dx=dx, periodic_axes=periodic, boundary_depths=depths)
+    pin = sim._dt_pin
+    if pin is not None:
+        import math
+        ordinary = Grid.courant_dt(grid.dx, 2 if grid.is_2d else 3)
+        admitted = (0.5 * ordinary, 0.25 * ordinary)
+        if not any(math.isclose(float(pin), step, rel_tol=1e-9, abs_tol=0.) for step in admitted):
+            raise ValueError(
+                'conformal_pec="cut_cell_floor" requires dt=0.5 * Grid.courant_dt '
+                f'({admitted[0]!r} s) or dt=0.25 * Grid.courant_dt ({admitted[1]!r} s) '
+                f'on this realized grid; got dt={pin!r}')
+        grid.dt = float(pin)
+    return grid
 
 
 def judge_wall_axes(sim, grid, *, boundary_depths=None):

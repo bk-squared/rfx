@@ -1141,6 +1141,9 @@ def plan_openems_projection(
         )
 
     solver = _require_mapping(_get(document, "solver", "document"), "solver")
+    if solver.get("dt_pin") is not None:
+        raise _refuse('conformal_pec="cut_cell_floor" / Simulation(dt=...)',
+                      'openEMS export cannot carry the pinned step and cut-face area floor')
     if str(_get(solver, "solver", "solver")) != "yee":
         raise _refuse(
             f"solver={_get(solver, 'solver', 'solver')!r}",

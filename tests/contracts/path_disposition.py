@@ -322,17 +322,15 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         fwd_adi=carries("the cell"),
     )},
     "_dt_pin": {"": lanes(
-        run_uniform=not_reachable("the constructor refuses it without a dx/dy/dz profile, and a "
-                                  "profile sends the model to the graded lane"),
+        run_uniform=refuses("uniform pins require the run-level cut_cell_floor choice", raises="dt="),
         run_nonuniform=carries("the graded grid's time step"),
-        run_subgridded=not_reachable("dt= needs a profile, and a refinement on a profiled mesh "
-                                     "is refused (#1282)"),
-        run_adi=not_reachable("dt= needs a profile, and ADI requires a uniform mesh"),
+        run_subgridded=refuses("uniform pins require cut_cell_floor on uniform Yee", raises="dt="),
+        run_adi=refuses("uniform pins require cut_cell_floor on uniform Yee", raises="dt="),
         run_distributed=refuses("dt pin belongs to the graded runner", raises="dt="),
-        fwd_uniform=not_reachable("dt= needs a profile, which sends the model to the graded lane"),
+        fwd_uniform=refuses("uniform forward refuses pins; run cut_cell_floor carries them", raises="dt="),
         fwd_nonuniform=carries("the graded grid's time step"),
         fwd_distributed_nu=carries("the distributed graded grid's time step"),
-        fwd_adi=not_reachable("dt= needs a profile, and ADI requires a uniform mesh"),
+        fwd_adi=refuses("uniform pins require cut_cell_floor on uniform Yee", raises="dt="),
     )},
     "_dt_min_cell": {"": lanes(
         run_uniform=not_reachable("the constructor refuses it without dt="),

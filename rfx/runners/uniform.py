@@ -124,6 +124,9 @@ def run_uniform(
         from rfx.measurement.decay import refuse_windowed_flux
         refuse_windowed_flux(sim, "uniform")
 
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(sim, "run_uniform", conformal_pec,
+                          smoothing=subpixel_smoothing, grid=grid)
     if conformal_pec is None:
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
 

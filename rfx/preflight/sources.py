@@ -251,6 +251,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``undriven_pulse``); one that still has samples gets the warning.
     """
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
+    if not self._uses_nonuniform_mesh and self._dt_pin is not None:
+        dt = float(self._dt_pin)
     # Issue 1668: judge against the realized dt of a grid that already
     # exists -- the one the campaign context holds when preflight built it.
     # Never create a context, grid or assembly state here (admit() calls

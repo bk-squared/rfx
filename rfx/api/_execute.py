@@ -33,7 +33,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing
+from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, resolve_run_conformal
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
@@ -1819,7 +1819,7 @@ class _ExecuteMixin:
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
         subpixel_smoothing: bool | str = False,
-        conformal_pec: bool | None = None,
+        conformal_pec: bool | str | None = None,
         conformal_min_weight: float = 0.1,
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -1908,8 +1908,11 @@ class _ExecuteMixin:
             closed/PEC point-field fallback stop.
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
-        conformal_pec : bool or None
+        conformal_pec : bool, str or None
             Cut-cell conformal PEC (#1651); None reads Boundary(conformal=True).
+            "cut_cell_floor" uses true edges and a q**2 face-area floor on uniform Yee.
+            Requires Simulation(dt=q * Grid.courant_dt(dx, ndim)), q=0.5 or 0.25.
+            An explicit n_steps still counts steps: half or quarter the ordinary duration.
         conformal_min_weight : float
             Legacy; only the default 0.1 is accepted (the SC clamp replaced it).
         devices : list of jax.Device or None
@@ -2032,14 +2035,7 @@ class _ExecuteMixin:
             decay_max_steps=decay_max_steps,
         )
 
-        # ---- Stage 1 conformal PEC auto-routing ----
-        # When the user passes ``conformal_pec=None`` (default), derive
-        # it from ``BoundarySpec.conformal_faces()``: any axis declared
-        # ``Boundary(conformal=True)`` flips conformal_pec on. Explicit
-        # True/False from the caller is preserved as a power-user
-        # override (e.g. for A/B regression diagnosis).
-        if conformal_pec is None:
-            conformal_pec = bool(self._boundary_spec.conformal_faces())
+        conformal_pec = resolve_run_conformal(self, conformal_pec, devices, subpixel_smoothing)
 
         refuse_coaxial_port(self, "run")
         compute_s_params = self._validate_run_sparameter_request(
