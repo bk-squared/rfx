@@ -205,6 +205,7 @@ Tracker: #2293
 `subpixel_smoothing=True` on a mesh whose cells are not cubes gives a dielectric interface a smoothed permittivity that differs from the Kottke value.
 This covers any graded mesh (`dx_profile`, `dy_profile` or `dz_profile`) and a uniform mesh with dz different from dx.
 On a graded mesh the smoothed value also varies along a flat interface.
+The same applies to `subpixel_smoothing="full_tensor"` on such meshes; its size there was not measured separately.
 Measured on a flat eps_r 4 slab whose interface normal is x, with dx = dy = 0.2 mm:
 - Cubic cells: exact.
 - A constant dz of 0.18 / 0.22 / 0.30 mm: off by 2.6 / 2.3 / 9.2 %.
