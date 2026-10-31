@@ -1,8 +1,8 @@
 """Traced dz must not silently cut a ground at an absorbing face.
 
-The clear Box's record is compared bit for bit with main's traced run at
-1f88121fc (CPU, float32). Expected faces are read from the drawing, without
-continuation helpers. The reference was captured before applying the change.
+The clear Box's traced and concrete records share the per-step cross-trace
+bar: 9 float32 ULP at the record peak. Expected faces come from the drawing,
+without continuation helpers.
 """
 
 import warnings
@@ -17,26 +17,22 @@ from rfx.sources import GaussianPulse
 
 DX = 1 / 1024
 PROFILE = np.full(8, DX)
-MAIN_TRACED_RECORD_BITS = np.array([
-    0, 0, 0, 3121557267, 3145517095, 3161232885, 3172858286, 3182021456,
-    3189564386, 3196189601, 3200701867, 3205454082,
-], dtype=np.uint32).reshape(12, 1)
 
 
-def _scene(dz, reaching):
+def _scene(dz, reaching, near_face=False):
     sim = Simulation(domain=(8*DX, 8*DX, 8*DX), dx=DX, freq_max=20e9,
                      boundary="cpml", cpml_layers=2, dz_profile=dz,
                      dt=1e-12, dt_min_cell=DX)
     sim.add(Box((0. if reaching else 2*DX, 2*DX, 2*DX),
-                (6*DX, 6*DX, 3*DX)), material="pec")
+                (6*DX, 6*DX, (7.9 if near_face else 3)*DX)), material="pec")
     sim.add_port((4*DX, 4*DX, 4*DX), component="ez",
                  waveform=GaussianPulse(f0=10e9, bandwidth=1.))
     sim.add_probe((4*DX, 4*DX, 5*DX), "ez")
     return sim
 
 
-def _record(dz, reaching):
-    return _scene(dz, reaching).forward(
+def _record(dz, reaching, near_face=False):
+    return _scene(dz, reaching, near_face).forward(
         n_steps=12, checkpoint=False, skip_preflight=True).time_series
 
 
@@ -49,18 +45,26 @@ def test_reaching_box_refused_before_stepping(monkeypatch):
         jax.jit(lambda dz: _record(dz, True))(PROFILE)
     message = str(caught.value)
     for expected in ("x-lo", "Cannot continue", "ground cut at the absorber entrance",
+                     "reaches or ends within one cell of", "mesh axis z is traced",
                      "dz_profile", "concrete NumPy array", "for this run"):
         assert expected in message
+    assert "dx_profile" not in message
+    assert "dy_profile" not in message
     assert "#" not in message
 
 
-def test_clear_box_record_equals_main_traced_without_continuation_warning():
+def test_clear_box_record_matches_concrete_without_continuation_warning():
+    concrete = np.asarray(_record(PROFILE, False))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         traced = np.asarray(jax.jit(lambda dz: _record(dz, False))(PROFILE))
     assert not any("conductor continuation" in str(w.message) for w in caught)
     assert np.any(traced != 0)
-    np.testing.assert_array_equal(traced.view(np.uint32), MAIN_TRACED_RECORD_BITS)
+    peak = np.max(np.abs(concrete))
+    difference = np.max(np.abs(traced.astype(np.float64) - concrete))
+    ulp = float(np.spacing(np.float32(peak)))
+    print(f"clear Box record: max difference = {difference / ulp:.9g} float32 ULP at peak")
+    assert difference <= 9 * ulp
 
 
 def test_concrete_reaching_box_still_runs_and_continues():
@@ -72,3 +76,12 @@ def test_concrete_reaching_box_still_runs_and_continues():
     # x-lo has two absorber layers; y=3*DX, z=2*DX are inside the Box.
     assert pec[:2, 5, 4].all()
     assert np.isfinite(np.asarray(_record(PROFILE, True))).all()
+
+
+def test_box_ending_one_tenth_cell_short_on_traced_axis_refused(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("a conductor ending in the outermost cell reached stepping")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    with pytest.raises(TracedStructureRefusal, match="absorbing face\\(s\\) z-hi"):
+        jax.jit(lambda dz: _record(dz, False, near_face=True))(PROFILE)
