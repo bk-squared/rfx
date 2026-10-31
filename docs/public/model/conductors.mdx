@@ -182,24 +182,23 @@ sheets, so read `fidelity_report()` for those.
 
 Metal on a curved or slanted surface lands as a staircase of cell faces. On a
 uniform mesh with `run()`, `run(conformal_pec=True)` weights the update at the
-cut cells instead (`run(conformal_min_weight=...)`, default 0.1, sets the floor); other solver
-paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
+cut cells instead: each cut E edge uses its PEC-free length and each cut H face
+its PEC-free area, and a stability clamp keeps the ordinary time step. Other
+solver paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
 faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
-dielectric the same way. With both set, the smoothed tensor takes the place
-of the conformal weights: rfx forms no conformal weights and gives no
-conformal warning. The conformal weights are not yet for accuracy: they make
-a metal body electrically larger, and on a PEC sphere they are further from the
-converged answer than the staircase at every mesh measured. Every run with
-them warns so. Until the Dey–Mittra update lands, use the staircase on a finer
-mesh; the known-limitations list has the details.
+dielectric with a smoothed tensor; a run that sets it together with conformal
+PEC is refused. A flat wall sits at its drawn plane, and on a PEC sphere the
+cut-cell update is closer to Mie than the staircase, but its error falls only
+first order with the cell size. Every run with it warns. Judge a curved body by
+a mesh series of at least three refinements; the known-limitations list has
+the numbers and the shapes it refuses.
 
 A rotated box (`OrientedBox`) has no conformal or smoothed form. A run with
 `conformal_pec=True`, or with a `Boundary(..., conformal=True)` face that turns
 it on, or with `subpixel_smoothing`, refuses a model that holds one, so a
 rotated metal body is solved as a staircase: the cells whose centres fall
-inside it. Where several PEC shapes cut the same edge, rfx combines their
-conformal weights by taking the smaller one at each edge, the weight of the
-shape that covers more of it, not a weight computed for their union.
+inside it. Where several PEC shapes cut the same cell, rfx computes the
+free lengths and areas for their union.
 
 ### Metal that is not a declared conductor
 

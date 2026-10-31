@@ -145,7 +145,7 @@ studies.
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
 | `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. |
-| `conformal_pec=True` | Weighted updates at cut cells of curved metal. Not for accuracy until the Dey–Mittra update lands: it makes a metal body electrically larger, and every run with it warns. Use the staircase. |
+| `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
 | `devices=[...]` | Run across several devices (x-slab decomposition). `exchange_interval` must stay 1. |
 | `skip_preflight=True` | Skip the automatic preflight. Use only after you have read it once. |
