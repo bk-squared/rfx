@@ -3,5 +3,8 @@
 - Fixed-step single-device uniform, graded and ADI runs now evaluate declaration
   setup like `forward()` under `jax.jit`, avoiding setup-driven probe differences
   and graded-port tracing errors.
-- Jitted `run()` port-S extraction now points to `forward(port_s11_freqs=...)`
-  or a plain call. Jitted multi-device closed-box TF/SF calls now request a plain call.
+- Under `jax.jit`, the one-lumped and one-wire port S of uniform and multi-device
+  `run()` is refused with a message naming `forward(port_s11_freqs=...)` or a plain
+  call; a multi-device closed-box TF/SF call is refused with a message naming a plain call.
+- Warnings raised during `run()` and `forward()` (preflight, decay stop, settling,
+  mesh and assembly advisories) name the user's calling line, also inside `jax.jit`.
