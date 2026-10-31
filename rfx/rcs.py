@@ -39,7 +39,6 @@ from rfx.measurement.farfield import (
 )
 from rfx.sources.tfsf import init_tfsf
 from rfx.measurement.incident import measure_normal_incident_spectrum
-from rfx.simulation import run
 
 
 class RCSResult(NamedTuple):

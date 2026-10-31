@@ -95,13 +95,23 @@ MOVED = [
      'rfx.sources.tfsf_oblique_open.measure_incident_spectrum moved to rfx.measurement.incident.measure_incident_spectrum; import it from there. The old path will be removed in rfx 3.0.'),
 ]
 OWNED = [
-    ('rfx.stepping', 'core_step_invariants', 'rfx.stepping.uniform_setup'),
-    ('rfx.stepping', 'make_core_step', 'rfx.stepping.uniform_setup'),
-    ('rfx.stepping', 'run_nonuniform', 'rfx.stepping.graded_loop'),
-    ('rfx.stepping', 'run_nonuniform_until_decay', 'rfx.stepping.graded_loop'),
-    ('rfx.stepping', 'run_uniform_loop', 'rfx.stepping.uniform_loop'),
-    ('rfx.stepping', 'run_uniform_until_decay', 'rfx.stepping.uniform_loop'),
-    ('rfx.stepping', 'scan_with_progress', 'rfx.stepping.progress_scan'),
+    ('rfx.materials', 'update_e_debye', 'rfx.stepping.poles'),
+    ('rfx.sources', 'WaveguidePort', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'WaveguidePortConfig', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'init_waveguide_port', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'inject_waveguide_port', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'apply_waveguide_port_h', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'apply_waveguide_port_e', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'update_waveguide_port_probe', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'extract_waveguide_port_waves', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'extract_waveguide_s_matrix', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'extract_waveguide_sparams', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'extract_waveguide_s11', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'extract_waveguide_s21', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'waveguide_plane_positions', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'solve_rectangular_modes', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'init_multimode_waveguide_port', 'rfx.sources.waveguide_port'),
+    ('rfx.sources', 'extract_multimode_s_matrix', 'rfx.sources.waveguide_port'),
 ]
 
 

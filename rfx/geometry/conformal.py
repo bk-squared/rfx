@@ -18,11 +18,14 @@ import jax.numpy as jnp
 
 from rfx.grid import Grid
 from rfx.geometry.conformal_cells import compute_conformal_fractions
-from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
 
 
 def apply_conformal_pec(state, w_ex, w_ey, w_ez):
     """Compatibility entry for weight callers; production forms masks at setup."""
+    # Imported here: geometry loads before the model layer, and a module-level
+    # import would load the time-step layer with it (rfx#1818).
+    from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
+
     return _apply_conformal_pec(state, w_ex == 0.0, w_ey == 0.0, w_ez == 0.0)
 
 

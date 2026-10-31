@@ -2,9 +2,24 @@
 
 from rfx.core.yee import MaterialArrays, init_materials  # noqa: F401
 from rfx.materials.debye import DebyePole, DebyeCoeffs, DebyeState, init_debye
-from rfx.stepping.poles import update_e_debye
 
 import jax.numpy as jnp
+
+# update_e_debye moved to the stepping layer; an eager import here would load
+# rfx.stepping whenever the model layer loads this package (rfx#1818).
+_LAZY_EXPORTS = {
+    "update_e_debye": "rfx.stepping.poles",
+}
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value
 
 
 def set_material(materials: MaterialArrays, mask, *,

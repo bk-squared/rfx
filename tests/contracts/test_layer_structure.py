@@ -1302,3 +1302,59 @@ def test_read_of_a_five_file_definition_through_a_reexport_is_refused(tmp_path, 
     defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
     assert defined[path] == [entry]
     assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+# Loading a layer module must not run a five file through a module outside the layers: a package top
+# re-exporting a five file, or a helper importing one. Rule R sees only the layer module's own imports (rfx#1818).
+LOAD_CHAIN = "{path} L: loading runs {five} ({chain})"
+
+
+def test_no_layer_module_load_runs_a_five_file():
+    assert gate.load_chains(gate.Sources(REPO)) == []
+
+
+@pytest.mark.parametrize("path,code,reader,five,chain", [
+    ("rfx/sources/__init__.py", "from rfx.sources.waveguide_port import WaveguidePort\n",
+     "rfx/stepping/tfsf.py", "rfx.sources.waveguide_port",
+     "rfx.stepping.tfsf -> rfx.sources -> rfx.sources.waveguide_port"),
+    ("rfx/rcs.py", "from rfx.simulation import run\n",
+     "rfx/measurement/rcs.py", "rfx.simulation", "rfx.measurement.rcs -> rfx.rcs -> rfx.simulation"),
+], ids=["eager-package-reexport", "helper-imports-simulation"])
+def test_restored_load_chain_is_refused(tmp_path, path, code, reader, five, chain):
+    """The two defects put back, every gate helper intact: rfx.sources importing waveguide_port
+    eagerly again, and rfx.rcs importing rfx.simulation."""
+    write(tmp_path, path, (REPO / path).read_text() + "\n" + code)
+    chains = gate.load_chains(CopiedSources(tmp_path))
+    assert LOAD_CHAIN.format(path=reader, five=five, chain=chain) in chains
+
+
+@pytest.mark.parametrize("code,red", [
+    ("from rfx.sources import WaveguidePort\n", True),
+    ("import rfx.rcs\n", False),
+    ("from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from rfx.sources import WaveguidePort\n", False),
+    ("def local():\n    from rfx.sources import WaveguidePort\n", False),
+], ids=["lazy-served-name", "clean-helper", "type-checking", "function-scope"])
+def test_load_chain_import_forms(tmp_path, code, red):
+    """A name a package serves from ``_LAZY_EXPORTS`` loads its target when imported at module level;
+    ``if TYPE_CHECKING`` and function bodies load nothing."""
+    path = "rfx/model/graded_grid.py"
+    write(tmp_path, path, (REPO / path).read_text() + "\n" + code)
+    chains = gate.load_chains(CopiedSources(tmp_path))
+    expected = LOAD_CHAIN.format(path=path, five="rfx.sources.waveguide_port",
+                                 chain="rfx.model.graded_grid -> rfx.sources.waveguide_port")
+    if red:
+        assert expected in chains
+    else:
+        assert chains == []
+
+
+def test_check_refuses_a_load_chain(synthetic, capsys):
+    write(synthetic, "rfx/simulation.py", "def run():\n    pass\n")
+    write(synthetic, "rfx/helper.py", "from rfx.simulation import run\n")
+    write(synthetic, "rfx/stepping/a.py", "import rfx.helper\n")
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert capsys.readouterr().err == LOAD_CHAIN.format(
+        path="rfx/stepping/a.py", five="rfx.simulation",
+        chain="rfx.stepping.a -> rfx.helper -> rfx.simulation") + "\n"
+    write(synthetic, "rfx/helper.py", "def local():\n    from rfx.simulation import run\n")
+    assert gate.main(["--repo", str(synthetic)]) == 0
