@@ -202,7 +202,7 @@ def run(
         Bloch path, a box reaching into the CPML absorber, and a box holding
         a source, magnetic source, lumped/wire S-param port or RLC cell or a
         surface-impedance sheet edge. It does NOT carry the checks that need
-        the API object: the lane (non-uniform, distributed, ADI), the
+        the API object: the lane (non-uniform, distributed), the
         collision with ``eps_override`` / ``sigma_override`` /
         ``mu_r_override``, ``pec_occupancy_override``, a PASSIVE port (it
         leaves neither a source nor an accumulator here), and the promotion

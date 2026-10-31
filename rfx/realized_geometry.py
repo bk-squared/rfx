@@ -137,7 +137,7 @@ class RealizedGeometry:
     ``entities`` are in geometry then thin-conductor declaration order.
     ``nodes`` include the far face of the last stored cell. ``edge_masks``
     preview the Yee PEC edges after driven port edge clearing. Yee Result
-    records are bound at the kernel; ADI/subgrid records describe pre-port
+    records are bound at the kernel; Subgrid records describe pre-port
     assembly (the subgrid refinement is not represented).
     ``ports`` identifies the driven edges separately. Result records omit
     dense masks, materials and sheet/wire specs; entity edge counts/ranges
@@ -626,7 +626,7 @@ def _conductor_view(record, conductors):
 
 
 def early_run_record(sim, root, lane):
-    """ADI/subgrid record timing remains at assembly, as before this move."""
+    """Subgrid record timing remains at assembly, as before this move."""
     if lane == "run_uniform":
         return None
     from rfx.realized_geometry import record_from_assembly

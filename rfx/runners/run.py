@@ -104,9 +104,9 @@ def run_after_admission(
 
     # ---- W6.3 unified lane dispatch: one place decides + rejects ----
     # _dispatch_plan computes the is_nonuniform/_nu_profile boolean, runs
-    # the distributed adi/upml ValueErrors + the distributed+NU grading
+    # the distributed upml ValueErrors + the distributed+NU grading
     # guardrail, selects the lane, and resolves n_steps for the
-    # NU/distributed lanes (the uniform/adi/subgridded lanes resolve it
+    # NU/distributed lanes (the uniform/subgridded lanes resolve it
     # below from the grid they build and reuse).
     plan = self._dispatch_plan(
         mode="run", subpixel_smoothing=subpixel_smoothing,
@@ -243,42 +243,6 @@ def run_after_admission(
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembly_inputs
     from rfx.realized_geometry import attach_record, early_run_record
     geometry_record = early_run_record(self, conductors, plan.lane)
-
-    if plan.lane == "run_adi":
-        from rfx.materials.thin_conductor import refuse_f0_sheets
-        refuse_f0_sheets(self._thin_conductors, "ADI run()")
-        from rfx.current_moments import refuse_current_moment_monitor
-        refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
-        self._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
-            "subpixel_smoothing": subpixel_smoothing,
-            "checkpoint": checkpoint,
-            "snapshot": snapshot,
-            "until_decay": until_decay,
-            "conformal_pec": bool(conformal_pec and pec_shapes),
-            **({} if report_every is None else {"report_every": report_every}),
-        }, instead="use the default solver='yee'")
-        if n_steps is None:
-            dt_adi = float(grid.dt * self._adi_cfl_factor)
-            n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
-        _res = self._run_adi_from_materials(
-            grid,
-            base_materials,
-            debye_spec,
-            lorentz_spec,
-            n_steps=n_steps,
-            pec_mask=pec_mask,
-            pec_sheets=tuple(_run_pec_sheets),
-            pec_wires=tuple(_run_pec_wires),
-            return_state=True,
-            lane="run_adi",
-            diagnostics=_diagnostics,
-            conformal_pec=conformal_pec,
-        )
-        _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
-        _warn_if_nonfinite_result(_res, context="run")
-        from rfx.current_moments import require_accumulated_current_moments
-        require_accumulated_current_moments(self, _res, "run")
-        return attach_record(_res, geometry_record)
 
     # ---- Subgridded lane ----
     if plan.lane == "run_subgridded":

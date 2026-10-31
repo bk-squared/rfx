@@ -123,8 +123,6 @@ class _ExecuteMixin:
         )
         if is_nonuniform:
             unsupported.append("non-uniform mesh (dx/dy/dz profile)")
-        if self._solver == "adi":
-            unsupported.append("solver='adi'")
         if self._refinement is not None:
             unsupported.append("subgridding (refinement)")
         if distributed:
@@ -552,7 +550,6 @@ class _ExecuteMixin:
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
 
-    from rfx.runners.adi import _run_adi_from_materials
 
     from rfx.runners.uniform_forward import _forward_from_materials
 
@@ -1559,12 +1556,6 @@ class _ExecuteMixin:
         # mu_r_override is wired only on the uniform lane; the NU/distributed
         # material-override paths do not thread it, so fail loud instead of
         # silently dropping it to a zero-gradient no-op.
-        if mu_r_override is not None and self._solver == "adi":
-            raise NotImplementedError(
-                "forward(mu_r_override=...) is not supported with solver='adi': "
-                "the ADI update does not read the permeability override. "
-                "Use solver='yee' on a uniform single-device mesh, or omit mu_r_override."
-            )
         if mu_r_override is not None and plan.lane != "fwd_uniform":
             raise NotImplementedError(
                 "mu_r_override (differentiable permeability) is supported only on "
@@ -1674,11 +1665,7 @@ class _ExecuteMixin:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
         if n_steps is None:
-            if self._solver == "adi":
-                dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
-            else:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+            n_steps = grid.num_timesteps(num_periods=num_periods)
 
         # #677: node-thin sheet ctx against the realized PEC edges of this
         # forward run (PEC wins on overlapping edges).  #931: the PEC

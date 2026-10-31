@@ -46,7 +46,7 @@ Times
 
 Uniform-grid runs, including multi-device runs, record snapshots. Graded
 multi-device runs also record snapshots. Single-device non-uniform, subgridded
-and ADI lanes do not record snapshots.
+lanes do not record snapshots.
 """
 
 from __future__ import annotations

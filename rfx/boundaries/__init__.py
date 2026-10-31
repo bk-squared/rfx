@@ -7,9 +7,6 @@ from rfx.boundaries.cpml import (  # noqa: F401
     CPMLParams,
     init_cpml,
 )
-from rfx.boundaries.depths import (  # noqa: F401
-    adi_uniform_faces,
-)
 from rfx.boundaries.model import (  # noqa: F401
     Features,
     refresh_boundary_model,
@@ -33,7 +30,6 @@ from rfx.boundaries.spec import (  # noqa: F401
 
 # The layer entries the five large files may call (scripts/ci/check_layer_structure.py rule I).
 __all__ = [
-    "adi_uniform_faces",
     "apply_pec",
     "apply_pec_edges",
     "apply_pec_faces",

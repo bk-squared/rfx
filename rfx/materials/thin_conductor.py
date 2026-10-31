@@ -795,7 +795,7 @@ def has_f0_sheets(thin_conductors) -> bool:
     """True when any registered thin conductor is in surface-impedance mode.
 
     The single predicate run lanes use to REFUSE f0 sheets they cannot
-    apply (distributed, subgridded, ADI, ... — #677 G9). Since the sheet
+    apply (distributed, subgridded, ...). Since the sheet
     no longer rides ``materials.sigma``, a lane that ignores the ctx would
     silently simulate NO sheet at all (the #369 vaporized-metal class), so
     unsupported lanes must call this and raise loudly.

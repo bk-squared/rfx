@@ -62,8 +62,7 @@ def _forward_from_materials(
         (``rfx.runners._admission``). The calculators that also enter here
         (``run()``'s lumped/wire S-matrix scan, ``compute_mixed_s_matrix``,
         ``topology_optimize``) admit their model at their own entry and
-        leave it ``None`` here. The ADI route below is additionally judged
-        as ``fwd_adi``.
+        leave it ``None`` here.
 
         Internal multi-drive S-matrix hook (item-5 Stage 1, 2026-06-22)
         --------------------------------------------------------------
@@ -119,36 +118,6 @@ def _forward_from_materials(
             "step. Pass conformal_pec=False (or drop Boundary(conformal=True)) "
             "for staircase walls, or use run(compute_s_params=False) on a "
             "uniform mesh for conformal fields.")
-    if self._solver == "adi":
-        from rfx.materials.thin_conductor import refuse_f0_sheets
-        refuse_f0_sheets(self._thin_conductors, "ADI forward")
-        from rfx.current_moments import refuse_current_moment_monitor
-        refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
-        if pec_occupancy is not None:
-            raise ValueError(
-                "solver='adi' does not support pec_occupancy_override; "
-                "use solver='yee' to retain the declared conductor.")
-        # #931 §1.9: a sheet and a wire own no cell, so ``pec_mask``
-        # alone carries neither.  ``run()``'s ADI branch threads them;
-        # this one did not, and a declared PEC sheet came out of
-        # ``forward()`` bit-identical to empty geometry.  The lane
-        # itself realizes them correctly — ``_run_adi_from_materials``
-        # calls ``realized_pec_edge_masks`` — so the whole defect was
-        # the two arguments missing here.
-        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
-        return self._run_adi_from_materials(
-            grid,
-            materials,
-            debye_spec,
-            lorentz_spec,
-            n_steps=n_steps,
-            pec_mask=pec_mask,
-            pec_sheets=tuple(pec_sheets or ()),
-            pec_wires=tuple(pec_wires or ()),
-            return_state=False,
-            lane="fwd_adi",
-            diagnostics=diagnostics,
-        )
 
     # The uniform forward lane has no subgrid (#1240). forward() (and
     # optimize() through it), topology_optimize() and

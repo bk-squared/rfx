@@ -172,7 +172,7 @@ class ConfigCheck(NamedTuple):
     family:
         The ``rfx/preflight/<family>.py`` module the function lives in, or
         ``"execution"`` for the four that stay in the facade by design
-        (the x64 / ADI / settling-witness configuration checks).
+        (the x64 / settling-witness configuration checks).
     """
 
     name: str
@@ -324,12 +324,6 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     # this one leaves the 65 committed snapshots; the sequence lock and the
     # ``conformal_fine_dx`` snapshot are updated in the same change, which is
     # the review a red lock is supposed to force.
-    ConfigCheck("_validate_cfg_adi_3d_accuracy",
-                lambda sim, c: sim._validate_cfg_adi_3d_accuracy(c.warn),
-                "execution"),
-    ConfigCheck("_validate_cfg_adi_interior_pec",
-                lambda sim, c: sim._validate_cfg_adi_interior_pec(c.warn),
-                "execution"),
     ConfigCheck("_validate_cfg_lossless_resonator_in_absorber",
                 lambda sim, c: sim._validate_cfg_lossless_resonator_in_absorber(
                     c.warn),
@@ -406,9 +400,6 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_thin_absorber",
                 lambda sim, c: sim._validate_cfg_thin_absorber(c.warn, c.dx),
                 "absorber"),
-    ConfigCheck("_validate_cfg_adi_boundary",
-                lambda sim, c: sim._validate_cfg_adi_boundary(c.warn),
-                "execution"),
     # #1913: shipped admission appended; extras remain explicit opt-in.
     ConfigCheck("_validate_cfg_waveguide_port_span",
                 lambda sim, c: sim._validate_cfg_waveguide_port_span(c.warn),

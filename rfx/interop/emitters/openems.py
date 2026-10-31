@@ -1144,7 +1144,7 @@ def plan_openems_projection(
     if str(_get(solver, "solver", "solver")) != "yee":
         raise _refuse(
             f"solver={_get(solver, 'solver', 'solver')!r}",
-            "rfx's ADI solver has no openEMS counterpart (openEMS is explicit "
+            "The declared solver has no openEMS counterpart (openEMS is explicit "
             "Yee only); emitting the same structure under a different time "
             "integrator would compare two different numerical schemes",
         )

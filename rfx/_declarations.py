@@ -42,7 +42,6 @@ DECLARATIONS = (
     ("_mode", "value"),
     ("_solver", "value"),
     ("_precision", "value"),
-    ("_adi_cfl_factor", "value"),
     ("_stencil_order", "value"),
     ("_interface_eps", "value"),
     ("_pec_occupancy_model", "value"),
