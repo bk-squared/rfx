@@ -47,7 +47,7 @@ from rfx.core.yee import (
     EPS_0, MU_0, CurlBoundary,
 )
 from rfx.boundaries import (
-    apply_pec,  # noqa: F401 -- re-exported; tests import it from here (not used by the step since #1164)
+    apply_pec,  # noqa: F401 -- re-exported; tests import it from here (not used by the step)
     apply_pec_edges,
     apply_pec_faces,
 )
@@ -104,7 +104,7 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     """Cb of the E update for ``component`` at the source cell.
 
     Single spelling of the coefficient shared by ``make_source`` and
-    ``make_j_source``. Since #1210 it is the PER-COMPONENT coefficient:
+    ``make_j_source``. It is the PER-COMPONENT coefficient:
     ``make_j_source`` exists to turn a current into the field increment the
     update itself would have produced, and the update multiplies each
     component by the mean of eps and sigma over the four cells its edge
@@ -161,7 +161,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     varies with resolution; use Harminv/FFT for mode extraction rather
     than absolute amplitude.
 
-    Native amplitude convention (issue #571): ``'cb'`` — ``E += Cb*w`` —
+    Native amplitude convention: ``'cb'`` — ``E += Cb*w`` —
     which is NEITHER named kind (the legacy open-uniform third contract).
     ``amplitude_kind='current'`` uses ``Cb*w/dV``; ``'field'`` returns the
     waveform directly through the shared source-table builder.
@@ -175,7 +175,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     waveform_fn : callable(t) -> value
     n_steps : int
     materials : MaterialArrays (for Cb computation at source cell)
-    amplitude_kind : 'field' | 'current' | None (issue #571, above)
+    amplitude_kind: 'field' | 'current' | None
     """
     from rfx.model import uniform_source_table
     idx = _grid_metric.field_index(grid, position, component)
@@ -210,7 +210,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
 
     Each LIVE cell gets a Thevenin source voltage w/n_live and resistance
     R/n_live: its Norton current is w/R. Dead extent cells inside PEC get
-    no source (issue #318). The port impedance must
+    no source. The port impedance must
     already be folded into *materials* via ``setup_wire_port()``.
 
     Returns
@@ -276,7 +276,7 @@ def _suggest_checkpoint_segments(n_steps: int) -> int:
 #     deliberate future task.
 #   * ``use_fast_he`` / ``fast_coeffs`` — ``run()`` only; decay path is a
 #     chunked scan with the fast path deliberately OFF to preserve its
-#     standalone-step arithmetic (no GPU fast-path change in #1322).
+#     standalone-step arithmetic.
 
 
 

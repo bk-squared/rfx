@@ -54,17 +54,17 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
 
 def graded_cpml_operands(materials, aniso_eps, *, use_cpml, use_debye, use_lorentz):
     """Select the graded update's pad permittivity and loss operands together."""
-    # #1043: ``apply_cpml_e``'s psi coefficient must take its permittivity from
+    # ``apply_cpml_e``'s psi coefficient must take its permittivity from
     # the array the E half-step uses, or the two halves of one timestep
     # integrate different media and the combined update can amplify (see
     # ``rfx/boundaries/cpml.py``'s ``inv_eps_r_update`` docstring). The guard
     # is the same condition that selects the graded ``update_e_nu_aniso``, so a
     # dispersive run — which ignores ``aniso_eps`` — never takes it.
-    # #1210: the plain graded-mesh update ``update_e_nu`` is per-component too
+    # the plain graded-mesh update ``update_e_nu`` is per-component too
     # now (the mean of eps_r over each edge's four incident cells), so it gets
     # the same threading. Homogeneous pads keep their bytes — the mean of four
     # equal floats is that float exactly.
-    # #1260: the dispersive update takes its ε_∞ per component from the same
+    # the dispersive update takes its ε_∞ per component from the same
     # mean, so a dispersive run threads it too (it used to keep the cell's
     # ``materials.eps_r``).
     if not (use_debye or use_lorentz) and aniso_eps is not None:

@@ -1,13 +1,8 @@
-"""Report types and geometry leaves, moved verbatim out of ``rfx.api._preflight``.
+"""Report types and geometry leaves.
 
-Issue #980 Phase 3, leg 0. ``rfx/api/_preflight.py`` had grown to 9 409 lines:
-~1 600 lines of module-level types and helpers followed by one 7 779-line
-``_PreflightMixin`` class. This module is the leaf half that every later leg
-will need to import, relocated byte for byte — same order, same text, same
-indentation, same docstrings. Nothing was renamed, reordered, cleaned up or
-rewritten, and the move is gated on the committed advisory-text snapshot every
-``sim.preflight()`` fixture renders
-(``tests/locks/test_preflight_split_snapshot.py``).
+The shared types and geometry helpers are re-exported by
+``rfx.api._preflight``. Advisory text is pinned by
+``tests/locks/test_preflight_split_snapshot.py``.
 
 What is here: the four warning/error/issue types plus ``PreflightReport``, the
 unit-adaptive ``_fmt_*`` leaves, and the absorber membership/proximity leaves
@@ -81,7 +76,7 @@ def local_cell(grid, axis, x):
 
 
 def _fmt_len(meters: float) -> str:
-    """Unit-adaptive length for warning text (issue #166).
+    """Unit-adaptive length for warning text.
 
     Fixed-mm formatting rendered µm-scale setups as ``0.0mm`` / ``0.000mm``
     and misled optical-scale users into reading a routine value as a bug;
@@ -106,7 +101,7 @@ def _fmt_signed(meters: float) -> str:
 
 
 def _fmt_freq(hz: float) -> str:
-    """Unit-adaptive frequency for warning text (issue #166).
+    """Unit-adaptive frequency for warning text.
 
     Fixed-GHz formatting printed optical-scale ``freq_max`` as
     ``74950.00GHz`` instead of ``74.95THz``.
@@ -127,7 +122,7 @@ def _absorber_boundary_for_axis(
     domain_extent: float, ct_lo: float, ct_hi: float,
 ) -> tuple[float | None, float | None]:
     """The single canonical frame for "is/how-far a coordinate from the
-    CPML/UPML absorber" on one axis (issue #500).
+    CPML/UPML absorber" on one axis.
 
     Ground truth (proved in ``tests/unit/preflight/test_preflight_absorber.py`` for
     both the uniform (``rfx/grid.py`` ``Grid.__init__``: ``nx =
@@ -190,7 +185,7 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
             not is_tracer(arr) or traced_cell_mask(grid, ax) is not None):
         a = np.asarray(host_cells(grid, ax, store=True), dtype=float)
         # NonUniformGrid pads its cell-size arrays to the NODE count and
-        # carries one trailing duplicate bounding cell (#562), so the hi-face
+        # carries one trailing duplicate bounding cell, so the hi-face
         # pad is the n entries BEFORE that duplicate, not the last n.
         if side == "lo" and a.size >= n:
             return float(a[:n].sum())
@@ -210,29 +205,14 @@ def _coord_in_absorber(
     return (lo_b is not None and coord < lo_b) or (hi_b is not None and coord > hi_b)
 
 
-# Proximity-advisory margin for _validate_cfg_absorber_placement (issue
-# #500 review finding M3 / H1). NOT a dedicated calibration sweep like the
-# MSL 8*dx buffer below (_check_msl_port_geometry) — #510 established that
-# probe-to-absorber clearance is a real, previously-ungated hazard class
-# (an MSL probe span could sit inside the CPML or past another port's feed
-# with preflight silent), and #478 is the PR that introduced the
-# internal/external probe distinction (`_internal_probe_indices`) this
-# advisory must respect so library witness probes stay exempt. Neither
-# pins a specific cell count for a GENERIC (non-MSL) probe/source
-# proximity check, so 2 cells is a deliberately modest, conservative
-# default: small enough to stay a "you are suspiciously close to the
-# edge" advisory rather than a broad interior band, large enough to
-# still catch the #470/#500-H1 regression-lock fixtures (a probe one
-# grid cell inside the domain) this margin must keep firing on.
-# Issue #510 nit 2: an earlier version of this comment justified the "2"
-# by invoking _absorber_boundary_for_axis's own up-to-one-cell hi-side
-# conservatism — that was a non-sequitur. That conservatism is a
-# MEMBERSHIP concern (it can shift whether a coordinate reads as
-# absorber_overlap at all, via the boundary position _coord_in_absorber
-# uses); this margin is a PROXIMITY concern — it measures distance from
-# whatever boundary _absorber_boundary_for_axis returns, unaffected by
-# how that boundary itself was derived. The two are independent; neither
-# bounds the other.
+# Proximity-advisory margin for ``_validate_cfg_absorber_placement``. Unlike
+# the calibrated MSL buffer in ``_check_msl_port_geometry``, no dedicated
+# sweep pins a generic probe/source margin. Two cells is a conservative
+# advisory default that still catches the one-cell-interior regression
+# fixtures. Respect ``_internal_probe_indices`` so library witness probes
+# stay exempt. The margin measures distance from
+# ``_absorber_boundary_for_axis``; its membership convention and this
+# proximity margin are independent.
 _ABSORBER_PROXIMITY_CELLS = 2
 
 
@@ -506,8 +486,7 @@ class PreflightReport(list):
 
     # Class attribute, not a module-level constant: the module namespace of
     # ``rfx.api._preflight`` is pinned by set equality
-    # (``tests/locks/test_preflight_split_snapshot.py``) ahead of the #980
-    # split, and this message belongs to the class anyway.
+    # (``tests/locks/test_preflight_split_snapshot.py``)  and this message belongs to the class anyway.
     _BOOL_TRAP_MESSAGE = (
         "PreflightReport cannot be evaluated as a boolean: it is a list of "
         "issues, so an EMPTY (clean) report is falsy and a report with only "
@@ -518,7 +497,7 @@ class PreflightReport(list):
     )
 
     def __bool__(self) -> bool:
-        """Always raise: list truthiness is inverted for a report (#980).
+        """Always raise: list truthiness is inverted for a report.
 
         Inherited ``list.__bool__`` makes a clean report falsy and an
         advisory-only report truthy, so the natural-reading gates
@@ -629,7 +608,7 @@ class PreflightReport(list):
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 3 leg 6: the ``port_in_pec`` dead-component rule and its curl-loop
+# the ``port_in_pec`` dead-component rule and its curl-loop
 # table, moved verbatim out of ``rfx/api/_preflight.py`` (they sat between
 # ``_realized_edges_np`` and ``class _RealizedPEC`` there, which is why they
 # land at the foot here -- the realization block follows the report types in
@@ -661,7 +640,7 @@ _H_LOOP = {
 
 def _component_is_dead(edges, component: str, idx) -> bool:
     """Whether a field component at grid index ``idx`` is frozen by the
-    realized PEC edges — the one rule for ``port_in_pec`` (#929).
+    realized PEC edges — the one rule for ``port_in_pec``.
 
     An E component is dead iff its OWN edge is PEC (the contract's one
     sentence). An H component is dead iff ALL FOUR E edges of its curl
@@ -734,7 +713,7 @@ def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
 
 def _profile_node_index(cells, nodes, coord_m: float) -> int:
     """The node index the grid gives ``coord_m`` on a declared profile:
-    ``nearest_node_index`` (the one tie rule, a tie to the lower node, #1295/#1342)
+    ``nearest_node_index`` (the one tie rule, a tie to the lower node)
     on the node line the grid builds from the profile
     (``node_positions_from_profile``: the closed form on a constant
     profile). ``nodes`` is the caller's line of the same length, whose entry

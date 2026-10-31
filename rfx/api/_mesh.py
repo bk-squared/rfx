@@ -58,7 +58,7 @@ class _MeshMixin:
         The frozen snapshot when the mesh is frozen, otherwise the caller's
         declaration. Material assembly uses this: it is handed a built grid
         and must never run the mesh planner (a fresh simulation carrying
-        traced materials would run it on a tracer, PR #1140). The frozen
+        traced materials would run it on a tracer). The frozen
         snapshot comes first so that a caller-owned mutable ``domain``
         container mutated after ``freeze_mesh()`` cannot move what assembly
         sees, which is what ``_freeze_mesh`` exists to guarantee. On every
@@ -151,8 +151,8 @@ class _MeshMixin:
             if mname not in materials_dict and mname in MATERIAL_LIBRARY:
                 materials_dict[mname] = MATERIAL_LIBRARY[mname]
 
-        # Thin conductors are PEC/lossy sheets absent from self._geometry
-        # (issue #371 Bug 2). They add no wavelength constraint, but their
+        # Thin conductors are PEC/lossy sheets absent from self._geometry.
+        # They add no wavelength constraint, but their
         # IN-PLANE feature size must feed the feature-based dx. Register each
         # under a synthetic material so analyze_features() folds its bbox dims
         # into min_thickness while classifying it by sigma (PEC vs lossy), NOT
@@ -172,7 +172,7 @@ class _MeshMixin:
             materials=materials_dict,
             boundary=self._boundary,
             domain=self._declared_mesh["_domain"],
-            # #931 §1.9: a sheet's PLANE is a z feature even though its zero
+            # a sheet's PLANE is a z feature even though its zero
             # thickness is not — the profile must leave a mesh line there.
             thin_conductors=self._thin_conductors,
         )
@@ -218,8 +218,7 @@ class _MeshMixin:
         without the caller passing a profile.
 
         * ``2d_tmz`` on ONE z cell between PEC walls is solved as that 3-D
-          box, with a different timestep from the uniform lane's 2-D solve
-          (#1340); equal step counts compare different physical times. One declaration
+          box, with a different timestep from the uniform lane's 2-D solve; equal step counts compare different physical times. One declaration
           cannot mean both, so it is refused, and the message names the 3-D
           box to declare instead (``mode="3d"``, one cell, PEC z walls). On a
           thicker z stack every amplitude scales with the z cell count.
@@ -246,7 +245,7 @@ class _MeshMixin:
         The non-uniform lane has no subgrid: nothing on it reads
         ``add_refinement``, so a refined model ran the unrefined graded mesh,
         bit-identical to the same model without the refinement and with no
-        warning (#1240). Decided on the RESOLVED mesh, the property that picks
+        warning. Decided on the RESOLVED mesh, the property that picks
         the lane, so a profile that auto-meshing produced counts too. One text
         for the preflight finding and the run-time refusal.
         """
@@ -279,9 +278,9 @@ class _MeshMixin:
         vertex or PEC sheet declared at the same half-node coordinate.
 
         Wire vertices and sheet planes round a tie to the lower node, and so
-        do point features on both lanes (#1342). The preflight finding
+        do point features on both lanes. The preflight finding
         ``half_node_split`` says the same thing; this is the refusal
-        ``skip_preflight=True`` does not bypass, as for #1240. Features are
+        ``skip_preflight=True`` does not bypass. Features are
         paired on their DECLARED coordinates first, so a model with no port,
         source or probe at a conductor's coordinate returns without building
         a grid.
@@ -297,7 +296,7 @@ class _MeshMixin:
         Only ``run()`` dispatches to the subgridded lane. The other entry
         points that solve a uniform model never read ``add_refinement``, so a
         refined model came back bit-identical to the unrefined one, with no
-        warning (#1240): ``forward()`` (and ``optimize()`` through it),
+        warning: ``forward()`` (and ``optimize()`` through it),
         ``topology_optimize()``, the ``vmap_material_sweep()`` batched kernel,
         the uniform ``compute_waveguide_s_matrix()`` scan and its per-port
         reference models, ``differentiable_material_fit()``,

@@ -7,7 +7,7 @@ Uses a 1D auxiliary FDTD with CPML to generate the incident field.
 Oblique incidence (``angle_deg != 0``) dispatches to a **2D auxiliary grid**
 (``rfx/sources/tfsf_2d.py``), which shares the 3D cell size so numerical
 dispersion matches at any angle. That grid carries the oblique transverse
-wavenumber ``k_y = k0·sinθ`` via a **Bloch field-transformation** (#404); as a
+wavenumber ``k_y = k0·sinθ`` via a **Bloch field-transformation**; as a
 consequence the oblique source is **narrowband** (single-frequency at ``f0``).
 Two caveats for oblique runs — see ``tfsf_2d.py`` for the full discussion:
   - keep the fractional ``bandwidth`` small (≲0.15) or off-``f0`` components
@@ -47,18 +47,18 @@ from rfx.sources.sources import CustomWaveform
 
 
 # ---------------------------------------------------------------------------
-# Auxiliary-grid absorber (#888)
+# Auxiliary-grid absorber
 # ---------------------------------------------------------------------------
 # See rfx/sources/tfsf_2d.py for the finding.  The 1-D grid is the normal-
 # incidence path (cv04's); it shipped at 20 cells with
 # sigma_max = 0.8 * 4 / (eta dx_1d) and reflected |B/A| ~ 4e-02.  The 1-D CPML
 # update applies b and c but no kappa stretching, so kappa_max stays 1
 # and an override to anything else is refused rather than silently ignored.
-# With H sampled at its Yee half cell (#1234), 20 cells return at most
+# With H sampled at its Yee half cell, 20 cells return at most
 # -111.8 dB over the measured 2--30 GHz band and both faces at dx = 1 mm.
 # Ten cells return -87.4 dB; the auxiliary requirement is -105 dB.
 # Keep the normal-incidence target R = 1e-6 and restore the 20-cell depth.
-# The dated #888 design note retains its measurements of the older profile.
+#
 AUX_N_CPML_1D = 20
 AUX_CPML_ORDER_1D = 3       # rfx/boundaries/cpml.py _cpml_profile default
 AUX_CPML_KAPPA_MAX_1D = 1.0
@@ -292,11 +292,11 @@ def init_tfsf(
         Electric-field polarization for the incident plane wave.
     direction : "+x" or "-x"
         Propagation direction along the x-axis.
-    angle_deg : float
+    angle_deg: float
         Signed oblique angle in degrees away from the x-axis. Positive
         angles tilt toward the positive transverse axis. Non-zero angles
         dispatch to the 2D-aux grid and produce a **narrowband** (single-f0)
-        oblique wave via a Bloch field-transformation (#404); use a small
+        oblique wave via a Bloch field-transformation; use a small
         fractional ``bandwidth`` (≲0.15) and an open/commensurate transverse
         domain (see the module docstring and ``tfsf_2d.py``).
     x_cells : array-like | None
@@ -322,16 +322,16 @@ def init_tfsf(
         frequency sinusoid at ``f0`` with a raised-cosine turn-on
         (~8 periods) then constant amplitude — for steady-state /
         narrowband measurements needing a well-defined ⟨E²⟩=A²/2 (e.g.
-        the #446 Kerr SPM oracle). NORMAL INCIDENCE ONLY (the oblique
+        the Kerr SPM oracle). NORMAL INCIDENCE ONLY (the oblique
         2D-auxiliary path does not carry it).
     aux_n_cpml, aux_cpml_order, aux_cpml_kappa_max, aux_cpml_r_asymptotic
-        Override the AUXILIARY grid's own absorber (#888). Defaults are the
+        Override the AUXILIARY grid's own absorber. Defaults are the
         derived constants at the top of this module (normal incidence) and of
         ``tfsf_2d.py`` (oblique Bloch); both dispatch paths honour them, and
         overriding is how the reflection gate measures the profile that shipped.
         ``method='methodB'`` REFUSES them: that path
         (``tfsf_oblique_open.py``) builds its own 20-cell auxiliary absorber
-        from the pre-#888 heuristic, so accepting the arguments there would say
+        from its own heuristic, so accepting the arguments there would say
         the knob works when it does not.
 
     Returns
@@ -378,8 +378,8 @@ def init_tfsf(
     # normal 1D-aux path below regardless of method (byte-unchanged).
     if abs(angle_deg) > 0.01 and method == "methodB":
         # Method B builds its own 1-D auxiliary absorber (tfsf_oblique_open.py:
-        # 20 cells, sigma_max = 0.8 * 4/(eta d_aux), rho**3) -- the pre-#888
-        # heuristic, untouched by this lane. Accepting an aux_* override here
+        # 20 cells, sigma_max = 0.8 * 4/(eta d_aux), rho**3) -- its own heuristic,
+        # independent of this lane. Accepting an aux_* override here
         # and dropping it would be the same silent-drop the waveform guard
         # above exists to prevent.
         _aux_overrides = {
@@ -431,7 +431,7 @@ def init_tfsf(
             theta_deg=angle_deg,
             waveform=waveform,
             # forwarded, not dropped: the reflection gate measures the oblique
-            # absorber through this entry point (#888)
+            # absorber through this entry point
             aux_n_cpml=aux_n_cpml,
             aux_cpml_order=aux_cpml_order,
             aux_cpml_kappa_max=aux_cpml_kappa_max,
@@ -498,7 +498,7 @@ def init_tfsf(
 
     # 1D CPML profile.  sigma_max is DERIVED from a target reflection through the
     # same law the 3-D absorber uses (rfx/boundaries/cpml.py::_cpml_profile), on
-    # each mapped end cell width -- see AUX_*_1D above and #888.
+    # each mapped end cell width -- see AUX_*_1D above.
     _kappa_1d = (AUX_CPML_KAPPA_MAX_1D if aux_cpml_kappa_max is None
                  else float(aux_cpml_kappa_max))
     if _kappa_1d != 1.0:

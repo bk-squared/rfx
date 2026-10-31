@@ -625,7 +625,7 @@ def read_touchstone_full(filepath: str | Path, *,
             resolved_layout = "legacy-rfx" if marked[-1] == "legacy-rfx" else "standard"
         else:
             # An unmarked rfx v1 export with 3+ ports predates the marker
-            # and was written column-major (#1448).
+            # and was written column-major.
             legacy_export = (
                 version == "1.0" and n_ports >= 3
                 and "rfx Touchstone export" in comments

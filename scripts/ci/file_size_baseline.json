@@ -4,20 +4,20 @@
   "files": {
     "rfx/api/__init__.py": 2089,
     "rfx/api/_execute.py": 2035,
-    "rfx/api/_preflight.py": 1145,
-    "rfx/api/_spec.py": 1803,
+    "rfx/api/_preflight.py": 1134,
+    "rfx/api/_spec.py": 1794,
     "rfx/interop/_design.py": 1643,
     "rfx/interop/emitters/openems.py": 1668,
     "rfx/nonuniform.py": 30,
-    "rfx/preflight/msl.py": 1359,
-    "rfx/probes/probes.py": 1579,
+    "rfx/preflight/msl.py": 1349,
+    "rfx/probes/probes.py": 1556,
     "rfx/ringdown.py": 2223,
     "rfx/runners/_distributed_common.py": 299,
-    "rfx/runners/distributed_nu.py": 790,
+    "rfx/runners/distributed_nu.py": 788,
     "rfx/simulation.py": 190,
     "rfx/sources/waveguide_port.py": 126,
-    "rfx/sparams/_common.py": 2291,
-    "rfx/sparams/coax.py": 1698,
+    "rfx/sparams/_common.py": 2237,
+    "rfx/sparams/coax.py": 1687,
     "rfx/subgridding/jit_runner.py": 2443
   }
 }

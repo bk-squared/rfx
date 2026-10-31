@@ -43,7 +43,7 @@ from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacings
 def assembled_as_pec(sim, entry) -> bool:
     """Does the assembly below route this geometry entry to the PEC branch?
 
-    The one realized PEC predicate (#1961): the RESOLVED material's concrete
+    The one realized PEC predicate: the RESOLVED material's concrete
     ``sigma >= sim._PEC_SIGMA_THRESHOLD``, as ``assemble_cells`` keys it, not
     the literal name "pec" -- a named copper at 5.8e7 S/m is PEC there too.
     An unresolvable name falls back to the literal "pec"; a traced sigma is
@@ -67,7 +67,7 @@ def assemble_cells(
 ):
     """Build material arrays plus per-pole dispersion masks.
 
-    Lattice ownership contract (#931): PEC geometry entries are
+    Lattice ownership contract: PEC geometry entries are
     classified as VOLUME (centre-sampled cells, into ``pec_mask``),
     SHEET (a zero-thickness Box, into ``pec_sheets``) or WIRE (a
     sub-cell ``PolylineWire``, into ``pec_wires``); PEC thin
@@ -82,7 +82,7 @@ def assemble_cells(
         values before staging; outer-traced material values are not judged.
     sheet_specs : list or None
         Out-parameter for surface-impedance sheets. These carry a separate
-        node-thin operator rather than folding into the volume sigma (#677).
+        node-thin operator rather than folding into the volume sigma.
     geometry_masks, assembly_entries : list or None
         Out-parameters for the geometry masks and conductor classification
         records consumed by the realized-conductor object. Entries retain
@@ -102,12 +102,12 @@ def assemble_cells(
         only" an explicit decision at the call site.
     pad_fill_findings : list or None
         Uniform-grid out-parameter. When a list is given, a declared-but-unfilled
-        span at a padded hi face (#1070) is APPENDED to it instead of
+        span at a padded hi face is APPENDED to it instead of
         raising ``PadFillShortfall``. ``fidelity_report`` passes one:
         an audit whose job is to show where the realized model differs
         from the declared one has to show this difference too, and a
         report that refuses to run instead of naming the defect is the
-        opposite of useful (review of PR #1136, A). A solve passes
+        opposite of useful. A solve passes
         nothing and gets the raise, because there the pad would be
         filled with vacuum and the answer would be wrong.
     include_thin_conductors : bool, default True
@@ -126,7 +126,7 @@ def assemble_cells(
         through reached absorbing faces before application. The batched sweep path has to re-extend
         the pad for each swept value, and extending the *finished*
         arrays would copy the conductor's array values instead of realizing
-        its continued geometry (issue #642). Handing that path the
+        its continued geometry. Handing that path the
         pre-conductor arrays and letting it re-apply the same shared
         ``apply_thin_conductor`` afterwards reproduces this order
         instead of approximating it.
@@ -140,19 +140,7 @@ def assemble_cells(
         padding, and vacuum at any boundary node the rasterizer dropped.
         Unpadded high walls are handled by the component consumers.
 
-        Same caller, same reason, one issue later. #637/#643 let the
-        batched sweep re-extend already-extended arrays, on the argument
-        that "every pad cell is overwritten by one of the three passes,
-        so the result depends only on the INTERIOR values — which are
-        the batch-correct ones". #655 made the shared rule repair the
-        dropped hi-face boundary NODE as well as the pad, which is an
-        interior cell that ``Shape.mask`` does not cover — so that
-        premise stopped holding and the batched path inherited the BASE
-        material there instead of its own swept value. Handing it the
-        un-extended arrays and letting the shared rule take the whole
-        decision per swept element restores the premise rather than
-        patching around it (issue #642's lesson: the batched path was
-        given the wrong INPUT, not running the wrong algorithm).
+        The shared pad-extension rule also repairs the dropped hi-face boundary node, an interior cell not covered by ``Shape.mask``. Re-extending already-extended arrays lets a batched sweep inherit the base material there instead of its swept value. Supply unextended arrays so each swept element receives the complete shared rule.
 
     Returns
     -------
@@ -187,7 +175,7 @@ def assemble_cells(
 
     # Collect per-pole masks so distinct materials do not inherit
     # each other's dispersion poles. Keyed per
-    # ``rfx.geometry._pole_keying._pole_key`` (#274): pole value when
+    # ``rfx.geometry._pole_keying._pole_key``: pole value when
     # hashable (equal poles dedupe/merge as before), ``id(pole)``
     # only for unhashable traced poles. Values are (pole, mask).
     debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
@@ -210,12 +198,12 @@ def assemble_cells(
     _pec_sheets = pec_sheets if pec_sheets is not None else []
     _pec_wires = pec_wires if pec_wires is not None else []
 
-    # #1070: a structure declared out to a padded face must rasterize to
+    # a structure declared out to a padded face must rasterize to
     # within the one node the half-open Box rule costs it. Checked only
     # when a pad will actually be filled from that edge, and only on a
     # concrete mask -- under an outer jit the mask is a tracer and the
     # question cannot be asked on the host.
-    # The declared-span audit is a uniform-only contract (#1070).
+    # The declared-span audit is a uniform-only contract.
     # The shared solve builder runs the same check on every grid itself
     # (rfx.model.pad_fill) and passes check_declared_span=False.
     _check_pad_fill = (check_declared_span and not nonuniform and include_cpml_pad_extension
@@ -236,7 +224,7 @@ def assemble_cells(
         if mat.sigma >= sim._PEC_SIGMA_THRESHOLD:
             solved_shape = entry.shape if nonuniform else continued_conductor_shape(
                 sim, grid, entry.shape, entry=entry, unextendable=conductor_findings)
-            # True PEC (#931): volume cells into pec_mask (centre
+            # True PEC: volume cells into pec_mask (centre
             # sampled, §1.1); a zero-thickness Box is a sheet; a
             # sub-cell PolylineWire is a filament. eps/sigma stay at
             # vacuum values either way.
@@ -258,7 +246,7 @@ def assemble_cells(
                 _pec_wires.append(wire)
             pec_shapes.append(solved_shape)
         else:
-            # #1070, and only here (review of PR #1136, C): the pad
+            # The pad
             # extension replicates eps/sigma/mu, never ``pec_mask``, so
             # the vacuum-in-the-pad failure this checks for cannot happen
             # to a PEC entry. Asking about one would report a condition
@@ -274,7 +262,7 @@ def assemble_cells(
             # tracer, which refuses. Assembly is handed a built ``grid``
             # and must not plan a mesh. ``domain`` is a required
             # constructor argument, so the declaration is always there.
-            # GPU run 369367262302 on a6d6fce1, regression of PR #1136.
+            #
             if _check_pad_fill and not is_tracer(mask):
                 assert_declared_span_is_filled(
                     entry.material_name, entry.shape, mask, grid,
@@ -335,33 +323,31 @@ def assemble_cells(
     # modes in dielectric waveguides see an impedance-matched absorber
     # (equivalent to UPML).  Each CPML face copies the interior-edge
     # slice outward, as if the geometry continued beyond the domain.
-    # extend_cpml_pad_materials holds the #627 fix: the former
-    # hand-duplicated copies (#582) both carried a hi-face vacuum
+    # extend_cpml_pad_materials holds the fix: the former
+    # hand-duplicated copies both carried a hi-face vacuum
     # column for a domain-touching box; the fix lives once.
     #
-    # Dispersion-pole masks are deliberately NOT extended here (#627b
-    # tried and reverted): extending a high-Q (Q~60) Lorentz pole into
+    # Dispersion-pole masks are deliberately NOT extended here: extending a high-Q (Q~60) Lorentz pole into
     # the pad turns a stable edge-touching simulation into a divergent
     # one (last/mid energy ratio 649 vs 0.12-0.16 decaying on every
     # other tested variant, including the static extension below with
     # the same pole left un-extended in the interior) — with no NaN
     # and no exception, so nothing downstream catches it. See
-    # extend_cpml_pad_materials's docstring and the follow-up issue
-    # (filed separately, tracking the stability factorial).
+    # extend_cpml_pad_materials's docstring.
     #
     # And the hi-face fallback never promotes a pole-carrying column's
-    # STATICS either (#808): promoting them puts the material's eps_inf
+    # STATICS either: promoting them puts the material's eps_inf
     # without its poles into the pad and the repaired boundary node — a
     # material no declared model has — which moved a committed Debye
     # recovery from its pinned 11% error to 32%, past its 20% gate.
-    # The combined pole mask below gates exactly that fallback; static
-    # materials keep the full #627a/#655 behaviour.
-    # Before #582 the NU assembler had no pad extension, so an edge-touching
-    # structure saw a different absorber medium per path: measured 736 pad
+    # The combined pole mask below gates exactly that fallback; static materials receive both
+    # hi-face fallback promotion and boundary-node repair.
+    # Omitting pad extension on the NU lane gives an edge-touching structure a different
+    # absorber medium per path: measured 736 pad
     # cells eps 4.0-vs-1.0 at the slab's k=9 layer. The uniform-mesh reduction
     # anchor diverged wherever that mismatch interacted with subpixel smoothing.
-    # Extend statics only, before thin folds. Never extend poles or Kerr (#627b);
-    # pole occupancy gates hi-face static promotion (#808).
+    # Extend statics only, before thin folds. Never extend poles or Kerr;
+    # pole occupancy gates hi-face static promotion.
     if include_cpml_pad_extension:
         # Per-face allocation (2026-04): (pad_{axis}_lo / _hi). Periodic
         # faces and unpadded high walls stay untouched. Absorbing faces
@@ -382,12 +368,12 @@ def assemble_cells(
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
-    # Apply thin conductors (#931: PEC thin sheets go to ``pec_sheets``,
+    # Apply thin conductors (PEC thin sheets go to ``pec_sheets``,
     # never to pec_mask; f0 sheets to ``sheet_specs``; DC folds to sigma).
     # This runs AFTER material-array extension, with continued geometry.
     # rfx.vmap_sweep depends
     # on being able to observe the state just before this stage — see
-    # ``include_thin_conductors`` in this function's docstring (#642).
+    # ``include_thin_conductors`` in this function's docstring.
     if include_thin_conductors:
         materials, pec_mask = _fold_thin_conductors(
             sim, grid, materials, pec_mask, pec_shapes, _pec_sheets,
@@ -484,7 +470,7 @@ def assemble_cells(
     from rfx.materials.thin_conductor import (
         warn_sheet_planes_inside_dielectric,
     )
-    # #931: a sheet plane buried strictly inside a dielectric body is
+    # a sheet plane buried strictly inside a dielectric body is
     # the geometry the declaration did NOT describe. Warn (preflight
     # names it too); nothing is re-sampled.
     warn_sheet_planes_inside_dielectric(_pec_sheets, materials.eps_r)
@@ -970,7 +956,7 @@ def sat_face_mu(materials, sl):
 
 
 def subgrid_components(mats_c, mats_f, grid_c, config):
-    """Coarse and fine materials with components; the fine grid flags only the global walls it reaches (#1966)."""
+    """Coarse and fine materials with components; the fine grid flags only the global walls it reaches."""
     periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
     return (with_components(mats_c, grid_c, periodic=periodic, high_wall=unpadded_high_walls(grid_c)),
             with_components(mats_f, None, periodic=(False,) * 3, high_wall=fine_high_walls(grid_c, config)))
@@ -992,7 +978,7 @@ def validate_dispersion(realized, poles, dt):
 
 def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
                             held_edges=(), *, grid=None):
-    """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
+    """Per-component ``(Ca, Cb)`` over the design box's write window.
 
     The box works in EDGE (per-E-component) values, and what it is handed
     decides how each value is made:
@@ -1005,8 +991,7 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
       on its faces, and its plus-side layer is written because a cell's value
       reaches the edges on its plus faces. The box lane then equals what
       ``update_e`` would do with the design values in ``materials``.
-    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (#1216,
-      the sheet lane: one conductivity per Yee edge, component ``c`` at the
+    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (the sheet lane: one conductivity per Yee edge, component ``c`` at the
       same box index). It is taken as-is and NOT averaged again: it replaces
       the edge conductivity at the box indices, and every other edge in the
       window -- the plus-side layer included -- keeps the background edge
@@ -1046,7 +1031,7 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     # A lumped stamp in the window's context layer is edge-owned, not a cell
     # volume, so it is removed before the average and added back at its cell,
     # on its own component — the same rule ``component_e_materials`` applies
-    # grid-wide (#1210, #1236). The design box itself is fenced off port and
+    # grid-wide. The design box itself is fenced off port and
     # source cells, except a port's own edges on explicit opt-in (held).
     win_mats = apply_material_overrides(
         materials, eps_override=eps_r_box, sigma_override=sigma_box,

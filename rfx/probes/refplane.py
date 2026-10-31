@@ -1,7 +1,6 @@
-"""Reference-plane port waves for the lumped/wire S-matrix path (issue #313).
+"""Reference-plane port waves for the lumped/wire S-matrix path.
 
-Phase-1 implementation of the REFERENCE-PLANE architecture promoted by the
-issue #313 Phase-0 verdict (closed-box flux referee, 2026-07-10): the
+The closed-box flux measurement motivates reference planes: the
 port-cell wave definitions at a wire port are near-field-dominated (0 cells
 from the discontinuity) and do not conserve power against a leak-free
 closed-box referee, while line V/I measured a few cells outboard on the
@@ -13,12 +12,12 @@ reference planes instead of at the port cells, for the OFF-DIAGONAL
 S-matrix entries only.
 
 Method (all conventions measured/anchored in the Phase-0 lane; constants in
-the issue #313 Phase-0 comment — do not re-derive):
+the Phase-0 comment — do not re-derive):
 
 * Plane V = vertical-E GAP line integral at an integer Yee plane N cells
   outboard (into the DUT) along the line axis — over the port's
   component-axis cell range TRIMMED to the cells not PEC-masked at the
-  plane column.  Measured witness (A/B vs point probes, 2026-07-10): the
+  plane column.  Measured witness (A/B vs point probes): the
   in-trace Ez edge of a one-cell-thick PEC trace is NOT zeroed by the
   staircase mask convention and carries ~0.21 of the gap field, so an
   untrimmed port-extent integral mis-scales V by ~0.89 (which cancels in
@@ -45,7 +44,7 @@ the issue #313 Phase-0 comment — do not re-derive):
   beta would be wrong).  Magnitude-neutral by construction.
 * Off-diagonals: ``S_ij = b_inc_plane(i) / a_fwd_plane(j)`` where both
   ports opted in.  DIAGONAL ``S_jj`` always stays on the byte-frozen
-  legacy path (``decompose_wire_s_matrix`` — issue #308 conventions),
+  legacy path (``decompose_wire_s_matrix`` — legacy per-cell conventions),
   untouched.
 
 The scan-side DFT accumulators mirror the coax plane-V/I machinery class
@@ -76,7 +75,7 @@ _AXIS_OF_NAME = {"x": 0, "y": 1, "z": 2}
 # Zc reality witness: near-field-contaminated planes show up in the measured
 # line impedance as an imaginary part (a lossless uniform line reads a
 # (near-)real Zc).  Measured provenance (canonical 16 mm thru, dx = 0.5 mm,
-# gap-trimmed V, 2026-07-10 battery): N=3 planes in the port near field read
+# gap-trimmed V): N=3 planes in the port near field read
 # max|Im(Zc)/Re(Zc)| = 8.2%; clean N=10 mid-line planes read <= 1.2%.  0.03
 # is the class boundary between those two measured classes (not a derived
 # threshold).
@@ -214,7 +213,7 @@ def build_wire_refplane_specs(
         :meth:`rfx.Simulation.conductor_mask` /
         :func:`rfx.materials.thin_conductor.conductor_footprint` so a
         ``surface_impedance_f0`` trace — invisible to ``pec_mask`` and to
-        ``materials.sigma`` since #677 — is seen (#695).
+        ``materials.sigma``  — is seen.
 
     Returns
     -------
@@ -280,7 +279,7 @@ def build_wire_refplane_specs(
 
     # The extent's END NODE — the node the port's last driven edge reaches
     # — seeds the trace connected component, because that is where the
-    # trace sits. ``_wire_port_cells`` is half-open in EDGES (#931 R8), so
+    # trace sits. ``_wire_port_cells`` is half-open in EDGES, so
     # the last DRIVEN EDGE is indexed one below that node; while the
     # extent was endpoint-inclusive the two coincided and this read
     # ``max(cells)`` directly. Seeding one cell low is not a loud failure:
@@ -536,13 +535,12 @@ def decompose_wire_s_matrix_with_reference_planes(
     """
     from rfx.probes.probes import decompose_wire_s_matrix
 
-    # np.array (copy): the jnp output buffer is read-only and the plane
-    # path overwrites the opted off-diagonals in place below.
-    # Issue #683 x #764: ``v_ref`` is the PRE-injection drive-sample
-    # reference (v_all now holds the physical POST samples); it keeps the
-    # byte-frozen legacy diagonals and the non-opted #308 off-diagonals
-    # frozen through the sampling flip.  None = pre-#683 caller (v_all IS
-    # the reference).
+    # np.array (copy): the jnp output buffer is read-only and the plane path
+    # overwrites opted off-diagonals in place. ``v_ref`` is the pre-injection
+    # drive-sample reference; v_all contains physical post-injection samples.
+    # Legacy diagonals and non-opted per-cell off-diagonals retain their
+    # calibrated reference. None selects v_all for callers whose data already
+    # contains the pre-injection sample.
     S = np.array(
         decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
                                 v_ref=v_ref),

@@ -72,7 +72,7 @@ def mesh_intelligence_report(
 
     dx = sim._dx or (C0 / sim._freq_max / 20.0)
 
-    # #696: one shape source, shared with estimate_ad_memory — the
+    # one shape source, shared with estimate_ad_memory — the
     # grid the solve will actually build. This method carried its own
     # copy of the same ceil(extent/dx)+1+2*cpml re-derivation, so the
     # report's cell count and its AD estimate could describe two

@@ -1,9 +1,9 @@
-"""Mesh position is data, never an XLA partition-id (#1441).
+"""Mesh position is data, never an XLA partition-id.
 
 Pass ``mesh_ranks(mesh)`` through the enclosing jit's arguments, then as the
 first argument of each rank_shard_map. Capturing it as a compiled constant
 instead lets SPMD partitioning reintroduce partition-id when slicing it.
-An enclosing jit is refused on GPUs (tracker 1598).
+An enclosing jit is refused on GPUs.
 """
 from functools import wraps
 import os

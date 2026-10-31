@@ -512,7 +512,7 @@ def _node_arrays(sim, grid, nonuniform):
     ``np.full`` (uniform); on a graded 0.3048 mm profile that line sat
     3.9e-10 m off the rasterizer's, a uniform-valued NU axis reported a
     declared 500.0 um cell as 500.00002374872565 um, and exactly-on-node
-    faces carried ~1e-12 um residuals (#833 item 2, measured 2026-09-02).
+    faces carried ~1e-12 um residuals.
 
     ``sizes[a]`` has one entry per node-provider cell (``grid.shape[a]``
     entries); ``nodes[a]`` has one more — the grid's own nodes plus the far

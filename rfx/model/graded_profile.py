@@ -70,7 +70,7 @@ def _ramp_steps(ratio: float, cap: float) -> int:
     cell on the ratio law exactly (``ratio == cap**k``) arrives with float
     noise of order ``ulp(column) / cell`` — 5.5e-13 relative on a 39 m
     column of mm cells — and a 1e-12 slack flipped ``k`` to ``k + 1``
-    there, which broke the exact-fit branch (review finding, 2026-09-07).
+    there, which broke the exact-fit branch (review finding).
     The per-step ratio may then exceed ``cap`` by at most
     ``cap x ln(cap) x 1e-10 / m`` — 4.7e-11 absolute at 1.4, far inside
     the I2 tolerance of 1e-9.
@@ -392,10 +392,9 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
     # An end segment whose span EQUALS its pinned cell has no free cells:
     # the pin is then that segment's seam cell on BOTH sides (its lo side
     # for k == 0, its hi side for k == n_seg - 1), so the neighbour ramps
-    # from it and the seam audit sees it. Before the 2026-09-07 review the
-    # pin was visible from the outside only, and
-    # ``make_band_profile([0, 1e-3, 5e-3], [1e-3, 1e-4], boundary_cell=1e-3)``
-    # returned a ratio-10 seam with no error.
+    # from it and the seam audit sees it. Exposing the pin only on the outside hides a
+    # ratio-10 seam in ``make_band_profile([0, 1e-3, 5e-3], [1e-3, 1e-4],
+    # boundary_cell=1e-3)``.
     def _lo_cell(k, cur):
         if cur[k]:
             return cur[k][0]

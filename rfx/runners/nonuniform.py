@@ -168,7 +168,7 @@ def build_nonuniform_grid(
                 raise ValueError(
                     f"periodic axis {axis!r}: declared period {length:.12g} m differs "
                     f"from realized period {len(profile) * spacing:.12g} m")
-    # #1941 judges a caller's z profile against the declared z; a column
+    # judges a caller's z profile against the declared z; a column
     # synthesised here rounds up to whole cells as the uniform grid does.
     snap = snap if dz_profile is not None else "declared"
     if dz_profile is None:
@@ -264,7 +264,7 @@ def _range_to_slice_nu(grid, axis, value_range):
     if value_range is None:
         return (pad_lo, n_axis - pad_hi), float(edges[-1])
     lo, hi = value_range
-    # Each end on the node pos_to_nu_index names (the #1295 tie rule),
+    # Each end on the node pos_to_nu_index names (the tie rule),
     # as the uniform builder puts it on round(lo/dx).
     from rfx.model.graded_grid import _axis_position_to_index
     lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
@@ -322,7 +322,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         v_slice, b_span = _range_to_slice_nu(grid, "y", entry.y_range)
 
     # NODE span -> CELL span, same conversion and same reason as the uniform
-    # builder (issue #868): ``_range_to_slice_nu`` reports the aperture as
+    # builder: ``_range_to_slice_nu`` reports the aperture as
     # ``edges[hi] - edges[lo]``, i.e. the cells lo..hi-1, while
     # ``WaveguidePort.u_slice`` is the field-array slice the transverse mode
     # operator is sized from.
@@ -408,9 +408,9 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         nowhere to go; and
       * the feed's own termination conductance is stamped into
         ``materials_drive`` as well as ``materials`` before the feed is
-        queued (#1256). The queue reads final realized materials after all
+        queued. The queue reads final realized materials after all
         stamps; ``materials_drive`` carries any whole-grid
-        eps/sigma override, traced or not (#1267).
+        eps/sigma override, traced or not.
 
     The substrate ``eps_r`` of the launch fixture -- the static-Laplace mode
     shape, when the port does not state ``eps_r_sub`` -- is read at the
@@ -418,7 +418,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     whenever an override is in force, and from ``materials_drive`` (which is
     then the drawn one) otherwise. The fixture is a static shape: under an
     override the uniform ``forward()`` reads it from the registered
-    materials too (#483), so a finite difference through the override and
+    materials too, so a finite difference through the override and
     ``jax.grad`` differentiate one function, and a traced override never
     reaches the host-side Laplace solve. Only the Cb each feed cell is
     driven through follows the override.
@@ -428,7 +428,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     separately by ``compute_msl_s_matrix`` via ``add_dft_plane_probe`` and
     flow through the existing NU ``dft_plane_probes`` accumulation. Returns
     the (possibly σ-updated) ``materials`` and the port-cleared realized PEC
-    edge masks (#931 §1.9).
+    edge masks.
     """
     from rfx.sources.msl_port import (
         _msl_yz_cells,
@@ -448,7 +448,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=sheet_specs), pec_edges=pec_edge_masks)
     original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
     for _msl_port_index, pe in enumerate(sim._msl_ports):
-        # Issue #661: one shared projection of position -> port frame.
+        # one shared projection of position -> port frame.
         mp = msl_port_from_entry(pe)
         port_mode = getattr(pe, "mode", "laplace")
         if port_mode == "eigenmode":
@@ -480,7 +480,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
-        materials_drive = setup_msl_port(      # #1256
+        materials_drive = setup_msl_port(
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
             sources.defer(make_msl_port_sources,
@@ -488,8 +488,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             )
         # Only the SUBSTRATE-NORMAL component: the edge the modal
         # source drives.  The three-component form opened a
-        # width-long slot in the ground plane at the feed (#931
-        # §1.9, corrected).
+        # width-long slot in the ground plane at the feed.
         conductors = clear_conductor_edges(
             conductors, list(_msl_yz_cells(grid, mp)),
             component=_msl_normal_component(mp),
@@ -534,7 +533,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         Number of timesteps.
     until_decay : float or None
         When not None, run via :func:`run_nonuniform_until_decay`
-        (issue #383 — NU port of the #169 interior-energy stop): every
+        (NU interior-energy stop): every
         step-count-sized build (source tables, waveguide port record
         buffers, DFT planes, flux monitors) is sized with
         ``decay_max_steps`` instead of ``n_steps``, and the scan is
@@ -555,10 +554,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         Threaded to :func:`run_nonuniform_until_decay` (same semantics
         as ``Simulation.run``'s ``decay_*`` kwargs).
     stop_fn, stop_interval :
-        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        ``run(..., ringdown=..., until_identified=True)``: the
         ``n_steps`` record runs as :func:`run_nonuniform_until_decay`'s
         chunked loop (chunks of ``stop_interval`` steps, energy stop off,
-        the #667 progress route's settings) and ``stop_fn(steps_done,
+        the progress route's settings) and ``stop_fn(steps_done,
         peek)`` decides after each chunk whether it ends there; ``peek()``
         gives the record so far (``time_series``, ``wire_port_sparams``,
         ``freqs``, ``grid``, ``dt`` as this function reports them).
@@ -572,11 +571,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
     design_box : DesignBoxSpec or None
-        Issue #1183. One static box whose E update is redone from its own
+        One static box whose E update is redone from its own
         (usually traced) permittivity, so reverse-mode AD keeps box-shaped
         arrays per timestep instead of grid-shaped ones. The graded-mesh
-        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
-        (#1179); ``rfx.model.resolve_design_box``, called from
+        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``; ``rfx.model.resolve_design_box``, called from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
     lane : str
@@ -632,7 +630,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
-    # _dispatch_plan, so the lane refuses the refinement it drops (#1240).
+    # _dispatch_plan, so the lane refuses the refinement it drops.
     sim._require_no_refinement_on_the_nonuniform_lane()
     from rfx.api import Result
 
@@ -642,7 +640,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
                                eps_override=eps_override)
 
-    # ---- #1183 design box: the fences only this lane can see ----
+    # ---- design box: the fences only this lane can see ----
     # Everything the resolved step context decides (the absorber, the
     # source/wire-port/RLC cells, dispersion, subpixel eps, a sheet inside
     # the box) is rfx.model.resolve_design_box's, from _build_nu_scan.
@@ -675,9 +673,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # with the uniform path). Full-plane AND finite-region (``size=``)
     # monitors are supported; the finite-region tangential CELL window is
     # resolved against the graded cumulative cell edges in the monitor-build
-    # block below (``_nu_flux_tangential_bounds``, audit c/B1, issue #764).
+    # block below (``_nu_flux_tangential_bounds``, audit c/B1).
 
-    # ---- until_decay (issue #383) fences + sizing ----
+    # ---- until_decay fences + sizing ----
     if until_decay is not None:
         if checkpoint_every is not None:
             raise NotImplementedError(
@@ -728,7 +726,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             debye_spec is not None or lorentz_spec is not None):
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     if strip_sheet_impedance:
-        # #677 operator-isolation control, used by the sheet negative
+        # operator-isolation control, used by the sheet negative
         # controls and resonance A/B lock. A sigma override cannot remove
         # this separate surface operator.
         _sheet_specs = []
@@ -736,10 +734,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
     # arrays for the scan, and every source and port DRIVE is built from
     # ``materials_drive``, which starts from the SAME arrays -- overridden,
-    # and traced when the override is (#1267). A drive pushes its current
+    # and traced when the override is. A drive pushes its current
     # through the Cb = dt/(eps + sigma*dt/2) of the edge it feeds, so it has
     # to read the permittivity the E update reads there. Built from the
-    # arrays as drawn, as this lane did until #1267, a device whose
+    # arrays as drawn, a device whose
     # permittivity under the port came from the override was driven
     # Cb_drawn/Cb_override times too hard: a layered substrate (eps_r
     # 3.38/3.38/10.2 under a 50 ohm wire) supplied by override read S11
@@ -755,9 +753,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # any current source through its own arrays; its modal port drives never
     # read them. The one thing still read from the arrays as drawn is the
     # MSL launch fixture's substrate eps_r (``_setup_msl_ports_nu``,
-    # ``drawn_eps_r``): a static mode shape, as on the uniform lane (#483).
+    # ``drawn_eps_r``): a static mode shape, as on the uniform lane.
     #
-    # #1256: ``materials_drive`` is not a frozen snapshot. Each port below
+    # ``materials_drive`` is not a frozen snapshot. Each port below
     # stamps its termination conductance into BOTH copies. A port drives a
     # current into an edge whose update coefficient Cb = dt/(eps + sigma*dt/2)
     # includes that port's own conductance; a drive built without it
@@ -769,20 +767,20 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # a layered substrate, graded cells or a lumped R/C under the port
     # made the factors unequal and moved S11 too. The uniform lane builds
     # its port sources after the stamp and never had this. On a concrete mesh the stamp is a host float and the copy stays
-    # concrete; on a traced mesh (#1207) sigma_port is traced, and so is the
+    # concrete; on a traced mesh sigma_port is traced, and so is the
     # drive, exactly as the E update is.
     materials_drive = materials
     _drawn_eps_r = None     # only an override separates drawn from stepped
     if eps_override is not None or sigma_override is not None:
         _drawn_eps_r = materials.eps_r
         # A whole-grid override REPLACES the array, so any lumped stamp that
-        # was folded into it is gone; its #1210 record goes with it, or the
+        # was folded into it is gone; its record goes with it, or the
         # E update would add back a load the override does not carry.
         materials = apply_material_overrides(
             materials, eps_override=eps_override, sigma_override=sigma_override)
-        materials_drive = materials     # #1267: the drive sees the override
+        materials_drive = materials     # the drive sees the override
     elif design_box is not None:
-        # #1183, the same rule at the same place: the design permittivity
+        # The design permittivity
         # sets the precision of the material arithmetic, exactly as an
         # ``eps_override`` array does one branch up. Without it the two
         # halves of one grid step at two precisions -- the float32 rounding
@@ -792,7 +790,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE here with the grid's periodic
+    # realize (Mx, My, Mz) ONCE here with the grid's periodic
     # flags, matching the seam convention of the 3-D NU step function.
     # Port clearing, wire-port liveness and the sheet ctx all read
     # THIS object from here on.
@@ -832,10 +830,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     "would get scalar eps"},
             )
         else:
-            # #1043 stage B: the pairs carry the CPML/UPML pad continuation,
-            # the NU mirror of the two uniform sites. Same shared builder, so
-            # the three cannot drift the way the array-side replication did
-            # before #627.
+            # The pairs carry the CPML/UPML pad continuation, the NU mirror of the two
+            # uniform sites. A shared builder keeps the three continuations consistent.
             from rfx.geometry.smoothing import (
                 smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
@@ -857,7 +853,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         aniso_eps = assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
 
     # Fold RLC R/C into materials before other port/source setup
-    # (mirrors the uniform path). #1256: into the drive's copy too -- an
+    # (mirrors the uniform path), including the drive's copy -- an
     # R or C across a driven edge is part of that edge's Cb, and a drive
     # built without it is off by the element's own (eps + sigma*dt/2) ratio.
     if sim._lumped_rlc:
@@ -946,7 +942,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # finite-region (``size=``) monitors restrict the DFT accumulation to the
     # CELL window whose cumulative face area matches the requested physical
     # size, resolved against the graded cumulative cell edges via
-    # ``_nu_flux_tangential_bounds`` (audit c/B1, issue #764). Tangential cell
+    # ``_nu_flux_tangential_bounds`` (audit c/B1). Tangential cell
     # sizes are passed as per-cell arrays so a graded tangential axis is
     # integrated correctly by FluxMonitor.dA.
     flux_monitor_objs = build_flux_monitor_cfgs_nu(sim, grid, sizing_n)
@@ -999,14 +995,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         rlc_metas = tuple(
             build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
         )
-        # #1245: at most one element with its own solve per realized edge.
+        # at most one element with its own solve per realized edge.
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
         rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
     # (the wire, lumped and MSL port loads above), as the uniform lane builds
     # them. With a dispersive material anywhere in the model the E update runs
-    # on these coefficients alone and never reads ``materials.sigma`` (#1257):
+    # on these coefficients alone and never reads ``materials.sigma``:
     # built before the port stamps they left every port unterminated, and a
     # 50 ohm and a 5000 ohm port gave the same waveform.
     debye = None
@@ -1022,7 +1018,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                                periodic=tuple(a in grid.periodic_axes for a in "xyz"))
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
-    # probe plane (issue #88 flux-extractor path). Built from the same
+    # probe plane. Built from the same
     # cfg geometry the uniform ``extract_waveguide_s_matrix_flux`` uses,
     # but with per-cell tangential cell-size arrays so a graded tangential
     # axis integrates correctly via FluxMonitor.dA.
@@ -1106,7 +1102,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                    "pec_occupancy": pec_occupancy_override,
                    "design_box": design_box})
 
-    # #677: assemble the surface-impedance sheet ctx from the specs the
+    # assemble the surface-impedance sheet ctx from the specs the
     # assembler emitted, against the FINAL realized PEC edges of this run
     # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
@@ -1189,7 +1185,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         emit_time_series=emit_time_series,
     )
     if stop_fn is not None:
-        # #1254: the chunked loop of the #667 progress route (energy stop
+        # the chunked loop of the progress route (energy stop
         # off, min_steps past the end) with the caller's stop check.
         if until_decay is not None or checkpoint_every is not None or n_warmup:
             raise NotImplementedError(
@@ -1229,7 +1225,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
                  if until_decay > 0 else None)
-        # #383: chunked host loop with the interior-energy stop. The
+        # chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
         # (forward-only host loop — mirrors uniform run_until_decay's
@@ -1251,7 +1247,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
     elif (report_every is not None and not checkpoint
           and checkpoint_every is None and not n_warmup):
-        # #667 on the NU lane: drive the SAME chunked host loop the decay
+        # on the NU lane: drive the SAME chunked host loop the decay
         # stop uses, with the stop disabled (decay_by=0.0 is that loop's
         # documented forced-N escape) and min_steps past the end so no
         # energy check ever runs. Chunk re-entry threads the full carry
@@ -1315,15 +1311,15 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             for entry, probe in zip(sim._dft_planes, r["dft_planes"])
         }
 
-    # Extract per-waveguide-port Poynting flux spectra (issue #88 flux path).
+    # Extract per-waveguide-port Poynting flux spectra.
     waveguide_port_flux_result = None
     if attach_waveguide_flux and wg_flux_monitors and "flux_monitors" in r:
         from rfx.probes.probes import flux_spectrum
         n_sim_flux = len(flux_monitor_objs)
         wg_final = r["flux_monitors"][n_sim_flux:]
-        # jnp-native (NU flux-AD, mirrors the uniform PR #172 fix): keep
+        # jnp-native (NU flux-AD): keep
         # flux_spectrum on the AD tape — np.array() here would detach the
-        # eps_override-traced gradient (the issue #148 concretization bug).
+        # eps_override-traced gradient (the concretization bug).
         # The sole consumer (compute_waveguide_s_matrix_nu, normalize='flux')
         # is jnp-native; np.asarray(...) downstream still accepts these for
         # any concrete-path numpy reader, so forward values are unchanged.

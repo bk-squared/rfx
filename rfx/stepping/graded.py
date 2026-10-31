@@ -178,7 +178,7 @@ def make_graded_step(
         frame.design_box_coeffs = frame.invariants["design_box_coeffs"]
         frame.step_idx, frame.src_vals = frame.xs
         frame.st = frame.carry["fdtd"]
-        # #1163: E^n at each lumped RLC edge, read before the E update (the
+        # E^n at each lumped RLC edge, read before the E update (the
         # series element is solved together with its edge field).
         frame.rlc_e_prev = (
             tuple(getattr(frame.st, m.component)[m.i, m.j, m.k] for m in ctx.rlc_metas)
@@ -221,10 +221,10 @@ def make_graded_step(
             frame.tfsf_h_state = update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
 
     def e_update(frame: GradedFrame):
-        # Snapshot E^n for the #677 sheet operator (it REPLACES the
+        # Snapshot E^n for the sheet operator (it REPLACES the
         # standard update at masked tangential edges with A*E^n + B*curlH).
         frame.e_prev_sheet = (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_sheet_impedance else None
-        # #1183: the design box REDOES the E update at its own cells from
+        # the design box REDOES the E update at its own cells from
         # the pre-update state (E^n and the same H^{n+1/2}).
         frame.st_prev_design = frame.st if ctx.use_design_box else None
 
@@ -250,7 +250,7 @@ def make_graded_step(
             frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
                              boundary=ctx.curl_boundary, high_wall=high_wall)
 
-        # #1183 design box: redo the E update at the design cells from the
+        # design box: redo the E update at the design cells from the
         # traced permittivity, on the graded-mesh curl. Same slot as the
         # uniform lane — immediately after the E update, on the same H,
         # before anything that reads or writes E.
@@ -304,7 +304,7 @@ def make_graded_step(
 
     def constitutive(frame: GradedFrame):
         """Apply sheets, then domain faces, then lumped constitutive laws."""
-        # #677 node-thin surface-impedance sheet operator. Contract slot:
+        # node-thin surface-impedance sheet operator. Contract slot:
         # AFTER apply_pec_mask/apply_pec_occupancy, BEFORE domain faces
         # (PEC wins on overlap), lumped updates, sources and port sampling.
         # curlH comes from
@@ -321,7 +321,7 @@ def make_graded_step(
             frame.st = _apply_sheet_e(frame.st, frame.e_prev_sheet, _curls,
                                 frame.sheet_impedance, frame.sheet_coeffs)
 
-        # PEC, per face (#1164)
+        # PEC, per face
         frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
                                    frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
 
@@ -375,9 +375,9 @@ def make_graded_step(
 
         # Wire port V/I DFT accumulation.
         #
-        # Ordering: AFTER source injection.  Issue #683 is DECIDED (by
-        # measurement, 2026-08-29 — docs/design_notes/
-        # issue683_sampling_order_decision_protocol.md section 9): this
+        # Ordering: AFTER source injection. Measurement
+        # (docs/design_notes/issue683_sampling_order_decision_protocol.md section 9)
+        # establishes that this
         # slot is the terminal-consistent, physically correct one.  The
         # known-load circuit law holds only for the post-injection pair
         # (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm over a six-point
@@ -392,8 +392,8 @@ def make_graded_step(
         # The uniform lane (rfx/simulation.py wire block) flipped to this
         # same POST slot for its physical V/I/V_port channels, with the
         # pre-injection drive sample kept as a separate calibration
-        # reference channel for its #308/#313 off-diagonal decomposition
-        # (issue #683 x #764,
+        # reference channel for its off-diagonal decomposition
+        # (
         # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
         # This lane's decomposition was calibrated in the POST frame
         # directly, so it needs NO reference channel and NO change.

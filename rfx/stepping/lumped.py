@@ -10,7 +10,7 @@ def update_rlc_elements(state, rlc_states, metas, e_prevs):
 
     Only solved elements (series, or parallel with an inductor) write their
     edge; folded elements write nothing. Admission already refuses two solved
-    elements on one edge (#1245), so the written edges are disjoint and one
+    elements on one edge, so the written edges are disjoint and one
     scatter equals the old element-by-element writes.
     """
     updated_states = []

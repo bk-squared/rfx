@@ -45,7 +45,7 @@ from rfx.geometry.csg import Shape
 # Every SDF and normal below takes an array backend ``xp`` -- ``jax.numpy``
 # (the default, and the only choice for traced inputs) or ``numpy``. The
 # smoothing functions evaluate them with ``xp=numpy`` on host float64 when
-# every input is concrete (#833): the same formulas, only the arithmetic
+# every input is concrete: the same formulas, only the arithmetic
 # precision differs, and the result is cast to the active JAX dtype once at
 # the end. ``rfx.geometry.conformal`` calls them with the default.
 
@@ -57,7 +57,7 @@ def _exterior_norm(xp, *terms):
     sample point. ``d/du sqrt(u)`` is ``+inf`` at ``u = 0``, and the chain
     rule then multiplies that by the zero inner derivative: ``0 * inf =
     nan``, which ``jnp.where`` propagates into every voxel of the gradient
-    (issue #1085 -- ``jax.grad`` of ``compute_smoothed_eps`` w.r.t. a Box
+    (``jax.grad`` of ``compute_smoothed_eps`` w.r.t. a Box
     shift was NaN at both ``jax_enable_x64`` flags while the central finite
     difference was finite).
 
@@ -255,7 +255,7 @@ def _get_normal_fn(shape: Shape):
 
 
 # ---------------------------------------------------------------------------
-# CPML pad continuation for the SMOOTHED lane (#1043 stage B)
+# CPML pad continuation for the SMOOTHED lane
 # ---------------------------------------------------------------------------
 #
 # ``_assemble_materials`` continues a boundary-touching structure into the
@@ -264,7 +264,7 @@ def _get_normal_fn(shape: Shape):
 # beyond the domain". The smoothed lane rebuilds its update permittivity from
 # ``sim._geometry`` and never saw that step, so under ``subpixel_smoothing`` a
 # guide that touches the domain edge was solved with VACUUM in the pad and a
-# Kottke half-cell at the seam -- a facet the guided mode reflects off (#831:
+# Kottke half-cell at the seam -- a facet the guided mode reflects off (
 # ``|B/A|`` 0.53 at 20 CPML cells, and WORSE as the absorber deepens, because
 # the first pad cell's conductivity falls as N^-3 and loads the facet less).
 #
@@ -282,8 +282,8 @@ def _get_normal_fn(shape: Shape):
 # The smoothed array's interior-edge column IS the Kottke half-cell, so
 # replicating it fills the pad with a medium that is neither the guide nor
 # vacuum; sourcing one column inward gets the pad right but strands that
-# half-cell INSIDE the absorber -- the one-cell film #655 already had to repair
-# on the staircase lane. Only continuing the GEOMETRY and smoothing THAT
+# half-cell INSIDE the absorber -- the same one-cell film the staircase lane repairs. Only
+# continuing the GEOMETRY and smoothing THAT
 # reproduces the reference row, which is what this helper does: the reached
 # face is moved out past the array, so the smoothing sees no interface there at
 # all and the pad and seam cells come out at bulk eps through the ordinary
@@ -338,7 +338,7 @@ class UnextendableShape(NamedTuple):
     and restores ``shape`` to the DECLARED object.
 
     Two callers surface these, and they are the SAME list from the SAME
-    predicate, not two rules that happen to agree today (the #627
+    predicate, not two rules that happen to agree today (the
     duplication class): :func:`warn_unextendable_shapes` at run time, and
     preflight's ``_validate_cfg_dielectric_at_absorber_seam``, which calls
     :func:`smoothed_shape_pairs` itself rather than re-deriving "reaches a
@@ -362,7 +362,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     Preflight says this before the run when it can (it builds the grid
     itself); this says it from inside the runner, where the realized pads
     are no longer in question. A shape that reaches a padded face and is
-    not continued is solved with vacuum in its own absorber -- the #831
+    not continued is solved with vacuum in its own absorber -- the
     facet -- and nothing downstream distinguishes that from a structure
     the user meant to end there.
     """
@@ -487,9 +487,8 @@ def extend_shapes_into_cpml_pad(
     shapes : list of (shape, eps_r)
         The pairs the smoothing is about to be handed. Shapes whose material
         carries a dispersion pole must be filtered out by the caller: pole
-        extension into a pad diverges (#627b) and promoting a pole-carrying
-        column's statics moved a committed Debye recovery past its gate
-        (#808).
+        extension into a pad diverges and promoting a pole-carrying
+        column's statics moved a committed Debye recovery past its gate.
     node_coords : (x, y, z)
         1-D E-NODE coordinate arrays over the FULL array, pads included --
         ``coords_from_uniform_grid`` / ``coords_from_nonuniform_grid``.
@@ -526,7 +525,7 @@ def extend_shapes_into_cpml_pad(
         # Same retrieval as the assembly check
         # ``rfx.geometry.rasterize_grid.assert_declared_span_is_filled``:
         # both ask "how far was this drawn" through ``declared_bounds`` so a
-        # shape excluded from one is excluded from the other (PR #1136, B).
+        # shape excluded from one is excluded from the other.
         bounds = declared_bounds(shape)
         if bounds is None:
             out.append((shape, eps_r))
@@ -858,7 +857,7 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
 
 
 class CurvedSmoothingWarning(AccuracyWarning):
-    """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
+    """Subpixel smoothing of a curved high-contrast dielectric."""
 
 
 def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=None):
@@ -867,7 +866,7 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
     Called only where smoothing is applied. The smoother keeps only the diagonal of the
     inverse-permittivity tensor; on a curved high-contrast interface the resonance then
     converges first order and was measured further off than the unsmoothed model
-    (#1632, docs/guides/known_limitations.md). The comparison set is the background and
+    (docs/guides/known_limitations.md). The comparison set is the background and
     every other declared dielectric, so a low-permittivity hole in a high-permittivity
     host is included; the set is every declared dielectric anywhere in the run, so a shape
     that touches only a near-equal host can be flagged too. Conductors (``sim``'s PEC
@@ -912,9 +911,8 @@ def smoothed_shape_pairs(sim, grid):
     ONE implementation for the three sites that rebuild the update
     permittivity from ``sim._geometry`` -- Stage-2 ``kottke_pec`` and Stage-1
     in ``rfx/runners/uniform.py`` and the NU mirror in
-    ``rfx/runners/nonuniform.py``. #627 exists because the array-side
-    replication was hand-duplicated across two assemblers and drifted; this
-    one is not duplicated a second time.
+    ``rfx/runners/nonuniform.py``. Sharing this implementation prevents
+    the pad-continuation rules from drifting between assemblers.
 
     The continuation is applied when the run has absorbing pads at all
     (``sim._boundary`` in ``cpml``/``upml`` with ``_cpml_layers > 0``) --
@@ -925,7 +923,7 @@ def smoothed_shape_pairs(sim, grid):
     caller passes ``False`` and runs no subpixel lane, so the two gates cannot
     disagree today; a future caller that wants the flag honoured here has to
     thread it -- and only to shapes whose material carries
-    no dispersion pole (#627b, #808: a pole in a pad diverges, and a
+    no dispersion pole (a pole in a pad diverges, and a
     pole-carrying column's promoted statics are a material no declared model
     has).
 
@@ -1022,11 +1020,7 @@ def _yee_coords(grid: Grid):
     - Ey lives at (i, j+0.5, k)
     - Ez lives at (i, j, k+0.5)
 
-    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to
-    reach a centre. That direction is the contract: the NU sibling
-    ``compute_smoothed_eps_nonuniform`` subtracted instead, and when #562 made
-    the NU coordinates node-based the subtraction put every smoothed voxel half
-    a cell off (review F1). Derive centres FROM nodes, never the reverse.
+    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to reach a centre. Subtracting from a node displaces the smoothed voxel by half a cell. Derive centres FROM nodes, never the reverse.
     """
     # Keep the coordinate construction in the shared host-float64 node
     # builder.  Constructing ``jnp.arange`` here made the Kottke SDF sample
@@ -1094,7 +1088,7 @@ def _kottke_tensor_eps(
 
 
 # ---------------------------------------------------------------------------
-# Host-float64 evaluation for concrete inputs (#833)
+# Host-float64 evaluation for concrete inputs
 # ---------------------------------------------------------------------------
 #
 # The smoothed permittivity is a constant geometry input, not a traced design
@@ -1103,7 +1097,7 @@ def _kottke_tensor_eps(
 # normals and Kottke averaging all rounded in float32, and every interface
 # voxel came out up to 15 f32 ulps away from the x64=1 value (measured on the
 # boundary-voxel fixture in tests/unit/geometry/test_smoothing_coordinate_
-# contract.py). Coordinate routing alone (ab280a38, #1088) could not close
+# contract.py). Coordinate routing alone (ab280a38) could not close
 # that: the coordinates were already the correctly rounded float32 of the
 # exact spine, and the rest was arithmetic.
 #
@@ -1247,13 +1241,13 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             # Fill fraction from union SDF
             f = xp.clip(0.5 - sdf_union / cell_len, 0.0, 1.0)
 
-            # Fix #1: fully-inside voxels get bulk eps, no smoothing
+            #  fully-inside voxels get bulk eps, no smoothing
             inside = f >= 1.0
             # Boundary voxels
             bnd = (f > 0.0) & (f < 1.0)
 
             # The "outside" eps is whatever was there before.
-            # Fix #3: full Kottke tensor averaging
+            #  full Kottke tensor averaging
             kt = _kottke_tensor_eps(f, eps_r, eps[comp], best_nx, best_ny, best_nz)
             smooth = kt[("ex", "ey", "ez").index(comp)]
 
@@ -1303,7 +1297,7 @@ def compute_smoothed_eps_nonuniform(
     local cell sizes — first-order accurate for non-cubic Yee cells, in
     line with the SDF-to-fill approximation in the uniform path.
 
-    Concrete inputs are evaluated in host float64 and cast once (#833);
+    Concrete inputs are evaluated in host float64 and cast once;
     a traced axis (mesh as design variable) keeps traced arithmetic.
     """
     from rfx.geometry.rasterize_grid import (
@@ -1312,12 +1306,11 @@ def compute_smoothed_eps_nonuniform(
     )
 
     coords = coords_from_nonuniform_grid(nu_grid)
-    # `coords` are E-NODE positions (cell edges) since #562 unified the NU
-    # convention with the uniform builder's. This function needs BOTH the node
+    # `coords` are E-NODE positions (cell edges) on both the NU and uniform builders. This
+    # function needs BOTH the node
     # and the cell centre per axis, so the centre is derived FROM the node
     # rather than the other way round. Getting that direction wrong is not a
-    # cosmetic slip: it displaces every smoothed voxel by half a cell, which is
-    # exactly the defect #562 removed elsewhere, and the committed
+    # cosmetic slip: it displaces every smoothed voxel by half a cell, and the committed
     # interface-value bound (1 < eps < 4) passes under either sign — see
     # test_compute_smoothed_eps_nonuniform_reduces_to_uniform, which is the
     # assertion that catches it.
@@ -1325,7 +1318,7 @@ def compute_smoothed_eps_nonuniform(
     # Cell centres — centre[i] = node[i] + d[i]/2 from the shared producer
     # rasterize_grid.centres_from_nonuniform_grid: d comes from the float64
     # cell-size spine (not the float32 store) and the sum is formed in host
-    # float64 (#833). ``node + f32(store)/2`` sat 3.7e-12 m off the exact
+    # float64. ``node + f32(store)/2`` sat 3.7e-12 m off the exact
     # spine at x64=1 and 1.1e-9 m at x64=0 on the graded WR-90 fixture.
     centres = centres_from_nonuniform_grid(nu_grid, coords)
     # Per-cell sizes from the same float64 spine, for the fill-fraction
@@ -1403,8 +1396,7 @@ def compute_smoothed_eps(
 
     Concrete inputs (host node spine, Python-float shape parameters and
     permittivities) are evaluated in host float64 and cast to the active
-    JAX dtype once, so the result does not depend on ``jax_enable_x64``
-    (#833); a traced shape parameter keeps traced ``jax.numpy`` arithmetic.
+    JAX dtype once, so the result does not depend on ``jax_enable_x64``; a traced shape parameter keeps traced ``jax.numpy`` arithmetic.
 
     Parameters
     ----------
@@ -1474,7 +1466,7 @@ def _kottke_inv_eps_diag(
         Switches to the σ→∞ / ε→∞ limit branch (Farjadpour 2006 §VI
         plus the limit derived in stage2_ca_cb_derivation.md §4).
     xp : numpy or jax.numpy
-        Array backend; ``numpy`` on the concrete host-float64 path (#833).
+        Array backend; ``numpy`` on the concrete host-float64 path.
 
     Returns
     -------
@@ -1588,8 +1580,7 @@ def compute_inv_eps_tensor_diag(
     # ``eps_r`` may arrive as a Python float), so it is rounded here on both
     # backends and the PEC limit below is folded in on top of that value. The
     # host path widens the rounded value back to float64 for the PEC
-    # arithmetic: that keeps x64=1 bit-identical to the pre-#833 path and
-    # makes x64=0 its float32 image.
+    # arithmetic: x64=0 is its float32 image.
     inv = [(1.0 / e).astype(xp.float32) for e in eps]
     if host:
         inv = [a.astype(np.float64) for a in inv]
@@ -1645,13 +1636,13 @@ def kottke_inv_eps_from_occupancy(
     background_eps: float = 1.0,
     periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Inverse-permittivity tensor from a continuous-fill PEC occupancy (#1197).
+    """Inverse-permittivity tensor from a continuous-fill PEC occupancy.
 
     The AD-traceable analogue of the ``pec_shapes`` branch in
     :func:`compute_inv_eps_tensor_diag`, built from the lattice ownership
     contract's own rule rather than from a cell-centred Kottke fill: each E
     edge is conductor to the degree that the four cells sharing it are
-    occupied (``_volume_occupancy_masks``, #931 §1.2 hard / §1.6 relaxed),
+    occupied (``_volume_occupancy_masks``, hard occupancy / §1.6 relaxed occupancy),
     ``inv_c = (1 - M_c) * baseline_c``. At binary occupancy the zeros are
     ``realized_pec_edge_masks`` bit for bit; a fractional cell is a lossless
     interpolation (a static high-permittivity cell), exact at 0 and 1 and a
@@ -1687,10 +1678,10 @@ def kottke_inv_eps_from_occupancy(
         ``simulation.run(aniso_inv_eps=...)`` or
         ``update_e_aniso_inv``.
     """
-    # #1197. The tensor is the E-update form of the lattice ownership
+    # The tensor is the E-update form of the lattice ownership
     # contract, so it is built from the contract's own rule: an E edge is
     # conductor to the degree that the FOUR cells sharing it are occupied
-    # (#931 §1.2 hard, §1.6 relaxed: ``M_c = 1 - prod(1 - o)`` over the two
+    # (hard occupancy, §1.6 relaxed occupancy: ``M_c = 1 - prod(1 - o)`` over the two
     # backward shifts transverse to the component), and ``inv_c = 1 - M_c``
     # scales the baseline. At binary occupancy this IS
     # ``realized_pec_edge_masks`` bit for bit -- the conductor ends where the
@@ -1706,16 +1697,13 @@ def kottke_inv_eps_from_occupancy(
     # where a cavity mode's normal E is largest. Measured on a 24 mm PEC cube
     # with a binary PEC slab (TM110 is independent of the slab height):
     # analytic 8.833 GHz, ``apply_pec_occupancy`` 8.8305, this builder with
-    # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %). The
-    # dilation had been kept (2026-05-31 review) on the |S21| witness of one
-    # open-stub run (run #962) in 60939e0's commit message; that run's
-    # fixture is not recorded anywhere, and the cavity oracle supersedes it.
+    # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %).
     from rfx.boundaries.pec import _volume_occupancy_masks
     from rfx.model.occupancy import clip_occupancy
 
     f = clip_occupancy(pec_occupancy.astype(jnp.float32))
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
-    # pinned zero (2026-05-17 decision, kept).
+    # pinned zero.
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
     m_x, m_y, m_z = _volume_occupancy_masks(f, tuple(bool(p) for p in periodic))
     if aniso_inv_eps_baseline is not None:

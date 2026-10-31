@@ -1,8 +1,6 @@
-"""MSL port-geometry preflight, moved verbatim out of ``rfx.api._preflight``.
+"""MSL port-geometry preflight.
 
-Issue #980 Phase 3, leg 1. Two things live here, both moved byte for byte
-out of ``rfx/api/_preflight.py`` -- same text, same order, same indentation,
-same docstrings, nothing renamed, reordered, tidied or rewritten:
+Two things live here:
 
 * the MSL module block -- ``MSL_EPS_EFF_PROXY``,
   ``msl_min_probe_clearance``, ``msl_source_near_field_standoff_cells``,
@@ -84,7 +82,7 @@ from rfx.preflight._common import (
 # MSL check 2c retains its existing 8.3% geometry-advisory threshold.
 # Its historical derivation used 0.05 / 0.601 from a Hammerstad-Jensen
 # comparison of dielectric-mask extents. That extent is not the conductor
-# gap under #931 PEC-volume ownership (#752). Keep the heuristic unchanged,
+# gap under  PEC-volume ownership. Keep the heuristic unchanged,
 # but neither the old sensitivity nor the threshold is a current Z0 bound.
 # The two legacy constants remain available to existing internal consumers.
 _MSL_REALIZED_THICKNESS_Z0_SENSITIVITY = 0.601
@@ -94,7 +92,7 @@ _MSL_REALIZED_THICKNESS_TOL = 0.083
 
 # --------------------------------------------------------------------------
 # MSL probe-clearance geometry (module-level so compute_msl_s_matrix can
-# reuse the identical arithmetic for the issue-#469 interval solve).
+# reuse the identical arithmetic for the interval solve).
 # --------------------------------------------------------------------------
 
 # Existing layout proxy, not a bound on modal contamination or S error.
@@ -103,7 +101,7 @@ _MSL_REALIZED_THICKNESS_TOL = 0.083
 
 
 # --------------------------------------------------------------------------
-# Issue #726: ONE text for what probe-clearance corruption does, read by
+# ONE text for what probe-clearance corruption does, read by
 # BOTH sites that warn about it.
 #
 # The two used to contradict each other on the same run. The extractor's Z0
@@ -112,8 +110,7 @@ _MSL_REALIZED_THICKNESS_TOL = 0.083
 # open stub may read as -5 to -10 dB instead of 0 dB". Both were prose, and
 # they decided whether a whole class of results was readable.
 #
-# The measurement that settles it (asked for as item 1 of #726, and the
-# reason neither number below may be paraphrased): VESSL run 369367260508,
+# The measurement that settles it (retain these measured values): VESSL run 369367260508,
 # fixture microstrip open-stub notch fixed-source, same source / load / DUT, with ONLY the p1
 # observation offset varied between the two arms. Both arms settled below
 # −118 dB.
@@ -138,13 +135,12 @@ _MSL_REALIZED_THICKNESS_TOL = 0.083
 # low-signal checks marked both arms' notch bins False, so 0.009 dB is a
 # measured DIFFERENCE between two arms, never an accuracy certificate for
 # either. The −5 to −10 dB figure came from the shorted-line ladder, which
-# was withdrawn on 2026-09-13 (its arms changed source and load, its near
+# is not a valid comparison (its arms changed source and load, its near
 # arm put the last probe on the realized short, and finite ground with open
 # CPML established no exact |S11| = 1 oracle). It must not be quoted as
 # measured.
 #
-# The raw coherent power excess seen on the same fixture (~1.011–1.013) is
-# issue #838 and has nothing to do with this condition.
+# The raw coherent power excess on the same fixture (~1.011–1.013) is independent of this condition.
 # --------------------------------------------------------------------------
 
 from rfx.preflight.msl_codes import (
@@ -156,7 +152,7 @@ from rfx.preflight.msl_codes import (
 def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
     """Emit the probe-clearance condition on the ``calculator="msl"`` route.
 
-    Issue #726 item 2. ``preflight_sparameters(calculator="msl")`` is the
+    ``preflight_sparameters(calculator="msl")`` is the
     "should this simulation use this calculator?" check a caller runs before
     an expensive solve, and it returned NOTHING on a port whose deepest probe
     sat inside a reflector: measured on the four-direction fixture in
@@ -176,7 +172,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
     which stays the full layout treatment on ``preflight()``. It carries the
     same :data:`MSL_PROBE_CLEARANCE_EFFECT` and
     :data:`MSL_PROBE_CLEARANCE_GUIDANCE` text, so the routing lane cannot
-    contradict either of the other two sites — which is the whole of #726.
+    contradict either of the other two sites.
 
     Silent when ``skip`` is set, which the caller does for
     ``include_general=True``: the general family reports the same port under
@@ -187,7 +183,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
     coded fields survive into ``PreflightIssue``.
     """
     if skip:
-        # Issue #726 review P3c: with include_general=True the full
+        # with include_general=True the full
         # _check_msl_port_geometry family runs too and reports the SAME port
         # under the same slug, so the caller saw the paragraph twice. One
         # source when both would fire; check 4 is the fuller of the two.
@@ -396,13 +392,13 @@ def _msl_assemble_once(self):
         else:
             grid = self._build_grid()
             sizes = tuple(grid.cells(axis) for axis in "xyz")
-        # #931: assembled WITH the sheet/wire collectors, so the
+        # assembled WITH the sheet/wire collectors, so the
         # realized ground (a sheet owns no cell) is known here.
         realized = self._assemble_realized(grid, nonuniform=bool(nonuniform))
         return grid, realized.materials, sizes, bool(nonuniform), realized
     except (ValueError, NotImplementedError):
         # A refused or unplaceable shape is a geometry verdict; any other
-        # error (MemoryError, a bug) propagates (#1433).
+        # error (MemoryError, a bug) propagates.
         return None
 
 def _msl_declared_face_geometry(self, pe, grid):
@@ -438,17 +434,11 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
     """Same-permittivity material-column extent under a port, or None.
 
     This is NOT the conductor-plane gap. The material walk can include
-    sample slots also owned by the trace PEC volume; #931 uses different
+    sample slots also owned by the trace PEC volume; the lattice ownership contract uses different
     samplers for dielectric material and PEC volume ownership. Keep its
     count/extent separate from the validated normal source interval.
 
-    Issue #752 review (#766 BLOCK): the substrate checks below used to
-    derive "realized" thickness as ``n_cells * dx`` with the UNIFORM
-    grid's scalar ``dx``. On a ``dz_profile`` simulation that is not a
-    thickness at all -- it asserted "3 substrate cells = 300 um (+18%)"
-    on a board ``fidelity_report()`` measured at 254.00 um on the same
-    simulation. Two surfaces of one codebase disagreeing about what the
-    solver built is exactly the class #752 was filed against.
+    On a graded mesh, derive realized substrate thickness from the local profile. Multiplying ``n_cells`` by the uniform scalar ``dx`` can report 300 um (+18%) for a three-cell substrate that ``fidelity_report()`` measures as 254.00 um on the same simulation.
 
     So this reads the substrate the way ``rfx.fidelity`` does: build
     the grid the run will use (non-uniform when any profile is set),
@@ -472,19 +462,19 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
 
     ``assembled`` is the per-check cache from :meth:`_msl_assemble_once`
     (grid, materials, per-axis cell sizes, nonuniform flag) so N MSL
-    ports cost one rasterization, not N (#766 review, non-blocking).
+    ports cost one rasterization, not N.
 
     The walk starts at the PORT'S OWN ground plane -- ``pe.position``'s
     substrate-normal coordinate -- not at the domain floor. The first
     version started at ``pad_lo`` (domain z = 0), which is only right
     when the ground plane sits on the floor; on a stripline-like or
     multi-layer stack it walked whatever dielectric lies BELOW the
-    ground and reported that as "the substrate" (#766 review: a
+    ground and reported that as "the substrate" (a
     ground plane at 800 um over an eps_r 9 filler read back n=10,
     h_real=800 um, never seeing the 254 um / eps_r 3.66 substrate above
-    it). The #752 class, reintroduced in a new form -- fixed here.
+    it). The class, reintroduced in a new form -- fixed here.
 
-    Lattice ownership contract (#931 §1.9): the walk starts at the
+    Lattice ownership contract: the walk starts at the
     first cell ABOVE the realized ground. A sheet ground at the port
     plane owns no cell, so that is the port's own cell; a VOLUME
     ground drawn upward from the port plane (``Box(z_g, z_g + t)``)
@@ -506,7 +496,7 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
         else:
             idx = list(grid.position_to_index(pos))
         # Keep propagation/width lookup unchanged, but use the source's
-        # #931 lower-tie normal plane. Generic uniform banker's rounding
+        # lower-tie normal plane. Generic uniform banker's rounding
         # can start a half-cell-offset ground in the next dielectric layer.
         from rfx.sources.msl_port import _msl_normal_bounds, msl_port_from_entry
         idx[inr] = _msl_normal_bounds(grid, msl_port_from_entry(pe))[0]
@@ -545,7 +535,7 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
 def _msl_conductor_gap(self, pe, assembled):
     """Validated conductor planes from the caller's existing assembly.
 
-    No wall search or automatic repair: #729 must accept the declared
+    No wall search or automatic repair: the port-interval validation must accept the declared
     port interval before it can be reported as a conductor-plane gap.
     This geometry-only diagnostic never consumes material overrides.
     """
@@ -589,9 +579,9 @@ def _check_msl_port_geometry(
        Microstrip fringing fields decay as exp(-π·d/h_sub); the
        5%-amplitude tail sits at d ≈ 0.95·h_sub. A ≥ 2·h_sub margin
        keeps Z0 bias under ~5% (verified by fixed-LY mesh-conv
-       sweep, 2026-05-04 — see rfx-known-issues.md).
+       sweep — see rfx-known-issues.md).
 
-       Issue #500 / review finding MH2: the reference position is
+       The reference position is
        ``_absorber_boundary_for_axis``'s exterior-frame edge (y=0 /
        y=domain[1], x=0 / x=domain[0] when that face is CPML/UPML- or
        PEC/PMC-backed) PLUS an EXPLICIT, separately-calibrated buffer
@@ -599,11 +589,10 @@ def _check_msl_port_geometry(
        (``cpml_thick_{lo,hi}`` = n_cpml·dx). The buffer is not a
        restatement of "where the absorber starts" (that question is
        answered by the helper alone, and the absorber does start
-       exactly at the edge — issue #500's core finding still holds);
+       exactly at the edge);
        it is a SEPARATE, empirically-measured MSL-specific margin.
        the maintainer's internal issue ledger (primary checkout
-       only, not in this public tree), "Status 2026-05-04
-       (CALIBRATED, OpenEMS-class)" entry: with the pre-calibration
+       only, not in this public tree), "CALIBRATED, OpenEMS-class" entry: with the pre-calibration
        ``LY = W + 6·dx`` at dx=80µm, cpml_layers=8, "the trace ended
        up INSIDE the CPML overlap region (negative clearance)" and
        Z0 drifted UP with mesh refinement (54→60Ω) instead of
@@ -617,8 +606,8 @@ def _check_msl_port_geometry(
        A PEC/PMC face (``cpml_thick=0`` there) gets no buffer: the
        calibration's concern is CPML near-field stretching, which
        does not apply to a hard reflector. Dropping this buffer
-       entirely (as an earlier #500 pass did) silently re-admits the
-       negative-clearance configuration the 2026-05-04 calibration
+       entirely silently re-admits the
+       negative-clearance configuration the calibration
        closed — measured on this repo's own
        ``tests/unit/ports/test_msl_port_preflight.py`` fixture: 3 advisories at
        base (pre-drop), 0 on the buffer-dropped branch.
@@ -630,16 +619,15 @@ def _check_msl_port_geometry(
        than the existing 8.3% geometry threshold. These are screening
        heuristics, not quantitative Z0 accuracy guarantees.
 
-       Issue #752: the same-permittivity material-column extent is reported separately. At dx=80/60um on the historical 600/254um fixture,
+       the same-permittivity material-column extent is reported separately. At dx=80/60um on the historical 600/254um fixture,
        that extent is 320/300um while the PEC trace's substrate-facing
        plane and the normal source interval both end at 240um. The PEC
-       volume and the dielectric use different #931 samplers. A material
+       volume and the dielectric use different samplers. A material
        bbox therefore cannot stand in for the conductor-plane gap or an
        electrical-width correction to Hammerstad-Jensen.
 
        The old declared-board percentages and realized-board
-       Hammerstad-Jensen anchor are pre-#802 historical records. Their
-       extraction and geometry changed later; neither an old percentage
+       Hammerstad-Jensen anchor use float32-derived geometry rather than the exact node spine; neither an old percentage
        nor a live geometry rebuild paired with frozen Z0 establishes a
        current bound. Preserve the artifacts; any quantitative re-solve
        needs a new, consistently qualified geometry/measurement record.
@@ -648,7 +636,7 @@ def _check_msl_port_geometry(
        Source-side CPML reflection inflates |S11| if the port is
        too close.
 
-    5. **Probe 0 inside the port's OWN feed near field** (issue #823).
+    5. **Probe 0 inside the port's OWN feed near field**.
        Checks 4/4a/4b all look DOWNSTREAM of the probes — at a
        reflector, the absorber, another port's feed plane. None of
        them looks back at the feed the ladder is measured FROM, which
@@ -661,7 +649,7 @@ def _check_msl_port_geometry(
        error and dragged the full-ladder fit residual to
        0.342/0.264/0.222, while every window excluding it fit to
        1e-5..4e-3. The threshold is ``max(3, round(5·h_sub/dx))`` —
-       the repo's EXISTING issue-#80 Fix B constant — with ``dx`` the
+       the shared source-fringing constant — with ``dx`` the
        runway cell at the feed. ``add_msl_port`` floors every AUTO
        ``n_probe_offset`` to the same constant. The driver recounts it in
        runway cells unless the ladder crosses a grading ramp; that fallback
@@ -681,7 +669,7 @@ def _check_msl_port_geometry(
         return
     domain = self._domain
 
-    # Issue #510 review (BLOCKING 2): the deepest-probe coordinate
+    # review (BLOCKING 2): the deepest-probe coordinate
     # used to be a pure continuous-coordinate extrapolation
     # (x_feed + offset*dx). The extractor places probes by GRID
     # INDEX, with rounding AND clamping into the in-domain range
@@ -711,7 +699,7 @@ def _check_msl_port_geometry(
     except Exception:
         _msl_grid = None
 
-    # Issue #752 / #766 review: one rasterization for all ports.
+    # review: one rasterization for all ports.
     _msl_assembled = self._msl_assemble_once()
 
     _probe_entries = list(self._msl_ports)
@@ -794,7 +782,7 @@ def _check_msl_port_geometry(
                 )
         # A blocking attachment finding does not hide independent
         # clearance/reflection diagnostics useful for repairing the model.
-        # Issue #661: every check below runs on the port's OWN axes.
+        # every check below runs on the port's OWN axes.
         # ``prop`` is the propagation axis (checks 3/4/4a fire along
         # it), ``width`` the trace-width axis (check 1 fires across
         # it). For a "+x" port these are x and y, i.e. the historical
@@ -830,7 +818,7 @@ def _check_msl_port_geometry(
             toward="hi" if _dir_sign > 0 else "lo")
         _abs_cell_lo = profile_boundary_cell(dx, _prop_profile, "lo")
         _abs_cell_hi = profile_boundary_cell(dx, _prop_profile, "hi")
-        # Issue #823's invariant: checks 4, 4a and 5 and
+        # Shared invariant: checks 4, 4a and 5 and
         # ``_validate_forward_sparameter_request`` must not disagree about
         # the same port, so all four read this one number.
         _nf_std_cells = msl_source_near_field_standoff_cells(
@@ -867,7 +855,7 @@ def _check_msl_port_geometry(
         # Reference position on each y side = the exterior-frame edge
         # (_absorber_boundary_for_axis; None on an inactive/periodic
         # face, treated as the plain domain edge) PLUS the explicit
-        # calibrated buffer (issue #500 / MH2 — see class docstring):
+        # calibrated buffer (see class docstring):
         # cpml_thick_{lo,hi} = n_cpml*dx, zero on a PEC/PMC face.
         _ly_lo_b, _ly_hi_b = _absorber_boundary_for_axis(
             ly, cpml_thick_lo[_iw], cpml_thick_hi[_iw]
@@ -979,13 +967,13 @@ def _check_msl_port_geometry(
         # required substrate/trace overlap, which this fraction alone
         # does not establish. A hard-PEC ``Box(material="pec")``
         # VOLUME avoids the specific bug below ON THE DEFAULT RUN
-        # PATH: under the lattice ownership contract (#931 §1.2) it
+        # PATH: under the lattice ownership contract it
         # occupies WHOLE primal cells with walls on BOTH faces and
         # never enters ``pec_occupancy_override``; a trace declared
         # as a SHEET (zero-thickness Box / add_thin_conductor) is one
         # node plane with no cell at all and enters nothing either.
         #
-        # #766 review B3: this used to say "this build has no
+        # this used to say "this build has no
         # anisotropic/subpixel eps assembly — rfx/api/__init__.py's
         # Simulation docstring". Both halves were wrong. rfx DOES have
         # subpixel eps assembly: ``subpixel_smoothing`` (bool | str,
@@ -1009,7 +997,7 @@ def _check_msl_port_geometry(
         # advice applies there too. The AD-traceable
         # ``pec_occupancy_override`` path zeros the whole cell and
         # produces unphysical |S21| (cited, not remeasured on this
-        # checkout: 2026-05-08, runs #563/#567: |S21|² > 1 across all
+        # checkout: historical runs: |S21|² > 1 across all
         # stub lengths at dx ∈ [75, 82]µm with h_sub=254µm; no
         # committed artifact, no regression test). The existing
         # declared-face alignment heuristic is retained; it does not
@@ -1023,7 +1011,7 @@ def _check_msl_port_geometry(
         frac = _face["frac"] if _face is not None else None
         if frac is not None and 0.10 <= frac <= 0.40:
             # Snap suggestions come from the SAME grid ``frac`` came
-            # from (#766 review B1). They used to be derived from
+            # from. They used to be derived from
             # ``int(h_sub / dx)`` on the SCALAR dx while ``frac`` came
             # from the run grid: on a mesh profile that scalar is not
             # a cell count at all, and on ANY mesh whose base dx
@@ -1122,8 +1110,8 @@ def _check_msl_port_geometry(
             )
 
         # ---- 3. Port-to-CPML distance along the PROPAGATION axis ----
-        # Issue #500 / MH2: same reference as check 1 — exterior-frame
-        # edge PLUS the explicit calibrated buffer. Issue #661: the
+        # Same reference as check 1 — exterior-frame
+        # edge PLUS the explicit calibrated buffer. The
         # source-side wall is the LOW wall for a positive-going port
         # and the HIGH wall for a negative-going one, on whichever
         # axis ``direction`` names.
@@ -1173,11 +1161,9 @@ def _check_msl_port_geometry(
         # establishes neither contamination nor a numerical S error.
         min_probe_clear = msl_min_probe_clearance(float(self._freq_max))
 
-        # Deepest probe position. Pre-#469 this used the legacy
-        # 3-probe V₃ convention (offset + 2·spacing) which UNDERCOUNTS
-        # the span for the default n_probes=5 (deepest probe sits at
-        # offset + (n_probes-1)·spacing, rfx/sources/msl_port.py) —
-        # the check now uses the true deepest probe (stricter/correct).
+        # Deepest probe position: offset + (n_probes-1)*spacing, as in
+        # rfx/sources/msl_port.py. The 3-probe offset + 2*spacing convention
+        # undercounts the default five-probe span.
         n_off = pe.n_probe_offset if pe.n_probe_offset is not None else 5
         n_sp = pe.n_probe_spacing if pe.n_probe_spacing is not None else 3
         n_pr = getattr(pe, "n_probes", 5) or 5
@@ -1204,9 +1190,9 @@ def _check_msl_port_geometry(
             x_deep = _probe_ladder[-1]
             _ladder_dup_count = n_pr - len(set(_probe_ladder))
         else:
-            # Fallback (issue #510 review, BLOCKING 2): grid build
+            # Fallback: grid build
             # or probe-ladder computation failed -- keep the
-            # pre-fix continuous extrapolation rather than skip
+            # continuous extrapolation rather than skip
             # checks 4/4a/4b outright. Degeneracy cannot be
             # detected on this path (no real ladder to inspect).
             x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * _runway_cell
@@ -1231,7 +1217,7 @@ def _check_msl_port_geometry(
         )
 
         if _ladder_dup_count > 0:
-            # Issue #510 review (BLOCKING 2b): a ladder that runs
+            # review (BLOCKING 2b): a ladder that runs
             # past the grid edge CLAMPS -- several probes land on
             # the same cell instead of spreading out, which makes
             # the N-probe least-squares fit rank-deficient. This is
@@ -1287,7 +1273,7 @@ def _check_msl_port_geometry(
             )
 
         if _unevaluated:
-            # Issue #685: this scan could not distinguish "nothing is
+            # this scan could not distinguish "nothing is
             # nearby" from "I could not look". Say which, rather than
             # letting an unplaceable conductor read as a clean line.
             _w.warn(
@@ -1311,12 +1297,11 @@ def _check_msl_port_geometry(
             )
 
         if nearest_d < min_probe_clear and nearest_label is not None:
-            # Interval framing (issue #469): the compliant window is
+            # Interval framing: the compliant window is
             # offset ∈ [offset_min, offset_max]. INCREASING the offset
-            # moves the probes TOWARD the reflector, so the pre-#469
-            # "bump n_probe_offset" mitigation pointed the wrong way
-            # on short feeds.
-            # NOTE (issue #510 review, BLOCKING 1): this algebraic
+            # moves the probes TOWARD the reflector, so increasing n_probe_offset can
+            # worsen clearance on short feeds.
+            # NOTE: this algebraic
             # inversion shares the FP-knife-edge pattern fixed for
             # 4a below via msl_absorber_compliant_offset_max's
             # walk-down search -- not converted here because
@@ -1339,7 +1324,7 @@ def _check_msl_port_geometry(
                               + (n_off + (n_pr - 1) * n_sp) * _runway_cell)
             off_max = (int((d_node_to_refl - min_probe_clear) / _runway_cell)
                        - (n_pr - 1) * n_sp)
-            # Issue #823: the lower edge of the compliant interval IS
+            # the lower edge of the compliant interval IS
             # the near-field standoff; one number so checks 4, 4a, 5 and
             # _validate_forward_sparameter_request cannot disagree about
             # the same port. Numerically identical to the max(3, round(
@@ -1383,12 +1368,12 @@ def _check_msl_port_geometry(
             )
 
         # ---- 4a. Probe SPAN vs the absorber — the deepest probe,
-        # not just x_feed (issue #510). Checks 1 and 3 above measure
+        # not just x_feed. Checks 1 and 3 above measure
         # clearance AT x_feed only; the probe span can leave x_feed
         # comfortably clear of the CPML while x_deep (just computed
         # for check 4) lands inside or near it — check 4's reflector
         # scan only sees PEC geometry, not the absorber. Routed
-        # through the #542 canonical membership/proximity helpers
+        # through the canonical membership/proximity helpers
         # directly (_coord_in_absorber / _coord_near_absorber), NOT
         # the buffered x_abs_lo/x_abs_hi built for check 3 above, so
         # the lo/hi-swap mutation falsifier
@@ -1396,8 +1381,7 @@ def _check_msl_port_geometry(
         # covers this comparison the same way it covers every other
         # consumer of those two helpers.
         #
-        # Known limitation (issue #510 review nit A, disclosed
-        # non-regression): ``_msl_grid`` is built via
+        # Known limitation: ``_msl_grid`` is built via
         # ``self._build_grid()``, which is unconditionally UNIFORM (see
         # the grid-build comment above) -- on an x-graded mesh
         # (``dx_profile``) this can produce an observable false
@@ -1415,7 +1399,7 @@ def _check_msl_port_geometry(
         )
         _abs_off_lo = _nf_std_cells
         if _msl_grid is not None:
-            # Issue #510 review (BLOCKING 1): the advertised endpoint
+            # review (BLOCKING 1): the advertised endpoint
             # is now VERIFIED against the real predicate via a
             # walk-down search, not computed algebraically -- see
             # msl_absorber_compliant_offset_max's docstring.
@@ -1434,8 +1418,8 @@ def _check_msl_port_geometry(
                 ct_hi=cpml_thick_hi[_ip], dx=dx, guess_hi=_abs_guess_hi,
             )
         else:
-            # Fallback (grid build failed): the pre-fix algebraic
-            # estimate -- imprecise (issue #510 review, BLOCKING 1)
+            # Fallback (grid build failed): the algebraic
+            # estimate -- imprecise
             # but better than no guidance at all.
             _abs_off_max = (
                 int((_abs_headroom - _abs_margin) / _runway_cell)
@@ -1480,7 +1464,7 @@ def _check_msl_port_geometry(
             or _coord_near_absorber(x_deep, _domain_x, 0.0,
                                     cpml_thick_hi[_ip], _abs_cell_hi)
         ):
-            # Issue #510 review round-2 (nit B): this site was missed
+            # review round-2 (nit B): this site was missed
             # when the "just past which" rephrasing (see the matching
             # comments at :2561/:2601, _validate_cfg_absorber_placement)
             # was applied elsewhere — same reasoning: _coord_in_absorber's
@@ -1510,8 +1494,8 @@ def _check_msl_port_geometry(
                 stacklevel=3,
             )
 
-        # ---- 4b. Probe span crossing another port's feed plane
-        # (issue #510). A second port's feed is a source
+        # ---- 4b. Probe span crossing another port's feed plane.
+        # A second port's feed is a source
         # discontinuity — check 4's reflector scan walks registered
         # PEC ``Box`` shapes only, so it cannot see it. Probes
         # sampling across it violate the N-probe extractor's
@@ -1524,22 +1508,22 @@ def _check_msl_port_geometry(
         # port) — a deliberately simple, conservative check; two
         # independent lines that merely share an x-coordinate at
         # very different y positions would also warn here. Walks
-        # only the two registries #510 named in scope -- MSL ports
+        # only two registries -- MSL ports
         # (self._msl_ports) and lumped/wire ports (self._ports);
         # self._coaxial_ports and self._waveguide_ports also carry a
         # feed / reference plane but are out of scope here (issue
-        # #510 review, disclosed rather than fixed).
+        # review, disclosed rather than fixed).
         _span_lo, _span_hi = (
             (x_feed, x_deep) if _dir_sign > 0 else (x_deep, x_feed)
         )
         for _other in list(self._msl_ports) + list(self._ports):
             if _other is pe:
                 continue
-            # Issue #661: compare on THIS port's propagation axis.
+            # compare on THIS port's propagation axis.
             _other_x = _other.position[_ip]
             if _span_lo < _other_x < _span_hi:
                 _other_name = getattr(_other, "name", None)
-                # Issue #510 review (BLOCKING 3): the previous label
+                # review (BLOCKING 3): the previous label
                 # glued a possessive onto a parenthetical component
                 # tag and repeated the crossing coordinate twice
                 # ("...port at x=6.40mm (component='ez')'s feed
@@ -1579,17 +1563,17 @@ def _check_msl_port_geometry(
                     stacklevel=3,
                 )
 
-        # ---- 5. Probe 0 inside the FEED's own near field (issue #823)
+        # ---- 5. Probe 0 inside the FEED's own near field
         # Checks 4/4a/4b all look DOWNSTREAM of the probes (a reflector,
         # the absorber, another port's feed). None of them looks back at
         # the port's OWN feed plane, which is itself a launch
         # discontinuity: the field within a few substrate thicknesses of
-        # it is not the guided mode yet. ``add_msl_port`` has floored the
-        # AUTO offset to ``max(3, lam_cells, round(5*h_sub/dx))`` since
-        # issue #80 (Fix B). This can fire on an explicit offset or an
+        # it is not the guided mode yet. ``add_msl_port`` floors the AUTO offset to
+        # ``max(3, lam_cells, round(5*h_sub/dx))``. This can fire on an explicit offset
+        # or an
         # automatic ladder whose ramp fallback retains scalar-dx counts.
         #
-        # Measured (issue #823, settled attempt-3 run VESSL 369367257533):
+        # Measured:
         # a probe 0.4 mm = 1.33*h_sub from the feed carried a two-wave
         # model error of 82-128%, and the production matrix-pencil fit
         # over a ladder containing it reported a residual of 0.22-0.34
@@ -1601,8 +1585,7 @@ def _check_msl_port_geometry(
         # and for why the 5*h_sub constant is the one that ships.
         #
         # REPORT-ONLY: no gate, no refusal. Same check family, same
-        # ``code=`` slug as checks 1/2/2b/2c/3/4 (the check-2c / #752
-        # precedent) — a new SITE, not a new advisory kind.
+        # ``code=`` slug as checks 1/2/2b/2c/3/4  — a new SITE, not a new advisory kind.
         _nf_cells = _nf_std_cells
         _nf_off = pe.n_probe_offset
         # How far probe 0 really is from the source: both ends read off the
@@ -1624,7 +1607,7 @@ def _check_msl_port_geometry(
         )
         # ONE emission site, two readings of the same finding: how far this
         # port's probe 0 sits from its own feed plane against the source
-        # fringing. The frozen emission surface (#737/#742) counts
+        # fringing. The frozen emission surface counts
         # constructions, and this is one finding, not two.
         _nf_msg = None
         if not _standoff_on_one_zone:

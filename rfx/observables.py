@@ -1,5 +1,5 @@
-"""Differentiable observables built on registered DFT-plane probes (#579),
-plus a batched forward-mode Jacobian wrapper (#577).
+"""Differentiable observables built on registered DFT-plane probes,
+plus a batched forward-mode Jacobian wrapper.
 
 ``Simulation.add_dft_plane_probe(...)`` registers a frequency-domain plane
 accumulator that ``run()`` and ``forward()`` both populate into a name-keyed
@@ -395,7 +395,7 @@ def _identity_tangent_batch(params):
 
     Defined as per-ELEMENT identity over SCALAR leaves only -- deliberately
     NOT a per-leaf identity, and it fails loud rather than silently picking
-    one of the two readings. Measured trap (#577 evidence): on a
+    one of the two readings. Measured trap: on a
     ``{'scalar': (), 'field': (4, 4)}`` pytree, a per-leaf one-hot tangent
     (ones on the whole ``field`` leaf) returns 64.0 -- the SUM of the 16
     Jacobian entries for that leaf, not any single column of them. Because
@@ -581,7 +581,7 @@ def jacobian_fwd(
     # Warmup scope rationale (moved from the API docstring).
     # - **[RAISES, inherited]** ``n_warmup``: ``forward()`` itself raises
     #   ``NotImplementedError`` for a nonzero ``n_warmup`` on the uniform
-    #   lane (issue #626) -- so on ``jacobian_fwd``'s supported (uniform)
+    #   lane -- so on ``jacobian_fwd``'s supported (uniform)
     #   lane, a ``n_warmup``-using ``sim_fn`` already fails loud. It used to
     #   be a measured SILENT NO-OP (bit-identical value AND tangent at
     #   ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps) before the fence was
@@ -594,7 +594,7 @@ def jacobian_fwd(
     #   (C0 * dt))``) and grows sharply beyond it, up to ~6-7% at half the
     #   pre-loss-window length, 58% at the loss-window boundary itself,
     #   exactly zero once far enough beyond it, FOR A NEAR-SOURCE
-    #   placement specifically (issue #626 part 2 / addendum -- a
+    #   placement specifically (a
     #   far-from-source placement stays within this repo's ~1.5% AD-vs-FD
     #   noise floor for every ``n_warmup <= K_safe`` (growing smoothly, not
     #   a sharp cliff, from <0.01% well below ``K_safe`` to ~1.2% AT
@@ -668,7 +668,7 @@ def jacobian_fwd(
     #     loop) whose carry holds one UNBATCHED copy of the field state (the
     #     primal sweep) plus ``n_t`` BATCHED tangent copies -- the primal sweep
     #     really is shared across every tangent direction, which is the premise
-    #     #577 asked to verify. ``jax.linearize`` was measured to cost 24x more
+    #     asked to verify. ``jax.linearize`` was measured to cost 24x more
     #     peak memory on the same fixture (8654 MB vs 355 MB at n_steps=600,
     #     n_t=10) because it materialises the whole scan's primal residuals --
     #     i.e. the reverse-mode tape -- which forward mode never needs.
@@ -744,8 +744,8 @@ def jacobian_fwd(
         # path actually runs, via jax.eval_shape -- shape-only: no time
         # step runs and no O(n_t) memory is held (that cost is exactly
         # what this branch exists to avoid); a forward() inside sim_fn
-        # evaluates its declaration-only set-up once while traced
-        # (#1367), as each row's jvp below does. If sim_fn's primal genuinely
+        # evaluates its declaration-only set-up once while traced,
+        # as each row's jvp below does. If sim_fn's primal genuinely
         # depends on the tangent direction, this raises the identical
         # ValueError a real vmap(..., out_axes=(None, 0)) call would, so
         # the sequential path inherits the batched path's fail-loud

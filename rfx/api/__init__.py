@@ -429,7 +429,7 @@ class Simulation(
         self._precision = precision
         self._solver = solver
         self._adi_cfl_factor = adi_cfl_factor
-        # (2,4) fourth-order-in-space stencil (PR-1b). 2 = default,
+        # (2,4) fourth-order-in-space stencil. 2 = default,
         # byte-identical. 4 is reachable ONLY on the plain uniform Cartesian
         # vacuum/dielectric path; the comprehensive API fence
         # (_check_stencil_order_supported) rejects every unsupported runner.
@@ -473,16 +473,15 @@ class Simulation(
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._msl_ports: list[_MSLPortEntry] = []
-        # Issue #469/#470 runtime bookkeeping. Deliberately NOT entry
+        # runtime bookkeeping. Deliberately NOT entry
         # fields: _MSLPortEntry's and _ProbeEntry's field sets are pinned
         # by the interop design-IR contract (rfx/interop/_design.py
         # _PINNED_RECORDS), and neither of these is design state.
         #   _msl_auto_offset_min: port name -> the upstream-only lower
-        #     edge stored when n_probe_offset was auto-resolved; the #469
-        #     interval solve in compute_msl_s_matrix starts from it.
+        #     edge stored when n_probe_offset was auto-resolved; the interval solve in compute_msl_s_matrix starts from it.
         #   _msl_auto_probe_spacing: port name -> the registration-time
         #     Hammerstad-Jensen eps_eff estimate, stored when
-        #     n_probe_spacing was auto. The #681 span solve in
+        #     n_probe_spacing was auto. The span solve in
         #     _resolve_msl_auto_offsets widens the auto spacing toward
         #     span = (N-1)*lambda_g(f_max)/4 where the geometry allows;
         #     the entry keeps the conservative registration default so
@@ -493,11 +492,11 @@ class Simulation(
         #     (lambda_eff/(4*pi), lambda_eff/8) at f_max, stored for every
         #     port. On a graded propagation axis _resolve_msl_auto_offsets
         #     counts them in the runway cell at the port, and preflight asks
-        #     from them what an automatic offset would be (#810).
+        #     from them what an automatic offset would be.
         #   _internal_probe_indices: indices into self._probes of
         #     library-registered diagnostic probes (MSL settling
         #     witnesses); probe-placement preflight advisories and the
-        #     #332 tail advisory skip them (issue #470 self-noise).
+        #     tail advisory skip them.
         self._msl_auto_offset_min: dict[str, int] = {}
         self._msl_auto_probe_spacing: dict[str, float] = {}
         self._msl_auto_probe_lengths: dict[str, tuple[float, float]] = {}
@@ -532,7 +531,7 @@ class Simulation(
         # per-face spec with PEC faces, or with a per-face thickness
         # override, would silently get an absorber where the caller asked
         # for a reflector — the SILENT_WRONG class preflight exists to
-        # remove (issue #647 grep sweep). Reject it instead of absorbing
+        # remove. Reject it instead of absorbing
         # into a wall.
         if self._solver == "adi" and self._cpml_layers > 0:
             _adi_faces = {
@@ -556,10 +555,9 @@ class Simulation(
                     "thickness override."
                 )
 
-        # T7 Phase 2 PR2: per-face CPML thickness now runs end-to-end
+        # Per-face CPML thickness runs end-to-end
         # via the padded-profile engine in rfx/boundaries/cpml.py.
-        # The Phase 1 guard _check_thickness_uniformity_phase1 has
-        # been removed; Boundary.lo_thickness / .hi_thickness are
+        # Boundary.lo_thickness /.hi_thickness are
         # consumed by _build_grid → Grid.face_layers → init_cpml.
 
 
@@ -628,12 +626,10 @@ class Simulation(
         # Overlapping causes late-time energy growth (SAT coupling feeds
         # energy into the PML boundary faster than it can absorb).
         #
-        # Coordinate frame (issue #466): the grid builder places the absorber
+        # Coordinate frame: the grid builder places the absorber
         # OUTSIDE the user domain — ``domain`` is entirely physical, the CPML
         # cells are extra padding beyond it, and ``(idx - axis_pads)*dx``
-        # recovers user coordinates (rfx/grid.py). The pre-#466 check used the
-        # opposite frame (absorber inside the first/last N domain cells) and
-        # so fired on geometry that was clear of the absorber. In the
+        # recovers user coordinates (rfx/grid.py).  In the
         # builder's frame a z_range meets the absorber only when it reaches
         # the physical-domain edge of an ABSORBING face: z_lo <= 0 (touching
         # or entering the z_lo padding) or z_hi >= domain_z. Touching counts —
@@ -641,11 +637,10 @@ class Simulation(
         # and the authoritative static validator flags the same geometry as
         # ``subgrid_overlaps_absorber`` (see
         # test_production_boundary_terminated_rejects_refined_face_touching_cpml,
-        # which pins this warning for the touching case). What the frame fix
-        # REMOVES is the interior false positive: a z_range strictly inside
+        # which pins this warning for the touching case). An interior range does not overlap: a z_range strictly inside
         # (0, domain_z) is clear of the absorber no matter how close to the
         # edge, because the absorber cells are padding outside. The subgrid
-        # lane stays EXPERIMENTAL (PR #90).
+        # lane stays EXPERIMENTAL.
         if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             import warnings
             z_lo_kind = self._boundary_spec.z.lo if self._boundary_spec else self._boundary
@@ -915,12 +910,10 @@ class Simulation(
         # Complex weights use two separately constructed waveforms. Their
         # quadrature is not part of the verified public polarization scope.
         if _np.isreal(jx) and _np.isreal(jy):
-            # Real Jones — simple amplitude scaling. Thread the source
-            # waveform's cutoff through the reconstruction (post-#392
-            # review): dropping it silently reverted the #388/#392
-            # deposited-DC remedy (cutoff=4.5) to the default 3.0 on
-            # this path. getattr default 3.0 = GaussianPulse's default,
-            # so cutoff-less waveforms are unchanged.
+            # Real Jones — simple amplitude scaling. Preserve the source waveform's
+            # cutoff through reconstruction: dropping it resets the deposited-DC remedy
+            # (cutoff=4.5) to the default 3.0. The getattr default is GaussianPulse's
+            # 3.0, so cutoff-less waveforms retain their default.
             if abs(float(jx.real)) > 1e-10:
                 from rfx.sources.sources import GaussianPulse as GP
                 wx = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
@@ -1321,7 +1314,7 @@ class Simulation(
             cells from every port so the two-plane Zc/beta measurement
             sits outside the port near-fields — the Phase-0
             pre-registration rule. Measured on the canonical 16 mm thru
-            (dx = 0.5 mm, gap-trimmed V, 2026-07-10 battery): N=3 planes
+            (dx = 0.5 mm, gap-trimmed V): N=3 planes
             read beta/(w/c) = 1.16-1.20 and Zc = 52-53 ohm with Im/Re up
             to 8.2% (near-field contaminated; |S21| closed-box-referee
             residual -3.1% at 7 GHz, row energy |S11|^2+|S21|^2 up to
@@ -1537,7 +1530,7 @@ class Simulation(
         """
         from rfx.sources.msl_port import msl_axis_roles as _msl_axis_roles
         # Raises with the substrate-normal explanation for "+z"/"-z" and a
-        # plain domain error otherwise (issue #661).
+        # plain domain error otherwise.
         _msl_axis_roles(direction)
         if width <= 0:
             raise ValueError(f"width must be positive, got {width}")
@@ -1591,12 +1584,12 @@ class Simulation(
         if _offset_is_auto:
             # Runtime bookkeeping only (NOT an entry field — _MSLPortEntry's
             # field set is pinned by the interop design-IR contract): the
-            # #469 interval solve in compute_msl_s_matrix re-derives the
+            # interval solve in compute_msl_s_matrix re-derives the
             # effective offset from THIS stored lower edge every call, so
             # repeated calls do not drift.
             self._msl_auto_offset_min[name] = int(n_probe_offset)
         if _spacing_is_auto:
-            # Same bookkeeping pattern for the auto spacing (issue #681):
+            # Same bookkeeping pattern for the auto spacing:
             # store the registration-time HJ eps_eff so the driver-time
             # span solve can size λ_g(f_max)/4 per probe step from the
             # SAME permittivity estimate every call (idempotent, and the
@@ -1605,7 +1598,7 @@ class Simulation(
         # The two lengths the automatic defaults were counted from, for every
         # port: the resolver recounts an automatic offset or spacing in the
         # runway cell on a graded axis, and preflight asks what leaving an
-        # explicit offset None would give on this port's runway (#810).
+        # explicit offset None would give on this port's runway.
         self._msl_auto_probe_lengths[name] = (
             float(_near_field_m), float(span_total))
 
@@ -2010,7 +2003,7 @@ class Simulation(
             raise ValueError(f"n_modes must be >= 1, got {n_modes}")
         # Only the specular (0,0) TE mode is implemented in extract_floquet_modes; n_modes>1 and
         # TM were silently accepted and returned wrong results (higher-order lobes dropped; TM read
-        # the TE field pair + impedance). Fail loud until implemented (RF-audit 2026-07-23).
+        # the TE field pair + impedance). Fail loud until implemented.
         if n_modes > 1:
             raise NotImplementedError(
                 f"add_floquet_port(n_modes={n_modes}): only the specular (0,0) Floquet mode is "

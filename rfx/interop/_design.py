@@ -60,7 +60,7 @@ rfx already has four setup serialisers and every one of them is box-level:
 - ``rfx/artifacts.py::build_scene_artifact`` (``rfx-scene-artifact-v1``) — a
   provenance/report summary that self-declares it is "not a CAD export";
 - ``rfx/config/_shapes.py`` — the YAML config CLI, ``_SUPPORTED_SHAPES =
-  ("box",)``;
+  ("box")``;
 - the experiment document of the former studio layer (``rfx-experiment/v1``,
   box-only, geometry carried as ``bounds_m``) — moved out of this package with
   studio; named here because this module was shaped to fold into its successor.
@@ -87,7 +87,7 @@ rediscover it:
 - ``_WaveguidePortEntry.probe_offset`` / ``ref_offset`` and
   ``_PortEntry.reference_plane_cells`` are likewise cell counts;
 - ``_refinement`` is the rfx SBP-SAT subgrid prototype — experimental, and
-  falsified in 3D (PR #90);
+  falsified in 3D;
 - ``cpml_layers`` is a cell count against an absorber whose remaining knobs
   are hard-coded in ``rfx/boundaries/cpml.py``;
 - non-uniform mesh profiles have no counterpart in a solver with a scalar
@@ -482,7 +482,7 @@ def _ivec(n: int) -> _F:
 _GEOMETRY_FIELDS: dict[str, _F] = {
     "shape": _SHAPE,
     "material_name": _STR,
-    # #931 (IR v2): the #706 per-entry realization flag is gone. Realization is
+    # IR v2 realization is
     # decided by the contract from the shape alone (a zero-thickness PEC
     # Box is a sheet, everything else a volume), so nothing per entry is
     # left to record.
@@ -496,7 +496,7 @@ _SOFT_SOURCE_FIELDS: dict[str, _F] = {
     "position": _vec(3),
     "component": _STR,
     "waveform": _WAVEFORM,
-    # issue #571 option 4: recorded so a design document round-trips the
+    # recorded so a design document round-trips the
     # explicit amplitude semantics; None round-trips as the legacy per-path
     # meaning (and correctly re-emits the deprecation warning on load).
     "amplitude_kind": _opt(_STR),
@@ -572,7 +572,7 @@ _THIN_CONDUCTOR_FIELDS: dict[str, _F] = {
     "sigma_bulk": _NUM,
     "thickness": _NUM,
     "eps_r": _NUM,
-    # Issue #669: opt-in Leontovich surface-impedance loss. None = the legacy
+    # opt-in Leontovich surface-impedance loss. None = the legacy
     # DC/PEC behaviour; a number is the band-centre fit frequency f0 in Hz.
     # Design state (which loss model the sheet uses), not run control, so it
     # belongs in the document; None round-trips as JSON null.
@@ -856,19 +856,19 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_pinned_sheets",
     "_thin_conductors",
     "_waveguide_ports",
-    # Issue #469: auto-offset lower edges. Accounted for by the dump via
+    # auto-offset lower edges. Accounted for by the dump via
     # _msl_ports_with_resolved_offsets — the document records each auto
     # port's RESOLVED n_probe_offset (frozen concrete value), so a rebuilt
     # design reproduces the original's probe placement exactly; the
     # bookkeeping itself is therefore not a document section.
     "_msl_auto_offset_min",
-    # Issue #681: auto-spacing bookkeeping (port name -> registration HJ
+    # auto-spacing bookkeeping (port name -> registration HJ
     # eps_eff). Accounted for the same way as _msl_auto_offset_min: the
     # dump resolves through _resolve_msl_auto_offsets, which freezes the
     # widened concrete n_probe_spacing into the recorded entries, so a
     # rebuilt design reproduces the original probe placement exactly.
     "_msl_auto_probe_spacing",
-    # Issue #810: port name -> the two lengths the automatic probe defaults
+    # port name -> the two lengths the automatic probe defaults
     # are counted from, (lambda_eff/(4*pi), lambda_eff/8). Accounted for the
     # same way: the dump resolves through _resolve_msl_auto_offsets, which
     # counts them in the runway cell on a graded propagation axis and
@@ -877,7 +877,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     # them again for the rebuilt port, where preflight reads them only to say
     # what leaving an offset None would give.
     "_msl_auto_probe_lengths",
-    # Issue #470: indices of library-internal witness probes. Populated and
+    # indices of library-internal witness probes. Populated and
     # restored strictly inside compute_msl_s_matrix — ALWAYS empty at
     # construction and at dump time, so it contributes nothing to the
     # document by construction. Concrete constructor bookkeeping belongs in
@@ -905,7 +905,7 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
     """MSL port entries with auto ``n_probe_offset`` resolved for export.
 
     Auto offsets are solved at ``compute_msl_s_matrix`` time against the
-    registered geometry (issue #469 interval solve). The design document
+    registered geometry. The design document
     must record the CONCRETE value that solve would use — recording the
     stored lower edge would make a rebuilt design place its probes
     differently from the original (silent structural divergence, the
@@ -920,19 +920,12 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
         return list(sim._msl_ports)
     from rfx.api._sparams import _resolve_msl_auto_offsets
 
-    # MUST mirror the driver: hand ``_resolve_msl_auto_offsets`` the SAME
-    # grid ``compute_msl_s_matrix`` would build, and let the one shared
-    # function take the whole decision. This used to be a SECOND predicate
-    # here ("any of the three profiles set -> keep the stored value"),
-    # written to mirror the driver's blanket NU bail-out; a dz-only
-    # version of it shipped a real divergence once (dx/dy-profile-only MSL
-    # sims dumped a solved offset the driver never used — PR #478 review
-    # MAJOR, regression-locked in
-    # test_auto_offset_dump_matches_driver_on_dx_profile_nu). Since #686
-    # the driver's bail-out is per-port and keys on that port's
-    # PROPAGATION axis, so a copy here could drift again in a new way —
-    # passing the driver's grid to the driver's own function removes the
-    # copy instead of updating it.
+    # Mirror the driver: hand ``_resolve_msl_auto_offsets`` the same grid
+    # ``compute_msl_s_matrix`` builds and let the shared function decide. Its
+    # bail-out is per port and depends on the propagation axis; a second
+    # predicate here could disagree on dx/dy-profile-only MSL simulations.
+    # ``test_auto_offset_dump_matches_driver_on_dx_profile_nu`` pins the shared
+    # decision.
     is_nonuniform = any(
         getattr(sim, name, None) is not None
         for name in ("_dz_profile", "_dx_profile", "_dy_profile")
@@ -1159,13 +1152,13 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
 
 
 # ---------------------------------------------------------------------------
-# Coaxial termination entries (removed, #1212)
+# Coaxial termination entries (removed)
 # ---------------------------------------------------------------------------
 #
 # ``add_coaxial_matched_load``, ``add_coaxial_open_termination`` and
 # ``add_coaxial_pec_end_cap`` registered cell-relative terminations that only
 # the single-plane coaxial S-matrix lane consumed; the builders and the lane
-# were removed together in #1212.
+# are no longer supported.
 # The three ``rfx-design-ir/v2`` keys stay in ``excitations`` so a document
 # written before the removal still loads when it registered none: they are
 # exported as empty lists, an empty list imports as nothing, and an entry in
@@ -1496,7 +1489,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 None if getattr(sim, "_dt_min_cell", None) is None
                 else check_number(sim._dt_min_cell, what="_dt_min_cell")
             ),
-            # #949: the node-eps rule at dielectric interfaces on the NU lane
+            # the node-eps rule at dielectric interfaces on the NU lane
             # ("sampled" | "dual_average"). A design input: a rebuilt design
             # that silently fell back to "sampled" would solve a different
             # material column.
@@ -1540,7 +1533,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 CoaxialPort,
                 what="_coaxial_ports",
             ),
-            # Removed builders (#1212); kept empty so v2 readers see the keys.
+            # Removed builders; kept empty so v2 readers see the keys.
             "coaxial_matched_loads": [],
             "coaxial_open_terminations": [],
             "coaxial_pec_end_caps": [],

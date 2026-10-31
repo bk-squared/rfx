@@ -230,7 +230,7 @@ def update_overlap_dft(
     p1_probe, p2_probe = _overlap_cross_products(state, cfg, cfg.probe_x, dx)
 
     # Rect-window streaming DFT (constant unit weight). The Phase 2
-    # cleanup (2026-04-25) deleted the windowed/gated path on the V/I
+    # cleanup deleted the windowed/gated path on the V/I
     # extractor; the overlap path historically shared the same gating
     # knobs but those fields were also removed from
     # ``WaveguidePortConfig``. The S-param result is unchanged for runs

@@ -13,7 +13,7 @@ Usage
 ... )
 >>> sim = Simulation(**config.to_sim_kwargs())
 >>> # add every shape translated by config.offset: the domain holds one
->>> # margin below and one above the geometry (#1941)
+>>> # margin below and one above the geometry
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ C0 = 299792458.0
 
 
 # ---------------------------------------------------------------------------
-# Auto-config planning heuristic — ONE shape rule, ONE byte rule (#696)
+# Auto-config planning heuristic — ONE shape rule, ONE byte rule
 #
 # Both halves of the memory budget go through these: the DECISION half
 # (``auto_configure``'s ``max_memory_mb`` coarsening loop, which picks dx)
@@ -106,11 +106,11 @@ class FeatureInfo(NamedTuple):
     has_pec: bool             # any PEC geometry present
     estimated_Q: float        # estimated cavity Q from material loss
     z_features: list = []     # list of (z_lo, z_hi, eps_r) for z-grading
-    z_sheet_planes: list = []  # declared z planes of PEC sheets (#931 §1.9)
+    z_sheet_planes: list = []  # declared z planes of PEC sheets
 
 
 def _sheet_z_plane(shape) -> float | None:
-    """The z plane a conductor SHEET declares, or ``None`` (#931 §1.3).
+    """The z plane a conductor SHEET declares, or ``None``.
 
     A sheet is a zero-thickness Box (the canonical declaration, §1.5) or a
     thin-conductor shape whose thinnest bounding-box axis is z; its plane is
@@ -157,7 +157,7 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
     has_pec = False
     max_loss_tangent = 0.0
     z_features = []  # (z_lo, z_hi, eps_r) for non-uniform z detection
-    z_sheet_planes = []  # declared z planes of PEC sheets (#931 §1.9)
+    z_sheet_planes = []  # declared z planes of PEC sheets
 
     for shape, mat_name in geometry:
         mat = materials.get(mat_name, {})
@@ -519,7 +519,7 @@ def auto_configure(
     sheet_planes = [z + offset[2] for z in features.z_sheet_planes
                     if 0 <= z + offset[2] <= domain[2]]
 
-    # 3. CPML layers — evidence-based from reflectivity sweep (2026-04-07).
+    # 3. CPML layers — evidence-based from reflectivity sweep.
     # 56-run sweep (7 layers × 4 freqs × 2 kappa): ALL achieve < -40 dB.
     # Standard CPML (kappa_max=1.0) >= CFS-CPML (kappa_max=5.0).
     # Sweet spot at 8 layers for 1 GHz (-49.7 dB); 4 layers sufficient everywhere.
@@ -539,7 +539,7 @@ def auto_configure(
                        if declared_domain is None else declared_domain)
             _cpml_cells_now = int(np.ceil(min_cpml_thickness / dx))
             _cpml = max(_cpml_cells_now, cpml_cells)
-            # #696: measure the candidate against the grid this config
+            # measure the candidate against the grid this config
             # will actually build, with the byte rule the returned
             # SimConfig reports. Counting z as ceil(domain_z/dx) and
             # dropping the NTFF/dispersion terms made the loop stop at a
@@ -713,7 +713,7 @@ simulation_auto.__qualname__ = "Simulation.auto"
 simulation_auto.__name__ = "auto"
 
 
-# A cut this close to an existing mesh line is that line (#931): splitting
+# A cut this close to an existing mesh line is that line: splitting
 # there would make a sliver cell whose only effect is to collapse dt.
 _CUT_MERGE_FRACTION = 0.25
 
@@ -722,15 +722,14 @@ def _uniform_run(length: float, dx: float, cuts=()) -> list[float]:
     """Fill ``length`` with near-``dx`` cells, putting an EDGE at each cut.
 
     ``cuts`` are offsets measured from the start of the run; each one
-    strictly inside it splits the run, so a declared plane (a PEC sheet, #931
-    §1.9) lands on a mesh line instead of being snapped to whichever
+    strictly inside it splits the run, so a declared plane (a PEC sheet) lands on a mesh line instead of being snapped to whichever
     node the uniform division happens to leave nearby.
 
     A cut within ``dx/4`` of an edge the run already has — its own two
     ends, or a cut already taken — is MERGED into that edge rather than
     creating a cell.  A 35 µm foil declared half its thickness off a
     laminate face used to open a 17.5 µm cell in series with the board:
-    one sliver cell, dt down by ~23x, and the #702 vacuum slot realized
+    one sliver cell, dt down by ~23x, and the vacuum slot realized
     with no warning.  Merging snaps the plane to the interface, which is
     where the declaration meant it.
     """
@@ -766,14 +765,14 @@ def _make_dz_profile(
     For each thin z-feature (substrate layer), creates fine cells that
     exactly snap to the feature thickness. Air regions use coarse dx cells.
 
-    Realization order (unchanged since #763 for the first two steps):
+    Realization order:
     uniform blocks + air runs -> ``apply_thirds_rule`` at every feature
     boundary -> smoothing on the band-profile engine
-    (``rfx.nonuniform._build_band_profile``, 2026-09-07 lane). The engine
+    (``rfx.nonuniform._build_band_profile``). The engine
     keeps every post-thirds block verbatim, ramps each air run from the
     ACTUAL block edge cells (ascending and descending) with every
     adjacent ratio <= 1.3, renormalizes each air run to its declared
-    length exactly, and — new — refines the coarser of two ADJACENT blocks
+    length exactly, and refines the coarser of two ADJACENT blocks
     whose seam (the two 1/3 sub-cells) exceeds 1.3, since no ramp can ever
     sit between two protected blocks. Measured before this lane on a
     5-layer PCB stack (core|prepreg|core|prepreg|core, 0.8/0.1 mm at
@@ -787,11 +786,11 @@ def _make_dz_profile(
     dx : uniform x/y cell size (used as coarse z cell size)
     min_cells_per_feature : minimum cells to resolve each feature
     sheet_planes : iterable of float
-        Declared z planes of PEC sheets (#931 §1.9). Each one that falls in
+        Declared z planes of PEC sheets. Each one that falls in
         a free (air) run splits it so the plane is a mesh line; one that
         falls on a dielectric interface is already one.
     """
-    # ``sheet_pts`` are the declared PEC-sheet planes (#931 §1.9); the
+    # ``sheet_pts`` are the declared PEC-sheet planes; the
     # branch's own ``planes`` below are the feature-boundary node planes.
     sheet_pts = sorted(float(z) for z in (sheet_planes or ()))
     if not z_features:
@@ -800,8 +799,8 @@ def _make_dz_profile(
             return np.full(n, domain_z / n)
         return np.asarray(_uniform_run(domain_z, dx, sheet_pts), dtype=float)
 
-    # Partition the column into sub-intervals at every feature boundary
-    # (2026-09-07 review). Feature z-ranges are bounding boxes of every
+    # Partition the column into sub-intervals at every feature boundary.
+    # Feature z-ranges are bounding boxes of every
     # non-PEC shape, so they can overlap (a dielectric sphere inside a
     # substrate) or touch; the old loop assumed disjoint features with air
     # gaps wider than dx/2, silently DROPPED any narrower gap from the
@@ -834,7 +833,7 @@ def _make_dz_profile(
 
     cells = []
     boundary_indices = []  # cell indices at material interfaces
-    # #763: realized feature bounds in cumulative-cell coordinates. The
+    # realized feature bounds in cumulative-cell coordinates. The
     # thirds rule preserves the cell sum on each side of every boundary it
     # splits, so these coordinates remain cell edges after
     # ``apply_thirds_rule`` and can be mapped back to index ranges there.
@@ -847,10 +846,9 @@ def _make_dz_profile(
         if not _covered(lo, hi):
             # Air run: coarse dx cells (the band engine re-realizes the
             # run from its length; these cells only feed the thirds rule),
-            # cut at every declared sheet plane inside the run (#931 §1.9)
+            # cut at every declared sheet plane inside the run
             # so the plane is a mesh line. With no sheet plane in the run
-            # ``_uniform_run`` reproduces ``round(span / dx)`` equal cells,
-            # i.e. the pre-#931 arithmetic bit for bit.
+            # ``_uniform_run`` reproduces ``round(span / dx)`` equal cells.
             cells.extend(_uniform_run(span, dx, [p - lo for p in sheet_pts]))
             running += span
             continue
@@ -860,7 +858,7 @@ def _make_dz_profile(
         boundary_indices.append(b_lo)
 
         # Feature cells: snap exactly. The ceil carries a 1e-9 relative
-        # tolerance on the float quotient (design note 2026-09-07, R3):
+        # tolerance on the float quotient:
         # ``2.2e-3 - 1.4e-3`` evaluates to ``8.000000000000002e-4``, which
         # gave one 0.8 mm core 5 cells while its identical neighbours got 4.
         thickness = span
@@ -895,7 +893,7 @@ def _make_dz_profile(
     # P3: Apply thirds rule at material interfaces
     cells = apply_thirds_rule(cells, boundary_indices)
 
-    # P2 + #763 + band engine: smooth while (a) preserving every feature
+    # Band-profile engine: smooth while (a) preserving every feature
     # block's cells bit-identically unless the seam rule must refine it,
     # (b) realizing every declared interface on a cell edge and the total
     # column exactly, and (c) holding every adjacent ratio outside a
@@ -922,7 +920,7 @@ def _band_smooth_post_thirds(
     verbatim plus the split flags the engine needs to re-derive the block
     (same arithmetic as ``apply_thirds_rule``) if the seam rule refines
     it; each free (air) run becomes a FREE segment with target ``dx``.
-    Successor of ``_smooth_preserving_blocks`` (#763), which could only
+    Successor of ``_smooth_preserving_blocks``, which could only
     smooth free runs and left a seam between two adjacent blocks
     untouched.
     """

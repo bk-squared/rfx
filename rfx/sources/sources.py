@@ -43,20 +43,14 @@ def _nu_cell_arrays(grid):
             _np.asarray(grid.dz, dtype=_np.float64),
         )
     except jax.errors.TracerArrayConversionError as exc:
-        # DELIBERATE, and a change from the pre-#691 behaviour rather than a
-        # restatement of it. Before #691 this read the SCALAR ``grid.dx`` /
-        # ``grid.dy`` for the two transverse axes; those are plain floats even
-        # when the profile is traced, so a traced ``dx_profile`` with a
-        # concrete ``dz`` did not raise — it RAN, sized the port from the
-        # BOUNDARY cell instead of the cell at the node, and returned a
-        # gradient of exactly 0.0 (measured: ``jax.grad`` -> 0.0, grad-norm
-        # 0.0). A wrong number carrying a silently zero gradient is the worse
-        # outcome: an optimiser reads it as a converged, insensitive design
-        # variable. This is the #294 empty-window-gradient class.
-        #
-        # So the limitation is unchanged — the port metric has always needed
-        # concrete per-cell spacings — but it is now LOUD. Do not "restore"
-        # the old behaviour by falling back to the scalars.
+        # The port metric needs concrete per-cell spacings. Falling back to SCALAR
+        # ``grid.dx`` / ``grid.dy`` for the transverse axes would size the port from
+        # the BOUNDARY cell instead of the node's cell. Those scalars are plain
+        # floats even when the profile is traced: a traced ``dx_profile`` with
+        # concrete ``dz`` would run and return a gradient of exactly 0.0 (measured
+        # ``jax.grad`` and grad-norm). An optimiser would read that silently zero
+        # gradient as an insensitive design variable, so refuse the traced metric
+        # instead of falling back to scalars.
         raise NotImplementedError(
             "port metrics (port_sigma / "
             "port_dual_transverse) need CONCRETE per-cell mesh spacings: the "
@@ -77,13 +71,13 @@ def _axis_cell_sizes(grid, position_ijk: tuple[int, int, int]
     """PRIMAL (dx, dy, dz) cell sizes AT ``position_ijk``.
 
     Uniform ``Grid`` is cubic and carries a single scalar, so all three are
-    ``grid.dx`` — byte-identical to the pre-#691 spelling.
+    ``grid.dx``.
 
     ``NonUniformGrid`` carries per-cell ``dx_arr`` / ``dy_arr`` / ``dz``.
     This used to read the SCALAR ``grid.dx`` / ``grid.dy`` for the x and y
     sizes, which on that grid are the BOUNDARY cell sizes (see the
     ``NonUniformGrid`` field comments) — the wrong cell everywhere the mesh
-    is graded, not merely at a grading step. Measured (issue #691) on a
+    is graded, not merely at a grading step. Measured on a
     0.5/1.0 mm doubly-graded fixture, a nominal 50 ohm parallel-R RLC element
     realized 12.5 ohm at a LOCALLY UNIFORM node in the coarse region.
     """
@@ -128,8 +122,7 @@ def port_dual_transverse(grid, position_ijk: tuple[int, int, int],
     current pierces, i.e. the area factor in the discrete Ampere law the E
     update integrates. Anything folded into ``sigma`` or ``eps_r`` at an E
     node realizes its lumped value through THIS area — never through the
-    primal cell widths (issue #691, and #672/#688 for the current that
-    measures it).
+    primal cell widths (the measured current uses the same metric).
     """
     duals = _axis_dual_sizes(grid, position_ijk)
     axis = _PORT_AXIS[component]
@@ -146,7 +139,7 @@ def port_sigma(grid, position_ijk: tuple[int, int, int],
     voltage ``V = E·d_parallel`` is taken over. The two transverse factors
     are DUAL: the realized conductance of a stamped σ is
     ``G = σ·dual_b·dual_c/d_parallel``, fixed by the E node's discrete
-    Ampere / Joule control volume (issue #691). This ensures
+    Ampere / Joule control volume. This ensures
     P_dissipated = V²/Z0 regardless of cell aspect ratio; for cubic cells
     (dx=dy=dz=d) it reduces to 1/(Z0·d).
     """
@@ -183,8 +176,8 @@ def stamp_lumped_sigma(materials, cell, value, component):
     cell, to that component only. A port's load is a device across one edge,
     not a property of a cell volume: averaged, a 50 ohm wire port read
     |S11| = 0.20 against the closed-form 1/3, and a lumped port inside a CPML
-    dielectric read a non-physical |S11| = 1.86 (#1210). Added back to all
-    three components, as the record did before it carried one (#1236), a
+    dielectric read a non-physical |S11| = 1.86. Added back to all
+    three components, as the record did before it carried one, a
     50 ohm port on Ez was also a 50 ohm resistor on the Ex and Ey edges
     leaving its node.
     """
@@ -516,7 +509,7 @@ def _wire_port_cells(grid, port):
 
     This used to be endpoint-INCLUSIVE (``range(lo, hi + 1)``), which
     drove n + 1 edges — the last one spanning one cell ABOVE the declared
-    end. On the issue-#313 THRU that surplus Ez edge sits above the
+    end. On the THRU that surplus Ez edge sits above the
     microstrip trace: while the trace was drawn as a one-cell PEC Box the
     edge was shorted and ``_wire_port_live_cells`` reported the right
     ``n_live`` by accident, so the off-by-one was invisible. Under the
@@ -587,7 +580,7 @@ def _axis_node_position(grid, axis: int, index: int) -> float:
     """Physical position of node ``index`` on ``axis``, in DOMAIN metres.
 
     Read from the library's own node-line producers so this does not
-    become a second spelling of where a node is (the #562 class).
+    become a second spelling of where a node is (the class).
     """
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid)
@@ -612,22 +605,20 @@ def wire_port_from_entry(pe):
 
 
 def _wire_port_live_cells(grid, port, pec_edge_masks=None):
-    """Split the wire cells into (cells, live_flags, n_live) — issue #318.
+    """Split the wire cells into (cells, live_flags, n_live).
 
     A cell is *live* when the port's OWN E edge at that index is not a
-    realized PEC edge (#931 §1.9: ``edge_is_pec(edge_masks, component, i,
+    realized PEC edge (``edge_is_pec(edge_masks, component, i,
     j, k)``, read BEFORE the runner's port-cell clearing).  A dead cell —
     one whose edge is shorted by a conductor — carries essentially no port
-    current (measured on the issue-#313 thru: |I_dead|/|I_mid| =
+    current (measured on the thru: |I_dead|/|I_mid| =
     0.003-0.03), so its per-cell port resistor is bypassed and it must not
     be counted in the series impedance distribution or the
     drive/normalization cell counts.  Reading the component's own edge, not
     a cell mask, is what makes a sheet trace (which owns no cell) visible
     here.
 
-    ``pec_edge_masks=None`` treats every cell as live — identical to the
-    historical behaviour, and the degenerate case n_live == n makes every
-    caller's formula bit-identical to the pre-#318 one.
+    ``pec_edge_masks=None`` treats every cell as live, so n_live == n.
 
     The masks must be concrete (host-readable): the live split is a static
     geometry decision, made once at setup time, mirroring the
@@ -665,7 +656,7 @@ def _wire_port_live_cells(grid, port, pec_edge_masks=None):
 
 
 def setup_wire_port(grid, port, materials, pec_edge_masks=None):
-    """Distribute port impedance across the LIVE wire cells (issue #318).
+    """Distribute port impedance across the LIVE wire cells.
 
     For n_live live cells in series with total impedance Z0:
       σ_cell = n_live · d_parallel / (Z0 · d_perp1 · d_perp2)
@@ -674,7 +665,7 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
     Cells whose extent lies inside PEC (dead cells) get NO port sigma:
     their resistor is bypassed by the surrounding conductor, so counting
     them made the physical series termination Z0·(n_live/n) instead of Z0
-    (issue #318; measured 33.3 ohm on the issue-#313 thru, n=3 with one
+    (measured 33.3 ohm on the thru, n=3 with one
     dead cell).  With ``pec_edge_masks=None`` — or no dead cells — this is
     bit-identical to the historical all-cells formula.
     """
@@ -700,8 +691,8 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
     """Inject source voltage distributed across the LIVE wire cells.
 
     Each live cell gets V_src / n_live, with Cb computed from local
-    materials.  Dead extent cells (inside PEC, issue #318) receive no
-    injection — pre-#318 they accumulated phantom EMF on an edge whose
+    materials.  Dead extent cells (inside PEC) receive no
+    injection: otherwise they accumulate phantom EMF on an edge whose
     only discharge path was the port sigma folded at that cell.
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform

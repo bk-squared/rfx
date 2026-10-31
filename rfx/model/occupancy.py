@@ -14,7 +14,7 @@ from rfx.boundaries.pec import _shift, realized_pec_edge_masks
 
 
 def clip_occupancy(x):
-    """Clip to [0, 1] with slope 1 on the closed interval (JAX's clip has slope 1/2 at a bound, #1926)."""
+    """Clip to [0, 1] with slope 1 on the closed interval (JAX's clip has slope 1/2 at a bound)."""
     return jnp.where((x >= 0) & (x <= 1), x, jnp.clip(x, 0.0, 1.0))
 
 
@@ -206,8 +206,8 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
             self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
         from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
         from rfx.core.yee import add_lumped_eps
-        # The plain path's four-cell edge mean (#1213), not the per-cell
-        # value: occupancy only scales it where a conductor sits (#1373).
+        # The plain path's four-cell edge mean, not the per-cell
+        # value: occupancy only scales it where a conductor sits.
         inv_baseline = tuple(
             (1.0 / eps_c).astype(jnp.float32)
             for eps_c in materials.components.eps)
@@ -218,7 +218,7 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
             periodic=periodic_bool,
         )
         # Occupancy acts on the volume; the capacitor stays on its
-        # declared edge, added once after that correction (#1263).
+        # declared edge, added once after that correction.
         aniso_inv_eps_run = add_lumped_eps(
             aniso_inv_eps_run, materials.eps_r_lumped, inverse=True)
         pec_occupancy_for_run = None

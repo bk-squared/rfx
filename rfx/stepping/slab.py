@@ -26,32 +26,32 @@ FILL = {
     'cpml_psi': Fill(0., 0.),  # No auxiliary field outside physical rows.
     'cpml_zero': Fill(0., 0.),  # Exterior sigma, alpha and c are zero.
     'cpml_one': Fill(1., 1.),  # Exterior b and kappa retain the identity profile.
-    'debye_ca': Fill(1., 1.),  # Vacuum E decay, from init_debye (#1302).
-    'debye_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt (#1302).
+    'debye_ca': Fill(1., 1.),  # Vacuum E decay, from init_debye.
+    'debye_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt.
     'debye_cc': Fill('1/eps0', '1/eps0'),  # Vacuum polarization coupling, with initializer rounding.
-    'debye_alpha': Fill(0., 0.),  # No pole reaches an exterior cell (#1302).
-    'debye_beta': Fill(0., 0.),  # No exterior E-to-polarization coupling (#1302).
+    'debye_alpha': Fill(0., 0.),  # No pole reaches an exterior cell.
+    'debye_beta': Fill(0., 0.),  # No exterior E-to-polarization coupling.
     'debye_state': Fill(0., 0.),  # Initial/exterior Debye polarization is zero.
-    'lorentz_ca': Fill(1., 1.),  # Vacuum E decay, from init_lorentz (#1302).
-    'lorentz_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt (#1302).
-    'lorentz_cc': Fill('1/eps0', '1/eps0'),  # 1/cc must stay finite in mixed ADE backward; zero caused NaN eps gradients (#1227).
-    'lorentz_a': Fill(0., 0.),  # No exterior pole recurrence (#1302).
-    'lorentz_b': Fill(0., 0.),  # No exterior previous-polarization recurrence (#1302).
-    'lorentz_c': Fill(0., 0.),  # No exterior E-to-polarization coupling (#1302).
+    'lorentz_ca': Fill(1., 1.),  # Vacuum E decay, from init_lorentz.
+    'lorentz_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt.
+    'lorentz_cc': Fill('1/eps0', '1/eps0'),  # 1/cc must stay finite in mixed ADE backward; zero caused NaN eps gradients.
+    'lorentz_a': Fill(0., 0.),  # No exterior pole recurrence.
+    'lorentz_b': Fill(0., 0.),  # No exterior previous-polarization recurrence.
+    'lorentz_c': Fill(0., 0.),  # No exterior E-to-polarization coupling.
     'lorentz_state': Fill(0., 0.),  # Initial/exterior Lorentz polarization and history are zero.
-    'pole_mask': Fill(False, False),  # No Debye/Lorentz pole outside the real cells (#1302).
+    'pole_mask': Fill(False, False),  # No Debye/Lorentz pole outside the real cells.
     'eps_r': Fill(1., 1.),  # Vacuum permittivity; avoid division by zero in Yee updates.
     'mu_r': Fill(1., 1.),  # Vacuum permeability; magnetic face means keep their own low-face view.
     'sigma': Fill(0., 0.),  # No conductive material outside the real cells.
-    'lumped': Fill(0., 0.),  # No component-owned lumped stamp outside the model (#1236).
+    'lumped': Fill(0., 0.),  # No component-owned lumped stamp outside the model.
     'edge_keep': Fill(1., 1.),  # Published occupancy is neutral outside owned rows.
     'state': Fill(0., 0.),  # Initial field/state split has zero exterior fields.
-    'pec_edge': Fill(True, False),  # Alignment is metal; True physical ghosts short x faces (#689/#931).
+    'pec_edge': Fill(True, False),  # Alignment is metal; True physical ghosts short x faces.
     'pec_cell': Fill(True, False),  # Legacy incident-cell PEC rule uses the same ghost-False convention.
-    'pec_occupancy': Fill(0., 0.),  # No soft conductor outside the domain (#689/#931).
-    'inv_dx': Fill(0., 1.),  # Inert alignment (#622); historical E inverse-spacing physical ghost is 1.
+    'pec_occupancy': Fill(0., 0.),  # No soft conductor outside the domain.
+    'inv_dx': Fill(0., 1.),  # Inert alignment; historical E inverse-spacing physical ghost is 1.
     'pmc_h_factor': Fill(0., 0.),  # Inert exterior/alignment H rows; preserve the real PMC high ghost zero.
-    'inv_dx_h': Fill(0., 0.),  # Inert alignment and H ghosts; retain the real high-boundary H zero (#622).
+    'inv_dx_h': Fill(0., 0.),  # Inert alignment and H ghosts; retain the real high-boundary H zero.
     'width': Fill('edge', 'edge'),  # Primal lengths replicate endpoints, retaining true seam neighbours.
 }
 
@@ -320,8 +320,7 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
 @lru_cache(maxsize=None)
 def _vacuum_dispersion_values(kind, n_poles, dt):
     """Per field, the coefficient ``init_debye`` / ``init_lorentz`` give ONE
-    vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``
-    (#1302): Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, alpha = beta = 0``;
+    vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``: Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, alpha = beta = 0``;
     Lorentz ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, a = b = c = 0``.
 
     No pole reaches the cell (all-False masks), so the pole parameters do not

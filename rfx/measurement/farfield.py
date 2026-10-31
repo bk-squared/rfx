@@ -56,7 +56,7 @@ def compute_far_field(
     # Dispatch on the inputs themselves: any traced leaf (the six faces, the
     # box's frequencies, the angles, a graded grid's spacings) takes the
     # jnp implementation, and an error there is the caller's to see. The
-    # host path below reads every one of them with numpy (#1364).
+    # host path below reads every one of them with numpy.
     import jax
     from rfx.core.jax_utils import is_tracer
     if any(is_tracer(leaf) for leaf in
@@ -74,7 +74,7 @@ def compute_far_field(
     # In-plane grading was previously ignored here: dx/dy above are the
     # BOUNDARY cell sizes on a NonUniformGrid, so a mesh graded in x or y had
     # its surface elements and face coordinates computed with the wrong
-    # spacing — silently, with a pattern returned (issue #743). The z axis
+    # spacing — silently, with a pattern returned. The z axis
     # already carried per-cell spacing; x and y now do too. When neither is
     # graded, every path below is the scalar one, bit-for-bit.
     dx_arr = getattr(grid, 'dx_arr', None)
@@ -104,8 +104,8 @@ def compute_far_field(
             return np.full(hi - lo, float(scalar))
         return np.asarray(d_arr, dtype=np.float64)[lo:hi]
 
-    # Per-face dS. Returns a scalar when nothing is graded (bit-identical to
-    # the pre-#743 code), a (n1, n2) area array otherwise.
+    # Per-face dS: a scalar on an ungraded grid, a (n1, n2) area array
+    # otherwise.
     def _face_dS_full(axis, other_ranges):
         (a0, a1), (b0, b1) = other_ranges
         if axis == 0:      # x face: spanned by y and z
@@ -252,7 +252,7 @@ def compute_far_field_jax(
     # The transform below materializes a (n_freqs, n_directions, n_cells)
     # phase array per face. All three factors are unbounded, and a board
     # pattern run (13 freqs, 181x72 directions, 3.3e5 cells/face) asked for
-    # 214 GB and died AFTER an 8-hour solve (issue #727). The sum over
+    # 214 GB and died AFTER an 8-hour solve. The sum over
     # surface cells is independent per direction, so splitting theta is
     # EXACT — the chunked and unchunked results agree to the bit (locked by
     # tests/unit/farfield/test_farfield_chunking.py). max_phase_bytes bounds that array;
@@ -284,7 +284,7 @@ def compute_far_field_jax(
                 n_cells = max(n_cells, int(_shape[1]) * int(_shape[2]))
         if n_cells > 0:
             # The count is static even when the frequencies are traced
-            # (a box built inside the caller's jit, #1364).
+            # (a box built inside the caller's jit).
             n_freqs = int(np.shape(box.freqs)[0])
             n_ph = int(jnp.asarray(phi).shape[0])
             per_theta = max(1.0, n_freqs * n_ph * n_cells * 16.0)
@@ -316,7 +316,7 @@ def compute_far_field_jax(
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)
-    dx_arr = getattr(grid, 'dx_arr', None)   # in-plane grading (#743)
+    dx_arr = getattr(grid, 'dx_arr', None)   # in-plane grading
     dy_arr = getattr(grid, 'dy_arr', None)
     pads = _ntff_face_pads(grid, box)
     cpml_lo_x, cpml_lo_y, cpml_lo_z = (pads[f"{axis}_lo"] for axis in _AXIS_NAMES)
@@ -325,7 +325,7 @@ def compute_far_field_jax(
     k0, k1 = box.k_lo, box.k_hi
     face_centre = bool(getattr(box, "face_centre", False))
 
-    # Edge positions for graded axes (#743: x and y were previously read as
+    # Edge positions for graded axes (x and y were previously read as
     # the boundary scalar, so a graded in-plane mesh was integrated with the
     # wrong dS and face coordinates, silently).
     def _edges_j(d_arr, cpml_lo):

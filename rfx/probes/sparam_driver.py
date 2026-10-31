@@ -100,8 +100,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         together with reference-plane ports (raises NotImplementedError —
         the dump schema has no plane-phasor fields).
     return_refplane_diagnostics : bool
-        When True and any port opted into ``reference_plane_cells``
-        (issue #313), return ``(S, freqs, diagnostics)`` where
+        When True and any port opted into ``reference_plane_cells``, return ``(S, freqs, diagnostics)`` where
         ``diagnostics`` carries the per-port measured Zc(f) and beta(f)
         (R5 inspection surface).  ``(S, freqs, None)`` when no port
         opted in.
@@ -114,7 +113,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         As in ``run()``: ``None`` reads ``Boundary(conformal=True)``. The
         production scan has no conformal update, so a conformal request on a
         model with PEC to conform is refused before the first step; ``False``
-        asks for staircase PEC (#1299).
+        asks for staircase PEC.
 
     Returns
     -------
@@ -132,7 +131,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     its column is formed as forward() forms it; mixed sets are supported, and S
     lists wire ports before lumped ones, the graded record's (and forward()'s) order.
     """
-    # A plain source fires in every port drive, so it is refused here (#1420).
+    # A plain source fires in every port drive, so it is refused here.
     resolve_field_dtype(sim._precision)
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim, main_record=_main_wire_record)
@@ -185,9 +184,9 @@ def compute_lumped_wire_s_matrix_via_scan(
             pec_wires=_pec_wires)
         _pec_sheets = tuple(_pec_sheets)
         _pec_wires = tuple(_pec_wires)
-        # #931 §1.7: the realized PEC edges of this model — volumes, sheets and
-        # wires — read once here, under the RUN's #689 flags (preflight refuses
-        # lumped/wire S-params under periodic axes (#206), so this is normally
+        # the realized PEC edges of this model — volumes, sheets and
+        # wires — read once here, under the RUN's periodic-axis flags (preflight refuses
+        # lumped/wire S-params under periodic axes, so this is normally
         # the non-periodic convention — but the flags are read, not assumed).
         _pec_edge_masks = conductors.pec_edges
         _sheet_ctx = conductors.sheet_context(_pec_edge_masks)
@@ -226,9 +225,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     z0 = np.asarray([pe.impedance for pe in eligible], dtype=np.float64)
 
     # Per-port wire LIVE cell counts (only needed for the wire decomposer).
-    # Issue #318: the wave-decomposition normalization is Z0c = Z0/n_live so
+    # the wave-decomposition normalization is Z0c = Z0/n_live so
     # it matches the live-cell sigma fold's per-cell resistor law
-    # R_cell = Z0/n_live (the #308 receive-channel selection relies on that
+    # R_cell = Z0/n_live (the receive-channel selection relies on that
     # identity). The realized edge masks here are the assembled-geometry
     # state BEFORE
     # any port-cell clearing — exactly the "live" definition. With no dead
@@ -259,20 +258,18 @@ def compute_lumped_wire_s_matrix_via_scan(
     # FDTD-sign V/I phasors per (drive j, receive i).
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
-    # Whole-port gap-voltage phasors (issue #764, wire mode): V_port =
+    # Whole-port gap-voltage phasors: V_port =
     # sum over LIVE wire cells of -E_c*dx per (drive j, receive i).
     # The whole-port decomposer consumes both diagonal and off-diagonal V.
     vp_all = (np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
               if wire_mode else None)
-    # PRE-injection drive-sample reference phasors (wire: issue #683 x
-    # #764; lumped: the known-load decision run,
-    # scripts/diagnostics/lumped_port_known_load_line.py):
-    # bit-identical to the historical pre-flip v_all; only the drive
-    # diagonal vref_all[j, j] is consumed (off-diagonal incident wave +
-    # the legacy diagonal on pre-decision data).
+    # Pre-injection drive-sample reference phasors. The lumped convention is
+    # measured in scripts/diagnostics/lumped_port_known_load_line.py. Only the
+    # drive diagonal vref_all[j, j] is consumed for the legacy per-cell incident
+    # wave and diagonal.
     vref_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
 
-    # Opt-in reference-plane accumulators (issue #313): raw plane phasors
+    # Opt-in reference-plane accumulators: raw plane phasors
     # per (drive j, port p, plane slot).  Allocated lazily on the first
     # drive pass that returns plane data.
     plane_v = plane_im = plane_ip = None
@@ -375,7 +372,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             # (v_dft, i_dft, v_inc_dft, v_port_dft, v_ref_dft) — take the
             # first two either way, the pre-injection drive reference from
             # its own slot in each family, plus the whole-port gap voltage
-            # in wire mode (issue #764).
+            # in wire mode.
             v_dft, i_dft = vi[0], vi[1]
             v_all[j, i, :] = np.asarray(v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(i_dft, dtype=np.complex128)
@@ -410,7 +407,7 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     def _forward_columns(S):
         # forward()'s port S is run()'s matrix with each undeclared drive's
-        # column NaN (#1373 decision C), as one-device forward() returns it.
+        # column NaN, as one-device forward() returns it.
         if not _forward_port_s11:
             return S
         driven = np.asarray([bool(pe.excite) for pe in eligible])
@@ -419,7 +416,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     if graded:
         S = np.stack([column for _, column in sorted(columns, key=lambda c: c[0])], axis=1)
     if wire_mode and plane_v is not None:
-        # issue #313 reference-plane path: byte-frozen legacy diagonals +
+        # reference-plane path: byte-frozen legacy diagonals +
         # plane-wave off-diagonals where both ports opted in.  The V/I
         # replay dump schema has no plane-phasor fields — fail loudly
         # rather than return a dump whose replay cannot reproduce S.
@@ -458,10 +455,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     if graded:
         pass
     elif wire_mode:
-        # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
-        # gap-voltage channel feeds BOTH (frame-consistent whole-port
-        # wave pair; the per-cell #308 frame is refuted physics kept only
-        # on the legacy v_port=None path).
+        # The whole-port gap-voltage channel feeds diagonal and off-diagonal entries
+        # with a consistent wave pair. The per-cell frame is retained only on the
+        # legacy v_port=None path.
         if _main_wire_record:
             # Match run_uniform's one-wire fast path, including a vanishing wave.
             from rfx.probes.probes import driven_port_reflection

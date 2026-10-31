@@ -186,12 +186,12 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None, nonuniform=Fal
     # Propagation-axis walls keep main's operator (Addendum 5c(5)).
     result = []
     for axis, wall in ((magnetic, Kind.PMC), (electric, Kind.PEC)):
-        # Legacy rewrite, PR3b: the oblique transverse wavevector is not
+        # The oblique transverse wavevector is not
         # invariant. Addendum 5 leaves that operator unchanged.
         if getattr(cfg, "angle_deg", 0) != 0 and axis == magnetic:
             continue
         if grid.shape["xyz".index(axis)] == 1:
-            continue  # the existing invariant 2-D lane is PR3b
+            continue  # the invariant 2-D lane
         pair = tuple(records[f"{axis}_{side}"].kind for side in ("lo", "hi"))
         allowed = (Kind.PERIODIC, wall)
         if pair in ((Kind.ABSORBER,) * 2, (wall,) * 2):
@@ -338,8 +338,8 @@ def require_tfsf_side_faces(sim):
         axes = axes.replace("z", "")
     conflicts = declared_nonperiodic_faces(sim, axes)
     if conflicts:
-        # #1961: declarations reaching different lanes must not silently change
-        # the solved model; #1945 is the uniform TF/SF side-face instance.
+        # Declarations reaching different lanes must not silently change the solved
+        # model, including TF/SF side faces.
         raise ValueError(
             f"TF/SF on the uniform mesh solves axes {axes!r} periodic; "
             f"declared {', '.join(conflicts)}. Declare periodic on "
@@ -424,7 +424,7 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
         return waveguide_ports
     check_arrays(cfg, grid, dict(materials=materials, **updates),
                  # The low-level RCS path does not install the slab wrap.
-                 # Its open transverse operator is unchanged in PR3a. The
+                 # The open transverse operator is retained. The
                  # graded mesh keeps its transverse absorbers (a periodic
                  # axis is refused at admission), so it judges the axes
                  # admit_simulation judges.

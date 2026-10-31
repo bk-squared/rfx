@@ -476,7 +476,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.slab_ports import setup_ports
     ctx = setup_ports(ctx, carry, inv, port_plan, layout, mesh, n_steps)
     if cpml:
-        # rfx #1402 item 5 (absorber)
+        # item 5 (absorber)
         from rfx.stepping.slab_cpml import publish, import_state
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx), invariants={}, carry_init={'cpml': psi})
         ctx, profiles, initial = publish(shell, layout, mesh)

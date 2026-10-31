@@ -75,7 +75,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         from rfx.geometry.smoothing import (
             compute_inv_eps_tensor_diag, smoothed_shape_pairs, warn_curved_high_contrast,
         )
-        # #1043 stage B: the pairs carry the CPML/UPML pad continuation, so a
+        # the pairs carry the CPML/UPML pad continuation, so a
         # dielectric that touches the domain edge is solved with the material
         # in its own pad instead of a vacuum facet at the seam. PEC shapes
         # arrive continued from assembly, with the MSL entry exception.
@@ -116,7 +116,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         from rfx.geometry.smoothing import (
             smoothed_shape_pairs, warn_curved_high_contrast,
         )
-        # #1043 stage B: same pad continuation as the Stage-2 site above.
+        # same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
         if subpixel_smoothing != "full_tensor":
             warn_curved_high_contrast(shape_eps_pairs, sim=sim)
@@ -141,7 +141,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         conformal_weights, conformal_areas = compute_conformal_fractions(grid, pec_shapes)
 
         # The 1/w permittivity is formed below, once the run's final
-        # periodic flags are known (#1373).
+        # periodic flags are known.
 
     # Edge-owned capacitors go onto the Stage-2 inverse tensor here; the
     # Stage-1 / smoothed tensor gets them below, after the conformal
@@ -158,10 +158,10 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     nodes = aniso_eps.nodes if isinstance(aniso_eps, SmoothedEps) else None
     if nodes is not None:
         aniso_eps = aniso_eps.diagonal
-    # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
+    # Conformal PEC (Stage 1) permittivity: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the
     # run's final periodic flags (after the TFSF / 2-D overrides), divided
-    # by the edge's weight w (not its open fraction, #1651). At w == 1 it
+    # by the edge's weight w (not its open fraction). At w == 1 it
     # is the plain path's value exactly.
     if conformal_weights is not None:
         w_ex, w_ey, w_ez = conformal_weights

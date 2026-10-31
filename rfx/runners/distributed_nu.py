@@ -1,13 +1,12 @@
 """Phase B: Non-uniform FDTD kernels for the shard_map distributed runner.
 
-Lane policy (#1053, PI decision 2026-09-15). ``distributed_v2.py`` is the
+Lane policy. ``distributed_v2.py`` is the
 distributed development trunk: ``Simulation.run(devices=...)`` dispatches
-there for uniform AND non-uniform grids, and since #1065/#1068 it realizes
-declared PEC volumes through the shared ``apply_pec_mask_shmap`` stage at the #1041 ordering. THIS module is the ``forward(distributed=True)`` NU lane and
+there for uniform AND non-uniform grids, and it realizes
+declared PEC volumes through the shared ``apply_pec_mask_shmap`` stage in the shared step ordering. THIS module is the ``forward(distributed=True)`` NU lane and
 stays: it uniquely carries NU-grid CPML / Debye / Lorentz, ``checkpoint_every``,
 ``n_warmup``, ``emit_time_series`` and tracer-safe array inputs, none of which
-v2 has (v2 raises on NU dispersion). Retiring it would require porting those,
-not the two stages #1053 moved. New distributed features go to v2; kernels
+v2 has (v2 raises on NU dispersion). Retiring it would require porting those. New distributed features go to v2; kernels
 both lanes need go to ``_distributed_common.py`` with an ``is``-identity guard
 in ``tests/locks/test_runner_split_bit_identity.py``. Soft occupancy
 is deliberately NOT ported to v2: ``run()``
@@ -110,7 +109,7 @@ from rfx.runners._distributed_common import (
 # Local NU update kernels (operate on per-device slab including ghosts)
 # ---------------------------------------------------------------------------
 #
-# #1038 leg 4 (prerequisite): ``_update_h_local_nu`` and ``_update_e_local_nu``
+# leg 4 (prerequisite): ``_update_h_local_nu`` and ``_update_e_local_nu``
 # moved VERBATIM to ``rfx/runners/_distributed_common.py`` and are re-imported
 # at the top of this module, so ``rfx.runners.distributed_nu._update_h_local_nu``
 # and ``..._update_e_local_nu`` keep resolving for every existing importer.
@@ -370,7 +369,7 @@ _exchange_h_ghosts_nu = exchange_h_yee_shmap
 _exchange_e_ghosts_nu = exchange_e_yee_shmap
 
 
-# #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
+# ``_apply_pec_face_nu_shmap``'s body now lives as
 # ``apply_pec_face_shmap`` in ``_distributed_common.py``; it was a copy of
 # ``distributed_v2.py::_apply_pec_shmap`` differing only in the parameter
 # spelling (renamed in the preceding commit) and three comments. Kept as a
@@ -379,12 +378,12 @@ _apply_pec_face_nu_shmap = apply_pec_face_shmap
 
 
 
-# #1053 leg 2. ``_apply_pec_mask_nu_shmap``'s body now lives as
+# ``_apply_pec_mask_nu_shmap``'s body now lives as
 # ``apply_pec_mask_shmap`` in ``_distributed_common.py``, so ``distributed_v2``
 # can apply the same realized-PEC rule from the same function object. The
 # kernel was already runner-agnostic, so nothing but the def name changed.
 # Kept as a module-local alias: this lane's own call site (stage 8 of
-# ``run_nonuniform_distributed_pec.step_fn``) and the #1038 lock fixture
+# ``run_nonuniform_distributed_pec.step_fn``) and the lock fixture
 # ``distributed_nu_pec_mask_seam`` both import it under this name.
 _apply_pec_mask_nu_shmap = apply_pec_mask_shmap
 
@@ -564,7 +563,7 @@ def run_nonuniform_distributed_pec(
     Other field, CPML and dispersion ghost entries are locally updated
     scratch values, can grow, and are never read by real cells. Exclude them
     from physical energy calculations; ``forward()`` discards this state.
-    Measured on the #931 seam fixtures (16x8x8, 2 ranks, 30 steps, one
+    Measured on the seam fixtures (16x8x8, 2 ranks, 30 steps, one
     PEC cell at ``(nx_per_rank, ny//2, nz//2)`` = rank 1's first real
     cell): with the exchange BEFORE the PEC stages, rank 0's right ghost
     kept the un-zeroed ``Ey``/``Ez`` on the seam plane that rank 1 zeroed
@@ -631,7 +630,7 @@ def run_nonuniform_distributed_pec(
          local_i = (i % nx_per_rank) + ghost_width``.
     probes : list of ProbeSpec, optional
         Same routing as sources.
-    n_devices : int
+    n_devices: int
         Required.  Must match ``sharded_grid.n_devices``.
     exchange_interval : int, optional
         Reserved for Phase 2E batched exchange; only ``1`` is supported.
@@ -679,7 +678,7 @@ def run_nonuniform_distributed_pec(
         gradients are exact (segmented remat preserves AD).  ``None``
         (default) takes the single-scan Phase 2A-2E path.
     n_warmup : int, optional
-        Phase 2F warmup splitting (mirrors single-device :issue:`#40`).
+        Warmup splitting, as on the single-device lane.
         When ``> 0``, run the first ``n_warmup`` steps with the carry
         ``stop_gradient``'d so AD builds no tape for that transient.
         Only the trailing ``n_steps - n_warmup`` steps participate in
@@ -698,8 +697,7 @@ def run_nonuniform_distributed_pec(
         cliff, from <0.01% well below ``K_safe`` to ~1.2% AT ``K_safe``
         itself). See the ``n_warmup split`` comment in
         :func:`rfx.nonuniform.run_nonuniform` for both measured curves,
-        the ``K_safe`` formula, and the source scripts (issue #626 part 2
-        / addendum).
+        the ``K_safe`` formula, and the source scripts.
     emit_time_series : bool, optional
         Phase 2F.  When ``True`` (default), the runner accumulates per-
         step probe samples and returns ``time_series`` as a
@@ -726,7 +724,7 @@ def run_nonuniform_distributed_pec(
     ``final_state_sharded`` entry is always available in the slab layout.
 
     material_drive : sequence of (float or None), optional
-        One entry per source (#1279); ``None`` (the default) is all-None.
+        One entry per source; ``None`` (the default) is all-None.
         ``None``: the source's ``waveform`` is its complete per-step E
         increment, already normalised (``make_current_source``). A float
         ``dV``: the ``waveform`` is the current ``I(t)`` in amperes, and
@@ -819,7 +817,7 @@ def run_nonuniform_distributed_pec(
 
     nx_local = sharded_grid.nx_local
     nx_per = sharded_grid.nx_per_rank
-    nx_real = sharded_grid.nx   # an int for the step closures (#1303)
+    nx_real = sharded_grid.nx   # an int for the step closures
     high_wall = sharded_grid.high_wall
     ghost = sharded_grid.ghost_width
     ny = sharded_grid.ny
@@ -888,7 +886,7 @@ def run_nonuniform_distributed_pec(
     n_src = len(sources)
     n_prb = len(probes)
 
-    # #1279: material-driven sources. Their table column is the current
+    # material-driven sources. Their table column is the current
     # I(t); run_fn reads Cb from staged materials and finishes (1/dV)*(Cb*I).
     material_drive = (tuple(material_drive) if material_drive is not None
                       else (None,) * n_src)

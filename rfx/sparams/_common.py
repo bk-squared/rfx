@@ -1,12 +1,8 @@
-"""Module-level S-matrix helpers, moved verbatim out of ``rfx.api._sparams``.
+"""Module-level S-matrix helpers.
 
-Issue #980 Phase 2, step 1. ``rfx/api/_sparams.py`` had grown to 8 647 lines:
-2 590 lines of module-level helpers followed by one 5 957-line mixin class.
-This module is the helper half, relocated byte for byte — same order, same
-text, same indentation, same docstrings. Nothing was renamed, reordered,
-cleaned up or rewritten, and the move is gated on bit identity of the S arrays
-every public ``compute_*`` leg returns
-(``tests/locks/test_sparams_split_bit_identity.py``).
+This module contains the shared S-matrix helpers used by the public
+``compute_*`` functions. Their S arrays are checked for bit identity by
+``tests/locks/test_sparams_split_bit_identity.py``.
 
 ``rfx.api._sparams`` re-exports every name below explicitly, so
 ``from rfx.api._sparams import <helper>`` — which 47 files do — keeps working,
@@ -97,14 +93,14 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
     proxy is one substrate edge SHORT.  Measured on the dx = 80 µm gate
     fixture (``h_sub/dx = 3.175``): trace node 4, proxy 3 — the proxy span
     dropped the in-phase edge 3 and anchored V and I on different conductor
-    planes (PR #516 review, finding F2).  On node-aligned meshes
+    planes.  On node-aligned meshes
     (``h_sub/dx`` integral, e.g. dx = h_sub/3 = 84.67 µm) the two agree.
 
-    Issue #511: before this helper existed the span was
+    before this helper existed the span was
     ``range(k_lo, k_hi + 1)`` with the rounding proxy — on aligned meshes
     that is ``n+1`` edges for an ``n``-cell substrate, and the extra edge
     lies inside the one-cell PEC trace, where the realization leaves the
-    NORMAL E component live (#931 §1.2: an E component is PEC iff its own
+    NORMAL E component live (an E component is PEC iff its own
     location is inside the closed conductor region, so the normal edge of
     a SHEET stays live and the normal edge INSIDE a volume is shorted)
     — a correct boundary condition that is wrong to sum into a
@@ -120,14 +116,14 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
 
     The BISECTING mesh (dx = 80 µm, the mesh class this span anchoring
     actually changes behaviour on) has since been measured too, on a
-    properly terminated two-port fixture (issue #520 leg 1;
+    properly terminated two-port fixture (
     ``scripts/diagnostics/msl_vi_flux_oracle.py`` + its committed JSON):
     HELD, ratio 1.0105-1.0118, 30/30 admissible cells. An earlier
     unterminated single-port reading of this same identity on the
-    bisecting mesh (issue #525) read low (0.54-0.69) for two compounding,
-    non-extractor reasons — a convention slip (see #525's own correction)
+    bisecting mesh read low (0.54-0.69) for two compounding,
+    non-extractor reasons — a convention slip
     and a reactive, non-travelling fixture (reactive fraction 0.963-0.995,
-    PR #549 review reconstruction) — neither of which is present in the
+    review reconstruction) — neither of which is present in the
     committed measurement.
     """
     if k_hi <= k_lo:
@@ -148,7 +144,7 @@ def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
 def msl_solve_s_from_waves(wave_a, wave_b):
     """Solve ``S = B·A⁻¹`` from wave amplitudes recorded on every drive.
 
-    ``wave_a[d][j]`` / ``wave_b[d][j]`` are ``(n_freqs,)`` forward / backward
+    ``wave_a[d][j]`` / ``wave_b[d][j]`` are ``(n_freqs)`` forward / backward
     wave amplitudes at port ``j`` while port ``d`` was driven.  With every
     port driven the system ``b = S a`` is square:
 
@@ -159,12 +155,10 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     indexed ``[receiver, driven, freq]``, and ``cond_a`` the per-frequency
     condition number of ``A`` (``None`` under tracing).
 
-    Issue #507: the superseded rule ``S[j, d] = b_j / a_d`` is the ``d``-th
+    the superseded rule ``S[j, d] = b_j / a_d`` is the ``d``-th
     column of this only when ``a_j = 0`` at every passive port.  It is not —
     ``|a_passive/a_driven| = 0.243-0.248`` at the shipped R = 50 Ω and
-    0.19-0.93 across terminations, re-measured on current main 2026-08-30
-    (#524, VESSL 369367257265, PR #799; the July pre-#511/#516 figure was
-    0.07-0.51 and is superseded) — and
+    0.19-0.93 across terminations, measured in VESSL 369367257265 — and
     the exact algebra ``b_1/a_1 = S11 + S12·(a_2/a_1)`` holds to machine
     precision, so the far port's echo was reported as the structure's own
     reflection.
@@ -175,13 +169,12 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     the old rule can push column power either side of 1.  In the NEAR-MATCHED
     case that the thru fixtures are (true ``S11 ≈ 0``) it reduces to
     ``|S11|² + |S21|² = 1 + γ²`` — the same power counted twice — which is the
-    passivity violation #507 opened on.  Both cases are pinned in
+    passivity violation.  Both cases are pinned in
     ``tests/unit/sparams/test_msl_modal_voltage_and_wave_solve.py``.
 
     ``cond_a`` bounds DEGENERACY of the drive system only — it is not a
     reliability score.  Same contract as the coax lane's
-    :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
-    (issue #489), generalised to ``n`` ports.
+    :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`, generalised to ``n`` ports.
     """
     n_ports = len(wave_a)
     A = jnp.stack([
@@ -202,7 +195,7 @@ def msl_solve_s_from_waves(wave_a, wave_b):
         # f64 BEFORE the ratio: for a complex64 A the SVD returns float32,
         # where the 1e-300 floor underflows to 0.0 (NEP-50 weak promotion
         # keeps float32) and a singular A divides by zero instead of
-        # saturating. Same failure class as the #497 NEP-50 fallback.
+        # saturating. Same failure class as the NEP-50 fallback.
         _sv = np.linalg.svd(
             np.asarray(jax.lax.stop_gradient(A)), compute_uv=False
         ).astype(np.float64)
@@ -260,7 +253,7 @@ def _warn_msl_wave_split_unreliable(
 def _warn_msl_beta_scan_railed(
     beta_railed: np.ndarray, freqs: object, port_names: tuple
 ) -> None:
-    """Emit one aggregate warning for β-scan rail-pinned bins (issue #681).
+    """Emit one aggregate warning for β-scan rail-pinned bins.
 
     ``beta_railed`` is (n_ports, n_freqs) bool, True where a port's
     own-drive N-probe β scan failed to bracket its optimum — the fitted
@@ -313,7 +306,7 @@ _SETTLING_WITNESS_DB = -40.0
 
 
 def settling_verdict(settling_db) -> str:
-    """The ONE -40 dB ring-down comparison in this codebase (issue #885).
+    """The ONE -40 dB ring-down comparison in this codebase.
 
     Returns ``"pass"``, ``"fail"`` or ``"absent"``. ``"absent"`` covers
     ``None`` and every non-finite value (NaN, +/-inf) -- the states that mean
@@ -321,12 +314,12 @@ def settling_verdict(settling_db) -> str:
     turns into a pass. That is not hypothetical: a campaign driver read a
     missing witness as ``np.nan`` through ``getattr(result, "settling_db",
     np.nan)``, compared it to the bar, and a completed 3-hour two-arm
-    experiment came back INCONCLUSIVE for an instrument reason (#885).
+    experiment came back INCONCLUSIVE for an instrument reason.
 
     Every caller that needs the decision calls this instead of writing the
     comparison again -- including the aggregate warner below and the
     ``run()`` post-run advisories in ``rfx/api/_execute.py``. A value exactly
-    at the bar passes (the bar is the inclusive limit, unchanged since #538).
+    at the bar passes (the bar is the inclusive limit, unchanged).
     """
     if settling_db is None:
         return "absent"
@@ -340,7 +333,7 @@ def settling_verdict(settling_db) -> str:
 
 
 def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
-    """Light re-validation of ``extra_flux_monitors=`` entries (#589 opt-in).
+    """Light re-validation of ``extra_flux_monitors=`` entries.
 
     Entries are the objects ``Simulation.add_flux_monitor`` registers,
     typically built on a scratch ``Simulation`` sharing this sim's domain —
@@ -427,8 +420,7 @@ def _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired_plane_m: float,
     (``(beta*dx)^2/24``; ``docs/guides/support_matrix.md``, nonuniform
     waveguide row, and ``tests/fixtures/waveguide_nu_beta_cell_size_envelope.json``).
     Across a graded span a single beta is right only by accident, and
-    integrating beta cell by cell over the span is deferred (v1.8 plan WP4,
-    decision 3; tracking issue #854 item 1) -- until then the case fails
+    integrating beta cell by cell over the span is not implemented -- the case fails
     loudly here instead of silently applying one beta. Returns the
     ``_nu_shift_span_cells`` tuple when the span is admissible.
     """
@@ -459,10 +451,10 @@ from rfx.sparams._grid_metrics import _msl_axis_spacing, _msl_axis_cell_f64
 
 
 def _resolve_msl_auto_offsets(sim, entries, grid):
-    """Issue #469: solve the probe-offset interval for AUTO-offset ports.
+    """solve the probe-offset interval for AUTO-offset ports.
 
     When the interval comes out EMPTY this is the third site that speaks
-    about probe-clearance corruption, so it carries the same #726 guidance
+    about probe-clearance corruption, so it carries the same guidance
     text as ``compute_msl_s_matrix``'s Z0 guard and preflight's layout
     warning. Imported, not copied.
 
@@ -472,22 +464,21 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     reflector — needs the full registered geometry, which only exists at
     driver time. Per auto port on a uniform grid:
 
-    * no downstream reflector  -> keep ``offset_min`` (byte-identical to
-      the pre-#469 default);
+    * no downstream reflector  -> keep ``offset_min``;
     * finite reflector, interval ``[offset_min, offset_max]`` non-empty ->
-      midpoint (on the #469 Sheen measurement the old default sat at the
+      midpoint (on the Sheen measurement the old default sat at the
       contaminated near edge and the old advisory pushed PAST the far
       edge; the midpoint lands inside the measured-clean window);
     * interval EMPTY -> warn loudly (the feed line is too short for a
       clean N-probe measurement) and keep ``offset_min`` (upstream
       priority — the fringing transient is the historically dominant
-      corruption, issue #80).
+      corruption).
 
     Explicit offsets are never touched. Automatic values are first re-derived
     from the full declaration into the bookkeeping dictionaries; repeated calls
     are idempotent. Returns a new entries list, leaving raw entries unchanged.
 
-    Auto probe SPACING (issue #681). A ~0.1·λ_g probe span leaves the
+    Auto probe SPACING. A ~0.1·λ_g probe span leaves the
     N-probe β fit noise-fragile: the two model columns ``e^{∓jβx}`` are
     nearly collinear and the residual-vs-β curve is nearly flat, so probe
     noise walks the fitted β far from truth (measured, 500-trial
@@ -508,8 +499,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
       only for s ≳ 0.42·λ_g);
     * with a downstream reflector, the span may consume at most HALF the
       compliant interval ``[offset_min, offset_max]`` — the other half
-      stays with the #469 midpoint rule, preserving the measured-clean
-      upstream margin for probe 0 (the #469 Sheen measurement showed the
+      stays with the midpoint rule, preserving the measured-clean
+      upstream margin for probe 0 (the Sheen measurement showed the
       near edge contaminated);
     * the deepest probe stays ``λ_g/4``-clear of the absorbing boundary
       (an absorber face is a discontinuity like any reflector, and CPML
@@ -517,14 +508,13 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
       ``domain_edge − clear − n_cpml·dx``.
 
     On a feed too short for any widening the caps floor at the hard
-    minimum of 2 cells — byte-identical to the pre-#681 defaults on the
-    committed Sheen interval-test geometry — and the existing
+    minimum of 2 cells and the existing
     empty-interval warning still fires when even that does not fit.
     Explicit spacings are never touched. Graded/unevaluable propagation
     axes get no widening, via the same skip-and-warn path as the offset
     solve.
 
-    Non-uniform meshes (issue #686). The bail-out is per PORT and keys on
+    Non-uniform meshes. The bail-out is per PORT and keys on
     that port's PROPAGATION axis, not on "is any axis graded". A
     cell-counted probe interval is ill-defined when the axis the probes
     march along has varying cell sizes — which is a statement about the
@@ -537,7 +527,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     as before — but the skip now WARNS once per call instead of being
     silent.
 
-    Graded propagation axis (issue #810). The automatic offset and spacing
+    Graded propagation axis. The automatic offset and spacing
     are LENGTHS (``lambda_eff/(4*pi)`` and ``5*h_sub`` for the offset,
     ``lambda_eff/8`` for the ladder span) that ``add_msl_port`` counted in
     the scalar cell. On a runway finer than that cell the count put probe 0
@@ -547,7 +537,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     counted in the runway cell beside the node the source is stamped on,
     when the span from that node through the deepest probe lies in one
     uniform zone. When it would cross a grading ramp, no cell count names
-    one length along it, and the stored counts are kept. Either way the #469 interval solve and the #681 widening, which count reflector and
+    one length along it, and the stored counts are kept. Either way the interval solve and the widening, which count reflector and
     absorber distances in cells, do not run on a graded axis, and the skip
     warning says so. On an ungraded axis the same lengths are recounted in
     that axis's own cell before the interval solve starts from them, which
@@ -587,7 +577,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         if off_min is None and sp_eps_eff is None:
             resolved.append(pe)
             continue
-        # Issue #661: project position/domain onto this port's propagation
+        # project position/domain onto this port's propagation
         # and width axes before handing them to the x-frame helper.
         _prop_ax, _width_ax, _, _dir_sign = _msl_axis_roles(pe.direction)
         _ip = _MSL_AX[_prop_ax]
@@ -606,7 +596,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             resolved.append(pe)
             continue
         if _graded:
-            # Issue #810: count the automatic LENGTHS in the runway cell at
+            # count the automatic LENGTHS in the runway cell at
             # the source node, where the whole ladder lies in one zone.
             _lengths = _auto_lengths.get(pe.name)
             if _lengths is None:
@@ -706,7 +696,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                            local_cell(grid, _iw, float(pe.position[_iw]) + float(pe.width) / 2)),
             domain_y=float(sim._domain[_iw]),
             direction=pe.direction, port_position=pe.position,
-            # Issue #685: same conductor rule as the assembler, and thin
+            # same conductor rule as the assembler, and thin
             # conductors included, so the solved offset is not derived
             # from a scan that was blind to most of the metal.
             resolve_material=sim._resolve_material,
@@ -726,7 +716,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             )
             resolved.append(pe)
             continue
-        # --- Auto probe-spacing widening (issue #681, docstring above).
+        # --- Auto probe-spacing widening.
         # Target λ_g(f_max)/4 per probe step, capped by half the reflector
         # interval and by the absorber clearance; floors at the hard
         # 2-cell minimum. Explicit spacings (sp_eps_eff is None) pass
@@ -1036,9 +1026,8 @@ Cells EXCLUDED, and why:
     number is degenerate for the same reason -- the port-2 time records are
     identically zero, which is what puts ``+0.0 dB`` in its ``settling_db``
     and what sets the fixture's ``settling_all_below_minus_40_db`` false.
-    Counting a vacuous zero as a witness is the same mistake #395 named for
-    the empty-guide reflection identity, applied here to the transmission
-    entries.
+    A vacuous zero transmission cannot witness reciprocity, just as the
+    empty-guide reflection identity cannot witness reflection accuracy.
   * the ``coarse`` and ``mid`` rungs. They are the mesh ladder, and their
     reciprocity deviation -- up to 6.758813e-2 at slab|coarse|normalize=False
     -- IS the discretization error this advisory exists to surface.
@@ -1235,7 +1224,7 @@ def _warn_if_nonpassive_smatrix(
         passivity_tol=float(passivity_tol),
     )
 
-    # Independent per-frequency amplitude advisory (issue #337).  Keep this
+    # Independent per-frequency amplitude advisory.  Keep this
     # separate from the column-power gate above: normalize=False deliberately
     # has a loose column-power tolerance, but an individual |S_ij| materially
     # above unity is still useful evidence of an extraction/normalization
@@ -1244,11 +1233,11 @@ def _warn_if_nonpassive_smatrix(
     # Tolerance-class-aware threshold: the loose normalize=False waveguide
     # path (passivity_tol >= 2.0) has a DOCUMENTED validated |S11| envelope
     # reaching ~1.41 (Yee dispersion + band edge — see the normalize docstring
-    # and the 2026-06-21 policy locks in test_sparam_passivity_guard.py), so
+    # and the policy locks in test_sparam_passivity_guard.py), so
     # its amplitude advisory only fires above 1.5 (still catches the eager
     # ~1.98 spike class). Tight paths (lumped/MSL/coax/normalize=True) keep
     # the 1 + amplitude_eps (default 1.05) threshold — the MSL documented
-    # envelope is 1.0063 and the field case that motivated issue #337 was 1.36.
+    # envelope is 1.0063 and the measured field case was 1.36.
     eff_amplitude_eps = (float(amplitude_eps) if float(passivity_tol) < 2.0
                          else max(float(amplitude_eps), 0.5))
     amplitude_advisory = None
@@ -1271,7 +1260,7 @@ def _warn_if_nonpassive_smatrix(
         if i.code in ("passivity_violation", "nonfinite_sparams")
     ]
     if not bad:
-        # SOFT ADVISORY (LLM-naive-usage audit item #5): the hard check above
+        # SOFT ADVISORY: the hard check above
         # uses the caller's ``passivity_tol``. On the ``normalize=False``
         # waveguide path that tol is loose (2.0 -> column-power limit 3.0,
         # i.e. |S| <= 1.732 for a 1-port) to tolerate the DOCUMENTED single-run
@@ -1408,7 +1397,7 @@ def s21_phase_residual_deg_rms(
     port. It also needs the modal phase intact -- ``normalize=True`` divides
     the reference run's propagation phase out of S21 and is refused upstream.
 
-    The discretization witness for the waveguide port (#894). On the empty
+    The discretization witness for the waveguide port. On the empty
     matched WR-90 guide the |S11| magnitude near cutoff carries a
     dx-independent term set by whether the far-boundary round trip fits inside
     the DFT record, so an order fitted to it is a clipping artefact. This phase
@@ -1601,7 +1590,7 @@ def _warn_junction_probe_clearance(
         ax = axis_idx[cfg.normal_axis]
         other_axes = tuple(j for j in range(3) if j != ax)
         diff_profile = np.any(np.asarray(ref_sigmas[i]) != dev, axis=other_axes)
-        # #931 moved PEC out of sigma into the solver's realized E edges.
+        # PEC is represented by the solver's realized E edges, not sigma.
         # Reading sigma alone therefore sees identical vacuum in a PEC
         # junction and its straight references. Compare each component:
         # unioning the three masks first would hide differently oriented
@@ -1681,29 +1670,16 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
 
 
 def _warn_ntff_box_dropped(sim, method_name: str) -> None:
-    """Issue #704 — one warning per S-matrix call when an NTFF box would be dropped.
+    """One warning per S-matrix call when an NTFF box would be dropped.
 
     ``add_ntff_box()`` registers a far-field monitor, but the S-matrix
     result classes (``MSLSMatrixResult``, ``WaveguideSMatrixResult``, and
     the coaxial results) carry no ``ntff_data``/``ntff_box`` fields, so
-    whatever the per-drive solves record is discarded with nothing said —
-    the same silent-drop class as #695/#685. Called ONCE at each S-matrix
+    whatever the per-drive solves record is discarded with nothing said. Called ONCE at each S-matrix
     entry (after the cheap guards, before any FDTD), never per port, so a
-    call covers all its drives with a single message (#697 principle 8).
+    call covers all its drives with a single message.
 
-    Mutation falsification (both directions, run 2026-08-24 in this
-    worktree against ``tests/unit/farfield/test_ntff_smatrix_drop_warning.py``):
-    - warn DELETED (early ``return`` above the ``warnings.warn``):
-      3 failed, 3 passed — ``test_msl_warns_with_ntff_box``,
-      ``test_waveguide_warns_with_ntff_box``,
-      ``test_coaxial_warns_with_ntff_box`` each red with verbatim
-      ``Failed: DID NOT WARN. No warnings of type (<class 'UserWarning'>,)
-      were emitted.``
-    - warn made UNCONDITIONAL (``if sim._ntff is None: return`` deleted):
-      the three ``*_silent_without_ntff_box`` tests each red with verbatim
-      ``TypeError: cannot unpack non-iterable NoneType object`` from the
-      ``sim._ntff`` unpack below on the no-box fixtures.
-    Intact code: 6 passed.
+    The warning and no-box silence are covered by ``tests/unit/farfield/test_ntff_smatrix_drop_warning.py``.
     """
     if sim._ntff is None:
         return
@@ -1739,7 +1715,7 @@ def _assemble_mixed_power_wave_s(
     wire_mode, drive_plan,
     v_ref_lw=None,
 ):
-    """Assemble the mixed-family power-wave S-matrix (issue #488).
+    """Assemble the mixed-family power-wave S-matrix.
 
     Lumped/wire-driven columns and their power witnesses are refused.
     MSL-driven waves retain the recorded-phasor algebra below. The caller
@@ -1747,35 +1723,28 @@ def _assemble_mixed_power_wave_s(
 
     .. warning::
 
-       SINGLE-RATIO ASSEMBLY, deliberately not changed here (issue #517).
+       SINGLE-RATIO ASSEMBLY, deliberately not changed here.
        This assembly forms ``S[i, j] = b_i / a_j`` per drive — the
        single-ratio rule the pure-MSL lane replaced with the multi-drive
        solve ``S = B·A⁻¹``. That much is still true of the code below.
 
-       What is NOT true is the leak this block used to allege. It claimed
-       the driven-MSL diagonal was #507-contaminated by the passive port's
-       echo and that the contamination propagated into the DEFAULT flux
-       channel via ``P_inc = P_net / (1 - |S_jj|^2)``. That claim was
-       measured in #517 step 1 (PR #543, 2026-08-03, evidence committed as
-       ``scripts/diagnostics/i517_mixed_solve_vs_ratio_measurement.py`` +
-       JSON) and REFUTED for this lane. The mixed lane's passive side is a
+       ``scripts/diagnostics/i517_mixed_solve_vs_ratio_measurement.py`` and its JSON refute the claim that the passive port's echo contaminates the driven-MSL diagonal and propagates into the DEFAULT flux channel via ``P_inc = P_net / (1 - |S_jj|^2)``. The mixed lane's passive side is a
        lumped/wire port CELL, and that cell is structurally one-phasor: its
        ``b/a`` is the resistor-law constant ``s1 = -0.60000`` (to 5.8e-4 at
        ``n_live = 4``), and both shipped extraction candidates are the same
        identity paired oppositely, so no non-degenerate ``(a, b)`` pair
        exists at the port cell under any shipped formula. The apparent
-       MSL-diagonal jump under the solve (0.03 -> 0.72) is the #507 echo
+       MSL-diagonal jump under the solve (0.03 -> 0.72) is the echo
        correction ``-S10·γ`` applied at a passive port where it does not
-       belong, acting on two already-#313/#507-polluted quantities
+       belong, acting on two quantities contaminated by the passive port's echo
        (``|S10·γ|/|S11m|`` = 19.0-38.1×; closed form matches the solve to
        1.8e-7). Substituting the solved diagonal makes the flux channel
        WORSE, not better: reciprocity 10.53 % shipped -> 23.29 % solved
-       (2026-08-03 measurement), and assembling the whole mixed lane by the
+       , and assembling the whole mixed lane by the
        solve moves the shipped flux witness 9.80 % -> 9.85 % — no physical
        gain. Extending the solve here is therefore inert, not blocked.
 
-       The lane's reciprocity residual (9-10 %) is real and remains OPEN,
-       but its adjudication lives in #498, not here: neither mixed-lane
+       The lane's reciprocity residual (9-10 %) remains unexplained: neither mixed-lane
        diagonal has an independent same-run check on main, and the declared
        next measurement is reference-plane-split waves
        (``rfx/probes/refplane.py``, ``add_port(reference_plane_cells=N)``)
@@ -1790,7 +1759,7 @@ def _assemble_mixed_power_wave_s(
       ``decompose_s_matrix`` probes.py:913 / ``decompose_wire_s_matrix``
       probes.py:1018, with ``Z0c = Z0/n_live`` (n_live=1 for lumped).
     * lumped/wire passive receive ``b = (V - Z0c*I) / (2*sqrt(Z0c))`` —
-      the issue-#308 orthogonal receive channel, DC-falsifier-pinned
+      the orthogonal receive channel, DC-falsifier-pinned
       (probes.py:925 / :1014).
     * lumped drive-port diagonal ``b = (-V - Z0*I) / (2*sqrt(Z0))`` —
       byte-frozen ``extract_lumped_s11`` algebra (probes.py:920).
@@ -1801,14 +1770,14 @@ def _assemble_mixed_power_wave_s(
 
     The per-family extractors report pseudo-wave ``b/a`` ratios; those
     drop the ``sqrt(Re Z0)`` Kurokawa factor, which cancels only for
-    equal-impedance ports (issue #460). Mixed families have unequal Z0 by
+    equal-impedance ports. Mixed families have unequal Z0 by
     construction, so every wave above is divided by ``sqrt(Z0_ref)`` of
     its own port BEFORE forming ``S[i, j] = b_i / a_j``: reciprocity
     ``S21 == S12`` of a reciprocal structure then holds and is the
     committed internal falsifier for this normalization.
 
     Also returns the extractor-independent |S21| power witness for
-    lumped/wire-driven columns (issue #313 triangulation): the port-cell
+    lumped/wire-driven columns: the port-cell
     off-diagonal wave MAGNITUDES are near-field polluted on the default
     lumped/wire path (measured |S21| 0.52-0.67 vs flux-true 0.97-1.0 on
     the canonical thru), so ``|a_drive|`` is re-derived from delivered
@@ -1821,9 +1790,9 @@ def _assemble_mixed_power_wave_s(
         FDTD-sign V/I DFT phasors at each lumped/wire port per run.
     v0_msl, i_msl : (n_runs, n_msl, n_freqs) complex
         MSL probe-0 line voltage and closed-Ampere-loop current per run.
-    z0_lw : (n_lw,) float — full registered port impedances.
-    n_live_lw : (n_lw,) int — wire live-cell counts (1s for lumped).
-    z0_hj_msl : (n_msl,) float — analytic Hammerstad-Jensen Z0 per port.
+    z0_lw: (n_lw) float — full registered port impedances.
+    n_live_lw: (n_lw) int — wire live-cell counts (1s for lumped).
+    z0_hj_msl: (n_msl) float — analytic Hammerstad-Jensen Z0 per port.
     wire_mode : bool — True when the lumped/wire family is wire ports.
     drive_plan : list of ("lw"|"msl", local_idx) — run order.
 
@@ -1851,7 +1820,7 @@ def _assemble_mixed_power_wave_s(
     sq_msl = jnp.sqrt(jnp.asarray(np.asarray(z0_hj_msl, dtype=np.float64)))
 
     def _b_lw_passive(run, i_port):
-        # #308 receive channel, power-wave normalized (probes.py:925/:1014).
+        # receive channel, power-wave normalized (probes.py:925/:1014).
         return (v_lw[run, i_port] - z0c_lw[i_port] * i_lw[run, i_port]) / (
             2.0 * sq_lw[i_port]
         )
@@ -1888,7 +1857,7 @@ def _mixed_flux_magnitude_override(
     S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
     ill_cond_floor=0.05, refused_columns=(),
 ):
-    """Replace off-diagonal MAGNITUDES with Poynting-flux ratios (issue #488).
+    """Replace off-diagonal MAGNITUDES with Poynting-flux ratios.
 
     Pure function (unit-testable without FDTD). Per driven column j:
 
@@ -1903,7 +1872,7 @@ def _mixed_flux_magnitude_override(
     per-family channels. The identity P_net = P_inc*(1-|S_jj|^2) holds for
     the net flow at ANY closed surface / cross-section around the driven
     port, so no Z0 anchor enters the magnitude (the point of arch A: both
-    the #313 port-cell V*I accounting and the analytic-vs-measured MSL Z0
+    the port-cell V*I accounting and the analytic-vs-measured MSL Z0
     divergence drop out).
 
     Returns (S_out, ill_cond, neg_power): boolean ``(n_ports, n_freqs)``
@@ -1956,7 +1925,7 @@ def _mixed_flux_magnitude_override(
 # Far-port discipline: minimum absorber depth as a fraction of the guide
 # wavelength at the LOWEST measured frequency. The message quotes this value,
 # so it MUST NOT be duplicated as a literal there — a mismatch would report one
-# threshold while enforcing another (PR #495 review, finding 5).
+# threshold while enforcing another.
 _FAR_PORT_LAMBDA_G_FRACTION = 0.5
 
 
@@ -1972,7 +1941,7 @@ def _warn_thin_absorber_vs_guide_wavelength(
     the functional entry points run no ``sim.preflight()`` at all. A gated
     revision of crossval case 18 therefore shipped a 0.30 ``lambda_g`` stack in
     silence, and the absorber — not discretization — set the reported accuracy
-    envelope (issue #494).
+    envelope.
 
     Evaluated at the **lowest** measured frequency, where ``lambda_g`` is
     longest and the ``cpml_layers=16`` default is weakest, because
@@ -2072,7 +2041,7 @@ def _assemble_coaxial_two_port_from_voltages(
     cond_warn: float = 1.0e3,
     _prefer_jnp: bool = False,
 ):
-    """Pure post-FDTD assembly: per-array V(z) -> (a_inc,b_out) -> 2x2 S (#489 stage 2).
+    """Pure post-FDTD assembly: per-array V(z) -> (a_inc,b_out) -> 2x2 S.
 
     Isolated from :meth:`_SparamMixin.compute_coaxial_two_port` so the
     convention wiring below can be exercised with PLANTED analytic V(z)
@@ -2081,7 +2050,7 @@ def _assemble_coaxial_two_port_from_voltages(
 
     Parameters
     ----------
-    z_planes_bot_m, z_planes_top_m : (n_bot,), (n_top,) float
+    z_planes_bot_m, z_planes_top_m: (n_bot), (n_top) float
         Equally spaced axial probe-plane positions (metres) for the bottom
         (port 2) and top (port 1) arrays.
     ref_bot_m, ref_top_m : float
@@ -2102,8 +2071,7 @@ def _assemble_coaxial_two_port_from_voltages(
         NumPy ``lstsq`` in ``coaxial_line_reflection_from_plane_voltages``
         instead of that function's own tolerant jnp lstsq — measured to
         raise ``numpy.linalg.LinAlgError: SVD did not converge`` on a
-        marginal fit that the jnp path handles fine (the exact PR #468 / #559-B1 class: an AD-vs-FD comparator silently evaluating two
-        different functions). See
+        marginal fit that the jnp path handles fine (an AD-vs-FD comparator silently evaluating two different functions). See
         :func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`'s
         own ``_prefer_jnp`` docstring note for the identical precedent on
         the 1-port ``eps_scale`` path.
@@ -2116,8 +2084,7 @@ def _assemble_coaxial_two_port_from_voltages(
         ``[port_array, drive, freq]`` (port 0 = top/port1, port 1 = bot/port2).
         ``gamma`` is the matrix-pencil-fitted complex propagation constant
         from each array's OWN local probes during that drive (Z0-free,
-        independent of the reference-plane extrapolation). Measured
-        2026-08-02: the SAME array's ``Re(gamma)`` differs substantially
+        independent of the reference-plane extrapolation). Measured: the SAME array's ``Re(gamma)`` differs substantially
         (~2-8x, growing with frequency) between "own drive" (that array's
         own source active — dominant field is the large launched wave, only
         weakly perturbed by the nearby feed) and "other drive" (that array
@@ -2162,7 +2129,7 @@ def _assemble_coaxial_two_port_from_voltages(
     fact of the extractor — a different feed placement would need a
     different mapping.
 
-    **The general rule that constant is an instance of (issue #822)**.
+    **The general rule that constant is an instance of**.
     ``forward_amp`` is the branch travelling TOWARD the reference plane
     (already resolved inside the extractor by its own ``load_below``
     test, for either ladder orientation). Which of ``a``/``b`` that is
@@ -2181,22 +2148,11 @@ def _assemble_coaxial_two_port_from_voltages(
 
     Each lane's answer is a constant of its geometry and each is written
     as one. The sibling lane copied THIS lane's constant onto the opposite
-    geometry and inverted its whole S-matrix (#822).
+    geometry and inverted its whole S-matrix.
 
-    This function's constant is unchanged and numerically byte-identical
-    through the #822 work: the lane is recorded as **validated with
-    scope** (issue #489, PI decision 2026-08-06) in
-    ``docs/guides/sparameter_support_matrix.md``, and any production edit
-    to it is PI-gated. What the #822 work DOES change
-    on this lane is the TEST contract: the planted fixtures below are now
-    built from geometry by
-    ``tests/_wave_convention.py::_plant_ladder_voltages_physical`` instead
-    of by inverting the extractor's own labels, so the constant above is
-    now PINNED by a test that would fail if it were wrong, and the
-    wrong-convention mirror asserts the exact ``inv(S_true)`` signature
-    instead of merely "not close".
+    The lane is **validated with scope** in ``docs/guides/sparameter_support_matrix.md``. The geometry-based fixtures in ``tests/_wave_convention.py::_plant_ladder_voltages_physical`` pin the constant above independently of the extractor's own labels; the wrong-convention mirror asserts the exact ``inv(S_true)`` signature.
 
-    AD note (#489 leg 3)
+    AD note
     ---------------------
     ``s_params`` (and the other four returned arrays) are differentiable
     w.r.t. ``v_bot_by_drive`` / ``v_top_by_drive``: *traced* inputs (checked
@@ -2217,9 +2173,8 @@ def _assemble_coaxial_two_port_from_voltages(
     z_planes_bot_m = np.asarray(z_planes_bot_m, dtype=np.float64)
     z_planes_top_m = np.asarray(z_planes_top_m, dtype=np.float64)
 
-    # Traced voltages (compute_coaxial_two_port(eps_scale=...), #489 AD leg 3)
-    # -> jax.numpy assembly below; concrete -> NumPy, UNCHANGED (moved into the
-    # `else` branch verbatim so the validated numeric path stays byte-identical).
+    # Traced voltages (compute_coaxial_two_port(eps_scale=...))
+    # -> jax.numpy assembly below; concrete -> NumPy.
     # ``_prefer_jnp`` (set by the eps_scale call site regardless of tracing)
     # is OR'd in for the same reason coaxial_line_reflection_from_plane_
     # voltages's own _prefer_jnp exists: a concrete FD probe on the
@@ -2250,7 +2205,7 @@ def _assemble_coaxial_two_port_from_voltages(
     n_f = int(v_bot_by_drive.shape[-1])
 
     if _traced:
-        # --- differentiable path: jnp assembly (AD moat, #489 leg 3) ---
+        # --- differentiable path: jnp assembly  ---
         # Same per-(drive, frequency) recurrence-fit loop as the concrete path
         # below, routed through the extractor's own jnp core
         # (_coaxial_line_reflection_jnp via _prefer_jnp=True — the SAME
@@ -2342,7 +2297,7 @@ def _assemble_coaxial_two_port_from_voltages(
 
 
 def _ladder_split_witness(planes_m, v_by_drive, ref_m):
-    """Disjoint-half self-consistency witness for ONE probe ladder (issue #823).
+    """Disjoint-half self-consistency witness for ONE probe ladder.
 
     Refit the SAME extractor
     (:func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`)
@@ -2375,7 +2330,7 @@ def _ladder_split_witness(planes_m, v_by_drive, ref_m):
 
     REPORT-ONLY. No gate, no refusal, no tolerance. The coax stub's own ladder
     reads ``gamma_dev`` 0.11-0.34 on every run of this family -- the already
-    known 1 mm-span alpha-identification limit (#589) -- so a bar tight enough
+    known 1 mm-span alpha-identification limit -- so a bar tight enough
     to catch the MSL ladder would refuse the coax ladder for a different
     defect. Gating is deliberately deferred (the PI sequencing puts the
     standoff rule and this witness BEFORE any ``msl_fit_residual_max``).
@@ -2425,7 +2380,7 @@ def _assemble_coax_msl_transition_from_voltages(
     z0_msl: float,
     cond_warn: float = 1.0e3,
 ):
-    """Pure post-FDTD assembly: coax + MSL modal-voltage ladders -> power-wave 2x2 S (#489 leg 4).
+    """Pure post-FDTD assembly: coax + MSL modal-voltage ladders -> power-wave 2x2 S.
 
     Isolated from :meth:`_SparamMixin.compute_coax_msl_transition` so the
     cross-family normalization can be exercised with PLANTED analytic
@@ -2456,7 +2411,7 @@ def _assemble_coax_msl_transition_from_voltages(
     :func:`rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`'s
     own docstring for the generic two-drive solve this feeds.
 
-    ``cond_a`` vs ``cond_a_equilibrated`` (issue #581 review, finding B2)
+    ``cond_a`` vs ``cond_a_equilibrated``
     -----------------------------------------------------------------------
     ``solve_two_port_from_wave_amplitudes``'s own ``cond_a`` is the RAW
     condition number of the 2x2 incident-wave matrix ``A``. On the coax-coax
@@ -2479,7 +2434,7 @@ def _assemble_coax_msl_transition_from_voltages(
 
     Parameters
     ----------
-    z_coax_planes_m, x_msl_planes_m : (n_coax,), (n_msl,) float
+    z_coax_planes_m, x_msl_planes_m: (n_coax), (n_msl) float
         Equally spaced axial probe-plane positions (metres) for the coax
         port (port array 0, along z) and the MSL port (port array 1, along
         x). Each family's own axis — these are NOT on a shared coordinate.
@@ -2501,17 +2456,16 @@ def _assemble_coax_msl_transition_from_voltages(
     -------
     s_params, cond_a, cond_a_equilibrated, recurrence_residual, fit_residual, gamma, a_inc, b_out
         ``s_params`` is ``(2, 2, n_freqs)``, port order ``(coax, msl)``.
-        ``cond_a`` / ``cond_a_equilibrated`` are ``(n_freqs,)`` (see above).
+        ``cond_a`` / ``cond_a_equilibrated`` are ``(n_freqs)`` (see above).
         ``recurrence_residual`` / ``fit_residual`` / ``gamma`` / ``a_inc`` /
         ``b_out`` are ``(2, 2, n_freqs)`` indexed ``[port_array, drive,
         freq]`` (port array 0 = coax, 1 = msl) — ``a_inc``/``b_out`` are the
         POWER-wave amplitudes actually fed to the two-drive solve (post
-        ``sqrt(Z0)`` division), exposed for audit per issue #581 review
-        finding B2.
+        ``sqrt(Z0)`` division), exposed for audit.
 
     Notes
     -----
-    **Wave-role convention (issue #822)**. ``forward_amp`` is the branch
+    **Wave-role convention**. ``forward_amp`` is the branch
     travelling TOWARD the reference plane -- the extractor's own contract,
     resolved inside it by its ``load_below = reference_plane_m <= z.mean()``
     test, for either orientation of the ladder. Which of ``a``/``b`` that
@@ -2545,11 +2499,8 @@ def _assemble_coax_msl_transition_from_voltages(
       the DUT, so the wave travelling toward it is LEAVING the DUT ->
       ``a = backward_amp``.
 
-    Before #822 this function used the two-port lane's constant
-    (``a = backward_amp``) on the opposite geometry, which swaps ``a`` and
-    ``b`` at BOTH ports; since ``S = B inv(A)``, exchanging ``A`` and ``B``
-    returns ``inv(S_true)``. Every number this function produced before the
-    fix is that inverse. The regression gate is
+    Using the two-port lane's constant (``a = backward_amp``) on the opposite geometry swaps ``a`` and ``b`` at BOTH ports; since ``S = B inv(A)``, exchanging ``A`` and ``B``
+    returns ``inv(S_true)``.  The regression gate is
     ``tests/unit/sparams/test_coax_msl_transition_wave_roles.py::
     test_assembler_wave_roles_follow_the_junction_side_reference_plane``,
     whose planted voltages are built from GEOMETRY
@@ -2601,7 +2552,7 @@ def _assemble_coax_msl_transition_from_voltages(
                 x_msl, v_msl_by_drive[drive_idx, :, fi],
                 reference_plane_m=float(ref_msl_m),
             )
-            # Wave roles (#822): the extractor already resolved which branch
+            # Wave roles: the extractor already resolved which branch
             # travels TOWARD each reference plane (forward_amp, by its own
             # load_below test, for either ladder orientation). On THIS lane
             # both reference planes ARE the junction, so that branch is the
@@ -2624,7 +2575,7 @@ def _assemble_coax_msl_transition_from_voltages(
 
     solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
 
-    # Column-equilibrated condition number (issue #581 review, finding B2):
+    # Column-equilibrated condition number:
     # divide each drive's own incident-wave column by its own norm before
     # taking cond() so a per-drive amplitude-scale mismatch (routine on a
     # mixed-family lane, see the docstring above) cannot masquerade as

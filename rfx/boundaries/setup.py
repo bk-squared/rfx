@@ -4,7 +4,7 @@
 def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
     use_tfsf = tfsf is not None
     # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
-    # REAL grid cannot sustain (the pre-#404 under-tilt). Drive the shared solver
+    # REAL grid cannot sustain (otherwise the wave under-tilts). Drive the shared solver
     # on a complex Bloch-envelope path instead: fields carry the envelope P and a
     # per-axis phase rides the periodic roll; the physical field is
     # Re(P·exp(-j k_t·y)). Gated strictly on the 2D-aux discriminator, so normal
@@ -65,11 +65,11 @@ def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
 
     # PMC faces select odd tangential-H images in the NU curl.
     # The zero-padded high inverse H spacing holds the high ghost at its
-    # initial zero (one step for every device count, #2043). Frozen face sets
+    # initial zero (one step for every device count). Frozen face sets
     # give the JIT cache a stable hash; an empty magnetic set leaves the
     # ordinary backward-curl operand in place.
     # The electric walls, per face, by the one rule the uniform scan uses
-    # (#1164): the NU grid carries no face attributes, so the declared sets
+    #: the NU grid carries no face attributes, so the declared sets
     # threaded in from the caller stand in for them. With no magnetic face
     # this is the six faces ``apply_pec`` zeroed before, plane for plane.
     from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls

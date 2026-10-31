@@ -4,14 +4,12 @@ import jax.numpy as jnp
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
-    """Full conductor footprint for the reference-plane trace scan (#695).
+    """Full conductor footprint for the reference-plane trace scan.
 
-    ``pec_mask | (sheet footprints)`` — #931 §1.9: the footprint is the
+    ``pec_mask | (sheet footprints)`` — the footprint is the
     cells of the PEC VOLUMES union the footprints of the SHEETS.  Neither
-    an f0 sheet (#677) nor a PEC sheet (#931) contributes to ``pec_mask``
-    or to ``materials.sigma``, so the bare ``pec_mask`` this used to pass
-    made a sheet-traced transmission line look like an empty
-    cross-section.  ``sheet_ctx.sigma_sheet`` is ``> 0`` exactly on the f0
+    an f0 sheet nor a PEC sheet contributes to ``pec_mask``
+    or to ``materials.sigma``, so a bare ``pec_mask`` makes a sheet-traced transmission line look like an empty cross-section.  ``sheet_ctx.sigma_sheet`` is ``> 0`` exactly on the f0
     sheet cells; PEC sheets arrive as ``SheetSpec``s.
 
     Returns ``pec_mask`` unchanged when there is nothing to add, or when
@@ -56,8 +54,8 @@ def _refplane_reject_msl_ladder_in_plane_zone(
     port-position check above).
 
     The ladder walked here is the one the S-matrix drivers actually probe:
-    ``_resolve_msl_auto_offsets`` re-derives auto probe offsets (#469) and
-    auto spacings (#681) from the registered geometry, and the resolved
+    ``_resolve_msl_auto_offsets`` re-derives auto probe offsets and
+    auto spacings from the registered geometry, and the resolved
     ladder can be LONGER than the registration ladder (a widened spacing)
     or SHORTER (a short feed floors the spacing at two cells). Walking
     ``sim._msl_ports`` as registered would miss a crossing the run makes,

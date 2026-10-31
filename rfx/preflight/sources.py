@@ -1,13 +1,11 @@
-"""Source-configuration preflight, moved verbatim out of ``rfx.api._preflight``.
+"""Source-configuration preflight.
 
-Issue #980 Phase 3, leg 6. The sources family asks whether what is meant to
+The sources family asks whether what is meant to
 excite the domain actually can: whether the TFSF boundary planes are still
-vacuum (#471 F5), whether a source or port sitting ON a PEC or PMC face
+vacuum, whether a source or port sitting ON a PEC or PMC face
 drives a component that reflector zeroes every step, whether anything is
 configured to excite the domain at all, and whether a pulse waveform is
-resolved by the time step (#386). Everything here was relocated byte for byte
-out of ``rfx/api/_preflight.py`` -- same text, same order, same indentation,
-same docstrings, nothing renamed, reordered, tidied or rewritten.
+resolved by the time step.
 
 THE ONE ``@staticmethod`` OF THIS SPLIT LIVES HERE, and its handling is the
 part of this module worth reading before editing it. ``@staticmethod`` cannot
@@ -83,7 +81,7 @@ def _validate_cfg_source_on_reflector_plane(
                 msg, code="source_decoupled",
                 source="_validate_cfg_source_on_reflector_plane"), stacklevel=3)
     # The reflector faces come from the CANONICAL BoundarySpec, not from
-    # ``self._pec_faces``. Issue #1075: ``self._pec_faces`` is populated only
+    # ``self._pec_faces``. ``self._pec_faces`` is populated only
     # by an explicit ``pec_faces=`` kwarg or by a per-face ``BoundarySpec``;
     # the legacy scalar ``boundary="pec"`` -- the whole-boundary reflector,
     # realized as ``apply_pec(axes=pec_axes)`` -- leaves it EMPTY, so this
@@ -225,7 +223,7 @@ def _validate_cfg_no_sources(self, _w) -> None:
 
 
 def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
-    """Warn when a pulse waveform is unresolved by the time step (#386).
+    """Warn when a pulse waveform is unresolved by the time step.
 
     ``tau < 3*dt`` means the sampled excitation is a sub-dt spike: the
     pulse's spectrum extends far past the grid Nyquist limit and the
@@ -265,7 +263,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     def _class_pulse(entry, waveform):
         # A string-named incident (TF/SF, waveguide port) is judged by the
         # waveform class of the same name at the entry's f0 and bandwidth,
-        # not by its inline copy (issue 1668).
+        # not by its inline copy.
         f0 = getattr(entry, "f0", None)
         f0 = float(self._freq_max) / 2.0 if f0 is None else float(f0)
         bw, amp = float(entry.bandwidth), float(entry.amplitude)

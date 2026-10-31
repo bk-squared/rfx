@@ -11,8 +11,7 @@ Timestep scheme
 Global dt: both coarse and fine grids use the same timestep, limited by
 the fine-grid CFL condition. No temporal sub-stepping.
 
-Status: EXPERIMENTAL / NOT physics-validated. An energy-stability check
-(2026-04-12) showed energy is net dissipative over 1000 steps (ratio=0.87x
+Status: EXPERIMENTAL / NOT physics-validated. An energy-stability check showed energy is net dissipative over 1000 steps (ratio=0.87x
 at step 1000); the small transient growth (~1.004x) at step 100 is SAT
 penalty equilibration, not instability. That is a stability observation
 only — 3D SBP-SAT subgridding has NOT been validated against a reference
@@ -179,11 +178,11 @@ def _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None,
         mats = _make_mats(shape)
     state = update_e(state, mats, dt, dx, high_wall=high_wall)
     if pec_mask is not None:
-        # #931: ``apply_pec_mask`` IS the shared realization
+        # ``apply_pec_mask`` IS the shared realization
         # (realized_pec_edge_masks, volume branch). This lane
         # carries VOLUMES only — run() refuses a declared sheet
         # or wire before it gets here (rfx/api/_execute.py) — and
-        # has no periodic branch, so the default #689 flags are
+        # has no periodic branch, so the default flags are
         # the run's own.
         state = apply_pec_mask(state, pec_mask)
     if boundary_pec:

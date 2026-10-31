@@ -1,8 +1,8 @@
-"""One entry point that picks the right S-matrix method (issue #980 Phase 1).
+"""One entry point that picks the right S-matrix method.
 
 ``Simulation`` ships seven S-parameter calculators plus a run-lane, and each
-one is fenced to a single port family by its own precondition block. Issue #980
-section 1 records what that costs: an agent (or a new user) calls
+one is fenced to a single port family by its own precondition block.
+Calling the wrong entry point is easy: a user calls
 ``sim.run(compute_s_params=True)`` on a simulation whose ports are waveguide
 or coaxial -- where that lane computes nothing at all -- or guesses a method
 name such as ``compute_s_params()`` that does not exist.
@@ -27,8 +27,7 @@ argument was wrong -- and it is pinned by
 
 *No silent method guess.* Where the registration genuinely does not determine a
 method, this module raises and names the candidates rather than picking one.
-That is the whole point of the dispatcher: the failure mode #980 describes is
-a wrong method running quietly, not a missing convenience.
+That is the whole point of the dispatcher: a wrong method must not run quietly.
 
 The one ambiguous registration: a single coaxial port
 -----------------------------------------------------
@@ -81,9 +80,8 @@ COAXIAL_ONE_PORT_LANES = (
     "compute_coaxial_two_port",
 )
 
-# Every method name ``s_matrix_lane()`` can return, for validating ``method=``.
-# The single-plane coaxial method was never selectable here, and it was removed
-# from rfx in #1212.
+# Every method name ``s_matrix_lane()`` can return, for validating
+# ``method=``.
 _SELECTABLE_LANES = (
     "compute_waveguide_s_matrix",
     "compute_msl_s_matrix",
@@ -495,7 +493,7 @@ def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# ``__qualname__``, matched to the #980 Phase 2 convention.
+# ``__qualname__``, matched to the Phase 2 convention.
 #
 # These two are NEW methods rather than moved ones, but they are bound into
 # ``_SparamMixin``'s class body the same way the moved calculators are, and

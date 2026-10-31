@@ -177,7 +177,7 @@ from rfx.visualize3d import (
 )
 from rfx.animation import save_field_animation
 from rfx.simulation import SnapshotSpec
-# #1259: where and when each recorded field sample sits. On the package, not
+# where and when each recorded field sample sits. On the package, not
 # on the curated star surface (``__all__``), like save_snapshots.
 from rfx.snapshots import SnapshotAxes, snapshot_axes, field_sample_coords
 from rfx.checkpoint import (
@@ -316,7 +316,7 @@ __all__ = [
     # materials / dispersion / fitting
     "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
     "ThinConductor", "MATERIAL_LIBRARY",
-    # lattice ownership contract (#931): the one realization of conductor
+    # lattice ownership contract: the one realization of conductor
     # geometry as PEC E edges, and the two helpers every consumer reads.
     # ``SheetSpec`` / ``WireSpec`` stay OFF the star surface (declaration
     # records the rasterizer produces, not something a user constructs) —

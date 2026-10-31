@@ -55,7 +55,7 @@ def _warn_if_ringdown_truncated(
         for i in np.flatnonzero(hot))
     advice = ("Check identification before quoting " if memory_refused else
               f"Increase {knob} and check identification before quoting ")
-    # The share is one budget: pole tail plus a port's known drive beyond the record (#2030).
+    # The share is one budget: pole tail plus a port's known drive beyond the record.
     drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())
                  if i < len(hot) and hot[i] and len(row.get('drive_share_per_bin', ()))), default=0.)
     if drive > 0:

@@ -58,7 +58,7 @@ def slab_metric_kwargs(grid, rank):
 def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
                           reduce_devices=True, sigma_film=None, realized=False, eager=False):
     """``Cb`` of each material-driven current source, read from the slabs
-    the E update receives (#1279). Called inside the runner's jitted program.
+    the E update receives. Called inside the runner's jitted program.
 
     A current source enters the field as ``E += Cb * I(t) / dV``, and ``Cb =
     (dt/eps)/(1 + sigma*dt/(2*eps))`` has to be taken from the permittivity
@@ -67,7 +67,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     other processes, or when it is traced, so each device reads it from its
     own staged slab here. The per-edge rule is the one ``make_current_source``
     and the single-device E update use: the mean over the four cells incident
-    to the edge (#1210), which this lane's own E update takes too since #1303
+    to the edge, which this lane's own E update takes too
     (:func:`slab_e_component_materials`).
 
     ``eps_r`` / ``sigma`` : the staged ``(n_devices * nx_local, ny, nz)``
@@ -88,7 +88,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
 
     With ``reduce_devices=False``, returns ``(n_devices, len(drives))``
     on the slab axis without a collective; non-owner entries are zero.
-    The default returns a replicated ``(len(drives),)`` float32 vector: every device
+    The default returns a replicated ``(len(drives))`` float32 vector: every device
     computes its own four-cell mean, the owner's is kept by the mask and
     ``psum`` hands it to all. The arithmetic is
     :func:`rfx.nonuniform.current_source_cb`'s eps_r-units formula, the one the
@@ -213,12 +213,12 @@ def _slab_model_rows(nx_local, nx_per, nx, rank):
 
 def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)`` of one x slab, by the single-device
-    rule (#1303).
+    rule.
 
     A Yee E component lies on an edge shared by four cells, and every lane
     gives it the mean of their eps and sigma: THE rule is
-    :func:`rfx.core.yee.component_e_materials` (#1210, lumped stamps on their
-    own edge #1236), and this function only hands it the right cells. The
+    :func:`rfx.core.yee.component_e_materials` (lumped stamps on their
+    own edge), and this function only hands it the right cells. The
     mean along x reads the row BEFORE the edge (Ey: i-1 and k-1, Ez: i-1 and
     j-1; Ex never reads x), so a slab needs one row below its first real row:
 
@@ -228,7 +228,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: t
       the lattice the single-device rule edge-replicates. The staged ghost
       row there is vacuum padding, so the mean reads the first real row in
       its place. Only the mean does; the staged ghost keeps its value for
-      every other reader (the #1317 drive reads it the same way).
+      every other reader (the drive reads it the same way).
 
     Rows that are not cells of the model -- the ghost rows at both slab ends
     and the high-x alignment pad -- keep the value of the cell they hold
@@ -302,8 +302,7 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
     """Build per-device x-axis inverse-spacing slabs for the shard_map runner.
 
     The caller has already decided to pad the global x-extent by
-    ``pad_x`` cells (to align ``nx`` on ``n_devices``).  Unlike the
-    pre-#622 version, this does NOT re-derive ``inv_dx``/``inv_dx_h``
+    ``pad_x`` cells (to align ``nx`` on ``n_devices``).  This does NOT re-derive ``inv_dx``/``inv_dx_h``
     from a padded cell-size profile — it reads ``grid.inv_dx`` /
     ``grid.inv_dx_h`` directly (the single-device reference arrays,
     which already carry the correct trailing H zero at the REAL
@@ -312,9 +311,7 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
     STRUCTURALLY INERT: with every E and H coefficient zero there, no
     field evolves in the pad cells regardless of what the PEC-mask
     padding does, and the wall stays exactly where the single-device
-    grid put it (#622 — the old re-derivation moved the trailing H
-    zero from real node ``nx-1`` to padded index ``nx_padded-1``,
-    leaving the real boundary cell's H term live).
+    grid put it (re-deriving would move the trailing H zero from real node ``nx-1`` to padded index ``nx_padded-1``, leaving the real boundary cell's H term live).
 
     Parameters
     ----------
@@ -326,15 +323,15 @@ def _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=0):
 
     Returns
     -------
-    inv_dx_e_global : (nx_padded,) np.ndarray
+    inv_dx_e_global: (nx_padded) np.ndarray
         E-update inverse spacing — mean ``2/(d[k-1]+d[k])`` (leading
         ``1/d[0]``), zero in the pad region. Consumed by
         ``_update_e_local_nu``.
-    inv_dx_h_global : (nx_padded,) np.ndarray
+    inv_dx_h_global: (nx_padded) np.ndarray
         H-update inverse spacing — local ``1/d[k]`` (zero at real
         boundary node ``nx-1`` AND throughout the pad region).
         Consumed by ``_update_h_local_nu``.
-    dx_padded : (nx_padded,) np.ndarray
+    dx_padded: (nx_padded) np.ndarray
         The cell-size profile (float32), pad region filled with the
         boundary cell size for diagnostics (e.g. CPML dx_boundary) —
         this is geometry bookkeeping only; it does NOT feed the E/H

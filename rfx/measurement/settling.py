@@ -9,7 +9,7 @@ import numpy as np
 
 
 _SETTLING_RECORD_NAMES = ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")
-# #1909: only co-located records tell a field null's rounding from signal.
+# only co-located records tell a field null's rounding from signal.
 _LONE_PROBE_NOTE = (
     " (no other component of its field (E or H) is recorded at its cell: a probe on a field null "
     "holds only rounding and cannot be judged alone; record the co-located "
@@ -25,7 +25,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
-    compared for rounding-only peaks (#1909).
+    compared for rounding-only peaks.
     sensitivities are judged by a separate witness
     """
     from rfx.sparams._tail_witness import tail_share_witness
@@ -119,12 +119,12 @@ def warn_postrun_energy_witness(
     if is_tracer(time_series):
         return
     series = None if time_series is None else np.asarray(time_series)
-    # Issue #470: exclude library-internal witness probes (the MSL
+    # exclude library-internal witness probes (the MSL
     # settling witnesses) — their record is judged by the MSL driver's
-    # own settling_db witness, so #332/#336 here speak for USER probes
+    # own settling_db witness, so the advisories here speak for USER probes
     # only and the two differently-defined witnesses never double-fire
     # on the same columns. With only internal probes present this
-    # behaves as if no probe series was recorded (the pre-#468 state).
+    # behaves as if no probe series was recorded.
     # Time-series columns are in probe registration order (the same
     # convention the MSL driver's witness slice relies on).
     _internal = getattr(sim, "_internal_probe_indices", None)
@@ -276,8 +276,8 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         # fact about the finished record, not about the declared
         # inputs. Scoped exactly like the two above -- NTFF/field-DFT
         # runs only, silent on library-internal driver runs -- so it
-        # cannot flood (#470). It fires only where the verdict PASSED
-        # on a dominated record, which is the #1090 vacuous pass; a
+        # cannot flood. It fires only where the verdict PASSED
+        # on a dominated record, which is the vacuous pass; a
         # dominated FAIL already warns above, in the safe direction.
         import warnings
         warnings.warn(

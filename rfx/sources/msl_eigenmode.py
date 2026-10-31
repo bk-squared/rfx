@@ -23,7 +23,7 @@ Implementation status (Path B — from-scratch FDFD, in progress):
 
 Failed prior attempts (do not repeat):
 
-* MPB subprocess wrapper (deleted 2026-05-04): boxed-PEC MPB modes do not
+* MPB subprocess wrapper (not used): boxed-PEC MPB modes do not
   match open-FDTD modes — geometry mismatch, |S11| = 0.61 vs Laplace 0.118.
 * H-only formulation (deleted): cannot self-consistently couple E/H in
   inhomogeneous ε — gave ε_eff = 1.37 instead of ~3 for microstrip.
@@ -58,7 +58,7 @@ def hammerstad_jensen_z0_eps_eff(
     ``(1 + 12*h/w)**(-0.5)``; it is not the full Hammerstad–Jensen 1980
     model with geometry/material correction exponents. Agreement with this
     reference is not an absolute solver or port-accuracy bound. See
-    ``docs/guides/msl_geometry_diagnostics.md`` for the #752 comparison scope.
+    ``docs/guides/msl_geometry_diagnostics.md`` for the comparison scope.
     """
     u = w / h
     eps_eff = (eps_r + 1.0) / 2.0 + (eps_r - 1.0) / 2.0 * (

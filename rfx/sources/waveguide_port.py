@@ -53,10 +53,10 @@ modes per port, and the mesh path.  This module exports the extractors; the
   - ``"flux"`` — two-run power-flux magnitude (Poynting-flux ratio for the
     single-mode path, ``0.5·Re(V·I*)`` modal-power ratio for the multi-mode
     path) combined with modal-V/I phase.  Most robust at band edges; NOT
-    AD-traceable (drops to NumPy internally — issue #148).
+    AD-traceable (drops to NumPy internally).
 
 Open issue: waveguide flux extraction is not strictly passive at all run
-lengths (residual magnitude can drift slightly above unity — issue #150);
+lengths (residual magnitude can drift slightly above unity);
 this is a known, unfixed limitation, not addressed here.
 """
 

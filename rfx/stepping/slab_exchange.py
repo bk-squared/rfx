@@ -46,7 +46,7 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     PEC stage — so a ghost row is a copy of the owner's FINISHED real row.
     The H update at a rank's last real cell reads ``Ey``/``Ez`` on the
     right ghost plane; a copy taken before the owner zeroed its PEC edges
-    there is stale (#931 seam-cell divergence).
+    there is stale.
     """
     if n_devices == 1:
         return state

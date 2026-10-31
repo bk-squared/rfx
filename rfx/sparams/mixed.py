@@ -1,21 +1,13 @@
-"""The mixed-family S-matrix calculator, moved verbatim out of ``rfx.api._sparams``.
+"""The mixed-family S-matrix calculator.
 
-Issue #980 Phase 2. ``compute_mixed_s_matrix`` — the lumped/wire + MSL
-two-family driver of issue #488 — is relocated here byte for byte from the
-``_SparamMixin`` class body: same text, same order, same docstring, dedented by
-exactly four spaces and nothing else. ``rfx/api/_sparams.py`` binds the function
-back onto ``_SparamMixin`` at the line the ``def`` used to occupy, so
-``Simulation.compute_mixed_s_matrix`` keeps its name, signature, ``__doc__`` and
-bound-method behaviour, and every call site is unaffected.
+``compute_mixed_s_matrix`` is the lumped/wire + MSL two-family driver. ``rfx/api/_sparams.py`` binds this module-level function onto ``_SparamMixin`` as ``Simulation.compute_mixed_s_matrix``.
 
 ``self`` is still the :class:`rfx.api.Simulation` instance: the function is a
 module-level ``def`` whose first parameter is ``self``, not a free function with
 a different contract. It writes ``self._ports`` / ``self._probes`` /
 ``self._dft_planes`` / ``self._flux_monitors`` / ``self._msl_ports`` /
 ``self._internal_probe_indices`` and calls ``self._auto_preflight()``,
-``self.add_flux_monitor()`` and ``self._resolve_msl_probe_entries()`` exactly as
-it did as a method. A thin class wrapper may follow in a later #980 step; this
-step adds none.
+``self.add_flux_monitor()`` and ``self._resolve_msl_probe_entries()`` as a bound method.
 
 The move is gated on bit identity of the S arrays the leg returns
 (``tests/locks/test_sparams_split_bit_identity.py``, ``mixed`` leg), not on a
@@ -101,7 +93,7 @@ def compute_mixed_s_matrix(
     ``sqrt(Z_j/Z_i)``; reciprocity of a reciprocal
     structure is the committed internal falsifier for this choice.
     The returned ``S`` and ``S_wave`` are referenced to every port's
-    declared ``impedance=`` (``z0_ref``, #2014): MSL waves are formed at
+    declared ``impedance=`` (``z0_ref``): MSL waves are formed at
     the analytic line Z0 (``line_impedances``) and the matrix is then
     referred to ``z0_ref`` by ``renormalize_power_waves``.
 
@@ -355,7 +347,7 @@ def compute_mixed_s_matrix(
     # Resolved in rfx.preflight.msl, NOT through the rfx.api._preflight
     # re-export, so that this reader and preflight's own reader
     # (_check_msl_port_geometry, which lives in that module and looks the
-    # name up in its globals) share ONE lookup target. #980 Phase 3 leg 1
+    # name up in its globals) share ONE lookup target. Phase 3 leg 1
     # moved both; before it, a single monkeypatch on rfx.api._preflight
     # covered the two, and
     # tests/unit/ports/test_msl_clearance_diagnostic.py asserts that it
@@ -365,7 +357,7 @@ def compute_mixed_s_matrix(
     probe_clearance = tuple(msl_probe_clearance_for_port(
         self, pe, grid, probe_coordinates=xs,
     ) for pe, xs in zip(entries, probe_xs))
-    # Probe-LADDER validation (issue #488 attempt-1 defect D3). The S1
+    # Probe-LADDER validation. The S1
     # V*I split records probe 0 only, but v1 must not silently accept
     # a ladder the validated MSL lane rejects: attempt 1 registered a
     # "+x"-facing port whose default ladder (offset 31 + 4x12 cells)
@@ -434,7 +426,7 @@ def compute_mixed_s_matrix(
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
         self._assemble_materials(
             grid, pec_sheets=_mx_pec_sheets, pec_wires=_mx_pec_wires)
-    # #931 §1.9: realized wall planes locate the trace, not cells.
+    # realized wall planes locate the trace, not cells.
     from rfx.boundaries.pec import (
         realized_pec_edge_masks as _rpem_mx,
     )
@@ -480,7 +472,7 @@ def compute_mixed_s_matrix(
         )
 
     # Trace-conductor z-cell span (closed Ampere loop needs the PEC
-    # trace; mirrors compute_msl_s_matrix issue #80 stage S1).
+    # trace; mirrors compute_msl_s_matrix).
     trace_k_per_port: list[tuple[int, int]] = []
     for p_idx in range(n_msl):
         meta = port_idx_meta[p_idx]
@@ -501,7 +493,7 @@ def compute_mixed_s_matrix(
         trace_k_per_port.append((_k_lo_tr, _k_hi_tr))
 
     # Wire live-cell counts for the per-cell impedance normalization
-    # (mirrors compute_lumped_wire_s_matrix_via_scan, issue #318).
+    # (mirrors compute_lumped_wire_s_matrix_via_scan).
     n_live_lw = np.ones(n_lw, dtype=np.int64)
     if wire_mode:
         from rfx.sources.sources import WirePort, _wire_port_live_cells
@@ -676,7 +668,7 @@ def compute_mixed_s_matrix(
             # physical termination (matched resistor cells for
             # lumped/wire, passive probe column for MSL). The driven
             # lumped/wire port's default waveform is synthesised by
-            # the runner (issue #322); the driven MSL port mirrors the
+            # the runner; the driven MSL port mirrors the
             # compute_msl_s_matrix default.
             self._ports = [
                 _dc.replace(pe, excite=(fam == "lw" and k == loc))
@@ -746,26 +738,17 @@ def compute_mixed_s_matrix(
                 v_lw[run_idx, i_port, :] = np.asarray(vi[0])
                 i_lw[run_idx, i_port, :] = np.asarray(vi[1])
                 if wire_mode:
-                    # Issue #683 x #764: pre-injection drive-sample
-                    # reference channel (vi[4]) — keeps this lane's
-                    # byte-frozen #488 wave algebra frozen through the
-                    # wire sampling flip (only the drive port's own
-                    # sample moved; passive samples are slot-invariant).
-                    # A shorter tuple marks a lane without a separate
-                    # v_ref channel (the NU lane): it has ALWAYS sampled
-                    # POST-injection and its decomposer was calibrated in
-                    # that frame, so vi[0] is that lane's correct drive
-                    # reference — not a pre-injection sample.
+                    # Pre-injection drive-sample reference channel (vi[4]): the wire wave
+                    # algebra is calibrated against this sample; passive samples are slot-
+                    # invariant. A shorter tuple marks a lane without a separate v_ref channel
+                    # (the NU lane): it samples POST-injection and its decomposer is calibrated
+                    # in that frame, so vi[0] is that lane's correct drive reference.
                     vref_lw[run_idx, i_port, :] = np.asarray(
                         vi[4] if len(vi) > 4 else vi[0])
                 else:
-                    # Same reason on the lumped family, whose physical
-                    # channels moved post-injection on 2026-09-21
-                    # (scripts/diagnostics/lumped_port_known_load_line.py):
-                    # vi[2] is its pre-injection drive sample, bit-identical
-                    # to the pre-decision vi[0] this lane was calibrated
-                    # against. A shorter tuple is pre-decision data, where
-                    # vi[0] IS that sample.
+                    # The lumped family also uses the pre-injection drive sample, vi[2]
+                    # (scripts/diagnostics/lumped_port_known_load_line.py). A shorter tuple has
+                    # no separate reference channel, and vi[0] is that sample.
                     vref_lw[run_idx, i_port, :] = np.asarray(
                         vi[2] if len(vi) > 2 else vi[0])
 
@@ -843,7 +826,7 @@ def compute_mixed_s_matrix(
                     )
                     # Anchor the V-span top on the rasterized trace
                     # node, not round(h_sub/dx) — see the sibling
-                    # comment in compute_msl_s_matrix (PR #516 F2).
+                    # comment in compute_msl_s_matrix.
                     v_q = msl_modal_voltage(
                         ez_plane, j_centre=meta["j_centre"],
                         k_lo=meta["k_lo"],
@@ -876,7 +859,7 @@ def compute_mixed_s_matrix(
         )
         S = jnp.asarray(S, dtype=_complex_dtype)
 
-        # ---- N-probe line Zc: DIAGNOSTIC ONLY (issue #488) ---------
+        # ---- N-probe line Zc: DIAGNOSTIC ONLY ---------
         # This lane does NOT substitute a fitted Zc into the MSL
         # diagonal. An earlier revision did, and it was withdrawn
         # after review: the fit's sign is not stable here, so the
@@ -894,33 +877,30 @@ def compute_mixed_s_matrix(
         # The SECOND half of what this comment used to allege — that
         # `msl_loop_current`'s docstring ("the returned I is positive
         # for a forward quasi-TEM wave") and compute_msl_s_matrix's
-        # #140 dir_sign comment ("a -x port's fitted z0 inherits a
-        # negative sign") describe OPPOSITE conventions — was
-        # measured during issue #661 and is a PROSE defect only, now
-        # corrected in msl_loop_current's docstring. Own-drive
+        # dir_sign comment ("a -x port's fitted z0 inherits a
+        # negative sign") describe OPPOSITE conventions — is resolved by the
+        # direction-dependent convention in msl_loop_current's docstring. Own-drive
         # diagonal on the committed thru fixture:
         # Re((alpha-gamma)/I1) = +57.52 ohm at the "+x" port and
         # -57.56 ohm at the "-x" port (same magnitude to 0.08%), so
-        # the #140 comment described the code and the docstring's
+        # the comment described the code and the docstring's
         # blanket claim was scoped wrong. The lane is self-consistent
         # about it: |S11|=|S22| to 5 decimals, reciprocity 1.27e-05,
         # column power <= 0.99998, both reported Z0 positive. No code
         # changed. The beta-branch instability above is separate and
         # still stands.
         #
-        # Issue #524 now carries ONE open item, not two. The
-        # 2026-08-30 re-measurement on current main (VESSL
-        # 369367257265, PR #799, driver
-        # scripts/diagnostics/msl_passive_port_reflection.py) closed
-        # the drive asymmetry: the two ports read |Gamma| 0.1799 and
+        # The measurement (VESSL 369367257265, driver
+        # scripts/diagnostics/msl_passive_port_reflection.py) found: the two ports read
+        # |Gamma| 0.1799 and
         # 0.1759 on the shipped R = 50 ohm fixture, and the
         # cell-aligned and +/-y-rotated variants reproduce that to 4
         # decimals, so the July 0.194-vs-0.073 split does not exist on
         # this tree. The same battery WITHDREW the "~30 ohm
         # termination" inference: it was built on a July line Zc of
         # 38.75 ohm, while the fitted Zc here is 41.9 ohm against the
-        # Hammerstad-Jensen 47.9 ohm -- a dx bias (#487 class), not a
-        # termination error. What stays open on #524 is the passive
+        # Hammerstad-Jensen 47.9 ohm -- a dx bias, not a
+        # termination error. What remains unexplained is the passive
         # port's reflection itself: |Gamma_passive| = 0.176-0.180 at
         # R = 50 ohm with no mechanism named. Both single-reflector
         # models were falsified over a 25 / Zc / 50 / open R sweep
@@ -932,7 +912,7 @@ def compute_mixed_s_matrix(
         # The fit is still computed and EXPOSED (return_diagnostics)
         # because it is the only handle on the measured-vs-analytic Zc
         # gap (41.9 ohm fitted vs 47.9 ohm Hammerstad-Jensen on this
-        # mesh, 2026-08-30; #487), but it never feeds a shipped
+        # mesh), but it never feeds a shipped
         # number, and its magnitude is reported without a sign claim.
         from rfx.probes.msl_wave_decomp import extract_msl_nprobe
         z0_msl_fit = np.full((n_msl, n_freqs_used), np.nan)
@@ -972,8 +952,8 @@ def compute_mixed_s_matrix(
                     "plane sensitivity before interpreting S.", AccuracyWarning,
                     stacklevel=2,
                 )
-        # β-scan rail flags for the diagnostic N-probe fit (issue
-        # #681): a railed bin's |Zc|/β above are the ±35% scan-window
+        # β-scan rail flags for the diagnostic N-probe fit: a railed bin's |Zc|/β above
+        # are the ±35% scan-window
         # limit, not a measurement. S is unaffected (the MSL diagonal
         # uses the analytic HJ anchor; the feed-plane shift below uses
         # the closed-form beta, never the fit).
@@ -1061,7 +1041,7 @@ def compute_mixed_s_matrix(
             ))
 
         # MSL standing-wave-null reliability from each MSL port's own
-        # driven run (mirrors compute_msl_s_matrix issue #337).
+        # driven run (mirrors compute_msl_s_matrix).
         reliable = None
         try:
             v_port = np.stack([
@@ -1085,7 +1065,7 @@ def compute_mixed_s_matrix(
             [("wire" if wire_mode else "lumped")] * n_lw
             + ["msl"] * n_msl
         )
-        # #2014: S is referenced to every port's declared impedance=. The
+        # S is referenced to every port's declared impedance=. The
         # MSL waves were formed at the analytic line Z0 (line_impedances);
         # lumped/wire ports already use their declared impedance, so only
         # the MSL rows and columns move, once, before the projection.

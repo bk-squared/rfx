@@ -1,4 +1,4 @@
-"""The S reference of a line port: its declared ``impedance=`` (#2014).
+"""The S reference of a line port: its declared ``impedance=``.
 
 Every S producer that admits an MSL or coax port forms its power waves at the
 analytic line impedance (Hammerstad-Jensen Z0 for MSL, TEM Z0 for coax) and
@@ -20,7 +20,7 @@ import numpy as np
 
 
 def renormalize_power_waves(S, z_from, z_to):
-    """Refer a power-wave S-matrix from one real reference per port to another (#2014).
+    """Refer a power-wave S-matrix from one real reference per port to another.
 
     Power waves at a real positive reference Z: a = (V + Z I)/(2 sqrt Z),
     b = (V - Z I)/(2 sqrt Z). Changing Z to Z' per port gives
@@ -33,7 +33,7 @@ def renormalize_power_waves(S, z_from, z_to):
     the formula is applied per frequency bin. A jax array (or tracer) is
     transformed with ``jnp`` and stays differentiable; a NumPy array is
     transformed with NumPy at its own precision. ``z_from`` and ``z_to`` are
-    ``(n,)`` real positive impedances; either may be traced (a line impedance
+    ``(n)`` real positive impedances; either may be traced (a line impedance
     that depends on a design variable), and then every port is transformed
     with ``jnp`` and the value checks are left to the caller; the NaN-column
     confinement below then does not apply.
@@ -119,13 +119,12 @@ def _concrete(z):
 def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
     """Say once per port when the declared reference is far from the line Z0.
 
-    ``ports`` is ``((label, declared_ohm, line_ohm), ...)``. Since #2014 the
+    ``ports`` is ``((label, declared_ohm, line_ohm),...)``. The
     declared ``impedance=`` is the reference of the returned S (exact for
     real references), so the gap is not an extraction error: a line whose Z0
     is far from the reference reflects at the port plane by
     |Z0 - R|/(Z0 + R), and that reflection is in S as a property of the
-    declared line. Moved here from ``compute_coax_msl_transition``'s
-    issue-#581 advisory, which said the opposite before #2014.
+    declared line.
     """
     for label, declared, line in ports:
         declared, line = float(declared), float(line)
@@ -150,7 +149,7 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
                              pin_radius, outer_radius, ladders):
     """The coax two-port's S as power waves at each ladder's line impedance.
 
-    Returns ``(S_line, line_impedances)`` (#2014 review). The wave split is a
+    Returns ``(S_line, line_impedances)``. The wave split is a
     voltage-only ratio, so its waves sit at the impedance of the line under
     each probe ladder. Without ``eps_scale`` that is the stamped fill's
     ``z_tem`` at both ends and ``S`` is returned as it is. ``eps_scale``

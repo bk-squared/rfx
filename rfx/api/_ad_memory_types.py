@@ -35,7 +35,7 @@ class AD_MemoryEstimate(NamedTuple):
     checkpoint_segments: int | None = None
     ad_active_steps: int | None = None
     ad_segmented_active_segments: int | None = None
-    #: Which grid the numbers describe (#696): ``"uniform"`` or
+    #: Which grid the numbers describe: ``"uniform"`` or
     #: ``"nonuniform"``. The estimate used to be derived from a private
     #: re-derivation of the shape that matched NEITHER grid wherever
     #: per-face pads or 2-D mode changed it, and nothing in the artifact
@@ -47,10 +47,8 @@ class AD_MemoryEstimate(NamedTuple):
     #: the legacy domain arithmetic was used as a fallback.
     grid_source: str | None = None
     grid_shape: tuple[int, int, int] | None = None
-    #: Surface-impedance (f0) sheet operator state — three boolean
-    #: tangential edge masks plus ``sigma_sheet`` (#677). Zero when no f0
-    #: sheet is registered. It was counted NOWHERE before #696, so a
-    #: lossy board estimated identically to the same board without loss.
+    # Surface-impedance (f0) sheet operator state: three boolean tangential edge
+    # masks plus ``sigma_sheet``. Zero when no f0 sheet is registered.
     sheet_gb: float | None = None
     saved: tuple[dict, ...] = ()
     excluded_linear: tuple[dict, ...] = ()

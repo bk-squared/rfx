@@ -15,7 +15,7 @@ we track the series current and capacitor charge via ADE.
 For the series path, `setup_rlc_materials` does NOT fold R or C
 into material arrays (only parallel topology does that).  The
 series ADE handles R, L, and C together, and it is solved TOGETHER
-with the field on the element's edge (issue #1163):
+with the field on the element's edge:
 
     Ampere at the edge (d = edge length, A = dual face, D0 = 1/Cb the
     edge's own E-update denominator, e_std = Ca*E^n + Cb*curl H):
@@ -46,7 +46,7 @@ Parallel topology (inductor ADE only)
 --------------------------------------
 R and C are folded into the edge's sigma and eps, which the Yee E update
 already treats time-centred (sigma*(E^{n+1}+E^n)/2).  The inductor is
-solved together with the edge field, time-centred the same way (issue #1245).
+solved together with the edge field, time-centred the same way.
 At the edge (d = edge length, A = dual face, D0 = eps/dt + sigma/2
 of the edge = 1/Cb, e_std = Ca*E^n + Cb*curl H):
 
@@ -142,7 +142,7 @@ def init_rlc_state(dtype=None) -> RLCState:
         concrete ``run()`` path and the differentiable ``forward()`` lane both
         pass an explicit dtype from ``rlc_carry_dtype`` instead.
 
-    Dtype note (issue #646)
+    Dtype note
     -----------------------
     This default used to be a hard ``jnp.float32`` pin, which reds every
     caller under ``jax_enable_x64``.  The promoting quantity is NOT the field
@@ -175,9 +175,7 @@ def rlc_carry_dtype(metas, field_dtype=jnp.float32):
     returns ``float64``, not ``float32``.  With x64 off JAX clamps that back to
     float32 at allocation, which is why the result is byte-identical to the
     historical ``init_rlc_state()`` float32 pin; with x64 on it correctly
-    returns float64, matching what the ADE body produces.  (An earlier version
-    of this docstring claimed the metas were plain Python floats and that this
-    returned float32 — measured false, issue #646.)
+    returns float64, matching what the ADE body produces.
 
     The differentiable ``forward()`` lane builds metas with
     ``build_rlc_meta``; when a component value is supplied as a tracer
@@ -212,8 +210,7 @@ class RLCCellMeta(NamedTuple):
     has_capacitor: bool     # True when C > 0
     gamma: float   # dt * d_par / (L * dual_area) — inductor ADE term (0 if L == 0)
     D0: float      # eps/dt + sigma/2 of the element EDGE's own E update
-                   # (four-cell edge average plus lumped stamps, #1210;
-                   # #1163) -- 1/Cb there.
+                   # (four-cell edge average plus lumped stamps) -- 1/Cb there.
     dx: float      # PRIMAL cell size along the component axis (the E edge
                    # the element voltage V = E*d_par is taken over)
     dt_dx_over_L: float  # dt * dx / L — for I_L update (0 if L == 0)
@@ -256,14 +253,13 @@ def edge_update_denominator(materials, cell, component, dt,
     the element's ``D0`` has to be built from the edge's own ``eps`` and
     ``sigma``: :func:`rfx.model.materials.e_update_material_at` at the
     element's cell and component -- the stored update operands including
-    the lumped stamps on this edge (this cell, this component: #1210, #1236),
+    the lumped stamps on this edge (this cell, this component),
     the values
     ``update_e`` turns into ``Cb``. Reading ``materials.eps_r[i, j, k]`` /
     ``sigma[i, j, k]`` instead is the single-cell value, which differs from
     what the update uses wherever the four cells around the edge are not one
     material: on an eps 1|4 surface the edge is 2.5 and the cell 4, and a
-    series 100 ohm element then realized 160 ohm, a parallel 2 nH 3.2 nH
-    (#1163 review). Where the four cells are one material the two reads are
+    series 100 ohm element then realized 160 ohm, a parallel 2 nH 3.2 nH. Where the four cells are one material the two reads are
     the same floats, so vacuum and uniform-dielectric fixtures keep their
     bytes.
 
@@ -278,7 +274,7 @@ def edge_update_denominator(materials, cell, component, dt,
     if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
         # Python floats: host arithmetic, nothing on a tape.
         return _denominator_si(float(eps_r), float(sigma), dt)
-    # #1357: these bits; the derivative with EPS_0/dt grouped as one factor,
+    # these bits; the derivative with EPS_0/dt grouped as one factor,
     # so the cotangent is not first multiplied by 1/dt ~ 5e11.
     return si_value_eps_r_grad(_denominator_si, _denominator_eps_r,
                                eps_r, sigma, dt)
@@ -341,7 +337,7 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
     The C fold used to read ``C / (d_par * EPS_0)``, which is
     ``C * d_par / (EPS_0 * d_par**2)``: right only on a CUBIC cell, so it is
     wrong on any anisotropic UNIFORM grid too, not only a graded one
-    (issue #691; measured on a uniform 1.0/0.5/0.25 mm cell, a nominal 1 pF
+    (measured on a uniform 1.0/0.5/0.25 mm cell, a nominal 1 pF
     realized 0.125 pF as ``ex`` and 8.0 pF as ``ez``).
 
     For **series** topology with multiple components (R+C, R+L+C, etc.):
@@ -370,7 +366,7 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
         port_d_parallel as _d_par,
         port_dual_transverse as _dual_perp,
     )
-    # #1210: an R or a C across one edge is a LUMPED stamp, not a cell
+    # an R or a C across one edge is a LUMPED stamp, not a cell
     # volume property -- it is excluded from the edge average and added back
     # at its own cell (see rfx.core.yee.MaterialArrays).
     from rfx.sources.sources import (
@@ -425,7 +421,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     L = _resolve_value(spec.L, l_val, traced=traced)
     C = _resolve_value(spec.C, c_val, traced=traced)
 
-    # #1163: the edge's own E-update denominator, not the cell's (series
+    # the edge's own E-update denominator, not the cell's (series
     # and parallel alike).
     D0 = edge_update_denominator(
         materials, (i, j, k), spec.component, dt, periodic, as_float=not traced, grid=grid)
@@ -433,11 +429,11 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     if has_inductor:
         # gamma = dt * d_par / (L * dual_area) is the inductor's implicit
         # self-coupling into the E update: the parallel inductor
-        # (_update_parallel, trapezoidal since #1245) adds gamma/4 to D0.
+        # (_update_parallel, trapezoidal) adds gamma/4 to D0.
         # The old spelling dt/(L*d_par) is that with dual_area = d_par**2,
         # i.e. a CUBIC cell.  It was self-consistent with the equally cubic
         # I/(dx*dx) below, which is why the pair realized an inductance
-        # L * d_par**2 / dual_area instead of L (issue #691 follow-up).
+        # L * d_par**2 / dual_area instead of L.
         gamma = dt * d_par / (L * dual_area)
         dt_dx_over_L = dt * d_par / L
     else:
@@ -475,7 +471,7 @@ def _describe_spec(n, spec: LumpedRLCSpec) -> str:
 
 
 def refuse_stacked_solved_elements(specs, metas) -> None:
-    """Refuse two lumped elements with their OWN solve on one edge (#1245).
+    """Refuse two lumped elements with their OWN solve on one edge.
 
     An element with an inductor (parallel topology) or a series element with
     two or more components is solved together with its edge field in one
@@ -484,7 +480,7 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
     in the same step: the pair is not the parallel circuit it declares, and
     the run gains energy (measured in a closed PEC box, float64: a parallel
     4 nH + 1 pF with another 4 nH on its edge x4.1 in 6400 steps; two series
-    4 nH + 10 pF x4.0, as on main before #1245). Folded elements (parallel R and C, and a pure R
+    4 nH + 10 pF x4.0). Folded elements (parallel R and C, and a pure R
     or pure C declared "series") have no solve of their own -- they add
     into the edge's material, which the one solved element reads through
     ``D0`` -- so any number of them may share the edge with one solved
@@ -528,7 +524,7 @@ def _parallel_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
     folded R and C included, before the inductor's current has acted);
     ``e_prev`` is ``E^n``, the edge field at the START of this step.
 
-    One implicit, trapezoidal step (issue #1245; derivation in the module
+    One implicit, trapezoidal step (derivation in the module
     docstring), with ``gamma = dt*d/(L*A)``::
 
         E^{n+1} = e_std - (I^n/A + (gamma/4)*(e_std + E^n)) / (D0 + gamma/4)
@@ -583,7 +579,7 @@ def _series_values(e_std, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
     ``Ca*E^n + Cb*curl H``, before the element's current has acted);
     ``e_prev`` is ``E^n``, the edge field at the START of this step.
 
-    One implicit, trapezoidal step (issue #1163; derivation in the module
+    One implicit, trapezoidal step (derivation in the module
     docstring).  With ``I_avg = (I^{n+1} + I^n)/2``, ``kappa = d/(D0*A)``::
 
         I_avg * (R + 2L/dt + dt/(2C) + kappa/2)
@@ -654,8 +650,7 @@ def rlc_element_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
 
     Called AFTER the standard ``update_e()`` in the scan body.  ``e_prev`` is
     the element edge's field at the START of the step (``E^n``, read before
-    the E update); the series update (#1163) and the parallel inductor
-    (#1245) need it, a folded-only parallel element does not.
+    the E update); the series update and the parallel inductor need it, a folded-only parallel element does not.
 
     Returns (new_edge_value, new_rlc_state); does not write a field.
     """

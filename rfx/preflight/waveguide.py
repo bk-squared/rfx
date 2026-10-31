@@ -1,11 +1,9 @@
-"""Waveguide-port preflight, moved verbatim out of ``rfx.api._preflight``.
+"""Waveguide-port preflight.
 
-Issue #980 Phase 3, leg 3. The ports_waveguide family: the realized-aperture
-and cutoff checks (#150 / #737 / #738), the reference-plane sanity check
+The ports_waveguide family: the realized-aperture
+and cutoff checks, the reference-plane sanity check
 (P2.8), and the three post-v1.8 S-parameter setup audits with the builder
-they share. Everything here was relocated byte for byte out of
-``rfx/api/_preflight.py`` -- same text, same order, same indentation, same
-docstrings, nothing renamed, reordered, tidied or rewritten.
+they share.
 
 The move is gated on the committed advisory-text snapshot every
 ``sim.preflight()`` fixture renders
@@ -125,7 +123,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
     - ``aperture``: the span :meth:`_range_to_slice` REPORTS on this
       grid — the identical call :meth:`_build_waveguide_port_config`
       makes to build ``WaveguidePort.a``/``.b``. It is NOT, on its
-      own, the cutoff dimension (#1101): it is the ``a``/``b`` the
+      own, the cutoff dimension: it is the ``a``/``b`` the
       profile helpers are handed, which on
       ``mode_profile="analytic"`` IS the cutoff via
       ``cutoff_frequency(port.a, port.b, m, n)``, but on the API
@@ -141,12 +139,12 @@ def _port_transverse_spans(self, entry, grid, realized=None):
       the grid, ``(hi_idx - lo_idx - 1) * dx``. Equal to
       ``aperture`` on the explicit branch by construction; on the
       ``value_range is None`` branch ``_range_to_slice`` reports
-      ``domain_max`` instead (issue #729 site 2), so the two differ
+      ``domain_max`` instead, so the two differ
       whenever ``dx`` does not divide the domain.
     - ``guide``: the wall-to-wall transverse extent of the guide the
       port sits in, measured as the distance between the REALIZED
       wall planes (``rfx.boundaries.pec.realized_wall_planes`` on
-      the port's own transverse line, #931 §1.9) that bracket the
+      the port's own transverse line) that bracket the
       aperture. ``guide_source`` says where it came from:
       ``"pec_walls"`` (an interior realized wall was found on both
       sides), ``"domain_faces"`` (no interior wall, and the axis' two
@@ -155,7 +153,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
       closed, so no guide wider than the port's own aperture can be
       asserted and ``guide`` falls back to ``rasterized``).
 
-    Issue #738 (family #737) lead measurement,
+    Measured on
     ``examples/inverse_design/differentiable_s11_design.py`` at its
     then-committed dx = 2 mm (declared WR-90 a = 22.860 mm): the grid
     rasterized a 22.000 mm aperture, and preflight — which read only
@@ -173,8 +171,8 @@ def _port_transverse_spans(self, entry, grid, realized=None):
     scanned the primal CELL mask for the first masked node on each
     side and read 42.0000 mm (nodes 29 and 50 at dx = 2 mm, cutoffs
     3.569 / 7.138 GHz) on a fixture whose walls are DRAWN 40 mm
-    apart — the #868 class: the cell mask never contains a volume's
-    far face. Under the lattice ownership contract (#931 §1.2) the
+    apart — the class: the cell mask never contains a volume's
+    far face. Under the lattice ownership contract the
     lower Box ``[0, 0.04]`` realizes its far-face wall AT y = 40 mm
     (node 20) and the upper Box its near face at y = 80 mm (node
     40), so the realized guide is 40.0000 mm = declared and the
@@ -195,8 +193,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
     declared coordinate via a fractional-cell eps_correction
     (``tests/unit/geometry/test_subpixel_pec.py``, "Stage 1 step 3"), not the
     ``(n-1)*dx`` staircase — disclosed, unmeasured non-regression:
-    a conformal closed axis keeps the declared domain extent, which
-    is what this code did before #738.
+    a conformal closed axis keeps the declared domain extent.
     """
     normal = entry.direction[1]
     axes = [a for a in "xyz" if a != normal]
@@ -245,7 +242,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         # ``grid.dx`` on every axis; mirroring it is the point. The SPAN
         # those indices cover is this axis' own, which is what the solve
         # integrates over (``u_widths``/``v_widths``). The builder's cubic
-        # assumption is not fixed here (#1101 is about the message).
+        # assumption is not fixed here.
         rec["rasterized"] = float((slc[1] - slc[0] - 1) * d_axis)
         rec["guide"] = rec["rasterized"]
         slices[axis_name] = (int(slc[0]), int(slc[1]))
@@ -292,7 +289,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
             if all(0 <= idx[k] < shape[k]
                    for k in (normal_idx, other_idx)):
                 # Realized wall planes on the port's own transverse
-                # line (#931 §1.9): the node-plane indices along this
+                # line: the node-plane indices along this
                 # axis where a tangential wall exists at column
                 # ``ij`` = the two other indices in axis order.
                 ij = tuple(idx[k] for k in range(3) if k != axis_idx)
@@ -348,7 +345,7 @@ _WAVEGUIDE_UV_AXES = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
 #       0.25     91 x 41    3731    4.79 s      1.02 GB
 #       0.125   183 x 81   14823  127.21 s     10.73 GB
 #
-# (The same sweep on the pre-#1101 code is 0.01 s and 0.32 GB at every dx.)
+#
 # 2000 cells admits the 0.5 mm row and refuses the 0.25 mm one, which puts the
 # worst admitted case around 1.5 s. Above it the row quotes the ANALYTIC cutoff
 # of the realized aperture and says so; the discrete eigenvalue differs from it
@@ -435,7 +432,7 @@ def _preflight_section_medium(sim, entry):
 def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     """What ONE waveguide port's cutoff is actually built from, measured.
 
-    Issue #1101. ``_check_waveguide_port_aperture_snap`` used to assert that
+    ``_check_waveguide_port_aperture_snap`` used to assert that
     "the solve builds its mode template and cutoff from <declared width>".
     That is true only on ``mode_profile="analytic"``, which takes
     ``cutoff_frequency(port.a, port.b, m, n)`` from the span
@@ -447,8 +444,7 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     its then-committed SMOKE mesh, dx = 1 mm, declared WR-90
     22.860 x 10.160 mm: declared-width analytic 6.557140 GHz,
     realized-aperture analytic 6.517227 GHz, built ``cfg.f_cutoff``
-    6.512162 GHz. That lane moved to a commensurate dx = 1.27 mm in #1100
-    and no longer reproduces these numbers -- its ``SMOKE=0`` lane
+    6.512162 GHz. The commensurate dx = 1.27 mm lane does not reproduce these numbers -- its ``SMOKE=0`` lane
     (dx = 0.5 mm) still does, at 6.557140 / 6.517227 / 6.515961 GHz.
 
     Where it can afford to, this READS the number rather than restating a
@@ -543,7 +539,7 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
         # name and no mode-specific cutoff to quote. The row still has to
         # give the RIGHT reason -- "over the budget" is not "could not be
         # read" -- so this returns a reading carrying ``skipped`` and the
-        # cell counts, with the cutoff fields left None (#1101 re-review N1).
+        # cell counts, with the cutoff fields left None.
         return {
             "built_hz": None,
             "skipped": skipped,
@@ -604,8 +600,7 @@ def _waveguide_cutoff_clause(reading, axis_name, rec, mode_profile) -> str:
     Written once, for both profiles, so the two can never describe the same
     build differently. ``mode_profile="discrete"`` (the API default) names
     the REALIZED aperture; ``"analytic"`` names the width
-    :meth:`_range_to_slice` reports, which is what the pre-#1101 sentence
-    meant and is still what that path uses.
+    :meth:`_range_to_slice` reports.
 
     The discrete clause says "eigenvalues from the realized cells; the
     declared widths pick which eigenvalue" because both halves are true:
@@ -625,8 +620,7 @@ def _waveguide_cutoff_clause(reading, axis_name, rec, mode_profile) -> str:
         # A multimode port whose config was not built: the builder
         # enumerates modes by cutoff and IGNORES ``port.mode``, so there is
         # no mode to name and no mode-specific cutoff to quote. Give the
-        # cell counts and the real reason, and quote no frequency at all --
-        # an unattributed cutoff is the class of claim #1101 is about.
+        # cell counts and the real reason, and quote no frequency at all.
         why = (f"over the "
                f"{WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET}-cell budget "
                f"this check will solve"
@@ -680,7 +674,7 @@ def _waveguide_cutoff_clause(reading, axis_name, rec, mode_profile) -> str:
 def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
     """Warn when the DECLARED port width is not what the grid rasterizes.
 
-    Issue #738 (family #737). Fires on exactly one condition — the
+     Fires on exactly one condition — the
     declared width differs from the span the port's grid slice
     actually covers, ``(hi_idx - lo_idx - 1) * dx``. Both branches of
     :meth:`_range_to_slice` are covered by that single comparison:
@@ -690,11 +684,11 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
     - ``value_range is None``: the slice spans ``(pad, n - pad)`` but
       the reported span is ``domain_max``, so ``WaveguidePort.a`` gets
       the DECLARED number while the grid covers
-      ``(n_interior - 1) * dx`` — issue #729 site 2, still open. The
+      ``(n_interior - 1) * dx``. The
       message names it, keyed on the None branch itself (``rec
       ["explicit"]``), not inferred from a width comparison.
 
-    What the cutoff is built from is READ, not asserted (#1101). Until
+    What the cutoff is built from is READ, not asserted. Until
     then this message said "the solve builds its mode template and
     cutoff from <the reported width>" on every port. That holds on
     ``mode_profile="analytic"``, which calls
@@ -705,8 +699,8 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
     ``validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim`` at
     its then-committed SMOKE mesh, dx = 1 mm: declared-width analytic
     6.557140 GHz, realized-aperture analytic 6.517227 GHz, built
-    ``cfg.f_cutoff`` 6.512162 GHz. #1100 moved that lane to a commensurate
-    mesh; its ``SMOKE=0`` lane still reproduces the class. The
+    ``cfg.f_cutoff`` 6.512162 GHz. The SMOKE mesh is now commensurate;
+    its ``SMOKE=0`` lane still reproduces the class. The
     clause now comes from :func:`_waveguide_port_cutoff_reading`, which
     builds the port and quotes the built number alongside both analytic
     values, so the row is self-checking.
@@ -771,7 +765,7 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
             if reading is None:
                 # No readable pair of transverse axes: keep the half of
                 # the message that is measurable and say nothing about
-                # the cutoff rather than guessing its source (#1101).
+                # the cutoff rather than guessing its source.
                 cutoff_clause = (
                     "the cutoff this port builds could not be read on "
                     "this grid")
@@ -807,10 +801,10 @@ def _emit_waveguide_port_cutoff_findings(
     (uniform grid: rasterized aperture + measured guide; non-uniform
     grid: declared geometry for both), so the two cannot drift and
     both carry ``source="_check_waveguide_port_evanescent"`` because
-    that IS the check they belong to. Issue #738 review: the NU lane
+    that IS the check they belong to. The NU lane
     used to be a verbatim copy of this body.
 
-    ``a_ap``/``b_ap`` set the #150 LOWER bounds — the dimensions the
+    ``a_ap``/``b_ap`` set the LOWER bounds — the dimensions the
     solve builds ``WaveguidePort.a``/``.b`` from. ``a_gd``/``b_gd``
     set the 0.90 x fc_next margin heuristic — the guide that decides
     which higher-order modes exist. ``guide_label`` is the
@@ -839,7 +833,7 @@ def _emit_waveguide_port_cutoff_findings(
 
     fc_excited = _fc_ap(m0, n0)
 
-    # --- LOWER bound (issue #150): source center / measurement bins
+    # --- LOWER bound: source center / measurement bins
     # at or below the excited mode's own cutoff. Below fc the launch
     # is evanescent and near-cutoff content crawls at vanishing group
     # velocity: the extracted S is junk that GROWS with n_steps (the
@@ -936,7 +930,7 @@ def _emit_waveguide_port_cutoff_findings(
         )
 
 def _check_waveguide_port_evanescent_declared_geometry(self) -> None:
-    """Pre-#738 behavior: cutoffs from the DECLARED geometry only.
+    """ cutoffs from the DECLARED geometry only.
 
     The non-uniform-mesh branch of
     :meth:`_check_waveguide_port_evanescent` — disclosed, unmeasured
@@ -975,18 +969,10 @@ def _check_waveguide_port_evanescent(self) -> None:
     """Warn when measurement frequencies cross a cutoff on the
     RASTERIZED grid, not the declared geometry.
 
-    Issue #738 (family #737): this used to derive its ``a``/``b``
-    from ``entry.*_range`` / ``self._domain`` — both DECLARED
-    numbers — never consulting the grid the solve actually builds.
-    Lead-measured on
-    ``examples/inverse_design/differentiable_s11_design.py`` at its
-    then-committed dx = 2 mm (declared WR-90 a = 22.860 mm): the grid
-    rasterized a 22.000 mm aperture and the solve built its mode
-    template from that, while this check read 22.860 mm and printed
-    "All checks passed".
+    Derive ``a``/``b`` from the grid the solve builds, not only the declared ``entry.*_range`` / ``self._domain``. On ``examples/inverse_design/differentiable_s11_design.py`` with dx = 2 mm and declared WR-90 a = 22.860 mm, the realized aperture is 22.000 mm. Reading only the declaration misses that discrepancy.
 
     Now uses :meth:`_port_transverse_spans` for both:
-    - the #150 lower-bound checks (source / measurement at-or-below
+    - the lower-bound checks (source / measurement at-or-below
       cutoff) are evaluated on the APERTURE, since that is the
       literal dimension ``WaveguidePort.a``/``.b`` feed
       ``_compute_beta`` and the mode template — this aligns the gate
@@ -1017,9 +1003,8 @@ def _check_waveguide_port_evanescent(self) -> None:
 
     Non-uniform mesh (``_dx_profile``/``_dy_profile``/``_dz_profile``
     set): disclosed, unmeasured non-regression — falls back to
-    :meth:`_check_waveguide_port_evanescent_declared_geometry` (the
-    pre-#738 declared-geometry behavior) rather than rasterizing a
-    non-uniform profile here; #738 does not extend to NU.
+    :meth:`_check_waveguide_port_evanescent_declared_geometry`  rather than rasterizing a
+    non-uniform profile here.
     """
     if not self._waveguide_ports:
         return
@@ -1037,8 +1022,7 @@ def _check_waveguide_port_evanescent(self) -> None:
         spans = self._port_transverse_spans(entry, grid, realized)
         axes = sorted(spans)
         # UNRASTERIZABLE (aperture=None) must not silence the cutoff
-        # checks below: fall back to the DECLARED width, which is the
-        # pre-#738 behavior and is always defined. Measured
+        # checks below: fall back to the DECLARED width, which is always defined. Measured
         # regression: without this fallback, the committed fixture
         # tests/interop/test_interop_design_document.py::
         # _waveguide_with_dispersive_slab LOST its port_evanescent /
@@ -1078,8 +1062,7 @@ def _validate_cfg_waveguide_reference_plane(
 
     The S-matrix returned by ``compute_waveguide_s_matrix`` is
     evaluated AT the reference plane (either ``entry.reference_plane``
-    if user-specified, or the port's ``x_position`` by default after
-    2026-04-22). The phase of reported S-params is therefore tied to
+    if user-specified, or the port's ``x_position`` by default). The phase of reported S-params is therefore tied to
     that plane. Physical correctness requires the plane lies inside
     the simulation domain, outside the CPML absorbing region, and
     preferably inside a uniform-cross-section segment of guide so the
@@ -1095,12 +1078,9 @@ def _validate_cfg_waveguide_reference_plane(
     regression-locked via tests/unit/runners/test_silent_drop_warnings.py and
     tests/unit/boundaries/test_boundary_pmc_hi_faces.py.
 
-    Issue #1024 -- the three emission sites, and which of them can speak
-    ------------------------------------------------------------------
-    Site 3 (the device-overlap advisory) was the defect: it read
-    ``g.bounds`` off a ``_GeometryEntry`` wrapper, which has no such
-    attribute, under a bare ``except Exception``. Fixed at the site; see
-    the comment there for the measurement.
+    Three emission sites and their scope
+    -----------------------------------
+    Site 3 (device overlap) reads the geometry entry's shape bounds; ``_GeometryEntry`` itself has no ``bounds`` attribute.
 
     Sites 1 and 2 stay as deliberate no-ops, re-measured rather than
     assumed:
@@ -1134,9 +1114,7 @@ def _validate_cfg_waveguide_reference_plane(
     Neither deletion would change a user-visible number, and both would
     shrink the frozen surface in
     ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``
-    for no behavioural gain, so the frozen totals are UNCHANGED by #1024
-    (113 sites / 74 literal codes). What #1024 changes is that
-    ``waveguide_reference_plane`` is now witnessable at all:
+    for no behavioural gain. ``waveguide_reference_plane`` has a concrete witness:
     ``tests/locks/test_preflight_split_snapshot.py``'s
     ``waveguide_refplane_in_slab`` fixture renders site 3.
     """
@@ -1158,7 +1136,7 @@ def _validate_cfg_waveguide_reference_plane(
                     code="waveguide_reference_plane",
                     source="_validate_cfg_waveguide_reference_plane",
                 )
-            # Issue #500: this used to compare `effective` against an
+            # this used to compare `effective` against an
             # INTERIOR reading of the CPML thickness
             # (`[0, ct_lo]`/`[domain_ext-ct_hi, domain_ext]`) —
             # verified false positive (repro 1: WR-90 ports at 20mm /
@@ -1196,7 +1174,7 @@ def _validate_cfg_waveguide_reference_plane(
             # Device overlap warning: check if any geometry entry spans
             # the port's reference plane.
             #
-            # Issue #1024. This used to read ``g.bounds`` off the LIST
+            # This used to read ``g.bounds`` off the LIST
             # ELEMENT, but ``self._geometry`` holds
             # ``_GeometryEntry(shape, material_name)`` wrappers with no
             # ``bounds`` attribute (``rfx/api/__init__.py``'s ``add()`` is
@@ -1288,7 +1266,7 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
     turn a check meant to save a doomed run into the thing that stops a
     healthy one. The exception is named rather than swallowed: an advisory
     that can fail silently is the failure mode these checks exist to catch
-    (the #576 precedent on the sibling absorber advisory).
+    (the precedent on the sibling absorber advisory).
     """
     entries = list(getattr(self, "_waveguide_ports", ()) or ())
     if not entries:
@@ -1484,7 +1462,7 @@ def _validate_cfg_record_vs_far_boundary(
 ) -> None:
     """Record length T against the far-boundary round trip tau_far, per port.
 
-    Mechanism (issue #894, and section 2-1 of
+    Mechanism (and section 2-1 of
     ``docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md``):
     energy launched at a port reaches the outer wall of the far absorber pad
     and comes back, and a rectangular full-record DFT that ends before that

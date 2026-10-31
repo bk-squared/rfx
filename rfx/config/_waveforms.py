@@ -14,7 +14,7 @@ from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
 # type-string -> waveform class. Each class takes (f0, bandwidth, amplitude,
 # cutoff) as its constructor args (GaussianPulse gained cutoff for the
-# issue-#388 deposited-DC mitigation).
+# deposited-DC mitigation).
 WAVEFORM_REGISTRY = {
     "gaussian_pulse": GaussianPulse,
     "modulated_gaussian": ModulatedGaussian,

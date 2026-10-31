@@ -139,7 +139,7 @@ class WaveguidePortConfig(NamedTuple):
     dft_total_steps: int
 
     # Source waveform parameters. ``waveform`` selects the pulse shape:
-    # ``"differentiated_gaussian"`` is refused (circular precursor, #1942);
+    # ``"differentiated_gaussian"`` is refused (circular precursor);
     # ``"modulated_gaussian"`` (Meep-style, src = cos(2π·f₀·(t-t₀))·exp(-arg²)).
     # ``src_fcen`` is only used by the modulated-Gaussian dispatch.
     src_amp: float
@@ -159,7 +159,7 @@ class WaveguidePortConfig(NamedTuple):
     # The S-parameter spectra are computed POST-SCAN by
     # ``_extract_global_waves_from_time_series`` via a rectangular
     # full-record DFT on these arrays — no in-scan DFT accumulators
-    # are kept (deleted Phase 2 cleanup, 2026-04-25).
+    # are kept.
     v_probe_t: jnp.ndarray     # (n_steps,) float32 — modal V at probe plane
     v_ref_t: jnp.ndarray       # (n_steps,) float32 — modal V at ref plane
     i_probe_t: jnp.ndarray     # (n_steps,) float32 — modal I at probe plane
@@ -534,7 +534,7 @@ def _node_span_to_cell_span(span: tuple[int, int]) -> tuple[int, int]:
     eigenproblem on a guide ONE CELL WIDER than the walls make, which put
     ``WaveguidePortConfig.f_cutoff`` — and with it every ``_compute_beta``
     reference-plane rotation and every ``_compute_mode_impedance`` Z_TE — on
-    the wrong guide (issue #868): 5.877 instead of 6.524 GHz on WR-90 at
+    the wrong guide: 5.877 instead of 6.524 GHz on WR-90 at
     dx = a/9, 6.378 instead of 6.555 GHz at dx = a/36. Corrected, the port's
     cutoff is the discrete TE10 cutoff of the N-cell guide,
     ``(2/dx)·sin(π/(2N))·c/2π``, which is what the guide propagates with.
@@ -681,24 +681,20 @@ def init_waveguide_port(
     # specified to the physical aperture, naturally excluding ghost
     # cells that sit past the conductor (see /usr/lib/python3/dist-packages
     # /openEMS/ports.py:347-360 for the WaveguidePort probe construction).
-    # Empirically: weight 0.5 (PROD half-weight kludge, used 2026-04-23..27)
+    # Empirically: weight 0.5
     # gives PEC-short min |S11| ≈ 0.94, weight 0.0 (DROP, OpenEMS-equivalent)
-    # gives min |S11| = 0.9997. The half-weight was a 2026-04-26 staging
-    # compromise (Phase 2 dead-end) that protected mesh-conv and asymmetric-obstacle
-    # reciprocity at the cost of capping PEC-short closure.
+    # gives min |S11| = 0.9997. Half-weight caps PEC-short closure.
     #
-    # 2026-04-29 update: test_mesh_convergence_s21_scaled_cpml in
+    #  test_mesh_convergence_s21_scaled_cpml in
     # tests/oracle/test_waveguide_port_validation_battery.py is a LIVE, currently
-    # green committed gate under DROP, not xfail. The 2026-04-22..04-29 jitter
-    # that briefly locked it as xfail was root-caused to Box.mask_on_coords
-    # closed-closed semantics (issue #75), not to the DROP weight; see the
-    # block comment directly above that test ("Test 6 — Mesh convergence of
-    # |S21| ..."). The receive-side multi-mode extractor (per the
+    # green committed gate under DROP, not xfail. The block comment above that test ("Test 6 —
+    # Mesh convergence of |S21|...") attributes jitter to Box.mask_on_coords closed-closed
+    # semantics rather than the DROP weight. The receive-side multi-mode extractor (per the
     # dead-end note's recommendation) remains the path to recovering
     # PEC-short closure without capping it via the half-weight kludge.
     #
     # The hi-face drop (``hi_face_is_wall``) does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
-    # hand ``WaveguidePort`` the guide's CELL span (issue #868), which ends one
+    # hand ``WaveguidePort`` the guide's CELL span, which ends one
     # index short of the array edge, so there is no cell past the wall left to
     # drop. It still fires for a low-level caller that passes the whole node
     # plane (``y_slice=(0, grid.ny)``), which is what it was written for.
@@ -708,8 +704,7 @@ def init_waveguide_port(
         # Stage 1 conformal PEC: when a +face is conformal, the
         # Dey-Mittra eps_correction handles the staircase shift at the
         # boundary cell. Zeroing the same cell here in the modal V/I
-        # integral would be a second copy of that correction — the
-        # 2026-04-29 first-attempt failure mode where PEC-short |S11|
+        # integral would be a second copy of that correction — measured when PEC-short |S11|
         # diff vs OpenEMS regressed 0.025 → 0.094.
         conformal_faces = getattr(boundary_grid, "conformal_faces", set()) or set()
         u_hi_face_pec = hi_face_is_wall(boundary_grid, u_axis_name)
@@ -918,7 +913,7 @@ def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
     e_spec = np.fft.rfft(e_raw)
     freqs = np.fft.rfftfreq(length, d=float(dt))
     if waveform != "modulated_gaussian":
-        # Unreachable for waveguide ports since the #1942 refusal.
+        # Unreachable for waveguide ports since the refusal.
         ratio = np.clip((freqs - f_c) / (0.2 * f_c), 0.0, 1.0)
         e_spec *= 0.5 * (1.0 - np.cos(np.pi * ratio))
     kw = dict(dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)

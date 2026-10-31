@@ -125,7 +125,7 @@ def make_uniform_step(
         """Retain E at n for reactive elements and current-moment observations."""
         frame.st = frame.carry["fdtd"]
         frame.tfsf_h_state = None
-        # #1163: a series RLC element is solved together with its edge field
+        # a series RLC element is solved together with its edge field
         # and needs E^n there; nothing before the E update writes E, so the
         # carry's value IS E^n on every path (fast H+E kernel included).
         frame.rlc_e_prev = (
@@ -208,14 +208,14 @@ def make_uniform_step(
         """Advance E to n+1, including dispersive and design-box updates."""
         if not ctx.use_fast_he:
             # Snapshot E^n before the linear E-update for the reactive Kerr
-            # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
+            # increment: E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
             frame.e_prev_kerr = (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_kerr else None
-            # Snapshot E^n for the #677 sheet operator (it REPLACES the
+            # Snapshot E^n for the sheet operator (it REPLACES the
             # standard update at masked tangential edges with
             # A*E^n + B*curlH, so it needs the pre-update E).
             frame.e_prev_sheet = (
                 (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_sheet_impedance else None)
-            # #1179: the design box REDOES the E update at its own cells from
+            # the design box REDOES the E update at its own cells from
             # the pre-update state.  The whole state, because it needs E^n and
             # the same H^{n+1/2} the update below consumes; H is not touched
             # between the two, and a NamedTuple alias costs nothing.
@@ -245,7 +245,7 @@ def make_uniform_step(
                     boundary=ctx.curl_boundary,
                 )
 
-            # #1179 design box: redo the E update at the design cells with
+            # design box: redo the E update at the design cells with
             # coefficients built from the traced permittivity, leaving the
             # grid-wide ``materials`` constant.  Slot: immediately after the
             # E update, on the same H, before anything that reads or writes
@@ -269,7 +269,7 @@ def make_uniform_step(
     def e_boundary(frame: UniformFrame):
         """Apply nonlinear/incident E corrections and the electric absorber."""
         if not ctx.use_fast_he:
-            # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
+            # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff.
             if ctx.use_kerr:
                 frame.st = ctx.apply_kerr_ade(frame.st, frame.e_prev_kerr, ctx.kerr_chi3, materials.eps_r)
 
@@ -312,7 +312,7 @@ def make_uniform_step(
                 from rfx.stepping.conductors import apply_conformal_pec
                 frame.st = apply_conformal_pec(frame.st, *invariants["conformal_zero_masks"])
             if ctx.use_pec_edges:
-                # #931 §1.7: the (Mx, My, Mz) realized once at setup.
+                # the (Mx, My, Mz) realized once at setup.
                 #
                 # NOT an ``elif`` on the conformal branch. Dey-Mittra is a
                 # subpixel UPDATE-COEFFICIENT model, not a second geometry
@@ -321,13 +321,13 @@ def make_uniform_step(
                 # slab is fully covered — both its faces sit ON the slab's
                 # own boundary, so w = 1/2 there. While the waveguide
                 # S-matrix lane folded interior PEC into sigma=1e10 the
-                # conductor survived anyway; with that fold deleted (#931)
+                # conductor survived anyway; with that fold deleted
                 # the ``elif`` dropped it outright — measured on the
                 # conformal PEC-short battery, min|S11| 0.2296 against a
                 # gate of 0.99, restored to 0.9942 by applying both.
                 frame.st = pec_walls.apply_pec_edges(frame.st, ctx.pec_edge_masks)
 
-            # #1183: the design occupancy REDOES the scaling at its window
+            # the design occupancy REDOES the scaling at its window
             # from the field BEFORE the grid-wide one, for the same reason
             # the design box keeps the pre-update state -- the multiply is
             # not invertible where the static factor is 0.
@@ -336,7 +336,7 @@ def make_uniform_step(
             if ctx.use_pec_occupancy:
                 frame.st = apply_edge_keep(frame.st, materials.edge_keep)
 
-            # #1183 design occupancy: the traced 1 - M on its window, over
+            # design occupancy: the traced 1 - M on its window, over
             # a field the static occupancy has not scaled. Outside the
             # window no design cell can reach, so the grid-wide factor
             # there is already the right one.
@@ -372,9 +372,9 @@ def make_uniform_step(
     def before_sources(frame: UniformFrame):
         """Sample drive references before electric source injection."""
         # Wire-port DRIVE-REFERENCE DFT accumulation at the historical
-        # PRE-injection slot (issue #683 x #764 decomposer recalibration,
+        # PRE-injection slot (
         # docs/design_notes/issue683_decomposer_flip_predeclaration.md
-        # section 3): the #308 receive-wave sign and Z0/n_cells
+        # section 3): the receive-wave sign and Z0/n_cells
         # normalization were calibrated against the pre-injection drive
         # sample, so that sample is kept as its own channel `v_ref_dft` —
         # bit-identical to the historical `v_dft` — and feeds ONLY the
@@ -391,23 +391,23 @@ def make_uniform_step(
                     accs[4], v_ref, frame.step_idx, wp_meta.freqs, dt))
 
         # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
-        # PRE-injection slot (issue #72): the #308 off-diagonal incident
+        # PRE-injection slot: the off-diagonal incident
         # wave is calibrated against this sample, so it is kept as its own
         # channel — bit-identical to the pre-decision `v_dft` — and feeds
         # ONLY the off-diagonal denominator in decompose_lumped_s_matrix.
         # The physical V/I are accumulated POST-injection below.  Mirrors
-        # the wire-port block above (issue #683).
+        # the wire-port block above.
         if ctx.use_lumped_sparams:
             frame.new_lumped_refs = []
             for accs, lp_meta, v_ref_l in zip(frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta, frame.lumped_ref_samples):
                 frame.new_lumped_refs.append(ref_dft_update(
                     accs[2], v_ref_l, frame.step_idx, lp_meta.freqs, dt))
 
-        # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
+        # Reference-plane V/I DFT accumulation — same
         # rect-DFT kernel as the port-cell channels.  This slot is before
         # the soft-source loop, but the planes sit >= 1 cell from every
         # source cell, so pre/post-injection sampling is identical here
-        # and the #683 wire-port flip (which moved only the port-CELL
+        # and the wire-port flip (which moved only the port-CELL
         # physical channels below the source loop) does not apply.
         if ctx.use_wire_refplanes:
             from rfx.probes.refplane import wire_refplane_step_vi
@@ -462,8 +462,7 @@ def make_uniform_step(
 
         # Lumped-port PHYSICAL V/I DFT accumulation AFTER source injection.
         # Decided by the lumped known-load decision run
-        # (scripts/diagnostics/lumped_port_known_load_line.py), which the
-        # 2026-09-05 scope note said was the missing input: on a
+        # (scripts/diagnostics/lumped_port_known_load_line.py), which measured that on a
         # parallel-plate line terminated in a known R, the pre-injection
         # slot read |S11| 0.714 / 1.248 / 4.757 against a closed form of
         # 0.333 / 0 / 0.333, and its terminal V/(Zc·I) was -0.167 / +0.110
@@ -499,12 +498,9 @@ def make_uniform_step(
                     v_inc_t=accs[4],
                     n_steps_recorded=accs[5],
                 )
-                # TFSF-style H and E corrections are applied earlier in
-                # their respective Yee sub-steps (canonical TFSF slots).
-                # NOTE: this samples `st` AFTER source injection above.
-                # The same docstring-contract concern as wire/lumped
-                # applies here, but waveguide-port is out of scope for
-                # this fix (issue #29 OPEN tracks waveguide-port issues).
+                # TFSF-style H and E corrections are applied earlier in their respective Yee
+                # sub-steps (canonical TFSF slots). This samples `st` AFTER source injection
+                # above; the waveguide-port sampling convention needs its own validation.
                 cfg_updated = update_waveguide_port_probe(cfg, frame.st, dt, dx)
                 frame.new_waveguide_port_accs.append(
                     (

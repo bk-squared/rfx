@@ -1,17 +1,6 @@
-"""Coaxial S-matrix calculators, moved verbatim out of ``rfx.api._sparams``.
+"""Coaxial S-matrix calculators.
 
-Issue #980 Phase 2. ``compute_coaxial_line_reflection``,
-``compute_coaxial_two_port`` and ``compute_coax_msl_transition`` (and the
-single-plane coaxial S-matrix lane, since removed in #1212) were methods on
-``_SparamMixin``; they are
-relocated here byte for byte, dedented by exactly four spaces, and nothing
-else -- same order, same text, same docstrings, no rename, no cleanup. Each
-is a MODULE-LEVEL function whose first parameter is still ``self``: that is
-the ``Simulation`` instance, and the bodies still reach the rest of the class
-through it. ``rfx.api._sparams`` binds each function back as a class
-attribute at its original position, so ``sim.compute_coaxial_two_port(...)``
-keeps the same signature, ``__doc__`` and bound-method behaviour. A class
-wrapper may replace that binding in a later step.
+``compute_coaxial_line_reflection``, ``compute_coaxial_two_port`` and ``compute_coax_msl_transition`` are module-level functions whose first parameter ``self`` is the ``Simulation`` instance. ``rfx.api._sparams`` binds them to ``_SparamMixin`` as methods, preserving bound-method behaviour.
 
 The move is gated on bit identity of the S arrays every leg returns
 (``tests/locks/test_sparams_split_bit_identity.py``).
@@ -84,7 +73,7 @@ def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=N
 
 
 def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
-    """Both coax line lanes absorb on x, y and z (issue 1218).
+    """Both coax line lanes absorb on x, y and z.
 
     With absorbers on z only, the lateral pads were vacuum backed by the PEC
     grid faces: a closed metal can around the line. Every unshielded
@@ -558,7 +547,7 @@ def compute_coaxial_two_port(
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
     .. note::
-        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (PI decision 2026-08-06 —
+        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
         family companion where this row lives). Covered: the two-port
         through-line class on this single coax geometry family, bracketed
@@ -666,7 +655,7 @@ def compute_coaxial_two_port(
     ``._flux_monitors``); each internal drive run then accumulates the
     requested Poynting-flux planes, and per-drive spectra come back
     name-keyed on ``result.flux_monitors``
-    (``{port_name: {monitor_name: (n_monitor_freqs,) float64}}``, net
+    (``{port_name: {monitor_name: (n_monitor_freqs) float64}}``, net
     flux, positive = +axis). The S-parameter math is untouched — the
     non-perturbation witness (S bit-identical with and without
     monitors) is gated in
@@ -860,7 +849,7 @@ def compute_coaxial_two_port(
         pec_cell_mask=pec_cells,
     )
 
-    # Differentiable design channel (#489 leg 3): applied AFTER the
+    # Differentiable design channel: applied AFTER the
     # (numpy) stamps as a MULTIPLIER, same contract as the 1-port
     # compute_coaxial_line_reflection's own eps_scale — the stamped
     # dielectric (PTFE fill) + PEC (in sigma) are preserved and only
@@ -952,7 +941,7 @@ def compute_coaxial_two_port(
                         grid_shape=grid.shape, dft_total_steps=int(n_steps),
                     )
                 )
-        # #589 flux-adjudication opt-in: fresh accumulators PER DRIVE
+        # flux-adjudication opt-in: fresh accumulators PER DRIVE
         # (init_flux_monitor zeroes the DFT carries; sharing cfgs across
         # drives would co-accumulate both drives into one spectrum).
         _flux_run_kwargs = (
@@ -981,7 +970,7 @@ def compute_coaxial_two_port(
 
         top_off = n_bot * 2
         if _traced_eps:
-            # --- differentiable path: jnp voltage (AD moat, #489 leg 3) ---
+            # --- differentiable path: jnp voltage  ---
             # Only the ex plane is needed (mirrors compute_coaxial_line_
             # reflection's own eps_scale branch): coaxial_line_plane_
             # voltage_jnp integrates E_r along the +x ray, ey is unused
@@ -1080,7 +1069,7 @@ def compute_coaxial_two_port(
         status = "passed"
 
     reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
-    # #2014: waves at each ladder's line impedance, referred to impedance=.
+    # waves at each ladder's line impedance, referred to impedance=.
     s_params, line_impedances = coax_two_port_line_waves(s_params, grid, eps_scale, z_tem,
         center_xy=center_xy, pin_radius=a, outer_radius=b, ladders=(probes_top, probes_bot))
     reference_impedances = np.full(2, float(port.impedance))
@@ -1101,7 +1090,7 @@ def compute_coaxial_two_port(
         reference_impedances=reference_impedances,
         line_impedances=line_impedances,
     )
-    # Issue #662: the witness above is computed but was never compared to
+    # the witness above is computed but was never compared to
     # the -40 dB bar this result's own docstring documents. NaN on the
     # eps_scale path is skipped by the warner's finite mask (this array is
     # host-side numpy on every path, so no tracer is branched on here).
@@ -1119,7 +1108,7 @@ def compute_coaxial_two_port(
 # Appended to the shared passivity guard's message when THIS lane refuses, so
 # the exception a caller actually reads names the way back to the matrix. The
 # shared message (rfx/sparams/_common.py) is used by five extractors and is
-# left untouched; only this lane refuses by default (issue #838).
+# left untouched; only this lane refuses by default.
 COAX_MSL_TRANSITION_REFUSAL_HINT = (
     "compute_coax_msl_transition is an EXPERIMENTAL cross-family method and "
     "refuses a non-passive S by default (strict_passivity=True); pass "
@@ -1173,7 +1162,7 @@ def compute_coax_msl_transition(
         value on the registered microstrip port; geometry is not used to
         infer it. This sets the analytic line impedance the microstrip waves
         are formed at (``line_impedances``); S is referenced to the
-        registered ``impedance=`` of each port (``z0_ref``, #2014).
+        registered ``impedance=`` of each port (``z0_ref``).
     n_steps : int or None, optional
         Number of time steps for each drive. Default ``None`` derives the
         duration from ``num_periods`` using the grid.
@@ -1218,7 +1207,7 @@ def compute_coax_msl_transition(
         simulation with the same domain. Per-drive net Poynting-flux spectra
         are returned in ``result.flux_monitors``, keyed by ``"coax"`` or
         ``"msl"``, then monitor name, with float64 arrays of shape
-        ``(n_monitor_freqs,)``. Positive flux points along the positive axis.
+        ``(n_monitor_freqs)``. Positive flux points along the positive axis.
         These monitors do not alter S. Monitors registered on this simulation
         are refused.
     return_ladder_voltages : bool, optional
@@ -1303,7 +1292,7 @@ def compute_coax_msl_transition(
         extra_flux_monitors, self._domain, "compute_coax_msl_transition"
     )
     # Flux-monitor implementation (moved from API docstring).
-    # ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
+    # ``extra_flux_monitors``:
     # an ENERGY-WITNESS channel, not an extractor change. Pass the entry
     # objects ``Simulation.add_flux_monitor`` registers (build them on a
     # scratch ``Simulation`` with the same domain and hand over its
@@ -1523,7 +1512,7 @@ def compute_coax_msl_transition(
     freqs_jnp = jnp.asarray(freqs_arr, dtype=jnp.float32)
 
     # Stub construction and reference-plane rationale (moved from the API docstring).
-    # Generalizes issue #488's mixed lumped/wire<->MSL assembler
+    # Generalizes the mixed lumped/wire<->MSL assembler
     # (:meth:`compute_mixed_s_matrix`) to a coax<->MSL pair by combining,
     # UNCHANGED, the less-invasive half of each family's own validated
     # machinery instead of writing a new geometry-specific extractor:
@@ -1667,13 +1656,13 @@ def compute_coax_msl_transition(
         msl_pe.width, msl_pe.height, eps_r_sub_resolved
     )
 
-    # Registered impedance= is the S reference (#2014); waves are formed at
+    # Registered impedance= is the S reference; waves are formed at
     # the analytic z_tem / z0_msl. A gap > 5 % is said once per port.
     warn_line_reference_mismatch("compute_coax_msl_transition()", (
         ("coax", port.impedance, z_tem), ("msl", msl_pe.impedance, z0_msl)))
 
     # MSL-side probe ladder is independent of the coax-side one (issue
-    # #489 leg 4 attempt 2) -- default to the coax values so an
+    # leg 4 attempt 2) -- default to the coax values so an
     # existing caller (attempt 1's committed fixture) sees byte-
     # identical behavior when these new parameters are left unset.
     # Independent ladder parameters (moved from the API docstring): the
@@ -1715,8 +1704,8 @@ def compute_coax_msl_transition(
     # DFT-plane construction and the voltage array stay index-consistent.
     xs_sorted = sorted(xs_ladder)
 
-    # ---- Issue #823: source near-field standoff on the REALIZED ladder.
-    # NEAR-FIELD STANDOFF (issue #823) — the one constraint these
+    # ---- source near-field standoff on the REALIZED ladder.
+    # NEAR-FIELD STANDOFF — the one constraint these
     # three are NOT free of. Every probe must clear BOTH ends the
     # ladder is referred to (the MSL port's own feed plane AND the
     # reference plane at ``junction_x``) by at least
@@ -1728,7 +1717,7 @@ def compute_coax_msl_transition(
     # single probe 0.4 mm = 1.33*h_sub from the feed dragged the
     # full-ladder residual from 3.7e-3 to 0.342, and this lane spent
     # three attempts attributing that to junction physics. The
-    # threshold is the repo's EXISTING issue-#80 Fix B constant —
+    # threshold is the source near-field standoff constant —
     # see :func:`rfx.api._preflight.msl_source_near_field_standoff_cells`
     # for the derivation that licenses reusing it here, and for the
     # W/h limitation it carries. Preflight cannot enforce it on this
@@ -1816,7 +1805,7 @@ def compute_coax_msl_transition(
     k_lo_msl, k_hi_msl = span["n_lo"], span["n_hi"]
     j_centre_msl = span["w_centre"]
     i_feed_msl = span["i_feed"]
-    # #931 §1.9: realized wall planes locate the trace, not cells.
+    # realized wall planes locate the trace, not cells.
     from rfx.probes.msl_wave_decomp import (
         realized_trace_planes_on_column as _trace_planes_cx,
     )
@@ -1892,7 +1881,7 @@ def compute_coax_msl_transition(
             ProbeSpec(i=i_probe_msl, j=j_probe_msl, k=k_probe_msl, component="ez"),
         ]
 
-        # #589 flux-adjudication opt-in: fresh accumulators PER DRIVE
+        # flux-adjudication opt-in: fresh accumulators PER DRIVE
         # (init_flux_monitor zeroes the DFT carries; sharing cfgs across
         # drives would co-accumulate both drives into one spectrum).
         _flux_run_kwargs = (
@@ -1990,7 +1979,7 @@ def compute_coax_msl_transition(
         )
 
     reference_planes = np.asarray([ref_coax_m, float(junction_x)], dtype=float)
-    # #2014: waves formed at the analytic line impedances; s_params referred
+    # waves formed at the analytic line impedances; s_params referred
     # to the registered impedance= of each port.
     line_impedances = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
     z0_ref = np.asarray(
@@ -1998,7 +1987,7 @@ def compute_coax_msl_transition(
     s_params = renormalize_power_waves(s_params, line_impedances, z0_ref)
 
     # Ladder dump implementation (moved from the API docstring).
-    # ``return_ladder_voltages`` (issue #589 label-independent ladder dump):
+    # ``return_ladder_voltages``:
     # a second read-only channel, additive in exactly the same sense. When
     # ``True``, the RAW per-probe modal voltages this method already
     # computed for both drives are attached to
@@ -2015,7 +2004,7 @@ def compute_coax_msl_transition(
     # test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
     # the same discipline as the flux witness above; the round-trip
     # assertion there also proves the dump IS what the assembler consumed).
-    # The same flag switches on the issue-#823 LADDER SELF-CONSISTENCY
+    # The same flag switches on the LADDER SELF-CONSISTENCY
     # WITNESS, ``result.ladder_split_gamma_dev`` /
     # ``result.ladder_split_reflection_decades`` (``None`` when the flag
     # is off): a disjoint-half refit of each ladder, i.e. a Python loop of
@@ -2024,7 +2013,7 @@ def compute_coax_msl_transition(
     # those arrays and moves no S-parameter number; it is opt-in so that
     # a default call pays for no extra pencil solves. Documented
     # field-by-field on :class:`~rfx.api._spec.CoaxMSLTransitionResult`.
-    # ---- Issue #823 ladder self-consistency witness (REPORT-ONLY) ----
+    # ---- ladder self-consistency witness (REPORT-ONLY) ----
     # Refit each port's ladder on two disjoint contiguous halves with the
     # same reference plane and the same extractor, and report the
     # disagreement. Computed AFTER the assembler has produced every
@@ -2045,7 +2034,7 @@ def compute_coax_msl_transition(
         ladder_split_gamma_dev = np.stack([_split_g_coax, _split_g_msl])
         ladder_split_reflection_decades = np.stack([_split_d_coax, _split_d_msl])
 
-    # #589 ladder dump (read-only). Taken AFTER the assembler consumed
+    # ladder dump (read-only). Taken AFTER the assembler consumed
     # the very same arrays, so no number above can depend on the flag.
     # ``msl_ladder_i`` is recomputed here with the same expression the
     # drive loop used (``i_x`` there is loop-local by construction).
@@ -2089,7 +2078,7 @@ def compute_coax_msl_transition(
         flux_monitors=(flux_by_drive if extra_flux_monitors else None),
         ladder_voltages=ladder_voltages,
     )
-    # Issue #662, same gap as compute_coaxial_two_port. ``n_steps`` here is
+    # As in compute_coaxial_two_port, ``n_steps`` here is
     # the RESOLVED record length (num_periods was folded into it above), and
     # it is the knob that overrides num_periods, so it is the actionable one.
     _warn_if_ringdown_truncated(
@@ -2105,8 +2094,8 @@ def compute_coax_msl_transition(
         # Lane-local, on purpose. _finalize_sparam_result's message is shared
         # by five extractors and tells the reader to inspect the V/I dump --
         # good advice, but it cannot name an escape hatch that only this lane
-        # has. Appending here keeps the other four messages byte-identical
-        # (issue #838). ValueError is preserved and the original is chained,
+        # has. Appending here keeps the other four messages byte-identical.
+        # ValueError is preserved and the original is chained,
         # so `except ValueError` callers and the traceback are unaffected.
         raise ValueError(f"{exc} {COAX_MSL_TRANSITION_REFUSAL_HINT}") from exc
 

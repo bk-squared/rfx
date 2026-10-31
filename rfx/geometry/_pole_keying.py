@@ -1,11 +1,11 @@
-"""Dispersion-pole mask keying helpers (issue #274).
+"""Dispersion-pole mask keying helpers.
 
 Lives in its own module (imported by ``rfx/api/_compile.py`` at ``import
 rfx`` time). It was split out to dodge the ``rfx.geometry.rasterize``
 submodule/function name collision that once clobbered the public
 ``rasterize`` FUNCTION (broke the rcs_scattering tutorial). That landmine
 is now fixed at the source — the offending submodule was renamed to
-``rfx/geometry/rasterize_grid.py`` (issue #393), so no ``rasterize``
+``rfx/geometry/rasterize_grid.py``, so no ``rasterize``
 submodule exists to shadow the function. This module stays separate for
 organisation; the split is no longer load-bearing.
 """
@@ -19,7 +19,7 @@ from rfx.core.jax_utils import is_tracer
 
 
 def _pole_key(pole):
-    """Mask-dict key for a dispersion pole (issue #274).
+    """Mask-dict key for a dispersion pole.
 
     Key by VALUE whenever value equality is decidable: equal-valued
     poles from different ``add_material`` calls merge into one
@@ -27,8 +27,7 @@ def _pole_key(pole):
     same pole twice (``init_debye`` / ``init_lorentz`` sum
     contributions over entries — a duplicate entry would silently
     double delta_eps on overlap cells). Plain id-keying for all poles
-    is the recorded do-not-repeat (PR #272 branch: overlap-cell beta
-    ratio 2.000 vs 1.000).
+    doubles the overlap-cell beta ratio: measured 2.000 vs 1.000.
 
     Key resolution order:
 
@@ -49,7 +48,7 @@ def _pole_key(pole):
        representable values (0.5, 1.5, ...).
     3. Fields carrying JAX TRACERS — ``id(pole)``. Value equality is
        undecidable at trace time; identity is the only stable key
-       (the documented differentiable-dispersion path, #273).
+       (the documented differentiable-dispersion path).
     4. Eager but not ``float()``-coercible — fields that are
        non-scalar arrays OR scalars ``float()`` rejects (e.g. a
        complex 0-d array) — ``id(pole)`` plus a loud ``UserWarning``:

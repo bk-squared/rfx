@@ -6,7 +6,7 @@ from rfx.materials.nonlinear import _KERR_FIXED_POINT_ITERS
 
 
 def apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr):
-    """Apply the instantaneous **reactive** Kerr correction to the E-field (#437, #446).
+    """Apply the instantaneous **reactive** Kerr correction to the E-field.
 
     A Kerr χ³ nonlinearity is a REACTIVE, intensity-dependent permittivity
     (LOSSLESS — it changes the phase velocity, not the amplitude):
@@ -28,14 +28,13 @@ def apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr):
     ΔE/(1+χ³|E^n|²/ε_r)``): the increment form applies ε_eff to the E-update increment
     ``ΔE ∝ ∂ₓH``, which is 90° out of phase with E, so the χ³ correction hits the
     increment where it is smallest ⇒ it UNDERESTIMATES the self-phase-modulation index
-    shift. The true-CW absolute oracle (tests/oracle/test_kerr_spm_absolute_oracle.py, #446, using
+    shift. The true-CW absolute oracle (tests/oracle/test_kerr_spm_absolute_oracle.py, using
     ``waveform='continuous_wave'`` so ⟨E²⟩=A²/2 is unambiguous) pins the D-based operator at
     ratio ≈0.95 of the (3/8)χ³A² textbook (residual ~5% = Yee dispersion), while the increment
     form scores ~0.33 there — the gate cleanly discriminates them. (An earlier pulsed-source
     3D estimate read the pair as ~0.21× increment vs ~0.59× D-based — a comparator-independent
-    2.8× relative gain, but its absolute scale was biased low by the pulsed-⟨E²⟩ ambiguity that #446
-    resolves.) See docs/research_notes/2026-07-23_kerr_quantitative_spm_finding.md.
-    The pre-#437 form ``E → E/(1+factor)`` was worse still — a nonlinear
+    2.8× relative gain, but its absolute scale was biased low by the pulsed-⟨E²⟩ ambiguity that the CW oracle resolves.) See docs/research_notes/2026-07-23_kerr_quantitative_spm_finding.md.
+    The scaling form ``E → E/(1+factor)`` was worse still — a nonlinear
     ABSORBER (phase-neutral to first order). χ³=0 ⇒ D_target=ε_r·E_lin, denom=ε_r ⇒
     E=E_lin (byte-identical). Stable and lossless up to strong χ³ (verified χ³≤4).
 

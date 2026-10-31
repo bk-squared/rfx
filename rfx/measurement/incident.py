@@ -36,7 +36,7 @@ def measure_normal_incident_spectrum(
     before the cos term, -1.14 dB at 40 cells per wavelength. sigma goes as
     |E_scat / E_inc|^2 and E_scat follows the launched wave, so an RCS
     normalized by the waveform itself is low by that same number of dB,
-    1.14 dB at 40 cells per wavelength (issue #820).
+    1.14 dB at 40 cells per wavelength.
 
     This replays the auxiliary line standalone from a fresh zero state (the
     caller's ``state`` is only a shape/dtype template and is never mutated) for
@@ -120,9 +120,7 @@ def measure_incident_spectrum(
     ``n_steps`` and DFTs the recorded ``e1d`` at the aux index onto which the
     box centre projects.  This is the incident spectral amplitude the 4-edge
     box actually injects, so using it as the RCS normalization captures what an
-    analytic waveform DFT cannot. Historical measurements below predate #1812
-    and its declared-pulse timing (issue #471 F7 audit, gate grid
-    f0=5 GHz, dx=2 mm):
+    analytic waveform DFT cannot. The measurements below use the auxiliary timing preceding declared-pulse timing (gate grid f0=5 GHz, dx=2 mm):
 
     * the then-hardcoded ``t0=40·dt, tau=12·dt`` modulated Gaussian instead of the
       normal path's assumed differentiated Gaussian (+8.83 dB at f0 — the

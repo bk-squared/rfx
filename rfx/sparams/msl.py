@@ -1,15 +1,12 @@
-"""The MSL S-matrix calculator, moved verbatim out of ``rfx.api._sparams``.
+"""The MSL S-matrix calculator.
 
-Issue #980 Phase 2. ``compute_msl_s_matrix`` below is the ``_SparamMixin``
-method relocated byte for byte — same signature, same docstring, same logic,
-dedented by exactly four spaces and nothing else. It is a MODULE-LEVEL
-function whose first parameter is still named ``self`` and is still the
-:class:`~rfx.api.Simulation` instance: ``rfx.api._sparams`` binds it back onto
-the class (``compute_msl_s_matrix = _msl.compute_msl_s_matrix``), so
-``sim.compute_msl_s_matrix(...)`` keeps its name, signature, ``__doc__`` and
-bound-method behaviour. A class wrapper may replace that binding in a later
-step; the move itself is gated on bit identity of the extracted S arrays
-(``tests/locks/test_sparams_split_bit_identity.py``).
+``compute_msl_s_matrix`` is a module-level function whose first parameter,
+``self``, is the :class:`~rfx.api.Simulation` instance.
+``rfx.api._sparams`` binds it onto ``_SparamMixin`` as
+``compute_msl_s_matrix = _msl.compute_msl_s_matrix``, giving
+``sim.compute_msl_s_matrix(...)`` its bound-method behaviour. Extracted
+S arrays are checked for bit identity by
+``tests/locks/test_sparams_split_bit_identity.py``.
 
 ``_resolve_msl_probe_entries`` stays on the class and is reached through
 ``self``, as are ``run`` / ``forward`` / ``add_probe`` /
@@ -87,7 +84,7 @@ def compute_msl_s_matrix(
 
     Returned S uses power waves referenced to each port's declared
     ``impedance=`` (default 50 ohm): a=(V+R*I)/(2*sqrt(R)),
-    b=(V-R*I)/(2*sqrt(R)) with R the declared impedance (#2014). The waves
+    b=(V-R*I)/(2*sqrt(R)) with R the declared impedance. The waves
     are formed at the analytic Hammerstad-Jensen line Z0 and the matrix is
     then referred to R by ``renormalize_power_waves`` (exact for real
     references; nothing is computed where R equals the line Z0).
@@ -101,7 +98,7 @@ def compute_msl_s_matrix(
     would zero the gradient wherever the clip bites), so while it was the
     default the S a caller measured and the S ``jax.grad`` differentiated
     were different functions wherever it bit. One function, chosen to be
-    the measured one (PI decision, 2026-09-21; the contract is
+    the measured one (the contract is
     ``docs/design_notes/chain_closure_contract.md``).
 
     A raw S may exceed the passive bound, and the result says so rather
@@ -167,8 +164,7 @@ def compute_msl_s_matrix(
     For each registered MSL port, runs one FDTD simulation with that
     port driven and the others passive.  The passive ports are NOT
     assumed matched — ``|a_passive/a_driven| = 0.243-0.248`` at the
-    shipped R = 50 Ω (0.19-0.93 across terminations), re-measured on
-    current main 2026-08-30 (VESSL 369367257265) — so the S-matrix is
+    shipped R = 50 Ω (0.19-0.93 across terminations), measured (VESSL 369367257265) — so the S-matrix is
     recovered by solving the
     full wave system ``S = B·A⁻¹`` over all drives rather than by the
     per-column ratio ``b_j/a_d`` (the ratio reports the far
@@ -200,7 +196,7 @@ def compute_msl_s_matrix(
     is applied in that line's reference, and S is then referred to
     ``impedance=``; an override that varies between a feed plane and its
     probe 0 is refused by name, as is a call under ``jax.jit``, where its
-    values cannot be checked (#2199). The two bracketing H planes are linearly
+    values cannot be checked. The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes
@@ -246,7 +242,7 @@ def compute_msl_s_matrix(
         Opt into the passivity projection as a post-process. ``False``
         (default) returns the raw extracted ``S``; see the section above
         for what each setting costs and which channels the projection can
-        reach. Changed from ``True`` on 2026-09-21.
+        reach.
     checkpoint_segments : int or None
         Gradient-checkpointing segment count for the reverse-mode AD tape on
         the **uniform** mesh (the standard MSL path), forwarded to
@@ -357,7 +353,7 @@ def compute_msl_s_matrix(
             "use the uniform Yee solver."
         ), _diagnostics)
 
-    # Issue #704: an NTFF box would be silently dropped on this path.
+    # an NTFF box would be silently dropped on this path.
     _warn_ntff_box_dropped(self, "compute_msl_s_matrix()")
 
     entries = list(self._msl_ports)
@@ -376,17 +372,17 @@ def compute_msl_s_matrix(
         freqs_arr = np.asarray(freqs)
     n_freqs_used = int(freqs_arr.shape[0])
 
-    # Issue #469: solve the probe-offset interval for AUTO ports (the
+    # solve the probe-offset interval for AUTO ports (the
     # downstream reflector term is only computable here, with the full
     # geometry registered — see _resolve_msl_auto_offsets).
     entries = self._resolve_msl_probe_entries(grid)
 
     # Build MSLPort descriptors and probe coords once (geometry shared).
-    # Issue #661: msl_port_from_entry projects ``position`` onto the
+    # msl_port_from_entry projects ``position`` onto the
     # port frame for whichever in-plane axis ``direction`` names.
     msl_ports = [msl_port_from_entry(pe) for pe in entries]
 
-    # N-probe placement (issue #80 Fix C). Probe n sits at
+    # N-probe placement. Probe n sits at
     # offset + n*spacing cells from the feed plane. N >= 3.
     n_probes_per_port = [int(pe.n_probes) for pe in entries]
     probe_xs = [
@@ -405,7 +401,7 @@ def compute_msl_s_matrix(
     # Resolved in rfx.preflight.msl, NOT through the rfx.api._preflight
     # re-export, so that this reader and preflight's own reader
     # (_check_msl_port_geometry, which lives in that module and looks the
-    # name up in its globals) share ONE lookup target. #980 Phase 3 leg 1
+    # name up in its globals) share ONE lookup target. Phase 3 leg 1
     # moved both; before it, a single monkeypatch on rfx.api._preflight
     # covered the two, and
     # tests/unit/ports/test_msl_clearance_diagnostic.py asserts that it
@@ -416,7 +412,7 @@ def compute_msl_s_matrix(
         self, pe, grid, probe_coordinates=xs,
     ) for pe, xs in zip(entries, probe_xs))
     # ``probe_xs`` are the N physical x-coordinates fed to the
-    # N-probe extractor (issue #80 Fix C), which fits
+    # N-probe extractor, which fits
     # V_n = alpha*exp(-j*beta*x_n) + gamma*exp(+j*beta*x_n). The
     # coordinates are increasing for ``+x`` ports and decreasing for
     # ``-x`` ports; the extractor anchors the model at probe 0 and
@@ -429,7 +425,7 @@ def compute_msl_s_matrix(
     # non-uniform grids are supported — NonUniformGrid exposes per-cell
     # dx_arr/dy_arr/dz (NOT *_profile); see _msl_cell_profile.
     #
-    # Issue #661: ports may point along different in-plane axes, so the
+    # ports may point along different in-plane axes, so the
     # transverse profiles are resolved PER PORT. The substrate-normal
     # profile is always z (the normal axis is welded — see
     # msl_axis_roles), which is why the modal-voltage integration below
@@ -470,7 +466,7 @@ def compute_msl_s_matrix(
             h_a=f"h{a_ax}", h_b=f"h{b_ax}",
         ))
 
-    # Analytic Hammerstad-Jensen anchor per port (issue #80 Fix C).
+    # Analytic Hammerstad-Jensen anchor per port.
     # ``beta0_per_port[p]`` is the (n_freqs,) propagation-constant
     # guess ``omega * sqrt(eps_eff) / c`` used to centre the N-probe
     # extractor's robust beta scan; ``z0_hj_per_port[p]`` is the
@@ -485,7 +481,7 @@ def compute_msl_s_matrix(
     # land beta outside the scan window for a loaded substrate.
     from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
     _C0_MSL = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
-    # #679: surface_impedance_f0 sheets are supported on this lane. NO
+    # surface_impedance_f0 sheets are supported on this lane. NO
     # ctx is built here — every device dispatch below goes through the
     # public run()/forward(), which assemble their own materials with
     # sheet_specs and build the ctx against their OWN final pec_mask
@@ -506,7 +502,7 @@ def compute_msl_s_matrix(
             grid, pec_sheets=_msl_pec_sheets, pec_wires=_msl_pec_wires)
     )
     _msl_materials = _msl_assembled[0]
-    # #931 §1.9: the trace is located by its REALIZED wall planes, not
+    # the trace is located by its REALIZED wall planes, not
     # by a pec_mask cell scan — a sheet-declared trace owns no cell.
     from rfx.boundaries.pec import (
         realized_pec_edge_masks as _rpem_msl,
@@ -543,7 +539,7 @@ def compute_msl_s_matrix(
             2.0 * np.pi * freqs_arr * float(np.sqrt(eps_eff_hj)) / _C0_MSL
         )
         z0_hj_per_port.append(float(z0_hj))
-    # #2199: under eps_override the line between each feed plane and probe 0
+    # under eps_override the line between each feed plane and probe 0
     # is the solved one, so the plane shift reads its permittivity there
     # (traced; refused by name where it varies along that length).
     line_eps_per_port = None
@@ -559,11 +555,11 @@ def compute_msl_s_matrix(
                 k_lo=port_idx_meta[p]["k_lo"], k_hi=port_idx_meta[p]["k_hi"])
             for p, pe in enumerate(entries)
         ]
-    # #2014: the S reference is the declared impedance=, not the line Z0.
+    # the S reference is the declared impedance=, not the line Z0.
     declared_refs = np.asarray(
         [float(pe.impedance) for pe in entries], dtype=np.float64)
 
-    # Trace-conductor z-cell span per port (issue #80 stage S1). The
+    # Trace-conductor z-cell span per port. The
     # closed Ampere-loop current needs the PEC trace cells; the trace
     # is the PEC run at/above the substrate top in the port's centre
     # column (the ground-plane PEC sits far below near k_lo).
@@ -572,7 +568,7 @@ def compute_msl_s_matrix(
         meta = port_idx_meta[p_idx]
         # Walk UP the substrate-normal axis (always z) from the
         # substrate top, at the feed cell on the propagation axis and
-        # the trace centre on the width axis (issue #661).
+        # the trace centre on the width axis.
         _ij = tuple(
             meta["i_feed"] if c == meta["prop_idx"] else meta["j_centre"]
             for c in range(3) if c != meta["normal_idx"]
@@ -610,7 +606,7 @@ def compute_msl_s_matrix(
         S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
         Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
         beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-        # N-probe extractor (issue #80 Fix C): store all N voltage
+        # N-probe extractor: store all N voltage
         # probe phasors. n_probes may differ per port — store the
         # max width and zero-pad shorter ports.
         n_probes_max = max(n_probes_per_port)
@@ -625,12 +621,12 @@ def compute_msl_s_matrix(
         raw_i1_same_index = jnp.zeros_like(raw_i1) if raw_3probe_dump_path is not None else None
         raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
         raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
-        # β-scan rail flags per (driven, port) fit (issue #681).
+        # β-scan rail flags per (driven, port) fit.
         raw_beta_railed = jnp.zeros(
             (n_ports, n_ports, n_freqs_used), dtype=bool
         )
-        # Wave amplitudes per (driven, port) for the multi-drive solve
-        # (issue #507). Python lists of jnp arrays, not a stacked array,
+        # Wave amplitudes per (driven, port) for the multi-drive solve.
+        # Python lists of jnp arrays, not a stacked array,
         # so eps_override tracers stay on the AD tape.
         wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
         wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
@@ -656,10 +652,10 @@ def compute_msl_s_matrix(
             _witness_counts.append(len(pxs_w))
         _witness_total = sum(_witness_counts)
         # Mark the witness probes as library-internal so probe-placement
-        # preflight advisories and the #332 tail advisory skip them
-        # (issue #470: 10 self-inflicted advisories per driven run on
+        # preflight advisories and the tail advisory skip them
+        # (10 self-inflicted advisories per driven run on
         # the 2-port thru buried the genuine MSL port-clearance
-        # advisories, and #332 double-fired next to settling_db).
+        # advisories, and the tail advisory double-fired next to settling_db).
         self._internal_probe_indices.update(
             range(_witness_base, _witness_base + _witness_total)
         )
@@ -769,7 +765,7 @@ def compute_msl_s_matrix(
                 # monkeypatch sim.run with a fixed signature broke on the
                 # unconditional kwarg, and in two tests the TypeError was
                 # swallowed by a fallback except and surfaced as
-                # DID-NOT-WARN instead (PR #555 class).
+                # DID-NOT-WARN instead.
                 result = self.run(
                     n_steps=n_steps,
                     num_periods=num_periods,
@@ -829,13 +825,13 @@ def compute_msl_s_matrix(
                     # at ceil = k_hi + 1 and the k_hi anchor is one
                     # substrate edge SHORT — V and the Ampere-loop
                     # current would reference different conductor
-                    # planes (PR #516 review, finding F2; measured on
+                    # planes (measured on
                     # the dx=80um gate fixture: trace node 4, k_hi 3).
                     # trace_k_per_port is the same PEC search the
                     # current integration uses, so V and I share one
                     # conductor plane by construction.
                     # ez_plane is [freq, width, normal] for an x- OR a
-                    # y-normal plane alike (issue #661), so j_centre /
+                    # y-normal plane alike, so j_centre /
                     # k_lo / k_hi address it unchanged and the dz_arr
                     # here is always the substrate-normal profile.
                     if (
@@ -882,7 +878,7 @@ def compute_msl_s_matrix(
                     and hz_plane.shape == hy_plane.shape
                 )
                 # Closed Ampere-loop current ∮H·dl around the trace
-                # conductor (issue #80 stage S1). The pre-S1 inline
+                # conductor. The pre-S1 inline
                 # integral summed the bottom Hy leg only and undercounted
                 # I by ~1.5x, inflating the de-embedded Z0 to ~74 vs the
                 # ~48 ohm analytic value. msl_loop_current closes the
@@ -901,12 +897,12 @@ def compute_msl_s_matrix(
                     _n_lo, _n_hi = 0, hy_plane.shape[2]
                     _j_lo, _j_hi = meta["j_lo"], meta["j_hi"]
                     _k_lo, _k_hi = k_tr_lo, k_tr_hi
-                # Issue #661: msl_loop_current wants the planes in the
+                # msl_loop_current wants the planes in the
                 # right-handed transverse frame [freq, a, b] with
                 # a_hat x b_hat = p_hat. The recorded planes are
                 # [freq, width, normal]. For "+x"/"-x" the pair is
                 # (y, z) = (width, normal) — already in frame, no
-                # transpose, byte-identical to the pre-#661 call. For
+                # transpose. For
                 # "+y"/"-y" the pair is (z, x) = (normal, width), so
                 # the two axes swap and the spans swap with them.
                 # Do NOT "simplify" this into a plain x<->y rename:
@@ -950,8 +946,7 @@ def compute_msl_s_matrix(
                     raw_i1_left = raw_i1_left.at[driven, p_idx, :].set(side_currents[0])
                     raw_i1_same_index = raw_i1_same_index.at[driven, p_idx, :].set(side_currents[1])
                 i_first_per_port.append(i_f)
-                # N-probe least-squares wave decomposition (issue #80
-                # Fix C). Stack the N voltage probes into (n_freqs, N),
+                # N-probe least-squares wave decomposition. Stack the N voltage probes into (n_freqs, N),
                 # anchor the beta scan on the analytic HJ guess, and
                 # solve the over-determined (alpha, gamma) system by
                 # SVD lstsq — this removes the 3-probe q->1 singularity.
@@ -966,8 +961,8 @@ def compute_msl_s_matrix(
                     jnp.asarray(beta0_per_port[p_idx]),
                     z0_hj=z0_hj_per_port[p_idx],
                 )
-                # Normalize the REPORTED characteristic-impedance sign per port
-                # (issue #140). msl_loop_current negates the loop current ONLY for
+                # Normalize the REPORTED characteristic-impedance sign per port.
+                # msl_loop_current negates the loop current ONLY for
                 # "+x" ports (rfx/sources/msl_port.py:947-948), so a "-x" port's
                 # fitted z0 = (alpha - gamma)/I inherits a negative sign while a
                 # physical Z0 is positive-real. Mirror that exact binary so BOTH
@@ -988,8 +983,7 @@ def compute_msl_s_matrix(
                     jnp.asarray(res_p["beta_railed"], dtype=bool)
                 )
                 if p_idx == driven:
-                    # V·I single-plane wave split at probe 0 (issue #80
-                    # stage S1): a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
+                    # V·I single-plane wave split at probe 0: a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
                     # the OpenEMS-style telegrapher de-embedding. With a
                     # real positive Z0 and a passive structure this is
                     # bounded |S11|<=1, unlike the Fix-C alpha/gamma
@@ -1006,7 +1000,7 @@ def compute_msl_s_matrix(
                     if driven == 0:
                         beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
-            # Off-diagonal S21: S[j,i] = b_j / a_i (issue #80 stage S1).
+            # Off-diagonal S21: S[j,i] = b_j / a_i.
             # The wave received from the structure at a passive port is
             # its BACKWARD wave b=(V-Z0*I)/2, not the forward wave a it
             # would launch. For a transmitted wave arriving at a port
@@ -1016,11 +1010,9 @@ def compute_msl_s_matrix(
             # RETAINED as the fallback only. This single-ratio rule is
             # exact only when a_j = 0 at every passive port, and it is
             # not: |a_passive/a_driven| = 0.243-0.248 at the shipped
-            # R = 50 ohm (0.19-0.93 across terminations), re-measured
-            # on current main 2026-08-30 (#524, VESSL 369367257265,
-            # PR #799; the July figure here before was 0.07-0.51), so
+            # R = 50 ohm (0.19-0.93 across terminations), measured in VESSL 369367257265, so
             # the far port's echo is reported as the structure's own
-            # reflection (issue #507). The wave
+            # reflection. The wave
             # amplitudes recorded below feed the multi-drive solve that
             # replaces this after the drive loop.
             for j in range(n_ports):
@@ -1032,8 +1024,8 @@ def compute_msl_s_matrix(
                 ) * power_scales[j]
                 S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
-            # Record the FULL (a, b) pair at every port for this drive
-            # (issue #507). ``a`` at a passive port is what the
+            # Record the FULL (a, b) pair at every port for this drive.
+            # ``a`` at a passive port is what the
             # single-ratio rule above assumes away. Relative sqrt(R0/Rj)
             # row scales give power waves up to one shared sqrt(R0),
             # which cancels from both S and cond(A).
@@ -1046,7 +1038,7 @@ def compute_msl_s_matrix(
                 wave_b[driven][j] = jnp.asarray(
                     0.5 * (v0_j - z0_j * i_j) * power_scales[j], dtype=_complex_dtype)
 
-        # ---- Multi-drive S solve (issue #507) -----------------------
+        # ---- Multi-drive S solve -----------------------
         # Every port was driven, so the full wave system is recorded:
         #     A[j, d] = a_j during drive d      B[j, d] = b_j during d
         #     b = S a   for every drive   =>    S = B · A⁻¹
@@ -1056,9 +1048,9 @@ def compute_msl_s_matrix(
         # b_1/a_1 = S11 + S12·(a_2/a_1) holds to machine precision, so
         # the echo was reported as the structure's own reflection. That
         # also makes |S11|²+|S21|² = 1 + |S11|² — the same power counted
-        # twice — which is the passivity violation #507 opened on.
+        # twice — which violates passivity.
         # Same algebra as the coax lane's
-        # solve_two_port_from_wave_amplitudes (#489), generalised to n
+        # solve_two_port_from_wave_amplitudes, generalised to n
         # ports. cond(A) bounds DEGENERACY only; it is not a
         # reliability score.
         msl_assembly: str | None = None
@@ -1098,7 +1090,7 @@ def compute_msl_s_matrix(
                     )
             if not _bad:
                 S = S_solved.astype(_complex_dtype)
-            # Persist WHICH rule produced S (issue #523). A transient
+            # Persist WHICH rule produced S. A transient
             # warning is not enough: under enforce_passivity=True the
             # projection clips away the fallback's own symptom (column
             # power > 1), so a fallback result can look healthy in every
@@ -1138,7 +1130,7 @@ def compute_msl_s_matrix(
         )
         # The waves above are at the declared line's Z0 (z0_hj). The phase-
         # only shift is exact in the reference of the line it moves along,
-        # so under eps_override (#2199) S is first referred to the solved
+        # so under eps_override S is first referred to the solved
         # line's Z0, shifted with that line's beta, and referred to
         # impedance= from there below.
         s_line_refs = z0_hj_per_port
@@ -1170,7 +1162,7 @@ def compute_msl_s_matrix(
         # absolute error bound. It remains separate from layout/settling.
         reliable = None
         try:
-            # Cover every drive/port record (issue #522). An error in
+            # Cover every drive/port record. An error in
             # a passive record can affect the solve even when own-drive
             # records are healthy: the planted corruption test changes
             # S21 by0.92 with cond(A)=1.28. Small magnitude alone does
@@ -1199,7 +1191,7 @@ def compute_msl_s_matrix(
             # eager forward result still carries the reliability mask.
             pass
 
-        # β-scan rail flags for the SHIPPED fit numbers (issue #681):
+        # β-scan rail flags for the SHIPPED fit numbers:
         # Z0[i, :] comes from port i's OWN-drive run and beta from run 0
         # / port 0, so the own-drive diagonal of raw_beta_railed is
         # exactly the provenance of every fitted number the result
@@ -1226,9 +1218,9 @@ def compute_msl_s_matrix(
             # result still carries the mask.
             beta_railed = None
 
-        # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
+        # --- Honesty guard  ---
         # S11/S21 come from the OpenEMS-style V·I wave amplitudes, now
-        # combined by the multi-drive solve (issue #507). |S11| > 1 on a
+        # combined by the multi-drive solve. |S11| > 1 on a
         # passive structure remains the primary red flag, but read it
         # correctly: the single-plane split itself was bounded by
         # construction, whereas the solve is not — it can exceed 1 when
@@ -1244,7 +1236,7 @@ def compute_msl_s_matrix(
         # records and analytic reference still need their own checks.
         import warnings as _w
 
-        # Issue #726: ONE text for what probe-clearance corruption does,
+        # ONE text for what probe-clearance corruption does,
         # shared with the preflight layout warning that used to contradict
         # this guard about the same condition. Imported, not copied.
         from rfx.preflight.msl import (
@@ -1287,10 +1279,10 @@ def compute_msl_s_matrix(
                 _w.warn(msg, AccuracyWarning, stacklevel=2)
             # Secondary — reported-Z0 sanity (retained N-probe fit).
             if z0_dev_max > _Z0_TOL:
-                # Issue #726 review P1b: the clearance story is only ONE of
+                # the clearance story is only ONE of
                 # this guard's causes, and on a satisfied port it is the
                 # WRONG advice — the common trigger is coarse-mesh staircase
-                # bias (#752), where "lengthen the feed" does nothing. Read
+                # bias, where "lengthen the feed" does nothing. Read
                 # the same per-port record the result carries, by the same
                 # index the entries tuple uses.
                 _cl = (probe_clearance[driven]
@@ -1370,7 +1362,7 @@ def compute_msl_s_matrix(
                     "planes; undo the shift with "
                     "feed_plane_shift before comparing to a probe-0 replay"
                 ),
-                # v3 (issue #523): production_smatrix is no longer always
+                # v3: production_smatrix is no longer always
                 # the N-probe-fit-derived S. Record WHICH assembly made
                 # it, so a replayed dump cannot be misattributed.
                 #
@@ -1467,7 +1459,7 @@ def compute_msl_s_matrix(
                 driven_port_indices=np.arange(n_ports, dtype=np.int64),
             )
 
-        # #2014: refer S from the line Z0 the waves were formed at to the
+        # refer S from the line Z0 the waves were formed at to the
         # declared impedance=, once, before the opt-in projection below.
         S = renormalize_power_waves(S, s_line_refs, declared_refs)
 
@@ -1487,10 +1479,10 @@ def compute_msl_s_matrix(
         # eps_override channel even when concrete — otherwise a finite-
         # difference objective sees the projected function while
         # jax.grad sees the raw one, and the committed AD==FD gates
-        # compare two different functions (review finding, PR #468).
+        # compare two different functions (review finding).
         # Those two exemptions are why it is no longer the default: a
         # post-process that CANNOT run on two of the three channels
-        # cannot be the shipped definition of S (PI, 2026-09-21).
+        # cannot be the shipped definition of S.
         if enforce_passivity and eps_override is None and not is_tracer(S):
             s_projected, correction = _project_passive(S)
             if bool(np.any(np.asarray(correction) > 0.0)):

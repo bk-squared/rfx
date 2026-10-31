@@ -39,8 +39,8 @@ class CPMLParams(NamedTuple):
 class CPMLAxisParams(NamedTuple):
     """Per-face CPML profiles (6 faces) for anisotropic grids.
 
-    T7 Phase 2 PR1 refactor (2026-04): promoted the ``x`` / ``y`` axis-level
-    profiles to explicit ``x_lo`` / ``x_hi`` / ``y_lo`` / ``y_hi`` fields.
+    The ``x`` / ``y`` profiles have explicit
+    ``x_lo`` / ``x_hi`` / ``y_lo`` / ``y_hi`` fields.
     The hi-face profile arrays are pre-flipped so the scan body no longer
     calls ``jnp.flip`` at every step.
 
@@ -63,7 +63,7 @@ class CPMLAxisParams(NamedTuple):
     y_lo: CPMLParams    # y-lo face
     y_hi: CPMLParams    # y-hi face (flipped relative to y_lo in the uniform case)
     z_lo: CPMLParams    # z-lo face (uses dz at lo boundary)
-    z_hi: CPMLParams    # z-hi face (uses dz at hi boundary, already independent pre-PR1)
+    z_hi: CPMLParams    # z-hi face (uses dz at hi boundary)
     dx_x_lo: float = 0.0   # x-lo boundary cell size
     dx_x_hi: float = 0.0   # x-hi boundary cell size
     dx_y_lo: float = 0.0   # y-lo boundary cell size
@@ -157,9 +157,8 @@ def _cpml_profile(
     # Stay in-trace when dt/dx are JAX tracers (mesh-as-design-variable
     # path); fall back to numpy for the standard concrete-grid case so
     # CPMLParams stays a constant pytree under JIT.  The concrete path
-    # keeps its original float64 intermediate computation (cast to
-    # float32 only at the CPMLParams boundary) so the returned profile
-    # is bit-identical to the pre-#45 release.  The traced path stays
+    # uses float64 intermediate computation, cast to float32 only at the CPMLParams boundary.
+    # The traced path stays
     # at float32 to match the default JAX dtype policy.
     traced = is_tracer(dt) or is_tracer(dx) or is_tracer(sigma_max)
     xp = jnp if traced else np
@@ -219,7 +218,7 @@ def _pad_profile_at_end(p: CPMLParams, n_active: int, n_alloc: int) -> CPMLParam
     """Extend a lo-face profile from ``n_active`` to ``n_alloc`` by
     appending no-op entries (σ=0, κ=1, α=0, b=1, c=0) at the end.
 
-    Used by T7 Phase 2 PR2 when the user requests a lo-face CPML
+    Used when the user requests a lo-face CPML
     thickness below the allocation budget. The padded region (indices
     ``[n_active:n_alloc]``) produces identity updates — no absorption,
     no field modification — so the cells between the active CPML and
@@ -260,7 +259,7 @@ def _flip_profile(p: CPMLParams) -> CPMLParams:
 
     Pre-computes the flipped (σ, κ, α, b, c) arrays so the scan body
     can access hi-face coefficients via direct field read instead of
-    calling ``jnp.flip`` at every step (T7 Phase 2 PR1).
+    calling ``jnp.flip`` at every step.
     """
     return CPMLParams(
         sigma=jnp.flip(p.sigma),
@@ -310,8 +309,7 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     all-no-op ``_cpml_noop_profile``. An axis narrower than the budget
     cannot hold that buffer — the face slices ``[:n]`` / ``[-n:]`` silently
     shrink to the axis extent while the length-``n`` profile does not, and
-    the scan dies on ``mul got incompatible shapes for broadcasting``
-    (issue #647). Reachable two ways, both with a per-face ``BoundarySpec``:
+    the scan dies on ``mul got incompatible shapes for broadcasting``. Reachable two ways, both with a per-face ``BoundarySpec``:
     an axis whose faces are all PEC/PMC (no padding at all, so its extent is
     just the interior), or an absorbing axis whose per-face
     ``lo_thickness`` / ``hi_thickness`` is well below the budget.
@@ -330,11 +328,11 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     Precedent for clamping over raising: the non-uniform runner already
     drops non-absorbing axes from the applied set
     (``rfx/nonuniform.py``: ``cpml_axes_eff`` keeps only axes with
-    ``pad_lo + pad_hi > 0``), which is why the #647 fixture survives the NU
+    ``pad_lo + pad_hi > 0``), which is why the fixture survives the NU
     lane and dies on the uniform one. ``_assert_absorber_fits`` below covers
     the case this reasoning does NOT license.
 
-    Issue #876: the clamp goes all the way down to the ACTIVE absorber depth
+    the clamp goes all the way down to the ACTIVE absorber depth
     ``max(pad_lo, pad_hi)`` rather than stopping at the axis extent. Every
     layer between the active depth and the budget is no-op padding
     (``b=1, c=0, kappa=1``), so dropping it cannot change the physics — but
@@ -372,7 +370,7 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     absorber to one layer (measured on
     ``tests/unit/sparams/test_overlap_extraction.py``: overlap-vs-V/I S21
     went from < 1e-4 to 1.3e-2). So an axis whose per-face pads are not
-    stated keeps the pre-#876 ``min(n_alloc, extent)`` clamp: nothing is
+    stated keeps the ``min(n_alloc, extent)`` clamp: nothing is
     known to be no-op there, so nothing is dropped.
 
     The same reasoning applies to an axis the GRID excludes from
@@ -386,15 +384,15 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     So "pads of 0" on such an axis means "the grid allocates no padding
     cells", not "there is no absorber", and clamping on it thinned a real
     8-layer absorber to 1. Measured on
-    ``rfx.run(Grid(freq_max=10e9, domain=(0.02,)*3, cpml_axes="z"), …)``
+    ``rfx.run(Grid(freq_max=10e9, domain=(0.02)*3, cpml_axes="z"), …)``
     for 200 steps: field digest ``d5ffa08245a4cb82`` before this guard's
     second clause and ``4da793698805a454`` with the one-sided guard, with
     residual E energy dropping 1.6401e+01 -> 8.3653e+00 (-49%). Both
     clauses are therefore the same rule: clamp only where the grid
     positively states that the face allocated nothing AND that the axis is
-    one this grid absorbs on. PR #1494 now defaults runner axes to the
+    one this grid absorbs on. The runner defaults its axes to the
     grid and refuses explicit additions, so these unpadded-axis profiles
-    are unused by the runner. The #876 buffer-depth rule remains intact.
+    are unused by the runner. The buffer-depth rule remains intact.
     """
     extents = _grid_extents(grid)
     depths = []
@@ -482,7 +480,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
 
     noop = _cpml_noop_profile(n)
-    # T7 Phase 2 PR2: per-face active layer counts. The allocation
+    # Per-face active layer counts. The allocation
     # budget ``n`` stays uniform (CPMLState shape unchanged, JIT cache
     # preserved on the symmetric common case). Faces with an active
     # layer count below the budget get a no-op-padded profile so the
@@ -545,17 +543,17 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     )
 
     nx, ny, nz = _grid_extents(grid)
-    # Issue #647: the psi buffers are indexed by the SAME face slices the
+    # the psi buffers are indexed by the SAME face slices the
     # scan body applies, so they carry the same per-axis clamp. On a uniform
     # absorber (every face allocates the full budget) the depths are still
     # ``n`` on all three axes, so those CPMLState shapes — and the JIT cache
     # — are untouched. On a per-face layout they are the ACTIVE absorber
-    # depth (#876), which is what makes the emitted program a function of
+    # depth, which is what makes the emitted program a function of
     # the absorber rather than of the allocation budget.
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
     _assert_absorber_fits(grid, (n_x, n_y, n_z))
 
-    # Issue #644.  The psi_* arrays are ACCUMULATION state — a recursive
+    # The psi_* arrays are ACCUMULATION state — a recursive
     # convolution integrated over every timestep — so they must never sit
     # below float32, whatever the field STORAGE dtype is.  Following
     # ``field_dtype`` verbatim put them at float16 under
@@ -566,12 +564,12 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     #
     # ``promote_types(field_dtype, float32)`` is the one policy that
     # satisfies every caller at once:
-    #   float16   -> float32    the #644 fix; "float16 fields, float32
+    #   float16   -> float32    the fix; "float16 fields, float32
     #                           accumulation" is exactly what this mode
     #                           promises (tests/unit/grid/test_mixed_precision.py)
     #   float32   -> float32    unchanged, bit-identical
     #   float64   -> float64    matches storage; float32 coeffs promote up
-    #   complex64 -> complex64  preserves the #404 oblique Bloch path —
+    #   complex64 -> complex64 preserves the oblique Bloch path —
     #                           which is WHY this followed field_dtype
     #                           in the first place
     # A flat ``float32`` pin would fix float16 and silently break complex64.
@@ -590,7 +588,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
 
 
 def _clip_lo(arr, depth: int, n_alloc: int):
-    """Front ``depth`` entries of a lo-face profile (#647).
+    """Front ``depth`` entries of a lo-face profile.
 
     Returns the array UNCHANGED on the common ``depth == n_alloc`` path so
     the emitted graph — and therefore every currently-working field byte —
@@ -601,7 +599,7 @@ def _clip_lo(arr, depth: int, n_alloc: int):
 
 
 def _clip_hi(arr, depth: int, n_alloc: int):
-    """Trailing ``depth`` entries of a PRE-FLIPPED hi-face profile (#647).
+    """Trailing ``depth`` entries of a PRE-FLIPPED hi-face profile.
 
     Hi profiles are stored outermost-cell-last, so the active layers live at
     the END and the head is the no-op padding — the mirror of
@@ -651,7 +649,7 @@ def _ce_from_inv_eps_r(inv, dt):
 def apply_cpml_e(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None,  # per-cell eps_r for material-aware CPML (None = free-space)
-    inv_eps_r_update=None,  # per-component 1/eps_r the E update itself used (#1043)
+    inv_eps_r_update=None,  # per-component 1/eps_r the E update itself used
     boundary=None, *, faces=ALL_FACES, e_loss=None, e_curl_coeff=None,
     frame=None, owned=None,
 ) -> tuple:
@@ -682,7 +680,7 @@ def apply_cpml_e(
         correctly receives no psi correction). ``None`` uses
         ``materials.eps_r`` for this permittivity factor.
 
-        **Why this exists (#1043).** The E update in a CPML cell is assembled
+        **Why this exists.** The E update in a CPML cell is assembled
         from two halves, and until this parameter they could take their
         permittivity from two different arrays::
 
@@ -697,10 +695,10 @@ def apply_cpml_e(
         once ``|c| * eps_a / eps_b > 1``. A one-cell amplification analysis
         puts the spectral radius at exactly 1.0 for ``eps_b >= eps_a`` and
         above 1 for every ``eps_b < eps_a`` (2.21 at the measured failing
-        cell, eps_a = 6.5 against eps_b = 1.0). #203/#205 are the same
-        inequality reached from the other side — ``materials=`` omitted, so
-        ``eps_b = 1`` inside an ``eps_a = eps_r`` dielectric — and they read
-        as "exponential divergence -> all-NaN s11".
+        cell, eps_a = 6.5 against eps_b = 1.0). Omitting ``materials=``
+        reaches the same inequality from the other side: ``eps_b = 1``
+        inside an ``eps_a = eps_r`` dielectric, producing exponential
+        divergence and all-NaN s11.
 
         A subpixel-smoothed interface cell inside a CPML pad has
         ``eps_a != eps_b`` by construction: the smoothed array carries the
@@ -725,17 +723,17 @@ def apply_cpml_e(
     owned = {} if owned is None else owned
     # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
     # float32 mu_r it silently promoted the ch coefficients to f64 and
-    # the field scatter demoted them back per step (measured, #665's
-    # FutureWarning). A Python float is weak-typed in BOTH numpy and
+    # the field scatter demoted them back per step (a scatter dtype FutureWarning). A Python
+    # float is weak-typed in BOTH numpy and
     # JAX, so the coefficients follow the ambient material dtype
-    # (#646 family: promote-never-pin).
+    # (promote, never pin).
     dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
     # Material-aware CPML: use local eps_r so guided modes in dielectric
     # waveguides see an impedance-matched absorber (equivalent to UPML).
     # Falls back to free-space eps_0 when materials is None.
     if inv_eps_r_update is not None:
         # Follow the ambient MATERIAL dtype, exactly as the ``materials``
-        # branch below does (#646 promote-never-pin: eps_r carries the run's
+        # branch below does (eps_r carries the run's
         # material precision). ``compute_smoothed_eps`` returns float64 under
         # JAX_ENABLE_X64 while ``materials.eps_r`` stays float32, and letting
         # that through changed the psi-scatter precision — and with it the
@@ -748,7 +746,7 @@ def apply_cpml_e(
             inv = jnp.asarray(inv)
             if _mat_dtype is not None:
                 inv = inv.astype(_mat_dtype)
-            # #1357: these bits; the derivative in eps_r units, where
+            # these bits; the derivative in eps_r units, where
             # ``/ EPS_0`` no longer multiplies the cotangent by 1.1e11.
             return si_value_eps_r_grad(_ce_from_inv_si, _ce_from_inv_eps_r,
                                        inv, dt)
@@ -757,7 +755,7 @@ def apply_cpml_e(
     elif materials is not None:
         # One array for all three components — the slices below are then
         # value-for-value what the single ``_ce_full`` produced.
-        # #1357: these bits; the derivative in eps_r units (the SI
+        # these bits; the derivative in eps_r units (the SI
         # spelling's VJP squares ``eps_r*EPS_0`` and overflows float32).
         _ce_ex = _ce_ey = _ce_ez = si_value_eps_r_grad(
             _ce_si, _ce_eps_r, materials.eps_r, dt)
@@ -804,7 +802,7 @@ def apply_cpml_e(
     ce_ey_zlo = _face(_ce_ey, 2, True)
     ce_ey_zhi = _face(_ce_ey, 2, False)
 
-    # Unpack per-face profiles and cell sizes (T7 Phase 2 PR1 — 6 faces).
+    # Unpack per-face profiles and cell sizes (6 faces).
     if isinstance(cpml_params, CPMLAxisParams):
         px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi
         py_lo, py_hi = cpml_params.y_lo, cpml_params.y_hi
@@ -841,7 +839,7 @@ def apply_cpml_e(
     c_zh = _clip_hi(pz_hi.c, face_depths["z_hi"], n)[None, None, :]
     k_zh = _clip_hi(pz_hi.kappa, face_depths["z_hi"], n)[None, None, :]
 
-    # Issue #644.  Accumulate the CPML corrections at the psi dtype, then
+    # Accumulate the CPML corrections at the psi dtype, then
     # round back to the field storage dtype ONCE at the end.  Under
     # ``precision="mixed"`` the corrections below are float32 (psi and the
     # b/c/kappa coefficients both are) while the field is float16, so
@@ -1101,10 +1099,10 @@ def apply_cpml_h(
     owned = {} if owned is None else owned
     # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
     # float32 mu_r it silently promoted the ch coefficients to f64 and
-    # the field scatter demoted them back per step (measured, #665's
-    # FutureWarning). A Python float is weak-typed in BOTH numpy and
+    # the field scatter demoted them back per step (a scatter dtype FutureWarning). A Python
+    # float is weak-typed in BOTH numpy and
     # JAX, so the coefficients follow the ambient material dtype
-    # (#646 family: promote-never-pin).
+    # (promote, never pin).
     dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
     from rfx.model.materials import h_components
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
@@ -1125,7 +1123,7 @@ def apply_cpml_h(
     # H derivatives live at the half-cell coordinates, not E nodes.
     if isinstance(cpml_params, CPMLAxisParams) and cpml_params.magnetic is not None:
         cpml_params = cpml_params.magnetic
-    # Unpack per-face profiles and cell sizes (T7 Phase 2 PR1).
+    # Unpack per-face profiles and cell sizes.
     if isinstance(cpml_params, CPMLAxisParams):
         px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi
         py_lo, py_hi = cpml_params.y_lo, cpml_params.y_hi
@@ -1160,7 +1158,7 @@ def apply_cpml_h(
     c_zh = _clip_hi(pz_hi.c, face_depths["z_hi"], n)[None, None, :]
     k_zh = _clip_hi(pz_hi.kappa, face_depths["z_hi"], n)[None, None, :]
 
-    # Issue #644 — same accumulate-at-psi-dtype, round-once policy as
+    # same accumulate-at-psi-dtype, round-once policy as
     # apply_cpml_e above (no-op for float32 / float64 / complex64).
     _fdtype = state.hx.dtype
     _work = jnp.promote_types(_fdtype, jnp.float32)

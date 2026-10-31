@@ -37,20 +37,13 @@ class GridCoords(NamedTuple):
     that PEC/geometry act on. ``coords_from_fine_grid`` genuinely returns cell
     CENTRES for the subgrid fine region (subgrid-fenced, unchanged).
 
-    Reading the wrong one is not cosmetic. This type's docstring said
-    "cell-center" for every producer until #562, and a consumer
-    (``compute_smoothed_eps_nonuniform``) named its variables ``centers_*``
-    accordingly and derived the node as ``centre - d/2``; when the NU producer
-    became node-based, that derivation silently inverted and displaced every
-    smoothed voxel by half a cell. Consumers that need both should derive the
-    centre FROM the node (``centre = node + d/2``), and any new producer must
-    say which convention it returns.
+    Consumers must derive the centre FROM the node (``centre = node + d/2``). Subtracting ``d/2`` from node coordinates silently displaces every smoothed voxel by half a cell. Any producer must state which coordinate convention it returns.
 
-    **Dtype contract (#802/#807)**: concrete producers return HOST float64
+    **Dtype contract**: concrete producers return HOST float64
     numpy arrays — exact node positions, independent of ``jax_enable_x64``.
     Do not ``jnp.asarray`` them before a comparison; under x64=0 that
     silently downcasts to float32, which flips inclusion at node-aligned
-    faces (the #802 defect). Only the traced NU producer (mesh as design
+    faces (the defect). Only the traced NU producer (mesh as design
     variable) returns a float32 jnp array.
     """
     x: jnp.ndarray  # (nx,)
@@ -63,11 +56,10 @@ class ExactNodeSpineMissingWarning(AccuracyWarning):
     """A concrete NonUniformGrid axis has no float64 cell-size spine.
 
     ``coords_from_nonuniform_grid`` then widens the solver's float32 store
-    to build node positions — the pre-#802 values, ~1e-10 m off the exact
+    to build node positions — values ~1e-10 m off the exact
     node line, which flips half-open inclusion at node-aligned faces (a
     node-aligned Box on a graded 0.3048 mm profile realized 2000 cells from
-    the widened store against 1800 from the exact spine, measured
-    2026-09-02). ``make_nonuniform_grid`` always populates the spine on
+    the widened store against 1800 from the exact spine). ``make_nonuniform_grid`` always populates the spine on
     concrete profiles, so this fires only for grids assembled by hand or
     whose spine fields were replaced by non-float64 arrays.
     """
@@ -77,11 +69,11 @@ def _uniform_axis_nodes(n: int, pad: int, dx: float) -> np.ndarray:
     """Exact E-node positions for a uniform axis: host float64, flag-independent.
 
     ``(i - pad) * dx`` per node in float64 — bit-identical to the x64=1
-    realization verified against the Box half-open convention (#802). This is
+    realization verified against the Box half-open convention. This is
     THE uniform node formula: ``csg._grid_coords``, ``coords_from_uniform_grid``
     and the uniform-valued branch of ``_axis_node_positions`` all call it, so
     the uniform and non-uniform lanes cannot rasterize a uniform-valued axis
-    differently (#807 class). Before this builder existed the repo carried
+    differently. Before this builder existed the repo carried
     three hand-copies that each rounded differently in float32.
     """
     return (np.arange(n, dtype=np.float64) - pad) * float(dx)
@@ -94,7 +86,7 @@ def coords_from_uniform_grid(grid) -> GridCoords:
     despite the historical "cell-center" wording this docstring carried.
     Returns HOST float64 numpy arrays (see ``_uniform_axis_nodes``); do not
     ``jnp.asarray`` them before a comparison — under x64=0 that silently
-    downcasts to float32, which is the #802 defect.
+    downcasts to float32, which is the defect.
     """
     nx, ny, nz = grid.shape
     dx = grid.dx
@@ -116,23 +108,19 @@ def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
     the requested domain face — the same convention
     ``coords_from_uniform_grid`` uses (``(arange - pad) * dx``).
 
-    Until #562 this returned cell CENTRES, half a cell off the nodes the
-    stencil differences and half a cell off the uniform builder, which put
-    every rasterized material half a cell away from the fields acting on
-    it and (with the missing bounding node) made a PEC-bounded guide one
-    cell narrower than requested.
+    Cell centres are half a cell off the nodes the stencil differences and the uniform builder uses. Using them for node-based rasterization displaces materials from the fields acting on them; omitting the bounding node also narrows a PEC-bounded guide by one cell.
     """
     d = np.asarray(d_arr, dtype=np.float64)
     if d.size and bool(np.all(d == d[0])):
         # Uniform-valued axis: closed form, bitwise-equal to the uniform
-        # builder by construction — the lane-equality guarantee (#807).
+        # builder by construction — the lane-equality guarantee.
         return _uniform_axis_nodes(d.size, cpml, float(d[0]))
     edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
     return edges[:-1] - edges[cpml]                   # n nodes, origin at cpml
 
 
 def coords_from_nonuniform_grid(grid) -> GridCoords:
-    """Extract E-NODE coordinates from a NonUniformGrid (#562).
+    """Extract E-NODE coordinates from a NonUniformGrid.
 
     All three axes use the per-cell spacing arrays (``dx_arr``,
     ``dy_arr``, ``dz``). The first interior cell on each axis is
@@ -162,16 +150,16 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
                                    jnp.cumsum(d_j)])
             nodes = cum[:-1] - cum[pad_lo]
             return nodes.astype(jnp.float32)
-        # Concrete path: HOST float64, no f32 cast (#802/#807 — the cast
-        # here re-quantized every node position and made the NU lane land
-        # one plane away from the uniform lane at node-aligned faces).
+        # Concrete path: HOST float64, no f32 cast (a cast re-quantizes node positions and
+        # can place the NU lane one plane away from the uniform lane at node-aligned
+        # faces).
         # Read the grid's exact float64 profile: ``dx_arr``/``dy_arr``/``dz``
         # are float32 stores, and a cumsum of f32-widened cell sizes drifts
         # off the exact node positions by the same 1e-10 m class this
         # function exists to eliminate. A grid without the spine (built by
         # hand, or a spine field replaced by a non-float64 array) gets the
         # widened store AND a warning: silently falling back reproduced the
-        # #802 realization with no trace of why.
+        # realization with no trace of why.
         if d_exact is None or np.asarray(d_exact).dtype != np.float64:
             spine_missing.append(axis_name)
             d_np = np.asarray(d_arr)
@@ -202,7 +190,7 @@ def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCo
     """Extract cell-center coordinates for a subgridded fine region.
 
     Uses cell centers (offset by dx_f/2), not cell edges. Host float64 like
-    every other concrete producer (#802 policy) — the fine region is
+    every other concrete producer — the fine region is
     cv12/13-fenced experimental, but its coordinates follow the same
     exactness rule so a face landing on a sample point is not decided by
     float32 rounding.
@@ -214,7 +202,7 @@ def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCo
 
 
 # ---------------------------------------------------------------------------
-# Lattice ownership contract (#931): cell centres, PEC classification, sheets
+# Lattice ownership contract: cell centres, PEC classification, sheets
 #
 # Normative text: docs/design_notes/20260906_plan_realign_lattice_ownership.md
 # §1.1 (centre sampling for PEC volumes), §1.3 (sheet footprint / plane),
@@ -303,8 +291,7 @@ def cell_centres_from_nodes(coords: GridCoords, cell_sizes=None) -> GridCoords:
     ``cell_sizes`` is the per-cell size triple (from the grid's spine);
     when None it is derived from the node line.  A uniform-valued axis
     takes the closed form :func:`_uniform_axis_centres` so the uniform and
-    non-uniform lanes cannot centre-sample a uniform axis differently
-    (#807 class).  Traced input keeps traced arithmetic.
+    non-uniform lanes cannot centre-sample a uniform axis differently.  Traced input keeps traced arithmetic.
     """
     axes = []
     for nodes, d in zip((coords.x, coords.y, coords.z),
@@ -322,7 +309,7 @@ def cell_centres_from_nodes(coords: GridCoords, cell_sizes=None) -> GridCoords:
             # uniform-valued axis: IF the nodes are (i - pad) * dx exactly
             # (every in-repo producer goes through ``_uniform_axis_nodes``),
             # ``pad`` is recoverable from the first node and the closed form
-            # keeps the uniform and non-uniform lanes bit-identical (#807).
+            # keeps the uniform and non-uniform lanes bit-identical.
             # A caller-supplied node line with a fractional origin is NOT
             # that axis, and the closed form would silently move its
             # centres by the fractional offset — take the exact fallback.
@@ -351,7 +338,7 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
 
 
 def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=None):
-    """Sample curved material volumes where their cell values live (#1138).
+    """Sample curved material volumes where their cell values live.
 
     A node-symmetric Sphere/Cylinder stored as cell epsilon or sigma shifts
     the material by half a cell. Use the supplied physical centres (already
@@ -391,7 +378,7 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
     "Nearest" means within half a local cell.  A declaration further out
     than that is not on this node line at all — ``argmin`` would clamp it
     onto the end plane and the caller would get a conductor it never drew
-    (the #369 silently-relocated-metal class).  That raises.
+    (the silently-relocated-metal class).  That raises.
     """
     x = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(x - pos)
@@ -406,7 +393,7 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
             "onto an end plane. Move the declaration inside the domain or "
             "enlarge the domain.")
     # An exact half-cell tie resolves LOWER. The one tie rule, shared with
-    # every point lookup (#1295, #1342).
+    # every point lookup.
     from rfx._grid_metric import nearest_node_index
     return nearest_node_index(x, pos, d_local)
 
@@ -478,9 +465,9 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None)
 
     Inside an outer ``jax.jit`` the grid coordinates are still concrete host
     arrays, but every jnp array built from them is a tracer, so a Python
-    bool of ``jnp.any(mask)`` raises ``TracerBoolConversionError`` — the #642-class
+    bool of ``jnp.any(mask)`` raises ``TracerBoolConversionError`` — the same class
     defect ``rfx/api/_compile.py`` documents and the first cut
-    of this refusal re-introduced one frame down (found by the #931 phase-2
+    of this refusal re-introduced one frame down (found by the phase-2
     T1 test ``test_real_interior_pec_under_outer_jit_matches_eager``).
 
     Decision order: a Box is decided on the HOST from its corners and the
@@ -684,7 +671,7 @@ def sheet_end_rows(shape, coords: GridCoords, normal_axis: int, *, grid=None):
 
 def refuse_vaporized_sheets(sheets, *, lane: str = "",
                             periodic=(False, False, False)):
-    """Refuse a sheet PLANE that realizes no PEC edge (#931 §1.5, #369 class).
+    """Refuse a sheet PLANE that realizes no PEC edge.
 
     §1.3 unions every footprint on one ``(normal_axis, plane)`` BEFORE the
     edge rule, so the unit that must carry current is the plane, not the
@@ -883,7 +870,7 @@ def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
     """Node of each PolylineWire vertex, and the smallest cell at them.
 
     Each coordinate uses the shared lower-node tie band. The preflight
-    co-location check reads this same function (#1342).
+    co-location check reads this same function.
     """
     from rfx._grid_metric import nearest_node_index
     nodes = []
@@ -1060,8 +1047,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # a Cylinder via pad, a thin Sphere, an imported outline.  The
         # refusal was Box-only, so a 0.3-cell Cylinder pad was realized as
         # a one-cell slab with two faces (or refused as zero cells) purely
-        # according to where it fell between two centres: the #369/#702
-        # raster-dependent thickness the contract exists to make an error.
+        # according to where it fell between two centres: the raster-dependent thickness
+        # the contract exists to make an error.
         # PolylineWire is excluded on purpose: §1.4 gives it its own
         # filament/volume rule on the radius, decided above.
         from rfx.materials.thin_conductor import sheet_bounds
@@ -1111,8 +1098,7 @@ def rasterize_geometry(
     coords : GridCoords
         Sample coordinates from any grid type — E-NODES for the uniform and
         non-uniform builders, cell centres for the subgrid fine region (see
-        ``GridCoords``).  Dielectrics are sampled here (node, half-open —
-        untouched by #931).
+        ``GridCoords``).  Dielectrics are sampled here (node, half-open).
     pec_sigma_threshold : float
         Conductivity above which a material is treated as PEC.
     thin_conductors : list or None
@@ -1161,7 +1147,7 @@ def rasterize_geometry(
     if centres is None:
         centres = cell_centres_from_nodes(coords, cell_sizes)
 
-    # Keyed per _pole_key (#274): pole value when hashable, id(pole) for
+    # Keyed per _pole_key: pole value when hashable, id(pole) for
     # traced poles. Values are (pole, mask) pairs.
     debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
     lorentz_masks_by_pole: dict[LorentzPole | int, tuple[LorentzPole, jnp.ndarray]] = {}
@@ -1266,9 +1252,9 @@ def periodic_flags_from_axes(periodic_axes) -> tuple[bool, bool, bool]:
 
 class PadFillShortfall(RfxRefusal):
     """A declared structure is not rasterized to a face whose pad is filled
-    from it (issue #1070).
+    from it.
 
-    ``ValueError`` and not ``RuntimeError`` (review of PR #1136, A): the
+    ``ValueError`` and not ``RuntimeError``: the
     degrade guards that let an advisory path survive a bad build already catch
     ``(ValueError, TypeError, NotImplementedError, KeyError, AttributeError,
     IndexError)`` -- see ``rfx/preflight/realization.py`` -- and a new
@@ -1278,7 +1264,7 @@ class PadFillShortfall(RfxRefusal):
 
 
 #: The half-open ``[lo, hi)`` Box rule costs the hi face exactly one node, and
-#: ``extend_cpml_pad_materials``'s #627a fallback is built to look exactly that
+#: ``extend_cpml_pad_materials``'s hi-face fallback is built to look exactly that
 #: one column inward. Two is the number that silently breaks it.
 _DOCUMENTED_HI_FACE_SHORTFALL = 1
 
@@ -1287,9 +1273,9 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
                                    shortfall_limit=_DOCUMENTED_HI_FACE_SHORTFALL,
                                    record=None):
     """Raise when a structure declared out to a padded face is not rasterized
-    to within one node of it (issue #1070).
+    to within one node of it.
 
-    The #627a fallback in ``extend_cpml_pad_materials`` sources a hi pad from
+    The fallback in ``extend_cpml_pad_materials`` sources a hi pad from
     one column inside the interior edge when that edge is vacuum, and its
     docstring states the bound: the rasterizer's hi-face shortfall for a single
     box is "deterministically one node ... never more". That is true of the
@@ -1304,7 +1290,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     between a declared structure and a HI face's pad is caught here, whatever
     produced it.
 
-    **What is checked, exactly** (review of PR #1136, D): hi faces only, and
+    **What is checked, exactly**: hi faces only, and
     the PROJECTED presence profile along the axis -- ``mask.any`` over the
     other two -- so a per-column shortfall inside a shape that reaches the
     face somewhere is not detected. A cylinder touching the face at its apex
@@ -1330,7 +1316,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     of it is right.
 
     **A deliberately different predicate lives in
-    ``rfx.geometry.smoothing.smoothed_shape_pairs``** (review of PR #1136, B).
+    ``rfx.geometry.smoothing.smoothed_shape_pairs``**.
     That one decides whether to CONTINUE a shape into a pad, and it asks about
     the REALIZED interior-edge node on both faces with a sub-cell tolerance.
     This one decides whether a shortfall is a DEFECT, and asks about the
@@ -1351,7 +1337,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     class in the package has ``bounding_box`` today -- Box, Cylinder, Sphere,
     PolylineWire, Via, MeshShape, CurvedPatch -- and ``union``/``difference``
     in ``rfx.geometry.csg`` are FUNCTIONS over masks, not entry classes, so
-    nothing currently reaches the skip (review of PR #1136, E). It is kept as
+    nothing currently reaches the skip. It is kept as
     the contract for a future shape that cannot state one, because a reach
     test needs a declared extent and there is no honest default for a shape
     without one.
@@ -1367,7 +1353,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     shortfall is appended as a dict and the caller decides what to do with it.
     ``fidelity_report`` passes one, because an audit whose job is to show the
     difference between the declared and the realized model must show this
-    difference too rather than refuse to run (review of PR #1136, A).
+    difference too rather than refuse to run.
     """
     import numpy as _np
 
@@ -1460,14 +1446,9 @@ def extend_cpml_pad_materials(
     the interior-edge slice outward, as if the geometry continued beyond
     the domain.
 
-    Single shared implementation for the uniform (``rfx/api/_compile.py``)
-    and non-uniform (``rfx/runners/nonuniform.py``) assemblers — issue #627
-    found the two hand-duplicated copies (#582 mirrored one onto the other)
-    both carrying the same gap, so the fix lives once, here, and both call
-    sites use it instead of keeping duplicated pad-extension code that can
-    drift.
+    Single shared implementation for the uniform (``rfx/api/_compile.py``) and non-uniform (``rfx/runners/nonuniform.py``) assemblers, so their pad-extension rules cannot drift independently.
 
-    **Hi-face fallback (#627a).** ``rfx.geometry.csg.Box``'s volume-branch
+    **Hi-face fallback.** ``rfx.geometry.csg.Box``'s volume-branch
     rasterization is deliberately half-open, ``[lo, hi)``, over node
     coordinates (see that class's docstring — the convention is load-
     bearing across the package, e.g. every WR-90 aperture/iris
@@ -1478,7 +1459,7 @@ def extend_cpml_pad_materials(
     pad — literally the outermost interior column — therefore reads
     vacuum for such a structure even though its real material sits one
     column further in, and copying that vacuum outward gives the pad a
-    Fresnel step instead of a match (measured on the #582 fixture: x-lo
+    Fresnel step instead of a match (measured on the fixture: x-lo
     pad eps_r 4.0, x-hi pad eps_r 1.0, for a slab spanning the full x
     extent).
 
@@ -1491,7 +1472,7 @@ def extend_cpml_pad_materials(
     inward — the rasterizer's hi-face shortfall for a single box is one
     node (Box docstring: "the shortfall is entirely at the hi face"), and
     that "never more" is CHECKED at assembly rather than assumed, by
-    :func:`assert_declared_span_is_filled` (#1070; it was an assumption
+    :func:`assert_declared_span_is_filled` (it was an assumption
     about the rasterizer, and grid sizing broke it from outside) — so a
     genuine multi-cell vacuum buffer
     between a structure and the CPML pad (the overwhelmingly common case:
@@ -1501,7 +1482,7 @@ def extend_cpml_pad_materials(
     considered and rejected: it would bridge that common air gap and smear
     an unrelated interior structure's material into the pad.
 
-    **What now guarantees that bound (#1070).** It was an assumption about
+    **What now guarantees that bound.** It was an assumption about
     the rasterizer, and grid sizing broke it from outside: ``ceil`` of a
     ratio one ULP above an integer allocated a cell no declared Box
     reaches, so the shortfall became TWO nodes, this fallback found vacuum
@@ -1514,10 +1495,7 @@ def extend_cpml_pad_materials(
     therefore a checked precondition of this fallback, not a belief about
     its caller.
 
-    **The dropped node itself is repaired too (#655).** #627a fixed where
-    the pad SOURCES its material but still wrote it only to the pad, so the
-    dropped node stayed vacuum and became a one-cell film sandwiched
-    between the structure and its own matched absorber:
+    **Repair the dropped node as well as the pad.** Writing only to the pad leaves the dropped node as vacuum, a one-cell film between the structure and its matched absorber:
     ``[material][vacuum][pad = material]``. Measured on a 1-D plane-wave
     fixture (eps_r=4 filling the domain, reflection isolated by field-level
     DFT subtraction against the same fixture with the box drawn half a cell
@@ -1545,14 +1523,10 @@ def extend_cpml_pad_materials(
     and reach the same state through the float32 knife edge instead, which
     an array-pattern repair covers and a rasterizer edit would not.
 
-    **Dispersion-pole extension was tried and reverted (#627b).** An
-    earlier revision of this function extended Debye/Lorentz pole masks
-    into the pad the same way, via an ``extra_masks`` parameter, so a
-    dispersive edge-touching material would be impedance-matched across
-    the band, not just at DC. Review found this turns a stable simulation
+    **Do not extend dispersion-pole masks into CPML pads.** Extending Debye/Lorentz masks to match an edge-touching material across the band turns a stable simulation
     into a divergent one for an edge-touching structure carrying a
     high-Q Lorentz pole (Q~60): the same 20,000-step fixture that decays
-    on both the shipped (statics-only) code and on the pre-#582 tree
+    with statics-only extension and without extension
     (last/mid energy ratio 0.12–0.16) grows without bound once the pole
     mask is also extended (last/mid ratio 649, no NaN and no exception —
     values stay finite and simply grow, so nothing downstream flags it).
@@ -1560,34 +1534,26 @@ def extend_cpml_pad_materials(
     extension, reproduces the divergence; the static extension alone,
     with the same high-Q pole left un-extended in the interior, decays
     cleanly. Do not re-add pole-mask extension here without a stability
-    argument for the resonant-pole-in-a-CPML-pad regime — see the
-    follow-up issue (filed separately from #627, tracking this factorial)
-    and the physics-level regression lock in
+    argument for the resonant-pole-in-a-CPML-pad regime — see the physics-level regression lock in
     ``tests/unit/boundaries/test_cpml_pad_material_extension.py``, which reds if pole
     extension is naively reintroduced.
 
-    **Pole-carrying columns get NO hi-face fallback promotion (#808).**
-    With the pole half reverted (#627b), the hi-face fallback promoted a
-    dispersive structure's STATICS anyway: the pad — and, after #655, the
-    dropped boundary node itself — carried the material's eps_inf without
-    its poles, a material that exists in no declared model. Issue #808
-    measured the consequence on a committed observable: a face-touching
+    **Pole-carrying columns get NO hi-face fallback promotion.**
+    Promoting a dispersive structure's statics alone at the hi face gives the pad and the dropped boundary node eps_inf without its poles, a material absent from the declared model. Measured on a committed observable: a face-touching
     Debye slab's differentiable recovery moved from its pinned
     delta_eps 3.330 (11% err) to 3.969 (32%, past the 20% gate), and a
     controlled pad-rule swap (geometry, observation and optimizer held
     fixed) toggled the result between the two states digit-for-digit.
     So when ``dispersion_pole_mask`` marks the fallback's SOURCE (inner)
-    column as pole-carrying, the promotion and the #655 boundary write
+    column as pole-carrying, the promotion and the boundary write
     are suppressed for that transverse cell: the hi pad takes the naive
     outer-column copy (background) and the dropped node stays as
-    rasterized — the pre-#638 hi-face state every committed dispersive
-    gate was pinned against. Lo faces are deliberately NOT gated: the
+    rasterized. Lo faces are deliberately NOT gated: the
     lo pad replicates a boundary column the material genuinely occupies,
-    that behaviour predates #638, and the #808 discriminator's identity
+     the discriminator's identity
     arm measured that removing it too moves the same recovery's tau to
     64% error — "less pad material" is not automatically better; the
-    committed envelopes pin the lo-statics state. Callers that pass no
-    mask keep the pre-#808 behaviour bit-for-bit.
+    committed envelopes pin the lo-statics state. Callers that pass no mask allow hi-face fallback promotion.
 
     Parameters
     ----------
@@ -1595,7 +1561,7 @@ def extend_cpml_pad_materials(
         OR of every Debye/Lorentz per-pole mask on the same padded grid
         as the material arrays, or None when the simulation declares no
         dispersive material (or a caller deliberately wants the ungated
-        rule, e.g. the #636 factorial harness). The mask is replicated
+        rule, e.g. the factorial harness). The mask is replicated
         through the same lo/hi passes as the statics (as ``poleish``
         below), so a LO-pad copy of a pole-carrying column also refuses a
         later axis's hi-face promotion — without that, the y/z corner
@@ -1631,12 +1597,12 @@ def extend_cpml_pad_materials(
             inner_vac = _vacuum(e[inner_sl], s[inner_sl], m[inner_sl])
             use_inner = outer_vac & (~inner_vac)
             if poleish is not None:
-                # #808: never promote a pole-carrying column's statics —
+                # never promote a pole-carrying column's statics —
                 # the promoted material would carry eps_inf without its
-                # poles (a material no declared model has), and #627b's
-                # revert forbids extending the pole itself. Gating
-                # ``use_inner`` kills both the pad promotion and the #655
-                # boundary write below (``src`` stays the outer column,
+                # poles (a material no declared model has), and extending the pole
+                # itself causes divergence. Gating
+                # ``use_inner`` kills both the pad promotion and the boundary
+                # write below (``src`` stays the outer column,
                 # so the write is value-for-value). ``poleish`` rather
                 # than the raw mask, so a lo-pad replica of a pole column
                 # is refused the same way (see the parameter docs).
@@ -1646,7 +1612,7 @@ def extend_cpml_pad_materials(
             src = a[outer_sl]
             if use_inner is not None:
                 src = jnp.where(use_inner, a[inner_sl], src)
-                # #655: the pad is not the only place that lost the node.
+                # the pad is not the only place that lost the node.
                 # Where the fallback fired, the LAST INTERIOR column is the
                 # dropped node itself, so writing ``src`` only to the pad
                 # leaves it vacuum and sandwiches a one-cell gap between the
@@ -1715,7 +1681,7 @@ def extend_cpml_pad_materials(
 
 
 def unpadded_high_walls(grid):
-    """Global non-periodic high faces without an absorber allocation (#1966)."""
+    """Global non-periodic high faces without an absorber allocation."""
     if grid is None:
         return (False, False, False)
     return tuple(a not in getattr(grid, "periodic_axes", "")

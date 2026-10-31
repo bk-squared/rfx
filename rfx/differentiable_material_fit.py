@@ -296,7 +296,7 @@ def _normalize_probe_spectra(
 ) -> "jnp.ndarray":
     """Probe DFT spectra -> diagonal S-proxy, under the selected mode.
 
-    Pure function (unit-tested directly, issue #580). ``s_raw`` is
+    Pure function (unit-tested directly). ``s_raw`` is
     (n_probes, n_freqs) complex; returns ``target_shape`` complex
     ((n_ports, n_ports, n_freqs)) with only the diagonal populated.
 
@@ -591,7 +591,7 @@ def differentiable_material_fit(
         s_raw = probe_spectrum(ts, freqs, dt)
 
         # Probe spectra -> diagonal S-proxy under the selected mode
-        # (issue #580; the pure helper carries the unit-tested arithmetic)
+        # (the pure helper carries the unit-tested arithmetic)
         n_ports = s_meas_jnp.shape[0]
         s_sim = _normalize_probe_spectra(
             s_raw, n_ports, s_meas_jnp.shape,
@@ -611,7 +611,7 @@ def differentiable_material_fit(
     dt = grid.dt
     n_steps = grid.num_timesteps(num_periods=20.0)
 
-    # ---- normalization-mode validation (issue #580), fail-loud up front --
+    # ---- normalization-mode validation, fail-loud up front --
     if normalization not in ("per_probe_max", "reference_probe"):
         raise ValueError(
             f"normalization must be 'per_probe_max' or 'reference_probe', "

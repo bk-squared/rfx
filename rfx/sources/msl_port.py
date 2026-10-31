@@ -11,8 +11,8 @@ amplitudes.
 Production extraction (``Simulation.compute_msl_s_matrix`` /
 ``compute_mixed_s_matrix``, ``rfx/api/_sparams.py``) places N equally
 spaced probes (:func:`msl_probe_x_coords_n`), fits them by SVD
-least-squares (issue #80 Fix C), and assembles the S-matrix with the
-multi-drive solve (issue #507). The original 3-probe placement
+least-squares, and assembles the S-matrix with the
+multi-drive solve. The original 3-probe placement
 (:func:`msl_probe_x_coords`) and the OpenEMS-style 3-probe recurrence it
 was built for are retained as a geometry primitive consumed by
 ``validation/tmtt_paper/msl_stub_notch_tuning.py`` (via
@@ -43,7 +43,7 @@ _ETA0 = np.sqrt(MU_0 / EPS_0)
 
 
 # ---------------------------------------------------------------------------
-# Axis roles (issue #661)
+# Axis roles
 # ---------------------------------------------------------------------------
 
 #: Axis name -> index into a physical ``(x, y, z)`` tuple.
@@ -278,7 +278,7 @@ def _msl_grid_geometry(grid):
 
 
 def _msl_normal_bounds(grid, port):
-    """Snap the two physical conductor planes by the #931 sheet rule."""
+    """Snap the two physical conductor planes by the sheet rule."""
     from rfx.geometry.rasterize_grid import _local_cell, _nearest_plane
     axes, sizes = _msl_grid_geometry(grid)
     nodes = axes[2]
@@ -525,11 +525,11 @@ def _axis_dual_size(grid, axis: str, idx: int) -> float:
     every non-``NonUniformGrid`` caller falls through to
     :func:`_axis_cell_size` and is byte-identical.
 
-    Why the port termination needs it (issue #691): the realized conductance
+    Why the port termination needs it: the realized conductance
     of a stamped σ is ``G = σ · dual_b · dual_c / d_parallel``, fixed by the
     discrete Ampere / Joule control volume of the E node — NOT by which
     extractor later reads the port. An earlier fence claimed the MSL port was
-    exempt because its V/I route is Gwarek rather than the #672 Ampere loop;
+    exempt because its V/I route is Gwarek rather than the Ampere loop;
     that reasoning is wrong and must not be reinstated.
     """
     from rfx.nonuniform import NonUniformGrid, e_node_dual_spacing_at
@@ -641,7 +641,7 @@ def msl_normal_component(port: MSLPort) -> str:
     The modal voltage is ``V = sum(E_normal * d_normal)`` down the column
     between ground and trace, so the normal component is the one the port
     must be able to drive — and the only one the runner releases from the
-    realized PEC edges at the feed cross-section (#931 §1.9).  Releasing
+    realized PEC edges at the feed cross-section.  Releasing
     the two in-plane components as well opens the ground plane and the
     trace along the whole port width.
     """
@@ -713,7 +713,7 @@ def compute_msl_mode_profile(
     """
     # Cross-section indices on the FDTD grid (substrate only).
     # "y" below is the trace-WIDTH axis and "z" the substrate-NORMAL axis
-    # (issue #661): for a "+x"/"-x" port those are literally y and z, for
+    #: for a "+x"/"-x" port those are literally y and z, for
     # a "+y"/"-y" port the width axis is x. The solve itself is a pure
     # (width, normal) cross-section problem -- measured independent of the
     # propagation axis beyond ``i_feed`` (identical ez_profile/z0_static/
@@ -871,8 +871,8 @@ def compute_msl_mode_profile(
     # ``rfx.api._sparams.msl_modal_voltage`` extracts V as
     # ``Σ_k ez_plane[...,k] * float(dz_arr[k])``.  Normalising against a
     # scalar leaves the injected "1 V" mode carrying a different voltage
-    # than the extractor reads back, and — since #691 made the σ sizing
-    # integral per-cell — the two scalar-``dz`` errors no longer cancel.
+    # than the extractor reads back, and — the σ sizing integral is per-cell — the two
+    # scalar-``dz`` errors no longer cancel.
     # Measured on a 2:1 z-graded substrate, realized termination impedance
     # against a nominal 50 Ω: 135.56 Ω with the scalar, 50.00 Ω with this.
     j_trace_coarse_lo = laplace_pad_y_coarse
@@ -917,7 +917,7 @@ def compute_msl_mode_profile(
         n_z_sub=int(n_z_sub),
         dy=float(dy),
         dz=float(dz),
-        # Issue #661: which physical axis each of the two cross-section
+        # which physical axis each of the two cross-section
         # indices belongs to, so consumers can project a physical
         # (i, j, k) cell back onto (width, normal) without re-deriving it.
         direction=str(port.direction),
@@ -951,8 +951,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
       ``N = sum(volume * ez_profile**2)`` uses the Ez control volumes.
       For ``Ez = ez_profile * V`` this dissipates ``V**2 / Z0``.
 
-    The conductivity is stamped on the Ez (substrate-normal) edges only
-    (#1236); until then it also damped Ex and Ey at the same nodes, a loss
+    The conductivity is stamped on the Ez (substrate-normal) edges only; until then it also damped Ex and Ey at the same nodes, a loss
     the stated resistance did not describe. It does not establish a matched termination for an arbitrary field or
     certify that the Laplace profile is a propagating Maxwell mode.
 
@@ -966,7 +965,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             return materials
         n_y = len(span["width_nodes"])
         n_z = span["n_hi"] - span["n_lo"]
-        # Issue #661: these three cell sizes are the PROPAGATION, WIDTH
+        # these three cell sizes are the PROPAGATION, WIDTH
         # and NORMAL cell sizes -- not literally dx/dy/dz. sigma scales as
         # 1/d_prop (measured: halving the propagation-axis cell doubles
         # sum(sigma), ratio 2.0000), so reading dx here for a "+y" port
@@ -978,7 +977,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         ip, iw, inr = span["prop_idx"], span["width_idx"], span["normal_idx"]
         for cell in cells:
             i, j, k = cell
-            # #691: the two axes TRANSVERSE to the port component (which is
+            # the two axes TRANSVERSE to the port component (which is
             # always "ez", along the substrate NORMAL) enter through the dual
             # face the cell current pierces, so d_prop / d_width are DUAL
             # spacings; d_norm stays PRIMAL — it is the E edge the cell
@@ -996,7 +995,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
                 (n_z * d_norm) / (port.impedance * n_y * d_prop * d_width)
             )
             port._drive_stamps[tuple(cell)] = (sigma_cell, 1 / (n_z * d_norm))
-            # #1210: the port's termination is a lumped load across the
+            # the port's termination is a lumped load across the
             # port edges, not a cell volume property, so it is recorded as
             # an edge-owned stamp and kept out of the edge average.
             materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_cell,
@@ -1013,7 +1012,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     #     V²/Z0   = matched-load power
     #     ⇒ σ    = 1 / (Z0 · dual_prop · ∫∫ |ez_w|² dual_w d_norm)
     #
-    # #691: the Joule control volume of an "ez" node is
+    # the Joule control volume of an "ez" node is
     # d_norm(PRIMAL) · dual_prop · dual_width, so the propagation- and
     # width-axis factors are DUAL spacings and only the normal-axis factor is
     # the primal cell. The scalar ``dy``/``dz`` the mode profile carries are
@@ -1029,7 +1028,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     j_box_lo = int(mode_profile["j_grid_lo"])
     k_box_lo = int(mode_profile["k_grid_lo"])
     n_z_sub = int(mode_profile["n_z_sub"])
-    # Issue #661: project physical cells onto (width, normal) indices.
+    # project physical cells onto (width, normal) indices.
     ip = int(mode_profile["prop_idx"])
     iw = int(mode_profile["width_idx"])
     inr = int(mode_profile["normal_idx"])
@@ -1160,7 +1159,7 @@ def make_msl_port_sources_jm(
     if port.excitation is None:
         return [], []
 
-    # Issue #661: this launch is x-only and stays that way. It hard-codes
+    # this launch is x-only and stays that way. It hard-codes
     # the (hy, hz) / (ey, ez) TFSF correction pair and ``coeff_H = dt /
     # (MU_0 * dx)`` to the x propagation axis, and its eigenmode source
     # (``rfx.sources.msl_eigenmode``) is itself a documented falsified
@@ -1480,7 +1479,7 @@ def msl_probe_x_coords_n(
     n_offset_cells: int = 5,
     n_spacing_cells: int = 3,
 ) -> tuple[float, ...]:
-    """Return ``n_probes`` downstream probe x-coordinates (issue #80 Fix C).
+    """Return ``n_probes`` downstream probe x-coordinates.
 
     Generalises :func:`msl_probe_x_coords` to N >= 3 probes for the
     N-probe least-squares wave-decomposition extractor. Probe ``n`` sits
@@ -1550,7 +1549,7 @@ def msl_loop_current(
     the top face.  ``Hz[i,j,k]`` sits at ``y=(j+½)dy``, so
     ``Hz[·,j_hi,·]`` / ``Hz[·,j_lo-1,·]`` are the right / left side edges.
 
-    The pre-issue-#80 current (a bottom-leg-only Hy integral) undercounted
+    A bottom-leg-only Hy integral undercounted
     ``I`` by ~1.5x — it dropped the air-side return Hy and the trace-edge
     Hz — which inflated the de-embedded Z0 to ~74 ohm vs the ~48 ohm
     analytic Hammerstad-Jensen value.  Closing the loop restores Ampere's
@@ -1567,15 +1566,12 @@ def msl_loop_current(
     dy_arr, dz_arr : array
         Per-cell sizes along the ``a`` / ``b`` axes (uniform or
         non-uniform).
-    direction : str
+    direction: str
         Propagation direction, one of :data:`MSL_SUPPORTED_DIRECTIONS`.
         The raw contour integral is negated for POSITIVE-going ports
         (``"+x"``, ``"+y"``) and left as-is for negative-going ones.
 
-        **Sign convention, corrected (see issue #524).** This docstring
-        used to claim without qualification that "the returned ``I`` is
-        positive for a forward quasi-TEM wave (``Z0 = V/I > 0``)". That
-        is true only for a POSITIVE-going port. The contour is traversed
+        **Sign convention.** The returned ``I`` is positive for a forward quasi-TEM wave (``Z0 = V/I > 0``) only for a POSITIVE-going port. The contour is traversed
         right-handedly about ``+p_hat`` regardless of the direction sign,
         so the raw integral is the current along ``+p_hat`` for both
         signs; negating it only on positive-going ports leaves a
@@ -1585,7 +1581,7 @@ def msl_loop_current(
         ``"+x"`` port and **-57.56 ohm** for the ``"-x"`` port — same
         magnitude to 0.08 %, opposite sign.
 
-        That is not a defect, it is the #140 convention, and the lane is
+        That is not a defect, it is the convention, and the lane is
         self-consistent about it: ``compute_msl_s_matrix`` multiplies the
         REPORTED ``Z0`` by ``msl_axis_roles(direction)[3]`` so both ports
         report positive, while the wave split ``a = (V + Z0*I)/2``,
@@ -1600,19 +1596,9 @@ def msl_loop_current(
         ``|alpha| >> |gamma|`` at both ports on drive 0 and the reverse
         on drive 1.
 
-        Only the docstring was wrong; no code changed for this. Of the
-        other two items on issue #524, both were re-measured on current
-        main on 2026-08-30 (VESSL 369367257265, PR #799): the drive
-        asymmetry is CLOSED (the two ports read |Gamma| 0.1799 and 0.1759
-        on the shipped fixture, reproduced to 4 decimals by the
-        cell-aligned and ±y-rotated variants, so the July 0.194-vs-0.073
-        split does not exist here), and the "~30 Ω termination" inference
-        is WITHDRAWN (it rested on a July line Zc of 38.75 Ω; the fitted
-        Zc is 41.9 Ω against the Hammerstad-Jensen 47.9 Ω, which is the #487
-        dx bias, not a termination error). #524 stays open for the
-        passive port's unexplained reflection alone.
+        On the shipped fixture (VESSL 369367257265), the two ports read |Gamma| 0.1799 and 0.1759, reproduced to 4 decimals by the cell-aligned and ±y-rotated variants. The fitted Zc is 41.9 Ω against the Hammerstad-Jensen 47.9 Ω, a dx bias rather than evidence of a termination error. The passive port's reflection remains unexplained.
 
-    Axis generality (issue #661)
+    Axis generality
     ----------------------------
     The parameter names above are the ``"+x"``-frame names, but what the
     body actually needs is the right-handed transverse pair ``(a, b)``
@@ -1639,7 +1625,7 @@ def msl_loop_current(
 
     Returns
     -------
-    (n_freqs,) complex line current ``I(f)``.
+    (n_freqs) complex line current ``I(f)``.
     """
     n_y = int(hy_plane.shape[1])
     n_z = int(hy_plane.shape[2])
@@ -1664,8 +1650,7 @@ def msl_loop_current(
     left = (hz_plane[:, j_lo - 1, ks] * dz[ks]).sum(axis=1)
 
     i_loop = bottom - top + right - left
-    # Negate for positive-going ports (issue #140 convention, generalised
-    # over the axis roles in issue #661): "+x" and "+y" both negate, "-x"
+    # Negate for positive-going ports: "+x" and "+y" both negate, "-x"
     # and "-y" both do not. Resolving through msl_axis_roles also makes an
     # unsupported direction fail loudly here rather than silently skipping
     # the negation, which is what a bare ``== "+x"`` test would have done

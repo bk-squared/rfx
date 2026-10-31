@@ -61,7 +61,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 2 re-export surface.
+# Phase 2 re-export surface.
 #
 # The helper bodies that used to sit here now live in ``rfx.sparams._common``,
 # moved verbatim. They are re-bound as module globals of THIS module because
@@ -131,7 +131,7 @@ class _SparamMixin:
     # Runtime-only; set by compute_msl_s_matrix for the duration of a run.
     _dft_plane_regions: dict[str, tuple[int, int, int, int]]
 
-    # #980 Phase 2: the body moved verbatim to ``rfx/sparams/waveguide.py``.
+    # the body is defined in ``rfx/sparams/waveguide.py``.
     # Bound here as a class attribute so ``sim.compute_waveguide_s_matrix``
     # keeps its name, signature, ``__doc__`` and bound-method behaviour.
     # The import sits in the CLASS body rather than the module import block
@@ -142,7 +142,7 @@ class _SparamMixin:
     # by SET EQUALITY (no name added, none dropped).
     from rfx.sparams.waveguide import compute_waveguide_s_matrix
 
-    # #980 Phase 2: body moved VERBATIM to ``rfx/sparams/msl.py``. The import
+    # body is defined in ``rfx/sparams/msl.py``. The import
     # is class-scoped and deleted so ``rfx.api._sparams``'s module namespace
     # stays exactly the pre-split 66-name re-export surface the lock pins
     # (a module-level ``_msl`` reds
@@ -153,7 +153,7 @@ class _SparamMixin:
 
     del _msl
 
-    # #980 Phase 2: the body moved VERBATIM to ``rfx/sparams/mixed.py``.
+    # the body is defined in ``rfx/sparams/mixed.py``.
     # Imported into the class body, not aliased at module level, because
     # ``tests/locks/test_sparams_split_bit_identity.py`` pins this module's
     # namespace by SET EQUALITY against the pre-split main -- a module-level
@@ -172,13 +172,13 @@ class _SparamMixin:
 
     del _coax
 
-    # #980 Phase 2: the body moved verbatim to ``rfx/sparams/waveguide.py``
+    # the body is defined in ``rfx/sparams/waveguide.py``
     # together with ``compute_waveguide_s_matrix`` above, which calls it as
     # ``self._compute_waveguide_s_matrix_nu(...)``. Class-body import for the
     # same namespace-lock reason spelled out at that binding.
     from rfx.sparams.waveguide import _compute_waveguide_s_matrix_nu
 
-    # #980 Phase 1 item 2: the unified entry point over every lane bound
+    # the unified entry point over every lane bound
     # above, plus the lumped/wire run lane. NEW surface rather than moved
     # code, but bound the same way and for the same reason — a module-level
     # ``from rfx.sparams import dispatch`` would add ``dispatch`` to

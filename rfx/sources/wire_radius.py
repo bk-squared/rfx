@@ -99,8 +99,8 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     plate oracle's 1% resistance bound in the measured profiles. Grading
     away from this stencil is allowed, including declared traced ranges
     separated from it by a one-cell margin. The stamp reads only widths
-    and indices, and the pin index is resolved on the nominal profile
-    (PR 1686): a moving range elsewhere may shift node positions without
+    and indices, and the pin index is resolved on the nominal profile:
+    a moving range elsewhere may shift node positions without
     changing the stamp.
     Because the stamp uses nominal widths, a whole-profile gradient has no
     stamp term for the stencil's own cells; those cells are declared fixed

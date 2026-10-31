@@ -145,8 +145,7 @@ def _adam_multistart(
 ):
     """Best-of multi-start Adam with optional best-iterate + step-clamp.
 
-    Generic promotion of the MSL open-stub example's ``_multistart_adam``
-    (issue #171).  The three knobs are all OPT-IN and, with a single
+    Generic promotion of the MSL open-stub example's ``_multistart_adam``.  The three knobs are all OPT-IN and, with a single
     start (``len(latent_inits) == 1``), ``best_iterate=False`` and
     ``step_clamp=None``, this runs the hand-rolled Adam loop with the exact
     same arithmetic as the legacy inline ``optimize()`` loop. With
@@ -177,7 +176,7 @@ def _adam_multistart(
     best_iterate : bool
         If True, each start returns (and is scored by) its lowest-loss
         visited iterate rather than its final iterate.  Guards the sharp-
-        null overshoot the #171 GPU run caught.
+        null overshoot the GPU run caught.
     step_clamp : float or None
         If set (>0), clamp the L2 norm of each latent update to this value.
     it_count : list([int]) or None
@@ -432,7 +431,7 @@ def optimize(
         raise ValueError(f"optimize: n_starts must be >= 1, got {n_starts}")
     sim._auto_preflight(skip=skip_preflight, context="optimize")
 
-    # #64: dispatch to NU or uniform grid. The differentiable pipeline
+    # dispatch to NU or uniform grid. The differentiable pipeline
     # is then the same (sim.forward with eps_override + pec_mask_override),
     # so optimize() automatically inherits checkpoint_every, emit_time_series,
     # and NU support as forward() gains them.
@@ -447,7 +446,7 @@ def optimize(
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
-        # #931 §1.9: this assembly is BOOKKEEPING — it supplies base eps_r
+        # this assembly is BOOKKEEPING — it supplies base eps_r
         # and the volume cell mask that ride into sim.forward() as
         # eps_override / pec_mask_override. The sheets and wires collected
         # here are NOT threaded onward on purpose: forward() re-assembles
@@ -637,7 +636,7 @@ def gradient_check(
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_gc
     _refuse_f0_gc(sim._thin_conductors, "gradient-check")
     # Baseline eps_r only; the solve is sim.forward(), which assembles and
-    # realizes its own sheets and wires (#931 §1.9). Collect-and-drop so
+    # realizes its own sheets and wires. Collect-and-drop so
     # the omission is a decision at this call site, not an accident.
     assemble = (sim._assemble_materials_nu if sim._uses_nonuniform_mesh
                 else sim._assemble_materials)
@@ -687,7 +686,7 @@ def gradient_check(
 
 
 # ---------------------------------------------------------------------------
-# Progressive multi-resolution orchestrator (issue #42)
+# Progressive multi-resolution orchestrator
 # ---------------------------------------------------------------------------
 
 
