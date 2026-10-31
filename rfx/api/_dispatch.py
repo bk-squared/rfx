@@ -1,5 +1,6 @@
 """Shared run/forward lane admission, before execution or sharding."""
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import functools
@@ -287,7 +288,7 @@ def _dispatch_plan(
                 f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
                 ":1 exceeds the 3:1 stability caution threshold. "
                 "Monitor for numerical dispersion / late-time drift.", AccuracyWarning,
-                stacklevel=2,
+                stacklevel=user_stacklevel(),
             )
 
     # ---- Distributed multi-device lane ----

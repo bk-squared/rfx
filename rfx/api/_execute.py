@@ -20,7 +20,7 @@ from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
 from rfx.api._gradient_witness import with_conductivity_record
-from rfx.preflight._impl import auto_preflight, run_preflight_gate
+from rfx.preflight._impl import auto_preflight, run_preflight_gate, user_stacklevel
 from rfx._diagnostic_transport import merge_diagnostics
 
 import functools
@@ -342,7 +342,7 @@ class _ExecuteMixin:
                 "the decay stop can never fire and this is a forced "
                 "decay_max_steps run. Lower decay_min_steps or raise "
                 "decay_max_steps.",
-                ConfigurationWarning, stacklevel=3,
+                ConfigurationWarning, stacklevel=user_stacklevel(),
             )
         try:
             _ud = float(until_decay)
@@ -354,7 +354,7 @@ class _ExecuteMixin:
                 "(W < until_decay * reference) holds at every check where W "
                 "is not still rising, so the stop can fire right after the "
                 "drive end and decay_min_steps; use a fraction such as 1e-3.",
-                AccuracyWarning, stacklevel=3,
+                AccuracyWarning, stacklevel=user_stacklevel(),
             )
 
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
@@ -509,7 +509,7 @@ class _ExecuteMixin:
                 f"report_every={val!r} is ignored on the {path_name} run "
                 f"path ({reasons['report_every']}); the run goes on without "
                 "progress lines and its result is unchanged.",
-                ConfigurationWarning, stacklevel=3,
+                ConfigurationWarning, stacklevel=user_stacklevel(),
             )
 
     from rfx.runners._admission import _refuse_conformal_boundary
@@ -1452,7 +1452,7 @@ class _ExecuteMixin:
                 "accuracy statement of their own; see the 'Distributed execution' "
                 "row of docs/guides/support_matrix.md before relying on one.",
                 AccuracyWarning,
-                stacklevel=2,
+                stacklevel=user_stacklevel(),
             )
             _DISTRIBUTED_FIRST_CALL_WARNED = True
 

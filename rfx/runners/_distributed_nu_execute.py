@@ -1,5 +1,6 @@
 """Shared graded distributed assembly, staging and forward packaging."""
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 from rfx.errors import ConfigurationWarning
 import math
 import jax
@@ -193,7 +194,7 @@ def execute_from_materials(
                 "in memory; consider checkpoint_every=None for small "
                 "runs.",
                 ConfigurationWarning,
-                stacklevel=3,
+                stacklevel=user_stacklevel(),
             )
 
     sharded_grid = build_sharded_nu_grid(

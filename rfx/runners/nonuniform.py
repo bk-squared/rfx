@@ -1,6 +1,7 @@
 """Non-uniform grid run path extracted from Simulation."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import ConfigurationWarning
 from rfx.model.graded_admission import host_cells
@@ -1279,7 +1280,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "run: chunked progress composes with neither "
                 "checkpoint/segmented-remat nor n_warmup on the NU lane "
                 "(the chunked loop is forward-only).",
-                ConfigurationWarning, stacklevel=2)
+                ConfigurationWarning, stacklevel=user_stacklevel())
         r = run_nonuniform(
             grid, materials, n_steps,
             checkpoint=checkpoint,

@@ -5,6 +5,7 @@ inputs without triggering resolution. Declaration validation uses that snapshot;
 grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import RfxUnsupported, RfxWarning
 import warnings
@@ -124,10 +125,10 @@ class _MeshMixin:
             + (f", non-uniform z ({len(resolved['_dz_profile'])} cells)"
                if resolved["_dz_profile"] is not None else "")
             + ". Set dx= explicitly to suppress.",
-            AutoMeshWarning, stacklevel=3,
+            AutoMeshWarning, stacklevel=user_stacklevel(),
         )
         for message in config.warnings:
-            warnings.warn(message, AutoMeshWarning, stacklevel=3)
+            warnings.warn(message, AutoMeshWarning, stacklevel=user_stacklevel())
         return resolved
 
     def _auto_configure_mesh(self):

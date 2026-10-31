@@ -1,6 +1,7 @@
 """Source admission against geometry conductors and declared PEC walls."""
 
 from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx._warning_origin import user_stacklevel
 from rfx._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
@@ -58,7 +59,7 @@ def _dead_sources(sim, conductors):
                 "Soft-source PEC admission check cannot run on a traced mesh "
                 "or traced conductor edges/source positions; no concrete "
                 "realized edge classification is available.", AccuracyWarning,
-                stacklevel=3)
+                stacklevel=user_stacklevel())
         return
     from rfx.model.conductors import lumped_port_stage
     from rfx.sources.sources import _wire_port_cells, wire_port_from_entry

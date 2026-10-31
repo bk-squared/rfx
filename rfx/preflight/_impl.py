@@ -5,6 +5,7 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
+from rfx._warning_origin import user_stacklevel
 from rfx.errors import AccuracyWarning, RfxRefusal
 
 import jax
@@ -240,17 +241,6 @@ def _preflight_impl(
 _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 
-def _user_stacklevel():
-    """warnings.warn stacklevel of the first frame outside the rfx package, seen from the caller."""
-    import os
-    import sys
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep
-    frame, level = sys._getframe(1), 1
-    while frame is not None and os.path.abspath(frame.f_code.co_filename).startswith(root):
-        frame, level = frame.f_back, level + 1
-    return level
-
-
 def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     """Apply the same warning/error policy to full or scoped preflight.
 
@@ -269,7 +259,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
             f"[{context}] preflight found {len(warns)} advisory issue(s) - "
             f"pass skip_preflight=True to suppress:\n  - {body}",
             AccuracyWarning,
-            stacklevel=_user_stacklevel(),
+            stacklevel=user_stacklevel(),
         )
     if errors:
         # Error-severity findings are structurally-impossible configs
