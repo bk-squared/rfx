@@ -17,6 +17,7 @@ Usage
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import ConfigurationWarning
 import math
@@ -447,7 +448,7 @@ def auto_configure(
         _w.warn(
             "auto_configure called with empty geometry — domain and dx are "
             "derived from frequency range only. Add geometry before running.", ConfigurationWarning,
-            stacklevel=2,
+            stacklevel=user_stacklevel(),
         )
         warnings.append(
             "Empty geometry: domain uses lambda_min/10 cell size and minimal "

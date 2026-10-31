@@ -6,7 +6,7 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning; from rfx._warning_origin import user_stacklevel  # noqa: E702
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -1802,7 +1802,7 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
         f"wave is weak (spectral band edges). Do not trust or optimize against "
         f"these bins — restrict the band to where the source has energy, or use "
         f"run() for a passive analysis curve.", AccuracyWarning,
-        stacklevel=3,
+        stacklevel=user_stacklevel(),
     )
 
 
