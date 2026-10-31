@@ -1,4 +1,4 @@
-"""Where and when each sample of a recorded field sits (#1258, #1259).
+"""Where and when each sample of a recorded field sits.
 
 A field array returned by a uniform-grid run -- ``Result.snapshots[comp]`` or
 one component of ``Result.state`` -- is indexed on the PADDED Yee lattice: the
@@ -28,7 +28,7 @@ Positions
     ======  ===================================  ================
 
     The E rows are the lattice ownership contract's index convention
-    (``rfx/boundaries/pec.py``, #931 section 1.1). The H rows follow from
+    (``rfx/boundaries/pec.py``). The H rows follow from
     ``rfx.core.yee.update_h``: ``H`` is built from FORWARD differences of E
     (``Hx`` from ``Ez[j+1] - Ez[j]`` and ``Ey[k+1] - Ey[k]``), so each H sample
     sits half a cell above the E samples it differences. The last sample along
@@ -312,7 +312,7 @@ class SnapshotPiece(NamedTuple):
 def plan_snapshot_pieces(n: int, lo: int, interval: int) -> list:
     """How ``run()`` scans ``n`` steps (global steps ``lo, lo+1, ...``) when
     it records a frame after every step whose completed-step count is a
-    multiple of ``interval`` (#1258).
+    multiple of ``interval``.
 
     Pure Python; returns :class:`SnapshotPiece` rows in step order. First a
     ``plain`` head up to the next multiple (only when ``lo`` is not one,

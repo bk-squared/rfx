@@ -474,7 +474,7 @@ def _preflight_summary(sim: Any, *, n_steps: int | None, available_memory_gb: fl
                 available_memory_gb=available_memory_gb,
             )
         # `issues or []` would call bool() on the PreflightReport, which
-        # refuses it (#980). Only the None guard was ever load-bearing.
+        # refuses it. Only the None guard was ever load-bearing.
         issues_list = [str(issue) for issue in (issues if issues is not None else [])]
         return {
             "status": "passed" if not issues_list else "issues",

@@ -39,7 +39,7 @@ def _preflight_impl(
         self._waveguide_call_overrides = _tfsf_material_overrides
     if _conformal_run is not None:
         # run() passes its resolved conformal_pec: cut-cell conformal PEC solves
-        # PEC Box faces at their drawn planes (#1651).
+        # PEC Box faces at their drawn planes.
         import copy
         from rfx.boundaries.features import share_wall_warning_history
         run_copy = copy.copy(self)
@@ -77,7 +77,7 @@ def _preflight_impl(
     from rfx.preflight.realization import assembly_warning_scope
     with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval(), assembly_warning_scope():
         warnings.simplefilter("always")
-        # MSL automatic probe counts from the full declaration (#1584),
+        # MSL automatic probe counts from the full declaration,
         # before any check reads them.
         from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
         admit_msl_auto_probes(self)
@@ -204,7 +204,7 @@ def _preflight_impl(
         ):
             issues[:] = [issue for issue in issues if issue.code not in assembly_codes]
 
-    if strict and len(issues):   # PreflightReport refuses bool() (#980)
+    if strict and len(issues):   # PreflightReport refuses bool()
         # Aggregate-then-raise: escalate ALL findings at once. Preserves the
         # historical "strict escalates any issue to ValueError" contract,
         # but reports every problem in one pass instead of fail-on-first
@@ -216,7 +216,7 @@ def _preflight_impl(
             + "\n  - ".join(issues)
         )
 
-    if len(issues):              # PreflightReport refuses bool() (#980)
+    if len(issues):              # PreflightReport refuses bool()
         for iss in issues:
             print(f"  [PREFLIGHT] {iss}")
     elif check_ntff is True:
@@ -243,7 +243,7 @@ _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     """Apply the same warning/error policy to full or scoped preflight."""
     issues = PreflightReport(issues)
-    if not len(issues):          # PreflightReport refuses bool() (#980)
+    if not len(issues):          # PreflightReport refuses bool()
         return
     import warnings
     errors = [i for i in issues if getattr(i, "severity", "warning") == "error"]
@@ -280,7 +280,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
                    conductors=None, prepare=False, distributed=False, tfsf_material_overrides=(),
                    conformal=None):
-    """Emit a UserWarning if preflight finds issues (issue #66).
+    """Emit a UserWarning if preflight finds issues.
 
     Called automatically at the start of ``forward()``, ``optimize()``,
     and ``topology_optimize()`` so users discover physics violations
@@ -289,8 +289,8 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     the call site to opt out (tests, already-validated configs).
 
     ``check_ntff`` gates the NTFF check family. ``run()`` passes
-    ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
-    and sub-wavelength ground-plane (issue #334) advisories are
+    ``check_ntff="advisory"``: the λ/4 near-field gap
+    and sub-wavelength ground-plane advisories are
     physics-relevant to any far-field computation and
     run() is the common NTFF entry point, so they are surfaced as
     warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``

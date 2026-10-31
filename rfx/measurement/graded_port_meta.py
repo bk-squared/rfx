@@ -7,8 +7,7 @@ def _build_wp_meta(wire_ports, grid):
     """Static per-port metadata for the wire-port DFT scan body.
 
     Pre-computes the port cell's metrics OUTSIDE the scan (repo engineering
-    principle 4). Two metric families, and they are not interchangeable
-    (issue #672):
+    principle 4). Two metric families, and they are not interchangeable:
       PRIMAL  d[idx]                 -> V = -E_a * d_parallel, the length of
                                         the E_a edge itself.
       DUAL    (d[idx-1]+d[idx])/2    -> the Ampere-loop legs, each weighted
@@ -22,11 +21,11 @@ def _build_wp_meta(wire_ports, grid):
     :func:`port_metric_axes`, the same decision the assembly makes for the
     termination conductance — the two must agree or V/I does not close.
     `excite` and `direction` are carried for the post-processing;
-    `direction` no longer enters the wave split (issue #673).
+    `direction` no longer enters the wave split.
 
     Slot order (guarded by
     tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py):
-      0..2  mid_i, mid_j, mid_k     (midpoint of the LIVE run, issue #764)
+      0..2 mid_i, mid_j, mid_k     (midpoint of the LIVE run)
       3     component
       4     impedance (whole-port Z0)
       5, 6  primal dx[mid_i], dy[mid_j]
@@ -35,12 +34,12 @@ def _build_wp_meta(wire_ports, grid):
       9,10  dual x/y spacings at mid
       11    primal dz[mid_k]        (traced-safe)
       12    dual z spacing at mid
-      13    live_cells              (static tuple of (i, j, k), issue #764)
+      13    live_cells              (static tuple of (i, j, k))
       14    d_par per live cell     (primal width on the component's own
                                      axis at each live cell, same order as
                                      slot 13; z entries traced-safe)
     Slots 13/14 feed the whole-port gap voltage
-    V_port = sum_live(-E_c * d_par,c) — the #672 PRIMAL family, per cell.
+    V_port = sum_live(-E_c * d_par,c) — the PRIMAL family, per cell.
     """
     (_dx_arr_np, _x_host), (_dy_arr_np, _y_host), (_dz_m, _z_host) = \
         port_metric_axes(grid)

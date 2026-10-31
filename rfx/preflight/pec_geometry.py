@@ -1,11 +1,8 @@
-"""PEC-geometry preflight, moved verbatim out of ``rfx.api._preflight``.
+"""PEC-geometry preflight.
 
-Issue #980 Phase 3, leg 2. The conductor-realization family: the issue-#703
-campaign-statics checks, the #931 per-declaration realization findings, the #669
+The conductor-realization family: the
+campaign-statics checks, the per-declaration realization findings, the
 Leontovich surface-impedance advisories and the conformal-fine-dx guard.
-Everything here was relocated byte for byte out of ``rfx/api/_preflight.py``
--- same text, same order, same indentation, same docstrings, nothing renamed,
-reordered, tidied or rewritten.
 
 The move is gated on the committed advisory-text snapshot every
 ``sim.preflight()`` fixture renders
@@ -77,14 +74,14 @@ from rfx.preflight._common import (
 )
 
 # --------------------------------------------------------------------------
-# Issue #703: campaign statics checks — tunables + shared lazy context.
+# campaign statics checks — tunables + shared lazy context.
 #
 # Four failure classes a month-long external cross-validation hit, all
-# statically detectable before the first time step (issue #703; message
+# statically detectable before the first time step (message
 # design per docs/design_notes/preflight_lessons_from_a_long_crossval.md:
 # every finding carries OBSERVED / WHY / COST / REMEDY / STALE-IF plus a
 # COVERAGE clause, and each check aggregates into ONE message per run —
-# the #697 failure mode was 84 advisories with 93% duplication).
+# the failure mode was 84 advisories with 93% duplication).
 #
 # The gate values are module-level on purpose: the falsification tests
 # monkeypatch them in BOTH directions (loosen -> firing fixture goes
@@ -94,7 +91,7 @@ from rfx.preflight._common import (
 
 # Check 1 — congruence key quantum (extents equal within 1e-9 m) and the
 # tolerated realized-EDGE-count spread inside one congruence group. Under
-# the lattice ownership contract (#931) every conductor is realized as a
+# the lattice ownership contract every conductor is realized as a
 # set of PEC E edges by one function (rfx.boundaries.pec
 # .realized_pec_edge_masks); two congruent members that land at different
 # sub-cell offsets realize different edge sets, and the edge count is the
@@ -118,32 +115,15 @@ _OFF_LATTICE_EDGE_TOL = 5e-3
 _CAMPAIGN_MAX_OFFENDERS = 5
 
 
-# ---------------------------------------------------------------------------
-# ``_validate_cfg_conformal_fine_dx`` (the ``conformal_nan`` advisory) was
-# DELETED 2026-09-15 by #1043 / PR #1047. It was a self-detecting stale check
-# by its own design: its comment named
-# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``
-# (xfail strict=True) as the tripwire that would XPASS when the NaN was fixed
-# and said that XPASS is the signal to delete the guard. It XPASSed.
-#
-# The conformal-PEC fine-dx NaN was the #1043 CPML coefficient defect:
-# ``conformal_eps_correction`` sets ``aniso_eps`` to ``eps_eff = eps/w`` at
-# wall cells (``rfx/runners/uniform.py:279-303``), so the Yee half saw a
-# HIGHER permittivity than ``apply_cpml_e``'s psi coefficient, which read the
-# staircase ``materials.eps_r`` -- the amplifying direction. The wall cells run
-# through the x CPML pads, which span every y and z.
-#
-# Measured on the tripwire's own three rungs, |S21| at dx 3 / 2 / 1.5 mm:
-#   origin/main                          0.7564 / 0.6974 / nan   (xfail)
-#   this parameter present but unthreaded 0.7564 / 0.6974 / nan   (xfail)
-#   psi coefficient threaded             0.7796 / 0.6974 / 0.7274 (passes)
-#
-# The 2026-06 diagnosis -- "the E-update-only eps_eff makes the operator
-# non-SPSD (discrete-adjointness break), dt cannot cure it" -- was a
-# misdiagnosis of this symptom. Whether the conformal METHOD is ACCURATE is a
-# separate, still-open question: the 2026-06-08 accuracy verdicts on the four
-# conformal methods were all taken with this defect present.
-# ---------------------------------------------------------------------------
+# Conformal PEC requires the CPML psi coefficient to read the same effective
+# permittivity as the Yee E update. ``conformal_eps_correction`` sets
+# ``aniso_eps`` to ``eps/w`` at wall cells; using staircase
+# ``materials.eps_r`` for psi instead amplifies the field in the pads. In
+# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``, threading that
+# permittivity changes |S21| at dx 3 / 2 /
+# 1.5 mm from 0.7564 / 0.6974 / NaN to 0.7796 / 0.6974 / 0.7274. These are
+# stability measurements; accuracy verdicts obtained with the coefficient
+# mismatch do not establish the conformal methods' accuracy.
 
 
 def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
@@ -234,7 +214,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
 
 
 def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
-    """Advisories for Leontovich (surface_impedance_f0) sheets (#669).
+    """Advisories for Leontovich (surface_impedance_f0) sheets.
 
     Two advisory-tier checks per f0-mode thin conductor, both on
     CONCRETE values only (traced f0/sigma_bulk/thickness skip them):
@@ -248,7 +228,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         at ``f0`` with relative band error ``|sqrt(f/f0)-1|``; a source
         band centred far from f0 makes that error claims-relevant.
 
-    Thresholds 3x and 20% are fixed by the issue #669 implementation
+    Thresholds 3x and 20% are fixed by the implementation
     contract.
     """
     from rfx.core.yee import MU_0 as _MU0
@@ -334,12 +314,12 @@ def _warn_campaign_statics_unavailable(_w, error) -> None:
 def _validate_cfg_campaign_statics(self, _w) -> None:
     """Umbrella for the conductor-realization checks; builds the shared context.
 
-    Two families share the context. The #931 realization findings
+    Two families share the context. The realization findings
     (design note §3: ``pec_box_subcell`` / ``pec_zero_cells`` /
     ``pec_realization_refused`` errors, ``pec_box_one_cell`` warning,
     ``sheet_plane_realized`` notice, ``sheet_slot_vacuum`` and
     ``pec_face_short_of_domain_wall`` warnings) say per declaration
-    what the lattice realized; the issue-#703 campaign checks
+    what the lattice realized; the campaign checks
     (congruent-conductor realization parity, sheet-cavity electrical
     thickness, off-lattice design-edge census) say what that
     realization does to the design's symmetries and stack-ups.
@@ -348,7 +328,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     mesh (no concrete node positions) or a context-build failure it
     says so instead of reading as clean: a
     guard that cannot evaluate the model must not be indistinguishable
-    from a guard that found nothing (#685 class).
+    from a guard that found nothing.
     """
     try:
         has_conductor = any(
@@ -396,7 +376,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     self._validate_cfg_sheet_cavity_thickness(_w, ctx)
 
 # ------------------------------------------------------------------
-# #931 §3 — what the lattice realized, per PEC declaration
+# what the lattice realized, per PEC declaration
 # ------------------------------------------------------------------
 
 def _validate_cfg_pec_realization(self, _w, ctx) -> None:
@@ -415,7 +395,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
       thickness. The classifier's own message carries the physical
       thickness and the local cell.
     * ``pec_zero_cells`` (ERROR) — a PEC volume no cell centre falls
-      inside (the #369 vaporized-metal class), or a sheet whose
+      inside (the vaporized-metal class), or a sheet whose
       footprint reaches no node.
     * ``pec_realization_refused`` (ERROR) — every other refusal the
       classifier raises (a line/point Box, a sheet declared further
@@ -431,7 +411,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
       a WARNING instead when the mid-plane sits on an exact half-cell
       tie, naming both candidate planes and the one chosen (lower).
 
-    Aggregated per code (the #697 lesson: never one line per geometry
+    Aggregated per code (the lesson: never one line per geometry
     entry), worst offenders first, capped at
     ``_CAMPAIGN_MAX_OFFENDERS``; the refusals are per entry because
     each is a hard stop with its own remedy.
@@ -609,9 +589,9 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     box contains the plane. The one E edge that reads that node's
     material is the normal edge from the sheet plane into the upper
     cell, half a cell inside a dielectric the drawing says is there,
-    so the cavity above the sheet gains a vacuum cell in series (the #702
+    so the cavity above the sheet gains a vacuum cell in series (the
     measurement: 17 % on a 127 um stack). Nothing is re-sampled
-    silently any more (§2 deleted the #702 resample); this check names
+    silently any more (§2 deleted the resample); this check names
     the slot and the remedy — extend the dielectric boxes to the sheet
     plane. ERROR-grade: the realized stack is not the drawn stack.
 
@@ -683,7 +663,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     """Design note §6 (the WR-90 waveguide case): a PEC face one cell shy of a domain wall.
 
     The domain-face PEC (§1.8, BC-owned) stands on the last INTERIOR
-    node, where the grid puts the wall: since #1887 a wall-to-wall
+    node, where the grid puts the wall: a wall-to-wall
     length is solved at the nearest whole number of cells (more than
     1 % off only under snap='declared'); before it, ``ceil(extent / dx)``
     made a 22.86 x 10.16 mm WR-90 on a 1 mm mesh a 23 x 11 mm guide.
@@ -694,11 +674,10 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     under a wall at 11.000 mm, and the one-cell gap between them is a
     parallel-plate line along the broad wall, open at both ends.
 
-    Measured on the WR-90 waveguide-port case, 2026-09-07: that slot
+    Measured on the WR-90 waveguide-port case: that slot
     passed |S21| 0.22-0.33 through
     a "short" and took the pec-short |S11| deficit from 0.0146 to
-    0.0560. Pre-#931 the node-half-open sampler included the top node
-    by accident, so nothing in the repo had ever had to say this.
+    0.0560.
 
     Fires per volume entry, per axis, per side: the entry's own
     realized wall plane (``realized_wall_planes`` on its own edges —
@@ -773,7 +752,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     ))
 
 # ------------------------------------------------------------------
-# issue #703 campaign checks, on the realized edge set
+# campaign checks, on the realized edge set
 # ------------------------------------------------------------------
 
 def _congruence_origin_shift(ctx, members, counts):
@@ -841,7 +820,7 @@ def _congruence_origin_shift(ctx, members, counts):
     return best
 
 def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
-    """Issue #703 check 1: congruent conductors must realize congruently.
+    """ congruent conductors must realize congruently.
 
     Groups conductor entries by congruence (same shape class and
     realization kind, sorted bounding-box extents equal within
@@ -849,7 +828,7 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
     rotations share the key by construction) and compares each
     member's REALIZED PEC EDGE COUNT from the shared realization
     (``rfx.boundaries.pec.realized_pec_edge_masks`` on that member's
-    own cells / sheet, #931 §1.7). A spread beyond
+    own cells / sheet). A spread beyond
     ``_CONGRUENCE_SPREAD_TOL_EDGES`` means the lattice broke a symmetry
     the design has. Runs on BOTH the uniform and the non-uniform lane
     (the counts and offsets come from that lane's own builders); the
@@ -1021,7 +1000,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)
     wall_faces = _cavity_wall_faces(ctx)
-    # Cut-cell conformal PEC solves a Box face at its drawn plane (#1651).
+    # Cut-cell conformal PEC solves a Box face at its drawn plane.
     # run() passes its resolved flag; a bare preflight() reads the declared walls.
     conformal = getattr(ctx.sim, "_conformal_run_call", None)
     if conformal is None:
@@ -1146,13 +1125,12 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
 
 
 def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
-    """Issue #703 check 3: each conductor-bounded cavity's electrical thickness.
+    """ each conductor-bounded cavity's electrical thickness.
 
     Census = every realized wall plane the contract puts on the
     lattice: a sheet's node plane along its normal, and a volume's
     two faces along every axis (``realized_wall_planes`` on the
-    entry's own edge masks, #931 §1.7 — the check that used to read
-    ``pec_mask`` could not see a volume's far face, issue #767). A
+    entry's own edge masks; ``pec_mask`` alone cannot see a volume's far face). A
     cavity is two ADJACENT planes of two different conductors over a
     shared footprint with no conductor cell between them. For each,
     compare the MESH electrical thickness — the cells strictly between
@@ -1258,7 +1236,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                 col[inplane[1]] = int(rep[1])
                 # Mesh sums over the cells strictly between the two
                 # realized planes: the normal E edges E_a[k1 .. k2-1],
-                # each on its own cell's eps_r (#931 §1.1: node k is
+                # each on its own cell's eps_r (node k is
                 # the lower corner of cell k).
                 mesh_cap = mesh_phase = 0.0
                 pec_between = False
@@ -1503,12 +1481,12 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
 
 
 def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
-    """Issue #703 check 4: census of conductor design edges landing off-lattice.
+    """ census of conductor design edges landing off-lattice.
 
     Per conductor Box and axis, the largest distance from a declared
     face to its nearest E-node, relative to the axis extent. Under
     the lattice ownership contract a PEC volume's faces realize on
-    the cell-centre rule (#931 §1.1: a face off a node plane rounds to
+    the cell-centre rule (a face off a node plane rounds to
     the nearest plane) and a sheet's footprint is sampled closed on
     the nodes, so every off-node face is a real displacement of the
     realized conductor — there is no sub-cell exclusion (the former
@@ -1534,7 +1512,7 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     n_normal_axes = 0
     domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
     # A sheet's in-plane face is measured against where it is SOLVED (the
-    # shared solved-edge model, rfx.mesh_edges.solved_sheet_span, #1375),
+    # shared solved-edge model, rfx.mesh_edges.solved_sheet_span),
     # not against its nearest node: a free edge is solved 0.35 of the
     # outside cell beyond its last node. A registered sheet then reads 0,
     # an on-node one 0.35 cell, and a right-sized but shifted one its shift.

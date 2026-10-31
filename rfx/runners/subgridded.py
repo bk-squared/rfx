@@ -192,7 +192,7 @@ def _run_subgridded_once(
     # for full-x/y z slabs.  Local x/y windows use the endpoint-node 6-face box
     # SAT path plus fine physical PEC faces; auto-selecting the z-slab-only
     # exterior path for those windows would fail before the first timestep.
-    # #1465: opt-in must reproduce the closure formerly selected by production.
+    # opt-in must reproduce the closure formerly selected by production.
     auto_boundary_terminated_exterior = (
         is_full_xy_region
         and (
@@ -237,7 +237,7 @@ def _run_subgridded_once(
     from rfx.geometry.rasterize_grid import coords_from_fine_grid, rasterize_geometry
 
     coords_f = coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off)
-    # #931: the fine-region coordinates are already cell CENTRES
+    # the fine-region coordinates are already cell CENTRES
     # (coords_from_fine_grid), so they double as the PEC centre samples.
     # Sheets and wires are deliberately NOT collected here: this lane
     # applies PEC from a cell mask on two grids and has no carrier for a
@@ -434,7 +434,7 @@ def _run_subgridded_once(
             sigma_port_per_cell = n_cells / (pe.impedance * dx_f)
             for cell in cells:
                 i, j, k = cell
-                mats_f = _stamp_lumped_sigma(      # #1210, #1236
+                mats_f = _stamp_lumped_sigma(
                     mats_f, (i, j, k), sigma_port_per_cell, pe.component)
                 if pec_mask_f is not None:
                     pec_mask_f = pec_mask_f.at[i, j, k].set(False)
@@ -448,8 +448,8 @@ def _run_subgridded_once(
             idx = _pos_to_fine_idx(pe.position, pe.component)
             i, j, k = idx
             sigma_port = 1.0 / (pe.impedance * dx_f)
-            mats_f = _stamp_lumped_sigma(mats_f, (i, j, k), sigma_port,  # #1210
-                                         pe.component)                    # #1236
+            mats_f = _stamp_lumped_sigma(mats_f, (i, j, k), sigma_port,
+                                         pe.component)
             if pec_mask_f is not None:
                 pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
@@ -685,19 +685,18 @@ def _run_subgridded_once(
                 s_value = (z_in - z0_i) / (z_in + z0_i)
             elif recv == driven:
                 # Single-cell drive-port diagonal: byte-frozen
-                # extract_lumped_s11 algebra (issue #308 changes receive
-                # ports only).
+                # extract_lumped_s11 algebra.
                 z0_cell_i = z0_i / n_cells_i
                 b_i = (-v_dft[recv] - z0_cell_i * i_dft[recv]) / (
                     2.0 * jnp.sqrt(z0_cell_i)
                 )
                 s_value = b_i / safe_a
             else:
-                # Passive receive port (issue #308): orthogonal wave channel,
+                # Passive receive port: orthogonal wave channel,
                 # sign pinned by the DC falsifier — single-truth with
                 # decompose_lumped_s_matrix (and with the wire decomposer's
                 # LEGACY v_port=None path; the wire production off-diagonal
-                # moved to the whole-port frame in #770 — this experimental
+                # uses the whole-port frame — this experimental
                 # subgrid lane still uses the per-cell channel).
                 z0_cell_i = z0_i / n_cells_i
                 b_i = (v_dft[recv] - z0_cell_i * i_dft[recv]) / (
@@ -736,7 +735,7 @@ def run_subgridded_path(
 ):
     """Run simulation using SBP-SAT subgridding (JIT-compiled).
 
-    Production is refused (#1465). With explicit research/off opt-in,
+    Production is refused. With explicit research/off opt-in,
     ``compute_s_params=True`` uses the V/I replay machinery to populate an
     experimental single-cell lumped-port S-matrix. This does not establish
     physics support. One instability warning covers the run and its replays.

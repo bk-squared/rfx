@@ -55,7 +55,7 @@ def _waveguide_port_axis_metrics(grid, cfg):
     On a uniform axis the two collapse to the same number and to
     ``grid.dx``, so nothing on the uniform lane moves.
 
-    Host reads, per #1190: a concrete axis is resolved to Python floats here,
+    Host reads: a concrete axis is resolved to Python floats here,
     once, outside the scan. A traced axis keeps its tracer, the way the CPML
     z pair already does, so the mesh-as-design-variable path survives.
 
@@ -65,7 +65,7 @@ def _waveguide_port_axis_metrics(grid, cfg):
     store and each warn. Measured: two ``ExactNodeSpineMissingWarning`` per
     port per call, and the metric comes back 8.692e-09 relative above the
     spine's value (0.000750000006519258 against 0.00075 on the WR-90 band).
-    That is the pre-#802 float32 quantization reaching the injection
+    That is the float32 quantization reaching the injection
     coefficient, far below anything a user reads, and it is the existing
     degraded path rather than something this helper introduces. Build the
     grid with ``make_nonuniform_grid`` and neither happens.
@@ -141,13 +141,13 @@ def _update_e_nu_dispersive(
         ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
     # Narrow every output back to the dtype of the carry it came from
-    # (issue #656) — the NU lane runs the same ADE recurrences off the same
+    # — the NU lane runs the same ADE recurrences off the same
     # ``init_debye``/``init_lorentz`` coefficients, which are built from
     # ``grid.dt`` (an np.float64 scalar, strongly typed in JAX). The full
     # rationale lives on ``rfx.stepping.poles.update_e_lorentz``.
     _fdtype = state.ex.dtype
 
-    # Every coefficient is per E component (#1260): component c takes index c.
+    # Every coefficient is per E component: component c takes index c.
     from rfx.materials.debye import debye_e_component, per_component
     from rfx.materials.lorentz import (
         lorentz_e_component, lorentz_p_component, mixed_e_component_coeffs,
@@ -240,7 +240,7 @@ def _update_e_nu_dispersive(
 
 
 class _NUScanSetup(NamedTuple):
-    """Host-side bundle built by :func:`_build_nu_scan` (#383 code motion).
+    """Host-side bundle built by :func:`_build_nu_scan`.
 
     Carries the scan step function, its initial carry, the stacked source
     table, and the post-scan assembly metadata shared by
@@ -316,7 +316,7 @@ def _build_nu_scan(
     sheet_impedance=None,
     design_box=None,
 ) -> _NUScanSetup:
-    """Build the NU scan carry + step function (pure code motion, #383).
+    """Build the NU scan carry + step function (pure code motion).
 
     Extracted verbatim from :func:`run_nonuniform` so the until-decay
     entry point can drive the SAME ``step_fn`` / carry through a chunked
@@ -392,7 +392,7 @@ def _build_nu_scan(
                 localized=(("sources", sources), ("waveguide_ports", waveguide_ports),
                            ("wire_ports", wire_ports), ("rlc_metas", rlc_metas)))
 
-    # #677 surface-impedance sheet: exponential-stepping A/B built once
+    # surface-impedance sheet: exponential-stepping A/B built once
     # from the FINAL scan materials; applied per step at tangential edges
     # in step_fn (after apply_pec_mask, before sources/DFT sampling).
     use_sheet_impedance = sheet_impedance is not None
@@ -416,7 +416,7 @@ def _build_nu_scan(
     inv_dy = grid.inv_dy
     inv_dz = grid.inv_dz
 
-    # ---- #1183 design box on the graded mesh: fence, then build Ca/Cb ----
+    # ---- design box on the graded mesh: fence, then build Ca/Cb ----
     # The SAME resolver the uniform lane runs (rfx.simulation), because the
     # question it answers is the same one: does anything else in this step
     # read ``materials`` at a design cell. What differs on this lane is only
@@ -505,12 +505,12 @@ def _build_nu_scan(
             init_current_moment_data as _init_cm,
             slab_e_snapshot as _slab_e_snapshot,
         )
-        # Same dtype policy as the NTFF carry (#646).
+        # Same dtype policy as the NTFF carry.
         carry_init["current_moments"] = _init_cm(
             current_moments, field_dtype=carry_init["fdtd"].ex.dtype)
 
     # Waveguide-port time-series carry (mirrors uniform path).
-    # Phase 2 cleanup (2026-04-25) removed in-scan DFT accumulators;
+    # Phase 2 cleanup removed in-scan DFT accumulators;
     # spectra are computed POST-SCAN by a rect full-record DFT on the
     # recorded modal V/I time series.
     if use_waveguide_ports:

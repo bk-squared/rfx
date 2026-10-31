@@ -68,7 +68,7 @@ def _msl_axis_spacing(grid, axis: int):
     * traced (mesh-as-design-variable) profiles — ``(None, None, False)``:
       the answer is not available host-side.
 
-    Issue #686: the #469 probe-offset interval solve used to bail on ANY
+    the probe-offset interval solve used to bail on ANY
     non-uniform grid (``getattr(grid, "dz", None) is not None``). Its
     stated reason — "cell-counted intervals are ill-defined under graded
     dx" — is a statement about the PROPAGATION axis, and a ``dz_profile``

@@ -28,7 +28,7 @@ def _update_e_tez(cfg, st, dx, dt, t):
     hz = st.hy_2d   # Hz stored in hy_2d slot
     coeff_e = dt / EPS_0
 
-    # dHx/dz -- Bloch field-transform (#404): plain roll + exp(+j k_z dz) on the
+    # dHx/dz -- Bloch field-transform: plain roll + exp(+j k_z dz) on the
     # backward neighbour (conjugate of the forward pshift; k_z=0 -> plain diff).
     pconj = jnp.exp(1j * cfg.k_transverse * dx)
     dhx_dz = (hx - jnp.roll(hx, 1, axis=1) * pconj) / dx
@@ -68,7 +68,7 @@ def _update_e_tmz(cfg, st, dx, dt, t):
     # dHy/dx -- zero-pad backward difference along x
     dhy_dx = (hy - jnp.concatenate([jnp.zeros((1, hy.shape[1]), hy.dtype), hy[:-1, :]], axis=0)) / dx
 
-    # dHx/dy -- Bloch field-transform (#404): plain roll + exp(+j k_y dx) on the
+    # dHx/dy -- Bloch field-transform: plain roll + exp(+j k_y dx) on the
     # backward neighbour (conjugate of the forward pshift; k_y=0 -> plain diff).
     pconj = jnp.exp(1j * cfg.k_transverse * dx)
     dhx_dy = (hx - jnp.roll(hx, 1, axis=1) * pconj) / dx
@@ -102,7 +102,7 @@ def _update_h_tez(cfg, st, dx, dt):
     hz = st.hy_2d   # Hz stored in hy_2d slot
     coeff_h = dt / mu_abs
 
-    # dEy/dz -- Bloch field-transform (#404): plain roll + exp(-j k_z dz) on the
+    # dEy/dz -- Bloch field-transform: plain roll + exp(-j k_z dz) on the
     # forward neighbour (transverse axis is z here; k_z=0 -> plain periodic diff).
     pshift = jnp.exp(-1j * cfg.k_transverse * dx)
     dey_dz = (jnp.roll(ey, -1, axis=1) * pshift - ey) / dx
@@ -131,7 +131,7 @@ def _update_h_tmz(cfg, st, dx, dt):
     hx, hy = st.hx_2d, st.hy_2d
     coeff_h = dt / mu_abs
 
-    # dEz/dy -- Bloch field-transform (#404): plain roll + exp(-j k_y dx) on the
+    # dEz/dy -- Bloch field-transform: plain roll + exp(-j k_y dx) on the
     # forward neighbour. k_y=0 (normal) -> pshift=1 -> ordinary periodic diff.
     pshift = jnp.exp(-1j * cfg.k_transverse * dx)
     dez_dy = (jnp.roll(ez, -1, axis=1) * pshift - ez) / dx
@@ -153,7 +153,7 @@ def _update_h_tmz(cfg, st, dx, dt):
 
 def _transverse_phase(cfg: TFSF2DConfig, n_trans: int, dx: float) -> jnp.ndarray:
     """Transverse Bloch phase exp(-j·k_y·y) to re-apply to the (complex,
-    y-uniform) aux fields when injecting into the real 3D grid (#404).
+    y-uniform) aux fields when injecting into the real 3D grid.
 
     ``k_y = cfg.k_transverse`` is 0 for normal incidence (this path is oblique
     only), giving phase = 1 and recovering the plain broadcast.
@@ -164,7 +164,7 @@ def _transverse_phase(cfg: TFSF2DConfig, n_trans: int, dx: float) -> jnp.ndarray
 
 def bloch_phase_tuple(cfg: TFSF2DConfig, dx: float) -> tuple:
     """Per-axis Bloch phase ``exp(-j·k_transverse·dx)`` for the 3D
-    ``update_e``/``update_h`` on the transverse periodic axis (#404 Phase-B).
+    ``update_e``/``update_h`` on the transverse periodic axis.
 
     The transformed-frame 3D grid evolves the Bloch envelope ``P`` and must carry
     the SAME transverse phase on its periodic roll as the 2D-aux grid, on the axis

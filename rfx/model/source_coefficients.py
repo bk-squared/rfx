@@ -168,15 +168,15 @@ def current_source_cb(eps_r_c, sigma_c, dt):
     source feeds, from that edge's ``(eps_r, sigma)``.
 
     ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
-    four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`
-    (#1210). Concrete and traced inputs use the same jnp arithmetic,
+    four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`. Concrete and traced inputs use the same
+    jnp arithmetic,
     keeping a traced permittivity on the tape (GEO-C3).
     The one spelling of the drive coefficient: :func:`make_current_source`
     and the distributed graded forward, which builds it inside its jitted
-    program from the slabs its E update receives (#1279), both call it.
+    program from the slabs its E update receives, both call it.
     """
     # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
-    # which overflowed float32 cotangents into NaN gradients (#1279).
+    # which overflowed float32 cotangents into NaN gradients.
     eps_r = jnp.asarray(eps_r_c)
     sigma = jnp.asarray(sigma_c)
     return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
@@ -188,7 +188,7 @@ def current_source_volume(grid, position_ijk, component):
     traced (then ``dV`` is a jnp scalar, else a Python float)."""
     i, j, k = position_ijk
 
-    # Control volume of the E node this source injects into (issue #672).
+    # Control volume of the E node this source injects into.
     # An E_a component is an EDGE along its own axis a and sits ON a node on
     # the two transverse axes, so its control volume is MIXED:
     #   axis == a  -> primal per-cell width d[idx]
@@ -196,7 +196,7 @@ def current_source_volume(grid, position_ijk, component):
     #                 metric the NU E update divides curl H by (CORE-C2,
     #                 ``_profile_to_inv_arrays``); the Ex update, for
     #                 instance, uses inv_dy and inv_dz and never inv_dx.
-    # Using the primal width on all three axes (pre-#672) is right only where
+    # Using the primal width on all three axes is right only where
     # both neighbour pairs are equal. On a 2:1 grading step it mis-normalizes
     # the injected current moment by the local cell ratio on each graded
     # TRANSVERSE axis (measured: dV too large by 1.333 with one graded
@@ -254,8 +254,8 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     """
     i, j, k = position_ijk
 
-    # Read the edge's own eps and sigma, averaged over its four cells
-    # (#1210), with the same differentiable drive formula on every trace.
+    # Read the edge's own eps and sigma, averaged over its four cells,
+    # with the same differentiable drive formula on every trace.
     from rfx.model import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
@@ -279,7 +279,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
 def _uniform_cell_volume(grid: Grid) -> float:
     """dV = dx*dy*dz with missing axes duck-typed to dx (engineering
     principle 3). A 2D grid is treated as ONE CELL DEEP (dz -> dx), so
-    dV = dx**3 there too — the documented #571 convention
+    dV = dx**3 there too — the documented convention
     (``rfx/api/_source_semantics.py``), not per-unit-length dx**2."""
     return grid.dx * getattr(grid, "dy", grid.dx) * getattr(grid, "dz", grid.dx)
 

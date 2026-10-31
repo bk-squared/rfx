@@ -115,7 +115,7 @@ def save_snapshots(
         number of FRAMES in the first array, and ``n_frames``, the same
         number under its right name.
     axes : dict[str, SnapshotAxes] or None
-        ``Result.snapshot_axes`` (#1259). Stored per component under
+        ``Result.snapshot_axes``. Stored per component under
         ``axes/<component>`` -- the sample coordinates, the slice plane and
         the step count and time of every frame -- and returned by
         :func:`load_snapshots` as ``metadata["axes"]``.
@@ -239,7 +239,7 @@ def save_materials(path: str | Path, materials: MaterialArrays) -> None:
         grp.create_dataset("eps_r", data=np.array(materials.eps_r))
         grp.create_dataset("sigma", data=np.array(materials.sigma))
         grp.create_dataset("mu_r", data=np.array(materials.mu_r))
-        # The lumped records (#1210), per E component (#1236): without them a
+        # The lumped records, per E component: without them a
         # reloaded port load is averaged over four cells (quartered).
         for name, components in (("sigma_lumped", ("ex", "ey", "ez")),
                                  ("eps_r_lumped", ("ex", "ey", "ez")),

@@ -1,54 +1,14 @@
-"""Near-to-far-field preflight, moved verbatim out of ``rfx.api._preflight``.
+"""Near-to-far-field preflight.
 
-Issue #980 Phase 3, leg 6. The NTFF family asks whether the far-field
-transform can mean anything on the configuration as drawn: whether the
-requested NTFF box overlaps declared PEC (an ERROR, the #334 inverse-design
-structural gate) or sits inside the radiator's near field at lambda/4,
-whether a finite ground plane under the radiator is electrically small enough
-to shape the pattern by edge diffraction rather than by the antenna, and
-whether an NTFF corner has crossed out of the domain into the absorber
-(#500). Everything here was relocated byte for byte out of
-``rfx/api/_preflight.py`` -- same text, same order, same indentation, same
-docstrings, nothing renamed, reordered, tidied or rewritten. Issue #1030
-later DELETED a fourth body from this module; see below.
+The NTFF checks cover declared PEC overlap, the lambda/4 near-field gap,
+an electrically small ground plane, and an NTFF box crossing into an absorber.
+``tests/locks/test_preflight_split_snapshot.py`` pins the advisory text,
+including the ``ntff_absorber_overlap`` fixture.
 
-The move is gated on the committed advisory-text snapshot every
-``sim.preflight()`` fixture renders
-(``tests/locks/test_preflight_split_snapshot.py``), whose corpus was extended
-first, and the CALL CENSUS that chose the extension found the family split
-cleanly in two. ``_validate_ntff_inverse_design`` (60 of 65 fixtures) and
-``_validate_ntff_small_ground_plane`` (4, because the umbrella only calls it
-once the PEC-overlap and near-field arms are past) were already witnessed
-three codes over. ``_validate_cfg_ntff_absorber_overlap`` ran on 63 and spoke
-on none -- every NTFF box in the corpus was interior -- which the
-``ntff_absorber_overlap`` fixture closes.
-
-DELETED, issue #1030: ``_validate_cfg_ntff_min_steps``. Leg 6 moved it here
-verbatim and recorded that it was the one rebound name in the whole split
-with NO emission site -- it only computed a CFL-based step estimate and wrote
-``self._ntff_min_steps_hint``, an instance attribute. The follow-up census
-(#1030) found that attribute had NO consumer anywhere in ``rfx/``, ``tests/``,
-``validation/``, ``scripts/`` or ``examples/``: its only readers were
-``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS``, which named it to
-keep it OUT of the design document, and the test asserting that exclusion --
-readers that exist only because the attribute did.
-
-Deleted rather than given a consumer, on three measured grounds. (1) The only
-place a consumer could live is ``run()`` AFTER ``_dispatch_plan`` resolves
-``n_steps`` (``rfx/api/_execute.py``: ``_auto_preflight`` is called first,
-which is why the producer's own comment read "Can't check n_steps here"), and
-at that point ``grid.dt`` is concrete -- so a consumer would recompute the
-quantity exactly instead of reading a stored estimate. (2) The estimate was
-``dx / (C0 * 1.732) * 0.99``, a CUBIC-cell CFL guess, which this project's
-engineering rule 2 forbids: on a rectangular or non-uniform mesh it is not the
-grid's ``dt``. (3) "10 periods of the lowest NTFF frequency" is an unsourced
-heuristic, while the project's evidence-based answer to "was the run long
-enough" is the #885 energy ring-down settling witness (``Result.settling_db``
-against the -40 dB bar), measured on the run that happened rather than
-guessed from ``dx`` before it. Deleting the producer moved NO frozen emission
-number: measured 113 sites / 74 literal codes / {preflight: 2,
-preflight_sparameters: 2, finding: 1} before and after, because the body
-constructed no issue class at all.
+Run duration is judged by the measured energy ring-down witness,
+``Result.settling_db``, against the -40 dB bar. A cubic-cell CFL estimate
+from ``dx`` is not the actual ``grid.dt`` on rectangular or non-uniform
+meshes, and a fixed count of ten periods has no calibration here.
 
 Import contract, inherited from ``rfx.api._preflight``: import ONLY external
 ``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` -- that keeps
@@ -59,10 +19,8 @@ Two edges leave this module and both are attribute lookups on the composed
 ``Simulation``, so neither costs an import: ``_validate_ntff_inverse_design``
 calls ``self._campaign_ctx`` (realization, still in the facade) and
 ``self._validate_ntff_small_ground_plane`` (intra-module). Its one
-cross-family module-global read, ``_absorber_boundary_for_axis``, is a
-``_common`` leaf that leg 0 already moved -- which is why
-``rfx/preflight/absorber.py``'s docstring used to say this check "stays in
-the facade" and, as of this leg, no longer does.
+cross-family module-global read, ``_absorber_boundary_for_axis``, is
+imported from ``rfx.preflight._common``.
 """
 
 from __future__ import annotations
@@ -85,13 +43,13 @@ def _validate_ntff_inverse_design(
 
     CHECK 2: NTFF face plane strictly intersecting a PEC bbox
     (hard error; skipped when ``include_pec_overlap_error=False`` —
-    the ``run()`` advisory tier, issue #303).
+    the ``run()`` advisory tier).
     CHECK 3: NTFF face closer than λ/4 to any geometry or port/source.
     Passive DFT probes are NOT counted: they read field state without
     perturbing it, so a probe on a box face is a measurement choice,
-    not a radiating/scattering culprit (issue #303).
+    not a radiating/scattering culprit.
     CHECK 4: source backed by a PEC sheet under ~1λ across
-    (warning-severity advisory; both tiers, issue #334) — the far-field
+    (warning-severity advisory; both tiers) — the far-field
     pattern will be shaped by ground-plane edge diffraction. Expected
     physics, not a solver defect; the advisory exists so a resonance
     fixture is not mistaken for a pattern fixture.
@@ -111,8 +69,8 @@ def _validate_ntff_inverse_design(
         faces.append(("lo", axis, corner_lo[axis], tang))
         faces.append(("hi", axis, corner_hi[axis], tang))
 
-    # CHECK 2: PEC intersection, CLOSED on the REALIZED wall planes
-    # (#931 §1.7). A PEC volume drawn z_a -> z_b realizes walls at
+    # CHECK 2: PEC intersection, CLOSED on the REALIZED wall planes.
+    # A PEC volume drawn z_a -> z_b realizes walls at
     # BOTH planes, so an NTFF face lying exactly ON a wall plane sits
     # on a conductor surface (tangential E zeroed there) and is an
     # overlap; a sheet (thin conductor or zero-thickness Box) is one
@@ -185,7 +143,7 @@ def _validate_ntff_inverse_design(
                 )
 
     # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
-    # geometry/source (probes excluded, issue #303). Issue #77: the λ/2 Huygens-equivalence rule
+    # geometry/source (probes excluded). The λ/2 Huygens-equivalence rule
     # was documented but only the λ/4 strong
     # tier was enforced; a face at λ/30 above a ground-plane PEC silently
     # ran and produced corrupted directivity. The two-tier check below
@@ -209,7 +167,7 @@ def _validate_ntff_inverse_design(
             bboxes.append((entry.material_name, c1, c2))
         except (NotImplementedError, TypeError, AttributeError):
             continue
-    # #931: PEC thin conductors are sheets — conductors in the census.
+    # PEC thin conductors are sheets — conductors in the census.
     from rfx.materials.thin_conductor import sheet_bounds as _sheet_bounds
     for _ti, tc in enumerate(getattr(self, "_thin_conductors", ())):
         if not getattr(tc, "is_pec", False):
@@ -224,7 +182,7 @@ def _validate_ntff_inverse_design(
     points: list[tuple[str, tuple]] = []
     for pe in self._ports:
         points.append(("port/source", tuple(pe.position)))
-    # Probes intentionally excluded (issue #303): a DFT probe is a
+    # Probes intentionally excluded: a DFT probe is a
     # passive observer and does not radiate or scatter.
 
     for side, axis, coord, tang in faces:
@@ -291,7 +249,7 @@ def _validate_ntff_inverse_design(
                 stacklevel=3,
             )
 
-    # CHECK 4 (issue #334): electrically small ground plane under a
+    # CHECK 4: electrically small ground plane under a
     # radiator. Advisory in BOTH tiers — it is pattern physics, not an
     # inverse-design structural gate.
     self._validate_ntff_small_ground_plane(f_max, lam_min)
@@ -299,7 +257,7 @@ def _validate_ntff_inverse_design(
 def _validate_ntff_small_ground_plane(
     self, f_max: float, lam: float,
 ) -> None:
-    """CHECK 4 (issue #334): finite PEC sheet backing a radiator that is
+    """CHECK 4: finite PEC sheet backing a radiator that is
     under ~1λ across → edge-diffraction-shaped far-field pattern.
 
     Background: a 0.48λ × 0.44λ ground plane produces a pattern dominated
@@ -338,7 +296,7 @@ def _validate_ntff_small_ground_plane(
         return
 
     best = None  # (lateral_area, L_small, L_big, c1, c2)
-    # #931: a ground plane is canonically a SHEET declaration
+    # a ground plane is canonically a SHEET declaration
     # (add_thin_conductor / zero-thickness Box), so PEC thin
     # conductors are in the census beside PEC geometry entries.
     from rfx.materials.thin_conductor import sheet_bounds as _sheet_bounds
@@ -428,7 +386,7 @@ def _validate_cfg_ntff_absorber_overlap(
 ) -> None:
     """P1.4: NTFF box overlap with absorber.
 
-    Issue #500: uses :func:`_absorber_boundary_for_axis` — the CPML
+    uses :func:`_absorber_boundary_for_axis` — the CPML
     pad is EXTERIOR to ``[0, domain_extent]`` (see that helper), so an
     NTFF corner is only in the absorber when it is genuinely outside
     the requested domain, not merely within ``ct_{lo,hi}`` of an edge.
@@ -456,8 +414,7 @@ def _validate_cfg_ntff_absorber_overlap(
                 )
                 break
 
-    # P1.5: non-uniform + NTFF is SUPPORTED (stale "unsupported" note removed
-    # 2026-07-02). The NU runner accumulates the NTFF box and
+    # P1.5: non-uniform + NTFF is SUPPORTED. The NU runner accumulates the NTFF box and
     # compute_far_field handles graded-z per-cell dS + z-edges; a graded-z
     # dipole directivity benchmarks within ~0.05 dB of theory
     # (tests/unit/farfield/test_farfield_nonuniform.py). No guard needed.

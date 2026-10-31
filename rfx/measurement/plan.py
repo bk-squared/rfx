@@ -99,8 +99,7 @@ class TimeBase:
 
 
 #: Sums that are not on the shared DFT kernel (rfx.measurement.dft), and the
-#: one case in which the kernel itself is less accurate. Decision record
-#: 2026-10-07 "M2 after two reviews", items 3 and 4.
+#: one case in which the kernel itself is less accurate.
 KERNEL_KNOWN_DIFFERENCES = (
     'rfx/measurement/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
     'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',

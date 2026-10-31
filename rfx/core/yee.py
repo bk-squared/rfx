@@ -34,8 +34,8 @@ class FDTDState(NamedTuple):
 class MaterialArrays(NamedTuple):
     """Material property arrays on the grid.
 
-    ``eps_r`` and ``sigma`` are VOLUME properties of the cell, and since #1210
-    an E component takes the mean of them over the four cells its edge touches.
+    ``eps_r`` and ``sigma`` are VOLUME properties of the cell, and an E component takes the mean of them over the four
+    cells its edge touches.
     A lumped element is not a volume: a port's 50 ohm load, an RLC resistor or
     capacitor is a device across ONE edge, folded into the cell's sigma / eps_r
     as an equivalent so that the old cell-owned update produced the right edge
@@ -46,13 +46,13 @@ class MaterialArrays(NamedTuple):
 
     So the stamp is recorded twice: inside ``eps_r`` / ``sigma``, where every
     reader that wants the cell's total still finds it, and again in the two
-    ``*_lumped`` records, PER E COMPONENT (#1236). A record is ``None`` (no
+    ``*_lumped`` records, PER E COMPONENT. A record is ``None`` (no
     stamp anywhere) or a 3-tuple ``(x, y, z)`` whose entry ``c`` is ``None``
     or a grid-shaped array holding the stamps of the elements that sit on
     component ``c``'s edge. :func:`component_e_materials` averages the volume
     (``eps_r`` minus every stamp) and adds each stamp back at its own cell, to
-    ITS OWN component only. Until #1236 the record had no component and was
-    added back to all three: a 50 ohm port on Ez was also a 50 ohm resistor on
+    ITS OWN component only. Adding a component-less record back to all three would mean a 50 ohm port on Ez was also a
+    50 ohm resistor on
     the Ex and Ey edges leaving its node (a centre-fed dipole's resonance
     +0.34 % at lambda/43, the feed-tip radial field pinned to 0.03 of the gap
     field on the two loaded sides against 0.37 on the free one).
@@ -67,8 +67,7 @@ class MaterialArrays(NamedTuple):
     The lanes whose volume is still CELL-owned (the distributed slab update,
     UPML) take :func:`cell_owned_component_materials`: the cell total minus
     the other components' stamps. The dispersive Debye/Lorentz coefficients
-    take :func:`component_e_materials` per component like the plain update
-    (#1260; until then they applied the cell total to all three).
+    take :func:`component_e_materials` per component like the plain update.
     """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
@@ -78,7 +77,7 @@ class MaterialArrays(NamedTuple):
     # Relative permeability (Nx, Ny, Nz) — used in H update
     mu_r: jnp.ndarray
     # The edge-owned part of ``sigma`` / ``eps_r`` (lumped stamps): None, or
-    # a 3-tuple (x, y, z) of per-component arrays / None (#1236)
+    # a 3-tuple (x, y, z) of per-component arrays / None
     sigma_lumped: object = None
     eps_r_lumped: object = None
     # H-component-owned permeability increments (port and PEC filament contours).
@@ -158,11 +157,11 @@ def lumped_axis(component) -> int:
 
 
 def lumped_components(record):
-    """The ``(x, y, z)`` entries of a lumped record (#1236).
+    """The ``(x, y, z)`` entries of a lumped record.
 
     ``None`` (no stamp anywhere) gives ``(None, None, None)``. A 3-tuple (or
     list) is returned as a tuple. Anything else -- in particular a bare array,
-    the component-less record that loaded all three E edges before #1236 -- is
+    a component-less record that would load all three E edges -- is
     refused, so a caller written for the old record cannot silently keep the
     old rule.
     """
@@ -196,7 +195,7 @@ def permittivity_without_lumped(materials):
 
 
 def add_lumped_eps(eps_components, record, *, inverse=False):
-    """Add each capacitor to its own E edge after volume averaging (#1263).
+    """Add each capacitor to its own E edge after volume averaging.
 
     ``eps_components`` must contain only the volume contribution, after
     any smoothing or conformal correction. Call once for the completed
@@ -236,14 +235,13 @@ def add_film(sigma_components, materials):
 
 
 def cell_owned_component_materials(materials):
-    """Per-component ``(eps_r, sigma)`` for a CELL-OWNED lane (#1236).
+    """Per-component ``(eps_r, sigma)`` for a CELL-OWNED lane.
 
     A lane that takes every coefficient from the cell that owns the edge (the
     distributed slab update, UPML's ``init_upml``) reads ``materials.sigma`` for all three
     components, so a stamp in that total loads all three edges at its node.
     This returns, per component ``c``, the cell total minus the stamps that
-    belong to the OTHER two components: the volume stays cell-owned (that
-    lane's rule, #1210 not converted there) and each lumped element loads its
+    belong to the OTHER two components: the volume stays cell-owned (that lane's rule) and each lumped element loads its
     own edge only. With no record it returns ``(eps_r,)*3, (sigma,)*3``.
     """
     eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
@@ -288,7 +286,7 @@ def ade_state_dtype(field_dtype=None):
     One policy, shared by ``rfx.materials.debye.init_debye`` and
     ``rfx.materials.lorentz.init_lorentz`` (allocation); the matching scan
     bodies derive their output dtype from the carry they were handed, so the
-    ``lax.scan`` carry closes (issue #656, same family as #630/#644/#646).
+    ``lax.scan`` carry closes.
 
     ``promote_types(field_dtype, float32)`` — PROMOTE, never pin, never a bare
     copy of the field dtype:
@@ -305,7 +303,7 @@ def ade_state_dtype(field_dtype=None):
 
     ``field_dtype=None`` (a caller that does not thread the field dtype)
     falls back to the ambient default float with the same float32 floor —
-    the ``rfx.lumped.init_rlc_state`` precedent from #646 — so the carry
+    the ``rfx.lumped.init_rlc_state`` policy — so the carry
     tracks ``jax_enable_x64`` instead of pinning under it.
 
     The float64 row needs x64 actually enabled: the ``jnp.result_type``
@@ -316,8 +314,8 @@ def ade_state_dtype(field_dtype=None):
     ``preflight()`` reports as ``precision_float64_without_x64``.
 
     NOTE the complex row is a policy statement, not a supported lane: the
-    dispersive branches of ``update_e_dispersive`` ignore the Bloch phase
-    (#404), so oblique-Bloch + dispersion is unsupported and still raises a
+    dispersive branches of ``update_e_dispersive`` ignore the Bloch phase, so oblique-Bloch + dispersion is unsupported
+    and still raises a
     carry-dtype mismatch rather than closing on wrong physics.
     """
     base = jnp.result_type(float) if field_dtype is None else jnp.dtype(field_dtype)
@@ -398,7 +396,7 @@ def _diff_fwd_o(arr, axis, periodic, order, bloch=None):
     caller divides by dx. order=2 is byte-identical to ``_shift_fwd(arr)-arr``
     when ``bloch is None``.
 
-    ``bloch`` (oblique-periodic Bloch field-transformation, #404): a length-3
+    ``bloch`` (oblique-periodic Bloch field-transformation): a length-3
     tuple of per-axis complex phases ``exp(-j·k_axis·dx)``.  On a PERIODIC axis
     the forward-rolled neighbour is multiplied by ``bloch[axis]`` so the plain
     ``jnp.roll`` wrap represents the exact discrete Yee derivative of a wave with
@@ -426,7 +424,7 @@ def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None, frame=
     caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``
     when ``bloch is None``.
 
-    For the Bloch field-transformation (#404) the BACKWARD-rolled neighbour
+    For the Bloch field-transformation the BACKWARD-rolled neighbour
     carries the CONJUGATE phase ``exp(+j·k_axis·dx)`` (``bloch[axis].conjugate()``),
     the exact discrete adjoint of the forward stagger.  See ``_diff_fwd_o``."""
     if boundary is not None:
@@ -560,7 +558,7 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, 
 
 
 def _walls_off_periodic(high_wall, periodic):
-    """A run-level periodic axis has no wall, even where the grid lists none (#1966)."""
+    """A run-level periodic axis has no wall, even where the grid lists none."""
     return tuple(False if p else w for w, p in zip(high_wall, periodic))
 
 
@@ -582,8 +580,8 @@ def _material_bwd_neighbour(arr, ax, periodic, *, high_wall: tuple[bool, bool, b
     ``jnp.roll(arr, 1, axis=ax)`` on a periodic axis and on a length-1 axis
     (the 2-D lane's self-adjacency) — value for value what
     ``rfx.boundaries.pec._shift(arr, ax, periodic, +1)`` returns there, so the
-    edge-average below and the PEC incidence rule wrap the same way (#689/#931,
-    pinned by ``test_edge_averaged_materials``'s periodic test).
+    edge-average below and the PEC incidence rule wrap the same way (pinned by ``test_edge_averaged_materials``'s
+    periodic test).
 
     Off a periodic axis the two rules differ, and must: ``_shift`` pads with
     ZERO because "no conductor outside the lattice" is the right reading of an
@@ -606,7 +604,7 @@ def _material_bwd_neighbour(arr, ax, periodic, *, high_wall: tuple[bool, bool, b
 def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)``: the mean over the edge's four cells.
 
-    THE one spelling of the material-to-edge rule (#1210). Every lane that
+    THE one spelling of the material-to-edge rule. Every lane that
     turns a cell-centred permittivity or conductivity into an E update
     coefficient goes through here; a hand-copied second rule is this repo's
     recurring defect.
@@ -627,7 +625,7 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, hig
     first-order.
 
     ``eps_r``, ``sigma`` : cell-centred ``(nx, ny, nz)`` arrays. A conductivity
-    that is already per E edge (#1216's design-box tuple) is NOT a cell
+    that is already per E edge (the design-box tuple) is NOT a cell
     quantity and does not come through here.
     ``periodic`` : per-axis flags; a periodic axis wraps, a non-periodic one
     edge-replicates (see :func:`_material_bwd_neighbour`).
@@ -754,7 +752,7 @@ def edge_mean_components(arr, periodic=(False, False, False), *, high_wall: tupl
     four incident cells -- the arithmetic of :func:`edge_averaged_materials`,
     which calls it for ``eps_r`` and ``sigma``.
 
-    Also the rule for a dispersive pole (#1260): a pole's susceptibility is
+    Also the rule for a dispersive pole: a pole's susceptibility is
     parallel along the edge exactly as a conductivity is, so the edge carries
     ``delta_eps`` times the fraction of its four cells that hold the pole. The
     caller passes the pole's cell mask as a float array and gets that fraction
@@ -769,13 +767,13 @@ def edge_mean_components(arr, periodic=(False, False, False), *, high_wall: tupl
 
 
 def component_e_materials(materials, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
-    """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays` (#1210).
+    """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays`.
 
     The volume part is edge-averaged; the lumped stamps
     (``sigma_lumped`` / ``eps_r_lumped``, see :class:`MaterialArrays`) are
     removed before the average and added back at their own cell, because a
     lumped device lives on an edge and not in a cell volume -- and only to
-    the component whose edge it sits on (#1236): a port on Ez loads the Ez
+    the component whose edge it sits on: a port on Ez loads the Ez
     edge at its node, not the Ex and Ey edges that leave the same node.
 
     With no stamps this is :func:`edge_averaged_materials` on
@@ -789,7 +787,7 @@ def component_e_materials(materials, periodic=(False, False, False), *, high_wal
         sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(
         eps_v, sig_v, periodic, high_wall=high_wall, **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
-    # Each stamp back on its OWN component (#1236).
+    # Each stamp back on its OWN component.
     eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
                   for s, part in zip(sig_c, sig_parts))
@@ -810,7 +808,7 @@ def cell_component_e_materials(materials, cell, component,
 
     The rule is the same rule: the mean of the VOLUME material over the four
     cells incident to that component's edge, plus the lumped stamps at this
-    cell that sit on THIS component's edge (#1236). The out-of-domain
+    cell that sit on THIS component's edge. The out-of-domain
     convention is
     :func:`_material_bwd_neighbour`'s — wrap on a periodic or length-1 axis,
     edge-replicate otherwise. ``test_the_cell_helper_agrees_with_the_grid_wide_one``
@@ -890,7 +888,7 @@ def cell_component_e_materials(materials, cell, component,
 
 def cell_component_e_coeffs(materials, cell, component, dt,
                             periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool]):
-    """``(Ca, Cb)`` of the E update for one component at one cell (#1210)."""
+    """``(Ca, Cb)`` of the E update for one component at one cell."""
     eps_r, sigma = cell_component_e_materials(materials, cell, component,
                                               periodic, high_wall=high_wall)
     return e_update_coeffs(eps_r, sigma, dt)
@@ -923,7 +921,7 @@ def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
 
 
 def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
-    """``si_fn(*args)``, differentiated as ``eps_r_fn(*args)`` (#1357).
+    """``si_fn(*args)``, differentiated as ``eps_r_fn(*args)``.
 
     The E coefficients are written in SI units, ``eps = eps_r*EPS_0`` and a
     division by it. The VALUE is fine; the REVERSE pass is not. The VJP of
@@ -983,7 +981,7 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
 
 
 def e_coeffs_eps_r_units(eps_r, sigma, dt, *, inverse=False):
-    """``(loss, Cb)`` of the lossy E update written in eps_r units (#1357).
+    """``(loss, Cb)`` of the lossy E update written in eps_r units.
 
     ``k = dt/(2*EPS_0)``, ``loss = sigma*k/eps_r``, ``Cb = (dt/EPS_0) /
     (eps_r + sigma*k)``. These are the SI ``sigma*dt/(2*eps)`` and ``(dt/eps)
@@ -1028,11 +1026,11 @@ def e_update_coeffs(eps_r, sigma, dt):
 
     One spelling, shared by :func:`update_e` — which builds the pair over the
     whole grid from ``materials`` — and :func:`update_e_box`, which builds it
-    over one box from arrays that need not come from ``materials`` (#1179).
+    over one box from arrays that need not come from ``materials``.
     The arguments are arrays of any shape (or scalars); nothing here is
     grid-sized by construction.
 
-    Issue #1357: the values are the SI spelling's bits and the derivative is the
+    the values are the SI spelling's bits and the derivative is the
     eps_r spelling's (:func:`si_value_eps_r_grad`). A traced ``eps_r`` or
     ``sigma`` therefore gets a finite gradient at any objective scale.
     """
@@ -1105,12 +1103,12 @@ def precompute_coeffs(
         into the coefficients on BOTH faces.
     pec_faces : iterable of str
         Face labels (``"x_lo"`` ...) to bake, the per-face spelling that
-        ``resolve_wall_faces`` produces (#1164); a magnetic face is not in
+        ``resolve_wall_faces`` produces; a magnetic face is not in
         it. Union with ``pec_axes``. With these baked, ``apply_pec_faces``
         is no longer needed for those faces.
     periodic : tuple of 3 bools
         Passed to :func:`edge_averaged_materials` for the wrap convention of
-        the edge average (#1210). The GPU fast lane this bakes for is gated
+        the edge average. The GPU fast lane this bakes for is gated
         on all-False today; the parameter exists so the rule has one spelling.
 
     Returns
@@ -1129,7 +1127,7 @@ def precompute_coeffs(
         # Replay each component with the no-record float32 bake.
         ch = tuple(jnp.float32(dt / (MU_0 * dx)) / m for m in mu)
 
-    # #1210: per-component eps/sigma, the mean over the four cells incident
+    # per-component eps/sigma, the mean over the four cells incident
     # to each component's edge. The arithmetic below is unchanged, so a
     # homogeneous grid bakes the same bits it baked before.
     _eps_c, _sig_c = ((materials.components.eps_update, materials.components.sigma_update) if materials.components is not None
@@ -1150,7 +1148,7 @@ def precompute_coeffs(
         return ca, cb / dx
 
     def _bake(eps_r_c, sigma_c):
-        # #1357: these bits, the eps_r-unit derivative.
+        # these bits, the eps_r-unit derivative.
         return si_value_eps_r_grad(_bake_si, _bake_eps_r,
                                    eps_r_c, sigma_c, dt, dx)
 
@@ -1212,7 +1210,7 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> 
     common case of non-periodic boundaries with uniform mesh.
     """
     # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64 (issue #630). This is
+    # storage, upcast for float16, promoted for float64. This is
     # the GPU-only fast lane (rfx/simulation.py's update_he_fast dispatch);
     # the uniform CPU lane routes through update_h/update_e above instead.
     _fdtype = state.ex.dtype

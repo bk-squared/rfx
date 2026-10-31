@@ -19,7 +19,7 @@ def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
     Exempt: a static field (:func:`_static_pole`) -- a pole within rounding
     of zero frequency, ``|f| < 1 / record`` (the record cannot tell it from
     DC) and ``|lambda| - 1 < unit_tol`` per step. A static field left behind
-    in a closed box identifies as such a pole (rfx #1254, the Q 533 cavity).
+    in a closed box identifies as such a pole (the Q 533 cavity).
     """
     from rfx.ringdown import _static_pole
     grow, exempt = [], []

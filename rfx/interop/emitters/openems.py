@@ -116,7 +116,7 @@ docs/design_notes/geometry_setup_interop.md):
         numpy is 2.x and ``openEMS.ports.MSLPort`` itself uses ``np.int``.
 ``D16`` Metal thickness is taken verbatim from the rfx shape; the emitter does
         not choose between a sheet and a one-cell box.
-``D17`` PMC-face wall position (#1221 B3b). Single-device Yee paths center
+``D17`` PMC-face wall position. Single-device Yee paths center
         the odd tangential-H image on the E-node mesh plane. The emitter
         maps a ``pmc`` face to openEMS's ``'PMC'`` on that same mesh line;
         no half-cell compensation is needed.
@@ -544,7 +544,7 @@ def _plan_geometry(
     Ports sit between the bands: a dielectric must not bury a port (rfx folds
     the port conductance in on top of the material), while PEC must win over a
     port (rfx marks port cells inside PEC as *dead* and applies no port sigma
-    there — issue #318).  Returns the two port/metal band bases.
+    there).  Returns the two port/metal band bases.
     """
     entries = _require_list(_get(document, "geometry", "document"), "geometry")
     n = len(entries)

@@ -21,7 +21,7 @@ from rfx._grid_metric import (
 # Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
-#: Arithmetic-dust budget in machine epsilons of ``length/dx`` (#1070).
+#: Arithmetic-dust budget in machine epsilons of ``length/dx``.
 #: ``cells_spanning`` keeps this as a floor under the shared NODE_TIE_REL
 #: band: at very large ratios the ULP budget exceeds 1e-9 of one cell.
 CELL_COUNT_ULP_BUDGET = 8
@@ -111,17 +111,16 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
 
 def cells_spanning(length: float, dx: float, *,
                    ulp_budget: int = CELL_COUNT_ULP_BUDGET) -> int:
-    """Cells needed to span *length* at cell size *dx* (issue #1070).
+    """Cells needed to span *length* at cell size *dx*.
 
     ``ceil(length / dx)``, except that a ratio sitting within
     ``max(node_tie_tol(r, 1), ulp_budget * eps * max(1, abs(r)))`` of an integer
     is taken to BE that integer. The shared on-lattice band keeps sizing
-    and Box faces on the same node (#1138); the existing ULP rule remains
+    and Box faces on the same node; the existing ULP rule remains
     a floor for very large cell counts. Plain ``ceil`` buys an extra cell for float
     dust, and nothing downstream fills it: it lies outside every declared
     Box, so it rasterizes as vacuum, and at a face that abuts an absorber
-    the pad extension then replicates that vacuum outward (#1070, the
-    staircase-lane twin of #831).
+    the pad extension then replicates that vacuum outward (an end facet like the smoothed-lane pad discontinuity).
 
     This is a LENGTH question only. A step count is not one -- see
     ``Grid.num_timesteps``, which still takes a plain ``ceil`` because
@@ -136,7 +135,7 @@ def cells_spanning(length: float, dx: float, *,
         cells = int(nearest)
     else:
         cells = int(np.ceil(ratio))
-    # A POSITIVE length always needs a cell (review of PR #1136, G). Zero is
+    # A POSITIVE length always needs a cell. Zero is
     # the one integer the dust band can reach from above while the length is
     # still real: for 0 < r <= NODE_TIE_REL the nearest integer is 0, and snapping
     # there would return fewer cells than the declared length needs, where
@@ -307,7 +306,7 @@ class Grid:
         # +1 fence-post correction: N cells need N+1 nodes so that
         # PEC walls at index 0 and index N span exactly N*dx.
         #
-        # ``cells_spanning`` rather than a bare ``ceil`` (#1070): a declared
+        # ``cells_spanning`` rather than a bare ``ceil``: a declared
         # length is an arithmetic expression, and one ULP of float dust in
         # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
         self.nx = (realized_cells(domain[0], self.dx, kinds["x"]) + ("x" not in self.periodic_axes)

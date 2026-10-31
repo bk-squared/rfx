@@ -128,7 +128,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         from rfx.runners.distributed_v2 import _spans_other_processes
         if devices is not None and _spans_other_processes(devices):
             # The graded runner does not gather the final fields
-            # across processes (#1461 review), so run() could not
+            # across processes, so run() could not
             # return them; forward(distributed=True) can.
             raise NotImplementedError(
                 "run(devices=...) on a non-uniform mesh does not support "

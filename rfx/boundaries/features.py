@@ -104,7 +104,7 @@ def _record_defaults(sim, grid):
         grid._waveguide_admission = (incompatible, _guide_declaration(sim, faces), explicit, state)
     if sim._waveguide_ports and not explicit:
         # The uniform legacy grid already has these electric backing walls.
-        # Do not change pads, allocation axes, or the NU operator (PR3b).
+        # Do not change pads, allocation axes, or the NU operator.
         grid.boundary_depths = tuple(
             replace(face, kind=Kind.PEC)
             if face.name in faces and face.realized == 0 and face.kind == Kind.ABSORBER else face
@@ -573,7 +573,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     wall_masks = wall_edge_masks(grid.shape, resolve_wall_faces(
         grid, tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0])
 
-    # Scalar cell media and PEC volume from the one realized operand list (#1961):
+    # Scalar cell media and PEC volume from the one realized operand list:
     # Thin elements are judged separately from the scalar medium below.
     scalar = ("materials.eps_r", "materials.sigma", "materials.mu_r")
     updates_scalar = ("debye", "lorentz", "kerr_chi3", "pec_mask", "pec_occupancy")

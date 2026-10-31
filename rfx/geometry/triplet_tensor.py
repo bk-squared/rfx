@@ -22,10 +22,10 @@ _JAXLIB_VERSION = jaxlib.__version__
 
 
 def _serial_pieces():
-    # Stopgap against the jaxlib < 0.11.1 CPU deadlock (#2095); remove when
+    # Stopgap against the jaxlib < 0.11.1 CPU deadlock; remove when
     # the jax floor reaches 0.11.1. The bound is not proven: 56 independent
     # _linalg sites stay concurrent in one build.
-    # The runtime floor's parser (#2133): a pre-release or unreadable version counts as old.
+    # The runtime floor's parser: a pre-release or unreadable version counts as old.
     return backend_class().name == "cpu" and _version_key(_JAXLIB_VERSION) < _version_key("0.11.1")
 
 

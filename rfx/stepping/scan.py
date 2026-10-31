@@ -74,7 +74,7 @@ def recorded_scan(f, init, xs=None, length=None, **kwargs):
     Every time-stepping scan entry (uniform, graded, ADI) calls this instead
     of ``jax.lax.scan``. Inside :func:`declaration_setup` a scan whose
     operands are all constants would otherwise be evaluated at trace time:
-    JAX 0.6.2 raises ``Evaluation rule for 'empty' not implemented`` (#1354),
+    JAX 0.6.2 raises ``Evaluation rule for 'empty' not implemented``,
     and 0.10.2 runs the solve uncompiled while it traces the caller's
     program. Its body would also be traced under eager constant folding.
 

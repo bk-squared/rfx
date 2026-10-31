@@ -1,4 +1,4 @@
-"""Runtime contract for source/PYTHONPATH installs as well as pip (#1429)."""
+"""Runtime contract for source/PYTHONPATH installs as well as pip."""
 
 import re
 import warnings
@@ -7,7 +7,8 @@ from rfx.errors import ConfigurationWarning
 
 MIN_PYTHON = (3, 11)
 MIN_JAX = "0.10.2"
-# Install cap and runtime warning (#2116): from jaxlib 0.11.2 the CPU time step runs 2.3-3x slower; import does not refuse newer jax.
+# Install cap and runtime warning: from jaxlib 0.11.2 the CPU time step runs 2.3-3x slower; import
+# does not refuse newer jax.
 JAX_TESTED_BELOW = "0.11.2"
 JAX_BELOW = JAX_TESTED_BELOW
 
@@ -17,7 +18,7 @@ class UntestedJAXWarning(ConfigurationWarning):
 
 
 def _version_key(version: str) -> tuple[tuple[int, ...], int]:
-    """Order JAX versions; the one comparison for MIN_JAX and JAX_BELOW (#2133).
+    """Order JAX versions; the one comparison for MIN_JAX and JAX_BELOW.
 
     The release segment compares numerically at any length (0.12.0.1 above 0.12.0,
     0.10.2.0 equal to 0.10.2); dev/alpha/beta/rc sort before their release. Local

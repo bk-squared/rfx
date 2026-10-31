@@ -98,7 +98,7 @@ def _next(xp, a, axis, periodic):
 
 
 def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=None):
-    """Host-float64 concrete geometry, or the smoother's traced JAX path (#833).
+    """Host-float64 concrete geometry, or the smoother's traced JAX path.
 
     Same-material groups use the existing union, nearest analytic normal and
     SDF cell-length rule. Later groups compose against the prior bulk eps or

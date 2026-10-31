@@ -59,7 +59,7 @@ def drive_cells(grid, *entry_groups):
     VOLUME rather than a point -- waveguide ports (``add_waveguide_port``)
     and TFSF. Those need a plane/box membership test rather than a cell
     test; a probe inside such a source region is still source-dominated in
-    the #1090 sense and is not flagged here (issue #1102).
+    the sense and is not flagged here.
     """
     cells: set[tuple[int, int, int]] = set()
     for entries in entry_groups:
@@ -87,7 +87,7 @@ def drive_cells(grid, *entry_groups):
 
 
 def source_dominated_columns(grid, entries, cells):
-    """Probe columns whose cell is a drive cell (issue #1090).
+    """Probe columns whose cell is a drive cell.
 
     Cell co-location alone, deliberately without a component match: the
     H components of a source cell are the direct curl of the E edge the
@@ -113,7 +113,7 @@ def probe_record_info(time_series, entries, internal_indices=(),
     the flag is 1 when that probe shares a Yee cell with a registered drive
     (see :func:`source_dominated_columns`), and ``(i, j, k)`` is the cell of
     the declared position (absent when unresolved), which tells co-located
-    records apart (#1909). All stay integers so the selection metadata can
+    records apart. All stay integers so the selection metadata can
     ride inside a JAX result tree.
     """
     shape = getattr(time_series, "shape", ())
@@ -144,7 +144,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     the differentiated solver. ``warn=False`` makes repeated property reads
     quiet; the execution entry point retains the canonical coverage warning.
 
-    Records flagged source-dominated (issue #1090 -- the probe shares a Yee
+    Records flagged source-dominated (the probe shares a Yee
     cell with a registered drive) do not carry the verdict while any
     independent scored record exists. When they are the only scored records,
     ``qualifier`` / ``source_dominated`` retain that spatial coverage caveat.
@@ -158,7 +158,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         # ``source_dominated``/``qualifier`` describe the record that
         # CARRIES the verdict; an absent witness has none, so they are
         # empty here rather than describing records nothing rests on.
-        # No NaN in an absent witness (#885): no number rests on it.
+        # No NaN in an absent witness: no number rests on it.
         return None, {**detail, "db": None, "worst_freq_hz": None,
                       "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
@@ -191,8 +191,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     groups = {}
     dominated_names = set()
     for item in info:
-        # Pre-#1090 metadata is a 2-tuple; a stored result predating the
-        # flag scores exactly as it did, with nothing marked dominated.
+        # Two-tuple metadata has no source-dominated flag; score it with nothing
+        # marked dominated.
         col, component = int(item[0]), int(item[1])
         flag = int(item[2]) if len(item) > 2 else 0
         if not 0 <= col < series.shape[1]:

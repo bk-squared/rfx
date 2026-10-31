@@ -110,10 +110,10 @@ def _dispatch_plan(
         self._require_uniform_mesh("solver='adi'")
     self._require_mode_the_nonuniform_lane_solves()
     # Every non-uniform lane below, single-device and distributed, run()
-    # and forward(), has no subgrid and would drop a refinement (#1240).
+    # and forward(), has no subgrid and would drop a refinement.
     self._require_no_refinement_on_the_nonuniform_lane()
     # A point feature one cell off a conductor drawn at the same half
-    # node (#1295, #1342); run() and forward(), both lanes.
+    # node; run() and forward(), both lanes.
     self._require_no_half_node_split()
     is_nonuniform = self._uses_nonuniform_mesh
 
@@ -140,7 +140,7 @@ def _dispatch_plan(
             raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
     def _reject_lane_precision(lane: str) -> None:
-        # Issue #630 follow-up: field_dtype is threaded ONLY on the
+        # field_dtype is threaded ONLY on the
         # uniform-lane runner (rfx/runners/uniform.py). The non-uniform,
         # distributed, distributed-NU, and subgridded runners have zero
         # field_dtype occurrences, so a non-float32 precision would
@@ -181,12 +181,11 @@ def _dispatch_plan(
         def _fwd_nu_n_steps() -> int:
             return self._nu_n_steps(num_periods)
 
-        # Issue #73: forward(checkpoint_segments=...) is currently wired only
+        # forward(checkpoint_segments=...) is currently wired only
         # on the uniform single-device path. Reject loudly elsewhere — both
         # for distributed=True and for non-uniform meshes — so users don't
         # get a silent fall-back to the linear-memory scan that this kwarg
-        # was meant to fix. NU follow-up will mirror the pattern in
-        # run_nonuniform; track on issue #73.
+        # was meant to fix.
         if checkpoint_segments is not None and is_nonuniform:
             raise NotImplementedError(
                 "forward(checkpoint_segments=...) is currently wired only "
@@ -326,7 +325,7 @@ def _dispatch_plan(
 
 
 def _staged_by_an_outer_trace() -> bool:
-    """Whether ``forward()`` is being recorded into a compiled program (#1225).
+    """Whether ``forward()`` is being recorded into a compiled program.
 
     Under ``jax.jit`` — and ``jax.checkpoint``, ``lax.scan`` or
     ``jax.eval_shape`` — JAX records every array operation instead of running
@@ -341,7 +340,7 @@ def _staged_by_an_outer_trace() -> bool:
 
 
 def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
-    """Whether a forward entry evaluates its set-up while being traced (#1367).
+    """Whether a forward entry evaluates its set-up while being traced.
 
     The rule: set-up that reads only the declaration is always concrete, and
     the time stepping is always recorded (``rfx.core.jax_utils``). Under an
@@ -350,9 +349,8 @@ def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
     places: a wire port's live edges and an MSL port's geometry check read
     the realized PEC edge mask, a graded-lane port takes its cell sizes as
     Python floats, the far-field transform reads an NTFF box's frequency
-    count. #1225 answered True for a whitelist of ports and missed the rest
-    (MSL ports, #1367; the NTFF box, #1364), so the answer no longer depends
-    on the model: staged by an outer trace, and not distributed.
+    count. The answer therefore does not depend on the model: staged by
+    an outer trace, and not distributed.
 
     Operations that read a traced input stay recorded, so a gradient is
     unchanged. The distributed lane is excluded: its ``shard_map`` step
@@ -380,8 +378,7 @@ def _declaration_setup_at_trace_time(entry):
 
     The body runs in the region only if the region really made constants
     concrete: inside an eager ``jax.shard_map`` the probe still reads True
-    there, and the entry then runs its body outside the region, exactly as
-    before #1225, instead of re-entering without end.
+    there, and the entry then runs its body outside the region instead of re-entering without end.
     """
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):

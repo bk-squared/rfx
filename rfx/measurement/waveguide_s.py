@@ -154,11 +154,8 @@ def _shift_modal_waves(
     phase flips: we convert to local via ``local_shift = shift_m *
     step_sign`` and apply the same formula.
 
-    Before 2026-04-22 the function ignored ``step_sign`` and applied
-    the "+x" formula unconditionally — this silently gave the wrong sign
-    on any negative-direction port, which is why user-specified
-    ``reference_plane`` shifts produced only half-corrected phases for
-    "-x"/"-y"/"-z" ports and the crossval/11 phase offset never closed.
+    Use ``step_sign`` for the propagation direction: unconditionally applying the "+x" formula gives the wrong sign for
+    negative-direction ports and only half-corrects reference-plane phase shifts.
     """
     if shift_m == 0.0:
         return forward, backward
@@ -190,7 +187,7 @@ def extract_waveguide_sparams(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Extract (S11, S21) with optional reference-plane shifts.
 
-    The Phase 2 cleanup (2026-04-25) removed the in-scan DFT accumulators
+    The Phase 2 cleanup removed the in-scan DFT accumulators
     (``cfg.v_ref_dft`` etc.) from ``WaveguidePortConfig``. Callers that
     used to read those fields off the config now must either:
 
@@ -275,8 +272,7 @@ def extract_waveguide_port_waves(
     The spectra are recomputed POST-SCAN from the per-step modal V/I
     time series via a rectangular full-record DFT (matching OpenEMS's
     ``utilities.DFT_time2freq``). The legacy in-scan windowed/gated
-    DFT accumulators were removed in the Phase 2 cleanup
-    (2026-04-25): they integrated partially-decayed standing waves
+    DFT accumulators were removed in the Phase 2 cleanup: they integrated partially-decayed standing waves
     and produced ``|S11|`` that grew without bound as the gate widened.
     """
     beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
@@ -510,18 +506,16 @@ def extract_waveguide_s_matrix_flux(
     Modal records preserve their precision and widen for field storage.
     Spectra and S promote the record and frequency dtypes.
 
-    PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
+    PEC realization: interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
     (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
-    the shared ``apply_pec_edges``.  Until #931 the caller folded the PEC
-    CELL mask into ``sigma = 1e10`` instead — a fourth realization of the
-    same geometry, and one that damped only the components indexed by the
-    occupied cell, so a one-cell-thick wall or iris got its lower face and
-    never its far one.  An empty-guide REFERENCE run gets no interior edge
+    the shared ``apply_pec_edges``.  Folding a PEC cell mask into ``sigma = 1e10`` would damp only the components
+    indexed by the occupied cell, omitting the far face of a one-cell-thick wall or iris.  An empty-guide REFERENCE run
+    gets no interior edge
     masks; per-port reference geometry supplies its own.
 
 
-    ``return_settling=True`` (issue #538): returns ``(S, settling_db)``;
+    ``return_settling=True``: returns ``(S, settling_db)``;
     the witness per drive is the WORST of the device and reference runs'
     port records (the reference run produces the ``P_inc``/``a_inc``
     normalization, so its truncation corrupts the same S values). Scope:
@@ -544,7 +538,7 @@ def extract_waveguide_s_matrix_flux(
     guide for driven arm ``i`` (its walls extended through, no junction) moves
     P_inc toward the true single-mode guided incident power.
 
-    NOT passive-by-construction (verified 2026-07-05, compact 3-port T-junction):
+    NOT passive-by-construction (verified, compact 3-port T-junction):
     the per-port straight-guide reference is NECESSARY but NOT SUFFICIENT — it
     fixes |S11| (1.86→0.49, physical) and roughly halves the blow-up (max|S|
     9.8→3.9), yet does NOT achieve passivity on a compact junction (residual
@@ -593,7 +587,7 @@ def extract_waveguide_s_matrix_flux(
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
     freqs = template_cfgs[0].freqs
-    # jnp-native assembly (issue #148): columns are collected per drive
+    # jnp-native assembly: columns are collected per drive
     # port and stacked at the end — no in-place np mutation, so traced
     # values flow through to the returned S-matrix.
     s_columns: list = []
@@ -652,7 +646,7 @@ def extract_waveguide_s_matrix_flux(
             if ref_materials_per_port is not None else ref_materials
         )
         _flux_checkpoint = checkpoint_segments is not None
-        # #677: the vacuum/straight-guide REFERENCE deliberately runs with
+        # the vacuum/straight-guide REFERENCE deliberately runs with
         # NO sheet ctx (explicit strip — the sheet no longer rides
         # materials.sigma, so vacuum materials alone do not strip it).
         _ref_edges = (
@@ -682,7 +676,7 @@ def extract_waveguide_s_matrix_flux(
 
         # Incident power: signed flux at driven port in the reference guide.
         # |F_ref| = P_inc regardless of port direction (+x vs −x).
-        # jnp-native (issue #148): no np.array() concretization — keeps
+        # jnp-native: no np.array() concretization — keeps
         # the whole flux extraction on the AD tape for
         # eps_override-traced gradients.
         F_ref_drive = flux_spectrum(ref_final_mons[drive_idx])  # (n_freqs,)
@@ -822,14 +816,12 @@ def extract_waveguide_s_params_normalized(
     Modal records preserve their precision and widen for field storage.
     Spectra and S promote the record and frequency dtypes.
 
-    PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
+    PEC realization: interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
     (``rfx.boundaries.pec.realized_pec_edge_masks``), applied per step by
-    the shared ``apply_pec_edges``.  Until #931 the caller folded the PEC
-    CELL mask into ``sigma = 1e10`` instead — a fourth realization of the
-    same geometry, and one that damped only the components indexed by the
-    occupied cell, so a one-cell-thick wall or iris got its lower face and
-    never its far one.  An empty-guide REFERENCE run gets no interior edge
+    the shared ``apply_pec_edges``.  Folding a PEC cell mask into ``sigma = 1e10`` would damp only the components
+    indexed by the occupied cell, omitting the far face of a one-cell-thick wall or iris.  An empty-guide REFERENCE run
+    gets no interior edge
     masks; per-port reference geometry supplies its own.
 
 
@@ -939,7 +931,7 @@ def extract_waveguide_s_params_normalized(
             for idx, cfg in enumerate(template_cfgs)
         ]
         _norm_checkpoint = checkpoint_segments is not None
-        # #677: the vacuum REFERENCE deliberately runs with NO sheet ctx
+        # the vacuum REFERENCE deliberately runs with NO sheet ctx
         # (explicit strip — vacuum materials alone do not strip a sheet
         # that no longer rides materials.sigma).
         from rfx.model.tensor_operands import reference_conformal_materials

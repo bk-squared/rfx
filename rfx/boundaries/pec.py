@@ -2,7 +2,7 @@
 
 Domain-face PEC (:func:`apply_pec`, :func:`apply_pec_faces`) keeps its own
 convention (E_tan = 0 on the face plane at index 0 / N) — it is not a body.
-Conductor bodies follow the lattice ownership contract (#931):
+Conductor bodies follow the lattice ownership contract:
 :func:`realized_pec_edge_masks` is the one source of PEC E edges for
 volumes, sheets and wires.
 """
@@ -60,14 +60,14 @@ _FACES = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
 
 def resolve_wall_faces(grid, periodic, pec_axes=None):
     """The electric and magnetic wall faces of a run, from the grid's own
-    boundary declaration (#1164, #1193, #1194).
+    boundary declaration.
 
     One rule for every entry point, decided per FACE, not per axis:
 
     * a face on a periodic axis is no wall;
     * a face in ``grid.pmc_faces`` is a magnetic wall and never an
       electric one -- zeroing E_tan on its node plane turns an open-ended
-      line into a short (a port on that plane read ``|S11| = 1``, #1164);
+      line into a short (a port on that plane read ``|S11| = 1``);
     * a face in ``grid.pec_faces`` is an electric wall;
     * any other face (an absorber face, or a raw ``Grid`` with no
       declaration) is PEC-backed -- E_tan = 0 on the outermost node plane,
@@ -164,7 +164,7 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
 
 
 # ---------------------------------------------------------------------------
-# Lattice ownership contract for conductors (#931)
+# Lattice ownership contract for conductors
 #
 # One sentence, three regions: an E component is PEC iff its own location is
 # inside the closed conductor region — a VOLUME (a set of primal cells), a
@@ -184,15 +184,14 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
 
 
 def _shift(arr, ax, periodic, direction, *, xp=jnp):
-    """THE single spelling of the #689 boundary convention.
+    """THE single spelling of the boundary convention.
 
     ``direction=+1`` returns ``arr[i-1]`` (backward neighbour), ``-1``
     returns ``arr[i+1]`` (forward neighbour).  Wrap (``jnp.roll``) on a
     periodic axis and on a length-1 axis (the 2-D lane's self-adjacency);
     explicit zero pad (``_shift_bwd`` / ``_shift_fwd``) otherwise — the
     same out-of-domain convention the solver's curl uses.  A hand-copied
-    second neighbour rule is this repo's recurring defect (#689/#690
-    class); volume, sheet and wire realization all come through here.
+    second neighbour rule is this repo's recurring defect; volume, sheet and wire realization all come through here.
     """
     if xp is np:
         shifted = np.roll(arr, direction, axis=ax)
@@ -289,7 +288,7 @@ class SheetSpec:
     ``footprint`` is a host :class:`SheetFootprint` whose boolean 3-D NODE
     view is True only on layer ``plane`` along ``normal_axis`` (the view keeps it
     interchangeable with ``SheetImpedanceSpec.mask``, so a lossy f0 sheet
-    and a PEC sheet are one footprint with a different operator — the #677
+    and a PEC sheet are one footprint with a different operator — the
     G4 identity by construction).  ``plane`` is a static Python int: a
     sheet's plane is never a traced quantity (the ``argmin`` cliff).  A
     sheet owns NO cell — it adds nothing to the cell mask and writes no
@@ -332,7 +331,7 @@ class SheetSpec:
 
         Refuses a range that spans fewer than two node lines on either
         in-plane axis: one node line carries no E edge between two adjacent
-        nodes, so the metal would carry no current and vanish silently (the #369
+        nodes, so the metal would carry no current and vanish silently (the
         class, the same rule :func:`refuse_vaporized_sheets` applies to
         metric sheets).
         """
@@ -716,7 +715,7 @@ def _sheet_edge_masks(sheets, shape, periodic):
 
     Each sheet owns its internal edges. Cross-sheet edges require touching
     drawn extents along that edge's axis; index declarations retain the
-    legacy union. Full footprints isolate different normal planes (#690).
+    legacy union. Full footprints isolate different normal planes.
 
     On a length-1 normal axis (the 2-D lane) the region has no thickness
     direction, so the "normal" component is not a through-sheet edge: it
@@ -905,7 +904,7 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
             elif m.shape[t] == 1:
                 pass  # length-1 axis: the node's own index IS the wrap neighbour
             elif periodic[t]:
-                back[t] = m.shape[t] - 1   # #689 wrap: node 0's backward edge
+                back[t] = m.shape[t] - 1   # wrap: node 0's backward edge
                 col = col | m[tuple(back)]
             hit = col if hit is None else (hit | col)
     else:
@@ -1048,7 +1047,7 @@ def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
     Convenience wrapper: :func:`realized_pec_edge_masks` then
     :func:`apply_pec_edges`.  Step functions precompute the edge masks once
     at setup and call :func:`apply_pec_edges` directly; this wrapper is for
-    tests and one-shot callers.  ``periodic`` is the run's flags (#689).
+    tests and one-shot callers.  ``periodic`` is the run's flags.
     """
     return apply_pec_edges(
         state, realized_pec_edge_masks(pec_mask, sheets=sheets, periodic=periodic))
@@ -1159,7 +1158,7 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
 
     ``pec_occupancy`` is a float CELL field in ``[0, 1]``.  Each E component
     is scaled by ``1 - M`` with ``M`` the noisy-OR of its four incident
-    cells, ``M = 1 - Π(1 - o_c)``, under the same #689 shifts as the hard
+    cells, ``M = 1 - Π(1 - o_c)``, under the same shifts as the hard
     rule — so at binary occupancy this is bit-identical to
     :func:`apply_pec_mask` (pinned on a battery that includes bodies on
     faces 0 and n-1 of a non-periodic axis and the periodic seam).  Sheets
@@ -1186,7 +1185,7 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
 def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
                            pec_occupancy=None,
                            periodic=(False, False, False)):
-    """``(write slice, keep factors)`` for a traced occupancy in one box (#1183).
+    """``(write slice, keep factors)`` for a traced occupancy in one box.
 
     Built ONCE, outside the time loop: the occupancy is a design variable,
     not a field, so ``1 - M`` does not change from step to step. The step
@@ -1257,7 +1256,7 @@ def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
 
 
 def apply_pec_occupancy_box(state, prev, write, keep):
-    """Redo the occupancy scaling on one window with a traced ``1 - M`` (#1183).
+    """Redo the occupancy scaling on one window with a traced ``1 - M``.
 
     ``prev`` is the state BEFORE the grid-wide :func:`apply_pec_occupancy` of
     this timestep (or the state itself when the run has no static occupancy).

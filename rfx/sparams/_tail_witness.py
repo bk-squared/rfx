@@ -9,8 +9,8 @@ import numpy as np
 # at the rounding level of its cell. A weak record still ringing above that
 # level is scored.
 _ROUNDING_ONLY_EPS_MULTIPLE = 2e4
-# #1909 measured rounding records' peaks up to about 1.2e3 eps of the co-located
-# same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the #1909 box
+# measured rounding records' peaks up to about 1.2e3 eps of the co-located
+# same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the box
 # are 120 and 235 eps (rfx-archive rfx/records/20261024-settle-skip-tail/).
 _ROUNDING_TAIL_EPS_MULTIPLE = 2.4e3
 
@@ -122,7 +122,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
     """Judge per-bin pole tails by agreement between two source-free windows.
 
     ``rounding_groups`` names co-located same-kind records whose peaks share
-    a rounding margin; ungrouped records are never skipped (#1909).
+    a rounding margin; ungrouped records are never skipped.
     sensitivities are judged by a separate witness
     """
     from dataclasses import replace

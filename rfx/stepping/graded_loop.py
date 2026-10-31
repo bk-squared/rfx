@@ -120,15 +120,15 @@ def run_nonuniform(
 
     # ---- n_warmup split --------------------------------------------------
     # When n_warmup > 0, run the first n_warmup steps with the carry
-    # stop_gradient'd so AD builds no tape for that transient lead-in
-    # (issue #40). Only the trailing n_optimize = n_steps - n_warmup
+    # stop_gradient'd so AD builds no tape for that transient lead-in.
+    # Only the trailing n_optimize = n_steps - n_warmup
     # steps participate in reverse-mode autodiff.
     #
     # The truncation error DEPENDS ON DISTANCE FROM THE SOURCE TO THE
     # DESIGN REGION -- it is not a blanket property of n_warmup itself
     # (corrects an earlier version of this comment that said the
     # design-relevant support "generally" extends into the warmup window;
-    # see the #626 addendum below for why that was an overgeneralization
+    # see the addendum below for why that was an overgeneralization
     # from a single, worst-case fixture). Mechanism: severing the carry
     # severs every gradient path from a design variable's influence during
     # steps < n_warmup back into the loss -- but only steps during which
@@ -152,8 +152,7 @@ def run_nonuniform(
     # loss window.
     #
     # Forward output is exactly n_warmup-invariant (bit-identical) in every
-    # placement measured. Two measured regimes (issue #626 part 2 /
-    # addendum, both vs an independent central-FD oracle):
+    # placement measured. Two measured regimes (both vs an independent central-FD oracle):
     #   - NEAR-SOURCE placement (design cell ~3 cells from the source, so
     #     K_safe ~ 0 -- the wavefront is already present at every step):
     #     error grows smoothly and monotonically from a ~1.5% noise floor
@@ -307,7 +306,7 @@ def run_nonuniform_until_decay(
     no AD tape contract; ``checkpoint`` / ``checkpoint_every`` / ``n_warmup``
     are absent from the signature (the caller raises before dispatching here).
 
-    ``stop_fn`` (issue #1254, ``run(..., until_identified=True)``), when
+    ``stop_fn`` (``run(..., until_identified=True)``), when
     given, is called at every chunk boundary after the energy check as
     ``stop_fn(steps_done, peek)``; ``peek()`` returns
     :func:`_assemble_nu_result` of the record so far, and a true return ends
@@ -326,7 +325,7 @@ def run_nonuniform_until_decay(
             f"check_interval must be >= 1, got {check_interval}")
     if max_steps < 1:
         raise ValueError(f"max_steps must be >= 1, got {max_steps}")
-    # A direct caller gets run()'s refusal too; the absorber is the setup's own (#2030 S2a).
+    # A direct caller gets run()'s refusal too; the absorber is the setup's own.
     from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
     absorbing = grid.cpml_layers > 0 and padded_axes(grid, resolve_cpml_axes(grid, cpml_axes))
     refuse_radiated_flux_stop(radiated_flux_box, decay_by, "cpml" if absorbing else "pec")
@@ -392,7 +391,7 @@ def run_nonuniform_until_decay(
         step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
         return jax.lax.scan(step, carry_in, xs)
 
-    # #388 opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
+    # opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
     # stop on the outgoing Poynting flux through a Huygens box instead of the interior energy,
     # so the non-radiating static soft-source charge (which FLOORS the energy criterion) and
     # near-Nyquist buzz do not stall the stop. Opt-in; default keeps the energy criterion.
@@ -414,7 +413,7 @@ def run_nonuniform_until_decay(
             max_steps=max_steps, flux=use_flux_stop, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
             tfsf=tfsf, waveguide_ports=waveguide_ports)
-    decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
+    decayed_fired = False  # did the energy criterion fire (vs cap-hit)?
     ys_chunks = []
     steps_done = 0
     reporter = None
@@ -429,7 +428,7 @@ def run_nonuniform_until_decay(
     while steps_done < max_steps:
         this_chunk = min(int(check_interval), max_steps - steps_done)
         if stop_fn is not None and max_steps - steps_done - this_chunk == 1:
-            this_chunk += 1   # #1254: no one-step last chunk (XLA inlines it)
+            this_chunk += 1   # no one-step last chunk (XLA inlines it)
         xs = (
             jnp.arange(steps_done, steps_done + this_chunk, dtype=jnp.int32),
             src_waveforms[steps_done:steps_done + this_chunk],
@@ -454,7 +453,7 @@ def run_nonuniform_until_decay(
             decayed_fired = True
             break
 
-        # #1254: the caller's stop check at the chunk boundary.
+        # the caller's stop check at the chunk boundary.
         if stop_fn is not None:
             from rfx.stepping.progress import concat_chunks
             if stop_fn(steps_done, lambda: _assemble_nu_result(

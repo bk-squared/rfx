@@ -88,7 +88,7 @@ def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=Non
     ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))``, as :func:`slab_e_coeffs`
     builds them: from the mean eps and sigma over the four cells around each
     edge, with a lumped element on its own edge only -- the single-device
-    rule (#1210, #1236, #1303).
+    rule.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
     def backward(h, axis):
@@ -119,7 +119,7 @@ def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=Non
 def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Debye ADE on a local slab (always non-periodic).
 
-    Per E component (#1260), the single-device body's arithmetic
+    Per E component, the single-device body's arithmetic
     (``rfx.materials.debye.debye_e_component``), including carry narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
@@ -148,7 +148,7 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=
 def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
 
-    Per E component (#1260), as ``rfx.stepping.poles.update_e_lorentz``
+    Per E component, as ``rfx.stepping.poles.update_e_lorentz``
     including its carry dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
@@ -220,7 +220,7 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz: the single-device combined coefficients
-    # (``mixed_e_component_coeffs``), per component (#1260). This body used to
+    # (``mixed_e_component_coeffs``), per component. This body used to
     # take ca/cb/cc from the Debye build and the Lorentz dP coefficient as
     # 1/gamma_Lorentz; the combined update needs 1/gamma_total = 1/(gamma_Lorentz
     # + sum beta) there, which differs on every edge that carries both a Debye
@@ -312,8 +312,7 @@ def _update_e_local_nu(state, e_coeffs,
     """E update on a local slab using NU inverse (cell-local) spacings.
 
     Mirrors ``rfx/core/yee.py::update_e_nu``. ``e_coeffs`` is the slab's
-    per-component ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` (#1303,
-    :func:`slab_e_coeffs` / :func:`component_e_coeffs`).
+    per-component ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` (:func:`slab_e_coeffs` / :func:`component_e_coeffs`).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
     def backward(h, axis):
@@ -420,7 +419,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
     curl reads only the cell-local spacings, not the mean-spacing ones.
 
     Each component's eps and sigma are the mean over the four cells around
-    its edge, the single-device rule (#1303): ``e_materials``, the x-sharded
+    its edge, the single-device rule: ``e_materials``, the x-sharded
     means :func:`slab_e_materials_shmap` built before the loop, or, when it
     is ``None``, :func:`slab_e_component_materials` of ``mat`` on each slab,
     from ``nx_per`` (real rows per slab) and ``nx`` (the unpadded global x
@@ -539,7 +538,7 @@ def _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=None):
 
 
 def slab_e_coeffs(materials, nx_per, nx, dt, rank=None, *, high_wall: tuple[bool, bool, bool]):
-    """The E coefficients of one x slab (#1303): :func:`component_e_coeffs`
+    """The E coefficients of one x slab: :func:`component_e_coeffs`
     of :func:`rfx.model.electric_metrics.slab_e_component_materials`. With :func:`slab_e_materials_shmap`
     the one path the multi-device E updates take to their coefficients."""
     return component_e_coeffs(
@@ -612,7 +611,7 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall: tuple[boo
     arrays, for a runner that averages once, before its time loop, and
     forms the coefficients (:func:`component_e_coeffs`) inside it.
 
-    Why a runner would (#1303): inside the loop the mean is loop-invariant
+    Why a runner would: inside the loop the mean is loop-invariant
     and XLA hoists it out of the loop anyway, so the forward program holds
     the same six coefficient slabs either way. Under ``jax.grad`` it does
     not: taken inside the loop (in the E update and again in the CPML), the
@@ -621,9 +620,8 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall: tuple[boo
     here, once, about the cell-owned lane's. The coefficients stay inside
     the loop: built here instead, the permittivity gradient of a 1.5e16
     objective came back non-finite at four cells next to the current sources
-    (``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``; the
-    mechanism was not established -- #1317 recorded a float32 overflow of
-    ``Cb``'s reverse pass in the same test). ``jax.checkpoint`` recomputes
+    (``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``; the mechanism was not established; the same test
+    also exposed a float32 overflow of ``Cb``'s reverse pass). ``jax.checkpoint`` recomputes
     this mean in the backward pass instead of keeping it on the tape.
     """
     @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),

@@ -610,7 +610,7 @@ def dc_census(sim, *, dt, n_table):
     port (the same soft-Ez deposit), with ``relative DC = |sum s(t_n) dt| /
     sum |s(t_n)| dt`` over ``n_table`` steps and ``t_done = t0 + 4.5 tau``
     (None when the waveform has no ``tau``). A soft current source deposits
-    ``sum s dt`` as a static end-charge (issue #388).
+    ``sum s dt`` as a static end-charge.
     """
     from rfx.core.jax_utils import is_tracer
 
@@ -668,7 +668,7 @@ def table_dc(sources):
 
 
 def warn_dc_floor(sim, *, dt, n_table):
-    """Pre-run predictor (issue #388): warn for each soft drive whose waveform's
+    """Pre-run predictor: warn for each soft drive whose waveform's
     relative DC over the planned ``n_table``-step table exceeds ``DC_ADVISE``.
 
     The deposited static charge's field neither decays nor is absorbed by
@@ -733,7 +733,7 @@ def array_lossy(materials):
 
 
 def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) -> None:
-    """Post-run advisory on an energy "cap" end (issue #388).
+    """Post-run advisory on an energy "cap" end.
 
     Warns when the final interior energy is electrostatic: physical energy
     (1/2 eps |E|^2 against 1/2 mu |H|^2) with ``H-share < 1e-2``. A

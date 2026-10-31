@@ -1,7 +1,7 @@
 """JAX-traceable post-forward N-probe wave decomposition for MSL S-params.
 
 The canonical extractor is :func:`extract_msl_nprobe` — an N-probe
-least-squares wave decomposition (issue #80 Fix C) that removes the
+least-squares wave decomposition that removes the
 3-probe ``q→1`` singularity and is fully JAX-traceable.
 
 Plane-probe registration helpers:
@@ -14,8 +14,7 @@ Plane-probe registration helpers:
     that :func:`_v_from_plane` / :func:`_i_from_plane` feed straight
     into the PRODUCTION primitives (:func:`rfx.api._sparams.
     msl_modal_voltage`, :func:`rfx.sources.msl_port.msl_loop_current`)
-    -- issue #514 shares the transverse integrals; issue #726 also shares
-    the H-to-E-plane interpolation with production.
+    -- transverse integrals and H-to-E-plane interpolation are shared with production.
 
 Point-probe registration helper:
 
@@ -154,7 +153,7 @@ class MSLPlaneProbeSet:
     msl_port.msl_cross_section_span` for the geometry, the PEC-mask walk
     for the rasterized trace node) so :func:`_v_from_plane` /
     :func:`_i_from_plane` can hand them straight to the production
-    primitives instead of re-deriving V/I locally (issue #514).
+    primitives instead of re-deriving V/I locally.
     """
     ez1_name: str
     ez2_name: str
@@ -200,7 +199,7 @@ def register_msl_plane_probes(
         walking the PEC mask up from the substrate top, exactly as
         ``compute_msl_s_matrix``'s ``trace_k_per_port`` does — NOT the
         ``round(h_sub/dx)`` proxy, which is one substrate edge short for
-        ``frac(h_sub/dx) in (0, 0.5)`` (issue #511 / PR #516 finding F2;
+        ``frac(h_sub/dx) in (0, 0.5)`` (
         see ``msl_modal_voltage``'s docstring).
       * I at probe 1: the closed Ampere loop ``∮H·dl`` around the trace
         conductor from Hy + Hz on the two bracketing Yee half-planes,
@@ -235,7 +234,7 @@ def register_msl_plane_probes(
 
     pe = sim._msl_ports[port_index]
 
-    # Issue #661: this helper is the retained 3-probe geometry primitive
+    # this helper is the retained 3-probe geometry primitive
     # (diagnostic only — the production S-matrix path is
     # compute_msl_s_matrix). Its cross-section bookkeeping below reads
     # (y, z) as (width, normal) and registers x-normal plane probes with
@@ -252,7 +251,7 @@ def register_msl_plane_probes(
             f"handles every supported direction."
         )
 
-    # Issue #514 required-change 1: sim._build_grid() ALWAYS returns the
+    # required-change 1: sim._build_grid() ALWAYS returns the
     # uniform Grid — it never threads sim._dx_profile/_dy_profile/
     # _dz_profile into Grid(...) — so on a non-uniform mesh this path has
     # no way to build the SAME NonUniformGrid compute_msl_s_matrix's
@@ -301,7 +300,7 @@ def register_msl_plane_probes(
     # Trace search — IDENTICAL to compute_msl_s_matrix's trace_k_per_port
     # (rfx/api/_sparams.py): walk UP the substrate-normal axis from the
     # substrate top, at the feed column and trace centre, and find the
-    # realized PEC WALL PLANES. #931 §1.9: this used to scan the pec_mask
+    # realized PEC WALL PLANES. This used to scan the pec_mask
     # CELL column, which finds a volume trace one plane low and misses a
     # sheet-declared trace entirely (a sheet owns no cell). The V span
     # (ground wall plane -> trace plane) and the Ampere loop legs now
@@ -365,13 +364,13 @@ def register_msl_plane_probes(
 def realized_trace_planes_on_column(pec_edge_masks, normal_idx, ij, k_from,
                                     periodic=(False, False, False)):
     """Lowest and highest realized PEC wall plane on one column, at or
-    above ``k_from`` along ``normal_idx`` (#931 §1.9).
+    above ``k_from`` along ``normal_idx``.
 
     Replaces the ``pec_mask`` CELL scan every MSL trace detector used.  A
     volume trace answers with its LOWER wall plane and its far face; a
     sheet trace answers with its single plane.  ``(None, None)`` when the
     column carries no realized PEC above ``k_from``.  ``periodic`` is the
-    run's #689 flags, forwarded so a column on the seam node of a periodic
+    run's periodic-axis flags, forwarded so a column on the seam node of a periodic
     in-plane axis finds its backward incident edge.
     """
     from rfx.boundaries.pec import realized_wall_planes
@@ -412,9 +411,9 @@ def _realized_trace_planes(sim, grid, span, j_centre):
 def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     """V_f = production ``msl_modal_voltage`` on this plane's Ez accumulator.
 
-    Issue #514: this used to re-implement the ground-to-trace Ez
+    this used to re-implement the ground-to-trace Ez
     integral locally and drifted (an inclusive ``k_lo..k_hi`` span, ~12%
-    low — issue #511). It now calls
+    low). It now calls
     :func:`rfx.api._sparams.msl_modal_voltage` directly with the SAME
     ``j_centre`` / ``k_lo`` / ``k_hi`` (EXCLUSIVE, the rasterized trace's
     bottom node) / ``dz_arr`` that ``compute_msl_s_matrix`` computes, so
@@ -434,11 +433,10 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     ``plane_name`` names the retained right Hy plane; its left neighbour
     and both Hz planes are registered by :func:`register_msl_plane_probes`.
     Interpolate each physically stamped H pair to the voltage E-node. Missing bracketing metadata or data is an error.
-    Issue #514: this used to
-    integrate a single pre-#80 Hy slab (~1.5x undercount vs. the closed
-    loop). The shared DFT owns the half-step phase; this projector
+    A single Hy slab undercounts by ~1.5x compared with the closed loop. The shared DFT owns the half-step phase; this
+    projector
     calls :func:`rfx.sources.msl_port.msl_loop_current` directly with the
-    SAME trace span ``compute_msl_s_matrix`` uses, so the #140 sign
+    SAME trace span ``compute_msl_s_matrix`` uses, so the sign
     convention comes from ``msl_loop_current``/``msl_axis_roles`` alone —
     no extra direction multiply here (that would double-apply the sign).
     """
@@ -468,13 +466,13 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Fix C — N-probe least-squares wave decomposition (issue #80)
+# Fix C — N-probe least-squares wave decomposition
 # ---------------------------------------------------------------------------
 #
 # The 3-probe quadratic ``q + 1/q = (V1 + V3)/V2`` becomes singular as
 # ``β·Δ → 0`` (the q→1 degeneracy): the discriminant ``coeff² − 4 → 0`` so
 # root selection is noise-dominated and the extracted ``|q|`` drifts above
-# 1 (non-physical for a passive line) — see issue #80.
+# 1 (non-physical for a passive line).
 #
 # The N-probe extractor below removes that singularity entirely.  Per
 # frequency it fits
@@ -535,7 +533,7 @@ def _estimate_beta(
         window, or the refined β lands within half a grid step of a
         window limit.  A railed β (and the Z0 derived from it) is the
         window limit, not a measurement: the true optimum lies at or
-        beyond the scan edge (issue #681 — a substrate-εr / HJ-ε_eff
+        beyond the scan edge (a substrate-εr / HJ-ε_eff
         mismatch large enough to push the true β outside ±35% used to
         be returned silently pinned at ``0.974·rail``).  Pure edge
         conditions — no tunable threshold.
@@ -547,8 +545,8 @@ def _estimate_beta(
 
     # Scale-normalize the probe vector for the β estimate.  β is
     # scale-invariant, but the residuals below scale with ‖v‖: on the
-    # Kottke density-PEC path the plane-integrated V can be ~1e-14
-    # (2026-06-12 G2 NaN session), which makes the residual curve
+    # Kottke density-PEC path the plane-integrated V can be ~1e-14,
+    # which makes the residual curve
     # numerically flat in float32 and collapses the parabolic
     # second-difference `denom` to ~1e-21 — far below the 1e-20 guard
     # the threshold was designed around.  Normalizing restores the
@@ -589,9 +587,7 @@ def _estimate_beta(
     # in the untaken branch, and when catastrophic cancellation drives
     # denom to ~0 the untaken branch's backward pass produces inf/nan
     # that `0 * nan = nan` leaks through the mask (the exact trap class
-    # the _solve_q custom-JVP comment above documents; reintroduced
-    # here by the lstsq rewrite and caught 2026-06-12 as the G2
-    # grad=nan).  `safe_denom` keeps the untaken branch finite in both
+    # the _solve_q custom-JVP comment above documents).  `safe_denom` keeps the untaken branch finite in both
     # the primal and the cotangent.
     denom = (r_lo - 2.0 * r_mid + r_hi)
     num = 0.5 * (r_lo - r_hi)
@@ -601,7 +597,7 @@ def _estimate_beta(
     frac = jnp.clip(frac, -1.0, 1.0)
     step = b_mid - b_lo
     beta = (b_mid + frac * step).astype(jnp.complex64)
-    # Rail detection (issue #681).  The raw (pre-clip) argmin at an edge
+    # Rail detection.  The raw (pre-clip) argmin at an edge
     # node means the residual keeps improving up to the window limit —
     # the optimum was never bracketed.  The half-step clause catches the
     # refine clipping onto the limit from the first/last interior node.
@@ -625,7 +621,7 @@ def extract_msl_nprobe(
     *,
     z0_hj: float | jnp.ndarray | None = None,
 ) -> dict:
-    """N-probe least-squares MSL wave decomposition (issue #80 Fix C).
+    """N-probe least-squares MSL wave decomposition.
 
     Robust, JAX-differentiable replacement for the 3-probe quadratic
     extractor.  Per frequency it fits ``V_n = α e^{−jβx_n} + γ e^{+jβx_n}``
@@ -664,8 +660,7 @@ def extract_msl_nprobe(
                      to bracket its optimum (raw argmin at a window-edge
                      node, or refined β within half a grid step of a
                      window limit).  The returned ``beta``/``z0`` at such
-                     a bin are the scan-window limit, NOT a measurement
-                     (issue #681); do not quote them.
+                     a bin are the scan-window limit, NOT a measurement; do not quote them.
         ``z0_hj`` : the passed-through analytic Z0 (or ``None``).
 
     Notes

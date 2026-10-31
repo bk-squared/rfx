@@ -85,7 +85,7 @@ def _concrete_varies(values) -> bool:
 
 
 def adi_material_interface_refusal(eps_r, sigma=None):
-    """Why the ADI lane cannot solve these materials, or ``None`` (#1373).
+    """Why the ADI lane cannot solve these materials, or ``None``.
 
     ``eps_r`` and ``sigma`` are the material arrays the ADI coefficients read
     per cell (:func:`_adi_coeffs_eps_r`). A value that varies over the grid is
@@ -117,7 +117,7 @@ def adi_traced_override_refusal(values):
     """Why a traced material array cannot reach the ADI lane, or ``None``.
 
     A scalar (0-d) traced value is a homogeneous fill and is admitted; a
-    traced array may hold an interface that cannot be inspected (#1373)."""
+    traced array may hold an interface that cannot be inspected."""
     if values is not None and is_tracer(values) and getattr(values, "ndim", 0) > 0:
         return ADI_TRACED_OVERRIDE_MESSAGE
     return None
@@ -212,7 +212,7 @@ def _apply_pec_2d(ez: jnp.ndarray, ez_pec_mask: jnp.ndarray | None = None) -> jn
 
     TMz has only one electric component (Ez), so PEC means Ez=0 on
     domain boundaries and wherever the internal geometry realizes an Ez
-    edge as PEC.  ``ez_pec_mask`` is that realized mask (#931 §1.7): the
+    edge as PEC.  ``ez_pec_mask`` is that realized mask: the
     ``Mz`` plane from ``rfx.boundaries.pec.realized_pec_edge_masks``, NOT
     the primal-cell occupancy.  Zeroing Ez at the occupied CELL indices
     instead was this lane's own realization rule — a body one cell thick
@@ -228,7 +228,7 @@ def _apply_pec_2d(ez: jnp.ndarray, ez_pec_mask: jnp.ndarray | None = None) -> jn
 
 
 def _adi_coeffs_eps_r(eps_r, sigma, dt, *lengths):
-    """The ADI E coefficients written in eps_r units (#1357).
+    """The ADI E coefficients written in eps_r units.
 
     ``(damping, half_dt/eps_plus, *couplings)``, where ``couplings[i] =
     half_dt**2/(MU_0*eps_plus*d*d)`` for ``d = lengths[i]`` (``d = 1`` gives
@@ -347,7 +347,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     half_dt = dt / 2.0
 
     # Damping, the explicit-curl factor half_dt/(ε + σ*dt/4) and the
-    # Courant-like couplings Cx/Cy (:func:`_adi_2d_coeffs_si`). #1357: those
+    # Courant-like couplings Cx/Cy (:func:`_adi_2d_coeffs_si`). For those
     # bits, the eps_r-unit derivative -- ``(MU_0*eps_plus*dx*dx)`` is ~1e-23,
     # so its VJP's ``**-2`` overflowed float32 at ANY cotangent.
     damping, ce, Cx, Cy = si_value_eps_r_grad(
@@ -616,7 +616,7 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     mxlo, mxhi = cpml_params.magnetic_xlo, cpml_params.magnetic_xhi
     mylo, myhi = cpml_params.magnetic_ylo, cpml_params.magnetic_yhi
 
-    # #1357: 1/eps's bits, the eps_r-unit derivative (the VJP of 1/eps
+    # 1/eps's bits, the eps_r-unit derivative (the VJP of 1/eps
     # multiplies the cotangent by eps**-2 ~ 1.3e22).
     inv_eps = si_value_eps_r_grad(_inv_eps_si, _inv_eps_eps_r, eps_r)
 
@@ -707,7 +707,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     sources : list of (i, j, waveform_array) tuples.
     probes : list of probe tuples.
     ez_pec_mask : (Nx, Ny) bool array or None
-        Reserved realized Ez mask (#931 §1.7); non-None is refused.
+        Reserved realized Ez mask; non-None is refused.
     cpml_params : ADICPMLParams2D or None
         CPML profile coefficients. When provided, CPML absorbing boundary
         is applied after each ADI step (operator-splitting).
@@ -720,7 +720,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     probe_data : (n_steps, n_probes) array or None
     """
     _validate_interior_pec(ez_pec_mask)
-    # eps_r only: ``sigma`` here carries the absorber's grading (#1373).
+    # eps_r only: ``sigma`` here carries the absorber's grading.
     _refuse_material_interface(eps_r)
     use_cpml = cpml_params is not None
     if use_cpml and cpml_state is None:
@@ -858,11 +858,8 @@ class ADIState3D(NamedTuple):
 def _apply_pec_3d(ex, ey, ez, pec_edge_masks=None):
     """Zero tangential E on all 6 domain faces + the realized PEC edges.
 
-    ``pec_edge_masks`` is the ``(Mx, My, Mz)`` triple from
-    ``rfx.boundaries.pec.realized_pec_edge_masks`` (#931 §1.7).  Zeroing
-    all three components at the occupied CELL indices — this lane's own
-    rule until #931 — is a fourth realization of the same geometry and is
-    gone.
+    ``pec_edge_masks`` is the ``(Mx, My, Mz)`` triple from ``rfx.boundaries.pec.realized_pec_edge_masks``; apply each
+    mask to its own field component.
     """
     # x-faces: Ey, Ez = 0
     ey = ey.at[0, :, :].set(0.0)
@@ -977,7 +974,7 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     half_dt = dt / 2.0
 
     # Damping, the explicit-curl factor ce, the mixed-term factor cc and the
-    # per-axis couplings (:func:`_adi_3d_coeffs_si`). #1357: those bits, the
+    # per-axis couplings (:func:`_adi_3d_coeffs_si`). For those bits, the
     # eps_r-unit derivative -- the SI VJP of ``cc`` multiplies the cotangent
     # by (MU_0*eps_plus)**-2 ~ 8e33.
     damping, ce, cc, Cx, Cy, Cz = si_value_eps_r_grad(
@@ -1106,7 +1103,7 @@ def run_adi_3d(
     sources : list of (i, j, k, component, waveform_array) tuples
     probes : list of (i, j, k, component) tuples
     pec_edge_masks : (Mx, My, Mz) bool arrays or None
-        Reserved realized edge masks (#931 §1.7); non-None is refused.
+        Reserved realized edge masks; non-None is refused.
 
     Returns
     -------
@@ -1114,7 +1111,7 @@ def run_adi_3d(
     probe_data : (n_steps, n_probes) array or None
     """
     _validate_interior_pec(pec_edge_masks)
-    # eps_r only: ``sigma`` here carries the absorber's grading (#1373).
+    # eps_r only: ``sigma`` here carries the absorber's grading.
     _refuse_material_interface(eps_r)
     if sources is None:
         sources = []

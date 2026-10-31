@@ -391,7 +391,7 @@ def ntff_accum_dtype(field_dtype=jnp.float32):
       float16, whose 11-bit mantissa would destroy the running DFT.
     * float32 (the default)           -> complex64.  Unchanged, x64 or not.
     * float64 (``precision="float64"``) -> complex128.
-    * complex64 (the oblique-Bloch path, #404) -> complex64.  A flat float32
+    * complex64 (the oblique-Bloch path) -> complex64.  A flat float32
       pin would break that path; ``promote_types`` preserves complex.
     """
     return jnp.result_type(
@@ -408,11 +408,9 @@ def init_ntff_data(box: NTFFBox, *, field_dtype=jnp.float32) -> NTFFData:
     unchanged — at the default float32 field storage the accumulator is
     complex64 whether or not JAX x64 mode is on.
 
-    Dtype note (issue #646)
+    Dtype note
     -----------------------
-    The accumulator dtype used to be a hard ``complex64`` pin, justified here
-    by "x64 caused an MLIR scan-carry mismatch, issue #14". That has the
-    causality backwards: the PIN is what raises the mismatch. ``dt`` reaches
+    Pinning the accumulator to ``complex64`` raises an MLIR scan-carry mismatch under x64. ``dt`` reaches
     ``accumulate_ntff`` as a **numpy float64 scalar** (``grid.dt``), and numpy
     scalars are strongly typed in JAX, so under x64 the phase factor — and
     therefore the scan body's output — is complex128 while the carry was
@@ -685,7 +683,7 @@ def accumulate_ntff(
     them exact. (Before this was fixed E was stamped at ``n*dt`` — a full
     step early, so E ran half a step BEHIND H instead of half a step ahead.)
     """
-    # Shared phase output follows the accumulator dtype (issue #646), so
+    # Shared phase output follows the accumulator dtype, so
     # x64 configuration cannot promote a complex64 scan carry. Kahan sums
     # retain their existing compensation; host phase tables improve phase.
     _cdtype = ntff_data.x_lo.dtype

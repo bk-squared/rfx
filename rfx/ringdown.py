@@ -1,4 +1,4 @@
-"""Ring-down completion of wire-port S-parameters (issue #1254).
+"""Ring-down completion of wire-port S-parameters.
 
 Physics
 -------
@@ -49,7 +49,7 @@ The error witness ``WE`` identifies the poles a second time on a window that
 starts twice as early, ``[n_start / 2, N)``, and completes the SAME record with them; the
 largest difference of the two answers is the witness. On the research boards
 it read the actual error within 0.84-3.2x wherever the record resolves the
-structure (rfx #1254, R-i). It needs the sources off over its window too; when
+structure (R-i). It needs the sources off over its window too; when
 they are not, the two-window witness ``W2`` (the shorter window
 ``[n_start, split * N)``, which read the actual error 0.003-22x there) is
 judged in its place. Otherwise ``W2`` is reported, not judged.
@@ -137,7 +137,7 @@ _HARMINV_DEFAULTS = {
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
 HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
-# Default from decision g (2026-10-12); users can raise it by assignment.
+# Default from decision g; users can raise it by assignment.
 IDENTIFY_MEMORY_BOUND_BYTES = 4 * 2**30
 # The largest kept count across the ringdown fixtures is 431, from a seeded-noise
 # record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
@@ -587,7 +587,7 @@ def _static_pole(p: RingdownPole, record_s: float, unit_tol: float) -> bool:
 
     A field left behind in a closed box identifies as a pole the record cannot
     tell from DC (:func:`_zero_frequency`) on the unit circle to rounding
-    (rfx #1254, the Q 533 cavity). The one definition the growing-pole
+    (the Q 533 cavity). The one definition the growing-pole
     exemption (:func:`growing_poles`) and the early stop's floor
     (:func:`_floor_pole`) share; a decaying low-frequency mode is not one.
     """
@@ -932,8 +932,8 @@ def _ulps(rebuilt, rfx_values) -> float:
 
 #: W0's bar: the rebuilt accumulators and the lane's S assembly on the run's
 #: own accumulators may differ from the run by at most this fraction of each
-#: array's peak, ``max |rebuilt - run| / max |run|``. PI decisions 2026-09-25
-#: (ledger archive 567dd2b, 3feae81): per-step quantities (fields, probe
+#: array's peak, ``max |rebuilt - run| / max |run|``. The consistency policy (ledger archive
+#: 567dd2b, 3feae81): per-step quantities (fields, probe
 #: samples) keep the cross-trace rule of at most 9 ULP at the peak; quantities
 #: summed over the record (the port DFT accumulators, the S built from them)
 #: pass at 1e-4 of the peak, because a program compiled differently (a user's
@@ -954,8 +954,7 @@ W1_BAR = 1.0e-4
 #: DFTs of the traced V_port and I against the run's own accumulators, max
 #: |difference| / the array's peak over the port channels -- W0's quantity,
 #: inside the program (RingdownForward._traced). Above it the traced
-#: completion is NaN in value and gradient (lead's decision, #1254 PR 3
-#: review). An S-level reading divided float32 rounding by the incident wave
+#: completion is NaN in value and gradient. An S-level reading divided float32 rounding by the incident wave
 #: and NaN'd correct records where the drive is weak (bandwidth 0.42 pulse,
 #: the 18 GHz bin driven at 3.6e-4 of the peak: 1.0e-3 on S); at the channel
 #: level that record reads 3-4e-6. Measured on the ring-down box: clean
@@ -1503,16 +1502,16 @@ class RingdownRun:
 
 
 # ---------------------------------------------------------------------------
-# Simulation.run(..., ringdown=..., until_identified=True) (issue #1254, PR 2)
+# Simulation.run(..., ringdown=..., until_identified=True)
 # ---------------------------------------------------------------------------
 
-#: The early stop's floor (PI decision 2026-09-27): no stop before the record
+#: The early stop's floor: no stop before the record
 #: is at least this many amplitude decay times ``tau = Q / (pi f) = 1 / alpha``
 #: of the slowest identified mode. The in-record witnesses cannot see a pair of
 #: modes that no window of the record separates: two modes 0.03 % apart
 #: recorded for 7 % of their decay time are identified as one blended pole by
 #: every window, so WE agrees with the completion while it is 8.8 % of the
-#: peak off; the same pair is resolved at 19 % (rfx #1254, R-i). E4's cavity
+#: peak off; the same pair is resolved at 19 % (R-i). E4's cavity
 #: completed within its bars at 1 / 0.5 / 0.2 decay times for loaded Q
 #: 181 / 533 / 1199. Which poles are the "identified modes" is
 #: :func:`_floor_pole`'s rule (lead's choice).
@@ -1530,7 +1529,7 @@ STOP_CHUNK = 250
 #: Checks in a row at which the sources are off over [T/4, T] and WE is within
 #: its bar, the check that stops included (lead's choice).
 STOP_CONSECUTIVE = 2
-#: Which poles set the floor (lead's decision 2026-09-27), for the report.
+#: Which poles set the floor, for the report.
 FLOOR_POLE_RULE = (
     "the slowest pole whose own unrecorded tail, at the requested bins and "
     "through the S observable, moves the completed S by at least witness_tol "
@@ -2122,7 +2121,7 @@ class RingdownStop:
 
 
 # ---------------------------------------------------------------------------
-# Simulation.forward(..., ringdown=...) integration (issue #1254, PR 3)
+# Simulation.forward(..., ringdown=...) integration
 # ---------------------------------------------------------------------------
 
 def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float) -> int:
@@ -2148,7 +2147,7 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     ``ForwardResult.ringdown.s_params``. ``grad_other`` is the gradient of
     the SAME objective through
 
-    * ``against="early_start"`` (the witness, PI decision 2026-09-25):
+    * ``against="early_start"`` (the witness):
       ``ringdown.s_params_long`` of the same call, the completion from the
       window that starts twice as early -- WE on the gradient, one extra
       backward pass. ``ringdown`` must be that call's

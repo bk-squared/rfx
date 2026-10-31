@@ -1,4 +1,4 @@
-"""Saved carry and formulation-specific AD tape accounting (#1786)."""
+"""Saved carry and formulation-specific AD tape accounting."""
 from __future__ import annotations
 
 import math
@@ -12,7 +12,7 @@ from rfx.model.design_box import design_box_bounds, design_box_window
 # G1 acc-admem-g1-20261016t043022z-648d9; both maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 
-# Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2 (#2089).
+# Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2.
 # rfx/records/20261027-compiled-gradient-estimate/: working arrays beyond one carry.
 AD_MEMORY_WORKING_CARRIES = 6.5
 
@@ -133,7 +133,7 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     grow with the box's face area for oblique incidence. A checkpointed
     gradient saves the six float32 line arrays once per saved boundary B:
     segment_counts(...)[0] for segments/intervals (every segment is
-    rematerialised, whatever ``checkpoint`` says, #1815), steps - warmup
+    rematerialised, whatever ``checkpoint`` says), steps - warmup
     for per-step remat (checkpoint=True alone), and zero otherwise.
     Choose B * line_bytes > record_bytes. The resident record is not
     itself a saved carry.

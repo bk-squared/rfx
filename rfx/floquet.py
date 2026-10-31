@@ -148,7 +148,7 @@ def extract_floquet_modes(
     extractor reads the (Ex, Hy) tangential pair and the TE wave impedance
     ``eta0/cos(theta)``). ``n_modes > 1`` (higher-order grating lobes) and TM
     polarization are NOT implemented and are rejected fail-loud rather than
-    silently returning wrong results (RF-audit 2026-07-23).
+    silently returning wrong results.
 
     Parameters
     ----------
@@ -318,9 +318,9 @@ def compute_floquet_s_params(
         reflected / transmitted waves: a naive single-run soft-source drive
         does NOT (a bidirectional source leaves no pure-forward monitor plane),
         so ``|S11|`` from such a drive can exceed 1. Do not build accuracy
-        claims on it. Tracking: https://github.com/bk-squared/rfx/issues/141
+        claims on it.
 
-        **Drive-isolation scoping (2026-07-05, R2-STOP):** the obvious fix — a
+        **Drive-isolation scoping:** the obvious fix — a
         two-run empty-vs-device reference subtraction (``E_scat = E_dev −
         E_empty`` at a +z-side plane, the pattern that works for waveguide/coax
         ports) — does NOT resolve this for a periodic Floquet cell. On an εr=4

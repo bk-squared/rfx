@@ -193,11 +193,11 @@ def compute_rcs(
     dx = grid.dx
     dt = grid.dt
 
-    # ---- Oblique incidence routing (issue #404 arc — fork (a) S4/S5) ----
+    # ---- Oblique incidence routing  ----
     # theta_inc != 0 routes the illumination through the OPEN-DOMAIN oblique
     # Method-B TFSF (real float32, dispersion-matched 1D-aux-along-k̂ + a 4-edge
     # box; rfx/sources/tfsf_oblique_open.py), NOT the periodic complex-Bloch 2D-aux
-    # path (#414) which assumes lateral periodicity and is the wrong tool for a
+    # path which assumes lateral periodicity and is the wrong tool for a
     # compact scatterer. Method B is a 2.5-D path: k̂ lies in the x-y plane, the
     # transverse y-axis is OPEN (CPML) and z is thin/periodic (z-invariant far
     # field), so the fields stay real and the NTFF/DFT read physical fields.
@@ -212,7 +212,7 @@ def compute_rcs(
     # 2.2-lambda plate's ~30 deg physical-optics 3 dB specular lobe at
     # theta_inc=40 (0.886*lambda/(W*cos(theta))) — argmax on a 1 deg grid
     # inside a broad lobe, an envelope pin, not a loose bound.
-    # ABSOLUTE sigma (issue #471 F7): normalized by the MEASURED 1D-aux
+    # ABSOLUTE sigma: normalized by the MEASURED 1D-aux
     # incident spectrum (measure_incident_spectrum below), validated vs a PO
     # uniform-aperture oracle at the gate grid to +0.86/+0.85 dB (theta 20/40)
     # with a measured 2.4 dB resolution sensitivity lambda/30 -> lambda/60 —
@@ -319,7 +319,7 @@ def compute_rcs(
         raise ValueError("phase_reference.x must lie inside the total-field slab")
 
     if _oblique:
-        # #471 F5: compute_rcs never ran the preflight vacuum validator. Run
+        # compute_rcs never ran the preflight vacuum validator. Run
         # the identical all-four-planes check here so a target crossing a
         # TFSF boundary plane fails loud instead of corrupting the scattered
         # field (the runner-side validator covers the Simulation API lane).
@@ -426,7 +426,7 @@ def compute_rcs(
         phi_obs,
     )
 
-    # --- 4b. Optional two-run incident-reference subtraction (issue #280) ---
+    # --- 4b. Optional two-run incident-reference subtraction ---
     # The NTFF side faces cut through the transversely infinite total-field
     # slab and read the full incident field. It is target-independent, so
     # subtract the matching vacuum run at the complex far-field level before
@@ -459,8 +459,8 @@ def compute_rcs(
     if _oblique:
         # Method B hardcodes its own waveform (t0=40·dt, tau=12·dt modulated
         # Gaussian) and its source->aux launch response is theta-dependent, so
-        # the analytic normal-path spectrum is the wrong denominator (issue
-        # #471 F7: sigma inflated +6.58 dB at theta=20 deg, +4.51 dB at 40 deg
+        # the analytic normal-path spectrum is the wrong denominator (measured
+        # sigma inflated +6.58 dB at theta=20 deg, +4.51 dB at 40 deg
         # on the gate grid). Normalize by the MEASURED 1D-aux spectrum instead
         # — a standalone replay of the same aux the box injects from.
         from rfx.measurement.incident import measure_incident_spectrum
@@ -475,7 +475,7 @@ def compute_rcs(
         # wavelength and the uniform-grid Courant number. sigma goes as
         # |E_scat/E_inc|^2 with E_scat following the launched wave, so
         # dividing by the waveform's own DFT made every normal-incidence
-        # sigma low by that same 1.14 dB (issue #820). Replay
+        # sigma low by that same 1.14 dB. Replay
         # the same auxiliary line and normalize by what it carries.
         E_inc_spectrum = measure_normal_incident_spectrum(
             tfsf_cfg, tfsf_st, n_steps, freqs_arr, dt,
@@ -528,7 +528,7 @@ def compute_rcs(
     #     phi_back   = atan2(b_hat_y, b_hat_x)
     # For the supported normal-incidence case (theta_inc = 0) this gives
     # (theta_back, phi_back) = (pi/2, pi), i.e. the -x direction.
-    # NOTE (issue #276): the pre-fix code hardcoded (theta=pi, phi=0),
+    # NOTE: the pre-fix code hardcoded (theta=pi, phi=0),
     # which under this convention is the -z BROADSIDE direction, not
     # backscatter.
     #
@@ -622,7 +622,7 @@ def _incident_spectrum_amplitude(
 
     We compute the DFT of this waveform at the requested frequencies.
     This is the WAVEFORM, not the incident field: the auxiliary line adds it
-    as a soft source and launches 1/(2 S cos(k~dx/2)) of it (issue #820), so
+    as a soft source and launches 1/(2 S cos(k~dx/2)) of it, so
     it is not an RCS normalization -- use
     ``rfx.measurement.incident.measure_normal_incident_spectrum``.
     """

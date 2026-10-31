@@ -46,7 +46,7 @@ R, moving the plane along it also mixes the a and b waves, which a phase
 factor does not represent. On the ``eps_override`` channel the calculator
 therefore forms beta AND the reference from the permittivity the solve used
 under the port line (:func:`msl_line_beta_z0`, traced), applies the phase in
-that line's own reference, and only then refers S to ``impedance=`` (#2199).
+that line's own reference, and only then refers S to ``impedance=``.
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ def kirschning_jansen_eps_eff(eps_eff0: float, width: float, height: float,
 
 
 def msl_line_beta_z0(width: float, height: float, eps_r, freqs):
-    """Closed-form ``(beta(f), Z0)`` of a microstrip line, traceable in ``eps_r`` (#2199).
+    """Closed-form ``(beta(f), Z0)`` of a microstrip line, traceable in ``eps_r``.
 
     The same formulas as :func:`msl_closed_form_beta` and
     :func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`, written
@@ -176,7 +176,7 @@ def readable_values(x):
 def msl_line_permittivity(eps_override, *, port_name: str, direction: str,
                           i_feed: int, sign: int, n_probe_offset: int,
                           j_centre: int, k_lo: int, k_hi: int):
-    """The permittivity the solve used under a port line, for the plane shift (#2199).
+    """The permittivity the solve used under a port line, for the plane shift.
 
     Reads ``eps_override`` on the trace-centre column, every substrate cell
     ``k_lo <= k < k_hi``, from the feed cell to the probe-0 cell inclusive.
@@ -323,7 +323,7 @@ def apply_feed_plane_shift(S, offsets_m, shift_beta):
     """
     S = jnp.asarray(S)
     if isinstance(shift_beta, jax.Array):
-        # A traced or device beta (the eps_override channel, #2199): form D in jnp.
+        # A traced or device beta (the eps_override channel): form D in jnp.
         phase = jnp.asarray(shift_beta) * jnp.asarray(offsets_m)[:, None]
         d = jnp.exp(-1j * phase).astype(S.dtype)
     else:

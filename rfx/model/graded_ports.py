@@ -137,7 +137,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 float(pe.position[axis]), float(end_pos[axis]))
             wire_cells = list(range(_first_k, _last_k + 1))
 
-            # Live-cell split (issue #318): a cell whose extent lies inside
+            # Live-cell split: a cell whose extent lies inside
             # PEC (assembled-geometry mask, read BEFORE this port's own
             # clearing below) is dead — it carries no port sigma and no
             # source, and drops out of the 1/n scaling. With no dead cells
@@ -191,12 +191,12 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                     e_node_dual_spacing_at(_dz_m, ck), _z_host)
                 # 3D wire port: σ = n_live * d_parallel / (Z0 * d_perp1 * d_perp2)
                 # Each LIVE cell in the wire carries 1/n_live of total
-                # impedance Z0 (issue #318 — dead cells excluded).
+                # impedance Z0 (dead cells excluded).
                 #
-                # #688: d_perp1/d_perp2 are the E-node DUAL spacings on the
+                # d_perp1/d_perp2 are the E-node DUAL spacings on the
                 # two axes TRANSVERSE to the port component — the same
-                # metrics `wire_port_current` weights its Ampere legs by
-                # (#672). They are the sides of the dual face the conduction
+                # metrics `wire_port_current` weights its Ampere legs by.
+                # They are the sides of the dual face the conduction
                 # current pierces, so V/I closes only if the termination and
                 # the measurement use one metric family. d_parallel stays
                 # PRIMAL: it is the length of the E edge V is taken over.
@@ -215,16 +215,16 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                         dp1, dp2 = dual_yj, dual_zk
                     sigma_port = n_live * d_cell / (pe.impedance * dp1 * dp2)
                     drive_stamps[(ci, cj, ck)] = (sigma_port, 1 / (n_live * d_cell))
-                    # #1210: a port's load is a device across ONE edge, so
+                    # a port's load is a device across ONE edge, so
                     # it is recorded as an edge-owned stamp and kept out of
                     # the edge average. Stamped bare it was quartered, and a
                     # 50 ohm termination presented 200 ohm.
                     materials = _stamp_lumped_sigma(
                         materials, (ci, cj, ck), sigma_port, pe.component)
-                    # #1256: and into the copy the drive is built from.
+                    # and into the copy the drive is built from.
                     materials_drive = _stamp_lumped_sigma(
                         materials_drive, (ci, cj, ck), sigma_port, pe.component)
-                    # No PEC clearing here (#931 §1.9, corrected): a cell
+                    # No PEC clearing here: a cell
                     # is LIVE exactly when the port component's own edge is
                     # not PEC, so releasing that component is a no-op, and
                     # releasing the two tangential edges would open the
@@ -234,14 +234,11 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             # Passive (excite=False) ports contribute just the σ
             # resistive termination above, acting as a matched load.
             #
-            # Issue #764: the V/I reference cell is the midpoint of the
-            # LIVE run, not of the raw extent. A dead extent cell (inside
-            # PEC, #318) carries essentially no port current
-            # (|I_dead|/|I_mid| = 0.003-0.03 measured on the #313 thru),
-            # so an all-extent midpoint landing on a dead cell read a
-            # quenched Ampere loop as the port current. With no dead
-            # cells the live midpoint is bit-identical to the historical
-            # all-extent midpoint.
+            # The V/I reference cell is the midpoint of the LIVE run.
+            # A dead extent cell inside PEC carries essentially no port
+            # current, so a midpoint landing on it would read a quenched
+            # Ampere loop. With no dead cells the live midpoint is identical
+            # to the all-extent midpoint.
             _live_cells = tuple(
                 c for c, live in zip(_cells_ijk, live_flags) if live)
             conductors = publish_port_release(conductors, _live_cells,
@@ -257,7 +254,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
 
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):
-                    # Dead extent cells get no source (issue #318).
+                    # Dead extent cells get no source.
                     if not live:
                         continue
                     drives.append((_port_index, (
@@ -276,7 +273,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 'impedance': pe.impedance,
                 'excite': bool(pe.excite),
                 'direction': port_direction,
-                # Issue #764: static live-cell run for the whole-port gap
+                # static live-cell run for the whole-port gap
                 # voltage V_port = sum_live(-E_c * d_par,c) and its count.
                 'live_cells': _live_cells,
                 'n_live': int(n_live),
@@ -297,10 +294,10 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             # anisotropic cells where dz ≠ dx.  The old formula
             # σ = 1/(Z0*d_parallel) is only valid for cubic cells.
             #
-            # #688: d_perp1/d_perp2 are the E-node DUAL spacings on the two
+            # d_perp1/d_perp2 are the E-node DUAL spacings on the two
             # axes transverse to the port component (the sides of the dual
             # face the conduction current pierces), matching the metrics
-            # the wire-port Ampere loop uses (#672). d_parallel stays PRIMAL
+            # the wire-port Ampere loop uses. d_parallel stays PRIMAL
             # — it is the E edge V is taken over. Sharpening the sentence
             # above: the primal spelling for d_perp is valid whenever the
             # two TRANSVERSE axes are locally uniform, which is strictly
@@ -318,9 +315,9 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 d_parallel = dxi
                 d_perp1, d_perp2 = dual_yj, dual_zk
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
-            materials = _stamp_lumped_sigma(      # #1210, #1236
+            materials = _stamp_lumped_sigma(
                 materials, (i, j, k), sigma_port, pe.component)
-            materials_drive = _stamp_lumped_sigma(    # #1256, #1236
+            materials_drive = _stamp_lumped_sigma(
                 materials_drive, (i, j, k), sigma_port, pe.component)
             conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             pec_edge_masks = conductors.pec_edges

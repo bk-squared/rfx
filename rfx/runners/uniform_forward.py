@@ -66,7 +66,7 @@ def _forward_from_materials(
         leave it ``None`` here. The ADI route below is additionally judged
         as ``fwd_adi``.
 
-        Internal multi-drive S-matrix hook (item-5 Stage 1, 2026-06-22)
+        Internal multi-drive S-matrix hook (item-5 Stage 1)
         --------------------------------------------------------------
         ``_sparam_drive_idx`` and ``_return_raw_port_sparams`` exist solely
         for the production-scan S-matrix driver
@@ -91,7 +91,7 @@ def _forward_from_materials(
         ``Boundary(conformal=True)``. Neither route here has a Dey-Mittra
         update, so a conformal request on a model with PEC to conform is
         refused before the first step; an explicit ``False`` asks for
-        staircase PEC and passes (#1299).
+        staircase PEC and passes.
         """
     if subpixel_smoothing and sheet_impedance is not None:
         raise ValueError(
@@ -129,7 +129,7 @@ def _forward_from_materials(
             raise ValueError(
                 "solver='adi' does not support pec_occupancy_override; "
                 "use solver='yee' to retain the declared conductor.")
-        # #931 §1.9: a sheet and a wire own no cell, so ``pec_mask``
+        # a sheet and a wire own no cell, so ``pec_mask``
         # alone carries neither.  ``run()``'s ADI branch threads them;
         # this one did not, and a declared PEC sheet came out of
         # ``forward()`` bit-identical to empty geometry.  The lane
@@ -151,7 +151,7 @@ def _forward_from_materials(
             diagnostics=diagnostics,
         )
 
-    # The uniform forward lane has no subgrid (#1240). forward() (and
+    # The uniform forward lane has no subgrid. forward() (and
     # optimize() through it), topology_optimize() and
     # compute_lumped_wire_s_matrix_via_scan() all enter here; its other
     # callers never carry a refinement (run() sends one to the subgridded
@@ -210,7 +210,7 @@ def _forward_from_materials(
     sources = PortSourceQueue()
     probes = []
     # ── Effective boundary flags, resolved BEFORE the PEC realization ──
-    # #931 §1.7: the realized PEC edge masks (Mx, My, Mz) are only
+    # the realized PEC edge masks (Mx, My, Mz) are only
     # correct under the periodic flags the step function will use, and
     # the port setup below reads those masks, so the flag resolution
     # moves ahead of it.  The Floquet SOURCE injection stays where it
@@ -223,7 +223,7 @@ def _forward_from_materials(
     cpml_axes_run = grid.cpml_axes
     pec_axes_run = None
 
-    # Differentiable TFSF plane-wave (#404): build the 2D/1D-aux TFSF cfg and
+    # Differentiable TFSF plane-wave: build the 2D/1D-aux TFSF cfg and
     # force its boundary (transverse-periodic + CPML on the propagation axis),
     # mirroring rfx/runners/uniform.py. The shared scan (_build_step_setup ->
     # make_core_step) injects it and auto-activates the complex Bloch path for
@@ -248,7 +248,7 @@ def _forward_from_materials(
         pec_axes_run = None
 
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE, here, from the volume cells
+    # realize (Mx, My, Mz) ONCE, here, from the volume cells
     # plus the declared sheets/wires.  Port clearing, wire-port liveness
     # and the reference-plane footprint all read THIS object from here
     # on; a sheet owns no cell, so it exists nowhere else.
@@ -291,11 +291,10 @@ def _forward_from_materials(
         # Sparam-eligible lumped/wire port — advance the multi-drive index.
         _sparam_port_idx += 1
 
-        # Effective drive decision + waveform for this pass (issue #322).
+        # Effective drive decision + waveform for this pass.
         # A passive port (excite=False) registers waveform=None BY DESIGN
         # (add_port only defaults the waveform when excite=True). When the
-        # S-matrix scan driver (_sparam_drive_idx; PR #258 wire reroute /
-        # #214 lumped reroute) selects such a port as the driven one,
+        # S-matrix scan driver (_sparam_drive_idx) selects such a port as the driven one,
         # synthesize the same default excitation add_port() applies for
         # excite=True ports — otherwise make_port_source /
         # make_wire_port_sources hits jax.vmap(None)
@@ -328,17 +327,16 @@ def _forward_from_materials(
                     grid, wp, n_steps=n_steps,
                     pec_edge_masks=pec_edge_masks_local)
             wp_cells = _wire_port_cells(grid, wp)
-            # Clear PEC mask/occupancy at LIVE wire cells only (issue
-            # #318 commit 2). Dead extent cells stay PEC — the old
-            # all-cells clearing punched a one-cell in-plane
-            # conductivity hole in the DUT conductor. Only live edges
-            # publish incident cells for occupancy release.
+            # Clear PEC mask/occupancy at LIVE wire cells only.
+            # Dead extent cells stay PEC: clearing them would punch a
+            # one-cell in-plane conductivity hole in the DUT conductor.
+            # Only live edges publish incident cells for occupancy release.
             from rfx.sources.sources import _wire_port_live_cells
             _, wp_live_flags, _ = _wire_port_live_cells(
                 grid, wp, pec_edge_masks_local)
             _wp_live_cells = [c for c, _l in zip(wp_cells, wp_live_flags)
                               if _l]
-            # No edge clearing (#931 §1.9, corrected): a cell is LIVE
+            # No edge clearing: a cell is LIVE
             # exactly when the port component's own edge is not PEC, so
             # releasing that component is a no-op, and releasing the two
             # tangential edges would open the conductor the port foot
@@ -346,17 +344,17 @@ def _forward_from_materials(
             # volume carrier; the stage also publishes live port edges.
             conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", port_kind="wire", release_edges=False)
             # Register a JIT-integrated S-param accumulator for this
-            # WirePort when forward(port_s11_freqs=...) was requested
-            # (issue #79 follow-up to PR #72). Mirrors the lumped
+            # WirePort when forward(port_s11_freqs=...) was requested.
+            # Mirrors the lumped
             # registration below; uses the LIVE-run midpoint cell as
-            # the V/I reference plane (issue #764 — identical to the
+            # the V/I reference plane (identical to the
             # all-extent midpoint with no dead cells; consistent with
             # wire_sparam_meta in the JIT scan body of
             # rfx/simulation.py) and carries the static live run for
             # the whole-port gap-voltage accumulator.
             register_wire(port_record_specs, wire_port_sparam_specs, pe.component,
                           wp_cells, wp_live_flags, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
-            # Opt-in reference-plane V/I accumulators (issue #313).
+            # Opt-in reference-plane V/I accumulators.
             # Registered ONLY on the production-scan S-matrix driver
             # path (_sparam_drive_idx is not None): the plane waves
             # feed the OFF-diagonal S_ij and need the multi-drive
@@ -416,8 +414,8 @@ def _forward_from_materials(
                     n_cells=int(pe.reference_plane_cells),
                     freqs=_s11_freqs_arr,
                     port_index=_sparam_port_idx,
-                    # #695: hand it the FULL conductor footprint, not
-                    # the bare pec_mask. Since #677 an f0 sheet is a
+                    # hand it the FULL conductor footprint, not
+                    # the bare pec_mask. An f0 sheet is a
                     # node-thin operator present in neither pec_mask
                     # nor materials.sigma, so a sheet-traced line
                     # reached build_wire_refplane_specs as "no metal"
@@ -455,8 +453,8 @@ def _forward_from_materials(
         idx = _grid_metric.field_index(grid, pe.position, pe.component)
         conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
         # Register a JIT-integrated S-param accumulator for this
-        # lumped port when the user requested forward(port_s11_freqs=...)
-        # (issue #72). Skipping passive ports keeps S11 indexing
+        # lumped port when the user requested forward(port_s11_freqs=...).
+        # Skipping passive ports keeps S11 indexing
         # aligned with the active-port list.
         register_lumped(port_record_specs, lumped_port_sparam_specs, pe.component,
                         idx, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
@@ -476,7 +474,7 @@ def _forward_from_materials(
             msl_port_from_entry,
             setup_msl_port,
         )
-        # Issue #483: all automatic Laplace launches read the original
+        # all automatic Laplace launches read the original
         # drawn substrate, already carried by the solve assembly.
         _static_eps_483 = None
         if any(pe.eps_r_sub is None and getattr(pe, "mode", "uniform") == "laplace"
@@ -493,8 +491,7 @@ def _forward_from_materials(
                 sheet_impedance=sheet_impedance, periodic=periodic_bool,
                 pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
             # Honour `pe.mode` so the source distribution matches
-            # the imperative `run_uniform_path` (Phase 3 of gap #2/#4
-            # closure, 2026-05-07).  ``laplace`` is the default for
+            # the imperative `run_uniform_path`.  ``laplace`` is the default for
             # ``add_msl_port`` and gives a structured Ez source from
             # the static-Laplace quasi-TEM mode shape.  ``eigenmode``
             # mode requires the J+M Schelkunoff source pair which the
@@ -505,7 +502,7 @@ def _forward_from_materials(
             if port_mode == "laplace":
                 span = msl_cross_section_span(grid, mp)
                 # Keep the declared midpoint sample when the source edge
-                # list becomes half-open (#729); it is not the midpoint
+                # list becomes half-open; it is not the midpoint
                 # of the list's last E-edge index. Match run() on all axes.
                 k_mid = (span["n_lo"] + span["n_hi"]) // 2
                 eps_cell = msl_cell(pe.direction, span["i_feed"],
@@ -513,7 +510,7 @@ def _forward_from_materials(
                 if pe.eps_r_sub is not None:
                     eps_r_sub = float(pe.eps_r_sub)
                 else:
-                    # Issue #483: the launch fixture (mode profile,
+                    # the launch fixture (mode profile,
                     # added sigma, imposed force e*u) is STATIC
                     # and must derive from the REGISTERED
                     # materials — never from `materials`, which may
@@ -596,7 +593,7 @@ def _forward_from_materials(
         overrides={**(monitor_overrides or {}), "design_box": design_box,
                    "design_occupancy": design_occupancy})
 
-    # Declared flux monitors are accumulated and returned on forward as on run (#1373 D4).
+    # Declared flux monitors are accumulated and returned on forward as on run.
     # The DFT accumulators add to the AD tape only when the user declares a monitor.
     flux_monitor_cfgs = []
     if self._flux_monitors:
@@ -606,7 +603,7 @@ def _forward_from_materials(
     # DFT plane probes — mirror runners/uniform.py:340-359 so the
     # JIT scan body actually accumulates plane-resolved DFT, then
     # carry the result back through ForwardResult.dft_planes for
-    # plane-integrated V/I objectives (known gap #4, 2026-05-05).
+    # plane-integrated V/I objectives.
     from rfx.measurement.setup import build_planes
     dft_planes = build_planes(self, grid, n_steps)
 
@@ -635,7 +632,7 @@ def _forward_from_materials(
     # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
     # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
     # tensor from the occupancy with the lattice contract's edge rule
-    # (#1197: ``inv_c = (1 - M_c) * baseline``) and run it through the
+    # (``inv_c = (1 - M_c) * baseline``) and run it through the
     # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
     # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
     # this branch — the two would double-correct at sigmoid edges.
@@ -654,7 +651,7 @@ def _forward_from_materials(
         rlc_metas = []
         from rfx.simulation import resolve_periodic as _resolve_periodic
         # The run's own periodic flags: a series element's D0 is its
-        # edge's E-update coefficient (#1163).
+        # edge's E-update coefficient.
         _rlc_periodic = _resolve_periodic(grid, periodic_bool)
         for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
             _v = _rlc_ov.get(_rlc_idx, {})
@@ -663,7 +660,7 @@ def _forward_from_materials(
                 r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                 periodic=_rlc_periodic,
             ))
-        # #1245: at most one element with its own solve per realized edge.
+        # at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
         refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
 
@@ -771,7 +768,7 @@ def _forward_from_materials(
                 self._dft_planes, result.dft_time_records or ())},
             "wire_refplane": result.wire_refplane_sparams,
             "freqs": _raw_freqs,
-            # Mixed-family S-matrix hook (issue #488): the DFT plane
+            # Mixed-family S-matrix hook: the DFT plane
             # probes and probe time series recorded in the SAME run, so
             # compute_mixed_s_matrix can read MSL port planes + settling
             # witnesses alongside the lumped/wire accumulators without a
@@ -790,7 +787,7 @@ def _forward_from_materials(
             ),
             "time_series": getattr(result, "time_series", None),
             "dt": getattr(result, "dt", grid.dt),
-            # Flux monitors for the issue-#488 arch-A magnitude channel
+            # Flux monitors for the arch-A magnitude channel
             # (same name-keyed contract the runner uses for run()).
             "flux_monitors": (
                 {

@@ -444,7 +444,7 @@ def quick_convergence(
             freq_max=sim._freq_max,
             snap=sim._snap,
             domain=sim._domain,
-            # Issue #647 grep sweep: clone the normalized BoundarySpec, not
+            # grep sweep: clone the normalized BoundarySpec, not
             # the collapsed `_boundary` string. `_boundary` is
             # `spec.absorber_type or "pec"`, so every per-face detail — PEC /
             # PMC / periodic faces and per-face thickness — was dropped and

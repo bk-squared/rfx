@@ -352,7 +352,7 @@ def release_port_occupancy(occupancy, conductors):
 
 
 def refuse_port_design_box(design, conductors):
-    """The occupancy box writes after release and must not overwrite it (#1183)."""
+    """The occupancy box writes after release and must not overwrite it."""
     if design is None or not len(conductors.released_cells):
         return
     from rfx.model.design_admission import cells_in_box
@@ -998,7 +998,7 @@ def refuse_layout_metal_consumers(layout, sim, grid):
     if not layout:
         return
     if getattr(sim, '_tfsf', None) is not None:
-        # The TF/SF invariance admission (#1816) judges the static metal only.
+        # The TF/SF invariance admission judges the static metal only.
         index, sheet, _ = layout[0]
         raise RfxRefusal(
             f"pinned_sheet_layout sheet {index} ({sheet.name!r}): the TF/SF invariance "

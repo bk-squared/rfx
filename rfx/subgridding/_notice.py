@@ -1,4 +1,4 @@
-"""Shared admission and diagnostic wording for #1465."""
+"""Shared admission and diagnostic wording for subgridding."""
 
 from rfx.errors import AccuracyWarning
 SUBGRID_WARNING = (

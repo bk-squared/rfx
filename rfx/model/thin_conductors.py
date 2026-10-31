@@ -45,12 +45,10 @@ def admit_thin_conductor(
                 f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
                 f"> 0 when surface_impedance_f0 is set — Rs0 = "
                 f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
-        # #674: any shape that can rasterize itself is allowed — the
+        # any shape that can rasterize itself is allowed — the
         # fold is per occupied cell and shape-agnostic. Two structural
-        # requirements survive, and both fail loud on BOTH lanes rather
-        # than repeat the former NU warn-and-skip (the #369
-        # silently-vaporized-metal class: a sheet that vanishes on one
-        # lane is a wrong answer, not a degraded one).
+        # requirements survive, and both fail loud on BOTH lanes because skipping a sheet
+        # on one lane silently changes the model.
         if not callable(getattr(shape, "mask_on_coords", None)):
             raise ValueError(
                 f"add_thin_conductor: surface_impedance_f0 requires a "

@@ -51,7 +51,7 @@ neither clamps. (The legacy ``position_to_index`` does clamp; 0b retires it.)
 
 The LAST entry of ``cells(axis)`` is a node-provider, not physical extent.
 ``NonUniformGrid`` appends one duplicate boundary cell so ``N`` cells are
-bounded by ``N+1`` E nodes (#562, ``_append_bounding_node``); the uniform
+bounded by ``N+1`` E nodes (``_append_bounding_node``); the uniform
 ``Grid`` allocates the same extra node through its ``+1`` fence-post term.
 ``sum(cells(axis))`` therefore OVERSHOOTS the realized wall-to-wall extent by
 that one cell on both classes. Read extents from ``node_of``, or from
@@ -91,16 +91,16 @@ consumer                   site                                       metric
 =========================  =========================================  ==================================
 H update                   ``core/yee.update_h_nu`` via ``inv_d*_h``  PRIMAL on the difference axis
 E update                   ``core/yee.update_e_nu`` via ``inv_d*``    DUAL on the difference axis
-current-source ``dV``      ``nonuniform.make_current_source`` (#672)  PRIMAL on the component's own
+current-source ``dV``      ``nonuniform.make_current_source``  PRIMAL on the component's own
                                                                       axis, DUAL on the two transverse
-lumped port sigma          ``sources.sources.port_sigma`` (#691)      same mixed rule
+lumped port sigma          ``sources.sources.port_sigma``      same mixed rule
                                                                       (``port_d_parallel`` primal,
                                                                       ``port_dual_transverse`` dual)
 lumped R / C fold          ``lumped.setup_rlc_materials``             same mixed rule
 surface-impedance sheet    ``materials.thin_conductor``               DUAL along the sheet NORMAL
-                           ``.SheetImpedanceSpec`` (#677)             (``sigma_sheet = G / d_dual``)
+                           ``.SheetImpedanceSpec``             (``sigma_sheet = G / d_dual``)
 node positions             ``geometry.rasterize_grid``                PRIMAL cumulative sum; a
-                           ``._axis_node_positions`` (#562, #807)     constant axis takes the closed
+                           ``._axis_node_positions``     constant axis takes the closed
                                                                       form ``(i - pad) * dx``
 CPML sigma / kappa         ``boundaries.cpml._grid_spacings`` and     x and y: the ONE scalar each,
                            the ``CPMLAxisParams`` built beside it     on BOTH faces. z: the cell
@@ -117,15 +117,10 @@ periodic uniform axis      ``grid.Grid``; ``core.yee`` roll           N=L/dx cel
 The CPML row is the one open defect left in this table; it is listed as what
 the code does now, not as what it is entitled to.
 
-The waveguide-port row moved in 0b: each half of the port's one-sided TFSF
-boundary now reads the plane it acts on (G13). One site of that gap is NOT
-closed and #810 should not be recorded as closed on its account: the
-half-cell reference shift stores the boundary scalar as ``cfg.dx``
-(``sources.waveguide_port``, at config build), so a port in a refined band
-shifts by half the boundary cell where its own half-cell is smaller. On the
-WR-90 band that is 2.16, 3.55 and 4.74 degrees of phase at 8.2, 10.3 and
-12.4 GHz. It does not reach a normalized S-parameter, and it is untouched
-here.
+Each half of the waveguide port's one-sided TFSF boundary reads the plane it acts on. The half-cell reference shift
+still stores the boundary scalar as ``cfg.dx`` (``sources.waveguide_port``, at config build), so a port in a refined
+band shifts by half the boundary cell where its own half-cell is smaller. On the WR-90 band that is 2.16, 3.55 and 4.74
+degrees of phase at 8.2, 10.3 and 12.4 GHz. It does not reach a normalized S-parameter.
 
 The CPML row is the one worth reading twice, because the gap is narrower than
 "one scalar everywhere". Four of the six per-face slots are filled from two
@@ -141,8 +136,8 @@ it. Recorded, not changed (0a moves no consumer):
 
 * The note's fact table says "source ``dV`` and RLC the primal". Both sites
   are MIXED, not primal: primal on the component's own axis and DUAL on the
-  two transverse axes (``nonuniform.make_current_source``, #672;
-  ``lumped.setup_rlc_materials``, #691). The primal half of that sentence is the
+  two transverse axes (``nonuniform.make_current_source``;
+  ``lumped.setup_rlc_materials``). The primal half of that sentence is the
   own-axis half.
 * Two consumers reach the dual rule through the float32 store widened back
   to float64 (``sources.sources._nu_cell_arrays``,
@@ -237,7 +232,7 @@ def node_tie_tol(x, d_local, dtype=np.float64):
 
 
 def half_open_volume_mask(coords, lo, hi, d_local):
-    """Half-open Box volume window with an on-lattice band (#1138).
+    """Half-open Box volume window with an on-lattice band.
 
     Shift each face down by its ``node_tie_tol``: a low face a few
     ULP above its sample includes it, and a high face a few ULP above its
@@ -250,14 +245,14 @@ def half_open_volume_mask(coords, lo, hi, d_local):
 
 
 def nearest_node_index(nodes, x: float, d_local: float, *, xp=None) -> int:
-    """Index of the node nearest ``x`` -- the one tie rule (#1295, #1342).
+    """Index of the node nearest ``x`` -- the one tie rule.
 
     ``nodes`` is an ascending node line (any origin); the answer indexes it.
     ``d_local`` is the cell ``x`` lies in (``rasterize_grid._local_cell``).
 
     The rule: the NEAREST node by float64 distance; when the two nearest
     distances agree within ``node_tie_tol``, the LOWER node. It
-    is the sheet snap's rule (#931, ``_nearest_plane`` calls this function),
+    is the sheet snap's rule (``_nearest_plane`` calls this function),
     so a port, source or probe and a sheet declared at the same coordinate
     land on the same node bit for bit, on a constant axis and a graded one.
     Always a valid index: a coordinate outside the line gets the end node.

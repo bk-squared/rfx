@@ -47,7 +47,7 @@ class _CompileMixin:
     """
 
     def _periodic_flags(self) -> tuple[bool, bool, bool]:
-        """THE run's per-axis periodic flags (#689) — one spelling.
+        """THE run's per-axis periodic flags — one spelling.
 
         `realized_pec_edge_masks` is only correct under the flags the step
         function will use, so every site that realizes PEC edges outside a
@@ -64,7 +64,7 @@ class _CompileMixin:
     from rfx.boundaries.features import build_grid as _build_grid
 
     def _resolve_face_layers(self) -> dict:
-        """T7 Phase 2 PR2: per-face active CPML layer counts from the
+        """Per-face active CPML layer counts from the
         canonical ``BoundarySpec``. Faces without an explicit
         ``lo_thickness`` / ``hi_thickness`` default to the scalar
         ``cpml_layers`` (the symmetric common case — no padding).
@@ -141,12 +141,12 @@ class _CompileMixin:
 
         ``field_dtype`` is the field storage dtype the ADE state will be
         driven by; the P carry is allocated at
-        ``ade_state_dtype(field_dtype)`` (issue #656). Callers that leave it
+        ``ade_state_dtype(field_dtype)``. Callers that leave it
         ``None`` get the ambient default float with a float32 floor.
 
         ``periodic`` is the run's per-axis flags, as its E update takes them:
         the coefficients are per E component, averaged over each edge's four
-        cells (#1260), and a periodic axis wraps that average.
+        cells, and a periodic axis wraps that average.
         """
         debye = None
         if debye_spec is not None:
@@ -172,7 +172,7 @@ class _CompileMixin:
 
         return materials, debye, lorentz
 
-    # Default sigma floor for "this cell is a conductor" (#695). Two
+    # Default sigma floor for "this cell is a conductor". Two
     # decades below the PEC promotion threshold so ordinary lossy
     # dielectrics (sigma ~ 1e-3 - 1e0 S/m) stay out while a real
     # conductor -- including a DC-fold thin-conductor sheet, whose
@@ -247,7 +247,7 @@ class _CompileMixin:
             materials, _, _, pec_mask, _, _, _ = self._assemble_materials(
                 grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
                 pec_wires=pec_wires)
-        # A sub-cell PolylineWire owns no cell either (#931 §1.4), so a
+        # A sub-cell PolylineWire owns no cell either, so a
         # footprint built from cells + sheet planes alone reports a
         # wire-fed model as metal-free exactly where the wire runs. Its
         # path NODES are the cell-shaped answer for a 1-D region.
@@ -354,7 +354,7 @@ class _CompileMixin:
         """Default waveguide source center = center of the requested DFT band.
 
         The old fallback (``freq_max / 2``) had no relation to the port mode
-        and could land below the mode cutoff (issue #150: an evanescent
+        and could land below the mode cutoff (an evanescent
         launch whose near-cutoff content crawls at vanishing group velocity,
         producing junk S-parameters that GROW with run length while the
         in-band incident reference sits in the source tail). Centering on
@@ -545,7 +545,7 @@ def _uncollected_pec_caller() -> str:
 def _refuse_uncollected_pec(sheets, wires, *, lane: str) -> None:
     """Refuse to return a ``pec_mask`` that silently omits a sheet or wire.
 
-    A sheet owns no cell (#931 §1.3), so it cannot ride out in
+    A sheet owns no cell, so it cannot ride out in
     ``pec_mask``: a caller that passes no collector receives a mask with
     the conductor MISSING, and nothing downstream can tell that from a
     model that never had one.  This was a ``UserWarning`` while the

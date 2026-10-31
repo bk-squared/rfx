@@ -1,6 +1,6 @@
 """The microstrip downstream-reflector scan, out of ``rfx.preflight.msl``.
 
-Moved verbatim (2026-10-06) to bring ``rfx/preflight/msl.py`` back under its
+Moved verbatim to bring ``rfx/preflight/msl.py`` back under its
 line count in ``scripts/ci/file_size_baseline.json``. ``rfx.preflight.msl``
 re-exports the name, so every existing import and the facade
 ``rfx.api._preflight`` keep resolving it there; ``msl_probe_clearance_for_port``
@@ -42,14 +42,14 @@ def msl_nearest_downstream_reflector(
     unevaluated)`` when nothing qualifies. ``unevaluated`` is the list of
     conductors this scan could NOT place (one string each); it is what
     lets the caller distinguish "nothing is nearby" from "I could not
-    look" (issue #685).
+    look".
 
     By default a probe inside a candidate has zero distance, preserving
     the auto-placement contract. ``signed_front_distance=True`` instead
     returns its signed distance to the candidate's entering boundary;
     this is needed when reporting how far an observation has passed it.
 
-    What counts as a conductor (issue #685). This used to be a Box whose
+    What counts as a conductor. This used to be a Box whose
     material carried the literal name PEC, which was blind to two whole
     classes:
 
@@ -57,11 +57,11 @@ def msl_nearest_downstream_reflector(
       ``sigma >= 1e6`` under any other name. That is the common case for
       imported CAD, where every conductor may be called ``"metal"``. The
       test is the assembler's own predicate,
-      :func:`rfx.model.materials.assembled_as_pec` (#1961), with
+      :func:`rfx.model.materials.assembled_as_pec`, with
       ``resolve_material`` (normally ``sim._resolve_material``) and
       ``pec_sigma_threshold``. Without a resolver the name is resolved
       against the material library, as the assembler would resolve it.
-    * **non-``Box`` shapes** — ``Sheet``, ``MeshShape`` (#358), CSG
+    * **non-``Box`` shapes** — ``Sheet``, ``MeshShape``, CSG
       results. Any shape with a ``bounding_box()`` is now placed by that
       box; a bounding box OVERSTATES a non-convex outline, which is the
       conservative direction for a clearance advisory (it can only bring
@@ -72,7 +72,7 @@ def msl_nearest_downstream_reflector(
     ``thin_conductors`` (normally ``sim._thin_conductors``) are scanned
     too: a thin PEC sheet, a DC-fold lossy sheet and a
     ``surface_impedance_f0`` sheet are all metal to a wave on the line,
-    and since #677 the f0 one is in neither ``pec_mask`` nor
+    and the f0 one is in neither ``pec_mask`` nor
     ``materials.sigma``, so nothing else would ever see it.
 
     Observed consequence of the old scan: on a board whose reflectors were
@@ -87,7 +87,7 @@ def msl_nearest_downstream_reflector(
     edges on its width axis. Legacy callers that supply only ``dx`` retain
     their cubic tolerance.
 
-    Axis generality (issue #661): the parameter names are the ``"+x"``-frame
+    Axis generality: the parameter names are the ``"+x"``-frame
     names. ``x_probe`` / ``x_feed`` are coordinates on the PROPAGATION axis,
     ``y_feed`` is the trace centreline on the WIDTH axis and ``domain_y``
     that axis's domain extent — the two axes are resolved from ``direction``
@@ -95,8 +95,7 @@ def msl_nearest_downstream_reflector(
     compares box y-extents along the feed axis and box x-extents across the
     trace width. Callers pass coordinates already projected onto those roles.
 
-    Exclusions (both are #469-arc corrections to the pre-existing
-    heuristic):
+    Exclusions:
 
     * **the line being measured** — any trace-width box
       (|y-extent − w_trace| ≤ dx, y-range containing the feed centreline)
@@ -141,7 +140,7 @@ def msl_nearest_downstream_reflector(
         from rfx.materials.library import MATERIAL_LIBRARY
         return _NS(sigma=MATERIAL_LIBRARY[name].get("sigma", 0.0))
 
-    # The assembler's own PEC predicate (#1961); a caller without a resolver
+    # The assembler's own PEC predicate; a caller without a resolver
     # is resolved against the material library, as the assembler would.
     _resolver = _NS(
         _resolve_material=(resolve_material if resolve_material is not None
@@ -220,7 +219,7 @@ def msl_nearest_downstream_reflector(
                 f"{_what} ({type(shape).__name__}): bounds are not finite, "
                 "ordered three-dimensional coordinates")
             continue
-        # "x" = propagation axis, "y" = trace-width axis (issue #661).
+        # "x" = propagation axis, "y" = trace-width axis.
         box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
         box_y_lo, box_y_hi = float(lo[_iw]), float(hi[_iw])
         box_y_extent = box_y_hi - box_y_lo

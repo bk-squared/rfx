@@ -323,7 +323,7 @@ def run(
     _fast_coeffs = None
 
     # ---- run()-specific: snapshot setup ----
-    # #1258: ``interval`` is honoured. interval == 1 keeps the pre-#1258 path
+    # ``interval`` is honoured. interval == 1 returns a frame every step
     # (the frame is an extra per-step output of the step body). interval > 1
     # records from the carry after each block of ``interval`` steps, so the
     # step body is the SAME one a run without a snapshot compiles and memory
@@ -387,7 +387,7 @@ def run(
     def _make_recorder(body):
         """``record(carry, xs_seg, lo)``: scan ``xs_seg`` (global steps
         ``lo, lo+1, ...``) with ``body`` and take a frame after every step
-        whose completed-step count is a multiple of ``snap_interval`` (#1258).
+        whose completed-step count is a multiple of ``snap_interval``.
 
         The steps run as the pieces :func:`rfx.snapshots.plan_snapshot_pieces`
         lays out, in step order:
@@ -493,7 +493,7 @@ def run(
         # linearly with n_steps.
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
         if stop_fn is not None:
-            # Issue #1254: the same scan in chunks, the carry threaded
+            # the same scan in chunks, the carry threaded
             # through, and the caller's stop check after each chunk.
             from types import SimpleNamespace
 
@@ -525,12 +525,10 @@ def run(
         elif report_every is None:
             final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
-            # Issue #667: same scan, driven from the host in chunks so a
+            # same scan, driven from the host in chunks so a
             # multi-hour solve emits progress. The carry threads through
             # untouched (DFT accumulators, port/flux/monitor state, NTFF
             # compensation), so this is a continuation and not a re-solve.
-            # The ``report_every is None`` branch above is byte-identical to
-            # the pre-#667 code by construction.
             final_carry, outputs = scan_with_progress(
                 body, carry_init, xs,
                 n_steps=n_steps,
@@ -544,7 +542,7 @@ def run(
                 trace_probes=(_step_ctx.materials,
                               pec_mask, pec_edge_masks, pec_occupancy,
                               kerr_chi3, debye, lorentz, tfsf),
-                # #1258: a chunk that does not start on a multiple of the
+                # a chunk that does not start on a multiple of the
                 # snapshot interval still records at the global multiples.
                 chunk_scan=_make_recorder(body) if snap_by_block else None,
             )
@@ -560,7 +558,7 @@ def run(
                 "monitored forward solve, or drop report_every for the "
                 "memory-limited gradient solve."
             )
-        # Segmented checkpointing (issue #73): split the n_steps scan into
+        # Segmented checkpointing: split the n_steps scan into
         # K segments of size s and rematerialise each segment as a unit.
         # Forward keeps only K segment-boundary carries (instead of all
         # n_steps), so peak memory drops from O(n_steps · |carry|) to
@@ -1018,7 +1016,7 @@ def run_until_decay(
             carry_in, step_idx, src_vals, mag_src_vals)
         return new_carry, probe_out, extras["monitor_val"]
 
-    # #1258: keep only frames at GLOBAL multiples of the interval, even
+    # keep only frames at GLOBAL multiples of the interval, even
     # when an interval does not divide the decay/progress chunk. The scan
     # carries a bounded frame buffer, not a full field history.
     if snapshot is not None:
@@ -1083,13 +1081,13 @@ def run_until_decay(
     # ---- host chunk loop with decay check ----
     use_absorbing = boundary in ("cpml", "upml")
 
-    # #388 opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
+    # opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
     # box decays, instead of the interior energy. This is a *radiation-settling* criterion —
     # it ignores non-radiating trapped energy (the static soft-source charge that FLOORS the
     # energy criterion, and near-Nyquist grid buzz) because neither carries net radiated power.
     # It is the right stop for radiation / S-parameter measurements; it is opt-in (default
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
-    # A direct caller gets run()'s refusal too: on a closed box the box was dropped (#2030 S2a).
+    # A direct caller gets run()'s refusal too: on a closed box the box was dropped.
     refuse_radiated_flux_stop(radiated_flux_box, decay_by, boundary)
     use_flux_stop = radiated_flux_box is not None
     from rfx.measurement import flux_box_bounds, radiated_power
@@ -1111,7 +1109,7 @@ def run_until_decay(
             max_steps=max_steps, flux=use_flux_stop, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
             mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports)
-    decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
+    decayed_fired = False  # did the energy criterion fire (vs silently cap-hit)?
     probe_chunks = []
     actual_steps = 0
 

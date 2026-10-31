@@ -402,7 +402,7 @@ def topology_optimize(
     resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
-    # #677 lane fence, deliberately ABOVE the optional-dependency import:
+    # lane fence, deliberately ABOVE the optional-dependency import:
     # the surface-impedance sheet is unsupported on this lane whether or not
     # optax happens to be installed, and hoisting it is what lets
     # tests/unit/materials/test_sheet_impedance.py pin THIS call site in an environment
@@ -412,7 +412,7 @@ def topology_optimize(
     _refuse_f0(sim._thin_conductors, "topology-optimization")
     from rfx.runners._admission import admit
     admit(sim, "topology_optimize")
-    # #1240: the same reasoning for a refinement. The forward lane refuses it
+    # the same reasoning for a refinement. The forward lane refuses it
     # too, but only after the optax import, so without the extra it was a
     # refusal nothing checked.
     sim._require_no_refinement_without_a_subgrid("topology_optimize()")
@@ -425,7 +425,7 @@ def topology_optimize(
     # Clamp indices to the interior region (exclude CPML padding).
     # Without this, a design region at the domain edge can overlap
     # with CPML cells, causing shape mismatches and incorrect gradients.
-    # Per-face pads (2026-04): a PMC/PEC/periodic face has pad=0 on its
+    # Per-face pads: a PMC/PEC/periodic face has pad=0 on its
     # side, so the design can touch that reflector.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
     pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)

@@ -26,11 +26,11 @@ INCLUSIVE (``[y_lo, y_hi]`` / ``[x_lo, x_hi]``), not the prototype's exclusive
 ``yl:yh`` / ``xl:xh``.  The exclusive slicing left the box corner nodes at
 ``x_hi`` / ``y_hi`` uncorrected — 8 nodes per z-plane acting as coherent
 spurious line sources — and was itself the prototype's -37..-41 dB leakage
-floor (PR #461 review, F1).  With inclusive slices the through-run leakage
+floor.  With inclusive slices the through-run leakage
 drops to the linear-interp gather error (-59..-132 dB, exact cancellation at
 the symmetric 45 deg case); the injection angle is unchanged.
 
-Pulse timing follows the declared waveform through ``pulse_timing`` (#1812).
+Pulse timing follows the declared waveform through ``pulse_timing``.
 Signs, staggering and leapfrog order retain the prototype physics:
   * H_inc decomposition ``Hy_inc = +cosθ·h1d``, ``Hx_inc = -sinθ·h1d`` — enters
     the E-face corrections as the ``±ce·ct`` / ``±ce·st`` factors below.
@@ -193,7 +193,7 @@ def init_tfsf_methodB(
 
     Source timing follows ``pulse_timing`` for the declared Gaussian pulse.
     ``compute_rcs`` normalizes absolute sigma by the measured auxiliary
-    spectrum, including the angle-dependent launch response (#471 F7).
+    spectrum, including the angle-dependent launch response.
     """
     from rfx.sources.tfsf import pulse_timing
     if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
@@ -368,7 +368,7 @@ is_open_oblique = is_tfsf_methodB
 
 
 # ---------------------------------------------------------------------------
-# Boundary-plane vacuum validation (issue #471 F5)
+# Boundary-plane vacuum validation
 # ---------------------------------------------------------------------------
 
 def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
@@ -381,7 +381,7 @@ def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Measured incident spectrum — the absolute-sigma normalization (issue #471 F7)
+# Measured incident spectrum — the absolute-sigma normalization
 # ---------------------------------------------------------------------------
 
 

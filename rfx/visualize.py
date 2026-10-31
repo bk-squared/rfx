@@ -113,7 +113,7 @@ def plot_geometry_2d_slice(
     from rfx.nonuniform import NonUniformGrid
     grid = sim._build_realized_grid()
     nonuniform = isinstance(grid, NonUniformGrid)
-    # #931 §1.9: a PEC sheet and a sub-cell wire own no cell and write no
+    # a PEC sheet and a sub-cell wire own no cell and write no
     # eps, so an eps-only cross-section shows a fully copper-clad board as
     # bare laminate. Collect them, draw the realized conductor footprint on
     # top, and let it choose the slice (see the index rule below). The
@@ -143,7 +143,7 @@ def plot_geometry_2d_slice(
         # padding plane that is pure vacuum.
         #
         # Metal counts as structure, and it is looked at FIRST. A board whose
-        # traces are #931 sheets writes no eps at all, so the permittivity
+        # traces are PEC sheets writes no eps at all, so the permittivity
         # spread is the same on every y plane of a uniform laminate and the
         # argmax lands on the first one — a plane the patch does not reach.
         # Where there is a conductor, the plane carrying the most of it is
@@ -245,7 +245,7 @@ def _warn_if_refined(sim):
     appeared in this file before now -- the claim was false. This is the
     actual implementation.
 
-    ``sim.add_refinement(...)`` (SBP-SAT subgridding, issue #90,
+    ``sim.add_refinement(...)`` (SBP-SAT subgridding,
     EXPERIMENTAL) locally refines the z-mesh over a sub-range at solve
     time via a SEPARATE runner (``rfx/subgridding/``); ``_build_grid()``
     / ``_build_nonuniform_grid()`` -- what this module's viewers draw --
@@ -364,7 +364,7 @@ def _absorber_rects(grid, keep, xe, ye):
 
 def _realized_edge_wall_mask(sim, grid, coords):
     """Boolean array, ``grid.shape``: cells that carry a realized PEC E
-    edge but are NOT conductor cells (#931).
+    edge but are NOT conductor cells.
 
     Under the lattice ownership contract a PEC volume shorts every E edge
     incident to an occupied cell, so its FAR faces (the ``hi`` node plane
@@ -424,13 +424,13 @@ def plot_rasterized_slice(
       drawn from :meth:`Simulation.conductor_mask`, which covers all three
       places a conductor can live (``pec_mask``, ``sigma`` above the
       conductor threshold, and the node-thin surface-impedance sheet
-      operator of #677, which touches neither of the first two);
+      operator, which touches neither of the first two);
     * on a graded mesh the cells are not the same size, so the plot uses
       ``pcolormesh`` on true cell edges rather than ``imshow`` with one
       ``extent``;
     * the grid is the one this simulation would RUN on — the non-uniform
       grid whenever any of ``dx_profile`` / ``dy_profile`` / ``dz_profile``
-      is set. EXCEPT for ``add_refinement()`` (SBP-SAT subgridding, #90,
+      is set. EXCEPT for ``add_refinement()`` (SBP-SAT subgridding,
       EXPERIMENTAL): its fine z-region runs on a separate runner this
       viewer's grid-builders know nothing about, so the picture is always
       the COARSE grid there; a warning fires rather than the claim above
@@ -441,7 +441,7 @@ def plot_rasterized_slice(
     extends into it, so without a marker that overhang reads as "the
     rasterizer grew my substrate."
 
-    A PEC volume's FAR faces (#931): the solve shorts every E edge
+    A PEC volume's FAR faces: the solve shorts every E edge
     incident to an occupied cell, so the ``hi`` node plane on each axis is
     an electric wall that lives outside the body's own cells.
     :meth:`Simulation.conductor_mask` is a CELL footprint and cannot show
@@ -506,7 +506,7 @@ def plot_rasterized_slice(
     # Permittivity only — this viewer already reads its conductors from
     # sim.conductor_mask() above and its realized walls from
     # _realized_edge_wall_mask() below, both of which collect sheets and
-    # wires. The #931 collectors here are passed and dropped so that
+    # wires. The collectors here are passed and dropped so that
     # "cells only" is a decision at the call site (rfx/api/_compile.py
     # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
@@ -624,7 +624,7 @@ def plot_rasterized_slice(
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
                   cmap=_conductor_cmap(), vmin=0.0, vmax=1.0, alpha=0.55)
 
-    # #931 realized PEC edge outside every conductor cell (a volume's far
+    # realized PEC edge outside every conductor cell (a volume's far
     # face): NOT a conductor cell (conductor_mask() cannot show it, see
     # the docstring), but its footprint is computable from the same
     # production function the solve uses (realized_pec_edge_masks) and
@@ -776,7 +776,7 @@ def plot_stack_profile(
     does, so pad material at either end of the column is not read as
     declared substrate.
 
-    A PEC volume's far face (#931) is an electric wall on a node plane
+    A PEC volume's far face is an electric wall on a node plane
     outside the body's own cells; :meth:`Simulation.conductor_mask` cannot
     show it, so it is drawn as its own marker where it falls in this
     column (see :func:`plot_rasterized_slice`).
@@ -809,7 +809,7 @@ def plot_stack_profile(
     # Permittivity only — this viewer already reads its conductors from
     # sim.conductor_mask() above and its realized walls from
     # _realized_edge_wall_mask() below, both of which collect sheets and
-    # wires. The #931 collectors here are passed and dropped so that
+    # wires. The collectors here are passed and dropped so that
     # "cells only" is a decision at the call site (rfx/api/_compile.py
     # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
@@ -902,7 +902,7 @@ def plot_stack_profile(
                                        hatch="////",
                                        edgecolor="#701e00", lw=0.5))
         if wall_col is not None and wall_col[k]:
-            # #931 realized PEC wall (a body's far face): its own marker,
+            # realized PEC wall (a body's far face): its own marker,
             # distinct from the conductor hatch -- see plot_rasterized_slice.
             ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
                                        facecolor="#5533cc", alpha=0.5,
@@ -1193,7 +1193,7 @@ def plot_rcs(
 
 
 # ===========================================================================
-# 3D interactive visualisation (plotly). Issue #38.
+# 3D interactive visualisation (plotly).
 # ===========================================================================
 
 def _plotly():

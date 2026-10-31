@@ -53,7 +53,7 @@ def _build_vmap_scan_fn(
         Their ``.accumulator`` seeds the scan-carry accumulator for that
         plane; ``.component``/``.axis``/``.index``/``.freqs`` drive the
         per-step kernel shared with ``Simulation.run()``. Scan slot n reads
-        E at (n+1)*dt and H half a step earlier (#404).
+        E at (n+1)*dt and H half a step earlier.
         The returned ``run_one`` always returns a 2-tuple
         ``(time_series, dft_accs)`` where ``dft_accs`` is a tuple of final
         accumulators in the SAME order as ``dft_probes`` (empty tuple if
@@ -66,7 +66,7 @@ def _build_vmap_scan_fn(
     probes = probes or []
     dft_probes = dft_probes or []
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE here, at build time, under the
+    # realize (Mx, My, Mz) ONCE here, at build time, under the
     # flags this scan body will use.  Sheets and wires own no cell, so
     # this is the only place the batched lane can see them.
     pec_sheets = tuple(pec_sheets or ())

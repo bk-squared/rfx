@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 from rfx import simulation as _simulation
 # Every rfx.simulation symbol this module needs goes through `_simulation.*`
-# (never `from rfx.simulation import X as _x`, #628): this module is first
+# (never `from rfx.simulation import X as _x`): this module is first
 # imported lazily, from inside Simulation.run()/forward(), so an import-time
 # alias can capture a test-monkeypatched rfx.simulation attribute
 # permanently, even after the patch is torn down — a module reference is
@@ -80,13 +80,13 @@ def run_uniform(
         Material arrays (before port impedance loading).
     debye_spec, lorentz_spec : dispersion specs or None
     pec_mask : jnp.ndarray or None
-        Primal-cell occupancy of the PEC VOLUMES (#931 §1.1).
+        Primal-cell occupancy of the PEC VOLUMES.
     pec_sheets, pec_wires : list or None
-        PEC sheets (#931 §1.3) and sub-cell wires (§1.4) collected by the
+        PEC sheets and sub-cell wires (§1.4) collected by the
         assembler; they own no cell, so they reach the stepper only
         through the realized edge masks built here.
     conformal_pec : bool or None
-        Enable conformal PEC (cut-cell operands with the SC clamp, #1651). None
+        Enable conformal PEC (cut-cell operands with the SC clamp). None
         reads Boundary(conformal=True); an explicit False requests staircase PEC.
     conformal_min_weight : float
         Legacy; only the default 0.1 is accepted (the SC clamp replaced it).
@@ -96,9 +96,9 @@ def run_uniform(
         Hand back the scan's per-wire-port ``(spec, accumulators)`` pairs as
         ``Result.wire_port_sparams`` (default ``True``). Internal callers
         can request ``False``. ``run(..., ringdown=...)`` reads the realized port cells and
-        accumulators from them (issue #1254) and preserves them in Result.
+        accumulators from them and preserves them in Result.
     stop_fn, stop_interval
-        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        ``run(..., ringdown=..., until_identified=True)``: the
         fixed-length scan runs in chunks of ``stop_interval`` steps and
         ``stop_fn(steps_done, peek)`` decides after each one whether the run
         ends there; ``peek()`` gives the record so far (``time_series``,
@@ -128,10 +128,10 @@ def run_uniform(
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
 
     # run() sends a refined model to the subgridded lane; a direct call must
-    # not solve it here without the refinement (#1240).
+    # not solve it here without the refinement.
     sim._require_no_refinement_without_a_subgrid("run_uniform()")
 
-    # #677 v1 fences for the surface-impedance sheet operator (loud, never
+    # v1 fences for the surface-impedance sheet operator (loud, never
     # silent): the operator replaces the standard isotropic E update at its
     # edges, so lanes that swap that update out are refused.
     if sheet_specs:
@@ -225,7 +225,7 @@ def run_uniform(
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE, under the flags the stepper
+    # realize (Mx, My, Mz) ONCE, under the flags the stepper
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
     # object.  A sheet owns no cell, so it exists only here.
@@ -255,9 +255,9 @@ def run_uniform(
     # Port sources — fold impedances into materials first
     lumped_ports = []
     wire_ports = []
-    # Issue #764: per-wire-port static LIVE-cell runs and excite flags,
+    # per-wire-port static LIVE-cell runs and excite flags,
     # parallel to ``wire_ports`` — captured inside the loop where the
-    # assembled-geometry edge masks (the #318 "live" definition, read BEFORE
+    # assembled-geometry edge masks (the "live" definition, read BEFORE
     # this port's own clearing) is in hand.  Feed the S-param specs below.
     wire_port_live_cells = []
     wire_port_excites = []
@@ -281,7 +281,7 @@ def run_uniform(
             )
             wire_ports.append(wp)
             wire_port_excites.append(bool(pe.excite))
-            # Issue #764: capture the static LIVE run for this port's
+            # capture the static LIVE run for this port's
             # whole-port gap-voltage accumulator while the mask still holds
             # the assembled-geometry state (pre-clearing).
             from rfx.sources.sources import _wire_port_live_cells
@@ -292,7 +292,7 @@ def run_uniform(
                 for c, live in zip(_wp_cells_764, _wp_live_764) if live))
             conductors = publish_port_release(conductors, wire_port_live_cells[-1],
                 component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
-            # Live-cell-aware fold + injection (issue #318): dead extent
+            # Live-cell-aware fold + injection: dead extent
             # cells inside PEC carry no port sigma and no source. The mask
             # here is the assembled-geometry state BEFORE this port's own
             # clearing below, which is exactly the "live" definition.
@@ -302,7 +302,7 @@ def run_uniform(
                 sources.defer(_simulation.make_wire_port_sources,
                     grid, wp, n_steps=sizing_n,
                     pec_edge_masks=pec_edge_masks)
-            # No PEC clearing for a wire port (#931 §1.9, corrected):
+            # No PEC clearing for a wire port:
             # a cell is LIVE exactly when the port component's own edge at
             # that index is not PEC, so releasing that component at the
             # live cells is a no-op by construction, and releasing the two
@@ -320,7 +320,7 @@ def run_uniform(
             if pe.excite:
                 sources.defer(_simulation.make_port_source, grid, lp, n_steps=sizing_n)
             # Release the realized PEC edge the lumped port DRIVES — its
-            # own component at its own cell, and nothing else (#931 §1.9,
+            # own component at its own cell, and nothing else (
             # corrected: the three-component form opened the conductor the
             # port sits on).
             conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
@@ -369,9 +369,9 @@ def run_uniform(
         from rfx.simulation import WirePortSParamSpec
         sp_freqs = s_param_freqs if s_param_freqs is not None else jnp.linspace(
             sim._freq_max / 10, sim._freq_max, 50)
-        # Issue #764: the V/I reference cell is the midpoint of the LIVE
+        # the V/I reference cell is the midpoint of the LIVE
         # run (a dead extent cell reads a quenched Ampere loop —
-        # |I_dead|/|I_mid| = 0.003-0.03 measured on the #313 thru), and the
+        # |I_dead|/|I_mid| = 0.003-0.03 measured on the thru), and the
         # spec carries the static live run for the whole-port gap-voltage
         # accumulator.  With no dead cells this midpoint is bit-identical
         # to the historical all-extent midpoint.
@@ -401,7 +401,7 @@ def run_uniform(
             setup_msl_port,
         )
         for _msl_port_index, pe in enumerate(sim._msl_ports):
-            # Issue #661: one shared projection of position -> port frame.
+            # one shared projection of position -> port frame.
             mp = msl_port_from_entry(pe)
             from rfx.sources.msl_port import validate_msl_port_geometry
             validate_msl_port_geometry(
@@ -454,8 +454,7 @@ def run_uniform(
             # cross-section: that is the edge the modal source drives
             # (V = sum(E_n * d_n)).  Releasing the two in-plane
             # components as well would punch a width-long slot through
-            # the ground plane and the trace at the feed column
-            # (#931 §1.9, corrected).
+            # the ground plane and the trace at the feed column.
             conductors = clear_conductor_edges(
                 conductors, list(_msl_yz_cells(grid, mp)),
                 component=_msl_normal_component(mp),
@@ -504,7 +503,7 @@ def run_uniform(
     if sim._tfsf is not None:
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
+        # an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
         # frequency-domain output paths are not yet transform-aware on it.
@@ -572,7 +571,7 @@ def run_uniform(
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
 
-    # Thread the field storage dtype into the ADE carry (issue #656), the
+    # Thread the field storage dtype into the ADE carry, the
     # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /
     # RLC carries.  ``None`` here means "default precision", which
     # ``rfx.simulation.run`` resolves to float32 — resolve it identically so
@@ -583,7 +582,7 @@ def run_uniform(
         materials, grid.dt, debye_spec, lorentz_spec,
         grid=grid,
         field_dtype=field_dtype if field_dtype is not None else jnp.float32,
-        # The run's flags after the TFSF override above (#1260: the edge
+        # The run's flags after the TFSF override above (the edge
         # mean wraps on a periodic axis, as the E update's does).
         periodic=_simulation.resolve_periodic(grid, periodic))
 
@@ -603,15 +602,15 @@ def run_uniform(
     rlc_metas = None
     if sim._lumped_rlc:
         # The run's own periodic flags (after the TFSF override above): a
-        # series element's D0 is its edge's E-update coefficient (#1163).
+        # series element's D0 is its edge's E-update coefficient.
         _rlc_periodic = _simulation.resolve_periodic(grid, periodic)
         rlc_metas = [build_rlc_meta(grid, spec, materials, periodic=_rlc_periodic)
                      for spec in sim._lumped_rlc]
-        # #1245: at most one element with its own solve per realized edge.
+        # at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
 
-    # #677: assemble the surface-impedance sheet ctx against the FINAL
+    # assemble the surface-impedance sheet ctx against the FINAL
     # realized PEC edges of this run (after the port clearing above —
     # PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
@@ -637,7 +636,7 @@ def run_uniform(
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec)
-    # Issue #1254: the early stop reads the record so far through the scan's
+    # the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
     _stop_kwargs = {}
     if stop_fn is not None:
@@ -807,11 +806,11 @@ def run_uniform(
         sp_n_steps = drive_steps(sim_result, n_steps, s_param_n_steps,
                                  until_decay=until_decay, decay_max_steps=decay_max_steps)
 
-        # item-5 Stage 4 (2026-07-03): lumped AND multi-port wire run() paths go
+        # item-5 Stage 4: lumped AND multi-port wire run() paths go
         # through the production-scan driver (= forward()'s graph). Stage 3
-        # (#214) rerouted only lumped; this completes it for MULTI-port wire, so
+        # rerouted only lumped; this completes it for MULTI-port wire, so
         # the eager extract_s_matrix / extract_s_matrix_wire loops are OFF the
-        # run() hot path (the #203/#205/#206 config-drift-class root — a
+        # run() hot path (the config-drift-class root — a
         # hand-maintained second FDTD loop). They are KEPT for diagnostics /
         # openEMS-crossval tooling. For multi-port wire this also FIXES the
         # latent off-diagonal drop of the single-port fast-path above (its
@@ -837,7 +836,7 @@ def run_uniform(
         waveguide_cfgs=sim_result.waveguide_ports or (),
     )
 
-    # #404: oblique 2D-aux TFSF evolved the complex Bloch envelope P; convert the
+    # oblique 2D-aux TFSF evolved the complex Bloch envelope P; convert the
     # returned state + point probes back to physical real fields (real path and
     # normal incidence are untouched — sim_result stays real there).
     if sim._tfsf is not None:

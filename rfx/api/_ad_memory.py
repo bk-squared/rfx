@@ -91,12 +91,12 @@ def _format_memory_with_safety(value: float, safety_factor: float) -> str:
 
 
 class _AdMemoryMixin:
-    # ---- AD memory estimation (issue #30 CHECK 4) ----
+    # ---- AD memory estimation ----
 
     def _ad_memory_static_accounting(self) -> dict[str, int]:
         """Return shared static byte accounting for AD memory artifacts.
 
-        Issue #696: the cell count comes from the grid the SOLVE WILL
+        the cell count comes from the grid the SOLVE WILL
         ACTUALLY BUILD — ``_build_nonuniform_grid()`` when any mesh
         profile is set, ``_build_grid()`` otherwise — not from a private
         re-derivation of the shape. The re-derivation
@@ -128,9 +128,8 @@ class _AdMemoryMixin:
                      else self._build_grid())
             nx, ny, nz = (int(v) for v in _grid.shape)
         except Exception:
-            # Keep a number rather than raising out of a planning helper;
-            # the fallback is the pre-#696 arithmetic and is LABELLED as
-            # such so the artifact does not present it as the real grid.
+            # Keep a number rather than raising out of a planning helper; label the
+            # fallback estimate so the artifact does not present it as the real grid.
             def _nx(extent: float, prof) -> int:
                 if prof is not None:
                     return len(prof) + 1 + 2 * self._cpml_layers
@@ -151,14 +150,10 @@ class _AdMemoryMixin:
             if self._cpml_layers > 0
             else 0
         )
-        # Surface-impedance (f0) sheet operator (#677) — three boolean
-        # tangential edge masks plus one float32 sigma_sheet array, all
-        # full-grid, resident for the whole run. Counted here because
-        # they are NOT part of the six material arrays above: since #677
-        # the sheet touches neither pec_mask nor materials.sigma, so the
-        # estimate for a lossy board was the estimate for the SAME board
-        # without loss — which is exactly the model that then fit on the
-        # same GPU (#696).
+        # Surface-impedance (f0) sheet operator: three boolean tangential edge masks
+        # and one float32 sigma_sheet array, all full-grid and resident for the
+        # whole run. Count these separately from the six material arrays above: the
+        # sheet touches neither pec_mask nor materials.sigma.
         sheet_bytes = 0
         if has_f0_sheets(getattr(self, "_thin_conductors", ())):
             sheet_bytes = cells * (3 * 1 + bytes_per_cell)

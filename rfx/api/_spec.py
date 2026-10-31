@@ -525,7 +525,7 @@ def _auto_source_decay_time(fr, waveform=None) -> float:
     own ``t0`` (``GaussianPulse``/``ModulatedGaussian``:
     ``t0 = cutoff*tau``) makes the window scale with the actual onset —
     ``2*t0`` = ``9*tau`` at cutoff=4.5 — instead of assuming the cutoff=3
-    envelope (post-#392 review). Without a waveform this returns
+    envelope. Without a waveform this returns
     ``2.0*(3.0*tau)``, bitwise-identical to the historical
     ``2.0*3.0*tau`` (scaling by 2.0 is exact in binary floating point),
     with ``tau`` derived from the frequency range at the historical
@@ -618,12 +618,12 @@ class Result(NamedTuple):
     #: runner's static metadata tuple on the graded-mesh one
     #: (``rfx.nonuniform._build_wp_meta`` — impedance at slot 4, ``excite``
     #: at slot 7). ``accs`` carries a fifth slot, the pre-injection drive
-    #: reference ``v_ref`` (#683), on both lanes; the first four
+    #: reference ``v_ref``, on both lanes; the first four
     #: are the same channels on both.
     wire_port_sparams: tuple | None = None
     #: Lumped ``(spec, (V, I, V_ref))`` pairs on both meshes when spectra exist; None otherwise.
     lumped_port_sparams: tuple | None = None
-    #: ``run(..., ringdown=RingdownSpec(...))`` only (issue #1254): a
+    #: ``run(..., ringdown=RingdownSpec(...))`` only: a
     #: :class:`rfx.ringdown.RingdownResult` holding the wire-port S-matrix
     #: with the record's unrecorded ring-down added in closed form
     #: (``.s_params``, same shape and bins as ``s_params``) and the report its
@@ -634,7 +634,7 @@ class Result(NamedTuple):
     #: coordinate in metres of every recorded sample along each kept axis
     #: (model frame, CPML cells included), the slice plane, and the step
     #: count and time of each frame -- E at ``steps * dt``, H half a step
-    #: earlier (#1259). ``None`` when no snapshot was recorded. For the
+    #: earlier. ``None`` when no snapshot was recorded. For the
     #: arrays of ``state`` use ``rfx.field_sample_coords(grid, component)``;
     #: ``state`` holds E at ``state.step * dt`` and H at
     #: ``(state.step - 1/2) * dt``.
@@ -1108,14 +1108,14 @@ class _PortEntry:
     # at sim-build time.
     direction: str | None = None
     # Opt-in reference-plane port waves for the wire S-matrix OFF-diagonal
-    # extraction (issue #313): when set to an integer N, the production
+    # extraction: when set to an integer N, the production
     # scan registers TWO line V/I reference planes at N and 2N cells
     # outboard (into the DUT) and the off-diagonal S_ij switch to plane
     # waves with measured Zc/beta. None (default) = shipped port-cell
     # behaviour, byte-identical. Diagonal S_jj always stays on the legacy
     # path either way.
     reference_plane_cells: int | None = None
-    # Soft-source amplitude semantics (issue #571, option 4):
+    # Soft-source amplitude semantics:
     # add_source stores 'field' or 'current' (None resolves to 'current').
     # Only meaningful when impedance == 0.0 (add_source soft sources); port
     # entries (impedance > 0) keep their own port-normalized waveform
@@ -1289,16 +1289,13 @@ class CoaxialLineReflectionResult(NamedTuple):
 
 @dataclass
 class CoaxialTwoPortResult:
-    """Two-drive coaxial 2-port S-parameters on a through line (issue #489 stage 2).
+    """Two-drive coaxial 2-port S-parameters on a through line.
 
-    STATUS: **VALIDATED WITH SCOPE** (issue #489, PI decision 2026-08-06 —
+    STATUS: **VALIDATED WITH SCOPE** (
     ``docs/guides/sparameter_support_matrix.md``, the S-parameter-family
     companion where this row lives — see also
     ``docs/guides/sparameter_support_matrix.json``, its machine-readable
-    twin). The EXPERIMENTAL label held through three legs closing in
-    sequence — wiring pin, mesh-refinement convergence witness, and an
-    ``eps_scale`` AD gate — and lifted once a fourth, an external referee,
-    also closed. Evidence chain: an external openEMS referee (VESSL run-3
+    twin).  Evidence chain: an external openEMS referee (VESSL run-3
     ``369367251629`` and the first default-scale green promoted-lane run
     VESSL ``369367252220``) brackets — it does not judge — this method's own
     ``|S21|`` on the through-line class, and, via the port's own measured
@@ -1322,8 +1319,8 @@ class CoaxialTwoPortResult:
     **Scope limitation that must not be silently dropped — NOT covered by
     the evidence chain above**: every DUT this method can currently gate
     against (none / a matched feed / a coaxial dielectric plug) is
-    azimuthally symmetric and excites only TM0n modes. Issue #489 exists
-    for TRANSITION designers whose discontinuities excite TE11 (cutoff
+    azimuthally symmetric and excites only TM0n modes. This leaves a gap
+    for transition designs whose discontinuities excite TE11 (cutoff
     25.17 GHz on the validated SMA line — inside the 4-12 GHz band's
     evanescent tail, surviving to the first probe plane at roughly 0.10 of
     its launch amplitude). A battery built only on symmetric DUTs certifies
@@ -1339,7 +1336,7 @@ class CoaxialTwoPortResult:
     ``s_params[j, i, :]`` is the response measured at port ``j`` while port
     ``i`` is driven (standard S-matrix convention), referenced to each port's
     OWN reference plane (its feed resistor's axial plane — see
-    ``reference_planes``) and impedance (``reference_impedances``, #2014: the
+    ``reference_planes``) and impedance (``reference_impedances``: the
     declared ``impedance=``; ``line_impedances`` is the analytic TEM Z0 the
     wave ratio is formed at). ``cond_a`` is the condition number of
     the incident-wave matrix inverted by the two-drive solve: it bounds
@@ -1352,7 +1349,7 @@ class CoaxialTwoPortResult:
     array, drive, frequency) — recurrence_residual 0 means a clean
     single-TEM-mode field at that array during that drive; ``gamma`` is that
     array's own matrix-pencil-fitted complex propagation constant (Z0-free,
-    from local probes only). **Measured 2026-08-02: a given array's
+    from local probes only). **Measured: a given array's
     ``Re(gamma)`` is NOT independent of which drive produced it** — "own
     drive" (that array's own source active) and "other drive" (that array
     receiving the transmitted signal) give substantially different, but each
@@ -1369,7 +1366,7 @@ class CoaxialTwoPortResult:
     recorded voltage ladders and witness probes at the extraction bins.
 
     **``eps_scale`` (differentiable) path** (:meth:`compute_coaxial_two_port`'s
-    own ``eps_scale`` parameter, issue #489 leg 3): ``status`` takes a FOURTH
+    own ``eps_scale`` parameter): ``status`` takes a FOURTH
     value, ``"differentiable"``, in place of ``"passed"``/``"contaminated"``
     — the traced ``rec_resid`` cannot be Python-branched on to distinguish
     those two, so ``"differentiable"`` means only "geometry-resolved"
@@ -1486,7 +1483,7 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
     ----------
     S : (n_ports, n_ports, n_freqs) complex
         Power-wave S (a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)), R the
-        declared ``impedance=``, #2014) formed at the first probe plane at the
+        declared ``impedance=``) formed at the first probe plane at the
         line Z0, shifted to the DECLARED FEED PLANE, referred to R. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
@@ -1717,7 +1714,7 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
     S_raw: np.ndarray | None = None
     passivity_correction: np.ndarray | None = None
     beta_railed: np.ndarray | None = None
-    # Arch-A magnitude channel (issue #488): off-diagonal magnitudes come
+    # Arch-A magnitude channel: off-diagonal magnitudes come
     # from Poynting flux by default; ``S_wave`` keeps the raw power-wave
     # matrix for comparison (None when magnitude_channel="wave").
     S_wave: np.ndarray | None = None
@@ -1731,24 +1728,24 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
 
 @dataclass
 class CoaxMSLTransitionResult:
-    """EXPERIMENTAL two-drive coax<->microstrip transition S-parameters (issue #489 leg 4).
+    """EXPERIMENTAL two-drive coax<->microstrip transition S-parameters.
 
     STATUS: **EXPERIMENTAL — not in the validated set**
     (``docs/guides/sparameter_support_matrix.md`` / ``.json``). This is the
-    coax<->planar generalization of the #488 mixed-family lane
-    (:class:`MixedSMatrixResult`) and reuses the #489 stage-2 coax two-port
+    coax<->planar generalization of the mixed-family lane
+    (:class:`MixedSMatrixResult`) and reuses the stage-2 coax two-port
     machinery's per-port wave extraction
     (:func:`rfx.sources.coaxial_port.coaxial_line_reflection_from_plane_voltages`)
     for BOTH ports — including the MSL side, in place of the diagnostic-only,
     sign-unstable N-probe SVD fit (``extract_msl_nprobe``; see its own
     docstring and :meth:`_SparamMixin.compute_mixed_s_matrix`'s "N-probe line
     Zc: DIAGNOSTIC ONLY" comment for the documented branch-sign instability
-    this sidesteps) — a deliberate deviation from imitating the #488 lane's
+    this sidesteps) — a deliberate deviation from imitating the lane's
     own MSL extractor choice, made because the coax matrix-pencil fit
     deterministically pins the propagation-constant branch
     (``beta = Im(gamma) > 0``) while the N-probe fit does not.
 
-    REFUSES BY DEFAULT (issue #838, PI decision 2026-09-20):
+    REFUSES BY DEFAULT:
     :meth:`_SparamMixin.compute_coax_msl_transition` takes
     ``strict_passivity=True`` as its default, so a non-passive extracted S
     raises ``ValueError`` from the shared guard instead of being returned;
@@ -1784,19 +1781,18 @@ class CoaxMSLTransitionResult:
     analogue in the MSL's along-trace x reference plane — these are
     different geometric axes). Off-diagonal PHASE nonetheless mixes two
     different transverse-mode conventions (coax TEM radial E-integral vs MSL
-    quasi-TEM z line-integral) and inherits #488's own caveat: magnitude is
+    quasi-TEM z line-integral) so magnitude is
     the validated observable, phase is provisional.
 
-    NOT_TRACEABLE (inherits #488's AD scope): both this result's own
+    NOT_TRACEABLE: both this result's own
     assembly and the underlying two extractors it composes
     (:meth:`_SparamMixin.compute_coax_msl_transition`'s coax stub +
     :func:`rfx.sources.msl_port.make_msl_port_sources`) run a concrete NumPy
     path only. AD is explicitly out of scope for this leg (unlike stage-2
-    coax-coax, which grew an ``eps_scale`` channel in PR #572 — no
+    coax-coax, which has an ``eps_scale`` channel — no
     equivalent channel exists here).
 
-    On the one committed fixture (issue #581 adversarial review, findings
-    B2/B3): reciprocity and the two-drive solve's raw ``cond_a`` are badly
+    On the one committed fixture: reciprocity and the two-drive solve's raw ``cond_a`` are badly
     degenerate. The ORIGINAL attribution written for this fixture —
     "near-degenerate two-drive amplification from strong junction
     reflection" — did not survive its own data and was retracted. Three
@@ -1841,7 +1837,7 @@ class CoaxMSLTransitionResult:
     test_attempt2_junction_geometry_is_byte_identical_to_attempt1``).
 
     Verdict, per the RUN-LENGTH INVARIANCE TEST across two settling
-    checkpoints (20000 -> 45000 steps; issue #585 adversarial review):
+    checkpoints (20000 -> 45000 steps):
     the fitted ``gamma`` is the ONE quantity that is stable across both
     checkpoints and lands inside the predeclared [0.8, 1.3] band both
     times — CONFIRMED, but PROVISIONAL pending a fully settled run
@@ -1873,7 +1869,7 @@ class CoaxMSLTransitionResult:
     attempt 2; the next step is the settled VESSL run, not a third
     ladder/clearance change.
 
-    DISCLOSURE (issue #585 final-verify, finding G1): the shared passivity
+    DISCLOSURE: the shared passivity
     guard both attempts rely on (``rfx/validation.py``'s ``check_passivity``
     block, ``strict_passivity=True`` path — see
     :func:`rfx.sparams._common._finalize_sparam_result`) checks only whether
@@ -1885,7 +1881,7 @@ class CoaxMSLTransitionResult:
     much." This is a disclosure, not a fix — the guard is unchanged by
     this attempt.
 
-    SETTLED RUN (VESSL 369367252283, 2026-08-06, ``n_steps=135000`` — see
+    SETTLED RUN (VESSL 369367252283, ``n_steps=135000`` — see
     ``tests/unit/sparams/test_coax_msl_transition.py``'s ``SETTLED_RUN_RECORD``, status
     ``RUN``): both drives clear the -40 dB ring-down rule for the first
     time on this lane (settling_db -45.94 / -44.17 dB). gamma-vs-beta is
@@ -1916,10 +1912,7 @@ class CoaxMSLTransitionResult:
     extraction misses non-quasi-TEM content near the junction. A named
     discriminating check (not run): a closed-box (PEC-wall, no absorber)
     variant of this fixture — power reappearing in the port accounting
-    would support (a); power still missing would support (b). SUPERSEDED
-    as the chosen instrument: the issue #589 pre-declaration (2026-08-07
-    comment) replaces the closed-box variant with face-resolved flux
-    accounting on the settled open fixture (see ``extra_flux_monitors=``
+    would support (a); power still missing would support (b). The chosen instrument is face-resolved flux accounting on the settled open fixture (see ``extra_flux_monitors=``
     and the ``flux_monitors`` attribute below), with the deviation's
     reasoning recorded there.
 
@@ -1939,7 +1932,7 @@ class CoaxMSLTransitionResult:
         NOT on a shared axis and must not be subtracted from one another.
     z0_ref : (2,) float
         Power-wave reference impedance of ``s_params`` per port: the
-        registered coax and MSL ``impedance=`` (#2014).
+        registered coax and MSL ``impedance=``.
     line_impedances : (2,) float
         ``[z0_coax_ohm, z0_msl_ohm]`` the waves (and ``a_inc``/``b_out``) are
         formed at: analytic coax TEM Z0
@@ -1959,7 +1952,7 @@ class CoaxMSLTransitionResult:
         amplitude scale, so it isolates genuine geometric near-parallelism
         between the two drives' incident waves. Does not affect
         ``s_params`` (column equilibration leaves ``S = B @ inv(A)``
-        unchanged). Added in response to issue #581 review finding B2.
+        unchanged).
     recurrence_residual, fit_residual, gamma : (2, 2, n_freqs)
         Per (port array, drive, freq), same convention and meaning as
         :class:`CoaxialTwoPortResult` (0 = clean single-mode field; the MSL
@@ -1973,11 +1966,11 @@ class CoaxMSLTransitionResult:
     a_inc, b_out : (2, 2, n_freqs) complex
         The POWER-wave incident/outgoing amplitudes actually fed to the
         two-drive solve (after the ``sqrt(Z0)`` division), exposed for
-        audit (issue #581 review finding B2) — e.g. to check each drive's
+        audit — e.g. to check each drive's
         own excitation actually reached a comparable amplitude before
         trusting ``cond_a``/``cond_a_equilibrated``.
     ladder_split_gamma_dev, ladder_split_reflection_decades : (2, 2, n_freqs) float or None
-        LADDER SELF-CONSISTENCY WITNESS (issue #823). ``None`` unless the
+        LADDER SELF-CONSISTENCY WITNESS. ``None`` unless the
         run was made with ``return_ladder_voltages=True``: the witness is a
         Python-loop refit (2 drives x n_freqs x 2 matrix pencils per
         ladder) over the same raw ladders that flag exposes, so it is
@@ -2002,7 +1995,7 @@ class CoaxMSLTransitionResult:
         junction physics rather than to the ladder — while its two halves
         disagree about ``|Gamma|`` by 4.379/4.487/4.321 DECADES; the
         compliant 8-probe subset of the SAME dump disagrees by
-        0.005/0.001/0.002. (The "six orders" figure quoted on #823 is a
+        0.005/0.001/0.002. (The "six orders" figure for the narrower subsets is a
         different, narrower comparison — the W3 table's ``msl[0:3]`` vs
         ``msl[6:9]`` subsets, 6.386/6.856/7.170 decades. The witness's own
         halves are wider windows and read 4.32-4.49; both say the same thing
@@ -2010,8 +2003,7 @@ class CoaxMSLTransitionResult:
 
         REPORT-ONLY: no gate, no refusal, no tolerance attached. The coax
         stub's own ladder reads ``ladder_split_gamma_dev`` 0.11-0.34 on every
-        run of this family — the known 1 mm-span alpha-identification limit
-        (#589) — so a bar tight enough to catch the MSL ladder would refuse
+        run of this family — the known 1 mm-span alpha-identification limit — so a bar tight enough to catch the MSL ladder would refuse
         the coax ladder for a different defect.
     settling_db : (2,) float
         Per-drive pole-tail amplitude share in dB over recorded voltage
@@ -2034,7 +2026,7 @@ class CoaxMSLTransitionResult:
         ``None`` otherwise. The RAW per-probe modal voltages the assembler
         itself consumed, so a label-independent re-reading of the ladders
         (phase slope, SWR, subset fits) needs no second FDTD run
-        (issue #589 witnesses W1/W2/W3). Keys:
+        . Keys:
 
         ``coax_ladder_v`` (2, n_coax, n_freqs) complex128, indexed
         ``[drive, probe, freq]`` (drive 0 = coax driven, 1 = MSL driven);
@@ -2049,8 +2041,7 @@ class CoaxMSLTransitionResult:
         ``reference_planes``); ``z0_ref`` (2,) float64 copy of ``line_impedances``.
 
         DIAGNOSTIC ONLY, and label-FREE: these are modal voltages, not
-        wave amplitudes — no incident/outgoing role is assigned here (that
-        assignment is exactly what issue #589 hypothesis H1 disputes; see
+        wave amplitudes — no incident/outgoing role is assigned here (see
         ``tests/unit/sparams/test_coax_msl_transition_wave_roles.py``). Attaching them
         cannot change any number: they are copies taken AFTER the assembler
         has consumed the same arrays
@@ -2071,7 +2062,7 @@ class CoaxMSLTransitionResult:
     a_inc: np.ndarray
     b_out: np.ndarray
     settling_db: np.ndarray
-    # Issue #823 ladder self-consistency witness (report-only). Defaulted so
+    # ladder self-consistency witness (report-only). Defaulted so
     # the field addition cannot break a positional construction elsewhere;
     # compute_coax_msl_transition always supplies both.
     ladder_split_gamma_dev: np.ndarray | None = None

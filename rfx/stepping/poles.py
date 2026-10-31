@@ -30,7 +30,7 @@ def update_e_debye(
     2. E^{n+1} = Ca·E^n + Cb·curl(H) + Σ_p Cc_p·P_p^n
     3. P_p^{n+1} = α_p·P_p^n + β_p·(E^{n+1} + E^n)
 
-    Dtype note (issue #656)
+    Dtype note
     -----------------------
     Both outputs are narrowed back to the dtype of the carry they came from.
     See the fuller note on ``rfx.materials.lorentz.update_e_lorentz``: the
@@ -48,7 +48,7 @@ def update_e_debye(
         hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
     # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
-    # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component (#1260)
+    # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component
     ex_new, px_new = debye_e_component(coeffs, 0, state.ex, curl_x,
                                        debye_state.px, _fdtype, _pdtype)
     ey_new, py_new = debye_e_component(coeffs, 1, state.ey, curl_y,
@@ -80,11 +80,11 @@ def update_e_lorentz(
     1. P^{n+1} = a P^n + b P^{n-1} + c E^n  (explicit)
     2. E^{n+1} = Ca E^n + Cb curl(H) - Cc Σ(P^{n+1} - P^n)
 
-    Dtype note (issue #656)
+    Dtype note
     -----------------------
     Both outputs are narrowed back to the dtype of the carry they came from,
-    the ``rfx.core.yee.update_e`` idiom (#630) plus #646's "let the body
-    derive its dtype from the carry". Allocation-site promotion alone does
+    the ``rfx.core.yee.update_e`` idiom: let the body derive its dtype from the carry. Allocation-site promotion alone
+    does
     NOT close this scan: ``ca``/``cb``/``cc`` and (masked) ``a``/``b``/``c``
     are built at setup time from ``dt``, which is ``grid.dt``, a **numpy
     float64 scalar** — and numpy scalars are STRONGLY typed in JAX where
@@ -92,7 +92,7 @@ def update_e_lorentz(
     this body would return float64 for a float32 field/P carry.
 
     ``_pdtype`` promotes rather than pinning to ``lor_state.px.dtype`` on
-    purpose: with a real P carry and a COMPLEX field (oblique Bloch, #404) it
+    purpose: with a real P carry and a COMPLEX field (oblique Bloch) it
     stays complex, so the carry mismatch is still raised. Pinning would cast
     the imaginary part away and close the scan on wrong physics — the
     dispersive branches ignore the Bloch phase entirely.
@@ -119,7 +119,7 @@ def update_e_lorentz(
     dpy = jnp.sum(py_new - lor_state.py, axis=0)
     dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
 
-    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component (#1260)
+    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component
     ex_new = lorentz_e_component(coeffs, 0, state.ex, curl_x, dpx, _fdtype)
     ey_new = lorentz_e_component(coeffs, 1, state.ey, curl_y, dpy, _fdtype)
     ez_new = lorentz_e_component(coeffs, 2, state.ez, curl_z, dpz, _fdtype)

@@ -52,7 +52,7 @@ class DeclaredZWarning(RfxWarning):
     """The caller explicitly keeps a declared z different from the solved length."""
 
 
-#: A concrete z profile may miss a positive declared z by this fraction (#1941).
+#: A concrete z profile may miss a positive declared z by this fraction.
 DECLARED_Z_RTOL = 0.01
 
 
@@ -166,11 +166,11 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     """
     # P2: Warn on abrupt grading in a user-supplied profile. This ran
     # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-    # accepted in silence (#743) — the axes differ in which physics
+    # accepted in silence — the axes differ in which physics
     # they carry, not in whether an abrupt ratio reflects.
     # Tracer profiles skip the warning — adjacent ratios can't be
     # computed host-side during tracing.
-    # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6, #780).
+    # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6).
     # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
     # default with no measurement behind it, so ratios in (1.3, 1.4]
     # warned without evidence that they cost anything. The multi-band
@@ -184,8 +184,7 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     # at the float-accumulation class, and 2nd-order supraconvergence
     # preserved on a fixture whose graded axis carries ~90 % of the
     # error budget.
-    # dx/dy stayed at 1.3 from 2026-08-29 (no in-plane witness then)
-    # and moved to 1.4 on 2026-10-29 on in-plane witnesses at 1.40:
+    # The dx/dy cap of 1.4 is supported by in-plane witnesses at 1.40:
     # transition reflection on x and y (e5_x/e5_y), and on a cavity graded
     # in plane, second-order resonances and 1e6-step energy (rfx-archive
     # records/20261029-inplane-cap-1p4; see the caps in api/_preflight.py).

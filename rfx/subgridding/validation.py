@@ -1,6 +1,6 @@
 """Production-envelope validation for the public subgridding API.
 
-Production runs are refused: this lane is unstable and unverified (#1465).
+Production runs are refused: this lane is unstable and unverified.
 The remaining checks describe experimental configurations, not evidence of
 physics support. Research/off are explicit diagnostic opt-ins.
 """
@@ -567,7 +567,7 @@ def validate_subgrid_setup(
 ) -> SubgridValidationReport:
     """Validate a ``Simulation.add_refinement`` setup against support claims.
 
-    ``sheets`` / ``wires`` are the #931 ``SheetSpec`` / ``WireSpec`` lists the
+    ``sheets`` / ``wires`` are the ``SheetSpec`` / ``WireSpec`` lists the
     assembly classified.  They own no cell, so they are absent from
     ``pec_mask``; a validator that reads only cells would call a
     sheet-declared board supported and then watch ``run(solver='subgridded')``
@@ -690,7 +690,7 @@ def validate_subgrid_setup(
                 )
             )
 
-    # #931: a sheet or a sub-cell wire has no cell for this lane's two
+    # a sheet or a sub-cell wire has no cell for this lane's two
     # grids to carry, so run(solver='subgridded') refuses it. Say so here
     # too — a "supported" verdict for a model the runner will refuse is
     # the failure this report exists to prevent. Checked before the region
@@ -839,7 +839,7 @@ def validate_subgrid_setup(
                         )
                     )
 
-        # #931: a CELL mask is the right reading here — this lane
+        # a CELL mask is the right reading here — this lane
         # realizes volumes only (run() refuses sheets and wires on it),
         # and the question below is which CELLS at the coarse/fine
         # interface carry metal, not which E edges are shorted.
@@ -1126,7 +1126,7 @@ def validate_subgrid_setup(
                 )
             )
 
-    # #1465: opting in permits diagnostics, not a physics-support claim.
+    # opting in permits diagnostics, not a physics-support claim.
     unverified = any(issue.code == "subgrid_unstable_unverified" for issue in issues)
     supported = not unverified and not any(issue.severity == "error" for issue in issues)
     support_level = ("unsupported-unstable-unverified" if mode == "production"
@@ -1148,7 +1148,7 @@ def validate_subgrid(self, *, mode: str | None = None):
         available for research diagnostics; opting in does not confer support.
         """
     self._require_uniform_mesh("validate_subgrid")
-    # #931 §1.9: sheets and wires own no cell, so a validator handed
+    # sheets and wires own no cell, so a validator handed
     # only pec_mask cannot see them — and this lane cannot realize
     # them (run(solver='subgridded') refuses). Collect and pass them
     # so the report refuses the same models the runner does.

@@ -28,7 +28,7 @@ def _run_adi_from_materials(
 ):
     """Run the integrated ADI solver path (2D TMz or 3D).
 
-        Issue #931 §1.7: the ADI lane takes the SAME realized PEC edge masks as
+        the ADI lane takes the SAME realized PEC edge masks as
         every other lane instead of zeroing E at the occupied cell
         indices.  In 2-D it applies the ``Mz`` plane to Ez; in 3-D the
         three masks componentwise.
@@ -66,7 +66,7 @@ def _run_adi_from_materials(
 
     # Every declared input this lane does not carry is refused here,
     # after the specific refusals above and before the first step.
-    # A declared material interface is one (#1373, LANE_GATES).
+    # A declared material interface is one (LANE_GATES).
     from rfx.runners._admission import admit
     admit(
         self,
@@ -163,7 +163,7 @@ def _run_adi_from_materials(
         i, j, _ = _grid_metric.field_index(grid, pe.position, pe.component)
         probes.append((i, j, pe.component))
 
-    # Coefficient derivatives use eps_r units (#1357), including 2-D ADI.
+    # Coefficient derivatives use eps_r units, including 2-D ADI.
     eps_r_2d = materials.eps_r[:, :, 0]
     sigma_2d = materials.sigma[:, :, 0]
 
@@ -174,7 +174,7 @@ def _run_adi_from_materials(
         sources.append((i, j, waveform))
 
     # The 2-D TMz lane carries only Ez, so its realized PEC mask is
-    # the Mz plane (#931 §1.7).
+    # the Mz plane.
     ez_pec_mask_2d = None
     if pec_edge_masks is not None:
         ez_pec_mask_2d = pec_edge_masks[2][:, :, 0]

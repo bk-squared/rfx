@@ -228,7 +228,7 @@ def wrap(step, layout, mesh, *, table, port_table=None):
                 carry, record = advance(carry, xs, inputs)
         # Owner-masked samples summed here, as the legacy step does: a record
         # leaving per device would make its replicated cotangent be sliced by
-        # device identity in the backward program (#1441).
+        # device identity in the backward program.
         if port_table is not None:
             for key in ('wire_sparams', 'sparam_time_records'):
                 if key in carry:

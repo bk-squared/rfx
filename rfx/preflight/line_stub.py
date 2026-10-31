@@ -1,4 +1,4 @@
-"""Band-scoped admission for open signal tails behind line ports (#1512)."""
+"""Band-scoped admission for open signal tails behind line ports."""
 from __future__ import annotations
 
 from rfx.errors import RfxRefusal
@@ -120,7 +120,7 @@ def open_end_extension(width, height, eps_eff):
     """Hammerstad open-end length extension of a microstrip (declared w, h).
 
     The fringing field at an open end makes the stub electrically longer than
-    its metal; without it a short stub's notch is placed too high (#1512).
+    its metal; without it a short stub's notch is placed too high.
     """
     u = width / height
     return (0.412 * height * (eps_eff + 0.3) * (u + 0.264)

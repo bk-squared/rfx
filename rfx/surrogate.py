@@ -114,7 +114,7 @@ def export_training_data(
 # ---------------------------------------------------------------------------
 
 def _sheet_footprint_on_samples(shape, x, y, z, *, name):
-    """A declared SHEET's footprint on the SDF sample lattice (#931 §1.3).
+    """A declared SHEET's footprint on the SDF sample lattice.
 
     Built by the contract's own :func:`sheet_spec_from_shape`, applied to
     the exporter's sample lines instead of the solver's node lines, so the

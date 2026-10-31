@@ -24,9 +24,9 @@ def msl_min_probe_clearance(freq_max: float) -> float:
     return 0.25 * lambda_g_min
 
 
-# Issue #80 Fix B / issue #823: the MSL feed's own near-field standoff.
-# ``add_msl_port`` has floored its AUTO ``n_probe_offset`` to
-# ``max(3, lam_cells, round(5*h_sub/dx))`` since issue #80 (rfx/api/__init__.py,
+# Fix B / the MSL feed's own near-field standoff.
+# ``add_msl_port`` floors its AUTO ``n_probe_offset`` to
+# ``max(3, lam_cells, round(5*h_sub/dx))``  (rfx/api/__init__.py,
 # the ``_hsub_cells`` term). That same rule is stated three more times in this
 # file (check 4's compliant-interval endpoint, check 4a's ``_abs_off_lo``, and
 # ``_validate_forward_sparameter_request``'s explicit-offset guard). This is
@@ -39,17 +39,14 @@ _MSL_NEAR_FIELD_MIN_OFFSET_CELLS = 3
 def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
     """Cells probe 0 must clear the MSL feed plane by: ``max(3, round(5*h/dx))``.
 
-    NOT a new constant. This is the issue-#80 "Fix B" source-fringing rule
+    NOT a new constant. This is the "Fix B" source-fringing rule
     (``~5*h_sub``) that ``rfx.api.Simulation.add_msl_port`` already applies to
     AUTO ``n_probe_offset``. Driver-time recounting uses the runway cell
     unless the ladder crosses a grading ramp; that fallback can fall short.
-    Here ``dx_m`` is the runway cell size. What issue #823 adds is
-    (a) a derivation of WHY that scale is
-    the right one and how much margin it carries, and (b) advisories at the two
-    places an EXPLICIT offset, or a method-level probe ladder, can under-provision
-    it without anything saying so.
+    Here ``dx_m`` is the runway cell size. The derivation below explains the scale and margin; advisories also cover
+    explicit offsets and method-level ladders that under-provision it.
 
-    Derivation (issue #823, measured on the settled attempt-3 witness run VESSL
+    Derivation (measured on the settled attempt-3 witness run VESSL
     369367257533; committed dump ``scripts/diagnostics/
     _coax_msl_transition_settled_run_logs/
     witnesses_369367257533_attempt3_x64-0_ladders.npz``, reproduced by
@@ -181,7 +178,7 @@ def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
         eps_r_sub_estimate = 1.0
         # ``position`` is physical and ``height`` is always along z
         # (the substrate normal), so the substrate mid-point probe is
-        # direction-independent (issue #661).
+        # direction-independent.
         probe_pt = (
             float(position[0]), float(position[1]),
             float(position[2]) + height / 2.0,
@@ -239,7 +236,7 @@ def msl_admitted_scalar_counts(sim, pe):
 
     What a path that cannot recount on the runway (a traced axis, a ladder
     crossing a grading ramp) keeps: the automatic counts re-derived at
-    admission, an explicit count as declared (#1584).
+    admission, an explicit count as declared.
     """
     _, _, _, _, offset, spacing = msl_auto_probe_declaration(
         sim, position=pe.position, width=pe.width, height=pe.height,
@@ -252,7 +249,7 @@ def msl_admitted_scalar_counts(sim, pe):
 
 def admitted_msl_entries(sim, entries):
     """Admit, then return ``entries`` with their admitted scalar counts and
-    the admitted spacing and length tables (#1584).
+    the admitted spacing and length tables.
 
     An entry with no bookkeeping row (explicit counts, hand-appended) is
     returned as given.
@@ -336,7 +333,7 @@ def msl_auto_probe_ladder(profile, scalar_dx: float, feed_m: float,
 
 
 def msl_axis_runs_interval_solve(profile) -> bool:
-    """Whether the driver runs the #469 interval solve on this axis.
+    """Whether the driver runs the interval solve on this axis.
 
     It does on an axis with no profile or a profile of one cell size, where
     an automatic offset is only the LOWER edge: a downstream reflector can
@@ -371,7 +368,7 @@ def msl_absorber_compliant_offset_max(
     resulting GRID-SNAPPED deepest probe clears both
     :func:`_coord_in_absorber` and :func:`_coord_near_absorber`.
 
-    Issue #510 review finding (BLOCKING 1): the first version of this
+    review finding (BLOCKING 1): the first version of this
     check derived the advertised interval endpoint by algebraically
     INVERTING the two predicates — ``int((headroom - margin) / dx) -
     (n_probes-1)*n_spacing``. Float division plus truncation, combined
@@ -393,7 +390,7 @@ def msl_absorber_compliant_offset_max(
     Returns ``None`` if no offset in ``[off_lo, guess_hi]`` clears
     (the compliant interval is empty).
 
-    Axis generality (issue #661): ``domain_x`` / ``ct_lo`` / ``ct_hi``
+    Axis generality: ``domain_x`` / ``ct_lo`` / ``ct_hi``
     describe the port's PROPAGATION axis, not x specifically —
     ``msl_probe_x_coords_n`` already walks whichever axis ``port.direction``
     names, so the caller passes that axis's domain extent and CPML

@@ -84,8 +84,7 @@ __all__ = [
 ]
 
 # rfx.measurement → rfx.model → rfx.nonuniform → rfx.stepping loads this package
-# before the uniform and graded runners are ready (rfx#1818):
-# https://github.com/bk-squared/rfx/issues/1818
+# before the uniform and graded runners are ready.
 # Remove this lazy export when that import chain is removed.
 _LAZY_EXPORTS = {
     "core_step_invariants": "rfx.stepping.uniform_setup",

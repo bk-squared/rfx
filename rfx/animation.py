@@ -14,7 +14,7 @@ from rfx._plotting import _pyplot
 def _animation_frame_times(result, component: str, interval: int):
     """Time in seconds of each animated frame, or ``None`` without axes.
 
-    A ``Result`` carries ``snapshot_axes`` (#1259), so its frames are
+    A ``Result`` carries ``snapshot_axes``, so its frames are
     labelled by the time they were taken; a bare snapshots dict does not,
     and its frames are labelled by number only.
     """

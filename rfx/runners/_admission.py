@@ -7,8 +7,7 @@ refused and solved every other one as if it had not been declared: ADI solved
 a μr = 4 block as vacuum, the graded ``run()`` solved a Kerr block as linear,
 a Floquet port on a graded mesh launched nothing. Here each lane lists what
 it carries, and :func:`admit` refuses every other declared input before the
-first time step (the PI's rule of 2026-09-24: a physics input a path does not
-implement is refused).
+first time step.
 
 ``DETECTORS`` says, for every input row of the path-disposition table
 (``tests/contracts/path_disposition.py``), whether a declaration switches that
@@ -21,7 +20,7 @@ and the open issues; ``tests/contracts/test_path_disposition.py`` fails when
 its cell kinds and ``ADMITS`` disagree.
 
 Each lane calls :func:`admit` at the last point before its kernel, after its
-own specific refusals (#1240, #1241, #1297 and the rest), so those keep their
+own specific refusals, so those keep their
 messages and admission answers only for what they do not name. The lane
 checked is the lane that runs; unsupported multi-device sources are refused
 before any step.
@@ -280,7 +279,7 @@ def _guarded_lid(sim, grid) -> bool:
 
 
 # Inputs that production subgrid validation refuses and 'research'/'off'
-# run with the input dropped (#1286).
+# run with the input dropped.
 _RELAXED_DROPS = (("_materials", "debye"), ("_materials", "lorentz"),
                   ("_materials", "drude"), ("_materials", "kerr"),
                   ("_lumped_rlc", "R"), ("_lumped_rlc", "series_RL"))
@@ -479,7 +478,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
     ("_stencil_order", ""): _UNIFORM_YEE,
     ("_mode", ""): _UNIFORM_YEE | _ADI,
-    # ADI carries a homogeneous fill only: LANE_GATES decides (#1373).
+    # ADI carries a homogeneous fill only: LANE_GATES decides.
     ("_materials", "eps"): _OTHER_RUNNERS - _ADI,
     ("_materials", "sigma"): _OTHER_RUNNERS - _ADI,
     ("_materials", "mu"): _OTHER_RUNNERS - _ADI,
@@ -502,7 +501,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_msl_ports", "msl_port"): _NO_SHEETS,
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
     # One configuration per port is all the single-run assembly takes; the
-    # per-mode list is driven only by compute_waveguide_s_matrix() (#2070).
+    # per-mode list is driven only by compute_waveguide_s_matrix().
     ("_waveguide_ports", "n_modes"): frozenset(),
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
@@ -581,7 +580,7 @@ for _row in _DISTRIBUTED_NU_ROWS:
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
-# waveguide_s_matrix drops NTFF with the #704 warning; material_fit drops it
+# waveguide_s_matrix drops NTFF with the warning; material_fit drops it
 # without a warning (pre-existing behaviour, reported for its owner).
 NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
 
@@ -601,7 +600,7 @@ for _row in (
     ("_boundary_spec", "absorbing_lid"),
     ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"),
     ("_dx_profile", "graded"), ("_dy_profile", "graded"), ("_dz_profile", "graded"),
-    # Preserve observer handling: the calculator warns for NTFF (#704).
+    # Preserve observer handling: the calculator warns for NTFF.
     ("_probes", "probe"), ("_dft_planes", "dft_plane"),
     ("_flux_monitors", "flux"), ("_ntff", "ntff_box"),
     ("_current_moments", "block_moments"),
@@ -872,7 +871,7 @@ ADMITS: dict[str, frozenset] = {
 
 
 # A row the call decides as well as the declaration. run() computes the
-# lumped/wire S-matrix, through a path with no conformal update (#1299), only
+# lumped/wire S-matrix, through a path with no conformal update, only
 # when compute_s_params is not False (rfx/runners/uniform.py); called with
 # compute_s_params=False it computes none, and the conformal walls it does
 # carry are all there is. Called with conformal_pec=False, the override
@@ -903,12 +902,12 @@ CALL_GATES: dict[Row, Callable] = {
 # check. The subgridded lane's production validation accepts one absorbing z
 # face, a lid opposite the PEC z face its refined slab touches, with closed
 # PEC x/y faces; there the lane reads a CPML absorber, its thickness and
-# kappa_max (#1355 review, measured). Every validation mode gets exactly that
+# kappa_max. Every validation mode gets exactly that
 # envelope: 'research' and 'off' do not widen it. A UPML lid is not gated: the
 # lane runs CPML in its place, bit for bit (measured), so it stays refused.
 def _adi_homogeneous(sim, grid) -> bool:
     """Whether the declared materials realize one eps_r and one sigma over the
-    whole grid, the only fill the ADI lane carries (#1373): its update reads
+    whole grid, the only fill the ADI lane carries: its update reads
     each cell's own value, so an interface sits half a cell from where the Yee
     lanes put it. The realized arrays decide, assembled from the declaration."""
     from rfx.adi import adi_material_interface_refusal
@@ -940,7 +939,7 @@ _ADI_MATERIAL_ROWS = (("_materials", "eps"), ("_materials", "sigma"))
 
 
 def _subgrid_opted_in(sim) -> bool:
-    """Whether the refinement opts in to the subgridded lane (#1465, #1468:
+    """Whether the refinement opts in to the subgridded lane (
     validation='research' or 'off')."""
     ref = sim._refinement
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
@@ -1010,8 +1009,8 @@ def message(lane: str, rows, sim, run_args=None) -> str:
             if sim._uses_nonuniform_mesh:
                 lines.append("  - subgridding on a non-uniform mesh is not supported.")
         if lane == "material_fit":
-            # Preserve the input names and remedies of #1380 while the
-            # refusal itself is owned solely by the admission membership.
+            # Keep input names and remedies in the refusal; admission membership owns
+            # the decision.
             names = {
                 ("_ports", "wire_port"): "add_port(..., extent=...) (wire port)",
                 ("_ports", "source"): "add_source() (plain source)",
@@ -1059,7 +1058,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
             "ADI implements only amplitude_kind='field'; 'current' is the default "
             "when amplitude_kind is not given (2.0); declare amplitude_kind='field' "
             "to run on ADI (the earlier ADI behaviour).")
-    # The subgridded lane is unstable and unverified (#1465): it is not
+    # The subgridded lane is unstable and unverified: it is not
     # offered as a carrier unless the model already opts in to it.
     carriers = [LANE_WORDS[other] for other in LANES if other != lane
                 and (other != "run_subgridded" or _subgrid_opted_in(sim))
@@ -1092,7 +1091,7 @@ class _NoWarnings:
 
 
 def refuse_undriven_drives(sim) -> None:
-    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    """Refuse a drive whose pulse is not resolved by dt (its
     table, sampled at dt over the pulse, holds no value above 1e-6 of its
     amplitude), on entries that run no preflight. The same check preflight
     runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``
@@ -1148,7 +1147,7 @@ _COAX_ADVICE = {
 
 
 def refuse_coaxial_port(sim, entry: str) -> None:
-    """The one coaxial-port refusal of ``run()`` and ``forward()`` (#2075),
+    """The one coaxial-port refusal of ``run()`` and ``forward()``,
     raised before mesh planning while no time-stepping lane admits the row;
     ``entry`` selects the advice."""
     row = ("_coaxial_ports", "coax_port")
@@ -1236,7 +1235,7 @@ def graded_lumped_default_s(sim):
     fields with S=None (two driven ports also warn, as forward() does; with no
     driven port there is no incident wave to form S from). A port
     set with a wire port keeps the wire default. Never a refusal: the user did
-    not ask for S (rfx-lead D:6b5bd8, #1373).
+    not ask for S (rfx-lead D:6b5bd8).
     """
     ports = [p for p in sim._ports if p.impedance != 0.0]
     if (not ports or any(p.extent is not None for p in ports)
@@ -1322,7 +1321,7 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
 def admit_forward_s_matrix(sim):
     """Check explicit forward S requests before dispatch or stepping."""
     from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
-    # MSL automatic probe counts from the full declaration (#1584).
+    # MSL automatic probe counts from the full declaration.
     admit_msl_auto_probes(sim)
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(sim)
@@ -1479,7 +1478,7 @@ def _refuse_conformal_boundary(self, path_name: str, *, entry: str,
 
 
 def _reject_upml_on_nonuniform(self, lane: str) -> None:
-    """Refuse ``boundary='upml'`` on a non-uniform lane (#680).
+    """Refuse ``boundary='upml'`` on a non-uniform lane.
 
         ``rfx/nonuniform.py`` has no UPML implementation at all: its
         absorber dispatch is ``use_cpml = grid.cpml_layers > 0``, which

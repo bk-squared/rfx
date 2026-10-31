@@ -1,17 +1,14 @@
-"""Lumped/wire-port and coaxial-port preflight, moved verbatim out of
-``rfx.api._preflight``.
+"""Lumped/wire-port and coaxial-port preflight.
 
-Issue #980 Phase 3, leg 6. The ports family asks what the LATTICE does to a
+The ports family asks what the LATTICE does to a
 port after it is drawn: whether a coaxial pin meets registered PEC at its
-junction plane and is shorted by geometry rather than by the port (#589),
-where ``reference_plane_cells`` puts the measurement planes
-(#313), which of a port's, source's or probe's field components the realized
-PEC edge set has FROZEN (#929 / #931 §1.7, with the #314/#319 dead-cell
-advisories, the #556 end-gap finding and the #544 non-uniform skip), and
+junction plane and is shorted by geometry rather than by the port,
+where ``reference_plane_cells`` puts the measurement planes, which of a port's, source's or probe's field components the
+realized
+PEC edge set has FROZEN (with the dead-cell
+advisories, the end-gap finding and the non-uniform skip), and
 whether a single-cell port is floating mid-substrate with nothing to drive
-against (#71). Everything here was relocated byte for byte out of
-``rfx/api/_preflight.py`` -- same text, same order, same indentation, same
-docstrings, nothing renamed, reordered, tidied or rewritten.
+against.
 
 The move is gated on the committed advisory-text snapshot every
 ``sim.preflight()`` fixture renders
@@ -69,7 +66,7 @@ from rfx.preflight._common import (
 
 def _check_coaxial_port_junction_aperture(self) -> None:
     """Advise when a coaxial port's pin meets REGISTERED PEC at its
-    junction plane — a short by geometry, not by the port (issue #589).
+    junction plane — a short by geometry, not by the port.
 
     Root cause this names: ``_assemble_materials`` is PEC-OR-only
     (``pec_mask = pec_mask | mask``, rfx/api/_compile.py) and there is
@@ -89,11 +86,11 @@ def _check_coaxial_port_junction_aperture(self) -> None:
     junction plane ``k = position_to_index(position)[axis]``, the
     count of NODES CARRYING A TANGENTIAL WALL in the FIRST dielectric
     ring outside the pin. "Carries a wall" is the lattice ownership
-    contract's own test (#931 §1.9): some E edge tangential to the
+    contract's own test: some E edge tangential to the
     port axis and incident to the node is PEC — which is what a sheet
     ground at plane ``k`` and a volume ground whose face lies on
     plane ``k`` both put there, and what a primal CELL mask never
-    marked for a volume's far face (the #868 class). The ring is
+    marked for a volume's far face (the class). The ring is
     defined ON THE LATTICE: ``a + dx/sqrt(2) < r <= min(a +
     dx/sqrt(2) + dx, shell_inner)`` with ``r`` the node distance from
     the port centre and ``shell_inner = b``, the radius
@@ -107,7 +104,7 @@ def _check_coaxial_port_junction_aperture(self) -> None:
     the cell diagonal past its radius); a node beyond that cannot be
     a corner of a pin cell, so anything there is OTHER registered
     conductor. The earlier ``a + dx/2`` bound was calibrated to the
-    pre-#931 node-sampled knife-edge footprint and would count the
+    node-sampled knife-edge footprint and would count the
     pin's own realized rim.
 
     Deliberately NOT the full ``a < r < shell_inner`` annulus: a
@@ -209,26 +206,21 @@ def _check_coaxial_port_junction_aperture(self) -> None:
         )
 
 
-# 2026-09-23 (#1163): ``_validate_cfg_tfsf_with_lumped_rlc`` (code
-# ``tfsf_lumped_rlc_unstable``, the #425 "TFSF plus lumped RLC diverges"
-# warning) stood here and was DELETED. The divergence it warned about was the
-# series RLC element's own coupling to its edge field -- the element took its
-# current from the field before that current had acted and so realized
-# R - d/(D0*A), a negative resistance below ~215 ohm -- not anything TFSF
-# does. #1163 solves the element together with its edge field; on this
-# check's own fixture, series 50 ohm + 0.2 pF and 50 ohm + 1 nH + 0.2 pF under
-# a TFSF plane wave now decay (they went non-finite at steps 246 and 2673),
-# and the parallel pairing it also warned about was stable before and after.
-# ``tests/unit/preflight/test_preflight_guards.py`` keeps that fixture as a
-# stability test.
+# The series RLC element must be solved together with its edge field. Taking
+# current before it acts realizes R - d/(D0*A), a negative resistance below
+# ~215 ohm. On the stability fixture in
+# ``tests/unit/preflight/test_preflight_guards.py``, series 50 ohm + 0.2 pF
+# and 50 ohm + 1 nH + 0.2 pF under a TFSF plane wave decay with the coupled
+# solve; the uncoupled solve becomes non-finite at steps 246 and 2673. The
+# parallel pairing is stable with either solve.
 
 
 def _validate_cfg_refplane_placement(self, _w) -> None:
-    """Advisories for ``add_port(reference_plane_cells=...)`` (issue #313).
+    """Advisories for ``add_port(reference_plane_cells=...)``.
 
     (a) ``reference_plane_cells < 10`` puts the measurement planes in the
     port near field.  Measured on the canonical 16 mm thru (dx = 0.5 mm,
-    gap-trimmed V, 2026-07-10 battery): N=3 planes read Zc = 52-53 ohm
+    gap-trimmed V): N=3 planes read Zc = 52-53 ohm
     with |Im/Re| up to 8.2%, beta/(w/c) = 1.16-1.20, and a -3.1%
     closed-box-referee |S21| residual, while N=10 planes read the clean
     mid-line constants.  The Phase-0 pre-registration rule places BOTH
@@ -290,14 +282,13 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
 def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
     """P1.8: Port/source/probe frozen by realized PEC.
 
-    Lattice ownership contract (#931 §1.7 / #929): every question this
+    Lattice ownership contract: every question this
     check asks is answered by the run's REALIZED edge set, read once
     from the production assembly with the sheet/wire collectors:
 
     * a wire-port extent cell is DEAD iff the port component's own E
       edge at that index is PEC (``_wire_port_live_cells``, the same
-      primitive the assembler uses — issue #544 made the two share
-      it, and #931 made the primitive read edges, so a sheet trace,
+      primitive the assembler uses — it reads edges, so a sheet trace,
       which owns no cell, is visible here);
     * a point port / source / probe on an E component is dead iff its
       own edge is PEC; on an H component iff all four E edges of its
@@ -306,8 +297,8 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
       at the trace plane stays live; inside a one-cell VOLUME all four
       are PEC and H is frozen, which is what a volume declaration
       means. The former ``<= 1.5 dx`` thickness exemption inferred
-      sheet-ness from a bounding box — the #929 class — and is gone;
-    * the #556/#929 end-gap advisory measures the separation from
+      sheet-ness from a bounding box — the class — and is gone;
+    * the end-gap advisory measures the separation from
       the actual source-end node to the nearest conductor on its own
       column. A volume face, sheet plane, or axial PEC edge ending at
       that node supplies contact. Contact is silent; a separation
@@ -316,7 +307,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
     Non-uniform lane: the wire-port primitive cannot index a
     ``NonUniformGrid`` (no ``position_to_index``), so the wire-port
     advisories emit a "classification unavailable" note there rather
-    than guess (issue #544 review item 6; #303 class); the point
+    than guess; the point
     port/probe rule runs on both lanes through the shared context.
     """
     ctx = self._campaign_ctx()
@@ -395,7 +386,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     grid, wp, realized.edges)
             except ValueError:
                 # Every extent cell is dead: _wire_port_live_cells
-                # raises there (issue #318 — such a port has no live
+                # raises there (such a port has no live
                 # cell to terminate or drive) instead of returning a
                 # degenerate split. Report all cells dead.
                 cells = _wire_port_cells(grid, wp)
@@ -409,8 +400,8 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                         if name not in dead_names:
                             dead_names.append(name)
 
-            # Issue #556 (D5 follow-up, #488 arc): the OPPOSITE
-            # failure mode of the #314/#319 advisories above. There,
+            # The OPPOSITE
+            # failure mode of the advisories above. There,
             # a port extent cell lands ON PEC (dead cell). Here, the
             # port terminates SHORT of a conductor. On the
             # D5 "end-fed trace" fixture (dx=80um, h_sub=254um) the
@@ -420,17 +411,17 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             # 20260728_i488_falsifier_ledger.md). It motivated this
             # check, but a geometric gap alone does not identify its
             # electromagnetic coupling mechanism. No cell is dead in
-            # that fixture, so #314/#319 are correctly silent.
+            # that fixture, so the dead-cell advisories are correctly silent.
             #
-            # Contact (#931 §1.9, #929) is read from realized walls
+            # Contact is read from realized walls
             # and PEC source-axis edges on the terminal's own column.
             # The wire's last edge on the + side runs
             # from node ``cells[-1]`` to ``cells[-1] + 1``, so its end
             # node is ``cells[-1] + 1``; on the - side the end node
             # is ``cells[0]``. "Fires" = the end edge is live, the
             # end node has no conductor contact but a further node
-            # on that column does. Search every realized candidate
-            # (#929), not only a one-cell neighbour. An axial PEC edge
+            # on that column does. Search every realized candidate,
+            # not only a one-cell neighbour. An axial PEC edge
             # can supply contact without a tangential wall (filaments).
             # A dipole ending in open vacuum stays silent. A measured
             # separation alone does not determine the intended coupling.
@@ -533,7 +524,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             )
 
         if mid_idx in dead_indices:
-            # Kept verbatim from the #314 fix (PR #317): probe-cell
+            # Kept verbatim from the fix: probe-cell
             # corruption is the stronger, measured failure mode.
             name = dead_names[0] if dead_names else "an assembled PEC region"
             _w.warn(
@@ -595,7 +586,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
     _internal = getattr(self, "_internal_probe_indices", frozenset())
     _probe_entries = [
         pe for _pi, pe in enumerate(self._probes) if _pi not in _internal
-    ]  # skip library-internal witness probes (issue #470; see
+    ]  # skip library-internal witness probes (see
     #    _validate_cfg_absorber_placement for the rationale)
     for pe in list(self._ports) + _probe_entries:
         if getattr(pe, "extent", None):
@@ -701,8 +692,7 @@ def _wire_port_cell_centers(self, pe):
         return None
 
 def _validate_cfg_floating_single_cell_port(self, _w) -> None:
-    """P1.9: Single-cell port in dielectric with no adjacent PEC pin
-    (issue #71). A single-cell LumpedPort placed mid-substrate with
+    """P1.9: Single-cell port in dielectric with no adjacent PEC pin. A single-cell LumpedPort placed mid-substrate with
     no conducting pin or microstrip does not couple to patch-antenna
     TM modes — the optimiser reads a nonsense loss from the
     floating Ez source. Recommend extent=<substrate_height> to
@@ -723,7 +713,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         pos = pe.position
         # Find the dielectric geometry enclosing the port cell. The
         # assembly paints entries in order, so the LAST enclosing one is
-        # what the port cell holds (#1961); library names resolve too.
+        # what the port cell holds; library names resolve too.
         from rfx.core.jax_utils import is_tracer
         from rfx.model.materials import assembled_as_pec
         enclosing = None
@@ -762,7 +752,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
             tuple(pos[i] + (nudge if i == comp_axis else 0.0) for i in range(3)),
             tuple(pos[i] - (nudge if i == comp_axis else 0.0) for i in range(3)),
         )
-        # #931: a pin / ground may be a SHEET declaration
+        # a pin / ground may be a SHEET declaration
         # (add_thin_conductor); sheets are conductors in this census.
         from rfx.materials.thin_conductor import sheet_bounds as _sb
         adjacent_bounds = []
@@ -815,10 +805,10 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     """Point features split from a conductor declared at the same coordinate.
 
     A PolylineWire filament vertex and a PEC sheet plane midway between two
-    nodes go to the LOWER node (#931; ``wire_vertex_nodes``,
+    nodes go to the LOWER node (``wire_vertex_nodes``,
     ``_nearest_plane``). On the non-uniform lane a port, source or probe
-    there does too (``rfx._grid_metric.nearest_node_index``, #1295). The
-    uniform lane now shares that rule (#1342). On either lane, distinct
+    there does too (``rfx._grid_metric.nearest_node_index``). The
+    uniform lane now shares that rule. On either lane, distinct
     coordinates outside the tie band can still straddle a half node (a
     port end at float32(3.5 mm) against a sheet at 3.5 mm).
 
@@ -1281,11 +1271,9 @@ def preflight_wire_port_radius(sim, warn) -> None:
 # ``tests/unit/autodiff/test_design_mask_removed.py
 # ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
 # rule but only walks PUBLIC members, and all these names are private, so
-# ``tests/locks/test_preflight_split_snapshot.py`` pins them directly. Six
-# moved here; five remain since #1163 deleted
-# ``_validate_cfg_tfsf_with_lumped_rlc``.
+# ``tests/locks/test_preflight_split_snapshot.py`` pins them directly.
 #
-# None of the six was a ``@staticmethod`` -- the one staticmethod this leg
+# None is a ``@staticmethod`` -- the one staticmethod this leg
 # moves is ``_validate_tfsf_vacuum_boundary``, which went to
 # ``rfx/preflight/sources.py`` -- so this module has no decorator the facade
 # has to re-apply and every restored qualname below becomes
