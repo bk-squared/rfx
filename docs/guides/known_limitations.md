@@ -214,6 +214,19 @@ Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
+### Subpixel smoothing with `"kottke_pec"` leaves a late field around a closed curved metal body, so its scattering depends on the record length.
+
+Tracker: #1651
+
+With `subpixel_smoothing="kottke_pec"`, a plane wave on a PEC sphere (ka 6, cells of λ/20, 8–11 GHz) leaves a field of 3–5 % of the peak outside the body after the pulse has passed.
+This field stays to the end of the record instead of decaying.
+The backscatter then depends on the record length: from 6 to 12 ns it changed by 2.3–2.7 dB at most frequencies and by up to 7.7 dB at a backscatter null.
+The extinction from the optical theorem differs from Mie by 20–51 % across the band; the staircase (`subpixel_smoothing=False`) on the same mesh differs by 13–14 %.
+A late field of 1e-2 to 5e-2 of the peak was also seen at ka 10 and on three meshes.
+`run()` warns "no ring-down settling witness" but does not refuse the run.
+Until a fix lands, use the staircase on a closed curved PEC body.
+Conformal PEC was not measured on this sphere, and it cannot be combined with `"kottke_pec"` (next entry).
+
 ### Conformal PEC makes a curved metal body electrically larger, and is less accurate than the staircase.
 
 `conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
@@ -222,7 +235,6 @@ skin about one cell thick, which makes the body electrically larger. On a PEC sp
 backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). Measured on main 7d332abff with a PEC sphere (radius 9 mm, plane wave 8-12 GHz, cells 0.75 / 0.5 / 0.375 mm), the extinction fitted against Mie reads a sphere larger by 1.15 / 1.08 / 1.04 cells with conformal PEC against 0.69 / 0.74 / 0.70 cells with the staircase, both falling first order in the cell size; 70-73 % of the conformal excess comes from the eps/w on cut edges whose midpoint lies inside the declared surface (eps 2 to 10), and a user gets it only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns conformal PEC on for every PEC body in that run (the default is the staircase). A run with conformal PEC warns. Conformal PEC together with
 `subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until a fix lands (planned for 2.1), use the staircase and judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
-`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
 ### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
