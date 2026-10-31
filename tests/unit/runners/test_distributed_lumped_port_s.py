@@ -314,7 +314,21 @@ def _assert_shared_step_order(source):
                  and isinstance(node.value, ast.Call)]
         names = [call.func.id for call in calls if isinstance(call.func, ast.Name)]
         assert names.count("_inject_sources_shmap") == 1, "shared step injection order"
-        assert names.index("_inject_sources_shmap") < names.index("_apply_pec_shmap"), "shared step injection order"
+        assert names.index("_apply_pec_shmap") < names.index("_inject_sources_shmap"), "shared step injection order"
+        mask = [node for node in ast.walk(step) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name) and node.func.id == "apply_pec_mask_shmap"]
+        faces = next(call for call in calls if isinstance(call.func, ast.Name)
+                     and call.func.id == "_apply_pec_shmap")
+        references = [call for call in calls if isinstance(call.func, ast.Attribute)
+                      and call.func.attr == "references"]
+        injection = next(call for call in calls if isinstance(call.func, ast.Name)
+                         and call.func.id == "_inject_sources_shmap")
+        exchange = next(call for call in calls if isinstance(call.func, ast.Name)
+                        and call.func.id == "_exchange" and isinstance(call.args[0], ast.Name)
+                        and call.args[0].id == "_exchange_e_ghosts_shmap")
+        assert len(mask) == len(references) == 1, "shared step conductor/reference stages"
+        assert (mask[0].lineno < faces.lineno < references[0].lineno
+                < injection.lineno < exchange.lineno), "shared step injection order"
         assert not any(isinstance(node, ast.Name) and node.id.startswith(("_sparam", "_source_port", "_record_probe"))
                        for node in ast.walk(step)), "drive-dependent step"
 

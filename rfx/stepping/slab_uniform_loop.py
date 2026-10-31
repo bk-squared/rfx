@@ -278,21 +278,16 @@ def run_uniform_slab_loop(
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
 
-        Stage order (#1041)::
+        Stage order::
 
             H -> TF/SF-H -> CPML-H -> exch H -> E -> TF/SF-E -> CPML-E
-              -> sources -> PEC face -> PEC mask -> exch E -> probes
+              -> PEC mask -> PEC faces -> port references -> sources -> exch E -> probes
 
-        The E ghost exchange is the LAST stage of the E half-step, so a
-        ghost row is always a copy of the owner's FINISHED real row -- a
-        row the realized-PEC mask stage has already zeroed where the
-        geometry says metal (#1053). This is ``distributed_nu.py``'s order
-        since ``ac782d4f`` (#931 T3). The PMC coefficient holds the global
-        high H ghost at zero; no exchange sends it. Until #1041
-        this body exchanged BEFORE injecting, which lagged a seam-cell
-        source by one step in the neighbour's copy -- see the comment on
-        stage 7 for the measurement that moved it.
+        The E ghost exchange copies the owner's completed E half-step after
+        conductor boundaries and source injection. The PMC coefficient holds
+        the global high H ghost at zero; no exchange sends it.
         """
+
         cpml_params_arg = cpml_params_arg._replace(**cpml_spacings)
         if magnetic_cpml_spacings:
             cpml_params_arg = cpml_params_arg._replace(
@@ -337,22 +332,8 @@ def run_uniform_slab_loop(
             ranks=ranks, grid=cpml_grid, high_wall=high_wall,
             e_curl_coeff=absorber, boundary=curl_boundary)
 
-        reference_out = ports.references(st, port_table_arg, ranks=ranks)
-        st = _inject_sources_shmap(st, src_vals, ranks=ranks)
-
-        # 6b. Realized conductor edges, distinct from domain walls. The
-        #     global object already applied the shared PEC rule. Each rank
-        #     zeros only owned rows; the kernel excludes ghosts so a seam
-        #     edge is zeroed once and exchanged from its owner.
-        #
-        #     POSITION IS LOAD-BEARING: after injection, BEFORE the domain
-        #     faces and E ghost exchange. The exchange hands the neighbour a
-        #     FINISHED row. Exchanging first leaves rank 0's right ghost
-        #     carrying the un-zeroed Ey/Ez of the seam plane rank 1 zeroes a
-        #     stage later, and rank 0's next H update at its last real cell
-        #     reads that stale plane -- measured on the nu lane at 2.107e-01
-        #     final-step error against a 5e-5 gate (ac782d4f, #931 T3), versus
-        #     7.773e-08 in this order.
+        # 6. Realized conductor edges precede domain faces and sources.
+        #    Only owned rows are masked; the E exchange publishes the result.
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
                 st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
@@ -362,31 +343,12 @@ def run_uniform_slab_loop(
             st, mesh, n_devices, nx_local, pad_x=pad_x,
             pec_faces=e_wall_faces, ranks=ranks)
 
-        # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
-        #    ghost row is a copy of the owner's FINISHED real row (#1041,
-        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
-        #    Exchanging before injection left a source at rank d's first
-        #    real cell out of rank d-1's right ghost for one step, and
-        #    rank d-1's next H update read the pre-injection plane.
-        #    Measured by scripts/diagnostics/issue1041_v2_step_order.py on a
-        #    seam-cell ez source, 2 ranks, 300 steps, boundary="cpml",
-        #    against the SAME model on one device: the probe 4 cells into
-        #    the neighbouring rank went from 1.653e-01 relative (first
-        #    divergent step 4, the causal arrival) to 1.894e-06 (step 50),
-        #    which is the interior-source control's own lane-difference
-        #    floor of 1.629e-06 on this geometry.
-        #
-        #    The defect is ONE-SIDED, which is worth knowing before reading
-        #    any lock result. Only the RIGHT E ghost is live: rank d-1's H
-        #    at its last REAL cell consumes it. A rank's LEFT E ghost feeds
-        #    only its own H at that same index, and the H exchange
-        #    (stage 3 / stage 2) overwrites that H with the neighbour's
-        #    authoritative value before anything reads it. So a source in
-        #    rank d's LAST real cell was never affected -- measured
-        #    bit-identical between the two orderings on both bodies -- and
-        #    that is exactly where every distributed_v2_* fixture of the
-        #    #1038 bit-identity lock puts its source, which is why that lock
-        #    stays 13/13 green through this change.
+        # Read port references after conductors, immediately before sources.
+        reference_out = ports.references(st, port_table_arg, ranks=ranks)
+        st = _inject_sources_shmap(st, src_vals, ranks=ranks)
+
+        # 7. Exchange E ghost cells after the completed E half-step.
+        #    Neighbouring ranks must see both conductor masks and sources.
         st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx, ranks=ranks)
 
         # 8. Probe sampling
@@ -408,19 +370,13 @@ def run_uniform_slab_loop(
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
 
-        Stage order (#1041)::
+        Stage order::
 
-            H -> TF/SF-H -> exch H -> E -> TF/SF-E -> sources -> PEC face
-              -> PEC mask -> exch E -> probes
+            H -> TF/SF-H -> exch H -> E -> TF/SF-E -> PEC mask -> PEC faces
+              -> port references -> sources -> exch E -> probes
 
-        Same invariant as ``step_fn_cpml``: the E ghost exchange is last,
-        so a ghost row is a copy of the owner's finished real row. The
-        PEC face moved with it for lane parity with ``distributed_nu``;
-        on THIS lane that half of the move is provably and measurably
-        inert (stage 6 comment), because the DOMAIN-FACE PEC is the only
-        thing it touches. The realized-PEC cell mask of stage 5b is a
-        different matter entirely and is why the invariant is load-bearing
-        rather than merely tidy (#1053).
+        As in step_fn_cpml, conductor boundaries precede port references and
+        source injection, and the E ghost exchange copies the completed row.
         """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
@@ -445,46 +401,22 @@ def run_uniform_slab_loop(
         st, incident = slab_tfsf.apply_e(
             st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
-        reference_out = ports.references(st, port_table_arg, ranks=ranks)
-        st = _inject_sources_shmap(st, src_vals, ranks=ranks)
-
-        # 5b. Realized-PEC cell mask (#1053), BEFORE the domain faces and
-        #     E ghost exchange -- distributed_nu's stage 8, in its position.
-        #     See the long note on step_fn_cpml stage 6b: getting this one
-        #     stage later, after the exchange, cost 2.107e-01 against a 5e-5
-        #     gate when the nu lane had it there. Moving domain faces across
-        #     the exchange was measured inert (#1041 fixture P,
-        #     bit-identical); that measurement does not transfer to a body
-        #     mask, which must stay before the exchange.
+        # 4. Realized conductor edges precede domain faces and sources.
+        #    The E exchange must follow masking and injection.
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
                 st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
 
-        # 5. PEC boundaries (domain faces only; conductor edges precede).
-        #    Injection runs BEFORE the face, matching distributed_nu stage 7.
-        #    The two lanes therefore both differ from the single-device lane,
-        #    which applies the faces before its soft-source loop; the
-        #    difference is observable only for a source placed ON a domain
-        #    PEC face, where the tangential E is zeroed in the same step it
-        #    is injected. #1041 measured no such fixture and did not change
-        #    it -- a source on a PEC face is its own question.
+        # 5. Domain PEC faces follow the conductor edge mask.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
-        # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
-        #    ghost row is a copy of the owner's FINISHED real row (#1041,
-        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
-        #    Same measurement as step_fn_cpml above, boundary="pec": the
-        #    probe 4 cells into the neighbouring rank went from 1.859e-01
-        #    relative (first divergent step 4) to 4.858e-06 (step 43),
-        #    against an interior-source floor of 5.100e-06. Same one-sided
-        #    reachability as step_fn_cpml: a source in rank d's LAST real
-        #    cell is unaffected either way (measured bit-identical).
-        #    The PEC half of the move is inert on THIS lane and was measured
-        #    to be so (#1041 fixture P, bit-identical): apply_pec_face_shmap
-        #    zeroes the y/z faces on every x row INCLUDING the ghosts, and
-        #    its x_lo / x_hi faces act on rank 0's first and rank N-1's last
-        #    real cell, whose exchanged copies the receiving rank discards.
+        # Read port references after conductors, immediately before sources.
+        reference_out = ports.references(st, port_table_arg, ranks=ranks)
+        st = _inject_sources_shmap(st, src_vals, ranks=ranks)
+
+        # 6. Exchange E ghost cells after the completed E half-step.
+        #    Neighbouring ranks must see both conductor masks and sources.
         st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx, ranks=ranks)
 
         # 7. Probe sampling
