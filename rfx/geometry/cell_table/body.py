@@ -121,7 +121,10 @@ def build_cell_table(grid, pec_shapes):
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
         shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
-        if not np.any(shape_sdf < -1e-9 * min(widths)) and np.min(shape_sdf) < max(widths):
+        # The node-holding verdict reads the lattice without the trailing halo node,
+        # which only the floor rule's slice uses.
+        held = np.broadcast_to(shape_sdf, sdf.shape)[:-1, :-1, :-1]
+        if not np.any(held < -1e-9 * min(widths)) and np.min(held) < max(widths):
             if isinstance(sheet, Box):  # On node planes its staircase faces are exact.
                 _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this PEC Box')
                 continue

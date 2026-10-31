@@ -78,3 +78,18 @@ def test_staircase_forms_no_table(monkeypatch):
         conformal=False, conformal_min_weight=.1,
         pec_shapes=[Sphere((.0061, .0058, .0057), .0023)])
     assert result[2] is None and result[4] is None
+
+
+@pytest.mark.parametrize('rule', ('sc', 'raw', 'floor'))
+def test_node_holding_band_is_the_default_lattice(rule):
+    # The trailing halo node the floor slice needs does not decide whether a body holds a node.
+    from rfx.grid import Grid
+
+    grid = Grid(20e9, (.012,) * 3, dx=.001, cpml_layers=0)
+    grid.dt = .5 * Grid.courant_dt(grid.dx, 3)
+    form = lambda shape: conformal_fractions_from_table(
+        cell_table.build_cell_table(grid, [shape]), grid,
+        'cut_cell_floor' if rule == 'floor' else None, clamp=rule != 'raw')
+    form(Sphere((.0155, .006, .006), .0007))  # 1.5 cells past the last node: admitted
+    with pytest.raises(NotImplementedError, match='holds no grid node'):
+        form(Sphere((.014, .006, .006), .0007))  # holds only the trailing halo node
