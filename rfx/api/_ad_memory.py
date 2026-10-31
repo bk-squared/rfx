@@ -127,7 +127,9 @@ class _AdMemoryMixin:
             _grid = (self._build_nonuniform_grid() if is_nonuniform
                      else self._build_grid())
             nx, ny, nz = (int(v) for v in _grid.shape)
-        except Exception:
+        except (TimeoutError,):
+            raise
+        except Exception:  # noqa: BLE001 - recorded in grid_source
             # Keep a number rather than raising out of a planning helper;
             # the fallback is the pre-#696 arithmetic and is LABELLED as
             # such so the artifact does not present it as the real grid.

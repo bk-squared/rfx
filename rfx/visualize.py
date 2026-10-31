@@ -1273,9 +1273,11 @@ def visualize_structure(sim, *, include_cpml: bool = True,
     fig = go.Figure()
 
     for entry in sim._geometry:
+        if not hasattr(entry.shape, "bounding_box"):
+            continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except Exception:
+        except NotImplementedError:
             continue
         w, d, h = [c2[i] - c1[i] for i in range(3)]
         color, opacity = _material_style(entry.material_name)
