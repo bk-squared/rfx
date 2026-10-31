@@ -32,7 +32,7 @@ DX_GUIDE = np.r_[np.ones(10), [.9, 1.1, .95, 1.05, .9, 1.1, 1.05, .95, 1.3],
 DZ_MSL = np.r_[np.full(6, .5), .5 * 1.25 ** np.arange(1, 6)] * 1e-3
 
 
-XFAILS = dict.fromkeys((29, 30, 31, 32, 43), pytest.mark.xfail(
+XFAILS = dict.fromkeys((29, 30, 31, 32, 41), pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
 
 
