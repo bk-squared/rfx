@@ -56,7 +56,7 @@ def compute_rcs(
     theta_inc : float
         Incident angle in degrees (0 = +x propagation). Non-zero values tilt the
         illumination in the x-y plane and route through the open-domain oblique
-        Method-B TFSF (2.5-D: open transverse y, thin-periodic z). Only the
+        Method-B TFSF (2.5-D: open transverse y, thin-periodic z). The
         far-field PATTERN / specular direction is validated at oblique incidence
         (specular peak phi = 180 - theta_inc at theta_obs = 90 deg). Measured
         envelope on the committed gate configuration (2.2-lambda plate, 700
@@ -73,19 +73,19 @@ def compute_rcs(
         normalization is the MEASURED 1D-aux incident spectrum (see
         ``tfsf_oblique_open.measure_incident_spectrum``), which removed a
         +6.58/+4.51 dB (theta 20/40 deg) inflation the analytic normal-path
-        spectrum caused. Against a PO uniform-aperture oracle on the gate
-        grid (dx=2 mm = lambda/30): specular-peak Delta +0.86/+0.85 dB
-        (theta 20/40), lobe-flat over +/-12 deg. The returned sigma is that
+        spectrum caused. Against a PO uniform-aperture oracle for the
+        2.2-lambda plate at 20 and 40 deg, four settled meshes (lambda/30 to
+        lambda/120) give specular Delta +0.08 to +0.16 dB at 5 GHz,
+        converged within 0.006 dB from lambda/60 to lambda/120.
+        The returned sigma is that
         of an aperture of height ``h_eff = (k_hi - k_lo)*dx`` of the NTFF
         z-box (span-doubling ratio 4.000 measured — sigma scales as
         h_eff^2); the oblique path's hardcoded 2-cell midplane box means
         h_eff = 2*dx, so scale by ``(L_z/h_eff)^2`` for a physical strip
-        height ``L_z``. CAVEAT (measured, pinned-geometry): halving dx to
-        lambda/60 moves Delta to -1.55 dB — a 2.4 dB resolution
-        sensitivity, so treat absolute oblique sigma as a +/-2 dB-class
-        number at lambda/30-lambda/60, NOT sub-dB (the committed test gates
-        |Delta| <= 1.5 dB at the fixed gate grid as a regression lock, not
-        an accuracy claim). Requires ``polarization='ez'`` and a uniform
+        height ``L_z``. The always-on gate-grid test locks Delta within
+        0.03 dB of +0.0833/+0.1583 dB at 20/40 deg (rfx-archive
+        rfx/records/20261031-oblique-rcs-level-1991).
+        Requires ``polarization='ez'`` and a uniform
         grid; other combos raise ``NotImplementedError``.
     phi_inc : float
         Incident azimuth in degrees (reserved for future oblique support).
@@ -214,9 +214,9 @@ def compute_rcs(
     # inside a broad lobe, an envelope pin, not a loose bound.
     # ABSOLUTE sigma (issue #471 F7): normalized by the MEASURED 1D-aux
     # incident spectrum (measure_incident_spectrum below), validated vs a PO
-    # uniform-aperture oracle at the gate grid to +0.86/+0.85 dB (theta 20/40)
-    # with a measured 2.4 dB resolution sensitivity lambda/30 -> lambda/60 —
-    # a +/-2 dB-class calibration, envelope-pinned by
+    # uniform-aperture oracle for this plate at 20/40 deg: four settled meshes
+    # lambda/30 to lambda/120 give +0.08 to +0.16 dB at 5 GHz, converged within
+    # 0.006 dB from lambda/60 to lambda/120. The gate-grid level is locked by
     # tests/unit/farfield/test_oblique_rcs_absolute_sigma.py. sigma corresponds to an
     # aperture height h_eff = (k_hi-k_lo)*dx = 2*dx (z-faces cancel for
     # x-y-plane observation; span-doubling ratio 4.000 measured). Kept fenced

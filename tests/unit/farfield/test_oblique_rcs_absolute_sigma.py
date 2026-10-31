@@ -12,17 +12,17 @@ record (2026-07-27 session, scratchpad ``f7_falsifier_declaration.md`` +
   launches the declared pulse, so the waveform term is gone and the launch
   response alone reads -2.13 / -4.02 dB (same for DG and MG; re-measured on
   the same gate grid, 2026-10-17);
-* post-fix specular-peak Delta vs the PO uniform-aperture oracle:
-  +0.86 dB (20 deg) / +0.85 dB (40 deg), lobe-flat over +/-12 deg,
-  settling witness -60.7 / -50.1 dB (R5);
+* current specular Delta vs the PO uniform-aperture oracle at 5 GHz:
+  +0.084/+0.092/+0.091/+0.090 dB (20 deg) and
+  +0.156/+0.157/+0.153/+0.151 dB (40 deg) on four meshes
+  dx = 2, 1, 2/3, 1/2 mm (lambda/30 to lambda/120), with settled records;
 * aperture-height convention: sigma(span4)/sigma(span2) = 4.000 measured
   -> h_eff = (k_hi - k_lo)*dx exactly (no off-by-one node);
-* RESOLUTION SENSITIVITY (corrected-G4, pinned thickness 2 mm + aperture
-  4 mm): Delta moves +0.86 -> -1.55 dB from dx=2 mm to dx=1 mm — a 2.4 dB
-  shift, FAILING the pre-declared 1.0 dB invariance bound. Absolute oblique
-  sigma is therefore a +/-2 dB-CLASS number at lambda/30..lambda/60. The
-  slow gate below pins |Delta| <= 1.5 dB AT THE FIXED GATE GRID as a
-  regression lock, not an accuracy claim.
+* mesh convergence: within 0.006 dB from lambda/60 to lambda/120,
+  +0.08 to +0.16 dB from PO at 5 GHz for this plate at 20 and 40 deg.
+  Pattern and specular-direction validation remain as before. The always-on
+  gate below pins its fixed-grid Delta within 0.03 dB of the predeclared values
+  (rfx-archive rfx/records/20261031-oblique-rcs-level-1991).
 
 F5 — the 4-edge Method-B box requires vacuum on ALL FOUR transverse boundary
 planes; the pre-#471 validator checked only x planes and ``compute_rcs`` ran
@@ -86,9 +86,9 @@ def _gate_grid_and_plate():
     (node-sampled, half-open); it never reaches ``pec_mask``, never goes
     through ``classify_pec_entry`` and is not realized by
     ``realized_pec_edge_masks``. The lattice ownership contract fences the
-    lossy-volume conductor model explicitly and leaves it unchanged, so the
-    +0.86 / +0.85 dB locks below do not move under the contract and are not
-    recomputed for it.
+    lossy-volume conductor model explicitly and leaves it unchanged. This
+    plate's measured four-mesh result is recorded in the module header;
+    the gate below pins +0.0833 / +0.1583 dB at 20 / 40 deg.
 
     Standing debt this fixture carries, unchanged and named here so nobody
     "fixes" it by analogy with the contract: the PO oracle is fed the
@@ -259,20 +259,14 @@ def test_oblique_nu_grid_fence_fails_loud_on_ez():
 
 
 # ---------------------------------------------------------------------------
-# F7 slow: the absolute-sigma gates (regression locks at the gate grid)
+# F7: absolute-sigma gates (the aperture-height check remains slow)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.slow
 @pytest.mark.parametrize("theta_inc", [20.0, 40.0])
 def test_absolute_sigma_matches_po_at_gate_grid(theta_inc):
-    """PUBLIC-path lock: compute_rcs specular-peak sigma vs the PO
-    uniform-aperture oracle (W = rasterized plate width, h = 2*dx) within
-    1.5 dB at the FIXED gate grid. Measured 2026-07-27: +0.86 dB (20 deg),
-    +0.85 dB (40 deg); settling witness -60.7/-50.1 dB (sibling direct-
-    pipeline test measures it on this exact config). This pins the fixed-
-    discretization envelope — the measured lambda/30->lambda/60 resolution
-    sensitivity is 2.4 dB (module docstring), so this is a regression lock,
-    not an accuracy claim."""
+    """Pin Delta vs PO to +0.0833/+0.1583 dB at 20/40 deg: |Delta - pin| <= 0.03 dB.
+    Bar rounds up four times the largest measured route/record/mesh shift (0.007 dB).
+    Predeclared in rfx-archive rfx/records/20261031-oblique-rcs-level-1991."""
     grid, mats, n_w = _gate_grid_and_plate()
     res = compute_rcs(grid, mats, N_STEPS, f0=F0, bandwidth=0.5,
                       theta_inc=theta_inc, polarization="ez",
@@ -283,9 +277,10 @@ def test_absolute_sigma_matches_po_at_gate_grid(theta_inc):
     po = _po_sigma(np.array([np.radians(180.0 - theta_inc)]), theta_inc,
                    n_w * DX, 2 * DX, LAM)[0]
     delta_db = 10 * np.log10(sigma_peak / po)
-    assert abs(delta_db) <= 1.5, (
-        f"absolute sigma vs PO drifted: {delta_db:+.2f} dB at "
-        f"theta_inc={theta_inc} (measured +0.86/+0.85 when locked)"
+    delta_pin = {20.0: 0.0833, 40.0: 0.1583}[theta_inc]
+    assert abs(delta_db - delta_pin) <= 0.03, (
+        f"absolute sigma vs PO drifted: {delta_db:+.6f} dB at "
+        f"theta_inc={theta_inc} (pin {delta_pin:+.4f} dB, bar 0.03 dB)"
     )
 
 
