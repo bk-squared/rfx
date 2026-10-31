@@ -15,9 +15,9 @@ from rfx.geometry import cell_table
 STEPS = 64
 
 
-def scene(eps=2.5):
+def scene(eps=2.5, *, conformal=True):
     sim = Simulation(20e9, (.012,) * 3, dx=.001, cpml_layers=0,
-                     boundary=BoundarySpec(x='pec', y=Boundary('pec', 'pec', conformal=True), z='pec'))
+                     boundary=BoundarySpec(x='pec', y=Boundary('pec', 'pec', conformal=conformal), z='pec'))
     sim.add_material('host', eps_r=eps)
     sim.add(Box((.0013, .0012, .0011), (.0107, .0108, .0106)), material='host')
     sim.add(Sphere((.0061, .0058, .0057), .0023), material='pec')
@@ -81,7 +81,7 @@ def test_operands_match_run_bytes(monkeypatch):
 
 
 @pytest.mark.parametrize('transform', ('grad', 'jit'))
-@pytest.mark.parametrize('route', ('forward', 'mixed', 'driver', 'run'))
+@pytest.mark.parametrize('route', ('forward', 'driver', 'run'))
 @pytest.mark.parametrize('shape', ('sphere_radius', 'sphere_center', 'box'))
 def test_traced_pec_refused_before_table_or_steps(monkeypatch, route, shape, transform):
     from tests.unit.runners.test_silent_routes import _mixed, _sim, _scan_call
@@ -124,3 +124,51 @@ def test_optimization_refused_at_entry(monkeypatch, route):
             _optimize(scene(), skip_preflight=True)
         else:
             _scan_call('topology', scene())
+
+
+def test_conformal_pec_mask_override_refused(monkeypatch):
+    mask = jnp.zeros(scene()._build_grid().shape, dtype=bool).at[5:8, 2:6, 2:5].set(True)
+
+    def fail(*args, **kwargs):
+        pytest.fail('conformal mask override reached time stepping')
+
+    with monkeypatch.context() as guarded:
+        guarded.setattr(jax.lax, 'scan', fail)
+        with pytest.raises(NotImplementedError, match='pec_mask_override.*conformal.*conformal_pec=False.*PEC shapes'):
+            scene().forward(n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
+    result = scene(conformal=False).forward(n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
+    assert np.all(np.isfinite(result.time_series))
+
+
+def test_conformal_sheet_refusal_matches_run(monkeypatch):
+    from tests.unit.runners.test_silent_routes import _sim, _scan_call
+
+    def fail(*args, **kwargs):
+        pytest.fail('conformal surface-impedance sheet reached time stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', fail)
+    messages = []
+    for route in ('run', 'forward', 'driver'):
+        sim = _sim(True, ports='lumped')
+        sim.add_thin_conductor(Box((.001, .001, .010), (.011, .011, .010)),
+                               surface_impedance_f0=10e9)
+        with pytest.raises(ValueError, match='surface_impedance_f0.*conformal_pec') as caught:
+            if route == 'driver':
+                _scan_call(route, sim)
+            else:
+                getattr(sim, route)(n_steps=8, skip_preflight=True)
+        messages.append(str(caught.value))
+    assert messages[0] == messages[1] == messages[2]
+
+
+def test_conformal_mixed_refused_before_steps(monkeypatch):
+    from tests.unit.runners.test_silent_routes import _mixed
+
+    def fail(*args, **kwargs):
+        pytest.fail('conformal mixed S-matrix reached time stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', fail)
+    sim = _mixed(True)
+    sim.add(Sphere((.0061, .0058, .0057), .0023), material='pec')
+    with pytest.raises(NotImplementedError, match=r'compute_mixed_s_matrix\(\) refuses conformal PEC: no comparator yet'):
+        sim.compute_mixed_s_matrix(n_steps=8, skip_preflight=True)

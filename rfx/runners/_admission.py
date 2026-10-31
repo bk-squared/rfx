@@ -690,8 +690,6 @@ _CALCULATOR_ROWS = {
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
         ('_boundary_spec', 'pmc_face'),
-        ('_boundary_spec', 'conformal'),
-        ('_boundary_spec', 'conformal_s_matrix'),
         ('_boundary_spec', 'absorbing_lid'),
         ('_periodic_axes', 'periodic'),
         ('_cpml_layers', 'layers'),
@@ -1053,6 +1051,8 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if lane in CALCULATORS:
         lines = ([] if lane == "material_fit" else
                  [f"  - {ROW_WORDS[row]}" for row in message_rows])
+        if lane == "mixed_s_matrix" and any(row[1] in {"conformal", "conformal_s_matrix"} for row in rows):
+            lines.append("compute_mixed_s_matrix() refuses conformal PEC: no comparator yet.")
         if ("_refinement", "slab") in rows and lane != "material_fit":
             lines.append("  - add_refinement(): this calculator has no subgridded lane.")
             if sim._uses_nonuniform_mesh:
@@ -1221,7 +1221,7 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
         refuse_distributed_sources(sim, lane)
-    if lane in {"s_matrix_scan", "mixed_s_matrix"}:
+    if lane == "s_matrix_scan":
         _refuse_traced_conformal_shapes(sim, (run_args or {}).get("conformal_pec"))
     refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
@@ -1450,6 +1450,17 @@ def _no_shape_tangent_jvp(primals, tangents):
         "region (design_box / design_eps_override) for shape optimisation. "
         "jax.jit and jax.vmap over a Sphere or Cylinder dimension are supported "
         "(with subpixel_smoothing only in a closed PEC domain).")
+
+
+def merge_forward_pec_mask(sim, pec_mask, override):
+    """Refuse cell-mask overrides that conformal shape operands would discard."""
+    if override is None:
+        return pec_mask
+    if _conformal_requested(sim, {}) and sim._has_pec_to_conform():
+        raise NotImplementedError(
+            "pec_mask_override is not supported together with conformal PEC "
+            "(conformal_pec=True); use conformal_pec=False, or add the cells as PEC shapes.")
+    return override if pec_mask is None else (pec_mask | override)
 
 
 def _refuse_traced_conformal_shapes(sim, conformal=None):

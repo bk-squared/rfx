@@ -92,19 +92,19 @@ def _forward_from_materials(
         ``Boundary(conformal=True)``. Uniform Yee scans form the same
         default conformal operands before entering the compiled loop.
         """
-    if subpixel_smoothing and sheet_impedance is not None:
-        raise ValueError(
-            "surface-impedance (surface_impedance_f0) sheets are not "
-            "supported with subpixel_smoothing / conformal_pec"
-            ": the sheet operator assumes the plain isotropic "
-            "E update at its edges (Stage-1/2 conformal and Kottke "
-            "lanes do not apply the sheet operator).")
     from rfx.model.tensor_operands import (
         refuse_tensor_conflicts, form_tensor_operands, finish_tensor_operands, finish_conformal_mu)
     from rfx.runners._admission import admit_conformal_floor
     admit_conformal_floor(self, "fwd_uniform", conformal_pec, grid=grid)
     _conformal = (bool(self._boundary_spec.conformal_faces())
                   if conformal_pec is None else bool(conformal_pec))
+    if (subpixel_smoothing or _conformal) and sheet_impedance is not None:
+        raise ValueError(
+            "surface-impedance (surface_impedance_f0) sheets are not "
+            "supported with subpixel_smoothing / conformal_pec"
+            ": the sheet operator assumes the plain isotropic "
+            "E update at its edges (Stage-1/2 conformal and Kottke "
+            "lanes do not apply the sheet operator).")
     from rfx.model.tensor_operands import refuse_full_tensor_conformal
     refuse_full_tensor_conformal(subpixel_smoothing, _conformal, pec_shapes)
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,

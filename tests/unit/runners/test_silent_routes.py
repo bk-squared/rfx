@@ -136,7 +136,7 @@ def no_steps(monkeypatch):
     assert len(calls) == 0
 
 
-@pytest.mark.parametrize("route", ["topology", "vmap"])
+@pytest.mark.parametrize("route", ["topology", "vmap", "mixed"])
 def test_calculator_refuses_conformal_before_steps(route, no_steps):
     sim = _mixed(True) if route == "mixed" else _sim(True)
     with pytest.raises(NotImplementedError):
@@ -429,7 +429,7 @@ def _scan_call(route, sim, **kw):
         grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, pec_shapes=shapes, **kw)
 
 
-@pytest.mark.parametrize("route", ["topology"])
+@pytest.mark.parametrize("route", ["topology", "mixed"])
 def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
     if route == "mixed":
         sim = _mixed(True)
@@ -440,7 +440,7 @@ def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
         _scan_call(route, sim)
 
 
-@pytest.mark.parametrize("route", ["forward", "driver", "mixed", "direct"])
+@pytest.mark.parametrize("route", ["forward", "driver", "direct"])
 def test_forward_scan_carries_conformal(route):
     sim = _mixed(True) if route == "mixed" else _sim(True, ports="lumped" if route == "driver" else None)
     assert _scan_call(route, sim) is not None

@@ -1668,8 +1668,8 @@ class _ExecuteMixin:
                 materials, eps_override=eps_override, sigma_override=sigma_override,
                 mu_r_override=mu_r_override)
 
-        if pec_mask_override is not None:
-            pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
+        from rfx.runners._admission import merge_forward_pec_mask
+        pec_mask = merge_forward_pec_mask(self, pec_mask, pec_mask_override)
 
         if n_steps is None:
             if self._solver == "adi":
