@@ -349,6 +349,8 @@ REFUSALS.extend([
      'use the plain call to forward() or run()', False),
     ('uniform', 'lumped', 'run', False, False, NotImplementedError,
      'use forward() with port_s11_freqs or call run() directly (plain call)', True),
+    ('uniform', 'wire', 'run', False, False, NotImplementedError,
+     'use forward() with port_s11_freqs or call run() directly (plain call)', True),
 ])
 
 
