@@ -260,7 +260,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
-                         *, ranks, grid, high_wall, slab):
+                         *, ranks, grid, high_wall, slab, h_materials=None):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -289,6 +289,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             P("x"), P("x"), P("x"), P("x"),  # hx_ylo/yhi, hz_ylo/yhi
             P("x"), P("x"), P("x"), P("x"),  # hx_zlo/zhi, hy_zlo/zhi
             P("x"),  # mu_r (read-only, material-aware coefficient)
+            P("x"),  # precomputed wall view and H means
         ),
         out_specs=(
             P("x"), P("x"), P("x"),           # hx, hy, hz
@@ -302,7 +303,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
                 psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
                 psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi,
-                mu_r_slab, *, rank):
+                mu_r_slab, means, *, rank):
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         _cs = cpml_state._replace(
@@ -315,7 +316,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         )
         new_st, new_cs = apply_cpml_h(
             _st, cpml_params, _cs, grid,
-            materials=cpml_h_materials(mu_r_slab, rank, ghost, nx_per=slab[0], nx=slab[1], high_wall=high_wall),
+            materials=cpml_h_materials(mu_r_slab, rank, ghost, nx_per=slab[0], nx=slab[1], high_wall=high_wall, h_materials=means),
             faces=cpml_absorbing_faces(grid), frame=cpml_slab_frame(ex.shape, ghost, pad_x),
             owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
@@ -340,7 +341,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         cpml_state.psi_hz_ylo, cpml_state.psi_hz_yhi,
         cpml_state.psi_hx_zlo, cpml_state.psi_hx_zhi,
         cpml_state.psi_hy_zlo, cpml_state.psi_hy_zhi,
-        mu_r,
+        mu_r, h_materials,
     )
     new_state = state._replace(hx=hx, hy=hy, hz=hz)
     new_cpml = cpml_state._replace(

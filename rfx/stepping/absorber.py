@@ -35,8 +35,8 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
         _update_e_local_with_dispersion, slab_e_component_materials,
         slab_dispersion_coeffs,
     )
-    # Plain E already forms its means in _update_e_local_with_dispersion.
-    # Only ADE owners need them here; CPML uses its existing face operands.
+    # Reuse the prologue means. ADE owners without them form their means
+    # here before building the coefficients shared with CPML.
     means = e_materials
     if (debye is not None or lorentz is not None) and means is None:
         means = slab_e_component_materials(materials, *slab, rank=rank, high_wall=high_wall)
@@ -48,7 +48,8 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
                           None if lorentz is None else lorentz[0], dt)
     result = _update_e_local_with_dispersion(
         state, materials, dt, dx, debye=debye, lorentz=lorentz,
-        slab=slab, rank=rank, high_wall=high_wall, boundary=boundary, frame=frame, owned=owned)
+        slab=slab, e_materials=means if debye is None and lorentz is None else None,
+        rank=rank, high_wall=high_wall, boundary=boundary, frame=frame, owned=owned)
     return (*result, curl)
 
 

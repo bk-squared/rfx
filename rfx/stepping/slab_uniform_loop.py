@@ -24,6 +24,7 @@ from rfx.stepping.slab_update import _slab_curl_kwargs
 from rfx.stepping.slab_update import _update_h_local
 from rfx.stepping.slab_update import inject_sources_shmap
 from rfx.stepping.slab_update import magnetic_low_ghost
+from rfx.stepping.slab_update import slab_h_materials_shmap
 from rfx.stepping.slab_update import sample_probes_shmap
 from rfx.stepping.slab_update import slab_e_materials_shmap
 from rfx.stepping.slab_walls import apply_pec_face_shmap as _apply_pec_shmap
@@ -130,7 +131,7 @@ def run_uniform_slab_loop(
         cut(factor, layout, "pmc_h_factor", mesh=mesh) if axis == 0 and factor is not None
         else factor for axis, factor in enumerate(magnetic_factors))
 
-    def _update_h_shmap(st, mat, *, ranks):
+    def _update_h_shmap(st, mat, h_materials=None, *, ranks):
 
         @partial(
             rank_shard_map,
@@ -141,20 +142,22 @@ def run_uniform_slab_loop(
                 P(),                     # step (replicated)
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
                 (P("x"), P(), P()),       # optional PMC axis factors
+                P("x"),                  # wall view and component H means
             ),
             out_specs=(P("x"), P("x"), P("x"), P()),  # hx, hy, hz, step
             check_rep=False,
         )
-        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, factors, *, rank):
+        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, factors, means, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
-                                 mu_r=magnetic_low_ghost(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall))
-            new_st = _update_h_local(_st, _mat, dt, dx, factors, high_wall=(False, *high_wall[1:]))
+                                 mu_r=(means[0] if means is not None else magnetic_low_ghost(
+                                     mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall)))
+            new_st = _update_h_local(_st, _mat, dt, dx, factors, high_wall=(False, *high_wall[1:]), h_materials=None if means is None else means[1])
             return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
         hx, hy, hz, step = _h(
             ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r, magnetic_factors)
+            mat.eps_r, mat.sigma, mat.mu_r, magnetic_factors, h_materials)
         return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
     def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials, *, ranks):
@@ -270,7 +273,7 @@ def run_uniform_slab_loop(
 
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg, port_table_arg,
+        cpml_params_arg, pec_mask_arg, e_materials, h_materials, tfsf_tables_arg, port_table_arg,
         *, ranks,
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
@@ -302,7 +305,7 @@ def run_uniform_slab_loop(
         lr_st = carry["lorentz"]
 
         # 1. H update
-        st = _update_h_shmap(st, materials_arg, ranks=ranks)
+        st = _update_h_shmap(st, materials_arg, h_materials, ranks=ranks)
         st, incident = slab_tfsf.apply_h(
             st, carry["tfsf"], tfsf_tables_arg[0], tfsf_cfg, mesh, ranks=ranks)
 
@@ -310,7 +313,7 @@ def run_uniform_slab_loop(
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x, ranks=ranks, grid=cpml_grid, high_wall=high_wall, slab=(nx_per, nx))
+            pad_x=pad_x, ranks=ranks, grid=cpml_grid, high_wall=high_wall, slab=(nx_per, nx), h_materials=h_materials)
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
@@ -524,13 +527,13 @@ def run_uniform_slab_loop(
             cpml_params_arg, pec_mask_arg, tfsf_tables_arg, port_table_arg,
             *, ranks,
         ):
-            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall)
-                           if has_debye or has_lorentz else None)
+            e_materials = slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall)
+            h_materials = slab_h_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks, high_wall=high_wall, ghost=ghost)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_cpml(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    cpml_params_arg, pec_mask_arg, e_materials, tfsf_tables_arg, port_table_arg,
+                    cpml_params_arg, pec_mask_arg, e_materials, h_materials, tfsf_tables_arg, port_table_arg,
                     ranks=ranks,
                 ),
                 carry,

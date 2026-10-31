@@ -43,14 +43,14 @@ import numpy as np
 material_drive_scales = partial(_material_drive_scales, reduce_devices=False)
 
 
-def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None), *, high_wall: tuple[bool, bool, bool]):
+def _update_h_local(state, materials, dt, dx, magnetic_factors=(None, None, None), *, high_wall: tuple[bool, bool, bool], h_materials=None):
     """H update on a local slab (including ghost cells).
 
     Identical to yee.update_h but without jit decorator and always
     non-periodic (ghost cells handle inter-device coupling).
     """
     ex, ey, ez = state.ex, state.ey, state.ez
-    mu = component_h_materials(materials, high_wall=high_wall)
+    mu = component_h_materials(materials, high_wall=high_wall) if h_materials is None else h_materials
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "yee.H")
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
@@ -195,8 +195,10 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     Returns (new_state, new_debye_state_or_None, new_lorentz_state_or_None).
     """
     if debye is None and lorentz is None:
+        coeffs = (slab_e_coeffs(materials, *slab, dt, rank=rank, high_wall=high_wall)
+                  if e_materials is None else component_e_coeffs(e_materials, dt))
         return _update_e_local(
-            state, slab_e_coeffs(materials, *slab, dt, rank=rank, high_wall=high_wall), dx,
+            state, coeffs, dx,
             boundary=boundary, frame=frame, owned=owned), None, None
 
     if e_materials is not None:
@@ -581,15 +583,28 @@ def cpml_absorbing_faces(grid):
     return tuple(face.name for face in grid_face_depths(grid) if face.realized > 0)
 
 
-def cpml_h_materials(mu_r, rank, ghost, *, nx_per, nx, high_wall: tuple[bool, bool, bool]):
+def cpml_h_materials(mu_r, rank, ghost, *, nx_per, nx, high_wall: tuple[bool, bool, bool], h_materials=None):
     """Reuse the uniform slab's component means, including its low ghost."""
     from types import SimpleNamespace
-    if mu_r is None:
+    if h_materials is not None:
+        mu_r, means = h_materials
+    elif mu_r is None:
         means = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=high_wall)
     else:
         mu_r = magnetic_low_ghost(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall)
         means = component_h_materials(MaterialArrays(None, None, mu_r), high_wall=(False, *high_wall[1:]))
     return SimpleNamespace(mu_r=mu_r, components=SimpleNamespace(mu_update=means))
+
+
+def slab_h_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall, ghost=1):
+    """Form the H wall view and face means once per rank before the scan."""
+    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),
+             check_rep=False)
+    def _mean(mu_r, *, rank):
+        local = cpml_h_materials(mu_r, rank, ghost, nx_per=nx_per, nx=nx, high_wall=high_wall)
+        return local.mu_r, local.components.mu_update
+
+    return jax.checkpoint(_mean)(ranks, mat.mu_r)
 
 
 def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, high_wall: tuple[bool, bool, bool], grid=None):
