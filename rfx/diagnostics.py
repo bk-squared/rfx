@@ -202,7 +202,7 @@ def _check_optional_extras(report: _Report) -> None:
     # Optional extras: report presence only, never fail. These back the
     # [optimization] / [dashboard] / [visualization] extras.
     optional = [
-        ("optax", "optax", "inverse-design / gradient optimisation"),
+        ("optax", "optax", "optional example optimizers; topology_optimize needs no optax"),
         ("streamlit", "streamlit", "dashboard UI"),
         ("pandas", "pandas", "tabular post-processing"),
         ("PIL", "pillow", "image export"),

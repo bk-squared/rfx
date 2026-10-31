@@ -330,8 +330,6 @@ def numeric_arrays(result):
 @pytest.mark.parametrize('entry', HONOURS)
 @pytest.mark.parametrize('precision', ['float32','float64'])
 def test_realized_field_storage(monkeypatch, entry, precision):
-    if entry == 'topology_optimize':
-        pytest.importorskip('optax')  # optional dependency of topology_optimize's optimizer
     import rfx.simulation as core
     fields, accumulators, records = [], [], []
     initialize, make_step = uniform_setup.init_state, uniform_loop.make_core_step

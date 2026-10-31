@@ -8,7 +8,6 @@ Validates:
 5. topology_optimize reduces loss on a small example
 """
 
-import importlib.util
 
 import jax
 import jax.numpy as jnp
@@ -416,10 +415,6 @@ class TestTopologyOptimize:
     """Integration test for the full topology optimization loop."""
 
     @pytest.mark.gpu  # optax is installed only in the GPU suite
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("optax"),
-        reason="optax not installed",
-    )
     def test_topology_optimize_reduces_loss(self):
         """Topology optimization should reduce the objective over iterations.
 
@@ -473,10 +468,6 @@ class TestTopologyOptimize:
         )
 
     @pytest.mark.gpu  # optax is installed only in the GPU suite
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("optax"),
-        reason="optax not installed",
-    )
     def test_topology_optimize_with_pec_foreground(self):
         """PEC foreground should optimise through conductor occupancy, not sigma hacks."""
         from rfx.api import Simulation
@@ -528,10 +519,6 @@ class TestTopologyOptimize:
         assert result.final_result is None
 
     @pytest.mark.gpu  # optax is installed only in the GPU suite
-    @pytest.mark.skipif(
-        not importlib.util.find_spec("optax"),
-        reason="optax not installed",
-    )
     def test_topology_optimize_with_cpml(self):
         """Topology optimization should work with CPML boundary.
 

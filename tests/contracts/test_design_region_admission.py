@@ -291,12 +291,7 @@ def test_path_topology(monkeypatch, kind):
             topology_optimize(sim, region, lambda r: jnp.sum(r.time_series**2),
                 n_iterations=1, skip_preflight=True, verbose=False)
         return
-    # Stop at the first real forward result: optimizer setup is immaterial to
-    # this admission contract and the optimization extra need not be installed.
-    import sys
-    from types import SimpleNamespace
-    monkeypatch.setitem(sys.modules, 'optax', SimpleNamespace(
-        adam=lambda rate: SimpleNamespace(init=lambda values: ())))
+    # Stop at the first real forward result: optimizer setup is immaterial.
     original_forward = sim._forward_from_materials
     def forward(*a, **kw):
         return original_forward(*a, **{**kw, 'n_steps': 2})
