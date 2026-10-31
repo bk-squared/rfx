@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from rfx.errors import AccuracyWarning
 from rfx._grid_metric import field_index
-from dataclasses import dataclass; from typing import NamedTuple, TYPE_CHECKING
-if TYPE_CHECKING: from rfx.core.yee import FDTDState, MaterialArrays; from rfx.nonuniform import NonUniformGrid; from collections.abc import Sequence; from rfx.sources.sources import WirePort; import numpy as np
+from dataclasses import dataclass
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -20,7 +20,7 @@ from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
 from rfx.stepping.probe_loop import resolve_extractor_axes
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
-from rfx.sources.sources import LumpedPort, _wire_port_live_cells, _wire_port_cells
+from rfx.sources.sources import LumpedPort, _wire_port_live_cells, _wire_port_cells, WirePort
 
 
 @dataclass(frozen=True)
@@ -1075,7 +1075,7 @@ def _wire_port_live_mid(grid, port, pec_edge_masks=None):
     return live[len(live) // 2]
 
 
-def wire_port_voltage(state: FDTDState, grid: Grid | NonUniformGrid, port: WirePort, pec_edge_masks: Sequence[jax.Array | np.ndarray] | None = None) -> jnp.ndarray:
+def wire_port_voltage(state, grid, port: WirePort, pec_edge_masks=None) -> jnp.ndarray:
     """Voltage at the WirePort LIVE-run midpoint cell.
 
     Uses a single-cell measurement at the live-run midpoint (same location
@@ -1115,9 +1115,9 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
     return _project_port(state, grid, port, wire=True, pec_edge_masks=pec_edge_masks)[2]
 
 
-def wire_port_current(state: FDTDState, grid: Grid | NonUniformGrid, port: WirePort,
+def wire_port_current(state, grid, port: WirePort,
                       periodic: tuple[bool, bool, bool] = (False, False, False),
-                      pec_edge_masks: Sequence[jax.Array | np.ndarray] | None = None) -> jnp.ndarray:
+                      pec_edge_masks=None) -> jnp.ndarray:
     """Current through a WirePort via Ampere's law at the LIVE-run midpoint.
 
     Uses the H-field loop integral at the center cell of the LIVE wire run
@@ -1835,7 +1835,7 @@ def extract_s11_normalised(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
 
 def extract_s_matrix_wire(
     grid: Grid,
-    materials: MaterialArrays,
+    materials,
     ports: list,
     freqs: jnp.ndarray,
     n_steps: int | None = None,

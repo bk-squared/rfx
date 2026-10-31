@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
+    from rfx.model.graded_grid import NonUniformGrid
 
 from rfx._precision import HIGHEST
 from rfx.farfield import ETA_0
@@ -233,7 +234,7 @@ def compute_far_field(
 def compute_far_field_jax(
     ntff_data: NTFFData,
     box: NTFFBox,
-    grid: Grid,
+    grid: Grid | NonUniformGrid,
     theta: ArrayLike,
     phi: ArrayLike,
     *,

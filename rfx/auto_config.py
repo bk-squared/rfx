@@ -21,8 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike
-    from collections.abc import Callable
+    from rfx.sources.sources import GaussianPulse, ModulatedGaussian, CWSource, CustomWaveform
     from collections.abc import Iterable
     from rfx.materials.thin_conductor import ThinConductor
 
@@ -365,7 +364,7 @@ def auto_configure(
     margin_override: float | None = None,
     n_steps_override: int | None = None,
     max_memory_mb: float | None = None,
-    waveform: Callable[[ArrayLike], ArrayLike] | None = None,
+    waveform: GaussianPulse | ModulatedGaussian | CWSource | CustomWaveform | None = None,
     thin_conductors: Iterable[ThinConductor] | None = (),
     domain: tuple[float, float, float] | None = None,
 ) -> SimConfig:

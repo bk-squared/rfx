@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from rfx.farfield import NTFFBox
     from rfx.farfield import NTFFData
     from collections.abc import Sequence
-    from rfx.materials.thin_conductor import SheetImpedanceCtx
+    from rfx.materials.thin_conductor import SheetImpedanceCtx, PinnedSheet
     from rfx.boundaries.pec import SheetSpec
     from rfx.boundaries.pec import WireSpec
     import numpy as np
@@ -45,7 +45,7 @@ def run_nonuniform(
     pec_wires: Sequence[WireSpec] = (),
     pec_edge_masks: Sequence[jax.Array | np.ndarray] | None = None,
     pec_occupancy: jax.Array | None = None,
-    pinned_sheet_layout: tuple[Sequence[ArrayLike] | None, ...] | None = None,
+    pinned_sheet_layout: tuple[tuple[int, PinnedSheet, tuple[jax.Array, jax.Array]], ...] | None = None,
     sources: list = None,
     probes: list = None,
     wire_ports: list = None,
