@@ -21,6 +21,8 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 # Every patched module/attribute is named here once. The contract passes this
 # table to capture, so a pipeline restructure changes its integration seams here.
+# run_after_admission moves only dispatch: these downstream lookup sites stay
+# in the same modules, so its extraction needs no SEAMS target substitution.
 SEAMS = {
     'scan': ('jax.lax', 'scan'),
     'uniform': ('rfx.simulation', 'run'),
