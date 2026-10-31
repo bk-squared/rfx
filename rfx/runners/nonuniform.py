@@ -7,6 +7,8 @@ from rfx.errors import ConfigurationWarning
 from rfx.model.graded_admission import host_cells
 
 from rfx._grid_metric import field_index
+from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
+
 import warnings
 from dataclasses import replace
 
@@ -1177,7 +1179,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         pec_faces=getattr(sim, '_pec_faces', None),
         pmc_faces=sim._boundary_spec.pmc_faces() if getattr(sim, '_boundary_spec', None) is not None else None,
         dft_planes=dft_plane_probes if dft_plane_probes else None,
-        record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
+        record_dft=time_recorded_dft_selection(sim),
         flux_monitors=(
             (flux_monitor_objs + wg_flux_monitors)
             if (flux_monitor_objs or wg_flux_monitors) else None
@@ -1357,9 +1359,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         lumped_port_sparams=r.get("lumped_port_sparams"),
         sparam_time_records=r.get("sparam_time_records"),
         sparam_read_ids=r.get("sparam_read_ids"),
-        dft_time_records={
-            entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
-        },
+        dft_time_records=named_plane_records(sim, r.get("dft_time_records", ())),
         **declared_measurements,
         waveguide_port_flux=waveguide_port_flux_result,
         grid=grid,

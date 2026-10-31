@@ -73,6 +73,7 @@ def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, fre
     """
     from rfx.api._spec import ForwardResult
     from rfx.measurement import package_declared_measurements
+    from rfx.measurement.plane_records import named_plane_records
     planes = getattr(result, "dft_planes", None)
     return ForwardResult(
         diagnostics=diagnostics,
@@ -84,9 +85,7 @@ def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, fre
         freqs=freqs,
         lumped_port_sparams=result.lumped_port_sparams,
         sparam_time_records=result.sparam_time_records,
-        dft_time_records={
-            entry.name: rec for entry, rec in zip(sim._dft_planes, result.dft_time_records or ())
-        },
+        dft_time_records=named_plane_records(sim, result.dft_time_records),
         wire_port_sparams=result.wire_port_sparams,
         dft_planes=({entry.name: probe for entry, probe in zip(sim._dft_planes, planes)}
                     if sim._dft_planes and planes else None),
