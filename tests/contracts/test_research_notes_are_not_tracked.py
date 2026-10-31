@@ -196,6 +196,8 @@ REVIEWED = {
             "and the reference-style [id]: and angle-bracket (<path>) forms "
             "of the same link, one per link syntax the gate must not miss; "
             "it resolves none of them and reads no file there (#752)"),
+    "scripts/diagnostics/build_msl_broad_e5_envelope.py":
+        (2, "scope sentence copied into the emitted JSON"),
 
     # WRITE targets. The script creates the directory and writes into it; it
     # never expects to find anything there, so a clone losing the path is fine.
