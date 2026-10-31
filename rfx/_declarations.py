@@ -143,6 +143,10 @@ def release_declaration_caches(sim):
             setattr(sim, attr, None)
 
 
+def declaration_root(sim):
+    return getattr(sim, "_declaration_root", sim)
+
+
 def declaration_variant(sim, **replacements):
     """Copy a declaration with private containers and release derived products.
 
@@ -153,6 +157,7 @@ def declaration_variant(sim, **replacements):
     if unknown:
         raise TypeError(f"Unknown DECLARATIONS replacement(s): {', '.join(sorted(unknown))}")
     variant = copy(sim)
+    variant._declaration_root = declaration_root(sim)
     for attr, form in DECLARATIONS:
         if form in {"entries", "mapping"}:
             value = getattr(sim, attr, None)
