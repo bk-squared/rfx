@@ -1,0 +1,11 @@
+### Added — Explicit cut-cell floor for conformal PEC
+
+Uniform Yee `run(conformal_pec="cut_cell_floor")` now accepts
+`Simulation(dt=q * Grid.courant_dt(dx))`, q = 0.5 or 0.25 (2-D: ndim=2).
+It retains true edge lengths and applies a q² cut-face area floor.
+Uniform waveguide device/reference scans carry the same choice; unsupported paths refuse it.
+At q = 0.5, the measured PEC sphere offset is about +0.02 cell, about 1/9
+of the default at twice the steps; it remains first order and the order >= 1.5 target was not met.
+At q = 0.25, it is about -0.002 cell at 0.5 and 0.375 mm, at the fit's
+resolution, about 1/100 of the default at four times the steps.
+The default conformal operands and step are unchanged; `n_steps` still counts steps.

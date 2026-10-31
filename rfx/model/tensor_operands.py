@@ -137,8 +137,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             compute_conformal_fractions,
             warn_conformal_model,
         )
-        warn_conformal_model()
-        conformal_weights, conformal_areas = compute_conformal_fractions(grid, pec_shapes)
+        warn_conformal_model(conformal)
+        conformal_weights, conformal_areas = compute_conformal_fractions(grid, pec_shapes, conformal_pec=conformal)
 
         # The 1/w permittivity is formed below, once the run's final
         # periodic flags are known (#1373).
@@ -184,7 +184,7 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
 
 
 def form_reference_operands(grid, materials, *, subpixel_smoothing,
-                            conformal_weights, boundary_pec_shapes, reference_eps=1.0):
+                            conformal_weights, boundary_pec_shapes, reference_eps=1.0, conformal_pec=None):
     """Form the waveguide reference operands; conformal walls cut the reference medium (reference_eps)."""
     ref_aniso_inv_eps = None
     ref_aniso_eps = None
@@ -202,7 +202,8 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
         )
     reference = None
     if conformal_weights is not None:
-        weights, areas = conformal_module.compute_conformal_fractions(grid, boundary_pec_shapes)
+        weights, areas = conformal_module.compute_conformal_fractions(
+            grid, boundary_pec_shapes, conformal_pec=conformal_pec)
         ref_aniso_eps = conformal_module.conformal_eps_correction(
             jnp.full_like(materials.eps_r, reference_eps), *weights)
         reference = (weights, areas)
@@ -260,7 +261,7 @@ def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
         sim._refuse_unsupported_run_kwargs(
             "uniform mesh with Debye/Lorentz materials", {
                 "subpixel_smoothing": subpixel_smoothing,
-                "conformal_pec": bool(conformal_pec and pec_shapes),
+                "conformal_pec": conformal_pec if pec_shapes else False,
             },
             instead="remove the Debye/Lorentz poles",
             reason_overrides={

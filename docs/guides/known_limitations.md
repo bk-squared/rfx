@@ -256,6 +256,8 @@ Under conformal PEC these are refused: `conformal_min_weight` other than 0.1; PE
 Judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
+The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
+
 ### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
 
 Tracker: #2274

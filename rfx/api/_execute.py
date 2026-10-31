@@ -21,10 +21,8 @@ from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
 from rfx.api._gradient_witness import with_conductivity_record
 from rfx.preflight._impl import auto_preflight, run_preflight_gate, user_stacklevel
-from rfx._diagnostic_transport import merge_diagnostics
 
 import functools
-import math
 
 from rfx import _realized, _grid_metric
 from rfx.model import apply_material_overrides, conductors as _conductors, design_box_window
@@ -36,7 +34,6 @@ import numpy as np
 from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
-from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
 
 
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
@@ -1819,7 +1816,7 @@ class _ExecuteMixin:
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
         subpixel_smoothing: bool | str = False,
-        conformal_pec: bool | None = None,
+        conformal_pec: bool | str | None = None,
         conformal_min_weight: float = 0.1,
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -1908,8 +1905,11 @@ class _ExecuteMixin:
             closed/PEC point-field fallback stop.
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
-        conformal_pec : bool or None
+        conformal_pec : bool, str or None
             Cut-cell conformal PEC (#1651); None reads Boundary(conformal=True).
+            "cut_cell_floor" uses true edges and a q**2 face-area floor on uniform Yee.
+            Requires Simulation(dt=q * Grid.courant_dt(dx, ndim)), q=0.5 or 0.25.
+            An explicit n_steps still counts steps: half or quarter the ordinary duration.
         conformal_min_weight : float
             Legacy; only the default 0.1 is accepted (the SC clamp replaced it).
         devices : list of jax.Device or None
