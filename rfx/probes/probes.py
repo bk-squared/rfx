@@ -1113,7 +1113,7 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
 
 
 def wire_port_current(state, grid, port: WirePort,
-                      periodic: tuple[bool, bool, bool] = (False, False, False),
+                      periodic: tuple[bool, ...] | list[bool] = (False, False, False),
                       pec_edge_masks=None) -> jnp.ndarray:
     """Current through a WirePort via Ampere's law at the LIVE-run midpoint.
 
