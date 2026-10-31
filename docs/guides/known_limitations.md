@@ -392,16 +392,18 @@ this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_E
 Settled in #726 (closed): the guard and preflight used to contradict each other
 about this, and a measurement decided it.
 
-### A microstrip port's S-parameters change with where its probes sample the line, also on a straight matched line.
+### On a straight microstrip, the MSL port's |S21| exceeds 0 dB near 10–12 GHz and depends on where the first probe sits: the port misreads power within about 10 mm of its plane.
 
 Tracker: #2270
 
-On a straight matched microstrip line with no discontinuity, the two-port `|S21|` from `compute_msl_s_matrix` rises up to 0.1 dB above unity (0 dB), which a passive line cannot do.
-Moving the probes (`add_msl_port(..., n_probe_offset=...)`, in cells from the feed plane) to 5, 12 or 20 mm from the port moves `|S21|` by up to about 0.19 dB over 1–12 GHz (at most 0.08 dB below 10 GHz) and `|S11|` by up to 0.045.
-A 0.1 mm cell gives nearly the same `|S21|` spread (0.17 against 0.19 dB), so a finer mesh does not remove it; for `|S11|` the two meshes do not settle the trend.
-This is inside the 2 dB magnitude bar. The cause is not known.
-Measured on a synthetic straight line (εr 2.2, substrate 0.80 mm, strip 2.43 mm, 60 mm long) on uniform 0.2 and 0.1 mm cells, three probe placements each (record kept with the project).
-On a line like this one, until it is fixed, read an `|S21|` within about 0.2 dB of 0 dB as unity, do not judge a loss or gain below 0.2 dB from it, and do not read an `|S11|` below about −27 dB as resolved.
+On a synthetic matched straight microstrip (εr 2.2, h 0.8 mm, 60 mm, no discontinuity), `compute_msl_s_matrix(...)` with the first probe plane 5 mm from each feed plane returns `|S21|` up to +0.096 dB above 10 GHz (largest singular value of S up to 1.015), and `|S21|` spreads by 0.19 dB across first-probe positions of 5, 12 and 20 mm.
+At default `compute_msl_s_matrix` warns that S is not passive, with the number of such bins and the worst one (`sigma_max_excess` holds the per-bin amounts).
+The spread does not fall with the cell (0.186 dB at 0.2 mm, 0.172 dB at 0.1 mm), and doubling the lateral and top air margins and the absorber changes neither number by more than 5 %.
+The solved field carries no gain: between the two first-probe planes the real power flux falls by 0.08 to 0.41 dB at those bins.
+The excess comes from the port's V·I* reading of power near its plane: at 10–12 GHz it differs from the real flux by up to 10 % within about 10 mm of each feed plane, and by at most 2.5 % below 9 GHz.
+Why V and I misread the power there is not determined.
+Workaround on lines like this one: place the first probe plane 12 mm or more from the feed plane (`add_msl_port(..., n_probe_offset=...)`, in cells: 60 cells at 0.2 mm); with it at 12 mm the same line's `|S21|` exceeds 0 dB by at most 0.017 dB (largest singular value up to 1.0034).
+This is one line's evidence (record kept with the project); a clearance rule or default waits for a sweep over several lines.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
