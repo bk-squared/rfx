@@ -797,7 +797,7 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
 
     # --- one board on every rung: the sheets and the substrate -------------------
     # PI 2026-09-25: the patch and ground node spans are the common nodes, and
-    # the substrate's cells span the ground's node span plus one cell, on every
+    # the substrate's cells span the ground's node span under centre sampling on every
     # rung.  A rung that realizes anything else solves a different antenna, and
     # a ladder through it would put that change into the mesh trend.
     held = (("the patch's node span along x (the resonant length)",
@@ -809,9 +809,9 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
             ("the ground's node span along y", g["ground"]["y_node_span_m"],
              GROUND_NODE_SPAN_M[1]),
             ("the substrate's cells along x times dx", g["substrate_x_m"],
-             GROUND_NODE_SPAN_M[0] + dx),
+             GROUND_NODE_SPAN_M[0]),
             ("the substrate's cells along y times dx", g["substrate_y_m"],
-             GROUND_NODE_SPAN_M[1] + dx))
+             GROUND_NODE_SPAN_M[1]))
     for name, got, want in held:
         if abs(got - want) > SPAN_REALIZED_TOL_M:
             raise AssertionError(

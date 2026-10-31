@@ -565,16 +565,38 @@ class PolylineWire:
         return _periodic_grid_mask(self, grid)
 
 
+def _material_masks(grid, shapes):
+    """Sample CSG leaves with the grid's material-cell ownership rule."""
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, cell_centres_from_nodes,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    if not all(isinstance(shape, Box) for shape in shapes):
+        return tuple(shape.mask(grid) for shape in shapes)
+    nonuniform = hasattr(grid, "dx_arr")
+    coords = (coords_from_nonuniform_grid(grid) if nonuniform
+              else coords_from_uniform_grid(grid))
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if nonuniform
+             else cell_sizes_from_uniform_grid(grid))
+    centres = cell_centres_from_nodes(coords, sizes)
+    return tuple(_material_cell_mask(shape, coords, centres, grid=grid,
+                                     cell_sizes=sizes) for shape in shapes)
+
+
 def union(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
-    return a.mask(grid) | b.mask(grid)
+    ma, mb = _material_masks(grid, (a, b))
+    return ma | mb
 
 
 def difference(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
-    return a.mask(grid) & ~b.mask(grid)
+    ma, mb = _material_masks(grid, (a, b))
+    return ma & ~mb
 
 
 def intersection(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
-    return a.mask(grid) & b.mask(grid)
+    ma, mb = _material_masks(grid, (a, b))
+    return ma & mb
 
 
 def rasterize(
@@ -584,14 +606,8 @@ def rasterize(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Rasterize shapes onto grid, producing (eps_r, sigma) arrays.
 
-    Shapes are sampled on **node** coordinates. :class:`Box` uses a
-    half-open ``[lo, hi)`` volume rule, so a box drawn between two node
-    planes realizes one cell short of its drawn extent, asymmetrically at
-    the ``hi`` face. For a PEC obstacle that is an electrical dimension
-    error — a nominal opening ``d`` between two facing boxes rasterizes to
-    ``d + dx``. Read the :class:`Box` docstring before drawing an obstacle
-    to a nominal physical size, and assert the realized footprint (this
-    function's ``sigma`` output is what a raster assert inspects).
+    Material volumes are sampled at primal-cell centres. Box faces land on
+    the nearest node, with half-cell ties resolving to the lower node.
 
     Parameters
     ----------

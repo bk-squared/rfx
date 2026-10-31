@@ -26,6 +26,9 @@ import numpy as np
 
 from rfx.core.yee import MaterialArrays, init_materials, init_state
 from rfx.geometry.csg import Box
+from rfx.geometry.rasterize_grid import (
+    GridCoords, _material_cell_mask, axis_cell_sizes, cell_centres_from_nodes,
+)
 from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
 from rfx.grid import Grid
 from rfx.nonuniform import make_current_source, make_nonuniform_grid
@@ -59,15 +62,17 @@ def test_geoc3_make_current_source_traceable_with_traced_materials():
     assert float(grad) != 0.0
 
 
-def test_csg_box_mask_on_coords_traceable_with_traced_coords():
-    """Box.mask_on_coords must trace — np.asarray(coords) raised
-    TracerArrayConversionError on the differentiable-mesh path."""
+def test_material_box_traceable_with_traced_coords():
+    """The material centre window accepts differentiable mesh coordinates."""
     box = Box((0.002, 0.0, 0.0), (0.008, 0.01, 0.01))
     y = jnp.linspace(0.0, 0.01, 6)
     z = jnp.linspace(0.0, 0.01, 6)
 
     def masked_count(x):
-        m = box.mask_on_coords(x, y, z)
+        co = GridCoords(x, y, z, (len(x), len(y), len(z)))
+        widths = tuple(axis_cell_sizes(c) for c in co[:3])
+        m = _material_cell_mask(box, co, cell_centres_from_nodes(co, widths),
+                                cell_sizes=widths)
         return jnp.sum(m.astype(jnp.float32))
 
     x = jnp.linspace(0.0, 0.01, 10)
@@ -75,37 +80,21 @@ def test_csg_box_mask_on_coords_traceable_with_traced_coords():
     assert np.isfinite(float(cnt))
 
 
-def test_csg_box_mask_on_coords_forward_bit_identical():
-    """The traceable rewrite is byte-identical to a direct NODE mask on
-    concrete coordinates.
-
-    ``Box.mask_on_coords`` is the DIELECTRIC sampler — node coordinates,
-    half-open ``[lo, hi)`` with the solver-width band at both faces.
-    What changed is who reads it: a PEC entry no longer goes through this
-    mask at all. It is centre-sampled by ``classify_pec_entry`` and
-    realized by ``realized_pec_edge_masks``, and the sibling test below
-    pins that the two samplers are different on purpose rather than one
-    having been left behind.
-
-    Re-pinned at #802: concrete coordinates are compared on the HOST in
-    float64, so the reference here widens the float32 linspace values to
-    float64 before comparing. The reference writes out the float32-line
-    band, using each node's forward width (repeated at the final node).
-    The old
-    reference compared in float32, where a coordinate equal to ``lo``
-    after f32 rounding was included even when its f64 value sits below
-    ``lo``; that flag-dependent inclusion is the defect the fix removed.
-    """
+def test_material_box_forward_bit_identical():
+    """Material occupancy agrees with a direct centre window on the drawing."""
     box = Box((0.002, 0.0, 0.0), (0.0085, 0.01, 0.01))
     x = jnp.linspace(0.0, 0.012, 24)
     y = jnp.linspace(0.0, 0.01, 6)
     z = jnp.linspace(0.0, 0.01, 6)
-    m = np.asarray(box.mask_on_coords(x, y, z))
+    co = GridCoords(x, y, z, (len(x), len(y), len(z)))
+    widths = tuple(axis_cell_sizes(c) for c in co[:3])
+    m = np.asarray(_material_cell_mask(
+        box, co, cell_centres_from_nodes(co, widths), cell_sizes=widths))
     # x-extent (6.5 mm) spans many cells -> volume path, half-open [lo, hi).
     xh = np.asarray(x, dtype=np.float64)
     yh = np.asarray(y, dtype=np.float64)
     zh = np.asarray(z, dtype=np.float64)
-    def direct_node_mask(coords, lo, hi):
+    def direct_centre_mask(coords, lo, hi):
         widths = np.diff(coords)
         widths = np.concatenate((widths, widths[-1:]))
 
@@ -113,24 +102,18 @@ def test_csg_box_mask_on_coords_forward_bit_identical():
             return 1e-9 * widths + np.minimum(
                 16 * float(np.finfo(np.float32).eps) * abs(face), 5e-4 * widths)
 
-        return (coords >= lo - band(lo)) & (coords < hi - band(hi))
+        centres = coords + widths / 2
+        return (centres >= lo - band(lo)) & (centres < hi - band(hi))
 
-    mx = direct_node_mask(xh, 0.002, 0.0085)
-    my = direct_node_mask(yh, 0.0, 0.01)
-    mz = direct_node_mask(zh, 0.0, 0.01)
+    mx = direct_centre_mask(xh, 0.002, 0.0085)
+    my = direct_centre_mask(yh, 0.0, 0.01)
+    mz = direct_centre_mask(zh, 0.0, 0.01)
     expected = mx[:, None, None] & my[None, :, None] & mz[None, None, :]
     np.testing.assert_array_equal(m, expected)
 
 
-def test_the_pec_sampler_is_not_the_dielectric_sampler():
-    """#931 §1.1/§1.8, on ONE Box: the dielectric node sampler drops the
-    ``hi`` face, the PEC volume sampler is centre-based and the realized
-    walls land on BOTH drawn faces.
-
-    A single-file guard that a future "unify the samplers" edit has to
-    argue with, since half of this repo's #802/#807 history is the two
-    conventions being confused for each other.
-    """
+def test_pec_and_dielectric_share_the_volume_sampler():
+    """Both material and PEC cell ownership round off-node faces alike."""
     from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
     from rfx.geometry.rasterize_grid import (
         GridCoords, cell_centres_from_nodes, classify_pec_entry,
@@ -139,9 +122,9 @@ def test_the_pec_sampler_is_not_the_dielectric_sampler():
     dx = 1e-3
     axis = np.arange(11, dtype=np.float64) * dx      # nodes 0 .. 10 mm
     co = GridCoords(x=axis, y=axis, z=axis, shape=(11, 11, 11))
-    box = Box((0.002, 0.002, 0.002), (0.006, 0.006, 0.006))
+    box = Box((0.0023, 0.0023, 0.0023), (0.0063, 0.0063, 0.0063))
 
-    node = np.asarray(box.mask_on_coords(axis, axis, axis))
+    node = np.asarray(_material_cell_mask(box, co, cell_centres_from_nodes(co)))
     assert np.where(node.any(axis=(1, 2)))[0].tolist() == [2, 3, 4, 5]
 
     cells, sheet, wire = classify_pec_entry(

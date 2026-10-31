@@ -13,8 +13,7 @@ The contract locked here:
 * concrete node coordinates are HOST float64, exact, flag-independent
   (``_uniform_axis_nodes`` is THE uniform formula);
 * every shape class realizes the same mask under x64=0 and x64=1;
-* the uniform lane (``shape.mask(grid)``) and the NU lane
-  (``shape.mask_on_coords(*coords_from_nonuniform_grid(g))``) are bitwise
+* the uniform and NU material-cell samplers are bitwise
   equal on a uniform-valued profile, per axis (graded one axis at a time,
   so an axis swap cannot pass);
 * the traced-profile (mesh-as-design-variable) path still traces and
@@ -43,7 +42,9 @@ from rfx.geometry import via as via_mod
 from rfx.geometry.csg import Box, Cylinder, OrientedBox, PolylineWire, Sphere, _grid_coords
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.rasterize_grid import (
-    _uniform_axis_nodes,
+    _uniform_axis_nodes, _material_cell_mask,
+    centres_from_uniform_grid, centres_from_nonuniform_grid,
+    cell_sizes_from_uniform_grid, cell_sizes_from_nonuniform_grid,
     coords_from_nonuniform_grid,
     coords_from_uniform_grid,
 )
@@ -177,20 +178,31 @@ def test_the_one_uniform_node_formula_is_exact_f64():
         assert np.array_equal(np.asarray(a), np.asarray(b))
 
 
+def _material_mask(shape, grid, nonuniform=False):
+    coords = (coords_from_nonuniform_grid(grid) if nonuniform
+              else coords_from_uniform_grid(grid))
+    centres = (centres_from_nonuniform_grid(grid, coords) if nonuniform
+               else centres_from_uniform_grid(grid))
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if nonuniform
+             else cell_sizes_from_uniform_grid(grid))
+    return _material_cell_mask(shape, coords, centres,
+                               grid=None if nonuniform else grid, cell_sizes=sizes)
+
+
 def test_node_aligned_box_realizes_the_documented_convention():
     """The #802 repro as a regression test (failed before the fix).
 
     ``Box((0,0,2.5e-3),(12.5e-3,3.4e-3,2.8e-3))`` on domain
-    (12.5, 3.4, 3.9) mm, dx=100 um, cpml_layers=8: node j belongs iff
-    ``lo <= j*dx < hi`` — the hi face contributes no cell. Under f32
-    coordinates the x/y hi-face nodes were INCLUDED (13230 cells instead
-    of 12750) at x64=0.
+    (12.5, 3.4, 3.9) mm, dx=100 um, cpml_layers=8: a cell belongs iff
+    its centre lies in the Box. Node-aligned faces retain 12750 cells.
+    The earlier float32 node-coordinate defect included the x/y hi-face
+    nodes and produced 13230 cells at x64=0.
     """
     sim = Simulation(freq_max=20e9, domain=(12.5e-3, 3.4e-3, 3.9e-3),
                      dx=DX, cpml_layers=8, boundary="cpml")
     grid = sim._build_grid()
     box = Box((0.0, 0.0, 2.5e-3), (12.5e-3, 3.4e-3, 2.8e-3))
-    m = np.asarray(box.mask(grid))
+    m = np.asarray(_material_mask(box, grid))
     pads = grid.axis_pads
     assert int(m.sum()) == 12750
     for axis, (lo_n, hi_n) in enumerate(((0, 124), (0, 33), (25, 27))):
@@ -199,11 +211,11 @@ def test_node_aligned_box_realizes_the_documented_convention():
         assert occ.min() - pads[axis] == lo_n
         assert occ.max() - pads[axis] == hi_n
 
-    # #931: the same Box declared as a CONDUCTOR is centre-sampled, and the
+    # The same Box declared as a CONDUCTOR is centre-sampled, and the
     # thing the contract is about — where the walls are — is asserted here
     # rather than left to the cell count. Drawn z 2.5 -> 2.8 mm, so walls on
     # node planes 25 AND 28, not 25..27. The cell count above is the
-    # dielectric reading and is untouched (§1.8).
+    # material-cell reading: node-aligned faces retain their cells.
     from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
     from rfx.geometry.rasterize_grid import (
         cell_centres_from_nodes, classify_pec_entry,
@@ -256,9 +268,9 @@ def test_realized_mask_is_x64_invariant(case):
     """Same declaration, same cells, regardless of jax_enable_x64."""
     shape = _shape_for(case)
     grid = _grid()
-    m0 = np.asarray(shape.mask(grid))
+    m0 = np.asarray(_material_mask(shape, grid))
     with enable_x64():
-        m1 = np.asarray(shape.mask(grid))
+        m1 = np.asarray(_material_mask(shape, grid))
     assert np.array_equal(m0, m1), (
         f"{case}: realized cells changed with jax_enable_x64 "
         f"({int(m0.sum())} vs {int(m1.sum())})")
@@ -267,7 +279,7 @@ def test_realized_mask_is_x64_invariant(case):
 @pytest.mark.parametrize("case", sorted(_SHAPE_CASES))
 @pytest.mark.parametrize("graded", ["x", "y", "z", "xyz"])
 def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
-    """mask(grid) == mask_on_coords(coords_from_nonuniform_grid(g)).
+    """Material masks agree on the same primal-cell spine.
 
     Each axis is exercised as the explicitly-profiled one separately —
     a uniform-valued profile that only ever grades z would let an axis
@@ -276,9 +288,8 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
     shape = _shape_for(case)
     grid = _grid()
     gnu = _nu_grid(tuple(graded))
-    mu = np.asarray(shape.mask(grid))
-    cn = coords_from_nonuniform_grid(gnu)
-    mn = np.asarray(shape.mask_on_coords(cn.x, cn.y, cn.z))
+    mu = np.asarray(_material_mask(shape, grid))
+    mn = np.asarray(_material_mask(shape, gnu, True))
     # NU allocates one extra bounding node per axis; compare shared space
     sl = tuple(slice(0, s) for s in mu.shape)
     assert np.array_equal(mu, mn[sl]), (
@@ -286,6 +297,7 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
         f"({int(mu.sum())} vs {int(mn[sl].sum())})")
     # the stronger by-construction claim: the coordinates themselves agree
     gx, gy, gz = _grid_coords(grid)
+    cn = coords_from_nonuniform_grid(gnu)
     for a, b in ((gx, cn.x), (gy, cn.y), (gz, cn.z)):
         an, bn = np.asarray(a), np.asarray(b)
         assert np.array_equal(an, bn[:an.size])
@@ -293,19 +305,9 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
 def test_one_cell_box_lands_on_one_and_the_same_node_plane_in_both_lanes(axis):
-    """The #807 observable, on the sampler that still has it.
+    """A node-aligned one-cell material Box owns its forward primal cell.
 
-    Before the fix the uniform lane put a face-registered one-cell box on
-    node plane 8 at x64=1 and plane 9 at x64=0, while the NU lane stayed on
-    9 — an exact half-cell tie decided by the last ulp of two different f32
-    coordinate constructions.
-
-    #931 §1.8 leaves ``Box.mask_on_coords`` (node, half-open) exactly as it
-    is, so this property is unchanged and still guards every DIELECTRIC.
-    What moved is what a one-cell PEC box MEANS: it is a volume with walls
-    on both of its bounding node planes, not a one-plane sheet, and the
-    plane it lands on here is no longer a realization decision for a
-    conductor. The sheet twin below states the conductor half.
+    Both lanes and x64 settings use the same centre window.
     """
     lo = [0.5e-3] * 3
     hi = [2.5e-3] * 3
@@ -314,21 +316,16 @@ def test_one_cell_box_lands_on_one_and_the_same_node_plane_in_both_lanes(axis):
     grid = _grid()
     gnu = _nu_grid()
     other = tuple(i for i in range(3) if i != axis)
-    mu = np.asarray(sheet.mask(grid))
-    cn = coords_from_nonuniform_grid(gnu)
-    mn = np.asarray(sheet.mask_on_coords(cn.x, cn.y, cn.z))
+    mu = np.asarray(_material_mask(sheet, grid))
+    mn = np.asarray(_material_mask(sheet, gnu, True))
     pu = np.where(mu.any(axis=other))[0]
     pn = np.where(mn.any(axis=other))[0]
     assert len(pu) == 1 and len(pn) == 1
     assert pu.tolist() == pn.tolist()
     with enable_x64():
-        mu64 = np.asarray(sheet.mask(grid))
+        mu64 = np.asarray(_material_mask(sheet, grid))
     assert np.array_equal(mu, mu64)
-    # Tie rule: a face-registered one-cell box is an exact half-cell tie;
-    # it must realize on its LO-face node — the node its own half-open
-    # [lo, hi) window keeps — not on whichever side the last f64 ulp of
-    # (lo+hi)*0.5 favours (cv15's stack contract and the fidelity-report
-    # exact-faces fixture both encode this).
+    # The cell's forward-node index is the drawn lower-face node.
     ax_coords = np.asarray(_grid_coords(grid)[axis])
     lo_node = np.where(ax_coords == lo[axis])[0]
     assert lo_node.size == 1, "fixture: lo face must sit bitwise on a node"
@@ -351,7 +348,11 @@ def test_traced_profile_mask_path_still_traces_and_differentiates():
     def f(dz_profile):
         cum = jnp.concatenate([jnp.zeros(1), jnp.cumsum(dz_profile)])
         zc = cum[:-1] - cum[0]
-        m = box.mask_on_coords(gx, gy, zc)
+        from rfx.geometry.rasterize_grid import GridCoords, cell_centres_from_nodes
+        nodes = GridCoords(gx, gy, zc, (len(gx), len(gy), len(zc)))
+        sizes = (np.full(len(gx), DX), np.full(len(gy), DX), dz_profile)
+        m = _material_cell_mask(box, nodes, cell_centres_from_nodes(nodes, sizes),
+                                cell_sizes=sizes)
         return jnp.sum(jnp.where(m, zc[None, None, :], 0.0))
 
     prof = jnp.full(nz, DX, dtype=jnp.float32)

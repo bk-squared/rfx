@@ -14,7 +14,7 @@ from rfx import Box, Simulation
 from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.rasterize_grid import (
-    _box_axis_volume,
+    _box_axis_volume, _material_cell_mask, cell_centres_from_nodes,
     cell_sizes_from_nonuniform_grid,
     cell_sizes_from_uniform_grid,
     centres_from_nonuniform_grid,
@@ -165,13 +165,13 @@ def test_pec_assembly_uses_the_centre_face_band(graded):
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
-def test_half_cell_face_is_not_pulled_to_a_node(graded):
+def test_half_cell_material_face_tie_resolves_to_lower_node(graded):
     sim, grid, coords, centres, sizes = _model(DXS[0], graded)
     first = grid.pad_z_lo + FIRST
     lo = coords.z[first] + .5 * sizes[2][first]
     hi = coords.z[first + 4]
     _, material = _add_and_build(sim, grid, lo, hi, graded=graded)
-    _assert_span(material, first + 1, 3)
+    _assert_span(material, first, 4)
     _assert_span(_box_axis_volume(centres.z, lo, hi, sizes[2]), first, 4)
 
 
@@ -227,7 +227,7 @@ def test_both_samplers_accept_traced_coordinates():
         _assert_span(traced_centres, FIRST, 6)
 
 
-def test_periodic_material_image_inherits_the_node_face_band():
+def test_periodic_material_image_keeps_node_aligned_faces():
     dx = DXS[0]
     length = 17 * dx  # domain uses solved cell counts; #1887
     sim = Simulation(
@@ -276,14 +276,9 @@ def test_domain_and_box_share_the_band_at_a_cpml_face(dx, delta):
 
 
 @pytest.mark.parametrize("traced", [False, True], ids=["numpy", "traced"])
-@pytest.mark.parametrize("below,above,split", [(10., 1., 4), (1., 10., 3)])
+@pytest.mark.parametrize("below,above,split", [(10., 1., 3), (1., 10., 3)])
 def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
-    """A shared face 5 nm beyond node 3's float32 resolution uses its forward cell.
-
-    The band is 1e-9 of the node's forward cell plus 4 float32 eps of |z|. The
-    face sits 5 nm past the |z| part, between the 1 m-cell and 10 m-cell bands,
-    so the two gradings split differently. Both boxes still agree on ownership.
-    """
+    """A near-node shared face partitions the same centre-owned cells."""
     widths = np.r_[np.full(3, below), np.full(6, above)]
     domain = float(np.sum(widths))
     sim = Simulation(
@@ -299,9 +294,13 @@ def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
     for index, shape in enumerate(boxes):
         sim.add_material(f"layer{index}", eps_r=2. + index)
         sim.add(shape, material=f"layer{index}")
+        sizes = cell_sizes_from_nonuniform_grid(grid)
         with enable_x64():
-            mask = (jax.jit(lambda z: shape.mask_on_coords(coords.x, coords.y, z))(
-                jnp.asarray(coords.z)) if traced else shape.mask_on_coords(*coords[:3]))
+            def sample(z):
+                co = coords._replace(z=z)
+                return _material_cell_mask(shape, co, cell_centres_from_nodes(co, sizes),
+                                           cell_sizes=sizes)
+            mask = jax.jit(sample)(jnp.asarray(coords.z)) if traced else sample(coords.z)
         masks.append(np.any(np.asarray(mask), axis=(0, 1)))
     ownership = masks[0].astype(int) + masks[1].astype(int)
     np.testing.assert_array_equal(ownership[:-1], 1)

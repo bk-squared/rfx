@@ -50,7 +50,8 @@ def _permittivity(sim, port, point, grid, coords, cache, axis=None):
     PEC does not overwrite dielectric epsilon. No material means fallback.
     """
     from rfx.geometry.rasterize_grid import (
-        _material_cell_mask, centres_from_nonuniform_grid, centres_from_uniform_grid)
+        _material_cell_mask, centres_from_nonuniform_grid, centres_from_uniform_grid,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid)
     explicit = getattr(port, "eps_r_sub", None)
     result = None
     points = [point]
@@ -74,7 +75,9 @@ def _permittivity(sim, port, point, grid, coords, cache, axis=None):
             centres = (centres_from_nonuniform_grid(grid, coords) if nonuniform
                        else centres_from_uniform_grid(grid))
             cache[key] = np.asarray(_material_cell_mask(
-                entry.shape, coords, centres, grid=None if nonuniform else grid))
+                entry.shape, coords, centres, grid=grid,
+                cell_sizes=(cell_sizes_from_nonuniform_grid(grid) if nonuniform
+                            else cell_sizes_from_uniform_grid(grid))))
         if any(cache[key][sample] for sample in samples):
             result = float(material.eps_r)
     return result if result is not None else float(explicit if explicit is not None else 1.)

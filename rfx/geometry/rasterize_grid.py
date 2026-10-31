@@ -219,8 +219,8 @@ def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCo
 # Normative text: docs/design_notes/20260906_plan_realign_lattice_ownership.md
 # §1.1 (centre sampling for PEC volumes), §1.3 (sheet footprint / plane),
 # §1.4 (wires), §1.5 (what ``sim.add(Box, material=pec)`` refuses).
-# Dielectric sampling is untouched: it stays the node, half-open sampler the
-# shapes implement in ``csg.py``.
+# Material Box volumes share the PEC centre window; shape node APIs remain
+# available for sheet, port and preflight node queries.
 # ---------------------------------------------------------------------------
 
 def _uniform_axis_centres(n: int, pad: int, dx: float) -> np.ndarray:
@@ -350,19 +350,35 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
     return cell_centres_from_nodes(coords, cell_sizes_from_nonuniform_grid(grid))
 
 
-def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=None):
-    """Sample curved material volumes where their cell values live (#1138).
+def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
+                        grid=None, cell_sizes=None):
+    """Sample material volumes on the primal-cell centres of their grid.
 
-    A node-symmetric Sphere/Cylinder stored as cell epsilon or sigma shifts
-    the material by half a cell. Use the supplied physical centres (already
-    centred on the fine subgrid), without changing Shape.mask's node API or
-    the separate PEC volume/sheet/wire classifier. Other shapes retain their
-    existing rules. Custom shapes need mask_on_coords on a periodic grid;
-    non-periodic uniform shapes may implement only mask(grid).
+    Box leaves use the PEC volume window and its primal-width tie band.
+    Node masks remain available for sheets, ports and geometry queries.
+    Custom non-periodic uniform shapes may implement only mask(grid).
     """
     from rfx._periodic import periodic_mask, periodic_shape
+    from rfx.geometry.curved import CurvedPatch
+    from rfx.geometry.via import Via
+
+    if isinstance(shape, CurvedPatch):
+        # Every staircase Box has zero thickness, hence no volume cells.
+        # This also avoids choosing a segment count from traced mesh widths.
+        return jnp.zeros(centres.shape, dtype=bool)
+    if cell_sizes is None and isinstance(shape, (Box, Via)):
+        cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
+                      else cell_sizes_from_uniform_grid(grid) if grid is not None
+                      else tuple(axis_cell_sizes(n) for n in coords[:3]))
     if isinstance(shape, Box):
         _box_zero_axes(shape.corner_lo, shape.corner_hi)
+        return pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid)
+    if isinstance(shape, Via):
+        result = jnp.zeros(centres.shape, dtype=bool)
+        for box in shape._mask_components(cell_sizes[0][0]):
+            result = result | _material_cell_mask(
+                box, coords, centres, grid=grid, cell_sizes=cell_sizes)
+        return result
     shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
         return periodic_mask(grid, shape, centres[:3])
@@ -1111,8 +1127,7 @@ def rasterize_geometry(
     coords : GridCoords
         Sample coordinates from any grid type — E-NODES for the uniform and
         non-uniform builders, cell centres for the subgrid fine region (see
-        ``GridCoords``).  Dielectrics are sampled here (node, half-open —
-        untouched by #931).
+        ``GridCoords``). Material volumes use the supplied cell centres.
     pec_sigma_threshold : float
         Conductivity above which a material is treated as PEC.
     thin_conductors : list or None
@@ -1122,7 +1137,7 @@ def rasterize_geometry(
     grid : Grid or NonUniformGrid or None
         Original grid object, needed by thin_conductor_applier.
     centres : GridCoords or None
-        Primal-cell CENTRES for PEC volume sampling (§1.1).  ``None``
+        Primal-cell CENTRES for material and PEC volume sampling.  ``None``
         derives them from ``coords`` as ``node + d/2``; the subgrid fine
         lane, whose ``coords`` already are centres, passes them explicitly.
     cell_sizes : (dx, dy, dz) per-cell arrays or None
@@ -1169,7 +1184,8 @@ def rasterize_geometry(
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
         mask = _material_cell_mask(entry.shape, coords, centres,
-                                   grid=grid if getattr(grid, 'periodic_axes', '') else None)
+                                   grid=grid if getattr(grid, 'periodic_axes', '') else None,
+                                   cell_sizes=cell_sizes)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
@@ -1223,7 +1239,8 @@ def rasterize_geometry(
         if pole_geometry_entries is not None and (mat.debye_poles or mat.lorentz_poles):
             declared = pole_geometry_entries[entry_index].shape
             pole_mask = _material_cell_mask(declared, coords, centres,
-                                            grid=grid if getattr(grid, 'periodic_axes', '') else None)
+                                            grid=grid if getattr(grid, 'periodic_axes', '') else None,
+                                            cell_sizes=cell_sizes)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
                 pole_mask = pec_volume_cell_mask(declared, centres, cell_sizes, grid=grid)
 

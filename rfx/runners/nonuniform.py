@@ -77,7 +77,7 @@ def assemble_interface_eps_nu(sim, grid, materials, *, high_wall: tuple[bool, bo
     cell_coords = GridCoords(*centres, grid.shape)
     cell, debye, lorentz, pec, *_ = rasterize_geometry(
         geometry, sim._resolve_material, cell_coords,
-        centres=cell_coords, pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
+        centres=cell_coords, cell_sizes=widths, pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
     if debye is not None or lorentz is not None:
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     eps = np.asarray(cell.eps_r, dtype=np.float64)

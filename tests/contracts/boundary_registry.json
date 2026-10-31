@@ -427,8 +427,8 @@
       "kind": "neighbour"
     },
     {
-      "file": "rfx/geometry/node_tensor.py",
-      "function": "node_metrics",
+      "file": "rfx/geometry/smoothing.py",
+      "function": "_cell_width_pairs",
       "kind": "roll/diff"
     },
     {

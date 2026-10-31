@@ -250,6 +250,7 @@ def _run_subgridded_once(
         coords_f,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
         centres=coords_f,
+        cell_sizes=tuple(np.full(n, dx_f) for n in coords_f.shape),
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
