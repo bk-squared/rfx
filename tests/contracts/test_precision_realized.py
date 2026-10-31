@@ -223,7 +223,7 @@ def test_off_refuses_before_allocation(monkeypatch, entry):
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
-        from rfx._precision import FLOAT64_MODE_ERROR
+        from rfx._internal._precision import FLOAT64_MODE_ERROR
         with pytest.raises(ValueError, match='Build and run the Simulation') as caught:
             if entry == 'adjoint':
                 sim.forward(gradient='adjoint')
@@ -242,7 +242,7 @@ def test_mps_backend_refuses_float64_before_allocation(monkeypatch, entry):
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
-        from rfx._precision import FLOAT64_MPS_ERROR
+        from rfx._internal._precision import FLOAT64_MPS_ERROR
         with pytest.raises(ValueError, match='mps') as caught:
             if entry == 'adjoint':
                 sim.forward(gradient='adjoint')
@@ -266,7 +266,7 @@ def test_mps_backend_refuses_float32_under_x64(monkeypatch):
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
-        from rfx._precision import FLOAT64_MPS_ERROR
+        from rfx._internal._precision import FLOAT64_MPS_ERROR
         with pytest.raises(ValueError) as caught:
             invoke(sim, 'run_lumped')
         assert str(caught.value) == FLOAT64_MPS_ERROR
@@ -441,7 +441,7 @@ def test_preflight_precision_is_error():
         report = sim.preflight(strict=False)
         findings = report.by_code('precision_float64_without_x64')
         assert len(findings) == 1 and findings[0].severity == 'error'
-        from rfx._precision import FLOAT64_MODE_ERROR
+        from rfx._internal._precision import FLOAT64_MODE_ERROR
         assert str(findings[0]) == FLOAT64_MODE_ERROR
         with pytest.raises(ValueError, match='jax.enable_x64'):
             sim.preflight(strict=True)

@@ -28,7 +28,7 @@ from rfx.core.dft_utils import port_dft_phase
 from .sequence import HookPoint, Kernel, compose
 
 if TYPE_CHECKING:
-    from rfx._uniform_specs import _StepContext
+    from rfx._internal._uniform_specs import _StepContext
 
 
 def apply_pec_faces(state, faces):

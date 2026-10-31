@@ -78,7 +78,7 @@ import math
 
 import numpy as np
 
-from rfx._grid_metric import NODE_TIE_REL
+from rfx._internal._grid_metric import NODE_TIE_REL
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 from rfx.preflight._common import (

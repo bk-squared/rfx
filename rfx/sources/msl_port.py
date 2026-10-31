@@ -286,7 +286,7 @@ def _msl_normal_bounds(grid, port):
         raise ValueError("MSL port requires finite ground/trace planes on a resolved normal axis")
     if port.z_hi <= port.z_lo:
         raise ValueError("MSL port trace plane must be above its ground plane")
-    from rfx._periodic import interval_coordinates
+    from rfx._internal._periodic import interval_coordinates
     interval_coordinates(grid, 2, port.z_lo, port.z_hi)
     if 'z' in getattr(grid, 'periodic_axes', ''):
         nodes = np.append(nodes, float(grid.domain[2]))
@@ -555,7 +555,7 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     iw = _MSL_AXIS_INDEX[width]
     inr = _MSL_AXIS_INDEX[normal]
 
-    from rfx._periodic import interval_indices
+    from rfx._internal._periodic import interval_indices
     lo_idx, hi_idx = interval_indices(
         grid, msl_physical_point(port.direction, port.feed_x, port.y_lo, port.z_lo),
         msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi))
@@ -1388,7 +1388,7 @@ def msl_h_plane_stencil(grid, port: MSLPort, e_plane_coordinate: float) -> dict:
     h_coords = np.asarray(getattr(centres, axis), dtype=float)
     declared_periodic = axis in getattr(grid, 'periodic_axes', '')
     if declared_periodic:
-        from rfx._periodic import plane_coordinate
+        from rfx._internal._periodic import plane_coordinate
         coordinate = plane_coordinate(grid, axis_index, coordinate)
     if not declared_periodic and not nodes[0] <= coordinate <= nodes[-1]:
         raise ValueError("MSL voltage plane must lie inside the grid")
@@ -1461,7 +1461,7 @@ def msl_probe_x_coords(
     i2 = i1 + sign * n_spacing_cells
     i3 = i2 + sign * n_spacing_cells
     if prop in getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import interval_coordinates
+        from rfx._internal._periodic import interval_coordinates
         width = float(grid.cells(prop)[0])
         interval_coordinates(grid, _MSL_AXIS_INDEX[prop], i_feed * width, i3 * width)
     return (
@@ -1495,7 +1495,7 @@ def msl_probe_x_coords_n(
     i_feed = int(idx[_MSL_AXIS_INDEX[prop]])
     sign = int(sign_f)
     if prop in getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import interval_coordinates
+        from rfx._internal._periodic import interval_coordinates
         end = i_feed + sign * (n_offset_cells + (n_probes - 1) * n_spacing_cells)
         width = float(grid.cells(prop)[0])
         interval_coordinates(grid, _MSL_AXIS_INDEX[prop], i_feed * width, end * width)

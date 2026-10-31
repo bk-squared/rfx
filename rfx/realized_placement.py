@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 C0 = 299_792_458.0
 

@@ -42,7 +42,7 @@ from rfx.runners._distributed_common import (
 
 from rfx.runners._exchange_interval import validate_exchange_interval
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.stepping.slab import Slab, cut
 
 import jax
@@ -508,7 +508,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     # Build sources and probes
     # ------------------------------------------------------------------
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
     sources = PortSourceQueue()
     probes = []
     port_idx = -1

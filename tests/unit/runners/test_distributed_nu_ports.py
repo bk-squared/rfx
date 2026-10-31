@@ -10,7 +10,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.sources.sources import GaussianPulse, _axis_node_position
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 pytestmark = pytest.mark.distributed
 BINS = np.array([3e9, 7e9, 13e9], np.float32)

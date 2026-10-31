@@ -219,7 +219,7 @@ def _qr_masked(A, mask):
 def _solve_qr(Q, R, norms, mask, b):
     """Least-squares solution for the factorised system against ``[b; 0]``, masked."""
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
+    from rfx._internal._precision import HIGHEST
     from rfx.core.jax_utils import complex_solve_triangular
     K = R.shape[0]
     b = b.astype(Q.dtype)
@@ -252,7 +252,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     from rfx.measurement.ringdown_tail_jax import plain_dft, tail_dft
     import jax
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
+    from rfx._internal._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     if mutation not in MUTATIONS:

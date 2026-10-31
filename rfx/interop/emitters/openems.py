@@ -801,7 +801,7 @@ def _plan_ports(
     direction_drops: list[str] = []
 
     def snap(value_m: float, label: str) -> float:
-        from rfx._grid_metric import nearest_uniform_index
+        from rfx._internal._grid_metric import nearest_uniform_index
         cells = nearest_uniform_index(value_m / dx_m)
         snapped = cells * dx_m
         # Grid.position_to_index uses nearest_uniform_index(pos/dx); reporting the shift makes

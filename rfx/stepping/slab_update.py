@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import partial
 from jax import lax
 from jax.sharding import PartitionSpec as P
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.core.drives import drive_layout
 from rfx.core.drives import inject_drives
 from rfx.core.yee import FDTDState

@@ -592,7 +592,7 @@ from rfx.stepping.incident_line import prepare_tfsf_for_scan
 
 def refuse_graded_propagation_axis(entry, grid):
     """Only the normal, open x slab has a realized-cell incident line."""
-    from rfx._grid_metric import is_one_cell_size
+    from rfx._internal._grid_metric import is_one_cell_size
     from rfx.core.jax_utils import is_tracer
     axis = entry.direction[-1]
     cells = grid.cells(axis)

@@ -32,8 +32,8 @@ CENTRAL_PATHS = (
 CENTRAL_TEST_DIRS = ("tests/unit/runners/", "tests/unit/autodiff/")
 MODEL_PATHS = (
     "rfx/geometry/", "rfx/model/", "rfx/materials/", "rfx/boundaries/",
-    "rfx/mesh_edges.py", "rfx/grid.py", "rfx/_grid_metric.py",
-    "rfx/realized_geometry.py", "rfx/realized_placement.py", "rfx/_realized.py",
+    "rfx/mesh_edges.py", "rfx/grid.py", "rfx/_internal/_grid_metric.py",
+    "rfx/realized_geometry.py", "rfx/realized_placement.py", "rfx/_internal/_realized.py",
 )
 CONTRACT_DIR = "tests/contracts/"
 PACKAGE_TEST_ROOT = "tests/unit/"

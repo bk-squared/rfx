@@ -209,13 +209,13 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
     ``xs_of(count)`` of step ``count``; only the advanced carry's H fields,
     H^(c+1/2), are read. The step and the reduction are one jitted program
     that returns the scalar W, so the advanced carry never leaves it. ``eps`` and ``mu`` are the arrays the E and H
-    updates read (the realized components, through ``rfx._realized`` when it
+    updates read (the realized components, through ``rfx._internal._realized`` when it
     observes); dV is ``dx**3`` with the loop's cell size on the uniform mesh
     and each component's Yee control volume on the graded mesh (``yee_volumes``). The sum covers the
     non-absorber interior. The per-cell arrays are arguments of the jitted
     reduction, not constants.
     """
-    from rfx import _realized
+    from rfx._internal import _realized
     from rfx.core.jax_utils import split_loop_invariants
     from rfx.model.materials import with_components
 

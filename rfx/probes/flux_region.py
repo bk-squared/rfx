@@ -51,7 +51,7 @@ def resolve_flux_axis(edges, pad_lo, center, size, *, indices=None):
     if not np.isfinite(requested).all():
         raise ValueError("flux monitor endpoints must be finite")
     if indices is None:
-        from rfx._grid_metric import nearest_node_index
+        from rfx._internal._grid_metric import nearest_node_index
         from rfx.geometry.rasterize_grid import _local_cell
         cells = np.diff(edges)
         indices = [nearest_node_index(edges, endpoint,
@@ -118,7 +118,7 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
             # and disagree with the coordinates that preflight reports.
             edges = np.asarray(getattr(coords, letter))[pad_lo:grid.shape[t] - pad_hi]
             if letter in grid.periodic_axes:
-                from rfx._periodic import interval_coordinates
+                from rfx._internal._periodic import interval_coordinates
                 edges = np.r_[edges, grid.domain[t]]
                 c = grid.domain[t] / 2 if c is None else c
                 interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
@@ -132,9 +132,9 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
             cell = float(grid.boundary_cell(letter, "lo"))
             edges = np.arange(cells + 1, dtype=float) * cell
             c = float(domain[t]) / 2 if c is None else c
-            from rfx._periodic import interval_coordinates
+            from rfx._internal._periodic import interval_coordinates
             interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
-            from rfx._grid_metric import nearest_uniform_index
+            from rfx._internal._grid_metric import nearest_uniform_index
             indices = (nearest_uniform_index(c / cell - size[n] / (2 * cell)),
                        nearest_uniform_index(c / cell + size[n] / (2 * cell)))
         axes.append(resolve_flux_axis(edges, pad_lo, c, size[n], indices=indices))

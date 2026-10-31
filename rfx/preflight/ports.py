@@ -54,7 +54,7 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 import math
 
 import numpy as np
@@ -641,7 +641,7 @@ def _wire_port_realized_cells(grid, pe):
         WirePort, _wire_port_cells, wire_port_edge_span,
     )
     from rfx.nonuniform import NonUniformGrid
-    from rfx._periodic import interval_indices
+    from rfx._internal._periodic import interval_indices
     axis = {"ex": 0, "ey": 1, "ez": 2}[pe.component]
     end = list(pe.position)
     end[axis] += pe.extent
@@ -817,7 +817,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     A PolylineWire filament vertex and a PEC sheet plane midway between two
     nodes go to the LOWER node (#931; ``wire_vertex_nodes``,
     ``_nearest_plane``). On the non-uniform lane a port, source or probe
-    there does too (``rfx._grid_metric.nearest_node_index``, #1295). The
+    there does too (``rfx._internal._grid_metric.nearest_node_index``, #1295). The
     uniform lane now shares that rule (#1342). On either lane, distinct
     coordinates outside the tie band can still straddle a half node (a
     port end at float32(3.5 mm) against a sheet at 3.5 mm).
@@ -1028,7 +1028,7 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
     Both tangential ends are included in the declared pairing. Admission
     depends on the realized footprint, not whether a declared edge rounds.
     """
-    from rfx._grid_metric import node_tie_tol
+    from rfx._internal._grid_metric import node_tie_tol
     from rfx.geometry.rasterize_grid import (
         _local_cell, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
         coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,

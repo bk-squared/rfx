@@ -84,7 +84,7 @@ def soft_source(grid, position, component, waveform, n_steps, *, materials,
     'field' adds ``w``, 'current' adds ``(1/dV)*(Cb*w)`` (run()/forward() census
     row D2: the entries used to pick different helpers on a closed boundary).
     """
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
     from rfx.api._source_semantics import (
         SOURCE_AMPLITUDE_KINDS, guard_float16_source_increment)
     from rfx.model.source_coefficients import uniform_source_table

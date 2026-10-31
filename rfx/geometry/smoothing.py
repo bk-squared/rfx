@@ -1259,7 +1259,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             best_nx = best_ny = best_nz = None
 
             for shape in sdf_shapes:
-                from rfx._periodic import periodic_sdf
+                from rfx._internal._periodic import periodic_sdf
                 s, (n_x, n_y, n_z) = periodic_sdf(
                     grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
                     normal_fn=_get_normal_fn(shape))
@@ -1639,7 +1639,7 @@ def compute_inv_eps_tensor_diag(
         promoted = True
         for i, comp in enumerate(("ex", "ey", "ez")):
             Xc, Yc, Zc = sample[comp]
-            from rfx._periodic import periodic_sdf
+            from rfx._internal._periodic import periodic_sdf
             sdf, (n_x, n_y, n_z) = periodic_sdf(
                 grid, pec_shape, (Xc, Yc, Zc), _get_sdf_fn(pec_shape), xp=xp,
                 normal_fn=_get_normal_fn(pec_shape))

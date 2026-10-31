@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
-from rfx._grid_metric import nearest_uniform_index
+from rfx._internal._grid_metric import field_index
+from rfx._internal._grid_metric import nearest_uniform_index
 
 from dataclasses import replace
 
 import numpy as np
-from rfx import _realized
+from rfx._internal import _realized
 
 import jax.numpy as jnp
 

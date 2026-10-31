@@ -6,7 +6,7 @@ from rfx.api._spec import ForwardResult, Result
 from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays
 from rfx.model import conductors as _conductors
-from rfx import _grid_metric, _realized
+from rfx._internal import _grid_metric, _realized
 import jax.numpy as jnp
 
 

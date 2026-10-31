@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from rfx.geometry.rasterize_grid import _axis_node_positions
 from rfx.geometry.smoothing import _get_sdf_fn
-from rfx._periodic import periodic_sdf
+from rfx._internal._periodic import periodic_sdf
 from rfx.errors import RfxUnsupported
 
 

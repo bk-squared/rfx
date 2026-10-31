@@ -230,7 +230,7 @@ def test_cpml_legacy_material_view_and_vacuum_fallback():
                                    "distributed_nu"])
 @pytest.mark.parametrize("wire", [False, True])
 def test_realized_h_tuple_replays_and_perturbs_one_component(path, wire):
-    from rfx import _realized
+    from rfx._internal import _realized
 
     grid, mats, marked, state = _fixture()
     materials = marked if wire else mats

@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.core.yee import MaterialArrays, component_e_materials, init_materials
 from rfx.model.materials import realize_components
 
@@ -325,7 +325,7 @@ CONSTRUCTOR_EXCEPTIONS = {
 
 # Every exact cell-sigma read, including typed exclusions, is classified.
 SIGMA_READS = {
-    ('rfx/_realized.py', 'scalar_electric', 'materials'): (1, 'arithmetic into coefficient / observed scalar operands'),
+    ('rfx/_internal/_realized.py', 'scalar_electric', 'materials'): (1, 'arithmetic into coefficient / observed scalar operands'),
     ('rfx/stepping/adi.py', 'adi_step_3d', 'observed'): (1, 'arithmetic into ADI damping and curl coefficients'),
     ('rfx/api/_compile.py', '_CompileMixin._has_pec_to_conform', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/api/_compile.py', '_CompileMixin.conductor_mask', 'materials'): (1, 'threshold / conductor cell footprint'),

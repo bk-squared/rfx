@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.stepping.step_count import steps_for_periods
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 from rfx._traced_refusal import TracedStructureRefusal
 
 import math
@@ -443,7 +443,7 @@ def optimize(
     )
     if is_nonuniform:
         grid = sim._build_nonuniform_grid()
-        from rfx._periodic import interval_indices
+        from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
@@ -468,7 +468,7 @@ def optimize(
         _n_steps_auto = steps_for_periods(grid.dt, sim._freq_max, num_periods)
     else:
         grid = sim._build_grid()
-        from rfx._periodic import interval_indices
+        from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() design")
@@ -838,10 +838,10 @@ def progressive_optimize(
         # Compute this stage's design-region shape using the same logic
         # as optimize() so upsample target is exact.
         if is_nonuniform:
-            from rfx._periodic import interval_indices
+            from rfx._internal._periodic import interval_indices
             lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         else:
-            from rfx._periodic import interval_indices
+            from rfx._internal._periodic import interval_indices
             lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
 
         pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)

@@ -3,7 +3,7 @@ from rfx.errors import ConfigurationWarning
 import inspect
 import warnings
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 
 def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=True):

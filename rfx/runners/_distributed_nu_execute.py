@@ -5,7 +5,7 @@ import math
 import jax
 import jax.numpy as jnp
 import numpy as np
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 from rfx.model import conductors as _conductors
 from rfx.model.overrides import apply_material_overrides
 from rfx._diagnostic_transport import merge_diagnostics

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask
+from rfx._internal._grid_metric import NODE_TIE_REL, half_open_volume_mask
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.rasterize_grid import (
     _box_axis_volume,

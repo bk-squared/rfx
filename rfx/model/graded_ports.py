@@ -7,7 +7,7 @@ from typing import NamedTuple
 import jax
 import numpy as np
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from rfx._traced_refusal import TracedStructureRefusal
 from rfx.boundaries.pec import edge_is_pec as _edge_is_pec
 from rfx.core.jax_utils import is_tracer
@@ -121,7 +121,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             axis = axis_map[pe.component]
             end_pos = list(pe.position)
             end_pos[axis] += pe.extent
-            from rfx._periodic import interval_indices
+            from rfx._internal._periodic import interval_indices
             idx, idx_end = interval_indices(grid, pe.position, tuple(end_pos))
             lo_k = min(idx[axis], idx_end[axis])
             hi_k = max(idx[axis], idx_end[axis])

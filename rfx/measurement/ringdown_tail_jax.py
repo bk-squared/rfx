@@ -14,7 +14,7 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     both factors built on the host in float64 and cast to the working dtype.
     """
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
+    from rfx._internal._precision import HIGHEST
     rdt, cdt = working_dtypes()
     n, C = int(y.shape[0]), int(y.shape[1])
     freqs = np.asarray(freqs, dtype=np.float64)
@@ -41,7 +41,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
     """
     import jax
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
+    from rfx._internal._precision import HIGHEST
     _rdt, cdt = working_dtypes()
     freqs = np.asarray(freqs, dtype=np.float64)
     dt = float(dt)

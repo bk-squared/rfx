@@ -9,7 +9,7 @@ the needed code paths.
 
 from __future__ import annotations
 
-from rfx._uniform_specs import (
+from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
     LumpedPortSParamSpec,
@@ -30,7 +30,7 @@ from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import dataclass, replace
 from typing import Any, Callable, NamedTuple
 
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 
 import jax
 import jax.numpy as jnp

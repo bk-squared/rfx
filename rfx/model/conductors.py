@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from rfx.errors import ConfigurationWarning, RfxRefusal
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -515,7 +515,7 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         raise ValueError("PEC edges changed outside a conductor stage")
     if sheet_operator is not conductors.sheet_operator:
         conductors = replace(conductors, sheet_operator=sheet_operator)
-    from rfx import _realized
+    from rfx._internal import _realized
     if _realized.ACTIVE is not None:
         edges = conductors.pec_edges
         if edges is not None:
@@ -799,7 +799,7 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
         return None
     if multiprocess and any(isinstance(edge, jax.core.Tracer) for edge in edges):
         raise ValueError("a traced pec_mask_override is supported in one process only")
-    from rfx import _realized
+    from rfx._internal import _realized
     if inputs is not None and _realized.ACTIVE is None and grid.step_kind != 'legacy':
         from rfx.stepping.slab_setup import stage_pec
         cells, sheets, wires = inputs
@@ -1006,7 +1006,7 @@ def refuse_layout_metal_consumers(layout, sim, grid):
             "open plane wave on the graded mesh admits no finite scatterer, drawn or switched; "
             "excite the switched layout with a port, or draw each layout and run it on the "
             "uniform mesh (closed_box=True)")
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
     solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
               for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}

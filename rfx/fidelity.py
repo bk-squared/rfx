@@ -733,7 +733,7 @@ def fidelity_report(sim, print_report: bool = True):
             z_k = float(nodes[a][k])
             n_nodes = int(np.asarray(sheet_spec.footprint).sum())
             mid = 0.5 * (item["declared_lo"][a] + item["declared_hi"][a])
-            from rfx._periodic import plane_coordinate
+            from rfx._internal._periodic import plane_coordinate
             matched_mid = plane_coordinate(grid, a, mid)
             item["realization"] = (
                 f"PEC sheet on node plane {_axis_names()[a]} = "

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx.farfield import ETA_0
 from rfx.farfield import FarFieldResult
 from rfx.farfield import NTFFBox

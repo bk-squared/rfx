@@ -527,7 +527,7 @@ def plot_rasterized_slice(
             index = int(np.argmax(per_plane)) if per_plane.max() else n_along // 2
         else:
             pos = float(position)
-            from rfx._periodic import plane_coordinate
+            from rfx._internal._periodic import plane_coordinate
             pos = plane_coordinate(grid, axis, pos)
             lo_c, hi_c = float(coords[axis].min()), float(coords[axis].max())
             if 'xyz'[axis] not in getattr(grid, 'periodic_axes', '') and not (lo_c - 1e-9 <= pos <= hi_c + 1e-9):
@@ -536,7 +536,7 @@ def plot_rasterized_slice(
                     f"[{lo_c:g}, {hi_c:g}] m. Clamping it would have drawn a "
                     "plausible empty CPML plane, which is how a metre/mm slip "
                     "reads as a clean result.")
-            from rfx._grid_metric import nearest_node_index
+            from rfx._internal._grid_metric import nearest_node_index
             from rfx.geometry.rasterize_grid import _local_cell
             k = nearest_node_index(coords[axis], pos,
                                    _local_cell(coords[axis], grid.cells(axis), pos))
@@ -849,8 +849,8 @@ def plot_stack_profile(
             auto_note = (" (no conductor in this model; column chosen by "
                          "\u03b5 structure)")
     else:
-        from rfx._periodic import plane_coordinate
-        from rfx._grid_metric import nearest_node_index
+        from rfx._internal._periodic import plane_coordinate
+        from rfx._internal._grid_metric import nearest_node_index
         from rfx.geometry.rasterize_grid import _local_cell
         picked = []
         for a, value in zip(keep, at):

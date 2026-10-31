@@ -63,7 +63,7 @@ from typing import Literal
 import numpy as np
 
 from rfx.preflight.msl_codes import msl_text, msl_diagnostic, msl_join, msl_value
-from rfx._grid_metric import is_one_cell_size
+from rfx._internal._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len,

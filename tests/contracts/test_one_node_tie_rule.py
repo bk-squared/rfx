@@ -222,7 +222,7 @@ def test_trace_port_realized_footprint(lane, extent, lo, hi, x, node, footprint,
 
 
 def test_off_ties_keep_rounding_and_input_dtype():
-    from rfx._grid_metric import nearest_uniform_index
+    from rfx._internal._grid_metric import nearest_uniform_index
     for dtype in (np.float32, np.float64):
         for ratio in np.linspace(-20, 20, 401):
             ratio = dtype(ratio)

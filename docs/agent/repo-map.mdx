@@ -21,7 +21,7 @@ is the map of what exists.
 | `rfx/model/` | The realized model: the declaration and the grid turned into what the time step reads (conductors, thin films, materials, occupancy, overrides, source coefficients, admission of declarations) |
 | `rfx/stepping/` | The time step: the fixed order of operations (`sequence.py`) and the per-path step functions |
 | `rfx/measurement/` | The measurement: DFT primitives, port voltage and current records, monitors and the measurement plan, on the physical clock |
-| `rfx/boundaries/` | Boundaries (CPML, UPML, PEC, PMC, periodic seams, plane-wave injection rules) and `BoundarySpec`; Floquet and periodic helpers are in `rfx/floquet.py` and `rfx/_periodic.py` |
+| `rfx/boundaries/` | Boundaries (CPML, UPML, PEC, PMC, periodic seams, plane-wave injection rules) and `BoundarySpec`; Floquet and periodic helpers are in `rfx/floquet.py` and `rfx/_internal/_periodic.py` |
 | `rfx/runners/` | The run paths and their admission checks (`_admission.py`), including the multi-device runners |
 | `rfx/preflight/` | Preflight findings: what the grid built against what was declared, absorber and mesh checks |
 | `rfx/sources/` | Source and port implementations (waveguide, TFSF, MSL, coaxial, lumped, Floquet) and the port drive (`port_drive.py`) |

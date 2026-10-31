@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, diagnostic_refusal

@@ -4,7 +4,7 @@ from __future__ import annotations
 from functools import partial
 from jax import lax
 from jax.sharding import PartitionSpec as P
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.boundaries.cpml import apply_cpml_e
 from rfx.boundaries.cpml import apply_cpml_h
 from rfx.boundaries.cpml import cpml_grid_metadata

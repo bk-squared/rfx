@@ -84,7 +84,7 @@ def probe_loop(sim, n_steps, face, scene='a'):
     from rfx.probes.probes import init_sparam_probe, _port_curl_boundary
     from rfx.sources.sources import LumpedPort
     from rfx.stepping.probe_loop import make_probe_step
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
 
     grid = sim._build_grid()
     mats, ds, ls, *_ = sim._assemble_materials(grid)

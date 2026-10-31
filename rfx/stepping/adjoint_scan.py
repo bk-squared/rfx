@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import jax
 import jax.numpy as jnp
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
 
 

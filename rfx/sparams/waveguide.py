@@ -30,7 +30,7 @@ from __future__ import annotations
 from rfx.errors import AccuracyWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes

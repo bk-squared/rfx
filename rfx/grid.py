@@ -10,7 +10,7 @@ from math import lcm
 
 from rfx.boundaries.depths import resolve_face_depths
 
-from rfx._grid_metric import (
+from rfx._internal._grid_metric import (
     node_tie_tol,
     nearest_uniform_index,
     axis_name as _axis_name,
@@ -387,7 +387,7 @@ class Grid:
         A constant coordinate denotes a plane and uses the point lookup.
         Non-periodic axes retain position_to_index's input-dtype division.
         """
-        from rfx._periodic import interval_coordinates
+        from rfx._internal._periodic import interval_coordinates
         corners = [list(start), list(end)]
         spanning = [start[a] != end[a] for a in range(3)]
         for a in range(3):
@@ -413,7 +413,7 @@ class Grid:
     #
     # THE CONVENTION -- index origin, the primal/dual rule, the end entries
     # of the two inverse-metric arrays, and which consumer is entitled to
-    # which metric -- is written once, in ``rfx/_grid_metric.py``. Read that
+    # which metric -- is written once, in ``rfx/_internal/_grid_metric.py``. Read that
     # module before adding a formula at a call site; decision 3 is that a
     # consumer needing a third quantity adds a named accessor here instead.
     #
@@ -434,7 +434,7 @@ class Grid:
         """PRIMAL cell widths along ``axis``, float64, full padded length.
 
         Constant by construction: ``np.full(n, dx)``. The last entry is the
-        fence-post node-provider (see ``rfx/_grid_metric.py``), so the sum
+        fence-post node-provider (see ``rfx/_internal/_grid_metric.py``), so the sum
         overshoots the realized extent by one cell -- use ``node_of``.
         """
         n, _ = self._axis_extent(axis)

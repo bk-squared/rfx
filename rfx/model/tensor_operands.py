@@ -225,7 +225,7 @@ def reference_conformal_materials(grid, materials, reference, periodic):
     if reference is None:
         return materials
     from rfx.model.materials import with_components
-    from rfx._uniform_specs import resolve_periodic
+    from rfx._internal._uniform_specs import resolve_periodic
     materials = with_components(materials, grid, periodic=resolve_periodic(grid, periodic))
     return finish_conformal_mu(materials, reference[1])
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from rfx.errors import ConfigurationWarning
 from rfx.model.graded_admission import host_cells
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 import warnings
 from dataclasses import replace
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from rfx import _realized
+from rfx._internal import _realized
 
 import jax
 import jax.numpy as jnp

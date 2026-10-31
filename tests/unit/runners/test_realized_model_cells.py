@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import component_e_materials, e_update_coeffs
 from tests.contracts import realized_model as T

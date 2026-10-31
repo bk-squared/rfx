@@ -2,7 +2,7 @@
 import math
 import numpy as np
 
-from rfx._grid_metric import is_one_cell_size
+from rfx._internal._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import profile_node_at, profile_cell_at, profile_span_is_uniform
 from rfx.preflight.msl_codes import msl_text, msl_join

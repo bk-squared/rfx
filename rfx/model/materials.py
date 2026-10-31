@@ -930,7 +930,7 @@ def kernel_materials(materials, *, keep_eps=False, electric=True, magnetic=True,
     Diagnostic captures explicitly observe cell arrays too. Kerr reads cell
     epsilon; all other step operands come from the realized components.
     """
-    from rfx import _realized
+    from rfx._internal import _realized
     if _realized.ACTIVE is not None:
         return materials
     c = materials.components
