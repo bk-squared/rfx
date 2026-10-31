@@ -29,6 +29,11 @@ def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_reco
     )
     if _single_lumped_main_record:
         pairs = result.lumped_port_sparams
+        from rfx.core.jax_utils import is_tracer
+        if any(is_tracer(channel) for _, channels in pairs for channel in channels):
+            raise NotImplementedError(
+                "run() cannot assemble lumped-port S-parameters inside a user jax.jit; "
+                "use forward() with port_s11_freqs or call run() directly (plain call).")
         s_params = np.asarray(port_s_from_record(
             [channels for _, channels in pairs], [meta for meta, _ in pairs],
             wire_mode=False))
