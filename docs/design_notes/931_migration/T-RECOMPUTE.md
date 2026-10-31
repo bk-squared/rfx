@@ -30,11 +30,16 @@ passivity warning ever stops firing, the test's own docstring says the answer
 is to upgrade it to real magnitude / passivity gates — not to relax it, and not
 to delete the wrapper.
 
-`farfield/test_oblique_rcs_absolute_sigma` keeps its +0.86 / +0.85 dB locks
-untouched: its plate is a `rasterize(..., PEC_SIGMA)` sigma fill, which design
+This migration left `farfield/test_oblique_rcs_absolute_sigma` untouched:
+its plate is a `rasterize(..., PEC_SIGMA)` sigma fill, which design
 note §1.8 fences out of the contract. crossval-C and the critic pass agree on
 this; tests-crossval's four GPU re-runs for the RCS family are unnecessary
 unless the PI extends the contract to sigma fills.
+
+The level statement is superseded by the settled four-mesh result (λ/30–λ/120):
++0.08 to +0.16 dB from PO at 5 GHz for this plate at 20° and 40°, converged within
+0.006 dB from λ/60 to λ/120. The gate now locks +0.0833/+0.1583 dB within 0.03 dB
+(rfx-archive rfx/records/20261031-oblique-rcs-level-1991).
 
 ## Local runs (this machine, JAX_PLATFORMS=cpu, -n 4)
 
