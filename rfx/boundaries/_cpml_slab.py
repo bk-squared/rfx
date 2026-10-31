@@ -185,6 +185,8 @@ def _apply_ordered_slab(windows, field, values, owners):
         if owner is not None:
             updated = jnp.where(owner, updated, field[sl])
         field = jax.lax.dynamic_update_slice(field, updated, starts)
+        # Keep chained slab updates in place on CPU (jaxlib >= 0.11.2, #2125).
+        field = jax.lax.optimization_barrier(field)
     return field
 
 

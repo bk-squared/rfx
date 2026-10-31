@@ -2,7 +2,7 @@
 
 The weekly Python 3.12 / newest-jax job (validation.yml, ``latest-jax``) installs jax above the install cap.
 Its first run (jax 0.11.2, run 40468718500) found three causes: #2114 is fixed by #2108 and #2115 by #2117, so
-neither is listed; the 4 tests of #2116 stay under #2125, the open slowdown issue. Its third run (jax 0.12.0.1,
+neither is listed; #2125 fixes the four #2116 copy-count failures. Its third run (jax 0.12.0.1,
 run 40632569850) found two more: #2166 (exact and cross-trace bars) and #2167 (a two-device mirror case).
 Each listed node id gets ``xfail(strict=True, reason="#N ...")`` on the entry's jax version or later and nothing on
 older jax, where these tests pass. The fix for an issue deletes that issue's entry: a fixed test still listed turns
@@ -17,16 +17,6 @@ _CURL_PATHS = "tests/contracts/test_absorber_curl_coefficients_paths.py::test_di
 
 # issue: (first jax (major, minor) that fails, reason, node ids)
 JAX_XFAILS = {
-    2125: (
-        (0, 11),
-        "the compiled RLC step holds 26 domain copies on jaxlib 0.11.2 and later against 8 on 0.10.2 (measured in #2116)",
-        (
-            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[parallel-graded]",
-            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[parallel-uniform]",
-            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[series-graded]",
-            "tests/contracts/test_rlc_adds_no_domain_copy.py::test_rlc_adds_no_domain_copy[series-uniform]",
-        ),
-    ),
     2166: (
         (0, 12),
         "on jax 0.12 the CPML curl-coefficient owner check is one float32 step off, cross-trace checks reach 13-72 ULP "
