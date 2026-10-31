@@ -27,7 +27,7 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxUnsupported
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
@@ -104,7 +104,7 @@ def compute_waveguide_s_matrix(
     num_periods: float = 20.0,
     normalize: bool | str = False,
     subpixel_smoothing: bool | str = False,
-    conformal_pec: bool | str | None = None,
+    conformal_pec: str | None = None,
     eps_override: "jnp.ndarray | None" = None,
     sigma_override: "jnp.ndarray | None" = None,
     checkpoint_segments: int | None = None,
@@ -187,9 +187,9 @@ def compute_waveguide_s_matrix(
         the host for every ``normalize`` value and is outside the
         differentiable chain; ``eps_override`` / ``sigma_override``
         differentiation is single-mode only.
-    conformal_pec : bool, str or None
-        None follows Boundary(conformal=True); True/False explicitly selects
-        conformal PEC. "cut_cell_floor" uses true edge lengths and floored
+    conformal_pec : str or None
+        None follows Boundary(conformal=True); the keyword only accepts
+        "cut_cell_floor", which uses true edge lengths and floored
         cut-face areas on uniform device and boundary-wall reference scans.
         It requires Simulation(dt=q * Grid.courant_dt(realized_dx)), q=0.5
         or 0.25, and refuses custom port_reference_sims.
@@ -289,6 +289,11 @@ def compute_waveguide_s_matrix(
         Material rasterization is a cell-centre step test on realized nodes.
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
+    if conformal_pec is not None and conformal_pec != "cut_cell_floor":
+        raise RfxUnsupported(
+            f"compute_waveguide_s_matrix received conformal_pec={conformal_pec!r}; "
+            'conformal PEC on this entry is declared with Boundary(conformal=True); '
+            'the keyword only takes "cut_cell_floor"')
     from rfx.runners._admission import admit_conformal_floor
     admit_conformal_floor(self, "waveguide_s_matrix", conformal_pec, smoothing=subpixel_smoothing)
     if conformal_pec is None:
