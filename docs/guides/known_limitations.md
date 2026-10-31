@@ -225,6 +225,26 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 `subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
 Tracker: #1651
 
+### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
+
+Tracker: #2274
+
+With `conformal_pec=True`, the H update uses the open (PEC-free) area of each cut face. The E update uses the open
+length of each cut edge, after a stability bound that caps it by the areas of the faces around it. Measured against
+the drawn surface on 1 mm cells, before that bound:
+- Within one cell of a Box edge or corner, the open areas are off by up to 0.78 of a face and the open lengths by up
+  to 0.60 of an edge.
+- On curved bodies they are off by up to 0.44 of a face (cylinder side) and 0.63 of an edge (sphere), where a mesh face
+  or edge is nearly tangent to the surface.
+
+Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a mesh plane is realized
+at its drawn plane. Effect on S-parameters, resonance frequencies and RCS: not measured.
+
+A finer mesh shrinks the region affected near an edge. On a sphere at radius 4.3, 8.6 and 17.2 cells it also shrinks
+the share of nearly tangent cells: the faces off by more than 0.1 of a face were 17, 4 and 6, while the cut faces grew
+16x. The largest deviation does not shrink. Judge a body with edges, or a curved body, by a mesh series of at least
+three refinements. Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); record kept with the project.
+
 ### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
 
 Tracker: #2241
