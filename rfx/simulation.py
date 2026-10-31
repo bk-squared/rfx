@@ -117,7 +117,7 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     return e_update_coefficient_at(materials, idx, component, grid.dt, periodic, **electric_grid_kwargs(grid))
 
 
-def make_source(grid: Grid, position: tuple[float, ...] | list[float], component: str, waveform_fn: Callable[[float], float], n_steps: int,
+def make_source(grid: Grid, position: tuple[float, ...] | list[float], component: str, waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int,
                 materials: MaterialArrays | None = None, amplitude_kind: str | None = None) -> SourceSpec:
     """Create a SourceSpec by precomputing a waveform function (raw E-field add).
 
