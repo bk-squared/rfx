@@ -1,7 +1,4 @@
-"""A vacuum TEM pulse measures each absorber face's reflection at 2–30 GHz.
-
-ADI's transverse-PEC line-source measurement is in test_adi_cpml_reflection.py.
-"""
+"""A vacuum TEM pulse measures each absorber face's reflection at 2–30 GHz."""
 
 import jax
 import numpy as np

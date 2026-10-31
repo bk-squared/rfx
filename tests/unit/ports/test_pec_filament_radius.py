@@ -90,7 +90,7 @@ def test_filament_without_radius_port_refuses_on_dispersive_board(lane, kind, mo
 def test_other_filament_paths_refuse_before_scan(entry, monkeypatch):
     from rfx import Simulation
     from rfx.runners.distributed_v2 import run_distributed
-    opts = dict(solver="adi") if entry.startswith("adi") else {}
+    opts = {}
     if entry == "distributed_nu":
         opts["dx_profile"] = np.full(12, .0005)
     sim = Simulation(freq_max=30e9, domain=(.006,)*3, dx=.0005,
@@ -105,8 +105,6 @@ def test_other_filament_paths_refuse_before_scan(entry, monkeypatch):
             run_distributed(sim, n_steps=1, devices=jax.devices("cpu")[:2])
         elif entry == "distributed_nu":
             sim.forward(n_steps=1, distributed=True, devices=jax.devices("cpu")[:2], skip_preflight=True)
-        elif entry == "adi_forward":
-            sim.forward(n_steps=1, skip_preflight=True)
         else:
             sim.run(n_steps=1, skip_preflight=True)
 

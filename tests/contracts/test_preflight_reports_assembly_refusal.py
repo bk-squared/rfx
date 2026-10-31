@@ -165,7 +165,7 @@ def test_assembly_finding_defers_only_to_located_refusal(monkeypatch, exc_type, 
 
     sim = Simulation(10e9, (.01,) * 3, dx=.001, boundary='pec')
     exc = exc_type('ez')
-    other_code = 'adi_interior_pec_unsupported' if other == 'quoting_error' else 'pec_realization_refused'
+    other_code = 'example_unsupported' if other == 'quoting_error' else 'pec_realization_refused'
 
     def fail(*args, **kwargs):
         raise exc

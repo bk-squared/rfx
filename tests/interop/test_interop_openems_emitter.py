@@ -690,7 +690,7 @@ def test_refuses_refinement():
 
 def test_refuses_rfx_only_solver_controls():
     for key, value, pattern in (
-        
+
         ("stencil_order", 4, "stencil_order=4"),
         ("precision", "float64", "precision='float64'"),
     ):

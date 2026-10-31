@@ -402,7 +402,7 @@ DESIGN_BUILDERS = {
     "legacy_all_periodic": _legacy_all_periodic,
     "auto_mesh": _auto_mesh_design,
     "nonuniform_xy": _nonuniform_xy_design,
-    
+
     "fourth_order_2d": _fourth_order_2d,
     "pec_sheet_and_volume": _pec_sheet_and_volume,
     "current_moment_monitor": _current_moment_monitor_design,

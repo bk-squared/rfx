@@ -931,8 +931,7 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
     so a float32 cotangent above about 2.6e16 on Cb overflows to inf, and
     ``0*inf`` then gives NaN on the lossless cells. Whether it fires depends
     only on the objective's scale: a sum of squared fields from a
-    current-driven graded-mesh run is about 1e17. The ADI lane's
-    ``(MU_0*eps*dx**2)**-2`` overflows even at a cotangent of 1.
+    current-driven graded-mesh run is about 1e17.
 
     ``eps_r_fn`` computes the same coefficients written in eps_r, with the SI
     constants grouped as Python floats such as ``dt/EPS_0``
@@ -941,7 +940,7 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
     ``jax.jvp(eps_r_fn)``. The primal is ``si_fn`` itself, so a run that is
     not differentiated compiles exactly the graph it compiled before. That
     matters because XLA's algebraic simplifier rewrites the SI arithmetic
-    (measured on the 3-D ADI lane), so any extra op in the forward graph,
+    so any extra op in the forward graph,
     even one whose value is exactly 0, can move the bits.
 
     ``args`` are pytrees. Their ``jax.Array`` leaves (concrete or traced) are

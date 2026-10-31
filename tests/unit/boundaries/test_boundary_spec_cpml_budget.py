@@ -792,9 +792,6 @@ def test_quick_convergence_clone_of_a_scalar_sim_is_unchanged():
     assert clone._build_grid().face_pads == sim._build_grid().face_pads
 
 
-# --------------------------------------------------------------------------
-# 7. ADI has no per-face absorber (found by the #647 grep sweep).
-# --------------------------------------------------------------------------
 
 
 

@@ -256,10 +256,6 @@ def test_path_existing_refusals(kind, path):
     elif path == 'distributed':
         with pytest.raises(NotImplementedError, match='pec_occupancy_override'):
             sim.forward(distributed=True, **options)
-    elif path == 'adi':
-        sim._solver = 'adi'
-        with pytest.raises((ValueError, NotImplementedError), match='adi|ADI'):
-            sim.forward(**options)
     else:
         sim.add_refinement(z_range=(.003,.007), ratio=2)
         with pytest.raises(NotImplementedError, match='refinement|subgrid'):

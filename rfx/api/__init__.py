@@ -359,7 +359,7 @@ class Simulation(
             raise ValueError(
                 f"precision must be 'float32', 'mixed', or 'float64', got {precision!r}"
             )
-        from rfx.model.solver_admission import admit_solver
+        from rfx.model import admit_solver
         admit_solver(solver, adi_cfl_factor)
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
@@ -737,8 +737,7 @@ class Simulation(
 
             - ``'current'``: the amplitude is a current moment I(t) in A·m,
               realized as ``E += Cb * I / dV`` on every path and boundary
-              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI refuses
-              ``'current'`` and requires explicit ``'field'``,
+              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``;
               ``dV`` = local cell volume). Resolution-independent injected
               power; Meep's convention; the declaration default.
             - ``'field'``: the amplitude is a raw E-field increment per
@@ -998,7 +997,7 @@ class Simulation(
             and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``. Both the uniform and
             the non-uniform (``dz_profile``)
             ``run()``/S-parameter lanes apply the operator; lanes that do
-            not (distributed, subgridded, ADI, UPML, dispersive-overlap,
+            not (distributed, subgridded, UPML, dispersive-overlap,
             multimode-waveguide, MSL-junction/mixed, optimize/topology
             drivers) refuse f0 sheets loudly rather than silently dropping
             them; ``compute_msl_s_matrix`` applies the sheet through its
