@@ -644,7 +644,7 @@ class Result(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     #: Host-side geometry record for the configuration that produced this run.
-    #: Filled by run_uniform, run_adi, run_subgridded, run_distributed (uniform), and run_nonuniform; None on other lanes.
+    #: Filled by run_uniform, run_subgridded, run_distributed (uniform), and run_nonuniform; None on other lanes.
     #: Also None for traced mesh coordinates; other record errors propagate.
     realized_geometry: object = None
     sparam_time_records: tuple | None = None

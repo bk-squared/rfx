@@ -191,7 +191,7 @@ def _preflight_impl(
     # the generic assembly finding, regardless of validator order.
     assembly_codes = {"assembly_refusal", "assembly_fault"}
     # Only these emitters repeat an admission refusal on a specific entry.
-    # Other errors (notably ADI compatibility) may merely quote that refusal.
+    # Other errors may merely quote that refusal.
     located_refusal_codes = {
         "pec_box_subcell", "pec_zero_cells", "pec_realization_refused",
         "dc_film_area", "dc_film_layers", "dc_film_unchecked",

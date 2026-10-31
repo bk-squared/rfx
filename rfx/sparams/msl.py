@@ -340,11 +340,6 @@ def compute_msl_s_matrix(
             "compute_msl_s_matrix() is not supported with SBP-SAT "
             "subgridding."
         ), _diagnostics)
-    if self._solver == "adi":
-        raise diagnostic_refusal(RfxUnsupported(
-            "compute_msl_s_matrix() is not supported with solver='adi'; "
-            "use the uniform Yee solver."
-        ), _diagnostics)
 
     # Issue #704: an NTFF box would be silently dropped on this path.
     _warn_ntff_box_dropped(self, "compute_msl_s_matrix()")
