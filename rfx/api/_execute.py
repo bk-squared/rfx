@@ -23,8 +23,8 @@ from rfx.api._gradient_witness import with_conductivity_record
 from rfx.preflight._impl import auto_preflight, run_preflight_gate, user_stacklevel
 from rfx._diagnostic_transport import merge_diagnostics
 
-import functools
-import math
+import functools; import math; from typing import TYPE_CHECKING
+if TYPE_CHECKING: from collections.abc import Sequence
 
 from rfx import _realized, _grid_metric
 from rfx.model import apply_material_overrides, conductors as _conductors, design_box_window
@@ -665,7 +665,7 @@ class _ExecuteMixin:
             current_moment_monitor=getattr(result, "current_moment_monitor", None),
         )
 
-    def distributed_override_layout(self, devices=None):
+    def distributed_override_layout(self, devices: Sequence[jax.Device] | None = None) -> tuple[tuple[int, int, int], jax.sharding.NamedSharding]:
         """Return ``(shape, NamedSharding)`` for distributed forward designs.
 
         The global shape is ``(nx_padded, ny, nz)`` with no ghosts, where
@@ -688,7 +688,7 @@ class _ExecuteMixin:
         return ((grid.nx_padded, grid.ny, grid.nz),
                 NamedSharding(Mesh(np.array(devices), ("x",)), P("x")))
 
-    def shard_distributed_override(self, array, devices=None, *, pad_value=0.0):
+    def shard_distributed_override(self, array: np.ndarray | jax.Array | Sequence[object], devices: Sequence[jax.Device] | None = None, *, pad_value: float | complex = 0.0) -> jax.Array:
         """Place a concrete local whole-domain design in the forward layout.
 
         This convenience initializer copies addressable x slabs from a host
@@ -1027,7 +1027,7 @@ class _ExecuteMixin:
         port_s11_freqs: object | None = None,
         rlc_values_override: dict | None = None,
         ringdown: RingdownSpec | None = None,
-        **_removed_kwargs,
+        **_removed_kwargs: object,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
