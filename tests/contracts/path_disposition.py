@@ -868,7 +868,6 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_uniform=not_reachable("run() takes no occupancy input"),
         run_nonuniform=not_reachable("run() takes no occupancy input"),
         run_subgridded=not_reachable("run() takes no occupancy input"),
-        run_adi=not_reachable("run() takes no occupancy input"),
         run_distributed=not_reachable("run() takes no occupancy input"),
         run_distributed_nu=not_reachable("run() takes no occupancy input"),
         fwd_uniform=carries("select_occupancy_operator selects the Kottke tensor for PEC occupancy"),
@@ -876,8 +875,6 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                raises="single-device uniform forward"),
         fwd_distributed_nu=refuses("Kottke occupancy requires the uniform lane",
                                    raises="single-device uniform forward"),
-        fwd_adi=refuses("ADI refuses the occupancy override",
-                        raises="solver='adi' does not support pec_occupancy_override"),
     )},
 
     # -------------------------------------------------------- mesh profiles
