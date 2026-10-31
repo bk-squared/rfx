@@ -241,7 +241,7 @@ def current_source_volume(grid, position_ijk, component):
 
 
 def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], component: str,
-                        waveform_fn: Callable[[float], float], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
+                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
     """Create a properly normalized current source for non-uniform grid.
 
     The waveform specifies CURRENT (Amperes). The E-field addition is:
