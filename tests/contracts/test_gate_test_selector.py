@@ -64,6 +64,28 @@ def test_debye_selects_only_direct_imports(sources, durations):
     }
 
 
+def test_message_literal_selects_public_api_test_but_not_short_or_spaceless_overlap():
+    result = selector.select_tests(["rfx/sparams/waveguide.py"], {
+        "tests/unit/ports/test_warning.py":
+            'def test_warning():\n    assert "could not evaluate the far-port" in warning',
+        "tests/unit/ports/test_short.py":
+            'def test_short():\n    assert "far-port" in warning',
+        "tests/unit/ports/test_spaceless.py":
+            'def test_spaceless():\n    assert "waveguide_advisory_failed" in warning',
+    }, {"tests/unit/ports/test_warning.py::test_warning": 7}, module_sources={
+        "rfx/sparams/waveguide.py":
+            'warnings.warn(f"waveguide_advisory_failed: could not evaluate "\n'
+            '              f"the far-port: {error}")',
+    })
+    assert "tests/unit/ports/test_warning.py" in result.files
+    assert "tests/unit/ports/test_short.py" not in result.files
+    assert "tests/unit/ports/test_spaceless.py" not in result.files
+    assert result.files == ("tests/unit/ports/test_warning.py",)
+    assert result.message_literal_files == 1
+    assert result.message_literal_seconds == 7
+    assert "message-literal tests added: 1 files, recorded 7.000000 s" in result.summary()
+
+
 def test_test_module_parent_import_matches_alias():
     assert selector.directly_imports(
         "from tests.crossval.msl_notch_filter import test_msl_notch_filter as case",
