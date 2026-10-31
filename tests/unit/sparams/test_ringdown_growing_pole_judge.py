@@ -15,7 +15,7 @@ BINS = np.linspace(8e9, 12e9, 21)
 UNIT_TOL = 1e-6
 
 
-def _model(s, c, n_ref=321, D=15):
+def _model(s, c, n_ref=321, D=1):
     return rd.RingdownModel(
         s=np.asarray(s, dtype=complex), c=np.asarray(c, dtype=complex),
         n_ref=n_ref, dt=DT, freq_max=13e9, guard=None, factors=(), D=D,
@@ -96,7 +96,7 @@ def test_c5_long_decay_horizon_cannot_resolve_growth():
     denom = np.full((len(BINS), 1), 1e-10)
     residue = 1e-3 * denom[10, 0] / (DT*np.exp(n*growth_rate)
                                          * np.expm1(H*growth_rate)/np.expm1(growth_rate))
-    model = _model([decay, growing], [[1.], [residue]], n_ref=0, D=2)
+    model = _model([decay, growing], [[1.], [residue]], n_ref=0)
     at_H = abs(_finite_tail(growing, residue, n, 0, H, BINS[10:11])[0]) / denom[10, 0]
     at_2H = abs(_finite_tail(growing, residue, n, 0, 2*H, BINS[10:11])[0]) / denom[10, 0]
     assert at_H == pytest.approx(1e-3, rel=1e-10)
@@ -105,9 +105,9 @@ def test_c5_long_decay_horizon_cannot_resolve_growth():
     assert judge.status == 'cannot judge' and not judge.ok
     assert judge.horizon_steps == H
     assert judge.decay_horizon_steps == pytest.approx(H-.25)
-    assert judge.band_factor == pytest.approx((1+UNIT_TOL)**H, rel=1e-9)
+    assert judge.band_factor == pytest.approx((1+UNIT_TOL)**(2*H), rel=1e-9)
     assert judge.share_per_bin[10] >= at_2H > 1e-2
-    assert f'H={H}' in judge.reason and 'D=2' in judge.reason and 'band_factor=' in judge.reason
+    assert f'H={H}' in judge.reason and 'D=1' in judge.reason and 'band_factor=' in judge.reason
     decimated = rd.judge_growing_poles(replace(model, D=20), n, BINS, denom)
     assert decimated.band_factor < 2 and decimated.status == 'refused'
 
@@ -142,30 +142,38 @@ def test_no_growing_pole_passes_even_where_a_channel_dft_is_zero():
     assert judge.status == 'pass' and judge.n_kept_growing == 0
 
 
-def test_subresolution_positive_rate_and_exact_sinusoid_use_window_share():
-    # Neither sign nor an exactly zero rate justifies an extrapolated tail.
+def test_any_positive_rate_and_exact_sinusoid_receive_tail_bounds():
+    # A growth of 1e-13 per step is below the in-window rule's sinusoid test but still a
+    # growing pole: on a read bin its tail bound is large, so it is refused.
+    # An exactly zero rate is unresolved too; its on-bin bound has a zero divisor.
     slow = (1e-13 + 2j*np.pi*10e9*DT) / DT
     exact = (2j*np.pi*10e9*DT) / DT
     denom = np.full((len(BINS), 1), 1e-10)
-    for s in (slow, exact):
-        model = replace(_model([s], [[1e-3]]), n_window=703)
-        judge = rd.judge_growing_poles(model, 1024, BINS, denom)
-        assert DT*703*1e-3/denom[10, 0] > 1e-2
-        assert judge.status == 'cannot judge'
-        assert 'in-window share' in judge.reason
-        np.testing.assert_array_equal(judge.share_per_bin, np.zeros(len(BINS)))
+    slow_judge = rd.judge_growing_poles(_model([slow], [[1e-3]]), 1024, BINS, denom)
+    expected = _bound(slow, np.array([1e-3]), 1024, 321, 1024, denom)[:, 0]
+    assert slow_judge.status == 'refused'
+    # On its own bin 1 - lambda z is ~1e-13 and the product form above loses digits there.
+    off = np.arange(len(BINS)) != 10
+    np.testing.assert_allclose(slow_judge.share_per_bin[off], expected[off], rtol=1e-9)
+    assert slow_judge.share_per_bin[10] > 1e6
+    exact_judge = rd.judge_growing_poles(_model([exact], [[1e-3]]), 1024, BINS, denom)
+    assert exact_judge.status == 'cannot judge'
+    assert exact_judge.share_per_bin[10] > 1e6
 
 
-@pytest.mark.parametrize('bad', ['residue', 'denominator'])
+@pytest.mark.parametrize('bad', ['residue', 'denominator', 'overflow'])
 def test_nonfinite_values_cannot_judge(bad):
     model, n, _, denom = _c2()
     if bad == 'residue':
         model.c[1, 0] = np.nan
     elif bad == 'denominator':
         denom[0, 0] = np.nan
+    else:
+        model.s[1] = 1/DT + 2j*np.pi*10e9
     judge = rd.judge_growing_poles(model, n, BINS, denom)
-    assert judge.status == 'cannot judge' and not judge.ok
-    assert 'non-finite' in judge.reason
+    assert judge.status == ('refused' if bad == 'overflow' else 'cannot judge') and not judge.ok
+    if bad != 'overflow':
+        assert 'non-finite' in judge.reason
 
 
 def test_c1_true_decaying_tail_still_fails():

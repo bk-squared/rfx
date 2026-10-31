@@ -25,3 +25,14 @@ def in_window_shares(model, indices, bins, denominator):
         with np.errstate(divide='ignore', invalid='ignore'):
             values[:, j, :] = np.abs(plain_dft(samples, model.dt, bins)) / denominator
     return values
+
+
+def completion_poles(model, n_record, unit_tol=1e-6):
+    """Poles and a completion mask; unresolved non-static tails are omitted."""
+    from rfx.ringdown import _static_pole
+
+    classes = pole_classes(model, unit_tol)
+    keep = np.array([classes[k] != 0 or _static_pole(
+        model.pole(k), n_record * model.dt, unit_tol)
+        for k in range(len(model.s))], dtype=bool)
+    return model.s, keep

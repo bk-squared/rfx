@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
-from rfx.measurement.ringdown_resolution import in_window_shares, pole_classes
+from rfx.measurement.ringdown_resolution import pole_classes
 
 if TYPE_CHECKING:
     from rfx.ringdown import RingdownModel
@@ -37,11 +37,10 @@ def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
 
 GROWING_POLE_RULE = (
     "The symmetric resolution edge is |Re(s) dt| = log1p(unit_tol)/D; "
-    "sub-resolution poles use their in-window DFT share (bar 1e-2), never H "
-    "or the growing-tail bound. Resolvable "
-    "kept non-static growing poles are judged by their tail share S_k through "
+    "unresolved poles of either sign never set H and use the same tail bound as "
+    "kept non-static growing poles: their tail share S_k through "
     "twice the judge horizon H (bar 1e-2); H is the larger of the record length "
-    "and the hundredfold decay horizon of significant kept decaying poles. "
+    "and the hundredfold decay horizon of significant resolved decaying poles. "
     "The band condition (1 + unit_tol)^(2H/D) <= 2 must hold. The count is "
     "reported and never judged; static poles are exempt. A pole the pencil "
     "resolves as growing is discarded and judged where the caller judges "
@@ -59,6 +58,7 @@ class GrowingPoleJudgement(NamedTuple):
     band_factor: float
     share_per_bin: np.ndarray
     worst: tuple | None
+    growing_share_per_bin: np.ndarray | None = None
 
 
 def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
@@ -66,7 +66,8 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     """Judge kept non-static growing poles by their tail bound through ``2H``.
 
     ``H`` is at least the record length and covers a hundredfold decay of
-    every significant kept decaying pole. ``denominator (nf, C)`` is the
+    every significant resolved decaying pole. Unresolved poles of either sign
+    receive the same bound as growing poles. ``denominator (nf, C)`` is the
     caller's plain DFT magnitude (``(nf,)`` for a one-channel record);
     infinity marks an inactive channel.
     """
@@ -78,34 +79,28 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
         denominator = denominator[:, None]
     H, Hd, band = int(n_record), 0.0, math.nan
     share, worst = np.zeros(freqs.size), None
+    positive_share = np.zeros(freqs.size)
     grow, exempt = (growing_poles(model, n_record * model.dt, unit_tol)
                     if len(model.s) else ((), ()))
 
     def result(status, reason):
         return GrowingPoleJudgement(status, status == "pass", reason,
-                                    len(grow), len(exempt), H, Hd, band, share, worst)
+                                    len(grow), len(exempt), H, Hd, band, share, worst,
+                                    positive_share)
 
     if (not np.isfinite(model.s).all() or not np.isfinite(model.c).all()
             or not np.isfinite(freqs).all()
             or not np.all(np.isfinite(denominator) | np.isposinf(denominator))):
         return result("cannot judge", "non-finite poles, residues, bins or denominator")
-    decaying, growing, unresolved = [], [], []
+    decaying, growing = [], []
     classes = pole_classes(model, unit_tol)
     for k in range(len(model.s)):
         if _static_pole(model.pole(k), n_record * model.dt, unit_tol):
             continue
-        if classes[k] > 0:
+        if classes[k] >= 0:
             growing.append(k)
         elif classes[k] < 0:
             decaying.append(k)
-        else:
-            unresolved.append(k)
-    if unresolved:
-        own = in_window_shares(model, unresolved, freqs, denominator)
-        f, j, ch = np.unravel_index(np.argmax(own), own.shape)
-        k = unresolved[j]
-        if not np.isfinite(own).all() or own[f, j, ch] > 1e-2:
-            return result("cannot judge", f"sub-resolution non-decaying sinusoidal pole {model.s[k].imag / (2*np.pi):.12g} Hz, decay per step={-model.s[k].real * model.dt:.12g}, in-window share {own[f, j, ch]:.12g} at bin {freqs[f]:.12g} Hz (bar 1e-2)")
     none_growing = "no kept non-static growing pole"
     horizon_pole = None
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
@@ -135,17 +130,20 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
         # |1-exp(z)| = exp(Re(z)) |1-exp(-z)| for a growing pole.
         # No positive exponential is formed, even far outside the band.
         z = s[None, :] * model.dt - 2j * np.pi * freqs[:, None] * model.dt
-        log_divisor = rate[None, :] + np.log(np.abs(-np.expm1(-z)))
+        log_divisor = np.maximum(rate, 0)[None, :] + np.log(np.abs(
+            -np.expm1(np.where(rate[None, :] > 0, -z, z))))
         log_amp = (np.logaddexp(0., 2.0 * H * rate) + np.log(model.dt)
                    + (n_record - model.n_ref) * rate)[:, None]
         log_values = (log_amp[None, :, :] + np.log(np.abs(c))[None, :, :]
                       - log_divisor[:, :, None] - np.log(denominator[:, None, :]))
         # -inf represents an exact zero residue or inactive channel; +inf/NaN
-        # here means an invalid denominator, not an overflowing exponential.
-        if np.any(np.isnan(log_values) | np.isposinf(log_values)):
-            return result("cannot judge", "non-finite growing pole share from zero denominator")
+        # here means a singular divisor or invalid denominator, not overflow.
         values = np.exp(np.minimum(log_values, log_max))
         share = np.max(values, axis=(1, 2))
+        # The S-parameter report's kept-growing row retains its positive-rate
+        # meaning; the judge's total share also covers unresolved decay and DC rate.
+        if np.any(rate > 0):
+            positive_share = np.max(values[:, rate > 0, :], axis=(1, 2))
     f, k, ch = np.unravel_index(np.argmax(log_values), values.shape)
     worst = (float(s[k].imag / (2.0 * np.pi)), float(np.expm1(min(rate[k], log_max))),
              float(values[f, k, ch]))
@@ -156,6 +154,8 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
             p = model.s[horizon_pole]
             setter = f"pole {p.imag / (2*np.pi):.12g} Hz, decay per step={-p.real * model.dt:.12g}"
         return result("cannot judge", f"decay horizon is longer than the identification resolves growth: H={H}, D={model.D}, band_factor={factor} > 2; H set by {setter}")
+    if np.any(np.isnan(log_values) | np.isposinf(log_values)):
+        return result("cannot judge", "non-finite pole tail bound from zero divisor or denominator")
     if log_values[f, k, ch] > np.log(bar):
-        return result("refused", f"kept growing pole {worst[0]:.12g} Hz, |lambda|-1={worst[1]:.12g} per step, tail share {worst[2]:.12g} > {bar:g} at bin {freqs[f]:.12g} Hz")
-    return result("pass", f"kept growing pole tail shares <= {bar:g} at H={H}")
+        return result("refused", f"kept growing or unresolved pole {worst[0]:.12g} Hz, |lambda|-1={worst[1]:.12g} per step, tail share {worst[2]:.12g} > {bar:g} at bin {freqs[f]:.12g} Hz")
+    return result("pass", f"kept growing and unresolved pole tail shares <= {bar:g} at H={H}")
