@@ -5,6 +5,7 @@ from rfx.errors import RfxUnsupported
 import numpy as np
 
 from rfx.api._spec import Result, _warn_if_nonfinite_result
+from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 
 
 def refuse_distributed_options(self, *, entry="run", subpixel_smoothing=False, **options):
@@ -207,6 +208,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
     _warn_if_nonfinite_result(_res, context=entry)
     from rfx.current_moments import require_accumulated_current_moments
     require_accumulated_current_moments(self, _res, entry)
+    if not _forward_port_s11:
+        warn_if_singular_value_exceeds_one(_res.s_params, _res.freqs, extractor="run(distributed)")
     return _res
 
 
@@ -298,6 +301,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     if port_s11_freqs is not None and ports:
         from rfx.runners._uniform_forward_result import pack_port_result
         packed = pack_port_result(packed)
+    warn_if_singular_value_exceeds_one(packed.s_params, packed.freqs, extractor="forward(distributed)")
     return packed
 
 

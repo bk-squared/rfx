@@ -124,6 +124,7 @@ from typing import NamedTuple
 import numpy as np
 
 from rfx.measurement.ringdown_model import RingdownModel, RingdownPole, _as_2d, _cmul
+from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 
 # Import the module explicitly for its matrix-pencil planning helpers.
 _harminv = import_module("rfx.harminv")
@@ -1158,17 +1159,14 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
-        full = result.time_series
+        full, n_int = result.time_series, len(self.probe_keys)
         ts_all = np.asarray(full)
-        n_int = len(self.probe_keys)
         if ts_all.ndim != 2 or ts_all.shape != (self.n_steps, n_user + n_int):
             raise RuntimeError(
                 f"run(ringdown=...): the run returned a time series of shape "
                 f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
-        stripped = _user_geometry(result._replace(
-            time_series=full[:, :n_user]),
-            n_user, n_int)
+        stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
             warnings.warn(
@@ -1185,6 +1183,7 @@ class RingdownRun:
                 f"ring-down completion: witness failed -- {failed}; "
                 "Result.ringdown.s_params is not supported by its own check "
                 "(see Result.ringdown.report).", AccuracyWarning, stacklevel=3)
+        warn_if_singular_value_exceeds_one(S, result.freqs, extractor="run(ringdown)")
         return stripped._replace(ringdown=RingdownResult(
             s_params=S, freqs=result.freqs, report=report))
 
@@ -2473,8 +2472,7 @@ class RingdownForward(RingdownRun):
         return self._finish_forward(result, n_user)
 
     def _finish_forward(self, result, n_user: int):
-        full = result.time_series
-        n_int = len(self.probe_keys)
+        full, n_int = result.time_series, len(self.probe_keys)
         if tuple(full.shape) != (self.n_steps, n_user + n_int):
             raise RuntimeError(
                 f"forward(ringdown=...): the call returned a time series of shape "
@@ -2482,7 +2480,9 @@ class RingdownForward(RingdownRun):
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
         stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
-        return stripped._replace(ringdown=self._traced(result, channels))
+        completed = self._traced(result, channels)
+        warn_if_singular_value_exceeds_one(completed.s_params, completed.freqs, extractor="forward(ringdown)")
+        return stripped._replace(ringdown=completed)
 
     def _traced(self, result, channels) -> RingdownForwardResult:
         import jax

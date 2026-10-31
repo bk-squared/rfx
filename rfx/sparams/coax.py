@@ -31,6 +31,7 @@ from rfx._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
+from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
 
 import jax
@@ -478,10 +479,10 @@ def compute_coaxial_line_reflection(
         # signal. ``"differentiable"`` flags the AD path so it is not confused
         # with a fully-gated concrete ``"passed"``.
         status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
+        s11 = jnp.stack(s11_c)
+        warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
         return CoaxialLineReflectionResult(
-            s11=jnp.stack(s11_c),
-            freqs=jnp.asarray(freqs),
-            gamma=jnp.stack(gamma_c),
+            s11=s11, freqs=jnp.asarray(freqs), gamma=jnp.stack(gamma_c),
             recurrence_residual=jnp.stack(rec_c),
             fit_residual=jnp.stack(fit_c),
             annulus_cells=annulus_cells,
@@ -526,10 +527,9 @@ def compute_coaxial_line_reflection(
     else:
         status = "passed"
 
+    warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
     return CoaxialLineReflectionResult(
-        s11=s11,
-        freqs=np.asarray(freqs, dtype=float),
-        gamma=gamma,
+        s11=s11, freqs=np.asarray(freqs, dtype=float), gamma=gamma,
         recurrence_residual=rec_resid,
         fit_residual=fit_resid,
         annulus_cells=annulus_cells,
