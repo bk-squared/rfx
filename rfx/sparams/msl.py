@@ -598,6 +598,7 @@ def compute_msl_s_matrix(
 
     # Stash existing add_dft_plane_probe registrations and restore on exit.
     saved_dft = list(self._dft_planes)
+    saved_time_planes = getattr(self, "_time_recorded_dft_planes", None)
     _had_dft_regions = "_dft_plane_regions" in self.__dict__
     saved_dft_regions = dict(getattr(self, "_dft_plane_regions", {}))
     saved_msl = list(self._msl_ports)
@@ -735,6 +736,11 @@ def compute_msl_s_matrix(
                     (_meta_p["h_a"], _meta_p["h_b"]), jnp.asarray(freqs_arr),
                     _h_crop_region,
                 ))
+
+            self._time_recorded_dft_planes = (
+                {name for ladder in ez_probe_names for name in ladder}
+                | {name for pairs in h_probe_names for pair in pairs for name in pair}
+            )
 
             # G-AD-WIRE: when eps_override is provided use the
             # differentiable forward() path so jax.grad can flow
@@ -1552,6 +1558,10 @@ def compute_msl_s_matrix(
         )
         return result
     finally:
+        if saved_time_planes is None:
+            self.__dict__.pop("_time_recorded_dft_planes", None)
+        else:
+            self._time_recorded_dft_planes = saved_time_planes
         self._dft_planes = saved_dft
         if _had_dft_regions:
             self._dft_plane_regions = saved_dft_regions

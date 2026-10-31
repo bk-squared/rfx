@@ -17,6 +17,8 @@ from rfx.api._refplane_checks import (
     _refplane_reject_msl_ladder_in_plane_zone,
     _refplane_reject_planes_off_the_uniform_line,
 )
+from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
+
 import jax.numpy as jnp
 import numpy as np
 import os
@@ -737,7 +739,7 @@ def _forward_from_materials(
         lumped_rlc=rlc_metas,
         kerr_chi3=kerr_chi3,
         dft_planes=dft_planes if dft_planes else None,
-        record_dft=bool(getattr(self, "_internal_probe_indices", ())),
+        record_dft=time_recorded_dft_selection(self),
         flux_monitors=flux_monitor_cfgs if flux_monitor_cfgs else None,
         return_state=False,
         stencil_order=self._stencil_order,
@@ -767,8 +769,7 @@ def _forward_from_materials(
             "lumped": result.lumped_port_sparams,
             "wire": result.wire_port_sparams,
             "sparam_time_records": result.sparam_time_records,
-            "dft_time_records": {entry.name: rec for entry, rec in zip(
-                self._dft_planes, result.dft_time_records or ())},
+            "dft_time_records": named_plane_records(self, result.dft_time_records),
             "wire_refplane": result.wire_refplane_sparams,
             "freqs": _raw_freqs,
             # Mixed-family S-matrix hook (issue #488): the DFT plane
