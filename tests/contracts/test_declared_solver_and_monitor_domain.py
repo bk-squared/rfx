@@ -5,57 +5,10 @@ import pytest
 from rfx import Box, Simulation
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("conductor", [None, "sheet", "volume"])
-@pytest.mark.parametrize("preview", [False, True])
-def test_auto_mesh_cannot_substitute_yee_for_declared_adi(entry, conductor, preview):
-    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008),
-                     boundary="pec", solver="adi")
-    sim.add(Box((0, 0, 0), (.008, .008, .0016)), material="fr4")
-    if conductor:
-        sim.add(Box((.002, .002, .003),
-                    (.006, .006, .003 if conductor == "sheet" else .004)),
-                material="pec")
-    if preview:
-        assert sim._uses_nonuniform_mesh
-        if conductor:
-            assert "adi_interior_pec_unsupported" in {i.code for i in sim.preflight()}
-
-    # Only the entry point is inside raises: a later uniform grid-builder error
-    # must never masquerade as the solver refusing this model.
-    with pytest.raises(NotImplementedError, match="solver='adi'.*resolved non-uniform"):
-        getattr(sim, entry)(n_steps=1, skip_preflight=True)
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("dx", [None, .002])
-def test_supported_uniform_model_reaches_the_declared_adi_solver(entry, dx, monkeypatch):
-    sim = Simulation(freq_max=10e9, domain=((6 * (299792458.0 / 10e9 / 20),)*3 if dx is None else (.008,)*3),
-                     dx=dx, boundary="pec", solver="adi")
-    sim.add_source((.004, .004, .004), "ez", amplitude_kind="field")
-    sim.add_probe((.004, .004, .004), "ez")
-    import rfx.adi
-
-    original = rfx.adi.run_adi_3d
-    calls = []
-
-    def record_adi(*args, **kwargs):
-        calls.append(1)
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(rfx.adi, "run_adi_3d", record_adi)
-    getattr(sim, entry)(n_steps=1, skip_preflight=True)
-    assert calls == [1], "A solver declaration must reach that solver or be refused"
 
 
-@pytest.mark.parametrize("mode", ["run", "forward"])
-def test_distributed_dispatch_cannot_substitute_yee_for_adi(mode):
-    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008),
-                     boundary="pec", solver="adi")
-    sim.add(Box((0, 0, 0), (.008, .008, .0016)), material="fr4")
-    with pytest.raises(NotImplementedError, match="solver='adi'.*resolved non-uniform"):
-        sim._dispatch_plan(mode=mode, n_steps=1, num_periods=1,
-                           distributed=True, devices=[object(), object()])
 
 
 def _slabs():

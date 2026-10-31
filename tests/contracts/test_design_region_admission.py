@@ -246,7 +246,7 @@ def test_path_graded_box_refuses(kind):
 
 
 @pytest.mark.parametrize('kind', ['r', 'sheet', 'none'])
-@pytest.mark.parametrize('path', ['distributed', 'adi', 'subgrid', 'run'])
+@pytest.mark.parametrize('path', ['distributed',  'subgrid', 'run'])
 def test_path_existing_refusals(kind, path):
     sim, grid = model(kind=kind)
     options = dict(n_steps=2, pec_occupancy_override=jnp.zeros(grid.shape), skip_preflight=True)

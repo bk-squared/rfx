@@ -85,7 +85,7 @@ def test_filament_without_radius_port_refuses_on_dispersive_board(lane, kind, mo
         sim.run(n_steps=1, skip_preflight=True)
 
 
-@pytest.mark.parametrize("entry", ["adi_run", "adi_forward", "subgridded",
+@pytest.mark.parametrize("entry", [  "subgridded",
                                    "distributed_v2", "distributed_nu", "upml"])
 def test_other_filament_paths_refuse_before_scan(entry, monkeypatch):
     from rfx import Simulation

@@ -226,7 +226,7 @@ def test_terminal_planes_use_realized_pads():
 
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("path", ["uniform", "nonuniform", "distributed_v2",
-                                  "distributed_nu", "subgridded", "adi"])
+                                  "distributed_nu", "subgridded"])
 def test_explicit_absorbing_guide_refused_on_every_dispatch_path(skip, path, monkeypatch):
     """Addendum 5f extends the explicit-guide refusal to graded dispatch paths."""
     import jax

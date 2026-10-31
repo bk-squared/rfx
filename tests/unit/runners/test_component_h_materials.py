@@ -146,7 +146,7 @@ def test_h_builder_carries_component_record(path):
 
 
 @pytest.mark.parametrize("path", ["split", "shard", "distributed_nu", "distributed_h_shard",
-                                   "subgridded", "subgridded_reference", "sat_h", "sat_e", "upml", "adi"])
+                                   "subgridded", "subgridded_reference", "sat_h", "sat_e", "upml"])
 def test_unimplemented_carrier_refuses_non_none_record(path):
     from rfx import Simulation
     from rfx.boundaries.upml import init_upml

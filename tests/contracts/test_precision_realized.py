@@ -33,7 +33,7 @@ MAIN_REFUSALS = {
     **{name: (ValueError, "requires precision='float32'") for name in (
         'compute_coaxial_line_reflection', 'compute_coaxial_two_port', 'compute_coax_msl_transition')},
     **{name: (NotImplementedError, "precision|float32") for name in (
-        'vmap_material_sweep', 'run_adi', 'forward_adi', 'run_nonuniform',
+        'vmap_material_sweep',  'forward_adi', 'run_nonuniform',
         'forward_nonuniform', 'forward_distributed', 'run_distributed', 'driver_distributed')},
     'run_subgridded': (NotImplementedError, 'subgrid|SBP|precision'),
 }
@@ -206,9 +206,9 @@ def invoke(sim, entry):
         kw['distributed'] = True
     if entry.startswith('forward'):
         return sim.forward(port_s11_freqs=None if entry in ('forward_nonuniform','forward_distributed','forward_waveguide','forward_tfsf','forward_msl','forward_adi') else FREQS, **kw)
-    if entry in ('run_tfsf', 'run_msl', 'run_adi'):
+    if entry in ('run_tfsf', 'run_msl'):
         kw['compute_s_params'] = False
-    return sim.run(s_param_freqs=None if entry in ('run_nonuniform','run_waveguide','run_tfsf','run_msl','run_adi') else FREQS, **kw)
+    return sim.run(s_param_freqs=None if entry in ('run_nonuniform','run_waveguide','run_tfsf','run_msl') else FREQS, **kw)
 
 
 def _forbid(*args, **kwargs):

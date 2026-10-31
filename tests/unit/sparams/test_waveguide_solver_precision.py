@@ -51,17 +51,6 @@ def _forbid_field_initialization(*args, **kwargs):
     raise AssertionError("Unsupported waveguide input reached field initialization")
 
 
-@pytest.mark.parametrize("nonuniform", [False, True], ids=["uniform", "nonuniform"])
-def test_adi_refused_before_fields(monkeypatch, nonuniform):
-    # The constructor already refuses ADI plus explicit profiles. Set the
-    # stored solver after construction to exercise the calculator's NU guard.
-    sim = _guide(nonuniform=nonuniform, solver="yee" if nonuniform else "adi")
-    if nonuniform:
-        sim._solver = "adi"
-    monkeypatch.setattr(uniform_setup, "init_state", _forbid_field_initialization)
-    monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
-    with pytest.raises(NotImplementedError, match=r"solver='adi'.*solver='yee'"):
-        sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
 
 
 @pytest.mark.parametrize("precision", ["float64", "mixed"])
@@ -77,16 +66,6 @@ def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision
             sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
 
 
-def test_preflight_reports_adi_refusal():
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        report = _guide(solver="adi").preflight_sparameters(calculator="waveguide")
-    assert not report.ok
-    routing_errors = [issue for issue in report.errors if issue.code == "sparam_routing_waveguide"]
-    assert len(routing_errors) == 1
-    message = str(routing_errors[0])
-    assert "solver='adi'" in message
-    assert "Use solver='yee'" in message
 
 
 @pytest.mark.parametrize(

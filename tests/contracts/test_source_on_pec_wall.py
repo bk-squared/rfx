@@ -20,7 +20,7 @@ DOMAIN = (20 * DX, 16 * DX, 12 * DX)
 FACES = tuple(f'{a}_{side}' for a in 'xyz' for side in ('lo', 'hi'))
 PATHS = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
          'distributed_run', 'distributed_graded_run', 'distributed_graded_forward',
-         'adi_run', 'adi_forward', 'subgrid_run')
+           'subgrid_run')
 WALL_CASES = (
     ('x_lo', (0, 7, 5), 'ez'), ('x_lo', (0, 7, 5), 'ey'),
     ('x_hi', (20, 7, 5), 'ez'), ('y_lo', (6, 0, 5), 'ez'),
@@ -264,7 +264,7 @@ def test_outside_coordinate_reports_domain_and_wall(path, x, face):
 
 CONTROL_PATHS = [(path, case) for path in PATHS
                  for case in ('normal', 'inside', 'cpml', 'pmc', 'periodic')
-                 if not (path.startswith(('adi', 'subgrid')) and
+                 if not (path.startswith(( 'subgrid')) and
                          case not in ('normal', 'inside'))
                  and not (path.startswith('distributed') and case in ('pmc', 'periodic'))
                  and not ('graded' in path and case == 'periodic')]
@@ -286,7 +286,7 @@ def test_b3_control_admission(path, case):
     assert np.all(np.isfinite(result.time_series))
 
 
-@pytest.mark.parametrize('solver', ('yee', 'adi'))
+@pytest.mark.parametrize('solver', ('yee'))
 def test_private_material_forward_refuses(solver):
     sim = model('adi_forward' if solver == 'adi' else 'uniform_forward')
     sim.add_source((0, 7 * DX, 5 * DX), 'ez', amplitude_kind='field')

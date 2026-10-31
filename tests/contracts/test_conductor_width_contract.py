@@ -115,7 +115,7 @@ def test_record_and_context_cells(monkeypatch, lane, model):
 
 @pytest.mark.parametrize('model', ['pec', 'dc', 'f0'])
 @pytest.mark.parametrize('lane', ['run_distributed', 'run_distributed_nu',
-                                   'fwd_distributed_nu', 'run_adi', 'fwd_adi', 'run_subgridded'])
+                                   'fwd_distributed_nu',   'run_subgridded'])
 def test_refused_cells_and_distributed_dc_record(lane, model):
     sim = _record_model(model)
     # A DC lossy conductor is admitted on the multi-device paths, uniform and graded

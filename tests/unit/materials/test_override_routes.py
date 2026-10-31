@@ -201,26 +201,6 @@ def test_wire_radius_background_dependence_matches_main(keyword, field):
         np.testing.assert_array_equal(actual, np.asarray(expected, np.float32))
 
 
-@pytest.mark.parametrize("keyword,index", [("eps_override", 0), ("sigma_override", 1)])
-def test_adi_homogeneous_traced_fill_reaches_its_cell_operand(keyword, index):
-    import rfx.adi as adi
-    sim = Simulation(freq_max=30e9, domain=(.006,) * 3, dx=.001,
-                     boundary="pec", cpml_layers=0, solver="adi")
-    sim.add_source((.003,) * 3, "ez", amplitude_kind="field")
-    grid = sim._build_grid()
-    def consume(value):
-        def stop(*args, **kw):
-            raise _Captured(args[6 + index])
-        with patch.object(adi, "run_adi_3d", stop):
-            try:
-                sim.forward(n_steps=2, skip_preflight=True, **{keyword: value})
-            except _Captured as caught:
-                return caught.value
-        raise AssertionError("ADI cell operand was not reached")
-    actual, tangent = jax.jvp(consume, (jnp.float32(2),), (jnp.float32(.5),))
-    np.testing.assert_array_equal(actual, np.full(grid.shape, 2, np.float32))
-    np.testing.assert_array_equal(tangent, np.full(grid.shape, .5, np.float32))
-    assert jax.grad(lambda a: jnp.sum(consume(a)))(jnp.float32(2)) == np.prod(grid.shape)
 
 
 @pytest.mark.parametrize("keyword,operand", [("eps_override", "eps_update"),

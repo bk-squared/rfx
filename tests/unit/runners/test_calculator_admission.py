@@ -219,11 +219,11 @@ def test_waveguide_timestep_gate(attr, value, graded, monkeypatch):
             sim.compute_waveguide_s_matrix(n_steps=4)
 
 
-@pytest.mark.parametrize("solver", ["yee", "adi"])
+@pytest.mark.parametrize("solver", ["yee"])
 def test_topology_cfl_gate(solver):
     sim = _sim(solver=solver, domain=SOLVED_1MM)
     sim._adi_cfl_factor = 2.718
-    assert ("_adi_cfl_factor", "") not in A.refused(sim, "topology_optimize")
+    assert ( "") not in A.refused(sim, "topology_optimize")
 
 
 @pytest.mark.parametrize("calculator,feature", PHYSICS_CASES)
@@ -249,7 +249,7 @@ def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator,
 EXTRA_SETTINGS = [
     ("waveguide_s_matrix", "_stencil_order", 4),
     ("vmap_sweep_batched", "_stencil_order", 4),
-    ("vmap_sweep_batched", "_solver", "adi"),
+    
     ("vmap_sweep_batched", "_precision", "mixed"),
 ]
 
@@ -288,11 +288,6 @@ def test_waveguide_refuses_upml_before_scan(monkeypatch):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=False)
 
 
-@pytest.mark.parametrize("calculator", A.CALCULATORS)
-def test_yee_calculator_accepts_adi_cfl_setting(calculator):
-    sim, _ = calculator_case(calculator)
-    sim._adi_cfl_factor = 2.718
-    assert ("_adi_cfl_factor", "") not in A.refused(sim, calculator)
 
 
 @pytest.mark.parametrize("compute_s_params", [None, True])

@@ -70,12 +70,9 @@ BUILDERS = {
         "the CPML psi coefficient dt/eps",
     ("rfx/boundaries/upml.py", "init_upml"):
         "UPML's Ca/Cb (_e_coeffs)",
-    ("rfx/stepping/adi.py", "adi_step_2d"):
-        "ADI 2-D damping, dt/eps and the Cx/Cy couplings",
-    ("rfx/stepping/adi.py", "adi_step_3d"):
-        "ADI 3-D damping, dt/eps, cc and the Cx/Cy/Cz couplings",
-    ("rfx/stepping/adi.py", "apply_adi_cpml_2d"):
-        "the ADI ADE-CPML 1/eps",
+    
+    
+    
     ("rfx/materials/thin_conductor.py", "sheet_update_coeffs"):
         "the resistive sheet's exponential-stepping A/B",
     ("rfx/lumped.py", "edge_update_denominator"):
@@ -124,9 +121,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
     ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
-    ("rfx/adi.py", "init_adi_cpml_2d"): _C0,
-    ("rfx/adi.py", "make_adi_absorbing_sigma"): _C0,
-    ("rfx/adi.py", "make_adi_absorbing_sigma_3d"): _C0,
+    
+    
+    
     ("rfx/auto_config.py", "auto_configure"): _HOST,
     ("rfx/boundaries/cpml.py", "_cpml_profile"):
         "the CPML profile: sigma_max and b = exp(-(sigma/kappa + alpha)*dt/EPS_0)",

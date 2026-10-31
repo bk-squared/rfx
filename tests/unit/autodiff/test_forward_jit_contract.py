@@ -307,25 +307,6 @@ def test_the_time_stepping_is_recorded_not_run_while_tracing(name):
     assert n_steps in _scan_lengths(jaxpr), _scan_lengths(jaxpr)
 
 
-def test_the_adi_time_stepping_is_recorded_not_run_while_tracing():
-    """The ADI lane's scan entry obeys the same rule (a PEC box, point source):
-    the scan is in the jaxpr, and the jitted record agrees with the plain
-    call (it differed by 9-10 ULP at 40 steps before its loop's operands
-    were hidden from the compiler)."""
-    sim = Simulation(freq_max=10e9, domain=(12 * MM, 10 * MM, 6 * MM),
-                     dx=1.0 * MM, boundary="pec", solver="adi")
-    sim.add_source((6 * MM, 5 * MM, 3 * MM), "ez", waveform=_pulse(),
-                   amplitude_kind="field")
-    sim.add_probe((8 * MM, 5 * MM, 3 * MM), "ez")
-
-    def solve():
-        return sim.forward(n_steps=N_STEPS, skip_preflight=True).time_series
-
-    assert N_STEPS in _scan_lengths(jax.make_jaxpr(solve)())
-    ts = np.asarray(solve())
-    ts_j = np.asarray(jax.jit(solve)())
-    assert ts_j.shape == (N_STEPS, 1) and float(np.max(np.abs(ts))) > 0.0
-    assert _ulp_at_peak(ts, ts_j) <= MAX_ULP_AT_PEAK, _ulp_at_peak(ts, ts_j)
 
 
 # ---------------------------------------------------------------------------

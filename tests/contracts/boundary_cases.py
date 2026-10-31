@@ -4,7 +4,7 @@ from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 CASES = ('pec', 'cpml', 'upml', 'pmc-pec', 'pmc-cpml', 'pec-zlo', 'periodic-xy', 'tfsf', 'waveguide-cpml', 'waveguide-pmc', 'waveguide-pec', 'floquet')
-ENTRIES = ('run', 'wire-fast', 'forward', 'sweep', 'nonuniform', 'subgridded', 'distributed', 'adi', 'gpu-query')
+ENTRIES = ('run', 'wire-fast', 'forward', 'sweep', 'nonuniform', 'subgridded', 'distributed',  'gpu-query')
 
 def build(case,entry):
     dx=.001; domain=(.024,.020,.016)

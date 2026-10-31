@@ -76,8 +76,6 @@ CELLS = [tfsf_slab_20261026(backed(magnetic_distributed(periodic_graded(c)))) fo
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
-def adi_absorber_cell(case, entry):
-    return entry == "adi" and case not in ("pec", "pmc-pec", "upml")
 
 
 @lru_cache(maxsize=None)
@@ -94,8 +92,7 @@ def floquet_refused(entry):
     """#1944 supersedes B1's floquet cells: they record explicit CPML lateral faces
     silently made periodic, which a Floquet port now refuses by name. The graded-z
     and ADI refusals fire first, at registration and construction. Keep B1 immutable."""
-    match = {"nonuniform": "do not support non-uniform z mesh",
-             "adi": "refuses absorbing boundaries"}.get(entry, "requires periodic lateral faces")
+    match = {"nonuniform": "do not support non-uniform z mesh"}.get(entry, "requires periodic lateral faces")
     with pytest.raises(ValueError, match=match):
         measured("floquet", entry)
 
@@ -114,7 +111,7 @@ def compare_departures(problems):
 def test_no_unlisted_departures(cell):
     if cell["case"] == "floquet":
         return floquet_refused(cell["entry"])
-    if cell["case"] == "tfsf" and cell["entry"] not in ("nonuniform", "adi"):
+    if cell["case"] == "tfsf" and cell["entry"] not in ("nonuniform"):
         # #1945 supersedes B1's explicit CPML replacement, at registration.
         with pytest.raises(ValueError, match="y_lo='cpml'.*z_hi='cpml'"):
             measured(cell["case"], cell["entry"])

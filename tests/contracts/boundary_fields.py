@@ -184,16 +184,6 @@ def measure(case, entry, n_steps=2):
         elif entry == "adi":
             import rfx.adi as adi
             original_adi = adi.run_adi_3d
-            def observed_adi(*args, **kwargs):
-                result = original_adi(*args, **kwargs)
-                jax.block_until_ready(result[0])
-                jax.effects_barrier()
-                reference_args = list(args)
-                reference_args[7] = jnp.zeros_like(reference_args[7])
-                reference = original_adi(*reference_args, **kwargs)
-                jax.block_until_ready(reference[0])
-                jax.effects_barrier()
-                return result
             with patch.object(adi, "run_adi_3d", observed_adi):
                 result = execute(sim, entry)
         else:

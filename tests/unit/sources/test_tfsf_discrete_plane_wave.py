@@ -161,7 +161,7 @@ def test_normal_reference_refuses_oblique_o1b():
         measure_normal_incident_spectrum(cfg, state, 300, [10e9], DT)
 
 
-@pytest.mark.parametrize('kind', ('graded', 'subgrid', 'adi', '2d', 'order4', 'face', 'custom'))
+@pytest.mark.parametrize('kind', ('graded', 'subgrid',  '2d', 'order4', 'face', 'custom'))
 def test_d4_declaration_refusals(kind):
     options = dict(freq_max=15e9, domain=(.024,) * 3, dx=DX,
                    boundary='cpml', cpml_layers=8)

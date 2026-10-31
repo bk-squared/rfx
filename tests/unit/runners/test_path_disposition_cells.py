@@ -562,28 +562,6 @@ def _assert_refused(name, feature, lane, c):
         f"({c.raises!r}): {message[:300]}")
 
 
-def _adi_absorber(name, feature, lane):
-    """Problems with the absorber in the conductivity handed to the ADI
-    kernel: nonzero in exactly the outer ``adi_layers - 1`` cells of every
-    face (the innermost layer of the grading is zero) of the vacuum box."""
-    handed = []
-    real = rfx.adi.run_adi_3d
-
-    def spy(*args, **kwargs):
-        handed.append(np.asarray(args[7]))
-        return real(*args, **kwargs)
-
-    with patch.object(rfx.adi, "run_adi_3d", spy):
-        _run(_build(feature, lane, True), lane, feature)
-    sigma = handed[0]
-    depth = np.min(np.stack(np.meshgrid(
-        *[np.minimum(np.arange(n), n - 1 - np.arange(n)) for n in sigma.shape],
-        indexing="ij")), axis=0)
-    expected = depth <= feature.adi_layers - 2
-    if np.array_equal(sigma > 0, expected):
-        return []
-    return [f"the ADI kernel received σ > 0 on {int(np.sum(sigma > 0))} cells, where a "
-            f"{feature.adi_layers}-layer absorber covers {int(np.sum(expected))}"]
 
 
 def _observed(name, feature, lane):

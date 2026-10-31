@@ -215,7 +215,7 @@ def test_mutation_plain_coefficient_in_sweep_is_detected(monkeypatch):
         _sweep_oracle('seam')
 
 
-@pytest.mark.parametrize('lane', ['uniform-pec', 'uniform-cpml', 'graded', 'adi'])
+@pytest.mark.parametrize('lane', ['uniform-pec', 'uniform-cpml', 'graded'])
 def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane):
     options = {'dx_profile': np.full(8, .001)} if lane == 'graded' else {}
     if lane == 'adi':

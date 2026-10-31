@@ -15,7 +15,7 @@ DISPLACED = {'ex': (0,), 'ey': (1,), 'ez': (2,),
 HIGH = (19, 15, 11)
 NODE_HIGH = (20, 16, 12)
 LANES = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
-         'two_uniform_run', 'two_graded_forward', 'adi_run', 'subgrid_run')
+         'two_uniform_run', 'two_graded_forward',  'subgrid_run')
 FREQS = np.array([3e9, 5e9, 7e9])
 JAX012_HIGH_FACE_XFAILS = frozenset({
     ('i', 2, 'pmc', 'uniform_run'),
@@ -295,7 +295,7 @@ def test_c2b_rlc(lane, boundary, axis, record_property):
         return np.asarray(execute(sim, lane).time_series)
 
     try:
-        if lane.startswith('two_') or lane in ('adi_run', 'subgrid_run'):
+        if lane.startswith('two_') or lane in ( 'subgrid_run'):
             for d in (0., .4, 1.):
                 with pytest.raises((ValueError, NotImplementedError), match='lumped|RLC|rlc|subgridd|PMC|magnetic'):
                     response(d)

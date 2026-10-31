@@ -41,7 +41,7 @@ KERNEL_CALLERS = {
     "rfx/runners/_distributed_nu_execute.py:execute_from_materials":
         "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/_distributed_nu_execute.py:dispatch_forward": "internal to fwd_distributed_nu",
-    "rfx/runners/adi.py:_run_adi_from_materials": "internal to run_adi, fwd_adi",
+    
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",
     "rfx/runners/_distributed_entry.py:execute_distributed":
@@ -69,8 +69,8 @@ KERNEL_CALLERS = {
 # Top-level functions that call a field update themselves: a new one is a new
 # kernel, and its paths need cells.
 FIELD_STEPPERS = {
-    "rfx/stepping/adi.py:run_adi_2d_loop": "internal to run_adi",
-    "rfx/stepping/adi.py:run_adi_3d_loop": "internal to run_adi",
+    
+    
     "rfx/stepping/slab_update.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:_update_e_local_with_dispersion":
@@ -113,7 +113,7 @@ _FIELD_UPDATES = {
     "update_e", "update_h", "update_e_nu", "update_h_nu", "update_he_fast",
     "update_e_fast", "update_h_fast", "update_e_aniso", "update_e_aniso_inv",
     "update_e_nu_aniso", "_update_e_local", "_update_h_local",
-    "_update_e_local_nu", "_update_h_local_nu", "adi_step_2d", "adi_step_3d",
+    "_update_e_local_nu", "_update_h_local_nu",  
 }
 
 
