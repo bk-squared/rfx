@@ -6,6 +6,7 @@ import functools
 import jax.numpy as jnp
 
 from rfx import _realized
+from rfx.api._dispatch import _declaration_setup_at_trace_time
 from rfx.api._spec import Result, _warn_if_nonfinite_result
 from rfx.model import conductors as _conductors
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -17,6 +18,7 @@ from rfx.simulation import SnapshotSpec
 from rfx.stepping import steps_for_periods
 
 
+@_declaration_setup_at_trace_time(run=True)
 def run_after_admission(
     self,
     *,
