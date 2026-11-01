@@ -226,9 +226,9 @@ need `mode="3d"`, and cannot share a simulation with lumped ports.
 
 A port measures at `freqs`, or at `n_freqs` points from `freq_max/10` to
 `freq_max` when `freqs` is not given (50 by default), on every path.
-`forward()` and a graded `run()` share one frequency vector across waveguide
-ports and refuse ports whose bins differ; `compute_waveguide_s_matrix()`
-accepts them.
+Every path that takes several waveguide ports (`forward()`, a graded `run()`
+and `compute_waveguide_s_matrix()`) refuses ports whose bins differ: declare
+the same `freqs` on every port. A uniform `run()` takes one waveguide port.
 
 ```python
 wg = Simulation(freq_max=12e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
