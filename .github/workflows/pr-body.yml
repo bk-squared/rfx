@@ -27,10 +27,10 @@ on:
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
-# Superseded runs on the same PR are cancelled: editing a body twice in a
-# minute used to queue two runs, and this gate is re-triggered by every edit.
+# Batch PRs are opened then labelled; a cancelled run in a newer check suite
+# blocks the required check, so label/body events get their own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled' || github.event.action == 'edited') && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
