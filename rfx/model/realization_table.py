@@ -108,13 +108,15 @@ def realization_table(prepared) -> RealizationTable:
                 try:
                     declared_bounds = tuple(tuple(float(v) for v in side)
                                             for side in declaration.bounding_box())
-                except Exception:
+                except (AttributeError, TypeError, ValueError, NotImplementedError):
                     declared_bounds = None
         if entity.kind == "material":
             from rfx.model.realization_integrals import quantities
             sampler = quantities(getattr(record, "_quantity_grid", prepared.conductors.grid))
-            declared_shape = sim._geometry[int(entity.label[9:-1])].shape
-            model = sampler.get("material_sampling", {}).get(id(declared_shape), "material sampler")
+            model = "material sampler"
+            if entity.label.startswith("geometry["):
+                declared_shape = sim._geometry[int(entity.label[9:-1])].shape
+                model = sampler.get("material_sampling", {}).get(id(declared_shape), model)
         elif entity.kind == "wire":
             model = "lattice edge-start envelope"
         elif entity.kind == "lossy" and realized is None:

@@ -39,10 +39,9 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
         if "pec_edge_masks" in kwargs:
             kwargs["pec_edge_masks"] = product.pec_edges
     elif layout == "adi3d":
-        args[6:8] = product.materials.eps_r, product.materials.sigma
+        # ADI's runner reads and slices the same materials before binding the
+        # product; its scalar operands already belong to this prepared solve.
         kwargs["pec_edge_masks"] = product.pec_edges
-    elif layout == "adi2d":
-        args[3:5] = product.materials.eps_r[:, :, 0], product.materials.sigma[:, :, 0]
     elif layout == "slab":
         kwargs["sharded_materials"] = product.materials
         kwargs["sharded_pec_mask"] = product.pec_edges
