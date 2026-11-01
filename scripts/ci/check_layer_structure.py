@@ -582,6 +582,7 @@ def count(sources: Sources) -> dict:
             "caller_definitions": caller_definitions(sources, [
                 p for p in sorted(sources.paths)
                 if any(p.startswith(layer.replace(".", "/") + "/") for layer in LAYERS)]),
+            "load_chains": load_chains(sources),
             "surface_sizes": {p: len(names) for p, names in public.items()},
             "unit_counts": unit_counts, "allowed": sorted(allowed)}
 
@@ -844,6 +845,89 @@ def violations(actual: dict, current: dict, previous: dict | None = None,
     return errors
 
 
+def module_of(path: str) -> str:
+    return path.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
+
+
+def load_imports(sources: Sources, path: str) -> set[str]:
+    """Modules that loading ``path`` runs: module-level imports outside ``if TYPE_CHECKING``.
+
+    Importing ``a.b.c`` also runs ``a.b``; ``from m import n`` runs ``m.n`` when it is a
+    module, or the ``_LAZY_EXPORTS`` target serving ``n``. ``rfx/__init__.py`` is left out:
+    it is the public entry and imports the callers by design.
+    """
+    loaded = set()
+
+    def add(module: str):
+        parts = module.split(".")
+        for end in range(2, len(parts) + 1):
+            if sources.module_path(".".join(parts[:end])):
+                loaded.add(".".join(parts[:end]))
+
+    def walk(body):
+        for node in body:
+            if isinstance(node, ast.If) and "TYPE_CHECKING" in ast.unparse(node.test):
+                walk(node.orelse)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    add(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                module = import_module(path, node)
+                add(module)
+                target = sources.module_path(module)
+                lazy = lazy_exports(sources.tree(target)) if target else {}
+                for alias in node.names:
+                    add(lazy.get(alias.name, f"{module}.{alias.name}"))
+            elif not isinstance(node, (*FUNCTIONS, ast.ClassDef)):
+                for field in ("body", "orelse", "finalbody"):
+                    walk(getattr(node, field, []))
+                for block in (*getattr(node, "handlers", []), *getattr(node, "cases", [])):
+                    walk(block.body)
+
+    walk(sources.tree(path).body)
+    parent = module_of(path).rsplit(".", 1)[0] if not path.endswith("/__init__.py") else ""
+    if parent and parent != "rfx":
+        add(parent)
+    return loaded - {module_of(path)}
+
+
+def load_chains(sources: Sources) -> list[str]:
+    """Each layer module whose loading runs a five file through a module outside the layers — must be 0.
+
+    A layer module's own import of a five file is rule R (``reverse_imports``); this finds the
+    loads R cannot see, through a package top or a helper module (rfx#1818). One shortest chain each.
+    """
+    edges = {}
+
+    def imports(module: str) -> set[str]:
+        if module not in edges:
+            path = sources.module_path(module)
+            # A layer module's own import of a five file is rule R's entry, not a chain here.
+            counted = ({hit.partition(":")[0] for hit in reverse_imports(sources, path)}
+                       if layer_of(module) else set())
+            edges[module] = load_imports(sources, path) - counted
+        return edges[module]
+
+    found = []
+    for path in sorted(sources.paths):
+        if layer_of(module_of(path)) is None:
+            continue
+        start = module_of(path)
+        previous, queue = {start: None}, [start]
+        for module in queue:
+            if module in FIVE_MODULES:
+                chain = [module]
+                while previous[chain[-1]]:
+                    chain.append(previous[chain[-1]])
+                found.append(f"{path} L: loading runs {module} ({' -> '.join(reversed(chain))})")
+                break
+            for target in sorted(imports(module)):
+                if target not in previous:
+                    previous[target] = module
+                    queue.append(target)
+    return found
+
+
 def five_file_definitions(defined: dict) -> list[str]:
     return [f"{path} R: imports {entry}, which the five file defines; move the definition into its layer"
             for path, entries in sorted(defined.items()) for entry in entries
@@ -881,6 +965,11 @@ def report(result: dict):
         five = sum(e.partition(":")[0] in FIVE_MODULES for entries in defined.values() for e in entries)
         other = sum(len(entries) for entries in defined.values()) - five
         print(f"defined totals: five files={five} other callers={other}")
+    chains = result["load_chains"]
+    if chains:
+        print(f"\nlayer modules whose loading runs a five file — must be 0: L={len(chains)}")
+        for chain in chains:
+            print(chain)
 
 
 
@@ -906,6 +995,7 @@ def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, l
     errors = violations(actual, current, previous,
                         renames=RenameMatcher(sources, base) if previous is not None else None)
     errors += five_file_definitions(result["caller_definitions"])
+    errors += result["load_chains"]
     for error in errors:
         print(error, file=sys.stderr)
     return int(bool(errors))
