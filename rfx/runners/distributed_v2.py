@@ -403,6 +403,12 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     if devices is None:
         devices = jax.devices()
     n_devices = len(devices)
+    from rfx.api._dispatch import _staged_by_an_outer_trace
+    if (n_devices > 1 and sim._tfsf is not None and sim._tfsf.closed_box
+            and _staged_by_an_outer_trace()):
+        raise NotImplementedError(
+            "Multi-device closed-box TF/SF cannot run inside a user jax.jit; "
+            "use the plain call to forward() or run().")
     from rfx.runners._admission import refuse_slab_tfsf_devices
     refuse_slab_tfsf_devices(sim._tfsf, n_devices)
     # The multi-process path is needed only when the mesh holds a device
