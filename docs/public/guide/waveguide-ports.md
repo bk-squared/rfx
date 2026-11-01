@@ -62,11 +62,14 @@ see the same grid.
 | `normalize` | Runs | What it corrects | Use it for |
 |---|---|---|---|
 | `False` (default) | one per port | nothing; magnitudes carry a few-percent Yee impedance error | \|S11\| of strong reflectors (shorts, high-Q loads) on a uniform mesh |
-| `True` | two per port | one-way grid dispersion in transmission | S21 of a straight guide. Not for S11. |
+| `True` | two per port | the empty guide's own reflection at the driven port, subtracted from S11; the incident wave taken from the reference run | a matrix at the declared planes when no gradient is needed |
 | `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; recommended on a graded mesh (`normalize=False` is refused there) |
 
-`normalize=True` divides by an empty-guide reference run. That fixes
-transmission but not reflection. `normalize=True` also cannot be
+`normalize=True` divides every entry by the incident wave of an empty-guide
+reference run at the driven port, so reflection and transmission share the
+declared planes. S21 keeps the one-way grid dispersion between the planes, as
+with `normalize=False`. For an insertion ratio, divide S21 by S21 of the same
+guide without the device, at the same planes. `normalize=True` cannot be
 differentiated; `False` and `"flux"` can.
 
 With `normalize=False`, a passive strong reflector can read slightly above
