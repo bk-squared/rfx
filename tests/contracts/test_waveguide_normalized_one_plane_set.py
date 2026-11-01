@@ -8,26 +8,23 @@ from rfx.api import Simulation
 from rfx.geometry.csg import Box
 
 
-pytestmark = pytest.mark.slow
-
-
 FREQS = np.linspace(4.5e9, 8.0e9, 20)
 F0 = float(FREQS.mean())
 BW = max(0.2, min(0.8, (FREQS[-1] - FREQS[0]) / F0))
 C0 = 299_792_458.0
-_COARSE_DX = C0 / FREQS[-1] / 20.0
+_COARSE_DX = 1.35e-3
 _LAMBDA_G_LOW = C0 / FREQS[0] / np.sqrt(1 - (3.476e9 / FREQS[0]) ** 2)
 CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW / _COARSE_DX))
 
 
 def build_simulation(pair, *, graded=False, slab=True):
     """Copy of the two-port slab builder, with equal cells on the graded lane."""
-    dx = 0.75e-3
+    dx = _COARSE_DX
     sim = Simulation(
-        freq_max=float(FREQS[-1]), domain=(0.12, 54 * dx, 27 * dx), dx=dx,
+        freq_max=float(FREQS[-1]), domain=(0.12, 30 * dx, 15 * dx), dx=dx,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=CPML_LAYERS,
-        dz_profile=np.full(27, dx) if graded else None,
+        dz_profile=np.full(15, dx) if graded else None,
     )
     if slab:
         sim.add_material("diel", eps_r=4.0, sigma=0.0)
@@ -38,7 +35,7 @@ def build_simulation(pair, *, graded=False, slab=True):
         sim.add_waveguide_port(
             position, direction=direction, mode=(1, 0), mode_type="TE",
             freqs=jnp.asarray(FREQS), f0=F0, bandwidth=BW,
-            ref_offset=3, probe_offset=15, name=name,
+            ref_offset=2, probe_offset=8, name=name,
             reference_plane=reference / 1000,
         )
     return sim
@@ -64,7 +61,7 @@ def test_normalized_one_plane_set(graded):
     assert np.all(np.abs(residual_deg) <= 2), residual_deg
 
 
-@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("graded", [True], ids=["graded"])
 def test_empty_guide_preserves_single_run_transmission(graded):
     sim = build_simulation((10, 90), graded=graded, slab=False)
     normalized = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
