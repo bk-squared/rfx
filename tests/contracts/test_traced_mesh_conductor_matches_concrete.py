@@ -85,6 +85,7 @@ def test_a4_clear_shape_is_identity_without_check(monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("a clear conductor added a continuation callback")
     monkeypatch.setattr(traced, "traced_check", forbidden)
+    monkeypatch.setattr(traced, "_nominal_grid", forbidden)
 
     def go(d):
         sim = board_scene(d, inset=True)
@@ -105,6 +106,54 @@ def test_a7_stale_outermost_layer(jit):
     jax.block_until_ready(call(jnp.float32(0)))
     with pytest.raises(Exception, match="outermost layer at x-hi.*nominal_profiles.*axis concrete"):
         jax.block_until_ready(call(jnp.float32(3e-4)))
+
+
+@pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])
+def test_nominally_unoccupied_candidate_checks_realized_layer(jit):
+    def scene(d):
+        sim = board_scene(d, stale=True)
+        sim._ports = []
+        sim._geometry.pop()
+        sim.add(Box((4 * board.DX, 2 * board.DX, board.Z_G - board.DX),
+                    (board.LX - .6 * board.PROF[-1], 18 * board.DX, board.Z_G)), material="pec")
+        return sim
+
+    def go(d):
+        sim = scene(d)
+        if not jit:
+            shape = sim._geometry[-1].shape
+            assert continued_conductor_shape(sim, sim._build_nonuniform_grid(), shape) is shape
+        return arrays(sim)
+
+    call = jax.jit(go) if jit else lambda d: jax.jvp(go, (d,), (jnp.float32(1),))[0]
+    equal_arrays(jax.block_until_ready(call(jnp.float32(0))), arrays(scene(0.)))
+    with pytest.raises(Exception, match="outermost layer at x-hi.*nominal_profiles.*axis concrete"):
+        jax.block_until_ready(call(jnp.float32(-1e-4)))
+
+
+@pytest.mark.parametrize("clear", [False, True], ids=["candidate", "clear"])
+def test_nominal_edge_mismatch_refuses_candidate_under_jit(clear):
+    profile = np.array([2., 2., 1., 1., .5, .5, .5, .5])
+
+    def go(d):
+        sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                         boundary="cpml", cpml_layers=2, dt=1e-12, dt_min_cell=.5,
+                         nominal_profiles={"x": profile}, dx_profile=d)
+        lo = 3. if clear else 2.
+        sim.add(Box((lo, 3., 3.), (5., 5., 5.)), material="pec")
+        return arrays(sim)
+
+    call = jax.jit(go)
+    if clear:
+        jax.block_until_ready(call(profile))
+    else:
+        with pytest.raises(TracedStructureRefusal, match=(
+                "Box.*x-lo.*axis x.*nominal profile whose edge cells equal the boundary cell.*axis concrete"
+        )) as caught:
+            jax.block_until_ready(call(profile))
+        assert isinstance(caught.value.__cause__, ValueError)
+        assert "dx_profile[0]" in str(caught.value.__cause__)
+        assert "must equal boundary dx" in str(caught.value.__cause__)
 
 
 def test_a8_missing_nominal():

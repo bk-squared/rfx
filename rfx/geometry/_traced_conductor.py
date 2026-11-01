@@ -154,7 +154,16 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
         refuse_traced_conductor_at_absorber(sim, grid, shape, traced_node_axes=traced_node_axes)
     if not faces:
         return shape
-    nominal = _nominal_grid(sim)
+    try:
+        nominal = _nominal_grid(sim)
+    except Exception as exc:
+        names = ", ".join(f"{'xyz'[axis]}-{side}" for axis, side in faces)
+        axes = ", ".join(name for name in "xyz" if is_tracer(getattr(sim, f"_d{name}_profile")))
+        raise TracedStructureRefusal(
+            f"Cannot continue {type(shape).__name__} at reached/near absorbing face(s) {names} "
+            f"on traced mesh axis {axes}: the nominal grid could not be built ({exc}). "
+            "Declare a nominal profile whose edge cells equal the boundary cell, "
+            "or keep the axis concrete.") from exc
     with jax.ensure_compile_time_eval():
         solved = sm.continued_conductor_shape(
             sim, nominal, shape, entry=entry, unextendable=unextendable)
@@ -171,8 +180,6 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
                      if isinstance(shape, Cylinder) else 0.)
         changed = [(axis, side) for axis in range(3) for i, side in enumerate(("lo", "hi"))
                    if abs(new_bounds[i][axis] - bounds[i][axis]) > tolerance]
-    if not changed and not occupied:
-        return shape
     targets = {}
     for axis, name in enumerate("xyz"):
         widths = np.asarray(getattr(nominal, ("dx_arr_f64", "dy_arr_f64", "dz_f64")[axis]))
