@@ -5,7 +5,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.boundaries.cpml import CPMLParams
 from rfx.core.yee import (EPS_0, MU_0, MaterialArrays, component_h_materials,
                           si_value_eps_r_grad)

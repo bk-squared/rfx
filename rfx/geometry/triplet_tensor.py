@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import jaxlib
 import numpy as np
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx._runtime_floor import _version_key
 from rfx.backend import backend_class
 

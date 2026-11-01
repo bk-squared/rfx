@@ -519,7 +519,7 @@ class _CampaignStaticsContext:
                 return None, None
             a = int(sheet.normal_axis)
             mid = 0.5 * (float(lo[a]) + float(hi[a]))
-            from rfx._periodic import plane_coordinate
+            from rfx._internal._periodic import plane_coordinate
             mid = plane_coordinate(self.grid, a, mid)
             nodes = self.nodes[a]
             d_local = _rasterize_local_cell(nodes, self.cell_sizes[a], mid)
@@ -527,7 +527,7 @@ class _CampaignStaticsContext:
             if k + 1 < len(nodes):
                 d_lo = abs(mid - float(nodes[k]))
                 d_hi = abs(float(nodes[k + 1]) - mid)
-                from rfx._grid_metric import node_tie_tol
+                from rfx._internal._grid_metric import node_tie_tol
                 if abs(d_lo - d_hi) <= node_tie_tol(mid, d_local) and d_lo > 0.0:
                     return mid, (k, k + 1)
             return mid, None

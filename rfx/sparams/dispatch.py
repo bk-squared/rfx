@@ -58,7 +58,7 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 from typing import TYPE_CHECKING
 import warnings

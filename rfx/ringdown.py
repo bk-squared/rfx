@@ -97,7 +97,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx._ringdown_sensitivity import sensitivity_truncation_error, required_t_over_tau
 from rfx._ringdown_growth_judge import (

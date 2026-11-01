@@ -37,7 +37,7 @@ try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
 except ImportError:
     from jax.experimental import enable_x64 as _enable_x64
 
-from rfx._grid_metric import cells_crossed, distinct_cell_sizes
+from rfx._internal._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import complex_solve, is_tracer
 from rfx.measurement.phasors import exp_j
 from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive

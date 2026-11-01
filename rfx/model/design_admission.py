@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import numpy as np
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from rfx.diagnostic_records import Diagnostic
 
 

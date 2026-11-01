@@ -27,7 +27,7 @@ they do not run at import time.
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane

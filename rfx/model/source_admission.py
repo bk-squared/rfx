@@ -1,7 +1,7 @@
 """Source admission against geometry conductors and declared PEC walls."""
 
 from rfx.errors import AccuracyWarning, RfxRefusal
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
 

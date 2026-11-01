@@ -6,7 +6,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.core.yee import (
     FDTDState, MaterialArrays, MU_0,
     _ca_cb_inv_eps_r_units, _diff_fwd_o, _e_update_coeffs_inv_si,

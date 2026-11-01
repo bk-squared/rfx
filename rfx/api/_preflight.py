@@ -1361,7 +1361,7 @@ class _PreflightMixin:
 
     def _validate_cfg_precision_x64(self, _w) -> None:
         """Report missing x64 as an error; retain the nonuniform advisory."""
-        from rfx._precision import FLOAT64_MODE_ERROR
+        from rfx._internal._precision import FLOAT64_MODE_ERROR
 
         if self._precision == "float64" and not jax.config.x64_enabled:
             _w.warn(PreflightWarning(

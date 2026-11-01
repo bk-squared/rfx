@@ -14,7 +14,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
-from rfx._grid_metric import half_open_volume_mask
+from rfx._internal._grid_metric import half_open_volume_mask
 from rfx.grid import Grid
 
 
@@ -81,7 +81,7 @@ def _grid_coords(grid: Grid):
 
 
 def _periodic_grid_mask(shape, grid):
-    from rfx._periodic import periodic_mask, periodic_shape
+    from rfx._internal._periodic import periodic_mask, periodic_shape
     shape = periodic_shape(grid, shape)
     return periodic_mask(grid, shape, _grid_coords(grid))
 
@@ -323,7 +323,7 @@ class Box:
             # plane placement error. A matching-thickness (sub-cell) box takes
             # this same thin branch and agrees; only a >=1-cell VOLUME box
             # (different object) selects a different layer on a graded axis.
-            from rfx._grid_metric import nearest_node_index
+            from rfx._internal._grid_metric import nearest_node_index
             nearest_idx = nearest_node_index(coords, mid, dc_local, xp=xp)
             if traced:
                 thin_mask = jnp.zeros(coords.shape, dtype=bool).at[

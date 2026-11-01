@@ -85,7 +85,7 @@ import math
 import numpy as np
 
 from rfx.grid import C0
-from rfx._grid_metric import is_one_cell_size
+from rfx._internal._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
@@ -884,7 +884,7 @@ def _graded_node_report(self, axis: int, coord: float):
     review F2, #568). ``k == 0`` and ``k >= d.size`` are matched by
     construction and never report.
     """
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     from rfx.model.graded_grid import node_positions_from_profile
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]

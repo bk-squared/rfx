@@ -21,7 +21,7 @@ from rfx.core.yee import (
     EPS_0, MU_0,
 )
 from rfx.core.jax_utils import is_tracer
-from rfx._grid_metric import (
+from rfx._internal._grid_metric import (
     DECLARED_SPAN_TOL_M,
     Float32WidthResolutionWarning,
     NODE_TOUCH_REL,
@@ -128,7 +128,7 @@ class NonUniformGrid(NamedTuple):
     #
     # THE CONVENTION -- index origin, the primal/dual rule, the end entries
     # of ``inv_d_e`` / ``inv_d_h``, and which consumer is entitled to which
-    # metric -- is written once, in ``rfx/_grid_metric.py``. Read that module
+    # metric -- is written once, in ``rfx/_internal/_grid_metric.py``. Read that module
     # before adding a metric formula at a call site.
     #
     # ``rfx.grid.Grid`` carries the same seven methods with the same meaning,
@@ -1268,7 +1268,7 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
 
 def _periodic_index(grid, axis, coordinate):
     """Grid's half-open periodic point admission and lower-node tie rule."""
-    from rfx._grid_metric import nearest_uniform_index
+    from rfx._internal._grid_metric import nearest_uniform_index
     ratio = coordinate / float(grid.cells(axis)[0])
     n = grid.shape[axis]
     if ratio < -.5 or ratio >= n + .5:

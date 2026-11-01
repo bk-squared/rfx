@@ -24,10 +24,10 @@ def _capture_calls(source, package):
                 module = resolve_name('.' * node.level + module, package)
             for name in node.names:
                 if name.name == '*':
-                    if module == 'rfx._realized':
-                        aliases['capture'] = 'rfx._realized.capture'
-                    elif module == 'rfx':
-                        aliases['_realized'] = 'rfx._realized'
+                    if module == 'rfx._internal._realized':
+                        aliases['capture'] = 'rfx._internal._realized.capture'
+                    elif module == 'rfx._internal':
+                        aliases['_realized'] = 'rfx._internal._realized'
                 else:
                     aliases[name.asname or name.name] = f'{module}.{name.name}'
 
@@ -40,7 +40,7 @@ def _capture_calls(source, package):
 
     return [node.lineno for node in ast.walk(tree)
             if isinstance(node, ast.Call)
-            and qualified(node.func) == 'rfx._realized.capture']
+            and qualified(node.func) == 'rfx._internal._realized.capture']
 
 
 @pytest.mark.source_scan
@@ -48,7 +48,7 @@ def test_rfx_never_enters_realized_capture():
     violations = []
     for path in sorted((ROOT / 'rfx').rglob('*.py')):
         relative = path.relative_to(ROOT)
-        if relative == Path('rfx/_realized.py'):
+        if relative == Path('rfx/_internal/_realized.py'):
             continue
         package = '.'.join(relative.parent.parts)
         for line in _capture_calls(path.read_text(), package):
@@ -57,18 +57,18 @@ def test_rfx_never_enters_realized_capture():
 
 
 @pytest.mark.parametrize('source', [
-    'from rfx._realized import capture; capture()',
-    'from rfx._realized import capture as observe; observe()',
-    'from rfx import _realized; _realized.capture()',
-    'from rfx import _realized as observed; observed.capture()',
-    'import rfx._realized; rfx._realized.capture()',
-    'import rfx._realized as observed; observed.capture()',
-    'import rfx as package; package._realized.capture()',
-    'from ._realized import capture as observe; observe()',
-    'from . import _realized as observed; observed.capture()',
-    'from .._realized import capture; capture()',
-    'from rfx._realized import *; capture()',
-    'from rfx import *; _realized.capture()',
+    'from rfx._internal._realized import capture; capture()',
+    'from rfx._internal._realized import capture as observe; observe()',
+    'from rfx._internal import _realized; _realized.capture()',
+    'from rfx._internal import _realized as observed; observed.capture()',
+    'import rfx._internal._realized; rfx._internal._realized.capture()',
+    'import rfx._internal._realized as observed; observed.capture()',
+    'import rfx._internal as package; package._realized.capture()',
+    'from ._internal._realized import capture as observe; observe()',
+    'from ._internal import _realized as observed; observed.capture()',
+    'from .._internal._realized import capture; capture()',
+    'from rfx._internal._realized import *; capture()',
+    'from rfx._internal import *; _realized.capture()',
 ])
 def test_capture_scan_recognizes_import_forms(source):
     package = 'rfx.probes' if source.startswith('from ..') else 'rfx'
@@ -79,7 +79,7 @@ def test_capture_scan_ignores_unrelated_calls_and_mentions():
     source = '''
 from another_module import capture
 capture()
-text = "rfx._realized.capture()"
-# rfx._realized.capture()
+text = "rfx._internal._realized.capture()"
+# rfx._internal._realized.capture()
 '''
     assert _capture_calls(source, 'rfx') == []

@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.runners import _admission as admission
 from tests.contracts import path_disposition
 

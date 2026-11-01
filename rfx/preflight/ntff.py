@@ -159,7 +159,7 @@ def _validate_ntff_inverse_design(
     for side, axis, coord, tang in faces:
         for e, walls in realized_entries:
             w_lo, w_hi, d_loc = walls[axis]
-            from rfx._grid_metric import node_tie_tol
+            from rfx._internal._grid_metric import node_tie_tol
             tol = node_tie_tol(coord, d_loc)
             if not (w_lo - tol <= coord <= w_hi + tol):
                 continue

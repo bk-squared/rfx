@@ -44,7 +44,7 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     """Read the local inputs, then run the model's eager source products."""
     from rfx.model.source_coefficients import drive_columns
     from rfx.stepping.rank import mesh_ranks
-    from rfx import _realized
+    from rfx._internal import _realized
     if not sources:
         return place(jnp.zeros((n_steps, 0), jnp.float32), NamedSharding(mesh, P(None, 'x')))
     cells = tuple((('ex', 'ey', 'ez').index(s.component),

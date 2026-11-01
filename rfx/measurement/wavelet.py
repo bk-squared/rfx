@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx.core.jax_utils import complex_solve
 
 

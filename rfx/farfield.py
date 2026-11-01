@@ -20,7 +20,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 import numpy as np
 
 from rfx._radiated_power import integrate_radiated_power
@@ -364,7 +364,7 @@ def make_ntff_box(
     The box is built for face-centre collocation (the second-order layout);
     pass ``collocation="node"`` for the pre-second-order geometry.
     """
-    from rfx._periodic import interval_indices
+    from rfx._internal._periodic import interval_indices
     lo, hi = interval_indices(grid, corner_lo, corner_hi)
     if any(hi[a] == grid.shape[a] for a in range(3)):
         raise ValueError("NTFF box requires an interior plane with a sampling margin; move its high face inside the period")

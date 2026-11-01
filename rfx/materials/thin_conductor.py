@@ -377,7 +377,7 @@ def pinned_sheet_spec(grid, sheet: PinnedSheet):
     for t, rng in zip(others, (sheet.i_range, sheet.j_range)):
         lo, hi = int(rng[0]) + pads[t], int(rng[1]) + pads[t]
         if 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
-            from rfx._periodic import interval_coordinates
+            from rfx._internal._periodic import interval_coordinates
             width = float(grid.cells(t)[0])
             interval_coordinates(grid, t, rng[0] * width, rng[1] * width)
             shape[t] += 1

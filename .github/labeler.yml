@@ -156,7 +156,7 @@
   - changed-files:
       - any-glob-to-any-file:
           - "rfx/profiling.py"
-          - "rfx/_precision.py"
+          - "rfx/_internal/_precision.py"
           - "rfx/ringdown.py"
           - "rfx/_ringdown_jax.py"
           # Built-in waveforms and soft sources; the default pulse is acceleration's

@@ -6,7 +6,7 @@ import pytest
 from packaging.version import Version
 
 from rfx import GaussianPulse, Simulation
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 L = (.020, .016, .012)
 C = (.0113, .0087, .0064)
@@ -243,7 +243,7 @@ def test_c2_c2b(lane, boundary, axis, row, record_property, request):
 @pytest.mark.parametrize('lane', LANES[:-1])
 @pytest.mark.parametrize('axis', range(3))
 def test_c4(lane, axis, monkeypatch):
-    from rfx import _realized
+    from rfx._internal import _realized
     from rfx.model import source_admission
     pos = list(C)
     pos[axis] = L[axis]

@@ -148,7 +148,7 @@ def test_two_device_conductors_are_the_same_object_fields(graded, two_device_tes
 def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed, two_device_test):
     import jax
     import jax.numpy as jnp
-    from rfx import _realized
+    from rfx._internal import _realized
     from .builders import point
     if distributed and len(jax.devices()) < 2:
         return two_device_test()

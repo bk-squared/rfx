@@ -61,7 +61,7 @@ Example
 
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -496,7 +496,7 @@ def differentiable_material_fit(
         debye_init[:n_debye_poles],
         lorentz_init[:n_lorentz_poles],
     )
-    from rfx._precision import resolve_field_dtype
+    from rfx._internal._precision import resolve_field_dtype
     resolve_field_dtype(dummy_sim._precision)
     s_meas_jnp = jnp.array(s_measured)
     params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],

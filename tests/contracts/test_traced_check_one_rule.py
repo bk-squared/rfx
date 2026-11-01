@@ -11,7 +11,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Simulation, _periodic, _realized, _traced_check
+from rfx import Box, Simulation, _traced_check
+from rfx._internal import _periodic, _realized
 from rfx.api._source_semantics import guard_float16_source_increment
 from rfx.backend import backend_class
 from rfx.boundaries.spec import BoundarySpec

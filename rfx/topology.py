@@ -37,7 +37,7 @@ Key concepts
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 from dataclasses import dataclass
 from typing import Callable
@@ -47,7 +47,7 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx.optimize import _adam_update, _value_and_grad_with_fallback
 
 
@@ -412,7 +412,7 @@ def topology_optimize(
 
     # Build grid and compute design region indices
     grid = sim._build_grid()
-    from rfx._periodic import interval_indices
+    from rfx._internal._periodic import interval_indices
     lo_idx, hi_idx = map(list, interval_indices(grid, design_region.corner_lo, design_region.corner_hi))
 
     # Clamp indices to the interior region (exclude CPML padding).

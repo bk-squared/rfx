@@ -259,7 +259,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     on periodic axes). A Box on traced coordinates keeps its existing fold
     without a new refusal; preflight judges the concrete realized grid.
     """
-    from rfx._periodic import periodic_mask, plane_coordinate
+    from rfx._internal._periodic import periodic_mask, plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
     from rfx.preflight._common import PreflightWarning
     name = type(shape).__name__
@@ -320,7 +320,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     with jax.ensure_compile_time_eval():
         local = _local_cell(coords[normal], np.asarray(grid.cells(normal)),
                             plane_coordinate(grid, normal, mid))
-        from rfx._grid_metric import node_tie_tol
+        from rfx._internal._grid_metric import node_tie_tol
         if extents[normal] > (local + node_tie_tol(lo[normal], local)
                               + node_tie_tol(hi[normal], local)):
             raise DCFilmAdmissionError(
@@ -385,8 +385,8 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
 
 def dc_film_plane(shape, grid):
     """The declared midpoint's nearest E node, with the shared lower tie rule."""
-    from rfx._grid_metric import nearest_node_index
-    from rfx._periodic import plane_coordinate
+    from rfx._internal._grid_metric import nearest_node_index
+    from rfx._internal._periodic import plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
     lo, hi = sheet_bounds(shape)
     normal = sheet_normal_axis(lo, hi)
@@ -541,7 +541,7 @@ def dc_cell_mask(shape, grid):
     tangents = tuple(a for a in range(3) if a != normal)
     sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
     if getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import periodic_mask, plane_coordinate
+        from rfx._internal._periodic import periodic_mask, plane_coordinate
         if normal is not None and hi[normal] - lo[normal] <= float(grid.cells(normal)[0]):
             mid = .5 * (lo[normal] + hi[normal])
             shift = mid - plane_coordinate(grid, normal, mid)

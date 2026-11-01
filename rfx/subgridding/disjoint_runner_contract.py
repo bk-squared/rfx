@@ -10,7 +10,7 @@ until the research smoke runner passes waveform/crossval gates.
 
 from __future__ import annotations
 
-from rfx._grid_metric import nearest_uniform_index
+from rfx._internal._grid_metric import nearest_uniform_index
 
 from dataclasses import dataclass
 from math import prod

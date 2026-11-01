@@ -40,7 +40,7 @@ PRINT_SITES = {
 CUSTOM_BASES = [
     ("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning),
     ("rfx._adi_notice", "ExperimentalADIWarning", AccuracyWarning),
-    ("rfx._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning),
+    ("rfx._internal._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning),
     ("rfx.api._mesh", "AutoMeshWarning", RfxWarning),
     ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning),
     ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning),

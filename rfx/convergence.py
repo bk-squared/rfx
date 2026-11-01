@@ -17,7 +17,7 @@ Usage
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 from dataclasses import dataclass
 from typing import Callable, Any

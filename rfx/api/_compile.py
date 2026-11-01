@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from rfx.errors import RfxRefusal
 
-from rfx._grid_metric import nearest_uniform_index
+from rfx._internal._grid_metric import nearest_uniform_index
 from rfx.boundaries.depths import resolve_face_depths
 
 import math  # noqa: F401  (used by moved method bodies)

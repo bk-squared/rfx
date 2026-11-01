@@ -1,5 +1,5 @@
 """Register time observations independently of requests for port spectra."""
-from rfx import _grid_metric
+from rfx._internal import _grid_metric
 
 
 def ordered_specs(specs):
@@ -7,7 +7,7 @@ def ordered_specs(specs):
 
 
 def register_wire(records, spectra, component, cells, live, freqs, impedance, excite, port_id):
-    from rfx._uniform_specs import WirePortSParamSpec
+    from rfx._internal._uniform_specs import WirePortSParamSpec
     if not cells:
         return
     live_cells = tuple(tuple(int(x) for x in c) for c, yes in zip(cells, live) if yes)
@@ -19,7 +19,7 @@ def register_wire(records, spectra, component, cells, live, freqs, impedance, ex
 
 
 def register_lumped(records, spectra, component, idx, freqs, impedance, excite, port_id):
-    from rfx._uniform_specs import LumpedPortSParamSpec
+    from rfx._internal._uniform_specs import LumpedPortSParamSpec
     mid = tuple(int(x) for x in idx)
     records.append((component, (mid,), 'lumped', mid, port_id))
     if freqs is not None:

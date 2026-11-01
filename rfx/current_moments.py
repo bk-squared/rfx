@@ -67,7 +67,7 @@ from __future__ import annotations
 
 from rfx.errors import RfxUnsupported
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from typing import NamedTuple
 
 import numpy as np
@@ -75,7 +75,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 
 from rfx.core.yee import EPS_0
 
@@ -451,7 +451,7 @@ def _index_window(nodes, lo_m, hi_m, n_axis, margin_cells=0):
 
     The builder refuses a window outside its admitted range; no clamp here.
     """
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     from rfx.geometry.rasterize_grid import _local_cell
     nodes = np.asarray(nodes)[:n_axis]
     cells = np.diff(nodes)
@@ -1167,7 +1167,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         if getattr(pe, "extent", None) is not None:
             end = list(pe.position)
             end[c] = end[c] + float(pe.extent)
-            from rfx._periodic import interval_indices
+            from rfx._internal._periodic import interval_indices
             start, stop = interval_indices(grid, tuple(pe.position), tuple(end))
         idx = list(start)
         for n in range(start[c], max(stop[c], start[c] + 1)):
