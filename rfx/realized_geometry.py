@@ -260,9 +260,7 @@ def _build_record(sim, ctx, *, compact=False):
                     for i, e in enumerate(sim._geometry)]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
                         for i, e in enumerate(sim._thin_conductors))
-    entities, packed_entities = [], []
-    from rfx.model.realization_snapshot import _pack, pack_array, retain
-    from dataclasses import replace
+    entities = []
     f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
@@ -363,10 +361,6 @@ def _build_record(sim, ctx, *, compact=False):
             int(mask.sum()) if mask is not None and kind in ("sheet", "wire") else 0,
             edge_counts, edge_ranges, realized_footprint_area_m2=areas[0],
             declared_footprint_area_m2=areas[1]))
-        if compact:
-            packed_entities.append(replace(entities[-1],
-                mask=None if mask is None else pack_array(mask),
-                edge_masks=tuple(pack_array(m) for m in raw_edges), sheet=_pack(sheet)))
         if compact and e is not None:
             e._edges = None
     domain = []
@@ -379,8 +373,7 @@ def _build_record(sim, ctx, *, compact=False):
         domain.append(DomainAxisGeometry(axis, end - plo,
                                         float(nodes[a][end] - nodes[a][plo]),
                                         (plo, phi), float(sim._domain[a])))
-    entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes, compact=compact,
-                                    packed=packed_entities if compact else None))
+    entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes, compact=compact))
     if assembled.stamped_entities:
         from rfx.model.coax import stamped_geometry_entities
         entities.extend(stamped_geometry_entities(assembled, nodes, sizes, compact=compact))
@@ -397,10 +390,7 @@ def _build_record(sim, ctx, *, compact=False):
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
                             snap=sim._snap, sources=sources, probes=probes,
                             dt=float(ctx.grid.dt), cells_per_wavelength=scale)
-    if compact:
-        packed_entities.extend(entities[len(packed_entities):])
-        return retain(record, packed_entities, assembled)
-    return _conductor_view(record, assembled)
+    return record if compact else _conductor_view(record, assembled)
 
 
 def _f0_specs_by_conductor(sim, assembled, refused_tc):
@@ -412,7 +402,7 @@ def _f0_specs_by_conductor(sim, assembled, refused_tc):
 
 
 
-def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False, packed=None):
+def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):
     """Read the pinned specs appended by both production assemblers."""
     from rfx.preflight.realization import _realized_edges_np
     from rfx.boundaries.pec import realized_wall_planes
@@ -439,11 +429,6 @@ def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False, packed
             sheet=None if compact else _freeze(sheet), node_count=int(fp.sum()),
             edge_counts=tuple(int(m.sum()) for m in edges),
             edge_ranges=tuple(_mask_ranges(m) for m in edges)))
-        if packed is not None:
-            from dataclasses import replace
-            from rfx.model.realization_snapshot import _pack, pack_array
-            packed.append(replace(rows[-1], mask=pack_array(fp), sheet=_pack(sheet),
-                                  edge_masks=tuple(pack_array(m) for m in edges)))
     return rows
 
 
@@ -517,14 +502,14 @@ def realized_geometry(sim):
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    from rfx.model.conductors import RealizedConductors, preview_port_stages, prepare_solve
+    from rfx.model.conductors import RealizedConductors, preview_port_stages, PreparedSolve
     from rfx.model.realization_table import bind_table, realization_table, PreparedRealization
     stamped = getattr(sim, '_coax_geometry', None)
     if stamped is not None and stamped[0] is ctx:
         record = bind_table(sim, stamped[1], lane='coax', compact=False)
         sim._realized_geometry_record = key, record
         return record
-    assembled = prepare_solve(sim).realized(report_context=ctx)
+    assembled = PreparedSolve(sim).realized(report_context=ctx)
     if isinstance(assembled, RealizedConductors):
         record = bind_table(
             sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
@@ -609,7 +594,6 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
         return None
     ctx = context_from_conductors(sim, conductors)
     record = _build_record(sim, ctx, compact=compact)
-    packed = getattr(record, "_packed_record", None)
     record = replace(record, lane=lane, limitations=("refined region not represented",)
                      if lane == "run_subgridded" else ())
     if lane == "run_subgridded":
@@ -617,8 +601,6 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
         why = "the subgridded lane places sources and probes on its fine grid"
         record = replace(record, sources=unrepresented(record.sources, why),
                          probes=unrepresented(record.probes, why))
-    if packed is not None:
-        object.__setattr__(record, "_packed_record", packed)
     return record if compact else _conductor_view(record, conductors)
 
 

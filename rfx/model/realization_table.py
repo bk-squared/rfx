@@ -228,10 +228,10 @@ def bind_table(sim, conductors, *, lane, compact=True):
     if record is None:
         record = RealizedGeometry((), (), (), (), (), (), None, (), (), None,
                                   conductors.periodic, lane=lane)
-    packed = getattr(record, "_packed_record", None)
     record = replace(record, realization_table=table)
-    if packed is not None:
-        object.__setattr__(record, "_packed_record", packed)
+    if compact:
+        record = replace(record, nodes=tuple(tuple(float(x) for x in axis) for axis in record.nodes),
+                         cell_sizes=tuple(tuple(float(x) for x in axis) for axis in record.cell_sizes))
     object.__setattr__(conductors, "_realization_record", record)
     if not compact:
         from rfx.realized_geometry import _conductor_view
@@ -272,7 +272,6 @@ def finish_table(sim, conductors, *, lane):
     object.__setattr__(table, "lane", lane)
     if conductors.refinements:
         object.__setattr__(table, "rows", _refined_rows(table, conductors.refinements, sim).rows)
-    packed = getattr(record, "_packed_record", None)
     record = replace(record, lane=lane, dt=float(conductors.grid.dt))
     if lane == "run_subgridded" and not conductors.refinements and conductors.kernel_context is None:
         record = replace(record, limitations=("refined region not represented",))
@@ -289,8 +288,5 @@ def finish_table(sim, conductors, *, lane):
         rows = tuple(row for row in table.rows if not row.label.startswith(("geometry[", "thin_conductor[")))
         object.__setattr__(table, "rows", disjoint_rows(sim, rows, conductors.kernel_context[1]))
         record = replace(record, limitations=("disjoint vacuum stepper does not carry material declarations",))
-    if packed is not None:
-        from rfx.model.realization_snapshot import finish
-        finish(record, conductors, packed)
     object.__setattr__(conductors, "_realization_record", record)
     return record

@@ -56,12 +56,14 @@ def _axis_names():
 from rfx.realized_geometry import _node_arrays
 
 
-def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
-    """Compatibility accessor for the cached public record; never rasterizes."""
+def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False, record=None):
+    """Read an entity mask from the public diagnostic record."""
     collection = sim._thin_conductors if hasattr(entry, "sigma_bulk") else sim._geometry
     prefix = "thin_conductor" if hasattr(entry, "sigma_bulk") else "geometry"
     index = next(i for i, candidate in enumerate(collection) if candidate is entry)
-    row = next(row for row in sim.realized_geometry().entities
+    if record is None:
+        record = sim.realized_geometry()
+    row = next(row for row in record.entities
                if row.label == f"{prefix}[{index}]")
     if row.mask_error is not None:
         raise ValueError(row.mask_error)
@@ -318,7 +320,13 @@ def fidelity_report(sim, print_report: bool = True):
     # seam, not a free edge, in the shared solved-edge model
     # (rfx.mesh_edges.solved_sheet_span, #1375).
     for kind_src, i, entry in entries:
-        geometry = rows[f"{kind_src}[{i}]"]
+        label = f"{kind_src}[{i}]"
+        if table_rows[label].status.startswith("not represented:"):
+            report.append(dict(entity=label, findings=[dict(
+                kind="not-represented", detail=table_rows[label].status,
+                remedy="use a solver lane that carries these material declarations")]))
+            continue
+        geometry = rows[label]
         if kind_src == "thin_conductor":
             sig = float(getattr(entry, "sigma_bulk", 0.0))
             mat_name = "pec" if sig >= 1e6 else "lossy-sheet"
@@ -342,7 +350,7 @@ def fidelity_report(sim, print_report: bool = True):
                         import builtins
                         cls, message = geometry.mask_error.split(": ", 1)
                         raise getattr(builtins, cls, ValueError)(message)
-                    nb_mask = _entity_mask(entry, sim, grid, nonuniform)
+                    nb_mask = _entity_mask(entry, sim, grid, nonuniform, record=record)
                 except Exception as exc:
                     pec_unrasterized.append((i, name, type(exc).__name__))
                     nb_item["findings"].append(dict(
@@ -376,7 +384,7 @@ def fidelity_report(sim, print_report: bool = True):
         # disagree by a cell on any off-lattice conductor. Sheets carry no
         # cell (sheet_fp above) and a refused entry never reaches the
         # assembly, so both keep the node sampler.
-        mask = _entity_mask(entry, sim, grid, nonuniform)
+        mask = _entity_mask(entry, sim, grid, nonuniform, record=record)
         mask = mask if mask is not None else np.zeros(eps.shape, bool)
         item = dict(entity=name, material=_declared_material(sim, mat_name),
                     declared_lo=tuple(float(v) for v in lo),

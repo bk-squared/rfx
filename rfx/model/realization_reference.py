@@ -3,7 +3,7 @@ from dataclasses import fields, is_dataclass
 from weakref import WeakKeyDictionary
 
 
-# Compact snapshots follow simulation lifetime without becoming solve arguments.
+# Host metadata follows simulation lifetime without becoming solve arguments.
 _kernel_views = WeakKeyDictionary()
 
 
@@ -29,25 +29,24 @@ register_pytree_node(_DeclaredDomain, lambda domain: (tuple(domain), domain.decl
 
 
 def remember_kernel(sim, root, record):
-    """Keep only the primary execution's compact host snapshot."""
-    from rfx.api._declarations import declaration_key
-    from rfx.model.realization_snapshot import snapshot
+    """Keep only the primary execution's host rows and per-axis metadata."""
+    from rfx.model.realization_integrals import quantities
     if any(row.traced_inputs for row in record.realization_table.rows):
         return
     cached = _kernel_views.get(sim)
-    if cached is not None and cached[0] == declaration_key(sim):
-        if cached[1].table.lane.startswith("run_") and record.lane.startswith("fwd_"):
+    if cached is not None:
+        if cached[0].lane.startswith("run_") and record.lane.startswith("fwd_"):
             return
-    _kernel_views[sim] = declaration_key(sim), snapshot(sim, root, record)
+    _kernel_views[sim] = record, quantities(root.grid).get("smoothing", 0)
 
 
 def kernel_view(sim):
-    """Restore legacy arrays from host storage, without another record build."""
-    from rfx.api._declarations import declaration_key
+    """Prepare requested arrays afresh and verify the solved table's rows."""
     cached = _kernel_views.get(sim)
-    if cached is None or cached[0] != declaration_key(sim):
+    if cached is None:
         return None
-    return cached[1].restore()
+    from rfx.model.realization_report import rebuild_view
+    return rebuild_view(sim, *cached)
 
 
 def traced_inputs(sim, grid):

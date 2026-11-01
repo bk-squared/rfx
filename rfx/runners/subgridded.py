@@ -30,6 +30,7 @@ def _run_subgridded_once(
     diagnostic_lumped_sparam_freqs_override=None,
     diagnostic_lumped_sparam_driven_index_override=None,
     conformal_pec=None,
+    _prepare_only=False,
 ):
     """Run one SBP-SAT subgrid simulation, optionally collecting one S-column.
 
@@ -180,6 +181,7 @@ def _run_subgridded_once(
             n_steps,
             _warn_experimental=False,
             diagnostics=diagnostics,
+            _prepare_only=_prepare_only,
         )
 
     is_full_xy_region = (
@@ -621,6 +623,8 @@ def _run_subgridded_once(
     conductors, geometry_record = refined_kernel(sim, grid_coarse, base_materials_coarse,
         pec_mask_coarse, fine_grid, mats_f, pec_mask_f, fine_masks, fine_entries,
         (x_off, y_off, z_off), probe_indices_f)
+    if _prepare_only:
+        return conductors
     from rfx.stepping.prepared import advance
     result = advance(conductors, _run_sg,
         grid_coarse,

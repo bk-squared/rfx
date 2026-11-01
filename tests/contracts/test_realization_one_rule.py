@@ -39,8 +39,8 @@ def scene(family, lane):
 
 def expected(family, record):
     """Write the family rules out; use only public node/cell arrays as inputs."""
-    nodes = record.nodes
-    cells = record.cell_sizes
+    nodes = tuple(np.asarray(axis) for axis in record.nodes)
+    cells = tuple(np.asarray(axis) for axis in record.cell_sizes)
     centres = [n[:-1] + c/2 for n, c in zip(nodes, cells)]
     if family == "wall":
         # Nearest whole cell, exact half goes up; graded z uses its profile.
@@ -99,6 +99,7 @@ def test_spans_and_assembly(family, lane, monkeypatch):
     original_step = stepping.advance
 
     def step(root, runner, *args, **kwargs):
+        assert len(builds) == 1
         roots.append(root)
         assert root.realization_table.prepared() is root
         assert builds[0].conductors is root
@@ -139,11 +140,16 @@ def test_spans_and_assembly(family, lane, monkeypatch):
         assert row.area_equivalent_length_m == pytest.approx(np.sqrt(area))
         assert row.area_miss_percent == pytest.approx(100*(np.sqrt(area/declared)-1))
     # Diagnostic views share one prepared table and keep their historical types.
+    count = len(builds)
     preview = sim.realized_geometry()
+    assert len(builds) - count <= 1
     assert preview.realization_table is table
-    assert len(builds) == 1
+    count = len(builds)
     assert sim.realized_geometry().realization_table is preview.realization_table
+    assert len(builds) - count <= 1
+    count = len(builds)
     report = sim.fidelity_report(print_report=False)
+    assert len(builds) - count <= 1
     assert report[0]["realization_table"] is preview.realization_table
     np.testing.assert_allclose([a.bounds_m for a in preview.realization_table.row(label(family)).axes], hand, rtol=0, atol=1e-12)
 
@@ -159,13 +165,12 @@ def test_declared_span_mutation_has_independent_oracle():
 
 
 @pytest.mark.parametrize("lane", LANES)
-def test_prior_preview_preserves_cache_and_reads_kernel_table(lane):
+def test_prior_preview_releases_cache_and_reads_kernel_table(lane):
     sim = scene("dielectric_box", lane)
     before = sim.realized_geometry()
-    cached = sim._realized_geometry_record
     result = (sim.forward(n_steps=1, skip_preflight=True) if lane.endswith("forward") else
               sim.run(n_steps=1, skip_preflight=True, compute_s_params=False))
-    assert sim._realized_geometry_record is cached
+    assert sim._realized_geometry_record is None
     table = result.realized_geometry.realization_table
     assert table is not before.realization_table
     assert sim.realized_geometry().realization_table is table
@@ -262,21 +267,20 @@ def test_distributed_run(family, monkeypatch):
     monkeypatch.setattr(stepping, "advance", step)
     result = sim.run(n_steps=1, devices=jax.devices("cpu")[:2],
                      skip_preflight=True, compute_s_params=False)
+    assert len(builds) == 1
     record = result.realized_geometry
     assert observed == [record.realization_table]
     row = record.realization_table.row(label(family))
     np.testing.assert_allclose([a.bounds_m for a in row.axes], expected(family, record), atol=1e-12, rtol=0)
-    # Dense kernel products have been released; reporting restores their captured
-    # diagnostic arrays and must never assemble another set of conductors.
-    def reassembled(*args, **kwargs):
-        pytest.fail("distributed reporter assembled a second product")
-
-    monkeypatch.setattr(conductors, "realized_conductors", reassembled)
+    # A diagnostic call prepares current declarations and checks its rows.
+    count = len(builds)
     preview = sim.realized_geometry()
+    assert len(builds) - count <= 1
     assert preview.realization_table is record.realization_table
     assert not preview.materials.eps_r.flags.writeable
+    count = len(builds)
     assert sim.fidelity_report(print_report=False)[0]["realization_table"] is record.realization_table
-    assert len(builds) == 1
+    assert len(builds) - count <= 1
 
 
 @pytest.mark.parametrize("lane", ("uniform_forward", "graded_run", "graded_forward"))
@@ -294,10 +298,6 @@ def test_other_distributed_reporters_share_the_kernel_table(lane, monkeypatch):
     np.testing.assert_allclose([a.bounds_m for a in record.realization_table.row("geometry[0]").axes],
                                expected("dielectric_box", record), atol=1e-12, rtol=0)
 
-    def reassembled(*args, **kwargs):
-        pytest.fail("distributed reporter assembled a second product")
-
-    monkeypatch.setattr(conductors, "realized_conductors", reassembled)
     assert sim.realized_geometry().realization_table is record.realization_table
     assert sim.fidelity_report(print_report=False)[0]["realization_table"] is record.realization_table
 
@@ -417,7 +417,7 @@ def test_inplane_profile_preserves_drawn_wall_extent(frozen):
 
 
 def independent_cell(family, record, hand, axis):
-    nodes, cells = record.nodes[axis], record.cell_sizes[axis]
+    nodes, cells = np.asarray(record.nodes[axis]), np.asarray(record.cell_sizes[axis])
     if family == "wall":
         return float(np.mean(cells[:10]))
     if family == "probe":
@@ -534,7 +534,6 @@ def test_two_port_primary_table(monkeypatch):
     original = records.record_from_conductors
 
     def build(*args, **kwargs):
-        assert kwargs.get("compact", True)
         calls.append(kwargs["lane"])
         return original(*args, **kwargs)
 
@@ -580,3 +579,88 @@ def test_conformal_owner_is_declaration_identity():
     grid = sim._build_grid()
     begin(sim, grid, conformal_shapes=(conductor,))
     assert quantities(grid)["owners"][id(conductor)] == 1
+
+
+def reachable_arrays(value, seen=None):
+    """Walk owned fields, including metadata slots, without following weakrefs."""
+    import types
+    import weakref
+    import jax
+    seen = set() if seen is None else seen
+    if id(value) in seen or isinstance(value, (weakref.ReferenceType, type,
+            types.FunctionType, types.ModuleType, str, bytes)):
+        return
+    seen.add(id(value))
+    if isinstance(value, (np.ndarray, jax.Array)):
+        yield value
+        return
+    if isinstance(value, dict):
+        children = (*value.keys(), *value.values())
+    elif isinstance(value, (tuple, list, set)):
+        children = value
+    else:
+        children = list(vars(value).values()) if hasattr(value, '__dict__') else []
+        for cls in type(value).__mro__:
+            slots = getattr(cls, '__slots__', ())
+            slots = (slots,) if isinstance(slots, str) else slots
+            children.extend(getattr(value, name) for name in slots
+                            if name not in ('__dict__', '__weakref__') and hasattr(value, name))
+    for child in children:
+        yield from reachable_arrays(child, seen)
+
+
+@pytest.mark.parametrize('lane', LANES)
+@pytest.mark.parametrize('preview_first', (False, True))
+def test_no_dense_array_retained_after_solve(lane, preview_first):
+    import gc
+    from rfx.model.realization_reference import _kernel_views
+    sim = scene('dielectric_box', lane)
+    if preview_first:
+        sim.realized_geometry()
+    kwargs = dict(n_steps=1, skip_preflight=True)
+    result = (sim.forward(**kwargs) if lane.endswith('forward') else
+              sim.run(compute_s_params=False, **kwargs))
+    axis_limit = max(len(axis) - 1 for axis in result.realized_geometry.nodes)
+    gc.collect()
+    assert result.realized_geometry.realization_table.prepared() is None
+    # Realization metadata owns this contract; measurement fields keep their arrays.
+    roots = {
+        'result.realized_geometry': result.realized_geometry,
+        'sim realization store': _kernel_views.get(sim),
+        'sim._realized_geometry_record': sim._realized_geometry_record,
+        'sim._pf_campaign_ctx': sim._pf_campaign_ctx,
+        'sim._coax_geometry': getattr(sim, '_coax_geometry', None),
+    }
+    for name, root in roots.items():
+        dense_shapes = [array.shape for array in reachable_arrays(root)
+                        if array.size > axis_limit]
+        assert not dense_shapes, (name, dense_shapes)
+    assert not list(reachable_arrays(_kernel_views.get(sim)))
+
+
+def test_reporter_refuses_rows_that_changed_at_call_time():
+    sim = scene('dielectric_box', 'uniform_run')
+    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    sim.add(Box((D, D, D), (2*D, 2*D, 2*D)), material='glass')
+    with pytest.raises(ValueError, match='Realization rows differ from the solved table'):
+        sim.realized_geometry()
+    assert len(result.realized_geometry.realization_table.rows) == 2
+
+
+@pytest.mark.parametrize('solved', (False, True))
+def test_reporter_reads_box_changed_between_calls(solved):
+    sim = scene('dielectric_box', 'uniform_run')
+    if solved:
+        sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    first = sim.realized_geometry()
+    # Keep the previous preparation alive while replacing the declaration.
+    entry = sim._geometry[0]
+    sim._geometry[0] = replace(entry, shape=Box(tuple(LO), (8.61*D, HI[1], HI[2])))
+    if solved:
+        with pytest.raises(ValueError, match='Realization rows differ from the solved table'):
+            sim.realized_geometry()
+    else:
+        second = sim.realized_geometry()
+        assert second.realization_table.rows != first.realization_table.rows
+        # The dielectric lower-node sampler owns nodes 3..8 and their cells.
+        assert second.realization_table.row('geometry[0]').axes[0].bounds_m == pytest.approx((3*D, 9*D))

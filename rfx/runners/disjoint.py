@@ -28,7 +28,7 @@ def run_disjoint_stage2_path(
     grid_coarse,
     n_steps: int,
     *,
-    _warn_experimental=True, diagnostics=(),
+    _warn_experimental=True, diagnostics=(), _prepare_only=False,
 ):
     """Run a minimal research-only Stage-2 disjoint z-slab smoke path.
 
@@ -112,6 +112,8 @@ def run_disjoint_stage2_path(
     samples = []
     from rfx.model.realization_legacy import disjoint_kernel
     conductors, geometry_record = disjoint_kernel(sim, grid_coarse, config, contract)
+    if _prepare_only:
+        return conductors
     from rfx.stepping import prepared as prepared_step
     for step in range(int(n_steps)):
         t = float(step * config.dt)
