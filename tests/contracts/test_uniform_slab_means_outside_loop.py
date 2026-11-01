@@ -112,8 +112,51 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
         assert_mean_placement(means, boundary, stage, driver='wrapped')
 
 
+def test_closed_box_tfsf_keeps_old_loop_pec_means(monkeypatch, tmp_path):
+    from rfx.stepping import slab_uniform_loop
+    assert len(jax.devices('cpu')) == 2, 'run with two virtual CPU devices'
+    original = jax.jit
+    original_loop = slab_uniform_loop.run_uniform_slab_loop
+    captured = []
+
+    def pec_loop(**kwargs):
+        assert kwargs['sim']._tfsf.closed_box and kwargs['use_cpml']
+        # Public closed-box admission requires CPML. Exercise the retained
+        # PEC program with that valid TF/SF setup through this test-only seam.
+        kwargs['use_cpml'] = False
+        return original_loop(**kwargs)
+
+    def jit(fun, *args, **kwargs):
+        compiled = original(fun, *args, **kwargs)
+        if fun.__module__ != 'rfx.stepping.slab_uniform_loop' or fun.__name__ != '_run_pec':
+            return compiled
+
+        def run(*values, **named):
+            lowered = compiled.lower(*values, **named)
+            executable = lowered.compile()
+            captured.append(lowered.compiler_ir('hlo').as_hlo_module().to_string())
+            captured.append(executable.runtime_executable().hlo_modules()[0].to_string())
+            return executable(*values, **named)
+        return run
+
+    monkeypatch.setattr(jax, 'jit', jit)
+    monkeypatch.setattr(slab_uniform_loop, 'run_uniform_slab_loop', pec_loop)
+    sim = Simulation(freq_max=15e9, domain=(18e-3, 16e-3, 14e-3), dx=1e-3,
+                     boundary='cpml', cpml_layers=2)
+    sim.add_material('dielectric', eps_r=4, sigma=.01)
+    sim.add(Box((7e-3, 6e-3, 5e-3), (10e-3, 9e-3, 8e-3)), material='dielectric')
+    sim.add_tfsf_source(f0=8e9, margin=4, direction='+x', polarization='ez',
+                        closed_box=True)
+    sim.add_probe((9e-3, 8e-3, 7e-3), 'ez')
+    result = sim.run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+    assert len(captured) == 2, 'the TF/SF test harness must lower and compile _run_pec'
+    for stage, hlo in zip(('lowered', 'compiled'), captured):
+        (tmp_path / f'tfsf-pec-{stage}.hlo').write_text(hlo)
+        assert_mean_placement(means_inside_while(hlo), 'pec', stage, driver='old_loop')
+
+
 def assert_mean_placement(means, boundary, stage, *, driver):
-    # This scene has no closed-box TF/SF and always reaches the wrapped driver.
     # The retained old-loop contract applies only to that driver's lowered PEC
     # program; optimization can move its invariant work.
     assert driver in ('wrapped', 'old_loop')
