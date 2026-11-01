@@ -15,7 +15,7 @@ from rfx.measurement import (
 )
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
 from rfx.model.graded_grid import NonUniformGrid
-from rfx.stepping import segmented_scan
+from rfx.stepping.remat import segmented_scan
 from rfx.stepping.remat import active_levels, checkpoint_lengths
 from rfx.stepping.graded_setup import _build_nu_scan
 
