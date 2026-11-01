@@ -45,7 +45,7 @@ def test_diagnose_missing_optional_package_preserves_success_text(monkeypatch, c
     assert diagnostics.main([]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert [line for line in lines if "optional optax:" in line] == [
-        "  [INFO] optional optax: not installed (inverse-design / gradient optimisation) — install only if needed"
+        "  [INFO] optional optax: not installed (optional example optimizers; topology_optimize needs no optax) — install only if needed"
     ]
     assert "All critical checks passed" in "\n".join(lines)
 
