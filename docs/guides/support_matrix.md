@@ -370,9 +370,9 @@ therefore means different things for different port families.
 | Primitive | Calculation API | Result | Current status |
 |---|---|---|---|
 | Lumped `add_port(..., extent=None)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a one-cell feed with a scalar reference impedance, not a transmission-line mode; uniform or graded mesh |
-| Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors; on a graded mesh the driven column) | **limited**: one device, uniform or graded mesh |
+| Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors; on a graded mesh the driven column) | **limited**: uniform or graded mesh, one device or several |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a feed spread over `extent`; on a graded mesh experimental |
-| Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors; on a graded mesh the driven column) | **limited**: one device, uniform or graded mesh |
+| Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors; on a graded mesh the driven column) | **limited**: uniform or graded mesh, one device or several |
 | `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.probe_clearance`, `.beta_railed`, `.reference_impedances` | **limited**: quasi-TEM (`mode="laplace"`) on a uniform mesh; on a graded mesh experimental; `mode="eigenmode"` refused |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited**: magnitude of single-mode rectangular guides on a uniform mesh; phase and junctions narrower; on a graded mesh experimental outside the cases listed below |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited**: per-port output, not the full matrix |
@@ -407,7 +407,7 @@ Analytic extractor and V/I replay checks validate the extraction algebra and its
 reproducibility; they do not establish a generally calibrated lumped-port
 result. `run(compute_s_params=True)` returns lumped-port S on uniform and graded
 meshes; on a graded mesh `run()` drives each port in turn, one column per run.
-`forward(port_s11_freqs=...)` runs on one device, uniform or graded mesh. A plane wave, waveguide ports or another port family cannot share this
+`forward(port_s11_freqs=...)` runs on uniform and graded meshes, on one device or with `distributed=True`. A plane wave, waveguide ports or another port family cannot share this
 calculation.
 
 ### Wire port

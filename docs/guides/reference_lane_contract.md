@@ -71,8 +71,8 @@ The detailed port-family contract is versioned in
 `docs/guides/support_matrix.md` (S-parameters section). The reference-lane rule is:
 
 - `run(compute_s_params=True)` means `add_port(...)` lumped/wire ports only.
-- `forward(port_s11_freqs=...)` means lumped/wire S11 vectors on the uniform
-  single-device differentiable path only.
+- `forward(port_s11_freqs=...)` means lumped/wire S11 vectors on the uniform or
+  graded differentiable path, on one device or several.
 - `compute_msl_s_matrix()` owns specialized microstrip-line ports.
 - `compute_waveguide_s_matrix()` owns rectangular waveguide full S-matrices.
 - Coaxial line reflection is promoted only through
