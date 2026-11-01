@@ -168,9 +168,16 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     # max ||S21|-1| 0.001657972 -> 0.001657927, max column power 1.001542963 -> 1.00154294; flux max column power
     # 1.000004464 -> 1.000004471; settling -64.24 / -71.96 -> -65.28 / -72.85 dB (left / right). Regenerated with this
     # test's own _make_wr90_sim (the diagnostics script's domain no longer matches it).
+    # Re-pinned for #2308: transmission now divides by the driven port's incident wave.
+    # Regenerated with this test's own _make_wr90_sim, num_periods=4 and scoped float64:
+    # normalize=True max|d| against the old golden is 1.0305989378262996.
+    # Independent witness: the empty guide's device run is its reference run, so
+    # max|True_offdiag - committed False_offdiag| = 3.878959614448864e-18 and
+    # max|True_diag| = 0.0. Transmission is the guide's own, no longer 1 by identity.
+    # The normalize=False and flux golden files and their SHAs are unchanged.
     _EXPECTED_SHA = {
         "false": "fefa2c5ba64bccdf71d7a9ec41733bce8c930235b5bb23799790cd6c89ffbb20",
-        "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
+        "true":  "c854625635e3267bea81f176ff01e7a6b89fcf08d54f6fddcf739e7eff24b0d1",
         "flux":  "39bc5cd5190a5f65780bfaee73a28cde34ae109daa9ecdcfa4a6040b1766270b",
     }
     assert sha == _EXPECTED_SHA[mode_name], (
