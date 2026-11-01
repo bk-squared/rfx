@@ -990,6 +990,8 @@ def smoothed_shape_pairs(sim, grid):
             [(shape, eps_r)], node_coords, pads,
             declared_domain=sim._unresolved_domain)
         out.extend(one)
+        from rfx.model.realization_integrals import quantities
+        quantities(grid, create=True).setdefault("owners", {}).update({id(s): idx for s, _ in one})
         # Stamp the entry's identity HERE, in the loop that knows it, and put
         # the DECLARED shape back. The builder reports whatever object it held
         # when the face was reached, which is already a continued copy once a

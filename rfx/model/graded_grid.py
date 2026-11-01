@@ -110,7 +110,6 @@ class NonUniformGrid(NamedTuple):
     traced_cells: dict[str, tuple[int, int]] | None = None
     periodic_axes: str = ""
     domain: tuple[float, float, float] | None = None
-    realization_quantities: dict | None = None
 
     @property
     def shape(self):
@@ -1002,7 +1001,6 @@ def make_nonuniform_grid(
                          z_lo=pad_z_lo, z_hi=pad_z_hi),
         nominal_cells=nominal_cells,
         traced_cells=traced_cells, periodic_axes=periodic_axes, domain=domain,
-        realization_quantities={},
     )
 
 

@@ -361,13 +361,20 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=
     non-periodic uniform shapes may implement only mask(grid).
     """
     from rfx._periodic import periodic_mask, periodic_shape
+    from rfx.model.realization_integrals import quantities
+    sampling = quantities(grid, create=True) if grid is not None else {}
+    rules = sampling.setdefault("material_sampling", {})
+    declared_id = id(shape)
     if isinstance(shape, Box):
         _box_zero_axes(shape.corner_lo, shape.corner_hi)
     shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
+        rules[declared_id] = "cell-centre material mask"
         return periodic_mask(grid, shape, centres[:3])
     if getattr(grid, 'periodic_axes', ''):
+        rules[declared_id] = "periodic node material mask"
         return periodic_mask(grid, shape, coords[:3])
+    rules[declared_id] = "lower-node material mask" if isinstance(shape, Box) else "shape material mask"
     if grid is not None:
         return shape.mask(grid)
     return shape.mask_on_coords(coords.x, coords.y, coords.z)

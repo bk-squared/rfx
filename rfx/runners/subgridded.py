@@ -618,10 +618,11 @@ def _run_subgridded_once(
         inject_sources_on_coarse_shadow=inject_sources_on_coarse_shadow,
     )
     from rfx.model.realization_legacy import refined_kernel
-    _, geometry_record = refined_kernel(sim, grid_coarse, base_materials_coarse,
+    conductors, geometry_record = refined_kernel(sim, grid_coarse, base_materials_coarse,
         pec_mask_coarse, fine_grid, mats_f, pec_mask_f, fine_masks, fine_entries,
         (x_off, y_off, z_off), probe_indices_f)
-    result = _run_sg(
+    from rfx.stepping.prepared import advance
+    result = advance(conductors, _run_sg,
         grid_coarse,
         base_materials_coarse,
         mats_f,

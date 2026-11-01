@@ -701,8 +701,11 @@ def _forward_from_materials(
             run_args={"tfsf_materials": materials} if self._tfsf is not None else None,
         )
 
+    from rfx.stepping import prepared as prepared_step
+    conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
+    stepping_product = conductors
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
-    result = _run(
+    result = prepared_step.advance(stepping_product, _run,
         grid,
         materials,
         n_steps,

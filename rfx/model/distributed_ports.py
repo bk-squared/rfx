@@ -108,9 +108,11 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     if ports_present:
         conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
             conductors, (), pec_occupancy_override, None, sim=sim)
+    from rfx.stepping.prepared import stage
+    conductors = stage(conductors, materials=materials)
     conductors, record = conductor_model.at_kernel(sim, conductors,
         lane=lane, pec_edges=conductors.pec_edges)
-    return materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
+    return conductors, materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
 
 
 def refuse_unsupported_distributed_features(sim, **kwargs):

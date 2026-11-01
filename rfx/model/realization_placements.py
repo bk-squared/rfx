@@ -32,9 +32,6 @@ def placement_rows(sim, record, existing):
         if edges and bounds is None:
             indices = np.asarray(edges)
             bounds = [(int(indices[:, a].min()), int(indices[:, a].max())) for a in range(3)]
-            if family == "wire":
-                a = "xyz".index(item.component[1])
-                bounds[a] = bounds[a][0], bounds[a][1] + 1
         axes = tuple(_axis("xyz"[a], None if declared is None else declared[a],
                            tuple(float(record.nodes[a][k]) for k in interval),
                            float(record.cell_sizes[a][interval[0]]))

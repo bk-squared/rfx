@@ -19,8 +19,15 @@ class _PackedRecord:
 
 
 def _pack(value):
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(value):
+        return None
+    if hasattr(value, "shape") and hasattr(value, "dtype"):
+        value = np.asarray(value)
     if isinstance(value, np.ndarray):
         return _PackedArray(value.shape, value.dtype.str, zlib.compress(value.tobytes(), 1))
+    if isinstance(value, (_PackedArray, _PackedRecord)):
+        return value
     if is_dataclass(value):
         return _PackedRecord(type(value), tuple((f.name, _pack(getattr(value, f.name)))
                                                 for f in fields(value)))
@@ -54,8 +61,40 @@ class DistributedSnapshot:
 
 
 def snapshot(sim, root, record):
-    from rfx.realized_geometry import record_from_conductors
-    dense = record_from_conductors(sim, root, lane=record.lane, compact=False)
-    # Dataclass replacement drops the private strong reference to the root.
-    packed = _pack(replace(dense, realization_table=None))
-    return DistributedSnapshot(root.grid, packed, record.realization_table)
+    import copy
+    from rfx.realized_geometry import _freeze
+    grid = copy.copy(root.grid)
+    # Grid metrics are small host arrays, never device-owned state.
+    values = grid._asdict() if hasattr(grid, "_asdict") else vars(grid)
+    updates = {name: _freeze(value) for name, value in values.items() if hasattr(value, "shape")}
+    if hasattr(grid, "_replace"):
+        grid = grid._replace(**updates)
+    else:
+        for name, value in updates.items():
+            object.__setattr__(grid, name, value)
+    packed = getattr(record, "_packed_record", None)
+    if packed is None:
+        packed = _pack(replace(record, realization_table=None))
+    return DistributedSnapshot(grid, packed, record.realization_table)
+
+
+def retain(record, entities, assembled):
+    """Compress each existing collector once while the compact record is formed."""
+    compact = replace(record, entities=tuple(entities), realization_table=None)
+    object.__setattr__(record, "_packed_record", _pack(compact))
+    return record
+
+
+def finish(record, assembled, packed):
+    """Capture final stage operands once, reusing the packed entity collectors."""
+    updates = dict(lane=record.lane, dt=record.dt, ports=record.ports,
+        sources=record.sources, probes=record.probes, limitations=record.limitations,
+        edge_masks=assembled.pec_edges or (), pec_mask=assembled.pec_mask,
+        sheets=assembled.sheets, wires=assembled.wires, materials=assembled.materials)
+    updates = {name: _pack(value) for name, value in updates.items()}
+    object.__setattr__(record, "_packed_record", _PackedRecord(packed.kind,
+        tuple((name, updates.get(name, value)) for name, value in packed.values)))
+
+
+def pack_array(value):
+    return _pack(np.asarray(value))

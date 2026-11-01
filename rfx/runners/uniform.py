@@ -660,6 +660,9 @@ def run_uniform(
         _stop_kwargs = {"stop_fn": _stop_with_bins,
                         "stop_interval": int(stop_interval)}
 
+    from rfx.stepping import prepared as prepared_step
+    conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
+    stepping_product = conductors
     # The record and the call below read the same final conductor object.
     conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform", pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
@@ -673,7 +676,7 @@ def run_uniform(
         n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
                            tfsf=tfsf, waveguide_ports=waveguide_ports)
                  if until_decay > 0 else None)
-        sim_result = _simulation.run_until_decay(
+        sim_result = prepared_step.advance(stepping_product, _simulation.run_until_decay,
             grid, materials,
             decay_by=until_decay,
             n_end=n_end,
@@ -723,7 +726,7 @@ def run_uniform(
                {"report_every": report_every, "report_label": report_label}),
         )
     else:
-        sim_result = _simulation.run(
+        sim_result = prepared_step.advance(stepping_product, _simulation.run,
             grid, materials, n_steps,
             boundary=sim._boundary,
             cpml_axes=cpml_axes,

@@ -121,13 +121,15 @@ def _run_adi_from_materials(
             _realized.sources(grid_out, materials, sources_3d, "adi.sources")
         zeros = jnp.zeros(shape, dtype=jnp.float32)
         from rfx.model.realization_legacy import legacy_kernel
-        _, geometry_record = legacy_kernel(self, grid_out, materials, pec_mask, pec_edge_masks, lane)
-        ex_f, ey_f, ez_f, hx_f, hy_f, hz_f, probe_data = run_adi_3d(
+        conductors, geometry_record = legacy_kernel(self, grid_out, materials, pec_mask, pec_edge_masks, lane)
+        from rfx.stepping.prepared import advance
+        ex_f, ey_f, ez_f, hx_f, hy_f, hz_f, probe_data = advance(conductors, run_adi_3d,
             zeros, zeros, zeros, zeros, zeros, zeros,
             eps_r_3d, sigma_3d,
             dt, grid.dx, grid.dx, grid.dx,
             n_steps,
             sources=sources_3d,
+            _operand_layout="adi3d",
             probes=probes_3d,
             pec_edge_masks=pec_edge_masks,
         )
@@ -186,8 +188,9 @@ def _run_adi_from_materials(
     hx0 = jnp.zeros_like(eps_r_2d)
     hy0 = jnp.zeros_like(eps_r_2d)
     from rfx.model.realization_legacy import legacy_kernel
-    _, geometry_record = legacy_kernel(self, grid_out, materials, pec_mask, pec_edge_masks, lane)
-    ez_f, hx_f, hy_f, probe_data = run_adi_2d(
+    conductors, geometry_record = legacy_kernel(self, grid_out, materials, pec_mask, pec_edge_masks, lane)
+    from rfx.stepping.prepared import advance
+    ez_f, hx_f, hy_f, probe_data = advance(conductors, run_adi_2d,
         ez0,
         hx0,
         hy0,
@@ -198,6 +201,7 @@ def _run_adi_from_materials(
         grid.dx,
         n_steps,
         sources=sources,
+        _operand_layout="adi2d",
         probes=probes,
         ez_pec_mask=ez_pec_mask_2d,
     )

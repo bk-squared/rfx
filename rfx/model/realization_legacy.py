@@ -53,5 +53,6 @@ def disjoint_kernel(sim, grid, config, contract):
         del grid._prepared_conductors
     grid = copy.copy(grid)
     grid.dt = config.dt
-    root = replace(root, grid=grid, kernel_context=(config, contract))
+    root = replace(root, grid=grid, kernel_context=(config, contract),
+                   _prepared_owner=root._prepared_owner or root)
     return at_kernel(sim, root, lane="run_subgridded", pec_edges=root.pec_edges)

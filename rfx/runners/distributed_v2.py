@@ -615,6 +615,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
     # ------------------------------------------------------------------
+    from rfx.stepping import prepared as prepared_step
+    conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
+    stepping_product = conductors
     conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
     pec_edges = conductors.pec_edges
     if sim._tfsf is not None and sim._tfsf.closed_box:
@@ -626,6 +629,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         validate_realized_vacuum_boundary(
             sim, grid, materials, box_bounds(grid.shape, grid.cpml_layers, sim._tfsf.margin),
             pec_edge_masks=pec_edges, debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    prepared_step.release_dense(stepping_product)
     del conductors, base_materials
     # Create state directly on its owning devices and stage materials one
     # addressable slab at a time, without whole-domain slab stacks.
@@ -735,7 +739,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     n_prb = len(probes)
     from rfx.runners._distributed_records import SlabRecords
     from rfx.stepping.slab_uniform_loop import run_uniform_slab_loop
-    final_carry, probe_ts, final_state_sharded, records = run_uniform_slab_loop(
+    prepared_step.stage(stepping_product, materials=sharded_materials, pec_edges=sharded_pec_mask)
+    final_carry, probe_ts, final_state_sharded, records = prepared_step.advance(stepping_product, run_uniform_slab_loop,
+        _operand_layout="slab",
         SlabRecords=SlabRecords,
         _pmc_faces_frozen=_pmc_faces_frozen,
         cpml_params=cpml_params,

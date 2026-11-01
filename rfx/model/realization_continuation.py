@@ -30,10 +30,5 @@ def retain_faces(grid, tags):
             for index in np.unique(owner[tuple(region)]):
                 if index >= 0:
                     continued.setdefault(int(index), []).append(2*a+side)
-    store = getattr(grid, "realization_quantities", None)
-    if store is None:
-        if not hasattr(grid, "__dict__"):
-            return
-        store = {}
-        grid.realization_quantities = store
-    store["continued"] = continued
+    from rfx.model.realization_integrals import quantities
+    quantities(grid, create=True)["continued"] = continued
