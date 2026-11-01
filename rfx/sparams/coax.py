@@ -31,6 +31,7 @@ from rfx._precision import resolve_field_dtype
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
+from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
 
 import jax
@@ -59,28 +60,7 @@ from rfx.sparams._port_reference import (coax_two_port_line_waves,
     renormalize_power_waves, warn_line_reference_mismatch)
 
 
-def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
-    """The conductor cells of a coax line, as PEC E-edge masks.
-
-    ``rfx.boundaries.pec.realized_pec_edge_masks`` is the repo's one rule for
-    turning conductor geometry into shorted edges: walls on BOTH faces, every
-    normal edge between them shorted. The coax lanes used to leave their
-    conductors as ``sigma = PEC_SIGMA``, which ``rfx/core/yee.py`` applies per
-    NODE to the three E components co-indexed with that node — so only the
-    plus-side edges of each conductor cell were damped and the edges entering it
-    from the minus side stayed live. See ``stamp_coaxial_line`` for what that
-    cost and what it was measured at.
-
-    ``merge_with`` is another lane's already-realized masks (the coax-to-MSL
-    transition has its own board); the two are unioned rather than replaced.
-    """
-    from rfx.boundaries.pec import realized_pec_edge_masks
-
-    edges = realized_pec_edge_masks(np.asarray(pec_cells), sheets=(), wires=(),
-                                    periodic=periodic)
-    if merge_with is None:
-        return tuple(edges)
-    return tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, merge_with))
+from rfx.sparams.coax_geometry import _coax_pec_edge_masks
 
 
 def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
@@ -478,8 +458,10 @@ def compute_coaxial_line_reflection(
         # signal. ``"differentiable"`` flags the AD path so it is not confused
         # with a fully-gated concrete ``"passed"``.
         status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
+        s11 = jnp.stack(s11_c)
+        warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
         return CoaxialLineReflectionResult(
-            s11=jnp.stack(s11_c),
+            s11=s11,
             freqs=jnp.asarray(freqs),
             gamma=jnp.stack(gamma_c),
             recurrence_residual=jnp.stack(rec_c),
@@ -526,6 +508,7 @@ def compute_coaxial_line_reflection(
     else:
         status = "passed"
 
+    warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
     return CoaxialLineReflectionResult(
         s11=s11,
         freqs=np.asarray(freqs, dtype=float),

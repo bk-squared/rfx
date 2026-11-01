@@ -124,6 +124,7 @@ from typing import NamedTuple
 import numpy as np
 
 from rfx.measurement.ringdown_model import RingdownModel, RingdownPole, _as_2d, _cmul
+from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 
 # Import the module explicitly for its matrix-pencil planning helpers.
 _harminv = import_module("rfx.harminv")
@@ -392,15 +393,7 @@ class RingdownResult(NamedTuple):
 # ---------------------------------------------------------------------------
 
 
-def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
-    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
-    a = np.asarray(arr)
-    if a.ndim == 1:
-        a = a[:, None]
-    if a.shape != (nf, n_ch):
-        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
-                         f"or ({nf},) for a single channel")
-    return a
+from rfx.measurement.ringdown_tail import _given_spectra
 
 
 def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> np.ndarray:
@@ -1185,6 +1178,7 @@ class RingdownRun:
                 f"ring-down completion: witness failed -- {failed}; "
                 "Result.ringdown.s_params is not supported by its own check "
                 "(see Result.ringdown.report).", AccuracyWarning, stacklevel=3)
+        warn_if_singular_value_exceeds_one(S, result.freqs, extractor="run(ringdown)")
         return stripped._replace(ringdown=RingdownResult(
             s_params=S, freqs=result.freqs, report=report))
 
@@ -2482,7 +2476,9 @@ class RingdownForward(RingdownRun):
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
         stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
-        return stripped._replace(ringdown=self._traced(result, channels))
+        completed = self._traced(result, channels)
+        warn_if_singular_value_exceeds_one(completed.s_params, completed.freqs, extractor="forward(ringdown)")
+        return stripped._replace(ringdown=completed)
 
     def _traced(self, result, channels) -> RingdownForwardResult:
         import jax

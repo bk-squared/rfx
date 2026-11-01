@@ -767,7 +767,9 @@ def run_subgridded_path(
     )
     if compute_s_params is None:
         compute_s_params = requested_sparams
+    from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
     if not compute_s_params:
+        warn_if_singular_value_exceeds_one(main_result.s_params, main_result.freqs, extractor="run(subgridded)")
         return main_result
 
     port_entries = [
@@ -827,6 +829,7 @@ def run_subgridded_path(
     finally:
         sim._ports = original_ports
 
+    warn_if_singular_value_exceeds_one(s_matrix, freqs, extractor="run(subgridded)")
     return main_result._replace(
         s_params=s_matrix,
         freqs=np.asarray(freqs),
