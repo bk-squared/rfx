@@ -128,7 +128,8 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
     sdf = np.full(tuple(len(line) for line in lines), np.inf, dtype=np.float64)
     from rfx.geometry.csg import Box, PolylineWire
     from rfx.geometry.smoothing import _ContinuedSheetShape
-    for shape in pec_shapes:
+    owner = np.zeros(sdf.shape, dtype=int)
+    for index, shape in enumerate(pec_shapes):
         fn = _get_sdf_fn(shape)
         if fn is None and isinstance(shape, PolylineWire) and float(shape.radius) < 0.5 * min(widths):
             continue  # A sub-cell filament reaches the step through its own wire edges.
@@ -149,6 +150,7 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
                 'operands would drop it; refine the mesh or use the staircase'
                 + ('; on the 2-D lane the z = 0 slice must cross its interior, not a face'
                    if getattr(grid, 'is_2d', False) else ''))
+        owner = np.where(shape_sdf < sdf, index, owner)
         sdf = np.minimum(sdf, shape_sdf)
     base = sdf[:-1, :-1, :-1]
     lengths, areas = [], []
@@ -166,5 +168,9 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True):
         areas.append(face_fraction(corners, (widths[u], widths[v])))
     if clamp:
         lengths = sc_clamp(lengths, areas)
+    from rfx.model.realization_integrals import capture
+    for axis, area in enumerate(areas):
+        capture(grid, pec_shapes, np.asarray(area[1:, 1:, 1:], dtype=np.float32),
+                owner[1:-1, 1:-1, 1:-1], axis, face=True)
     return tuple(tuple(jnp.asarray(a[1:, 1:, 1:], dtype=jnp.float32) for a in arrays)
                  for arrays in (lengths, areas))

@@ -67,14 +67,16 @@ def node_metrics(grid):
 def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
     from rfx._periodic import periodic_sdf
 
-    union = nearest = normal = None
-    for shape in shapes:
+    union = nearest = normal = owner = None
+    for index, shape in enumerate(shapes):
         sdf, ns = periodic_sdf(
             grid, shape, coords, smooth._get_sdf_fn(shape), xp=xp,
             normal_fn=smooth._get_normal_fn(shape))
         if union is None:
+            owner = xp.zeros_like(sdf, dtype=int)
             union, nearest, normal = sdf, xp.abs(sdf), ns
         else:
+            owner = xp.where(sdf < union, index, owner)
             closer = xp.abs(sdf) < nearest
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
@@ -82,6 +84,9 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
     h = (uniform_cell(grid) if fill_length is None else
          smooth._normal_cell_length(xp, fill_length, normal))
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
+    if distance:
+        from rfx.model.realization_integrals import capture
+        capture(grid, shapes, result[0], owner, 3)
     return result + (union,) if distance else result
 
 

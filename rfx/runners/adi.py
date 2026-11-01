@@ -120,6 +120,8 @@ def _run_adi_from_materials(
         if _realized.ACTIVE is not None:
             _realized.sources(grid_out, materials, sources_3d, "adi.sources")
         zeros = jnp.zeros(shape, dtype=jnp.float32)
+        from rfx.model.realization_legacy import legacy_kernel
+        _, geometry_record = legacy_kernel(self, grid_out, materials, pec_mask, pec_edge_masks, lane)
         ex_f, ey_f, ez_f, hx_f, hy_f, hz_f, probe_data = run_adi_3d(
             zeros, zeros, zeros, zeros, zeros, zeros,
             eps_r_3d, sigma_3d,
@@ -139,6 +141,7 @@ def _run_adi_from_materials(
                 step=jnp.asarray(n_steps, dtype=jnp.int32),
             )
             return Result(
+                realized_geometry=geometry_record,
                 diagnostics=diagnostics,
                 state=state,
                 time_series=probe_data,
@@ -149,6 +152,7 @@ def _run_adi_from_materials(
                 freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
             )
         return ForwardResult(
+            realized_geometry=geometry_record,
             diagnostics=diagnostics,
             time_series=probe_data,
             ntff_data=None,
@@ -181,6 +185,8 @@ def _run_adi_from_materials(
     ez0 = jnp.zeros_like(eps_r_2d)
     hx0 = jnp.zeros_like(eps_r_2d)
     hy0 = jnp.zeros_like(eps_r_2d)
+    from rfx.model.realization_legacy import legacy_kernel
+    _, geometry_record = legacy_kernel(self, grid_out, materials, pec_mask, pec_edge_masks, lane)
     ez_f, hx_f, hy_f, probe_data = run_adi_2d(
         ez0,
         hx0,
@@ -206,6 +212,7 @@ def _run_adi_from_materials(
             step=jnp.asarray(n_steps, dtype=jnp.int32),
         )
         return Result(
+            realized_geometry=geometry_record,
             diagnostics=diagnostics,
             state=state,
             time_series=probe_data,
@@ -217,6 +224,7 @@ def _run_adi_from_materials(
         )
 
     return ForwardResult(
+        realized_geometry=geometry_record,
         diagnostics=diagnostics,
         time_series=probe_data,
         ntff_data=None,

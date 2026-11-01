@@ -143,6 +143,10 @@ class RealizedConductors(_RealizedPEC):
     stamped_entities: tuple = ()
     stamp_check_findings: tuple = ()
     design_findings: tuple = ()
+    realization_table: object = field(default=None, compare=False, repr=False)
+    _realization_tables: list = field(default_factory=list, compare=False, repr=False)
+    refinements: tuple = ()
+    kernel_context: object = field(default=None, compare=False, repr=False)
 
     sheet_context = SheetConductors.sheet_context
     width_axes = conductor_width_axes
@@ -445,10 +449,13 @@ class PreparedSolve:
         self._taken = False
         self.diagnostics = ()
 
-    def realized(self, *, n_devices=1):
+    def realized(self, *, n_devices=1, report_context=None):
         if self._taken:
             raise RuntimeError("Solve assembly was already consumed")
         if self._product is None:
+            if report_context is not None:
+                self._product = report_context.realized()
+                return self._product
             nonuniform = self.sim._uses_nonuniform_mesh
             grid = (self.sim._build_nonuniform_grid() if nonuniform
                     else self.sim._build_grid())
@@ -464,6 +471,7 @@ class PreparedSolve:
 
 def prepare_solve(sim, *, distributed=False):
     """Keep solve ownership local to this execution, never in audit caches."""
+    sim._kernel_realization = None
     if distributed:
         sim._pf_campaign_ctx = None
         sim._realized_geometry_record = None
@@ -504,7 +512,8 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
     return (replace(obj, assembly_from_sim=False) if root is None else
-            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim))
+            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim,
+                    _realization_tables=root._realization_tables))
 
 
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
@@ -524,11 +533,13 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
                 conductors = replace(conductors, sheet_operator=conductors.sheet_context(edges))
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
-    if _traced_product(conductors):
-        return conductors, None
-    from rfx.realized_geometry import record_from_conductors
-    record = (record_from_conductors(sim, conductors, lane=lane, compact=compact)
-              if lane.startswith('run_') else None)
+    from rfx.model.realization_table import bind_table
+    if "distributed" in lane:
+        sim._kernel_realization = None
+    record = bind_table(sim, conductors, lane=lane, compact=compact)
+    if record is not None and not _traced_product(conductors):
+        from rfx.model.realization_reference import remember_kernel
+        remember_kernel(sim, conductors, record)
     return conductors, record
 
 

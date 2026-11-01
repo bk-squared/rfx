@@ -68,6 +68,11 @@ def _preflight_impl(
     # Resolve before any validator reads a profile or fallback spacing.
     self._resolve_mesh()
     issues = PreflightReport()
+    if _conductors is not None:
+        tables = _conductors._realization_tables
+        issues._realization_reader = lambda: tables[-1] if tables else None
+    else:
+        issues._realization_reader = lambda: self.realized_geometry().realization_table
 
     # Static geometry diagnostics must stay host-side under an outer
     # jit, just like mesh selection. Otherwise even a concrete Box's

@@ -136,6 +136,7 @@ def _forward_from_materials(
         # calls ``realized_pec_edge_masks`` — so the whole defect was
         # the two arguments missing here.
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
+        grid._prepared_conductors = conductors
         return self._run_adi_from_materials(
             grid,
             materials,

@@ -842,6 +842,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
             shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+            from rfx.model.realization_integrals import begin
+            begin(sim, grid, shapes=shape_eps_pairs, smoothing=subpixel_smoothing)
             if subpixel_smoothing != "full_tensor":
                 warn_curved_high_contrast(shape_eps_pairs, sim=sim)
             warn_unextendable_shapes([u for u in _unextendable if not u.conductor])

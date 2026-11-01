@@ -184,7 +184,10 @@ class _MeshMixin:
         if "_frozen_mesh" not in self.__dict__:
             grid = self._build_realized_grid()
             frozen = dict(self._resolve_mesh())
-            frozen["_domain"] = tuple(frozen["_domain"])
+            from rfx.model.realization_reference import retain_declared_domain
+            original = self._declared_mesh["_domain"]
+            frozen["_domain"] = retain_declared_domain(
+                tuple(frozen["_domain"]), getattr(original, "declared", original))
             # An empty automatic model has no planner result yet. Capture the
             # grid's actual default spacing so adding its first body is safe.
             if frozen["_dx"] is None:

@@ -168,15 +168,22 @@ def fidelity_report(sim, print_report: bool = True):
     finding.
     """
     record = sim.realized_geometry()
-    ctx = sim._campaign_ctx()
-    nonuniform = ctx.lane == "nonuniform"
-    grid = ctx.grid
+    from rfx.preflight.realization import context_from_conductors
+    grid = getattr(record, "_report_grid", None)
+    if grid is None:
+        ctx = (context_from_conductors(sim, record.conductors) if record.conductors is not None
+               else sim._campaign_ctx())
+        grid = ctx.grid
+        nonuniform = ctx.lane == "nonuniform"
+    else:
+        nonuniform = hasattr(grid, "dx_arr")
     refused = dict(record.refused)
     refused_tc = dict(record.refused_thin_conductors)
     assembled_sheets = record.sheets
     assembled_wires = record.wires
     pad_fill_findings = [dict(row) for row in record.pad_fill_findings]
     rows = {row.label: row for row in record.entities}
+    table_rows = {row.label: row for row in record.realization_table.rows}
     mats = record.materials
     eps = np.asarray(mats.eps_r, dtype=float)
     sigma_arr = np.asarray(conductivity_envelope(mats), dtype=float)
@@ -224,6 +231,7 @@ def fidelity_report(sim, print_report: bool = True):
     # B3b: the odd tangential-H image places a magnetic wall on the
     # E-node mesh plane. Physical half-cell H samples are not zero planes.
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
+    dom_item["realization_table"] = record.realization_table
     if nonuniform and getattr(sim, "_interface_eps", "sampled") == "dual_average":
         dom_item["interface_eps_rule"] = sim._interface_eps
     for a in range(3):
@@ -252,7 +260,7 @@ def fidelity_report(sim, print_report: bool = True):
         # change) -- the commensurability finding below stays keyed on it,
         # since "does the cell size divide the declared length" is a mesh
         # question, independent of any PMC face on this axis.
-        mesh_extent = float(nodes[a][i_hi] - nodes[a][i_lo])
+        mesh_extent = table_rows["domain"].axes[a].realized_span_m
         declared = float(domain[a]) if a < len(domain) else 0.0
         # z is not solved in 2D (grid.nz == 1, Lz is ignored — rfx/grid.py);
         # comparing it against the declared z would replace one meaningless
@@ -592,7 +600,8 @@ def fidelity_report(sim, print_report: bool = True):
         axes = []
         clipped_axes = []
         for a, realized_axis in enumerate(geometry.axes):
-            r_lo, r_hi = realized_axis.bounds_m
+            comparison = (table_rows[geometry.label].record_axes or geometry.axes)[a]
+            r_lo, r_hi = comparison.bounds_m
             d_lo, d_hi = float(lo[a]), float(hi[a])
             # A body drawn past the domain is CLIPPED by construction (a
             # common deliberate idiom: draw big, let the rasterizer cut).
@@ -605,7 +614,7 @@ def fidelity_report(sim, print_report: bool = True):
                 d_lo, d_hi = max(d_lo, 0.0), min(d_hi, dom_hi)
             # Local cell size on this axis over the body's span — the scale a
             # placement can actually be resolved to.
-            cell_m = realized_axis.cell_size_m
+            cell_m = comparison.cell_size_m
             cell_um = cell_m * 1e6
             residual = realized_axis.face_residual_m
             if (d_lo, d_hi) != realized_axis.declared_bounds_m:
@@ -616,7 +625,7 @@ def fidelity_report(sim, print_report: bool = True):
                       face_residual_um=(_zero_tie(abs(residual[0]), cell_m) * 1e6,
                                         _zero_tie(abs(residual[1]), cell_m) * 1e6),
                       declared_extent_um=(d_hi - d_lo) * 1e6,
-                      realized_extent_um=realized_axis.extent_m * 1e6)
+                      realized_extent_um=comparison.extent_m * 1e6)
             ext = ax["declared_extent_um"]
             ax["cell_um"] = cell_um
             # Relative margin, not an exact compare: see _SUB_CELL_TIE_REL.

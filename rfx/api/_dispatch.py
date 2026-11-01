@@ -394,4 +394,5 @@ def _declaration_setup_at_trace_time(entry):
                 if not _staged_by_an_outer_trace():
                     return entry(self, *args, **kwargs)
         return entry(self, *args, **kwargs)
-    return staged_entry
+    from rfx.model.realization_transport import forward_metadata
+    return forward_metadata(staged_entry)

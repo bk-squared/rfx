@@ -89,6 +89,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     Nominal widths are float64 arrays; windowed axes retain their
     :class:`NominalProfile` declaration so admission is idempotent.
     """
+    declared_domain = getattr(domain, "declared", domain)
     # Synthesize domain extents from axis profiles before validation.
     # dx_profile / dy_profile set x / y; dz_profile sets z.
     # Tracer-valued profiles require the caller to supply a concrete
@@ -153,7 +154,8 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     if multiband_ratio_cap is not None and inplane_ratio_cap is not None:
         warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
                             multiband_ratio_cap, inplane_ratio_cap)
-    return domain, nominal
+    from rfx.model.realization_reference import retain_declared_domain
+    return retain_declared_domain(domain, declared_domain), nominal
 
 
 def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,

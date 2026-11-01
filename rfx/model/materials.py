@@ -375,10 +375,14 @@ def assemble_cells(
                           + list(lorentz_masks_by_pole.values())):
             _pole_mask_any = (_pmask if _pole_mask_any is None
                               else (_pole_mask_any | _pmask))
+        from rfx.model.realization_continuation import owner_tags, retain_faces
+        tags = owner_tags(sim, grid, geometry_masks)
         eps_r, sigma, mu_r = extend_cpml_pad_materials(
             eps_r, sigma, mu_r, plx, phx, ply, phy, plz, phz,
             dispersion_pole_mask=_pole_mask_any,
+            extra_arrays=tags,
         )
+        retain_faces(grid, tags)
 
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 

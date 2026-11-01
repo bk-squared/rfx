@@ -939,9 +939,8 @@ class Result(NamedTuple):
 class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
 
-    Carries the observables needed by gradient-based objectives.
-    ``settling_db`` and ``settling_witness`` score the concrete
-    user-probe record using the same host diagnostic as ``run()``. They
+    ``realized_geometry`` carries host metadata from the prepared kernel assembly.
+    ``settling_db`` and ``settling_witness`` score user probes as ``run()`` does. They
     report absence while records are traced; read them on the returned
     concrete result, not as gradient objectives. Numeric
     ``settling_probe_info`` preserves the selected columns, component
@@ -1024,6 +1023,7 @@ class ForwardResult(NamedTuple):
     waveguide_ports: object = None
     waveguide_sparams: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
+    realized_geometry: object = None
 
 
     @property
