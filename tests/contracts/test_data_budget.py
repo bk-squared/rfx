@@ -69,7 +69,6 @@ def test_code_prose_and_images_are_not_data(path: str) -> None:
     "validation/crossval/manifest.json",
     "docs/design_notes/schemas/rfx-design-ir-v2.schema.json",
     "docs/public/site_map.json",
-    "docs/public/gallery/assets/patch_antenna/sparams.s1p",
     "tests/contracts/boundary_registry.json",
     "scripts/ci/layer_baseline.json",
     "tests/fixtures/a.json",

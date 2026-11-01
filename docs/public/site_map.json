@@ -7,8 +7,6 @@
         "rfx/showcase",
         "rfx/showcase/sensitivity-map",
         "rfx/showcase/gradient-cost",
-        "rfx/showcase/descent-to-optimum",
-        "rfx/showcase/forward-checks",
         "rfx/showcase/grin-lens",
         "rfx/showcase/waveguide-filter"
       ]
@@ -106,19 +104,14 @@
       "label": "Examples and gallery",
       "items": [
         "rfx/examples",
+        "rfx/examples/teaching/boundary-reflection",
+        "rfx/examples/teaching/dielectric-interface",
+        "rfx/examples/teaching/cavity-standing-wave",
         "rfx/examples/first-patch",
         "rfx/examples/patch-antenna",
         "rfx/gallery",
         "rfx/gallery/visual-manual",
-        "rfx/gallery/boundary-reflection",
-        "rfx/gallery/dielectric-interface",
-        "rfx/gallery/cavity-standing-wave",
-        "rfx/gallery/waveguide-taper",
-        "rfx/gallery/microstrip-notch",
-        "rfx/gallery/beam-steering",
-        "rfx/gallery/multilayer_fresnel",
-        "rfx/gallery/waveguide_wr90",
-        "rfx/gallery/patch_antenna"
+        "rfx/gallery/waveguide_wr90"
       ]
     },
     {
