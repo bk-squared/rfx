@@ -184,12 +184,12 @@ def run_after_admission(
         )
         if until_decay is not None:
             # #388 DC-floor predictor for the NU decay stop. The grid
-            # build is pure (no sim-state mutation) and cheap; an
-            # advisory must never block the run, so any build failure
-            # simply skips the check (the runner will surface it).
+            # build is pure (no sim-state mutation) and cheap. An
+            # unbuildable grid skips this advisory; other failures
+            # propagate (the runner will surface configuration errors).
             try:
                 _nu_dt_for_dc = self._build_nonuniform_grid().dt
-            except Exception:
+            except (ValueError, IndexError):
                 _nu_dt_for_dc = None
             if _nu_dt_for_dc is not None:
                 from rfx.measurement import warn_dc_floor
