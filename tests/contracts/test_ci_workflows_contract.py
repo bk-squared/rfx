@@ -1236,8 +1236,14 @@ def test_required_and_companion_workflows_run_on_merge_group(filename, contexts)
     jobs = workflow["jobs"]
     assert contexts <= {job.get("name", key) for key, job in jobs.items()}
     assert all("if" not in job for job in jobs.values())
+    group = "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    if filename in {"pr-body.yml", "changelog-fragment.yml"}:
+        actions = "github.event.action == 'labeled' || github.event.action == 'unlabeled'"
+        if filename == "pr-body.yml":
+            actions += " || github.event.action == 'edited'"
+        group += "${{ (" + actions + ") && format('-{0}', github.run_id) || '' }}"
     assert workflow["concurrency"] == {
-        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "group": group,
         "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
     }
 
