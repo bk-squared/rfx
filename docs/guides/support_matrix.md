@@ -407,7 +407,7 @@ Analytic extractor and V/I replay checks validate the extraction algebra and its
 reproducibility; they do not establish a generally calibrated lumped-port
 result. `run(compute_s_params=True)` returns lumped-port S on uniform and graded
 meshes; on a graded mesh `run()` drives each port in turn, one column per run.
-`forward(port_s11_freqs=...)` runs on one device, uniform or graded mesh. A plane wave, waveguide ports or another port family cannot share this
+`forward(port_s11_freqs=...)` runs on uniform and graded meshes, on one device or with `distributed=True`. A plane wave, waveguide ports or another port family cannot share this
 calculation.
 
 ### Wire port

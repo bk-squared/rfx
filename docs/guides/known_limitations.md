@@ -211,21 +211,6 @@ No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propa
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
-### Subpixel smoothing on cells that are not cubes gives a flat dielectric interface the wrong smoothed permittivity.
-
-Tracker: #2293
-
-`subpixel_smoothing=True` on a mesh whose cells are not cubes gives a dielectric interface a smoothed permittivity that differs from the Kottke value.
-This covers any graded mesh (`dx_profile`, `dy_profile` or `dz_profile`) and a uniform mesh with dz different from dx.
-On a graded mesh the smoothed value also varies along a flat interface.
-The same applies to `subpixel_smoothing="full_tensor"` on such meshes; its size there was not measured separately.
-Measured on a flat eps_r 4 slab whose interface normal is x, with dx = dy = 0.2 mm:
-- Cubic cells: exact.
-- A constant dz of 0.18 / 0.22 / 0.30 mm: off by 2.6 / 2.3 / 9.2 %.
-- A mesh graded along the interface, with dz of 0.18 mm in one region and 0.22 mm in another (also 0.15 and 0.25 mm, and 0.12 and 0.30 mm): off by up to 2.6 / 7.3 / 13.4 %. The error differs between the two regions, so it varies along the interface by up to 26 %.
-The effect on S-parameters and resonances is not yet measured.
-Until a fix lands (planned for 2.0.1), use cubic cells where smoothing is on, or leave `subpixel_smoothing` off (the default).
-
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
@@ -308,16 +293,18 @@ buffer holds it is not yet found. A third GPU therefore does not let a model fit
 What to do: size a run on three or more GPUs in one process from its two-GPU peak.
 → [#2150](https://github.com/bk-squared/rfx/issues/2150)
 
-### Many thin PEC sheets can run out of GPU memory inside run() on a small card
+### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
 
 Tracker: #1432
 
-Each thin PEC sheet keeps whole-grid footprint arrays on the device in every conductor assembly, and the results of
-`preflight()` and `realized_geometry()` stay on the device until the Simulation is deleted. With 161 sheets on 3.05 M
-cells one assembly holds 0.97 GiB. After `preflight()`, `realized_geometry()` and a second model kept in the same process,
-the device held 4.24 GiB, and `run()`'s own preflight then stopped in the allocator on an 8 GB card (5.84 GiB pool). The
-same run completed when no second model was kept (peak 5.39 GiB). The public API has no way yet to free
-those arrays before `run()`.
+`preflight()`, `realized_geometry()` and the automatic preflight of `run()`, `forward()` and the S-matrix calculators
+leave their whole-domain realization arrays on the `Simulation` after the call returns, about 21 bytes per cell (21.1 B
+on 81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33). Before thin PEC sheets kept only their plane masks, a board of about
+1e8 graded cells with many sheets held about 31 GiB of host memory and 15.5 GiB of GPU memory through the solve this
+way, and did not start on a 64 GiB host; that board has not been measured since. On main (2.0.1) the memory these
+arrays hold no longer grows with the number of sheets: a board of 161 sheets on 3.05 M cells, with `preflight()`,
+`realized_geometry()` and a second model kept in the same process, completes on an 8 GB card at a 0.46 GiB peak, where
+2.0.0 ran out of memory. No public call frees the arrays before `run()`; deleting the `Simulation` frees them.
 
 ## Ports and extraction
 

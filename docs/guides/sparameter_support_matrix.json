@@ -22,12 +22,13 @@
         "ForwardResult.s_params / ForwardResult.freqs (S11 vectors only)"
       ],
       "supported_configurations": [
-        "uniform_yee_rf"
+        "uniform_yee_rf",
+        "nonuniform_graded_z_limited"
       ],
-      "validation_status": "Limited to the uniform-grid one-cell impedance model. Analytic extractor, real V/I replay, replay/passivity/reciprocity, and narrow rfx/OpenEMS PEC-box magnitude checks exist. Broad matched/open/short/load external validation is absent.",
+      "validation_status": "Limited to the one-cell impedance model on uniform and graded meshes. Analytic extractor, real V/I replay, replay/passivity/reciprocity, and narrow rfx/OpenEMS PEC-box magnitude checks exist. Broad matched/open/short/load external validation is absent.",
       "known_limits": [
-        "nonuniform lumped-port S-parameter extraction is unsupported",
-        "forward(port_s11_freqs=...) is uniform and single-device only",
+        "on a graded mesh, run() and forward(port_s11_freqs=...) form lumped S for all-lumped records with one driven port, on one device or several; graded periodic run() S requests are refused",
+        "forward(port_s11_freqs=...) returns S11 vectors on uniform and graded meshes, on one device or with distributed=True",
         "TFSF, waveguide ports, and mixed port families are unsupported in the same S-parameter calculation",
         "automatic runtime checks cover non-finite and excessive individual |S| values; they do not apply the full column-power guard"
       ],
@@ -82,7 +83,7 @@
       "validation_status": "Limited one-cell transverse-feed result. Uniform-grid V/I replay, replay/passivity/reciprocity, patch/OpenEMS magnitude, and a mesh/length OpenEMS comparison exist. Absolute modal calibration remains limited. Nonuniform use is experimental.",
       "known_limits": [
         "wire ports are one-cell transverse feed models, not full microstrip or modal ports",
-        "forward(port_s11_freqs=...) is uniform and single-device only",
+        "forward(port_s11_freqs=...) returns S11 vectors on uniform and graded meshes, on one device or with distributed=True",
         "nonuniform regression and AD coverage are not external RF validation",
         "automatic runtime checks cover non-finite and excessive individual |S| values; they do not apply the full column-power guard"
       ],
