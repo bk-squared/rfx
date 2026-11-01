@@ -91,8 +91,8 @@ Set `PYTHON=` once and every step and every script the runner calls uses that
 interpreter, ruff included.
 
 What it does NOT run is the heavy half — the twelve-shard fast suite and the
-guard/preflight suite in `pr-tests.yml`, 22 to 42 minutes a shard. Those start only when
-the diff touches code:
+guard/preflight suite in `pr-tests.yml`, 22 to 42 minutes a shard. On pull requests,
+those start only when the diff touches code; merge groups always run them:
 
 | the diff touches | the shards run |
 |---|---|
@@ -100,7 +100,8 @@ the diff touches code:
 | `pyproject.toml`, `setup.*`, `MANIFEST.in`, `pytest.ini`, `tox.ini`, `requirements*.txt`, any `conftest.py`, any `*.test_durations` | yes |
 | `pr-tests.yml`, `changed_paths.py`, `classify_changes.sh` — the lane itself | yes |
 | anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | no — but `tests/contracts` still does |
-| any push to `main` | always yes |
+| merge group | always yes |
+| push to `main` | no workflow run — the PR or batch run already tested the landing tree |
 
 The `changes` job decides, and its log prints the changed paths and the verdict. Ask it
 yourself before you push:
@@ -134,8 +135,8 @@ means a `changes` job that dies of a runner fault leaves the heavy jobs skipped 
 dependency, and a skipped job does not fail a required context — a merge would go
 through having run nothing. The job is 15 s, so requiring it costs nothing.
 
-The classifier fails open everywhere else: a push to `main`, a missing sha, a diff that
-would not compute, and any verdict other than the literal `false` all run the full lane.
+The classifier runs merge groups in full. A missing sha, a diff that would not compute,
+and any verdict other than the literal `false` also run the full lane.
 Work steps gate on `!= 'false'`, not `== 'true'`, so an empty or unexpected output runs
 everything rather than skipping everything.
 

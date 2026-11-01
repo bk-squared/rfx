@@ -104,7 +104,8 @@ how to run it
 locally](./agent-runbook.mdx#what-runs-on-a-pr-and-how-to-run-it-locally).
 
 **One push per review round.** Every push to a pull request cancels that branch's
-in-flight CI run and starts a new one; a push to `main` is never cancelled.
+in-flight CI run and starts a new one. Merge-group runs are never cancelled;
+`pr-tests` does not run on pushes to `main`.
 
 The heavy lane is path-aware, so what a push costs depends on what it touches. A diff
 confined to docs, most of `scripts/` or `changelog.d/` skips the twelve simulator shards

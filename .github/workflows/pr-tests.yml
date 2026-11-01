@@ -2,7 +2,7 @@ name: pr-tests
 
 # Fast, BOUNDED pytest gate so the agent-automation guards, the preflight
 # redesign, the regression locks, and the conformal stale-check tripwire
-# actually run on every PR and push-to-main. The full "not gpu" suite remains
+# actually run on every PR and merge group. The full "not gpu" suite remains
 # on validation.yml (weekly, sharded) — that run OOM'd unsharded on the 7 GB
 # runner, so this job is deliberately scoped to the affected surface to stay
 # fast and memory-safe. Its jobs are REQUIRED checks in the `main` ruleset, so
@@ -11,8 +11,9 @@ name: pr-tests
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
 # touched anything the physics suite can observe; the twelve shards run only
 # contracts when it did not. Their NAMES are unchanged, which is
-# what the ruleset reads. The contract tests run either way. A push to
-# main is never skipped.
+# what the ruleset reads. The contract tests run either way.
+# No push-to-main run: every merge lands a tree tested by its PR or batch run.
+# Measured 61/61 green push runs on 2026-10-29..11-01 (record 20261101-devops-measure).
 #
 # `changes` MUST BE A REQUIRED CHECK, alongside `ruff`, `guards-and-preflight`
 # and `fast-suite (1)`..`(12)`, and the `main` ruleset has required it since
@@ -25,14 +26,12 @@ name: pr-tests
 on:
   merge_group:
     types: [checks_requested]
-  push:
-    branches: [main]
   pull_request:
 
-# Superseded runs on the same PR/branch are cancelled: a force-push or a
+# Superseded runs on the same PR are cancelled: a force-push or a
 # stacked-leg rebase used to leave the previous run queued, and on a busy day
 # (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
-# that held every PR for an hour. Pushes to main are never cancelled.
+# that held every PR for an hour. Merge-group runs are never cancelled.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -80,8 +79,8 @@ jobs:
         id: classify
         # Every input arrives through the environment. The decision is
         # scripts/ci/changed_paths.py (stdlib, unit-tested); the shell around it
-        # is scripts/ci/classify_changes.sh, which answers `true` for any push
-        # to main, every merge group, and any diff it could not compute.
+        # is scripts/ci/classify_changes.sh, which answers `true` for every
+        # merge group and any diff it could not compute.
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
@@ -249,7 +248,7 @@ jobs:
   # avoid the XLA-cache OOM that killed the unsharded full run (roadmap W2.1).
   #
   # Issues #876/#1401: Python 3.10 froze CI on JAX 0.6.2; #1429 drops that lane.
-  # PRs and pushes use Python 3.11 with JAX/jaxlib pinned to 0.10.2.
+  # PRs and merge groups use Python 3.11 with JAX/jaxlib pinned to 0.10.2.
   fast-suite:
     needs: changes
     # The job NAME must stay `fast-suite (<group>)`: those are
@@ -307,7 +306,7 @@ jobs:
         if: needs.changes.outputs.code_changed == 'false'
         # The diff touches no file under rfx/, tests/, validation/ or examples/
         # and no build or lane configuration, so the physics tests would observe
-        # the same tree as the last run on main. The contract tests still run:
+        # the same code as the tested base tree. The contract tests still run:
         # they pin docs/, scripts/ and these workflows, which IS what such a diff
         # changes. They ran in one job until 2026-10-09, when the suite (6052
         # tests) no longer fitted it: cancelled at 30 min serially, and again on
