@@ -515,7 +515,7 @@ Using the matrix as a whole is therefore wrong: cascading it with another networ
 On a synthetic lossless dielectric slab in a PEC-walled guide (4.5–8 GHz), every column carries power 0.998–1.002 while the largest singular value of S reaches 1.414.
 A lossless network has 1 at every frequency.
 `compute_waveguide_s_matrix` warns when the largest singular value exceeds 1.01; on the slab that is 19 of 20 bins.
-Where the slab's electrical length is near an odd multiple of π, S stays unitary and gets no warning while S21 has the wrong sign (derived from the cause, not measured).
+Where the empty-guide electrical length between the two reference planes is near an odd multiple of π, S stays unitary and gets no warning (measured), while S21 has the wrong sign there (derived from the cause, not measured).
 `normalize` defaults to False, so only calls that set it are affected.
 When phase matters, use `normalize=False` or `normalize="flux"` (on a graded mesh only `"flux"`, because `normalize=False` is refused there).
 
