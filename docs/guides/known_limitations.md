@@ -151,21 +151,6 @@ Preflight now reports declared metal-sheet thickness above 2 % of the nearest ov
 
 ---
 
-### Experimental ADI
-
-Tracker: #1487
-
-`solver="adi"` is outside the 2.0 supported scope and warns
-(`ExperimentalADIWarning`) on every run. It refuses an absorbing boundary of any
-kind (`boundary="cpml"`, `boundary="upml"`, or a `BoundarySpec` with an absorbing
-face): its absorber is an unmatched conductivity sponge, not a CPML. It refuses a
-dielectric or conductivity interface: it gives each E component its own cell's
-material where the Yee paths take the four-cell edge mean, so a material face sits
-half a cell from where Yee puts it; a homogeneous fill runs. Use Yee with CPML for
-open structures and for any structure with a material interface; ADI runs only a
-closed (`boundary="pec"`), homogeneously filled cavity. Both refusals are rows in
-the support matrix's **Refused inputs** table.
-
 ### The AD memory estimate reads low with checkpoint levels and with several outputs at once
 
 Tracker: #1739
@@ -222,7 +207,7 @@ Grid-aligned faces are not affected. Judge such resonances by at least three ref
 `subpixel_smoothing="full_tensor"` uses full anisotropic averaging (Farjadpour 2006; Oskooi 2009;
 Werner–Bauer–Cary 2013 node form) on single-device Yee meshes, uniform or graded. Extinction cross section on a synthetic eps-4
 sphere measured second-order convergence over three meshes. This is not a convergence-order claim for high-contrast rods.
-Multiple devices, ADI, subgrids, UPML and the waveguide S driver refuse this option.
+Multiple devices, subgrids, UPML and the waveguide S driver refuse this option.
 Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
@@ -252,7 +237,7 @@ The backscatter errors are 0.56 / 0.34 / 0.28 dB, against 2.35 / 1.75 / 1.19 dB 
 The offset stays constant in cells, so the error falls only first order in the cell size.
 A user gets conformal PEC only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns it on for every PEC body in that run. The default is the staircase. A run with conformal PEC warns.
 Under conformal PEC these are refused: `conformal_min_weight` other than 0.1; PEC shapes with no signed distance (polyhedra, extrusions, volume wires); a body that holds no grid node strictly inside, except a Box with every face on a node plane or a domain face; a zero-thickness PEC sheet off the node lattice; and `subpixel_smoothing="kottke_pec"`, refused before any time step on every path.
-`forward()`, graded meshes, multiple devices, subgrids and ADI refuse conformal PEC.
+`forward()`, graded meshes, multiple devices and subgrids refuse conformal PEC.
 Judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
@@ -599,7 +584,7 @@ Uniform and graded run/forward place the wall on the declared E-node face.
 The multi-device runners take a magnetic face through the same single-device
 image (#1761). There, wire ports and lumped-port S-parameters refuse it, and on
 the graded mesh so do every port, DFT planes, flux monitors, snapshots and current moments.
-Subgridded and ADI paths refuse magnetic faces (the `pmc_face` row of
+Subgridded paths refuse magnetic faces (the `pmc_face` row of
 `tests/contracts/path_disposition.py`; the graded multi-device records:
 `tests/contracts/test_distributed_graded_pmc_records.py`).
 Waveguide-port execution also refuses magnetic faces: its aperture mode solver

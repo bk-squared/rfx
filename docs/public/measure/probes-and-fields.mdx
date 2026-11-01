@@ -121,9 +121,9 @@ fields at the end of the run.
 | Output | `run()` | `forward()` | Not available on |
 |---|---|---|---|
 | point probes | yes | yes | — |
-| DFT planes | yes | yes | ADI, subgridded, a plane wave at `angle_deg` |
-| flux monitors | yes | yes | ADI, subgridded, a plane wave at `angle_deg` |
-| snapshots | yes | no | graded mesh on one device, ADI, subgridded, a plane wave at `angle_deg` |
+| DFT planes | yes | yes | subgridded, a plane wave at `angle_deg` |
+| flux monitors | yes | yes | subgridded, a plane wave at `angle_deg` |
+| snapshots | yes | no | graded mesh on one device, subgridded, a plane wave at `angle_deg` |
 | final fields (`state`) | yes | no | — |
 
 ## How rfx checks it
@@ -135,9 +135,9 @@ that does not implement an output, the run is refused before the first step.
 
 | Input | Solver path | Instead |
 |---|---|---|
-| a DFT plane | ADI, subgridded | the standard solver, on one device or several |
-| a flux monitor | ADI, subgridded | the standard solver, on one device or several |
-| `snapshot=` | graded mesh on one device, ADI, subgridded | a uniform mesh, or several devices on either mesh |
+| a DFT plane | subgridded | the standard solver, on one device or several |
+| a flux monitor | subgridded | the standard solver, on one device or several |
+| `snapshot=` | graded mesh on one device, subgridded | a uniform mesh, or several devices on either mesh |
 | a DFT plane, a flux monitor or `snapshot=` with a plane wave at an angle (`angle_deg`) | uniform mesh | probes and the final `state`, or `compute_rcs` for scattering ([Sources](/rfx/model/sources/)) |
 | a flux monitor with `dft_window="hann"` or `"tukey"` in a run stopped by `until_decay` | uniform and graded mesh | the default `dft_window="rect"`, or a fixed `n_steps`: a window needs the run's length in advance |
 
