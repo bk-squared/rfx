@@ -28,7 +28,7 @@ PRINT_SITES = {
     ("optimize.py", "_run_one"): "explicit output API or user-flagged output",
     ("optimize.py", "forward"): "explicit output API or user-flagged output",
     ("optimize.py", "progressive_optimize"): "explicit output API or user-flagged output",
-    ("sparams/_common.py", "_waveguide_s21_phase_residual"): "design exemption: phase residual",
+    ("measurement/waveguide_s.py", "_waveguide_s21_phase_residual"): "design exemption: phase residual",
     ("stepping/progress.py", "report"): "explicit output API or user-flagged output",
     ("stepping/progress.py", "note"): "explicit output API or user-flagged output",
     ("topology.py", "topology_optimize"): "explicit output API or user-flagged output",

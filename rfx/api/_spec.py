@@ -1239,10 +1239,8 @@ class WaveguideSMatrixResult(NamedTuple):
     is not a single-mode two-port, a traced AD run, two ports with different
     discrete cutoffs or on different axes, a band whose every bin fell
     below the weak-signal phase mask
-    (``rfx.api._sparams.WAVEGUIDE_PHASE_MAG_FLOOR``), or a ``normalize=True``
-    lane, whose S21 has the empty-guide reference's propagation phase
-    divided out so the residual is not defined there (``normalize="flux"``
-    and ``normalize=False`` keep it).
+    (``rfx.api._sparams.WAVEGUIDE_PHASE_MAG_FLOOR``). All normalization
+    lanes retain propagation phase and report this residual.
     ``s21_phase_residual_meta`` always carries ``beta_convention``,
     ``f_cutoff_hz``, ``L_m``, ``n_bins``, ``masked_bins`` and ``normalize``
     (the lane the number was read under), plus a ``reason`` when the value
