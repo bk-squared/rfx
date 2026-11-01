@@ -23,7 +23,7 @@ def take_forward_geometry(grid):
 class GeometryMetadata:
     """Keep execution attachments outside the historical record dictionary."""
 
-    __slots__ = ("realization_table", "_packed_record", "_conductors",
+    __slots__ = ("realization_table", "_conductors",
                  "_report_grid", "_quantity_grid")
 
 
