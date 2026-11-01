@@ -134,6 +134,11 @@ means a `changes` job that dies of a runner fault leaves the heavy jobs skipped 
 dependency, and a skipped job does not fail a required context — a merge would go
 through having run nothing. The job is 15 s, so requiring it costs nothing.
 
+`mypy` is non-required. Its workflow runs `python scripts/ci/check_mypy_count.py`
+against `scripts/ci/mypy_baseline.txt`; only a rising error count fails the comparison.
+It stays out of `scripts/ci/local.sh` because it is slow. Required checks are configured
+in GitHub's `main` branch ruleset, outside this repository.
+
 The classifier fails open everywhere else: a push to `main`, a missing sha, a diff that
 would not compute, and any verdict other than the literal `false` all run the full lane.
 Work steps gate on `!= 'false'`, not `== 'true'`, so an empty or unexpected output runs
