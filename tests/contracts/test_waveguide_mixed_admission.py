@@ -56,7 +56,7 @@ def _stored_tfsf_call(sim, path):
 
 
 @pytest.mark.parametrize("path", PATHS)
-@pytest.mark.parametrize("companion", ["lumped", "wire", "tfsf"])
+@pytest.mark.parametrize("companion", ["lumped", "wire", "point_source", "tfsf"])
 def test_mixed_refused_before_fields(monkeypatch, path, companion):
     from rfx.stepping import graded_setup, uniform_setup
 
@@ -67,7 +67,9 @@ def test_mixed_refused_before_fields(monkeypatch, path, companion):
     monkeypatch.setattr(graded_setup, "init_state", forbidden)
     monkeypatch.setattr(jax.lax, "scan", forbidden)
     sim = _guide(path)
-    if companion != "tfsf":
+    if companion == "point_source":
+        sim.add_source((.016, .010, .006), "ez", amplitude_kind="current")
+    elif companion != "tfsf":
         sim.add_port((.016, .010, .006), "ez", impedance=50.,
                      **({"extent": .002} if companion == "wire" else {}))
     with pytest.raises(ValueError) as caught:

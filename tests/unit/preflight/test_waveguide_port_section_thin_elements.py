@@ -11,6 +11,7 @@ from rfx import Box, PolylineWire, Simulation
 ELEMENTS = (
     ("thin_conductor", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\)"),
     ("lumped_rlc", r"lumped RLC element \(lumped_rlc\.ez\)"),
+    ("lumped_resistor", r"lumped conductivity \(materials\.(components\.(cells_view\.)?)?sigma_lumped\.2\)"),
     ("sheet_impedance", r"surface-impedance sheet \(sheet_impedance\.mask_e[yz]\)"),
     ("film", r"film conductivity \(materials\.(components\.cells_view\.)?sigma_film\.[12]\)"),
     ("pec_sheet", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\)"),
@@ -45,6 +46,8 @@ def _guide(element, *, inside=True, graded=False, two_ports=False):
         sim.add(PolylineWire(((x, 0.009, 0.003), (x, 0.009, 0.009)), radius=0.), material="pec")
     elif element == "lumped_rlc":
         sim.add_lumped_rlc((x, 0.009, 0.006), "ez", R=10., L=1e-9)
+    elif element == "lumped_resistor":
+        sim.add_lumped_rlc((x, 0.009, 0.006), "ez", R=10.)
     elif element == "lumped_port":
         sim.add_port((x, 0.009, 0.006), "ez", excite=False)
     return sim
