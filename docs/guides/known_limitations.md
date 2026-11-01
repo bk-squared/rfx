@@ -198,6 +198,21 @@ No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propa
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
+### Subpixel smoothing on cells that are not cubes gives a flat dielectric interface the wrong smoothed permittivity.
+
+Tracker: #2293
+
+`subpixel_smoothing=True` on a mesh whose cells are not cubes gives a dielectric interface a smoothed permittivity that differs from the Kottke value.
+This covers any graded mesh (`dx_profile`, `dy_profile` or `dz_profile`) and a uniform mesh with dz different from dx.
+On a graded mesh the smoothed value also varies along a flat interface.
+The same applies to `subpixel_smoothing="full_tensor"` on such meshes; its size there was not measured separately.
+Measured on a flat eps_r 4 slab whose interface normal is x, with dx = dy = 0.2 mm:
+- Cubic cells: exact.
+- A constant dz of 0.18 / 0.22 / 0.30 mm: off by 2.6 / 2.3 / 9.2 %.
+- A mesh graded along the interface, with dz of 0.18 mm in one region and 0.22 mm in another (also 0.15 and 0.25 mm, and 0.12 and 0.30 mm): off by up to 2.6 / 7.3 / 13.4 %. The error differs between the two regions, so it varies along the interface by up to 26 %.
+The effect on S-parameters and resonances is not yet measured.
+Until a fix lands (planned for 2.0.1), use cubic cells where smoothing is on, or leave `subpixel_smoothing` off (the default).
+
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
@@ -214,16 +229,34 @@ Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
-### Conformal PEC makes a curved metal body electrically larger, and is less accurate than the staircase.
+### Subpixel smoothing with `"kottke_pec"` leaves a late field around a closed curved metal body, so its scattering depends on the record length.
 
-`conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
-with w = 0.5 + (signed distance from the surface at the edge's midpoint) / dx, clipped to [0, 1] and raised to 0.1 where it is above 0 (not the edge's open fraction: the two differ by up to 0.5); only edges with w = 0 are metal. The cut cells become a high-permittivity
-skin about one cell thick, which makes the body electrically larger. On a PEC sphere against Mie, its extinction and
-backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). Measured on main 7d332abff with a PEC sphere (radius 9 mm, plane wave 8-12 GHz, cells 0.75 / 0.5 / 0.375 mm), the extinction fitted against Mie reads a sphere larger by 1.15 / 1.08 / 1.04 cells with conformal PEC against 0.69 / 0.74 / 0.70 cells with the staircase, both falling first order in the cell size; 70-73 % of the conformal excess comes from the eps/w on cut edges whose midpoint lies inside the declared surface (eps 2 to 10), and a user gets it only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns conformal PEC on for every PEC body in that run (the default is the staircase). A run with conformal PEC warns. Conformal PEC together with
-`subpixel_smoothing="kottke_pec"` is refused before any time step on every path: that combination would form no conformal weights. Until a fix lands (planned for 2.1), use the staircase and judge a curved body by a mesh series of at least three refinements.
-A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), fails and is marked as an expected failure until #1651.
-`subpixel_smoothing="kottke_pec"` on a curved PEC body leaves a field of 1e-2 to 5e-2 of the peak that decays little or not at all (a PEC sphere, ka 6 and 10, three meshes), so its RCS depends on the record length (one bin moved 4.5 dB between 6 and 12 ns); `run()` warns "no ring-down settling witness" (#1651, #1632).
+Tracker: #1651, #2291
+
+With `subpixel_smoothing="kottke_pec"`, a plane wave on a PEC sphere (ka 6, cells of λ/20, 8–11 GHz) leaves a field of 3–5 % of the peak outside the body after the pulse has passed.
+This field stays to the end of the record instead of decaying.
+The backscatter then depends on the record length: from 6 to 12 ns it changed by 2.3–2.7 dB at most frequencies and by up to 7.7 dB at a backscatter null.
+The extinction from the optical theorem differs from Mie by 20–51 % across the band; the staircase (`subpixel_smoothing=False`) on the same mesh differs by 13–14 %.
+A late field of 1e-2 to 5e-2 of the peak was also seen at ka 10 and on three meshes.
+`run()` warns "no ring-down settling witness" but does not refuse the run.
+Until a fix lands, use the staircase on a closed curved PEC body.
+Conformal PEC was not measured on this sphere, and it cannot be combined with `"kottke_pec"` (next entry).
+
+### Conformal PEC on a curved metal body converges only first order.
+
 Tracker: #1651
+
+`conformal_pec=True` (and `Boundary(conformal=True)`) gives each cut E edge eps/l̄ (l̄ is its PEC-free length) and each cut H face mu·s̄ (s̄ is its PEC-free area).
+A stability clamp (Zagorodnov's SC) keeps the ordinary time step.
+A flat PEC wall sits at its drawn plane within 0.01 cell.
+On a PEC sphere (radius 9 mm, plane wave 8–12 GHz, cells 0.75 / 0.5 / 0.375 mm), the extinction fitted against Mie reads a sphere larger by 0.19 / 0.18 / 0.20 cell; the staircase reads 0.69 / 0.74 / 0.70 cell.
+The backscatter errors are 0.56 / 0.34 / 0.28 dB, against 2.35 / 1.75 / 1.19 dB for the staircase.
+The offset stays constant in cells, so the error falls only first order in the cell size.
+A user gets conformal PEC only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns it on for every PEC body in that run. The default is the staircase. A run with conformal PEC warns.
+Under conformal PEC these are refused: `conformal_min_weight` other than 0.1; PEC shapes with no signed distance (polyhedra, extrusions, volume wires); a body that holds no grid node strictly inside, except a Box with every face on a node plane or a domain face; a zero-thickness PEC sheet off the node lattice; and `subpixel_smoothing="kottke_pec"`, refused before any time step on every path.
+`forward()`, graded meshes, multiple devices, subgrids and ADI refuse conformal PEC.
+Judge a curved body by a mesh series of at least three refinements.
+A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
 ### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
 
@@ -591,11 +624,11 @@ What to do: for a bit-for-bit comparison with one device on x86, use a PEC wall 
 Tracker: #1230
 
 A conductor drawn to an absorbing boundary is continued through the absorber, so
-a grounded board stays grounded inside it. When any mesh axis is traced
-(`dz_profile` and its siblings under `jax.grad`), nothing is continued and a
-`UserWarning` says so: the conductor then stops at the absorber entrance. Draw the
-ground past the domain face by the absorber thickness, which fills every absorber
-cell except the outermost row on the +x and +y faces.
+a grounded board stays grounded inside it.
+With the mesh as a design variable (a `dx_profile`, `dy_profile` or `dz_profile` traced under `jax.grad`, `jax.jvp` or `jax.jit`), a conductor that reaches an absorbing face stops at the absorber entrance instead of continuing into it, and one warning says so.
+On a grounded-board test at the default 16 absorber layers, this changed S11 by 5–9 % of its peak and its gradient by 6–8 %, independent of absorber depth.
+Workaround: keep that mesh axis concrete (pass the profile as a NumPy array) for such a run.
+A refusal replaces the warning in 2.0.1.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ### A plane wave requires compatible transverse faces and an invariant absorber replacement.
