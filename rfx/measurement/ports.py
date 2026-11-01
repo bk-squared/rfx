@@ -91,11 +91,12 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
 
 def waveguide_owners(sim, grid, n_steps, nu):
     from rfx.measurement.waveguide_planes import admit_waveguide_entries
+    from rfx.preflight.waveguide import resolve_waveguide_port_freqs
     from rfx.runners.nonuniform import _build_waveguide_port_config_nu
     admit_waveguide_entries(sim)  # the graded builder does not re-check planes
     result = []
     for i, entry in enumerate(sim._waveguide_ports):
-        freqs = jnp.asarray(_frequencies(sim, entry))
+        freqs = jnp.asarray(resolve_waveguide_port_freqs(sim, entry))
         cfgs = (_build_waveguide_port_config_nu(sim, entry, grid, freqs, n_steps) if nu
                 else sim._build_waveguide_port_config(entry, grid, freqs, n_steps))
         if hasattr(cfgs, 'normal_axis'):
