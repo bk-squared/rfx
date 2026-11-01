@@ -1,7 +1,8 @@
 """Compare realized board extents directly with the live fidelity report.
 
 The historical anchor remains frozen. The live expectations account for
-the realized PEC volume sampler at the six declared sweep points.
+the realized PEC volume sampler and, since #2349, dielectric faces going
+to the nearest node at the six declared sweep points.
 """
 
 from __future__ import annotations
@@ -40,20 +41,32 @@ ANCHOR_JSON = (
 # and /6 (592.667 / 558.8 / 635.0) and left h_sub/4 and the misaligned
 # pair alone; the centre sampler moves h_sub/3, /4 and 80 um instead and
 # lands back on the committed widths at h_sub/5, /6 and 60 um. Measured
-# 2026-09-07, fidelity_report(), no solve, JAX_PLATFORMS=cpu; h_sub is a
-# dielectric (node-sampled, §1.1 unchanged) and reads the committed
-# 254 / 254 / 254 / 254 / 320 / 300 um at every point.
+# 2026-09-07, fidelity_report(), no solve, JAX_PLATFORMS=cpu. Since #2349,
+# a dielectric face goes to the nearest node: h_sub now reads
+# 254 / 254 / 254 / 254 / 240 / 240 um (see ``_LIVE_H_UM`` below).
 _LIVE_W_UM = {
     "aligned h_sub/3": 592.667,
     "aligned h_sub/4": 571.5,
     "misaligned 80um": 640.0,
 }
 
+# Realized substrate thickness, in um, since #2349 applies the cell-centre
+# rule (nearest node) to dielectric faces. H_SUB = 254 um starts at z=0:
+#   80 um: 254/80 = 3.175 cells -> 3 cells = 240 um (committed 320 = 4 cells)
+#   60 um: 254/60 = 4.233 cells -> 4 cells = 240 um (committed 300 = 5 cells)
+# Previously the face went to the next node above. The four aligned points
+# sit on nodes and stay at 254 um; the JSON remains the as-solved record.
+_LIVE_H_UM = {
+    "misaligned 80um": 240.0,
+    "misaligned 60um": 240.0,
+}
+
 
 def test_realized_anchor_matches_fidelity_report_directly():
     """Re-derive h_sub/W_trace realized extents from fidelity_report()
     (no FDTD solve -- fast) for each of the six pre-declared dx points
-    and check they agree with the committed sibling artifact. This is
+    and check they agree with the live expectations, using the committed
+    sibling artifact where unchanged. This is
     the "sweep's realized-board column agrees with fidelity_report to a
     stated tolerance" regression test.
 
@@ -76,7 +89,9 @@ def test_realized_anchor_matches_fidelity_report_directly():
     now read from cell CENTRES (§1.1); ``_LIVE_W_UM`` carries the three
     points where that differs from the committed artifact (h_sub/3,
     h_sub/4, 80 um) and the arithmetic. The other three read the committed
-    width again. h_sub (a dielectric) is unchanged at every point.
+    width again. Since #2349 a dielectric face goes to the nearest node:
+    ``_LIVE_H_UM`` carries 240/240 um for the misaligned points, while the
+    four aligned h_sub values remain at the committed 254 um.
     """
     import importlib.util
 
@@ -98,14 +113,18 @@ def test_realized_anchor_matches_fidelity_report_directly():
     # 0.4% bound test reads it as such). The live re-derivation therefore
     # matches the committed rows where the realization lands on the same
     # width (h_sub/5, h_sub/6, 60 um) and ``_LIVE_W_UM`` where it does not.
+    # Since #2349, h_sub likewise uses ``_LIVE_H_UM`` at the two misaligned
+    # points and the committed thickness at the four aligned points.
     # Refreshing the artifact itself requires RE-SOLVING the sweep on the
     # new rasterization — a re-measurement lane, not a value edit here.
     for label, dx in mod.DX_GRID:
         h_real_um, w_real_um = mod.realized_h_w_um(dx)
         committed = by_label[label]
-        assert h_real_um == pytest.approx(
-            committed["h_sub_realized_um"], abs=0.01
-        ), f"{label}: h_sub realized drifted vs committed artifact"
+        expected_h = _LIVE_H_UM.get(
+            label, committed["h_sub_realized_um"])
+        assert h_real_um == pytest.approx(expected_h, abs=0.01), (
+            f"{label}: h_sub realized drifted vs the live (#2349) "
+            "expectation (committed artifact = pre-#802 as-solved record)")
         expected_w = _LIVE_W_UM.get(
             label, committed["w_trace_realized_um"])
         assert w_real_um == pytest.approx(expected_w, abs=0.01), (
