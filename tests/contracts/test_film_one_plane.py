@@ -354,6 +354,8 @@ SIGMA_READS = {
     ('rfx/model/pole_stability.py', 'pole_set_extremes', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/stepping/slab_graded_legacy_loop.py', 'run_graded_legacy_slab_loop.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
+    # #2217: one new cell-sigma read proves constant Ca with stamps and film.
+    ('rfx/model/materials.py', '_design_box_constant_ca', 'materials'): (1, 'constant-Ca proof through component_e_materials, including lumped loads and film'),
     ('rfx/model/materials.py', 'assembled_as_pec', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
