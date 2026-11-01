@@ -283,14 +283,6 @@ def _range_to_slice_nu(grid, axis, value_range):
     return (lo_idx, hi_idx), actual_span
 
 
-def _resolve_waveguide_run_freqs_nu(sim):
-    """The shared bins built by the graded runner, also read by preflight."""
-    for entry in sim._waveguide_ports:
-        if entry.freqs is not None:
-            return jnp.asarray(entry.freqs, dtype=jnp.float32)
-    return jnp.linspace(sim._freq_max * 0.5, sim._freq_max, 20, dtype=jnp.float32)
-
-
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
                                      freqs: jnp.ndarray, n_steps: int):
     """NU-aware waveguide port config builder.
@@ -589,6 +581,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
+    wg_freqs = resolve_shared_waveguide_port_freqs(
+        sim, route="graded forward()" if lane == "fwd_nonuniform" else "graded run()")
     from rfx.model.occupancy import refuse_graded_occupancy_model
     refuse_graded_occupancy_model(sim, pec_occupancy_override)
     from rfx.measurement.decay import refuse_radiated_flux_stop
@@ -967,7 +962,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # init_waveguide_port (duck-types on grid for per-axis widths).
     waveguide_port_cfgs = []
     if sim._waveguide_ports:
-        wg_freqs = _resolve_waveguide_run_freqs_nu(sim)
         for pe in sim._waveguide_ports:
             waveguide_port_cfgs.append(
                 _build_waveguide_port_config_nu(

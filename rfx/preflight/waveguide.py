@@ -106,6 +106,33 @@ def resolve_waveguide_port_freqs(sim, entry):
     return jnp.linspace(sim._freq_max / 10, sim._freq_max, entry.n_freqs)
 
 
+def resolve_shared_waveguide_port_freqs(sim, *, route):
+    """Resolve declarations for a lane whose port configs share float32 bins."""
+    from jax import ensure_compile_time_eval
+
+    if not sim._waveguide_ports:
+        return None
+    with ensure_compile_time_eval():
+        first = sim._waveguide_ports[0]
+        freqs = jnp.asarray(resolve_waveguide_port_freqs(sim, first), dtype=jnp.float32)
+        expected = np.asarray(freqs)
+        for entry in sim._waveguide_ports[1:]:
+            other = np.asarray(resolve_waveguide_port_freqs(sim, entry), dtype=np.float32)
+            if other.shape != expected.shape or not np.allclose(
+                other, expected, rtol=np.finfo(np.float32).eps, atol=0.0,
+            ):
+                raise ValueError(
+                    f"{route} requires one shared waveguide frequency vector: "
+                    f"port '{first.name}' has {expected.size} bins "
+                    f"(first={expected[0]:.9g} Hz, last={expected[-1]:.9g} Hz); "
+                    f"port '{entry.name}' has {other.size} bins "
+                    f"(first={other[0]:.9g} Hz, last={other[-1]:.9g} Hz). "
+                    "Declare the same freqs on every port, or use "
+                    "compute_waveguide_s_matrix()."
+                )
+    return freqs
+
+
 def _transverse_cell_size(grid, axis_name) -> float:
     """Primal width on the constant transverse axis of the uniform lane.
 
@@ -845,10 +872,10 @@ def _emit_waveguide_port_cutoff_findings(
     # velocity: the extracted S is junk that GROWS with n_steps (the
     # in-band incident reference sits in the source spectral tail),
     # and below-cutoff DFT bins additionally NaN the gradient.
-    if entry.freqs is None and any(getattr(self, a, None) is not None
-                                  for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
-        from rfx.runners.nonuniform import _resolve_waveguide_run_freqs_nu
-        f_arr = np.asarray(_resolve_waveguide_run_freqs_nu(self), dtype=float)
+    if any(getattr(self, a, None) is not None
+           for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
+        f_arr = np.asarray(resolve_shared_waveguide_port_freqs(
+            self, route="graded preflight for run()/forward()"), dtype=float)
     else:
         f_arr = np.asarray(resolve_waveguide_port_freqs(self, entry), dtype=float)
     f_min = float(f_arr.min())

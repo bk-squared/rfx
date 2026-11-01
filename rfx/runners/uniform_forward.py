@@ -92,6 +92,8 @@ def _forward_from_materials(
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes (#1299).
         """
+    from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
+    wg_freqs = resolve_shared_waveguide_port_freqs(self, route="uniform forward()")
     if subpixel_smoothing and sheet_impedance is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
@@ -608,14 +610,6 @@ def _forward_from_materials(
     # Waveguide ports (differentiable DFT accumulation inside scan)
     waveguide_ports = []
     if self._waveguide_ports:
-        wg_freqs = None
-        for pe in self._waveguide_ports:
-            if pe.freqs is not None:
-                wg_freqs = jnp.asarray(pe.freqs, dtype=jnp.float32)
-                break
-        if wg_freqs is None:
-            wg_freqs = jnp.linspace(
-                self._freq_max * 0.5, self._freq_max, 20, dtype=jnp.float32)
         for pe in self._waveguide_ports:
             waveguide_ports.append(
                 self._build_waveguide_port_config(pe, grid, wg_freqs, n_steps))
