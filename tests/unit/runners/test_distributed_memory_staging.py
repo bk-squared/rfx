@@ -29,7 +29,7 @@ from rfx.core.yee import EPS_0, MaterialArrays
 from rfx.materials.debye import DebyeCoeffs
 from rfx.materials.lorentz import LorentzCoeffs, lorentz_pole
 from rfx.runners import distributed_nu, distributed_v2
-from rfx.stepping import slab_uniform_loop, slab_graded_legacy_loop
+from rfx.stepping import slab_wrap, slab_graded_legacy_loop
 from rfx.runners import _distributed_common as common
 from rfx.runners._distributed_common import shard_stacked, shard_x_slabs, split_array_x
 
@@ -81,6 +81,139 @@ def _build_box(case):
     return sim
 
 
+_SETUP_CASES = ('pec', 'cpml', 'debye', 'lorentz', 'mixed', 'lumped')
+_SETUP_POINTS = ['stage_dispersion_debye_return', 'stage_dispersion_lorentz_return',
+                 'realize_materials_return', 'split_entry', 'prepare_end']
+
+
+# Measured on 2991b46e2 immediately before distributed_v2's first cut, using
+# _setup_census and these exact scenes in fresh two-device processes. These
+# are material inputs only; no field, psi, pole state or derived coefficient
+# was present with whole-domain x extent. Keep this independent of setup.
+_SETUP_BASE_ROLES = {
+    'pec': ['materials.eps_r', 'materials.sigma', 'materials.mu_r'],
+    'cpml': ['materials.eps_r', 'materials.sigma', 'materials.mu_r'],
+    'debye': ['materials.eps_r', 'materials.sigma', 'materials.mu_r', 'debye_spec.1.0'],
+    'lorentz': ['materials.eps_r', 'materials.sigma', 'materials.mu_r', 'lorentz_spec.1.0'],
+    'mixed': ['materials.eps_r', 'materials.sigma', 'materials.mu_r',
+              'debye_spec.1.0', 'lorentz_spec.1.0', 'pec_mask',
+              'pec_edges.0', 'pec_edges.1', 'pec_edges.2'],
+    'lumped': ['materials.eps_r', 'materials.sigma', 'materials.mu_r',
+               'materials.sigma_lumped.2'],
+}
+
+
+@pytest.mark.parametrize('case', _SETUP_CASES)
+def test_setup_whole_arrays_are_base_material_inputs(case):
+    from collections import Counter
+    env = {**os.environ, 'JAX_PLATFORMS': 'cpu',
+           'XLA_FLAGS': '--xla_force_host_platform_device_count=2',
+           'PYTHONPATH': str(Path(__file__).resolve().parents[3])}
+    run = subprocess.run(
+        [sys.executable, '-W', 'ignore', str(Path(__file__).resolve()), 'setup', case],
+        env=env, text=True, capture_output=True, timeout=45)
+    assert run.returncode == 0, run.stdout + run.stderr
+    records = [json.loads(line.removeprefix('SETUP_CENSUS '))
+               for line in run.stdout.splitlines() if line.startswith('SETUP_CENSUS ')]
+    assert len(records) == 1, run.stdout
+    assert [s['point'] for s in records[0]['samples']] == _SETUP_POINTS
+    for sample in records[0]['samples']:
+        whole = [a for a in sample['arrays'] if a['whole']]
+        actual = Counter(a['role'] for a in whole)
+        assert actual <= Counter(_SETUP_BASE_ROLES[case]), (sample['point'], whole)
+        assert sample['arrays'], 'the observer must sample live setup arrays'
+
+
+def _setup_census(frame, nx):
+    """Describe every live array without retaining device buffers in the record."""
+    roles = {}
+
+    def visit(value, path):
+        if isinstance(value, jax.Array):
+            roles.setdefault(id(value), path)
+        elif hasattr(value, '_fields'):
+            for name, child in zip(value._fields, value):
+                visit(child, path + '.' + name)
+        elif isinstance(value, (tuple, list)):
+            for index, child in enumerate(value):
+                visit(child, path + '.' + str(index))
+        elif isinstance(value, dict):
+            for name, child in value.items():
+                visit(child, path + '.' + str(name))
+
+    # Read semantic roots from the runner/setup stack, with material inputs
+    # taking precedence over incidental aliases of the same buffer.
+    frames = []
+    while frame is not None:
+        frames.append(frame)
+        frame = frame.f_back
+    for name in ('materials', 'pec_edges', 'pec_mask', 'debye_spec', 'lorentz_spec'):
+        for frame in frames:
+            if name in frame.f_locals:
+                visit(frame.f_locals[name], name)
+    for frame in frames:
+        for name in ('carry', 'inputs', 'invariants', 'local_materials', 'inverse', 'loss'):
+            if name in frame.f_locals:
+                visit(frame.f_locals[name], name)
+    records = []
+    for value in jax.live_arrays():
+        # Inspect global shape and partitioning without materializing shard
+        # views, which would themselves enter a subsequent live-array census.
+        shape = tuple(value.shape)
+        whole = len(shape) >= 3 and shape[-3] == nx
+        records.append(dict(role=roles.get(id(value), 'unclassified'), shape=shape,
+                            dtype=str(value.dtype), devices=len(value.devices()), whole=whole))
+    return records
+
+
+def _measure_setup(case, *, base=False):
+    if case == 'lumped':
+        from tests.unit.runners.test_distributed_lumped_port_s import _model
+        sim = _model()
+    else:
+        sim = _build_box(case)
+    nx = sim._build_grid().shape[0]
+    samples = []
+
+    class SetupObserved(Exception):
+        pass
+
+    def profile(frame, event, value):
+        module = frame.f_globals.get('__name__')
+        name = frame.f_code.co_name
+        if base and event == 'call' and name == 'cut' and module == 'rfx.stepping.slab':
+            caller = frame.f_back
+            if caller.f_globals.get('__name__') == 'rfx.runners.distributed_v2':
+                samples.append(dict(point='base_pre_cut', arrays=_setup_census(caller, nx)))
+                raise SetupObserved
+        elif not base:
+            if (event == 'return' and module == 'rfx.stepping.slab_setup'
+                    and name in ('realize_materials', 'stage_dispersion')
+                    and frame.f_locals.get('uniform')
+                    and frame.f_back.f_code.co_name == 'prepare_uniform'
+                    and frame.f_back.f_globals.get('__name__') == 'rfx.stepping.slab_wrap_uniform'):
+                producer = name + ('_' + frame.f_locals['family'] if name == 'stage_dispersion' else '')
+                # A return event still exposes producer locals, before temporary
+                # whole-domain products can be released on the way to split.
+                samples.append(dict(point=producer + '_return', arrays=_setup_census(frame, nx)))
+            elif event == 'call' and name == 'split' and module == 'rfx.stepping.slab_wrap':
+                samples.append(dict(point='split_entry', arrays=_setup_census(frame, nx)))
+            elif event == 'return' and name == 'prepare_uniform' and module == 'rfx.stepping.slab_wrap_uniform':
+                samples.append(dict(point='prepare_end', arrays=_setup_census(frame, nx)))
+                raise SetupObserved
+
+    sys.setprofile(profile)
+    try:
+        sim.run(n_steps=3, devices=jax.devices('cpu')[:2], skip_preflight=True,
+                compute_s_params=False)
+    except SetupObserved:
+        pass
+    finally:
+        sys.setprofile(None)
+    assert [s['point'] for s in samples] == (['base_pre_cut'] if base else _SETUP_POINTS)
+    print('SETUP_CENSUS ' + json.dumps(dict(case=case, samples=samples)))
+
+
 def _measure(case, multi_process):
     sim = _build_box(case)
     devices = jax.devices("cpu")[:2]
@@ -89,8 +222,8 @@ def _measure(case, multi_process):
     cells = int(np.prod(grid.shape))
     records = []
     runner = distributed_nu if case == "nu" else distributed_v2
-    loop = slab_graded_legacy_loop if case == "nu" else slab_uniform_loop
-    scan = loop.lax.scan
+    loop = slab_graded_legacy_loop if case == "nu" else slab_wrap
+    scan = jax.lax.scan
     boundary_ghosts_true = None
     hlo_constants = []
     hlo_constants_parsed = []
@@ -127,7 +260,8 @@ def _measure(case, multi_process):
             # #931: inspect the actual PEC mask argument before it becomes a
             # tracer. Physical-boundary ghost rows must remain False.
             bound = inspect.signature(f).bind(*entry_args, **entry_kwargs).arguments
-            mask = bound.get("pec_mask_arg")
+            mask = (bound.get("pec_mask_arg") if case == "nu" else
+                    bound['invariants'].get('pec_edge_masks'))
             if mask is not None:
                 masks = mask if isinstance(mask, tuple) else (mask,)
                 boundary_ghosts_true = 0
@@ -152,17 +286,10 @@ def _measure(case, multi_process):
             # after the live-array scan sample so those inspection-only views
             # cannot look like retained full-domain multi-pole setup copies.
             for kind in _dispersion_kinds(case):
-                partial_coeffs = bound[kind + "_coeffs_arg"]
-                assert partial_coeffs.ca is partial_coeffs.cb is partial_coeffs.cc is None
-
-                @partial(shard_map, mesh=Mesh(np.array(devices), ("x",)),
-                         in_specs=(P("x"), P("x")), out_specs=P("x"), check_vma=False)
-                def finish(c, m):
-                    rank = jax.lax.axis_index("x")
-                    means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0], rank, high_wall=unpadded_high_walls(grid))
-                    return common.slab_dispersion_coeffs(c, means, grid.dt, nx_local - 2, grid.shape[0], rank)
-
-                coeffs = jax.jit(finish)(partial_coeffs, bound["materials_arg"])
+                # The wrapped driver receives coefficients already finished
+                # before the scan. Inspect those exact compiled arguments.
+                coeffs = bound['invariants'][kind + '_coeffs']
+                assert all(value is not None for value in (coeffs.ca, coeffs.cb, coeffs.cc))
                 # #1302: rows outside the domain hold a vacuum cell's
                 # coefficients (ca 1, cb dt/eps_0, cc 1/eps_0, pole terms 0)
                 # (float32 arithmetic, as the coefficient builders run it)
@@ -239,22 +366,15 @@ def _measure(case, multi_process):
                 if (spatial if split else shard.data.size) >= cells:
                     whole.append((str(shard.device), arr.shape, str(arr.dtype),
                                   type(arr.sharding).__name__))
-        # Both topologies capture coefficient tuples with JIT-tracer leaves.
-        if case == "nu":
-            assert "debye" not in carry and "lorentz" not in carry
-        coeffs = {} if case == "nu" else {
-            type(value).__name__: value
-            for value in inspect.getclosurevars(body).nonlocals.values()
-            if isinstance(value, (DebyeCoeffs, LorentzCoeffs))
-        }
-        assert set(coeffs) == (set() if case == "nu" else {"DebyeCoeffs", "LorentzCoeffs"})
+        # Inactive pole families have no array placeholders in the wrapped
+        # carry or its explicit invariants, on either topology.
+        invariants = {} if case == 'nu' else body.keywords['invariants']
         placeholder_shapes = {}
-        for material, coeff_type in (("debye", "DebyeCoeffs"), ("lorentz", "LorentzCoeffs")):
-            if case == "nu" or material in _dispersion_kinds(case):  # NU has no dummy ADE carry
+        for material in ('debye', 'lorentz'):
+            if material in _dispersion_kinds(case):
                 continue
-            for slot, value in (("state", carry[material]), ("coeffs", coeffs[coeff_type])):
-                for name, array in zip(value._fields, value):
-                    placeholder_shapes[f"{material}.{slot}.{name}"] = array.shape
+            assert carry.get(material) is None
+            assert invariants.get(material + '_coeffs') is None
         records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes,
                         "captured": captured, "hlo_constants": hlo_constants,
                         "hlo_constants_parsed": hlo_constants_parsed,
@@ -263,14 +383,23 @@ def _measure(case, multi_process):
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
-    loop.lax = SimpleNamespace(**{**vars(loop.lax), "scan": traced_scan})
-    runner.lax = loop.lax
+    if case == 'nu':
+        loop.lax = SimpleNamespace(**{**vars(jax.lax), "scan": traced_scan})
+        runner.lax = loop.lax
+    else:
+        original_run = slab_wrap.run_steps
+
+        def observed_run(*args, **kwargs):
+            return original_run(*args, **kwargs, compile_loop=traced_jit, scan_loop=traced_scan)
+
+        slab_wrap.run_steps = observed_run
     runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
     if multi_process:
         # Exercise the multi-process topology without starting jax.distributed.
         runner_jax.process_index = lambda: 1
     runner.jax = runner_jax
-    loop.jax = runner_jax
+    if case == 'nu':
+        loop.jax = runner_jax
     result = sim.run(n_steps=3, devices=devices)
     jax.block_until_ready(result.time_series)
     assert records, "the memory gate must observe the time-stepping scan"
@@ -308,9 +437,7 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
         assert max(sizes) <= 1.25 * min(sizes), f"unbalanced device bytes: {record['bytes']}"
         shapes = record["placeholders"]
         kinds = _dispersion_kinds(case)
-        expected_slots = (0 if case == "nu" else
-                          20 - (8 if "debye" in kinds else 0) - (12 if "lorentz" in kinds else 0))
-        assert len(shapes) == expected_slots
+        assert not shapes
         for name, shape in shapes.items():
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
         for kind in kinds:
@@ -537,7 +664,9 @@ def test_dispersion_slabs_in_subprocess(mode, marker):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "direct_dispersion":
+    if sys.argv[1] == 'setup':
+        _measure_setup(sys.argv[2])
+    elif sys.argv[1] == "direct_dispersion":
         _direct_dispersion_slabs()
     elif sys.argv[1] == "addressable_dispersion":
         _addressable_dispersion_slabs()

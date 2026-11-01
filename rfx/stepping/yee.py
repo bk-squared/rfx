@@ -193,7 +193,8 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
-             bloch: tuple | None = None, *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+             bloch: tuple | None = None, *, boundary=None, high_wall: tuple[bool, bool, bool],
+             frame=None, owned=None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -241,7 +242,8 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, periodic, high_wall=high_wall)
 
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch, boundary=boundary)
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch,
+                                  boundary=boundary, frame=frame, owned=owned)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
     ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)

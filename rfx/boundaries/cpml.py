@@ -443,7 +443,7 @@ def _assert_absorber_fits(grid, depths: tuple[int, int, int]) -> None:
 def init_cpml(grid, *, kappa_max: float | None = None,
               pec_faces: set[str] | None = None,
               pmc_faces: set[str] | None = None,
-              field_dtype=jnp.float32) -> tuple[CPMLAxisParams, CPMLState]:
+              field_dtype=jnp.float32, state_allocator=None) -> tuple[CPMLAxisParams, CPMLState]:
     """Initialize CPML parameters and zero-valued auxiliary fields.
 
     Creates per-axis CPML profiles so that each face uses the correct
@@ -583,7 +583,8 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     for name in CPMLState._fields:
         axis = "xyz".index(name.split("_")[-1][0])
         shape = tuple(depths[i] if i == axis else extents[i] for i in range(3))
-        buffers[name] = jnp.zeros(shape, dtype=psi_dtype)
+        buffers[name] = (jnp.zeros(shape, dtype=psi_dtype) if state_allocator is None
+                         else state_allocator(name, shape, psi_dtype))
     state = CPMLState(**buffers)
 
     return params, state

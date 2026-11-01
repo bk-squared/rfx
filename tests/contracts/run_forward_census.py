@@ -18,6 +18,7 @@ import pytest
 
 from rfx import Simulation, Box, Sphere, PolylineWire, DebyePole, LorentzPole, drude_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.stepping import slab_wrap as _slab_wrap  # Bind scan defaults before capture guards.
 
 # Every patched module/attribute is named here once. The contract passes this
 # table to capture, so a pipeline restructure changes its integration seams here.
@@ -34,6 +35,7 @@ SEAMS = {
     'distributed': ('rfx.runners._distributed_nu_execute', 'execute_from_materials'),
     'distributed_step': ('rfx.runners.distributed_nu', 'run_nonuniform_distributed_pec'),
     'distributed_uniform_jit': ('jax', 'jit'),
+    'distributed_uniform_step': ('rfx.stepping.slab_wrap_uniform', 'run_prepared'),
 }
 
 PATHS = ('uniform', 'graded', 'multi-device-graded', 'multi-device-uniform')
@@ -557,6 +559,8 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
                     raise Captured
                 install(stack, 'graded_step', build)
             elif capture_path == 'multi-device-uniform':
+                install(stack, 'distributed_uniform_step',
+                        stop_at(original('distributed_uniform_step'), 'arguments'))
                 # The native slab lane passes its assembled carry, scan inputs
                 # and per-cell invariants into this JIT entry. Capture concrete
                 # arrays before tracing, just as distributed_step does for NU.

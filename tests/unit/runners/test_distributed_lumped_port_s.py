@@ -193,9 +193,6 @@ def test_more_devices(n_devices):
 @pytest.mark.parametrize("mutation", ["disable", "own_slab", "half_step"])
 def test_parity_detects_mutations(monkeypatch, mutation):
     from rfx.probes import sparam_driver as driver
-    from rfx.stepping import slab_uniform_loop as runner
-    from rfx.core import dft_utils
-    import jax.numpy as jnp
 
     if mutation == "disable":
         original = driver.compute_lumped_wire_s_matrix_via_scan
@@ -302,57 +299,103 @@ def test_one_scan_per_drive_and_shared_replay_bundle(monkeypatch):
                                    rtol=1e-5, atol=0)
 
 
-def _assert_shared_step_order(source):
-    """Lock the common numerical step, including cases where walls are inert."""
+def _assert_shared_step_order(kernels, attachments):
+    """Lock the assembled common step, including cases where walls are inert."""
     import ast
-    tree = ast.parse(source)
-    steps = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-             and node.name in ("step_fn_cpml", "step_fn_pec")]
-    assert len(steps) == 2
-    for step in steps:
-        calls = [node.value for node in step.body if isinstance(node, ast.Assign)
-                 and isinstance(node.value, ast.Call)]
-        names = [call.func.id for call in calls if isinstance(call.func, ast.Name)]
-        assert names.count("_inject_sources_shmap") == 1, "shared step injection order"
-        assert names.index("_inject_sources_shmap") < names.index("_apply_pec_shmap"), "shared step injection order"
-        assert not any(isinstance(node, ast.Name) and node.id.startswith(("_sparam", "_source_port", "_record_probe"))
-                       for node in ast.walk(step)), "drive-dependent step"
+    import inspect
+    import textwrap
+    from rfx.stepping.sequence import HookPoint, Kernel, STEP_SEQUENCE
+
+    assert Kernel.SOURCES in kernels, "shared step injection order"
+    assert kernels[Kernel.SOURCES].__name__ == "sources", "shared step injection order"
+    assert [fn.__name__ for fn in attachments[HookPoint.BEFORE_SOURCES]] == ["before_sources"]
+    assert attachments[HookPoint.STEP_END][0].__name__ == "e"
+    assert (STEP_SEQUENCE.index(Kernel.PEC)
+            < STEP_SEQUENCE.index(Kernel.CONSTITUTIVE)
+            < STEP_SEQUENCE.index(HookPoint.BEFORE_SOURCES)
+            < STEP_SEQUENCE.index(Kernel.SOURCES)
+            < STEP_SEQUENCE.index(HookPoint.STEP_END)), "shared step injection order"
+    tree = ast.parse(textwrap.dedent(inspect.getsource(kernels[Kernel.PEC])))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    mask = [node for node in calls if isinstance(node.func, ast.Attribute)
+            and node.func.attr == "apply_pec_edges"]
+    tree = ast.parse(textwrap.dedent(inspect.getsource(kernels[Kernel.CONSTITUTIVE])))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+    faces = [node for node in calls if isinstance(node.func, ast.Attribute)
+             and node.func.attr == "apply_pec_faces"]
+    assert len(mask) == len(faces) == 1, "shared step conductor/reference stages"
+    for fn in kernels.values():
+        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+        assert not any(isinstance(node, ast.Name)
+                       and node.id.startswith(("_sparam", "_source_port", "_record_probe"))
+                       for node in ast.walk(tree)), "drive-dependent step"
+
+
+def _wrapped_attachments(attachments):
+    from rfx.stepping.sequence import HookPoint
+    return any(fn.__name__ == "e" and fn.__module__ == "rfx.stepping.slab_wrap_uniform"
+               for fn in attachments.get(HookPoint.STEP_END, ()))
 
 
 @pytest.mark.source_scan
-def test_shared_step_order():
-    import inspect
-    from rfx.stepping import slab_uniform_loop as loop
-    _assert_shared_step_order(inspect.getsource(loop.run_uniform_slab_loop))
+def test_shared_step_order(monkeypatch):
+    from rfx.stepping import uniform
+    original = uniform.compose
+    seen = []
+
+    def compose(kernels, attachments):
+        if _wrapped_attachments(attachments):
+            _assert_shared_step_order(kernels, attachments)
+            seen.append(True)
+        return original(kernels, attachments)
+
+    monkeypatch.setattr(uniform, "compose", compose)
+    for boundary in ("pec", "cpml"):
+        before = len(seen)
+        _model(boundary=boundary).run(n_steps=2, devices=jax.devices("cpu")[:2],
+                                     skip_preflight=True)
+        assert len(seen) > before
 
 
 @pytest.mark.source_scan
 def test_drive_only_order_mutation(monkeypatch):
-    import inspect
     from rfx.runners import distributed_v2 as runner
-    from rfx.stepping import slab_uniform_loop as loop
-    source = inspect.getsource(loop.run_uniform_slab_loop)
-    source = source.replace("        st = _inject_sources_shmap(st, src_vals, ranks=ranks)",
-                            "        if _source_port_indices is None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)")
-    source = source.replace("        # 7. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)\n\n        # 7. Exchange E ghost cells")
-    source = source.replace("        # 6. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)\n\n        # 6. Exchange E ghost cells")
-    namespace = dict(vars(loop))
-    exec(compile(source, "<drive-only-order-mutation>", "exec"), namespace)
-    monkeypatch.setattr(loop, "run_uniform_slab_loop", namespace["run_uniform_slab_loop"])
-    original = runner.run_distributed
+    from rfx.stepping import uniform
+    from rfx.stepping.sequence import HookPoint, Kernel
+    original_compose = uniform.compose
+    original_run = runner.run_distributed
+    selected = False
+    mutations = []
 
     def run(*args, **kwargs):
-        # The drive-selection argument stays on the runner after extraction.
-        namespace["_source_port_indices"] = kwargs.get("_source_port_indices")
-        return original(*args, **kwargs)
+        nonlocal selected
+        selected = kwargs.get("_source_port_indices") is not None
+        return original_run(*args, **kwargs)
+
+    def compose(kernels, attachments):
+        if _wrapped_attachments(attachments):
+            _assert_shared_step_order(kernels, attachments)
+            if selected:
+                # Move the selected-drive injection out of the shared kernel
+                # slot, still after references and before physical sampling.
+                kernels, attachments = dict(kernels), dict(attachments)
+                injection = kernels.pop(Kernel.SOURCES)
+                point = HookPoint.BEFORE_SOURCES
+                attachments[point] = (*attachments[point], injection)
+                mutations.append((kernels, attachments))
+        return original_compose(kernels, attachments)
 
     monkeypatch.setattr(runner, "run_distributed", run)
-    # All these sources are away from walls/masks: numerical parity alone
-    # cannot require a shared step. The structural invariant must also fail.
+    monkeypatch.setattr(uniform, "compose", compose)
+    # These fixtures cannot distinguish identical arithmetic reached through
+    # drive-dependent scheduling. The common-step invariant must also fail.
     for case in (None, "debye", "lossy", "pec", "cpml_box", "eps4"):
+        before = len(mutations)
         _parity(case=case)
-    with pytest.raises(AssertionError, match="shared step injection order"):
-        _assert_shared_step_order(source)
+        assert len(mutations) > before
+    for kernels, attachments in mutations:
+        with pytest.raises(AssertionError, match="shared step injection order"):
+            _assert_shared_step_order(kernels, attachments)
     print("mutation=drive_only_order: numerical parity GREEN; shared step check RED")
 
 

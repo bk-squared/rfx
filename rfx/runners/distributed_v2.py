@@ -573,15 +573,20 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # Global cells enter the ordinary owner mapping below independently.
         probes.extend(_record_probes)
 
-    from rfx.stepping.uniform_slab_ports import UniformSlabPorts
+    from rfx.stepping.uniform_slab_ports import UniformPortPlan, UniformSlabPorts
+    # Admission requires interval one. Retain the old skipped-exchange
+    # negative control when a test explicitly bypasses that validation.
+    legacy_step = sim._tfsf is not None or exchange_interval != 1
     order = sorted(range(len(port_specs)), key=lambda k: port_specs[k][2] != 'wire')
     if compute_s_params and s_param_freqs is None:
         from rfx.measurement import default_frequency_grid
         s_param_freqs = default_frequency_grid(sim._freq_max, 50)
-    ports = UniformSlabPorts(
-        grid, [port_entries[k] for k in order], [port_specs[k] for k in order],
-        CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags()), layout, mesh, n_steps, jnp.float32,
-        s_param_freqs if compute_s_params else None, record_vref=_record_vref)
+    port_args = (grid, [port_entries[k] for k in order], [port_specs[k] for k in order],
+                 CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags()))
+    port_freqs = s_param_freqs if compute_s_params else None
+    ports = (UniformSlabPorts(*port_args, layout, mesh, n_steps, jnp.float32,
+                             port_freqs, record_vref=_record_vref) if legacy_step else
+             UniformPortPlan(*port_args, jnp.float32, port_freqs))
 
     # All port loads must be present before any drive reads its E operands.
     # No whole-domain realization here: the slab kernels form their own edge
@@ -637,154 +642,166 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # addressable slab at a time, without whole-domain slab stacks.
     # ------------------------------------------------------------------
 
-    shd = _x_sharding(mesh)
-    rep = _rep_sharding(mesh)
-
-    field_shape = (n_devices * nx_local, ny, nz)
-    sharded_state = FDTDState(
-        **{name: jnp.zeros(field_shape, dtype=jnp.float32, device=shd)
-           for name in ("ex", "ey", "ez", "hx", "hy", "hz")},
-        step=jax.device_put(jnp.int32(0), rep),
-    )
-
-    sharded_materials = MaterialArrays(
-        eps_r=cut(materials.eps_r, layout, "eps_r", mesh=mesh),
-        sigma=cut(materials.sigma, layout, "sigma", mesh=mesh),
-        mu_r=cut(materials.mu_r, layout, "mu_r", mesh=mesh),
-        # #1236: a lumped element loads its own E edge only; the slab update
-        # needs the per-component record for that (None when no stamp).
-        sigma_film=cut(materials.sigma_film, layout, "lumped", mesh=mesh),
-        sigma_lumped=cut(materials.sigma_lumped, layout, "lumped", mesh=mesh),
-        eps_r_lumped=cut(materials.eps_r_lumped, layout, "lumped", mesh=mesh),
-    )
-
-    # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
-    # scan receives it as a jit argument next to ``sharded_materials`` (on
-    # every topology since PI decision A, 2026-09-23), not through
-    # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
-    # and otherwise discarded (it was forwarded only to the pmap runner at one
-    # device, until #1296).
-    # Alignment rows are still PEC; ghosts are still excluded by the kernel.
-    sharded_pec_mask = cut(pec_edges, layout, "pec_edge", mesh=mesh)
-    del pec_edges
-
-    # ------------------------------------------------------------------
-    # Dispersive materials
-    # ------------------------------------------------------------------
-    has_debye = debye_spec is not None
-    has_lorentz = lorentz_spec is not None
-    from rfx.boundaries.depths import distributed_electric_walls
-    e_wall_faces = distributed_electric_walls(grid) - _pmc_faces_frozen
-    debye, lorentz = stage_dispersion_slabs(
-        materials, grid.dt, debye_spec, lorentz_spec,
-        n_devices, nx_per, ghost, shd, nx=nx, high_wall=high_wall)
-    del materials, pec_mask, pec_shapes
-    del debye_spec, lorentz_spec
-    if has_debye:
-        debye_coeffs_sharded, debye_state_sharded = debye
-    else:
-        # Absent dispersion is never read by the E update; its carry passes
-        # through unchanged. Keep ranks for shard_map, one scalar per device.
-        _dz = jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)
-        _dz5 = jnp.zeros((n_devices, 1, 1, 1), dtype=jnp.float32, device=shd)
-        debye_coeffs_sharded = DebyeCoeffs(
-            ca=jax.device_put(_dz, shd),
-            cb=jax.device_put(_dz, shd),
-            cc=jax.device_put(_dz5, shd),
-            alpha=jax.device_put(_dz5, shd),
-            beta=jax.device_put(_dz5, shd),
-        )
-        debye_state_sharded = DebyeState(
-            px=jax.device_put(_dz5, shd),
-            py=jax.device_put(_dz5, shd),
-            pz=jax.device_put(_dz5, shd),
-        )
-
-    if has_lorentz:
-        lorentz_coeffs_sharded, lorentz_state_sharded = lorentz
-    else:
-        _lz = jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)
-        _lz5 = jnp.zeros((n_devices, 1, 1, 1), dtype=jnp.float32, device=shd)
-        lorentz_coeffs_sharded = LorentzCoeffs(
-            ca=jax.device_put(_lz, shd),
-            cb=jax.device_put(_lz, shd),
-            cc=jax.device_put(_lz, shd),
-            a=jax.device_put(_lz5, shd),
-            b=jax.device_put(_lz5, shd),
-            c=jax.device_put(_lz5, shd),
-        )
-        lorentz_state_sharded = LorentzState(
-            px=jax.device_put(_lz5, shd),
-            py=jax.device_put(_lz5, shd),
-            pz=jax.device_put(_lz5, shd),
-            px_prev=jax.device_put(_lz5, shd),
-            py_prev=jax.device_put(_lz5, shd),
-            pz_prev=jax.device_put(_lz5, shd),
-        )
-
-    del debye, lorentz
-
-    # ------------------------------------------------------------------
-    # CPML state
-    # ------------------------------------------------------------------
-    if use_cpml:
-        cpml_params, cpml_state_sharded = _init_cpml_sharded(
-            grid, nx_local, n_devices, mesh)
-    else:
-        _, cpml_state_sharded = init_cpml_slabs(grid, nx_local, n_devices, mesh=mesh)
-        cpml_params = None
-
-    # ------------------------------------------------------------------
-    # Static metadata
-    # ------------------------------------------------------------------
-    n_src = len(sources)
-    n_prb = len(probes)
     from rfx.runners._distributed_records import SlabRecords
-    from rfx.stepping.slab_uniform_loop import run_uniform_slab_loop
-    final_carry, probe_ts, final_state_sharded, records = run_uniform_slab_loop(
-        SlabRecords=SlabRecords,
-        _pmc_faces_frozen=_pmc_faces_frozen,
-        cpml_params=cpml_params,
-        cpml_state_sharded=cpml_state_sharded,
-        curl_boundary=curl_boundary,
-        debye_coeffs_sharded=debye_coeffs_sharded,
-        debye_state_sharded=debye_state_sharded,
-        dt=dt,
-        dx=dx,
-        e_wall_faces=e_wall_faces,
-        exchange_interval=exchange_interval,
-        ghost=ghost,
-        grid=grid,
-        has_debye=has_debye,
-        has_lorentz=has_lorentz,
-        high_wall=high_wall,
-        layout=layout,
-        lorentz_coeffs_sharded=lorentz_coeffs_sharded,
-        lorentz_state_sharded=lorentz_state_sharded,
-        mesh=mesh,
-        n_cpml=n_cpml,
-        n_devices=n_devices,
-        n_prb=n_prb,
-        n_src=n_src,
-        n_steps=n_steps,
-        nx=nx,
-        nx_local=nx_local,
-        nx_per=nx_per,
-        pad_x=pad_x,
-        ports=ports,
-        prb_device_ids=prb_device_ids,
-        prb_local_specs=prb_local_specs,
-        rep=rep,
-        sharded_materials=sharded_materials,
-        sharded_pec_mask=sharded_pec_mask,
-        sharded_state=sharded_state,
-        sim=sim,
-        snapshot=snapshot,
-        src_device_ids=src_device_ids,
-        src_local_specs=src_local_specs,
-        src_waveforms=src_waveforms,
-        use_cpml=use_cpml,
-    )
+    n_prb = len(probes)
+    if not legacy_step:
+        from rfx.stepping.slab_wrap_uniform import prepare_uniform, run_prepared
+        prepared = prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
+            n_steps=n_steps, boundary=sim._boundary, debye_spec=debye_spec,
+            lorentz_spec=lorentz_spec, port_plan=ports, record_vref=_record_vref)
+        del materials, pec_edges, pec_mask, pec_shapes, debye_spec, lorentz_spec
+        records = SlabRecords(sim, grid, nx_per, mesh, jnp.float32, n_steps, snapshot)
+        final_carry, probe_ts, final_state_sharded, records = run_prepared(
+            prepared, records, mesh, n_steps=n_steps)
+    else:
+        shd = _x_sharding(mesh)
+        rep = _rep_sharding(mesh)
+
+        field_shape = (n_devices * nx_local, ny, nz)
+        sharded_state = FDTDState(
+            **{name: jnp.zeros(field_shape, dtype=jnp.float32, device=shd)
+               for name in ("ex", "ey", "ez", "hx", "hy", "hz")},
+            step=jax.device_put(jnp.int32(0), rep),
+        )
+
+        sharded_materials = MaterialArrays(
+            eps_r=cut(materials.eps_r, layout, "eps_r", mesh=mesh),
+            sigma=cut(materials.sigma, layout, "sigma", mesh=mesh),
+            mu_r=cut(materials.mu_r, layout, "mu_r", mesh=mesh),
+            # #1236: a lumped element loads its own E edge only; the slab update
+            # needs the per-component record for that (None when no stamp).
+            sigma_film=cut(materials.sigma_film, layout, "lumped", mesh=mesh),
+            sigma_lumped=cut(materials.sigma_lumped, layout, "lumped", mesh=mesh),
+            eps_r_lumped=cut(materials.eps_r_lumped, layout, "lumped", mesh=mesh),
+        )
+
+        # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
+        # scan receives it as a jit argument next to ``sharded_materials`` (on
+        # every topology since PI decision A, 2026-09-23), not through
+        # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
+        # and otherwise discarded (it was forwarded only to the pmap runner at one
+        # device, until #1296).
+        # Alignment rows are still PEC; ghosts are still excluded by the kernel.
+        sharded_pec_mask = cut(pec_edges, layout, "pec_edge", mesh=mesh)
+        del pec_edges
+
+        # ------------------------------------------------------------------
+        # Dispersive materials
+        # ------------------------------------------------------------------
+        has_debye = debye_spec is not None
+        has_lorentz = lorentz_spec is not None
+        from rfx.boundaries.depths import distributed_electric_walls
+        e_wall_faces = distributed_electric_walls(grid) - _pmc_faces_frozen
+        debye, lorentz = stage_dispersion_slabs(
+            materials, grid.dt, debye_spec, lorentz_spec,
+            n_devices, nx_per, ghost, shd, nx=nx, high_wall=high_wall)
+        del materials, pec_mask, pec_shapes
+        del debye_spec, lorentz_spec
+        if has_debye:
+            debye_coeffs_sharded, debye_state_sharded = debye
+        else:
+            # Absent dispersion is never read by the E update; its carry passes
+            # through unchanged. Keep ranks for shard_map, one scalar per device.
+            _dz = jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)
+            _dz5 = jnp.zeros((n_devices, 1, 1, 1), dtype=jnp.float32, device=shd)
+            debye_coeffs_sharded = DebyeCoeffs(
+                ca=jax.device_put(_dz, shd),
+                cb=jax.device_put(_dz, shd),
+                cc=jax.device_put(_dz5, shd),
+                alpha=jax.device_put(_dz5, shd),
+                beta=jax.device_put(_dz5, shd),
+            )
+            debye_state_sharded = DebyeState(
+                px=jax.device_put(_dz5, shd),
+                py=jax.device_put(_dz5, shd),
+                pz=jax.device_put(_dz5, shd),
+            )
+
+        if has_lorentz:
+            lorentz_coeffs_sharded, lorentz_state_sharded = lorentz
+        else:
+            _lz = jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)
+            _lz5 = jnp.zeros((n_devices, 1, 1, 1), dtype=jnp.float32, device=shd)
+            lorentz_coeffs_sharded = LorentzCoeffs(
+                ca=jax.device_put(_lz, shd),
+                cb=jax.device_put(_lz, shd),
+                cc=jax.device_put(_lz, shd),
+                a=jax.device_put(_lz5, shd),
+                b=jax.device_put(_lz5, shd),
+                c=jax.device_put(_lz5, shd),
+            )
+            lorentz_state_sharded = LorentzState(
+                px=jax.device_put(_lz5, shd),
+                py=jax.device_put(_lz5, shd),
+                pz=jax.device_put(_lz5, shd),
+                px_prev=jax.device_put(_lz5, shd),
+                py_prev=jax.device_put(_lz5, shd),
+                pz_prev=jax.device_put(_lz5, shd),
+            )
+
+        del debye, lorentz
+
+        # ------------------------------------------------------------------
+        # CPML state
+        # ------------------------------------------------------------------
+        if use_cpml:
+            cpml_params, cpml_state_sharded = _init_cpml_sharded(
+                grid, nx_local, n_devices, mesh)
+        else:
+            _, cpml_state_sharded = init_cpml_slabs(grid, nx_local, n_devices, mesh=mesh)
+            cpml_params = None
+
+        # ------------------------------------------------------------------
+        # Static metadata
+        # ------------------------------------------------------------------
+        n_src = len(sources)
+        n_prb = len(probes)
+        from rfx.runners._distributed_records import SlabRecords
+        from rfx.stepping.slab_uniform_loop import run_uniform_slab_loop
+        final_carry, probe_ts, final_state_sharded, records = run_uniform_slab_loop(
+            SlabRecords=SlabRecords,
+            _pmc_faces_frozen=_pmc_faces_frozen,
+            cpml_params=cpml_params,
+            cpml_state_sharded=cpml_state_sharded,
+            curl_boundary=curl_boundary,
+            debye_coeffs_sharded=debye_coeffs_sharded,
+            debye_state_sharded=debye_state_sharded,
+            dt=dt,
+            dx=dx,
+            e_wall_faces=e_wall_faces,
+            exchange_interval=exchange_interval,
+            ghost=ghost,
+            grid=grid,
+            has_debye=has_debye,
+            has_lorentz=has_lorentz,
+            high_wall=high_wall,
+            layout=layout,
+            lorentz_coeffs_sharded=lorentz_coeffs_sharded,
+            lorentz_state_sharded=lorentz_state_sharded,
+            mesh=mesh,
+            n_cpml=n_cpml,
+            n_devices=n_devices,
+            n_prb=n_prb,
+            n_src=n_src,
+            n_steps=n_steps,
+            nx=nx,
+            nx_local=nx_local,
+            nx_per=nx_per,
+            pad_x=pad_x,
+            ports=ports,
+            prb_device_ids=prb_device_ids,
+            prb_local_specs=prb_local_specs,
+            rep=rep,
+            sharded_materials=sharded_materials,
+            sharded_pec_mask=sharded_pec_mask,
+            sharded_state=sharded_state,
+            sim=sim,
+            snapshot=snapshot,
+            src_device_ids=src_device_ids,
+            src_local_specs=src_local_specs,
+            src_waveforms=src_waveforms,
+            use_cpml=use_cpml,
+        )
 
     if multi_process:
         from jax.experimental import multihost_utils

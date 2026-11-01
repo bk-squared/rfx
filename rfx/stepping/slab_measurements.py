@@ -48,6 +48,15 @@ def cut_probe_table(table, layout, mesh):
     return jax.tree.map(lambda a: _place(a, mesh), (tuple(terms), order, sorted_ids))
 
 
+def local_table(table, payload):
+    """Restore a canonical sample table from one rank's array payload."""
+    from rfx.measurement.projector import ComponentTerms, SampleTable
+    parts, order, ids = jax.tree.map(lambda a: a[0], payload)
+    return SampleTable(tuple(ComponentTerms(t.component, *p)
+                       for t, p in zip(table.components, parts)),
+                       table.n_channels, table.channel_names, order, ids)
+
+
 def sum_partials(final, mesh, ranks):
     """One post-scan psum inside shard_map; its transpose broadcasts cotangents."""
     from rfx.stepping.rank import rank_shard_map

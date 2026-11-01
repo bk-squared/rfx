@@ -427,8 +427,8 @@
       "kind": "neighbour"
     },
     {
-      "file": "rfx/geometry/node_tensor.py",
-      "function": "node_metrics",
+      "file": "rfx/geometry/smoothing.py",
+      "function": "_cell_width_pairs",
       "kind": "roll/diff"
     },
     {
@@ -930,11 +930,6 @@
     {
       "file": "rfx/stepping/uniform.py",
       "function": "make_uniform_step.constitutive",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/uniform.py",
-      "function": "make_uniform_step.e_boundary",
       "kind": "boundary"
     },
     {
