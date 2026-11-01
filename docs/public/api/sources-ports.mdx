@@ -228,7 +228,8 @@ A port measures at `freqs`, or at `n_freqs` points from `freq_max/10` to
 `freq_max` when `freqs` is not given (50 by default), on every path.
 Every path that takes several waveguide ports (`forward()`, a graded `run()`
 and `compute_waveguide_s_matrix()`) refuses ports whose bins differ: declare
-the same `freqs` on every port. A uniform `run()` takes one waveguide port.
+the same `freqs`, or the same `n_freqs`, on every port. A uniform `run()` takes
+one waveguide port.
 
 ```python
 wg = Simulation(freq_max=12e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
