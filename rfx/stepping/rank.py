@@ -47,7 +47,9 @@ def _staged_by_enclosing_program():
     """Probe staging even when the enclosing program has no traced inputs."""
     try:
         return is_tracer(jax.lax.add(np.float32(0), np.float32(0)))
-    except AttributeError:
+    except TimeoutError:
+        raise
+    except Exception:  # noqa: BLE001 - fails closed: a probe failure refuses the run
         return True
 
 
