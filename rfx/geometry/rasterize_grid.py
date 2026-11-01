@@ -358,6 +358,8 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
         cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
                       else cell_sizes_from_uniform_grid(grid) if grid is not None
                       else tuple(axis_cell_sizes(n) for n in coords[:3]))
+    if isinstance(shape, Box):
+        shape = _span_collapsed_axes(shape, centres, cell_sizes)
     mask = _sample_material_cells(shape, coords, centres, grid=grid,
                                  cell_sizes=cell_sizes, domain_faces=domain_faces)
     if refuse_empty:
@@ -382,6 +384,19 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
                                        cell_sizes=axes[:3], centres=axes[3:])
             jax.debug.callback(check, mask, *cell_sizes, *centres[:3])
     return mask
+
+
+def _span_collapsed_axes(box, centres, cell_sizes):
+    """A 2D grid's collapsed axis holds one cell and the fields do not vary along it:
+    a material Box spans that cell whatever its drawn extent there."""
+    lo, hi = list(box.corner_lo), list(box.corner_hi)
+    for a in range(3):
+        c = centres[a]
+        if len(c) == 1 and not is_tracer(c) and not is_tracer(cell_sizes[a]):
+            half = float(np.asarray(cell_sizes[a])[0]) / 2
+            lo[a] = min(float(lo[a]), float(np.asarray(c)[0]) - half)
+            hi[a] = max(float(hi[a]), float(np.asarray(c)[0]) + half)
+    return box if (lo, hi) == (list(box.corner_lo), list(box.corner_hi)) else Box(tuple(lo), tuple(hi))
 
 
 def _sample_material_cells(shape, coords: GridCoords, centres: GridCoords, *,
@@ -1112,7 +1127,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             if subcell:
                 _refuse_subcell(subcell, shape, name)
         mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
-        if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces):
+        if (not traced and _overlaps_cells(shape, centres, cell_sizes)
+                and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces)):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
     if pts is not None and radius is not None and traced and radius > 0:
@@ -1165,6 +1181,16 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces):
         _refuse_zero_cells(shape, name, "PEC volume")
     return mask, None, None
+
+
+def _overlaps_cells(shape, centres, cell_sizes) -> bool:
+    """Whether a shape's drawing reaches the cells sampled here (a sub-region such as a
+    refinement region holds no cell of a body drawn wholly outside it; that is not a zero-cell body)."""
+    box = getattr(shape, "bounding_box", lambda: None)()
+    if box is None or _is_traced_coords(centres):
+        return True
+    return all(float(lo) < float(c[-1] + w[-1] / 2) and float(hi) > float(c[0] - w[0] / 2)
+               for lo, hi, c, w in zip(box[0], box[1], centres[:3], cell_sizes))
 
 
 def rasterize_geometry(
@@ -1261,10 +1287,11 @@ def rasterize_geometry(
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
+        refuse = mat.sigma < pec_sigma_threshold and _overlaps_cells(entry.shape, centres, cell_sizes)
         mask = _material_cell_mask(entry.shape, coords, centres,
                                    grid=grid if getattr(grid, 'periodic_axes', '') else None,
                                    cell_sizes=cell_sizes, domain_faces=domain_faces,
-                                   name=entry.material_name, refuse_empty=mat.sigma < pec_sigma_threshold)
+                                   name=entry.material_name, refuse_empty=refuse)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
@@ -1320,7 +1347,7 @@ def rasterize_geometry(
             pole_mask = _material_cell_mask(declared, coords, centres,
                                             grid=grid if getattr(grid, 'periodic_axes', '') else None,
                                             cell_sizes=cell_sizes, domain_faces=domain_faces,
-                                            name=entry.material_name, refuse_empty=mat.sigma < pec_sigma_threshold)
+                                            name=entry.material_name, refuse_empty=refuse)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
                 pole_mask = pec_volume_cell_mask(declared, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
 

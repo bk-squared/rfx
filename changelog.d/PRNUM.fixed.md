@@ -11,3 +11,8 @@ unresolved dielectric Vias. Previously, the node rule inflated a 0.3-cell film
 to one full cell (3.3 times its drawn thickness). There is no sub-cell dielectric
 film model: refine until a cell centre lies inside the layer. For a conducting
 sheet, use `add_thin_conductor`.
+
+A volume Box (material or PEC) drawn to the declared domain's high face now fills the
+grid's last cell when the grid is one cell longer than the declared domain; before,
+that cell stayed empty for PEC and was filled only by the old forward-cell rule for
+materials.

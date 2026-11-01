@@ -497,6 +497,25 @@ def test_zero_cell_material_is_refused(monkeypatch, lane, thickness):
     assert 'drawn thickness' in str(caught.value)
     assert 'local cell' in str(caught.value)
     assert 'Refine' in str(caught.value)
+    if lane != 'traced':
+        assert 'no sub-cell dielectric film model' in str(caught.value)
+        assert 'add_thin_conductor' in str(caught.value)
+
+
+@pytest.mark.parametrize('material', ['dielectric', 'pec'])
+def test_body_outside_a_refinement_region_is_not_a_zero_cell_body(material):
+    # A refinement region samples only its own cells: a body drawn wholly outside
+    # it owns none there, and the coarse grid carries it.
+    from rfx.geometry.rasterize_grid import rasterize_geometry
+    sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
+    sim.add_material('outside', eps_r=4.)
+    sim.add(Box((3 * DX, 3 * DX, 9 * DX), (8 * DX, 8 * DX, 11 * DX)),
+            material='outside' if material == 'dielectric' else 'pec')
+    lines = np.arange(10) * DX / 2 + DX / 4 + 3 * DX   # fine centres, z 3..8 mm
+    centres = GridCoords(lines, lines, lines, (10,) * 3)
+    mats, *_rest = rasterize_geometry(sim._geometry, sim._resolve_material, centres,
+                                      centres=centres, cell_sizes=(np.full(10, DX / 2),) * 3)
+    assert float(jnp.max(mats.eps_r)) == 1.0
 
 
 @pytest.mark.parametrize('pec', [False, True])
@@ -558,3 +577,15 @@ def test_one_cell_axis_domain_clause_does_not_inflate_material(graded):
     from rfx.model.materials import assemble_cells
     with pytest.raises(RfxRefusal, match="Material volume 'film'.*ZERO cells"):
         assemble_cells(sim, grid)
+
+
+@pytest.mark.parametrize('z', [(0., 0.), (0., DX / 2), (-DX, DX)], ids=['zero', 'sub-cell', 'across'])
+def test_two_d_collapsed_axis_holds_the_slab_whatever_its_drawn_height(z):
+    # The 2D model does not vary along its one-cell axis, so no drawn height there
+    # can leave the slab without cells; refining that axis is not a remedy.
+    from rfx.model.materials import assemble_cells
+    sim = Simulation(10e9, (8 * DX, 8 * DX, DX), dx=DX, cpml_layers=0, boundary='pec', mode='2d_tmz')
+    sim.add_material('d', eps_r=4.)
+    sim.add(Box((2 * DX, 2 * DX, z[0]), (6 * DX, 6 * DX, z[1])), material='d')
+    eps = np.asarray(assemble_cells(sim, sim._build_grid())[0].eps_r)
+    assert eps.shape[2] == 1 and int((eps == 4.).sum()) == 16   # x, y nodes 2..6: 4 x 4 cells
