@@ -396,7 +396,6 @@ SIGMA_READS = {
     ('rfx/runners/distributed_v2.py', 'run_distributed', 'materials'): (1, 'slicing/passing on: cut cell sigma into slabs'),
     ('rfx/stepping/slab_uniform_loop.py', 'run_uniform_slab_loop._update_e_shmap', 'mat'): (1, 'passing on to E shard-map'),
     ('rfx/stepping/slab_uniform_loop.py', 'run_uniform_slab_loop._update_h_shmap', 'mat'): (1, 'passing on to H shard-map'),
-    ('rfx/runners/nonuniform.py', 'assemble_interface_eps_nu', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/design_box.py', 'resolve_design_box', 'materials'): (1, 'slicing/passing on: default box sigma from assembled cells'),
     ('rfx/model/design_box.py', 'resolve_design_box', 'spec'): (4, 'DesignBox specification from _design_box_spec, not assembled materials'),
     ('rfx/sources/coaxial_port.py', 'stamp_coaxial_annular_resistor', 'materials'): (1, 'arithmetic/write preparation: host copy of cell sigma'),

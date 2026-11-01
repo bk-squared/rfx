@@ -49,8 +49,10 @@ def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=No
         raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
 
 
-def assemble_interface_eps_nu(sim, grid, materials, *, high_wall: tuple[bool, bool, bool]):
-    """Cell-centre eps averaged over the four cells sharing each E edge.
+def assemble_interface_eps_nu(sim, grid, materials, *, pec_mask, high_wall: tuple[bool, bool, bool]):
+    """Production cell eps averaged over the four cells sharing each E edge.
+
+    ``pec_mask`` is the production cell set used to realize PEC edge masks.
 
     Tangential weights are dual-face areas, with PEC cells excluded. Along
     its own axis the edge stays in its own cell (no node-aligned interface
@@ -58,31 +60,14 @@ def assemble_interface_eps_nu(sim, grid, materials, *, high_wall: tuple[bool, bo
     eps as a finite fallback; the existing PEC mask enforces their fields.
     Scalar materials, conductivity and source normalization are untouched.
     """
-    from rfx.geometry.rasterize_grid import GridCoords, coords_from_nonuniform_grid, rasterize_geometry
-
     _validate_interface_eps_nu(sim)
-    nodes = coords_from_nonuniform_grid(grid)
     if any(d is None for d in (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)):
         raise ValueError("interface_eps='dual_average' requires the exact float64 grid spine")
     widths = tuple(host_cells(grid, axis) for axis in "xyz")
-    centres = [np.asarray(x) + np.asarray(d) / 2 for x, d in zip(nodes[:3], widths)]
-    # The bounding node has no outgoing real cell: copy the last centre.
-    for x in centres:
-        x[-1] = x[-2]
-    from rfx.geometry.smoothing import continued_conductor_shape
-    geometry = [replace(entry, shape=continued_conductor_shape(
-                    sim, grid, entry.shape, entry=entry, unextendable=[]))
-                if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
-                else entry for entry in sim._geometry]
-    cell_coords = GridCoords(*centres, grid.shape)
-    cell, debye, lorentz, pec, *_ = rasterize_geometry(
-        geometry, sim._resolve_material, cell_coords,
-        grid=grid, centres=cell_coords, cell_sizes=widths, pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
-    if debye is not None or lorentz is not None:
-        raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
-    eps = np.asarray(cell.eps_r, dtype=np.float64)
-    volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
-    live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
+    # Reuse the production cells, including conductor continuation and CPML pads.
+    eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
+    volume_eps = eps
+    live = np.ones(grid.shape, dtype=np.float64) if pec_mask is None else (~np.asarray(pec_mask)).astype(np.float64)
     if any(not grid.is_constant(a) for a in range(3)):
         from rfx.model.materials import geometric_interface_components
         return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
@@ -856,7 +841,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":
         from rfx.geometry.rasterize_grid import unpadded_high_walls
-        aniso_eps = assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
+        aniso_eps = assemble_interface_eps_nu(sim, grid, materials, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))
 
     # Fold RLC R/C into materials before other port/source setup
     # (mirrors the uniform path). #1256: into the drive's copy too -- an

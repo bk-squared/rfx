@@ -280,20 +280,17 @@ def test_dual_average_build_uses_same_primal_widths(monkeypatch, offset):
     from rfx.runners.nonuniform import assemble_interface_eps_nu
     sim, _, expected, indices, nodes = _scene(offset, graded=True, interface_eps='dual_average')
     grid = sim._build_nonuniform_grid()
-    materials = sim._assemble_materials_nu(grid)[0]
-    original = raster.rasterize_geometry
-    seen = []
+    built = sim._assemble_materials_nu(grid)
+    materials, _, _, pec_mask, *_ = built
+    _assert_arrays(built, expected, False)
 
-    def capture(*args, **kwargs):
-        built = original(*args, **kwargs)
-        seen.append(built)
-        return built
+    def forbidden(*args, **kwargs):
+        pytest.fail("dual_average must reuse the production material cells")
 
     with monkeypatch.context() as patch:
-        patch.setattr(raster, 'rasterize_geometry', capture)
-        components = assemble_interface_eps_nu(sim, grid, materials, high_wall=(True,) * 3)
-    assert len(components) == 3 and len(seen) == 1
-    _assert_arrays(seen[0], expected, False)
+        patch.setattr(raster, 'rasterize_geometry', forbidden)
+        components = assemble_interface_eps_nu(sim, grid, materials, pec_mask=pec_mask, high_wall=(True,) * 3)
+    assert len(components) == 3
     _assert_record(sim, indices, nodes)
 
 

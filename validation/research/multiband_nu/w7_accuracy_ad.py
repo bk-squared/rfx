@@ -673,12 +673,12 @@ def a1_production_column(prof: np.ndarray, s: float, f_true: float | None = None
         sim.add(Box((0.0, 0.0, A1_EDGES[1]), (A1_A_X, A1_B_Y, A1_EDGES[2])), material="w7_thin")
         sim.add(Box((0.0, 0.0, A1_EDGES[2]), (A1_A_X, A1_B_Y, A1_EDGES[3])), material="w7_core")
         grid = sim._build_nonuniform_grid()
-        mats = sim._assemble_materials_nu(grid)[0]
+        mats, _, _, pec_mask, *_ = sim._assemble_materials_nu(grid)
     if interface_eps == "dual_average":
         from rfx.geometry.rasterize_grid import unpadded_high_walls
         from rfx.runners.nonuniform import assemble_interface_eps_nu
         eps = np.asarray(assemble_interface_eps_nu(
-            sim, grid, mats, high_wall=unpadded_high_walls(grid))[1], np.float64)
+            sim, grid, mats, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))[1], np.float64)
     else:
         eps = np.asarray(mats.eps_r, np.float64)
     col = eps[grid.nx // 2, grid.ny // 2, :]

@@ -249,8 +249,8 @@ def test_dual_average_uses_supplied_centres_and_excludes_only_pec_cells(kind, gr
         sim.add(Box(lo, hi), material='pec')
         xyz = np.meshgrid(*axes, indexing='ij')
         live = ~np.logical_and.reduce([(x >= l) & (x < h) for x, l, h in zip(xyz, lo, hi)])
-    mats = sim._assemble_materials_nu(grid)[0]
-    got = assemble_interface_eps_nu(sim, grid, mats, high_wall=unpadded_high_walls(grid))
+    mats, _, _, pec_mask, *_ = sim._assemble_materials_nu(grid)
+    got = assemble_interface_eps_nu(sim, grid, mats, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))
     for c in range(3):
         transverse = [a for a in range(3) if a != c]
         num, den = np.zeros(grid.shape), np.zeros(grid.shape)
