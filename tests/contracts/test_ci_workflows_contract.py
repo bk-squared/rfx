@@ -767,10 +767,10 @@ def test_guards_and_preflight_can_diff_and_read_labels() -> None:
     assert (job.get("permissions") or {}).get("contents") == "read", job.get("permissions")
 
 
-def test_pushes_to_main_still_trigger_the_lane() -> None:
+def test_only_pull_requests_and_merge_groups_trigger_the_lane() -> None:
     triggers = load(PR_TESTS).get("on", load(PR_TESTS).get(True))
-    assert triggers["push"]["branches"] == ["main"]
-    assert "pull_request" in triggers
+    assert set(triggers) == {"pull_request", "merge_group"}
+    assert triggers["merge_group"] == {"types": ["checks_requested"]}
 
 
 # --------------------------------------------------------------------------
@@ -1008,7 +1008,7 @@ def _classify(env: dict[str, str], tmp_path: Path) -> tuple[str, str]:
 
 
 def test_a_push_to_main_is_never_skipped(tmp_path: Path) -> None:
-    """main is what releases, the GPU lane and the weekly suite are cut from."""
+    """Legacy push inputs still fail open; pr-tests no longer subscribes to push."""
     written, log = _classify({"EVENT_NAME": "push"}, tmp_path)
     assert written == "code_changed=true", log
 

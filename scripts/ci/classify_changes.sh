@@ -50,9 +50,8 @@ if [ "$EVENT_NAME" = "merge_group" ]; then
 fi
 
 if [ "$EVENT_NAME" = "push" ]; then
-  # A push to main is never skipped. Every merge is exercised in full: main is
-  # what the release tags, the GPU lane and the weekly suite are cut from, and a
-  # squash merge can carry content no pull-request diff showed.
+  # Retain fail-open handling for legacy/manual push inputs. pr-tests.yml no
+  # longer subscribes to push; PR and merge-group runs test the landing tree.
   if [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "$ZERO" ] && [ -n "$PUSH_AFTER" ]; then
     echo "push $PUSH_BEFORE..$PUSH_AFTER changed:"
     git diff -z --name-only --no-renames "$PUSH_BEFORE" "$PUSH_AFTER" | tr '\0' '\n' || true
