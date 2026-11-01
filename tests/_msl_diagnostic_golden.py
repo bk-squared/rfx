@@ -1,4 +1,4 @@
-"""Main-export wording, retained as adjacent literals to keep source lines readable."""
+"""MSL wording with centre-sampled material-column counts and extents."""
 
 TEXT_0 = (
     "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance to −y absorbing "
@@ -73,8 +73,8 @@ TEXT_6 = (
 TEXT_7 = (
     "MSL port 'checked': only 2 normal interval(s) between the validated ground and trace "
     'planes. Validated conductor-plane gap=244.1µm over 2 normal interval(s), from z=0.0µm'
-    ' to 244.1µm (declared height=274.7µm). Separately, the declared-material column has 3'
-    ' same-permittivity sample slot(s), extent 366.2µm. This material extent is not the '
+    ' to 244.1µm (declared height=274.7µm). Separately, the declared-material column has 2'
+    ' same-permittivity sample slot(s), extent 244.1µm. This material extent is not the '
     'conductor-plane gap. The existing resolution recommendation is at least 4 normal '
     'intervals and an aligned declared substrate interface. On a uniform mesh, refine to '
     'dx ≤ 68.7µm and align the declared ground z=0.0µm and trace z=274.7µm with nodes; on '
@@ -104,8 +104,8 @@ TEXT_8 = (
     'library, so a PEC box enters the smoother as vacuum and stays whole-cell through '
     'pec_mask. The alignment advice below still applies on the two lanes that do. '
     'Validated conductor-plane gap=244.1µm over 2 normal interval(s), from z=0.0µm to '
-    '244.1µm (declared height=274.7µm). Separately, the declared-material column has 3 '
-    'same-permittivity sample slot(s), extent 366.2µm. This material extent is not the '
+    '244.1µm (declared height=274.7µm). Separately, the declared-material column has 2 '
+    'same-permittivity sample slot(s), extent 244.1µm. This material extent is not the '
     'conductor-plane gap. The declared-face fraction and material extent describe '
     'geometry; neither predicts a Z0 error. The frozen sweep cannot establish a current '
     'extractor accuracy bound. To snap onto a mesh matching the DECLARED board instead, '
@@ -159,8 +159,8 @@ TEXT_13 = (
     "MSL port 'checked': conductor-plane separation differs from the declared height by "
     '-10.1%, beyond the existing 8.3% geometry-advisory threshold. Validated conductor-'
     'plane gap=488.3µm over 4 normal interval(s), from z=0.0µm to 488.3µm (declared '
-    'height=543.2µm). Separately, the declared-material column has 5 same-permittivity '
-    'sample slot(s), extent 610.4µm. This material extent is not the conductor-plane gap. '
+    'height=543.2µm). Separately, the declared-material column has 4 same-permittivity '
+    'sample slot(s), extent 488.3µm. This material extent is not the conductor-plane gap. '
     'Place mesh nodes at the declared ground z=0.0µm and trace z=543.2µm or refine the '
     'normal mesh. This geometry difference does not predict a Z0 change or establish an '
     'extractor accuracy bound.'
@@ -494,8 +494,8 @@ TEXT_42 = (
     'library, so a PEC box enters the smoother as vacuum and stays whole-cell through '
     'pec_mask. The alignment advice below still applies on the two lanes that do. '
     'Validated conductor-plane gap=244.1µm over 2 normal interval(s), from z=0.0µm to '
-    '244.1µm (declared height=274.7µm). Separately, the declared-material column has 3 '
-    'same-permittivity sample slot(s), extent 366.2µm. This material extent is not the '
+    '244.1µm (declared height=274.7µm). Separately, the declared-material column has 2 '
+    'same-permittivity sample slot(s), extent 244.1µm. This material extent is not the '
     'conductor-plane gap. The declared-face fraction and material extent describe '
     'geometry; neither predicts a Z0 error. The frozen sweep cannot establish a current '
     'extractor accuracy bound. On the non-uniform profile, place mesh nodes at the '

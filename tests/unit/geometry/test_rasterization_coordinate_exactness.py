@@ -35,6 +35,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation
+from rfx.errors import RfxRefusal
 from rfx.geometry import csg as csg_mod
 from rfx.geometry import curved as curved_mod
 from rfx.geometry import mesh_import as mesh_import_mod
@@ -268,6 +269,14 @@ def test_realized_mask_is_x64_invariant(case):
     """Same declaration, same cells, regardless of jax_enable_x64."""
     shape = _shape_for(case)
     grid = _grid()
+    # Zero-cell material declarations refuse identically at both precisions.
+    if case in ("curved_patch", "box_zero_thickness_sheet"):
+        with pytest.raises(RfxRefusal) as first:
+            _material_mask(shape, grid)
+        with enable_x64(), pytest.raises(RfxRefusal) as second:
+            _material_mask(shape, grid)
+        assert str(first.value) == str(second.value)
+        return
     m0 = np.asarray(_material_mask(shape, grid))
     with enable_x64():
         m1 = np.asarray(_material_mask(shape, grid))
@@ -288,6 +297,14 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
     shape = _shape_for(case)
     grid = _grid()
     gnu = _nu_grid(tuple(graded))
+    # A surface owns no material cell in either lane.
+    if case in ("curved_patch", "box_zero_thickness_sheet"):
+        with pytest.raises(RfxRefusal) as first:
+            _material_mask(shape, grid)
+        with pytest.raises(RfxRefusal) as second:
+            _material_mask(shape, gnu, True)
+        assert str(first.value) == str(second.value)
+        return
     mu = np.asarray(_material_mask(shape, grid))
     mn = np.asarray(_material_mask(shape, gnu, True))
     # NU allocates one extra bounding node per axis; compare shared space

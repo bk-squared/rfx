@@ -95,12 +95,13 @@ def _no_old_bbox_claims(messages):
 
 @pytest.mark.parametrize("direction", ["+x", "-y"])
 @pytest.mark.parametrize("dx,material_um,n_material,frac,n_gap", [
-    (80e-6, 320., 4, .175, 3),
-    (60e-6, 300., 5, 254/60 - 4, 4),
+    (80e-6, 240., 3, .175, 3),
+    (60e-6, 240., 4, 254/60 - 4, 4),
 ])
 def test_legacy_misaligned_material_extent_is_not_the_conductor_gap(
     direction, dx, material_um, n_material, frac, n_gap,
 ):
+    # Centre sampling counts the cells between the nearest drawn face nodes.
     sim = _legacy(dx, direction)
     assembled = sim._msl_assemble_once()
     pe = sim._msl_ports[0]

@@ -157,14 +157,15 @@ def test_two_identical_slot_levels_stay_vacuum_and_agree():
     reads ``EPS_CORE`` again, a resample has come back; if the two disagree,
     a material value is following the metal again.
     """
+    # Leave one whole primal cell empty above each sheet under centre sampling.
     z_a, z_b = 0.6e-3, 1.0e-3
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
                      boundary="pec")
     sim.add_material("core", eps_r=EPS_CORE)
-    sim.add(Box((0.0, 0.0, 0.4e-3), (LX, LY, z_a - T_CU / 2)), material="core")
-    sim.add(Box((0.0, 0.0, z_a + T_CU / 2), (LX, LY, z_b - T_CU / 2)),
+    sim.add(Box((0.0, 0.0, 0.4e-3), (LX, LY, z_a)), material="core")
+    sim.add(Box((0.0, 0.0, z_a + DX), (LX, LY, z_b)),
             material="core")
-    sim.add(Box((0.0, 0.0, z_b + T_CU / 2), (LX, LY, 1.4e-3)), material="core")
+    sim.add(Box((0.0, 0.0, z_b + DX), (LX, LY, 1.4e-3)), material="core")
     for z in (z_a, z_b):
         sim.add(Box((0.2e-3, 0.2e-3, z), (0.8e-3, 0.8e-3, z)), material="pec")
 

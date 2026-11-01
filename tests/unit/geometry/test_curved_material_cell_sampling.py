@@ -30,10 +30,17 @@ KINDS = ['sphere', 'cylinder_x', 'cylinder_y', 'cylinder_z']
 def test_coax_clearance_uses_centred_disk_on_both_sides_of_ground():
     """The warning's old 48-cell snapshot pinned displaced PTFE (#1138)."""
     from tests.unit.geometry.test_fidelity_topology_findings import (
-        CLEAR_R, DX, EPS_COAX, JUNCTION_X, N_GND, Y_C, _junction_sim,
+        CLEAR_R, DX, EPS_COAX, JUNCTION_X, N_GND, N_SUB_LO, N_SUB_HI, Y_C, _junction_sim,
     )
 
     sim = _junction_sim(open_annulus=False)
+    # Draw the substrate on node faces; centre sampling needs no half-cell compensation.
+    from dataclasses import replace
+    for i, entry in enumerate(sim._geometry):
+        if entry.material_name == "sub":
+            lo, hi = entry.shape.bounding_box()
+            sim._geometry[i] = replace(entry, shape=Box(
+                (*lo[:2], N_SUB_LO * DX), (*hi[:2], (N_SUB_HI + 1) * DX)))
     grid = sim._build_grid()
     # This oracle reads material cells only; collect and deliberately drop PEC.
     mats = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]

@@ -1720,6 +1720,8 @@ def test_preflight_report_matches_the_committed_snapshot(
 ):
     """The report's structured fields and emission order are pinned.
 
+    MSL material-column counts follow centre sampling; conductor gaps stay unchanged.
+
     Order first: ``PreflightReport`` is a ``list``, so the sequence below is
     ``_validate_simulation_config``'s own call order made observable. A
     code-motion split that rebinds a moved method at a different position in
