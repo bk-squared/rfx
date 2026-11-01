@@ -23,8 +23,10 @@ def quantities(grid, *, create=False):
     return store
 
 
-def begin(sim, grid, *, shapes=(), conformal_shapes=(), smoothing=None):
+def begin(sim, grid, *, shapes=(), conformal_shapes=(), smoothing=None, conformal=None):
     store = quantities(grid, create=True)
+    if conformal is not None:
+        store["conformal"] = conformal
     if smoothing is not None:
         store["smoothing"] = (2 if smoothing == "full_tensor" else 3 if smoothing == "kottke_pec"
                               else int(bool(smoothing)))
@@ -45,7 +47,7 @@ def _weights(grid, component, *, face=False):
         w[lo:end] = d[lo:end]
         dual = (a != component) if not face else a == component
         if dual:
-            from rfx._grid_metric import dual_spacings_from_cells
+            from rfx._internal._grid_metric import dual_spacings_from_cells
             w = dual_spacings_from_cells(np.r_[w[-1] if periodic else 0., w])[1:]
         if face and a == component:
             w = (w > 0).astype(float)
