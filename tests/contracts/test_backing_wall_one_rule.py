@@ -138,6 +138,7 @@ def capture(sim, entry, path, invoke=None):
     jit_original = jax.jit
     grid_original = sim._build_nonuniform_grid
     from rfx.runners import _distributed_nu_wrapped as wrapped
+    from rfx.stepping import slab_wrap_uniform
     wrapped_original = wrapped.wrap
 
     def built_grid(*args, **kwargs):
@@ -231,6 +232,11 @@ def capture(sim, entry, path, invoke=None):
             raise AssertionError('distributed wall factory was not observed')
         return jit_original(fun, *args, **kwargs)
 
+    def uniform_wrapped_factory(context, *args, **kwargs):
+        captured.update(grid=context.grid, faces=context.pec_faces_frozen,
+                        backend='distributed-uniform')
+        raise Captured
+
     def forbidden(*args, **kwargs):
         raise AssertionError('backing-wall factory judge reached a field scan')
 
@@ -240,6 +246,7 @@ def capture(sim, entry, path, invoke=None):
                                        (uniform_loop, 'make_core_step', factory),
                                        (nu, '_build_nu_scan', nu_factory),
                                        (wrapped, 'wrap', wrapped_factory),
+                                       (slab_wrap_uniform, 'wrap_uniform', uniform_wrapped_factory),
                                        (jax, 'jit', distributed_factory),
                                        (jax.lax, 'scan', forbidden)):
             stack.enter_context(patch.object(obj, name, replacement))

@@ -1,4 +1,4 @@
-"""Uniform slabs hoist material means only when CPML shares the consumers."""
+"""Wrapped slabs share the one-device material-mean placement."""
 import inspect
 import re
 from pathlib import Path
@@ -10,7 +10,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx.core import yee
 from rfx.model import electric_metrics
-from rfx.stepping import slab_update
+from rfx.stepping import slab_update, slab_wrap
 
 
 def scene(boundary):
@@ -86,7 +86,7 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
 
     def jit(fun, *args, **kwargs):
         compiled = original(fun, *args, **kwargs)
-        if fun.__module__ != 'rfx.stepping.slab_uniform_loop' or fun.__name__ not in ('_run_cpml', '_run_pec'):
+        if fun.__module__ != 'rfx.stepping.slab_wrap' or fun.__name__ != 'run_fn':
             return compiled
 
         def run(*values, **named):
@@ -97,19 +97,30 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
             return executable(*values, **named)
         return run
 
-    monkeypatch.setattr(jax, 'jit', jit)
+    original_run = slab_wrap.run_steps
+
+    def run_steps(*args, **kwargs):
+        return original_run(*args, **kwargs, compile_loop=jit)
+
+    monkeypatch.setattr(slab_wrap, 'run_steps', run_steps)
     result = scene(boundary).run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
     assert np.isfinite(np.asarray(result.time_series)).all()
     assert len(captured) == 2, 'public run must lower and compile the uniform slab driver'
     for stage, hlo in zip(('lowered', 'compiled'), captured):
         (tmp_path / f'{boundary}-{stage}.hlo').write_text(hlo)
         means = means_inside_while(hlo)
-        if boundary == 'cpml':
-            assert not means, f'material means inside while body: {means}'
-        elif stage == 'lowered':
-            # Pin the input program; CPU optimization may move invariant work.
-            # Bandwidth: hoisting adds slab reads for update-only consumers (rfx-archive plans/absorber/20261026-cpml-cost-952 D1-L0 reading).
-            assert means, 'PEC must form material means inside the while body'
+        assert_mean_placement(means, boundary, stage, driver='wrapped')
+
+
+def assert_mean_placement(means, boundary, stage, *, driver):
+    # This scene has no closed-box TF/SF and always reaches the wrapped driver.
+    # The retained old-loop contract applies only to that driver's lowered PEC
+    # program; optimization can move its invariant work.
+    assert driver in ('wrapped', 'old_loop')
+    if driver == 'wrapped' or boundary == 'cpml':
+        assert not means, f'material means inside while body: {means}'
+    elif stage == 'lowered':
+        assert means, 'PEC must form material means inside the while body'
 
 
 def independent_means():
