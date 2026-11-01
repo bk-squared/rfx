@@ -39,7 +39,7 @@ features without requiring animation.
     <source src="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4" type="video/mp4" />
     <a href="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4">Download the boundary comparison</a>.
   </video>
-  <figcaption>The source and probe stay in the same positions. Absorbing boundaries let the pulse leave; metal walls reflect it and the probe continues to see returning fields. A current-run, single-mesh 2D TMz teaching example. <a href="/rfx/gallery/boundary-reflection/">Read the model, data and limits →</a></figcaption>
+  <figcaption>The source and probe stay in the same positions. Absorbing boundaries let the pulse leave; metal walls reflect it and the probe continues to see returning fields. A current-run, single-mesh 2D TMz teaching example. <a href="/rfx/examples/teaching/boundary-reflection/">Read the model, data and limits →</a></figcaption>
 </figure>
 
 ## 3. Measure the quantity you need
@@ -52,16 +52,14 @@ Keep the reference run, normalization and measurement planes with the result.
 
 ## Waves and materials
 
-Follow a pulse through a [dielectric interface](/rfx/gallery/dielectric-interface/)
-or watch interference in a [closed cavity](/rfx/gallery/cavity-standing-wave/).
+Follow a pulse through a [dielectric interface](/rfx/examples/teaching/dielectric-interface/)
+or watch interference in a [closed cavity](/rfx/examples/teaching/cavity-standing-wave/).
 Both provide actual time-domain snapshots and downloadable arrays generated from
 their public source. They teach field behavior on one mesh, not numerical accuracy.
 
-Then read the [dielectric slab](/rfx/gallery/multilayer_fresnel/): see how the two
-interfaces create reflection and transmission, then run the
-[flux-monitor tutorial](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/slab_rt_flux_monitor.py).
-The linked legacy gallery records an older calculation; use its stated version
-when reading the comparison.
+Then run the
+[flux-monitor tutorial](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/slab_rt_flux_monitor.py)
+on a dielectric slab: see how its two interfaces create reflection and transmission.
 
 **Try changing:** slab permittivity or thickness, one at a time. Plot the full
 frequency response and compare with a lossless slab's energy balance or its
@@ -69,24 +67,18 @@ analytic reference, using the same model and reference planes.
 
 ## Guided waves and filters
 
-Compare the [empty rectangular guide](/rfx/gallery/waveguide_wr90/) with the
-[dielectric taper](/rfx/gallery/waveguide-taper/). The first introduces a guided
-mode; the second adds a material transition and a reflected-wave objective
-(its example is withheld for now: rfx refuses its right-hand port, whose
-section crosses into the dielectric load and so holds two media).
-The [microstrip notch](/rfx/gallery/microstrip-notch/) makes a compact next step:
-one length controls a resonant branch.
+Start with the [empty rectangular guide](/rfx/gallery/waveguide_wr90/): it
+introduces a guided mode and compares it with its closed form.
 
-**Try changing:** the taper's material profile or the stub length. Keep the port
+**Try changing:** add one dielectric load or one stub at a time. Keep the port
 definition and normalization fixed so the curves answer the same question.
 
 ## Radiation and scattering
 
-The [beam-steering film](/rfx/gallery/beam-steering/) connects a dielectric cover
-to a far-field pattern. Then use the runnable
+Use the runnable
 [antenna pattern example](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/antenna_farfield_pattern.py)
 or [scattering example](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/rcs_scattering.py)
-from the source checkout.
+from the source checkout to connect a source to a far-field pattern.
 
 **Try changing:** the source orientation before adding structural complexity.
 Check the collection surface, clearance and incident-reference subtraction.
@@ -96,9 +88,7 @@ Directivity, realized gain and efficiency are different quantities.
 
 Read each optimization frame from left to right: parameter field, measured
 response, then sensitivity. A derivative refers to a particular parameterization
-and objective. The [beam-steering film](/rfx/gallery/beam-steering/) differentiates
-latent variables; the [taper film](/rfx/gallery/waveguide-taper/) displays section
-permittivity sensitivities.
+and objective; each [showcase](/rfx/showcase/) case names its own.
 
 Before using a gradient to support a design claim, check both finite-difference
 agreement and stability with a longer time record. See
