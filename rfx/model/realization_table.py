@@ -293,6 +293,4 @@ def finish_table(sim, conductors, *, lane):
         from rfx.model.realization_snapshot import finish
         finish(record, conductors, packed)
     object.__setattr__(conductors, "_realization_record", record)
-    from rfx.model.realization_transport import publish
-    publish(record)
     return record

@@ -470,9 +470,8 @@ class PreparedSolve:
 
 def prepare_solve(sim, *, distributed=False):
     """Keep solve ownership local to this execution, never in audit caches."""
-    from rfx.model.realization_transport import is_replay
-    if not is_replay():
-        sim._kernel_realization = None
+    from rfx.model.realization_reference import forget_kernel
+    forget_kernel(sim)
     if distributed:
         release_declaration_caches(sim)
     return PreparedSolve(sim)

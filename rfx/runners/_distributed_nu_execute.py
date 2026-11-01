@@ -344,7 +344,7 @@ def forward_from_materials(
     self, *, diagnostics=(), **kwargs
 ) -> ForwardResult:
     """Pack the shared distributed graded solve for differentiable callers."""
-    grid, result, _ = self._execute_distributed_nonuniform_from_materials(
+    grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
         diagnostics=diagnostics,
         **kwargs,
     )
@@ -353,6 +353,7 @@ def forward_from_materials(
     warn_if_singular_value_exceeds_one(
         result.get('s_params'), result.get('s_param_freqs'), extractor="forward(distributed graded)")
     return pack_nu_forward_result(
+        realized_geometry=geometry_record,
         diagnostics=result.get('diagnostics', diagnostics),
         time_series=result.get('time_series'), grid=grid, dt=grid.dt,
         s_params=result.get('s_params'), freqs=result.get('s_param_freqs'),
