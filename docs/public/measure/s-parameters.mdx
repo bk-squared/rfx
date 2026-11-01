@@ -430,6 +430,11 @@ graded, multi-device, subgridded, and the completed S of `ringdown=`) and every
 calculator, on an eager call (under `jax.grad` or `jax.jit` nothing is checked).
 Not checked: `waveguide_sparams` from `run()` and `forward()`, and the
 low-level `extract_*` functions and `compute_floquet_s_params`.
+`compute_floquet_s_params` reads the accumulators that `update_floquet_dft`
+builds in your own time loop: call `update_floquet_dft` once per step, after the
+E update, on a plane at index 1 or above, and put the reflection plane between
+the source and the structure. A plane on the far side of the source reads the
+source's own backward wave as the reflection.
 `compute_msl_s_matrix` warns already above float32 rounding and
 returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 
