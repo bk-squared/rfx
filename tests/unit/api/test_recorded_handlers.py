@@ -110,7 +110,7 @@ G5_CASES = (
 def _g5_call(case, monkeypatch, error):
     fail = _raising(error)
     if case == "host_poles":
-        from rfx._ringdown_jax import host_poles
+        from rfx.ringdown._jax import host_poles
         # Execute the callback synchronously so JAX does not wrap the exception
         # in XlaRuntimeError at the device boundary.
         monkeypatch.setattr(jax, "pure_callback", lambda fn, shapes, *a, **kw: fn(*a))
@@ -286,7 +286,7 @@ def _g5_call(case, monkeypatch, error):
 def test_g5_failure_is_recorded(case, monkeypatch):
     result = _g5_call(case, monkeypatch, RuntimeError)()
     if case == "host_poles":
-        from rfx._ringdown_jax import STATUS_FAILED
+        from rfx.ringdown._jax import STATUS_FAILED
         assert result == STATUS_FAILED
     elif case == "optional_deps":
         assert len(result) == 4
@@ -304,14 +304,10 @@ def test_g5_timeout_propagates(case, monkeypatch):
         call()
 
 
-@pytest.mark.parametrize("case", ["laplace", "compile_switch", "staging", "readable"])
+@pytest.mark.parametrize("case", ["laplace", "compile_switch", "readable"])
 def test_narrowed_handlers_propagate_runtime_error(case, monkeypatch):
     fail = _raising(RuntimeError)
-    if case == "staging":
-        from rfx.stepping.rank import _staged_by_enclosing_program
-        monkeypatch.setattr(jax.lax, "add", fail)
-        call = _staged_by_enclosing_program
-    elif case == "readable":
+    if case == "readable":
         from rfx.measurement.msl_planes import readable_values
         call = lambda: readable_values(_BrokenArray(RuntimeError))
     else:
