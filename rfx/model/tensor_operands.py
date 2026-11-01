@@ -61,6 +61,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     The caller retains its warning policy and PEC-mask handling. Only the
     waveguide device supplies ``zero_inverse_on`` for interior PEC cells.
     """
+    from rfx.model.realization_integrals import begin
+    begin(sim, grid, conformal_shapes=pec_shapes or (), smoothing=subpixel_smoothing)
     conformal_module.validate_conformal_min_weight(conformal_min_weight)
     # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
     # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
@@ -80,6 +82,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         # in its own pad instead of a vacuum facet at the seam. PEC shapes
         # arrive continued from assembly, with the MSL entry exception.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+        begin(sim, grid, shapes=shape_eps_pairs)
         warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         aniso_inv_eps = compute_inv_eps_tensor_diag(
             grid,
@@ -118,6 +121,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         )
         # #1043 stage B: same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+        begin(sim, grid, shapes=shape_eps_pairs)
         if subpixel_smoothing != "full_tensor":
             warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         if shape_eps_pairs:

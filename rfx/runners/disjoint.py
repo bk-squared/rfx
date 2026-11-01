@@ -110,6 +110,8 @@ def run_disjoint_stage2_path(
         for mapping, probe in zip(contract.probe_mappings, sim._probes)
     ]
     samples = []
+    from rfx.model.realization_legacy import disjoint_kernel
+    _, geometry_record = disjoint_kernel(sim, grid_coarse, config, contract)
     for step in range(int(n_steps)):
         t = float(step * config.dt)
         if source_timing == "pre_step":
@@ -151,6 +153,7 @@ def run_disjoint_stage2_path(
         time_series = jnp.zeros((int(n_steps), 0), dtype=state.ex_f.dtype)
 
     return Result(
+        realized_geometry=geometry_record,
         diagnostics=diagnostics,
         state=state,
         time_series=time_series,
