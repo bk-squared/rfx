@@ -217,7 +217,7 @@ jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
 True gives first-order convergence at curved dielectric interfaces, worst at high contrast (eps ~30 and above).
-`run()` warns (`CurvedSmoothingWarning`) only for a smoothed `Sphere` or `Cylinder` at 10 times the contrast of its neighbour or more.
+`run()` warns (`CurvedSmoothingWarning`) only for a smoothed `Sphere` or `Cylinder` at 10 times the contrast of the background or of another declared dielectric, or more.
 Below that no message is given, and convergence is still first order: a lossless eps-4 sphere's extinction converges first order against Mie over three meshes.
 There smoothing is still closer to Mie than the staircase at each mesh.
 A measured eps-38 rod resonance was off by 1–2% on practical meshes, and up to 8x further off than without smoothing.
@@ -475,7 +475,7 @@ The excess comes from the port's V·I* reading of power near its plane: at 10–
 Why V and I misread the power there is not determined.
 Workaround on lines like this one: place the first probe plane 12 mm or more from the feed plane (`add_msl_port(..., n_probe_offset=...)`, in cells: 60 cells at 0.2 mm); with it at 12 mm the same line's `|S21|` exceeds 0 dB by at most 0.017 dB (largest singular value up to 1.0034).
 This is one line's evidence (record kept with the project); a clearance rule or default waits for a sweep over several lines.
-On a one-stub line, moving only the probes changes `|S21|` by up to 0.47 dB on the null's upper shoulder and the null depth by 2.8–3.4 dB; at bins where S stays passive no message reports it.
+On a one-stub line, moving only the probes changes `|S21|` by up to 0.47 dB on the null's upper shoulder (1.28 dB on a 45 mm feed) and the null depth by 2.8–3.4 dB; at bins where S stays passive no message reports it.
 The automatic first-probe offset is at least five substrate heights (4 mm at h = 0.8 mm), inside the zone above.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
@@ -540,7 +540,7 @@ HFSS. The cause is not known. On a uniform mesh the gap is larger and falls firs
 1.96 %), because a free PEC sheet edge is solved 0.35 cell beyond its last node.
 The stopband minima also move with the feed length: with longer feeds they are 5.8 and 16.6 dB deeper, and the
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
-power reading near its plane (entry above) is part of this; how much is not known.
+power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
 ## Ring-down completion and the early stop
 
