@@ -1461,7 +1461,6 @@ def extend_cpml_pad_materials(
     ply: int, phy: int,
     plz: int, phz: int,
     dispersion_pole_mask: jnp.ndarray | None = None,
-    *, extra_arrays: list | None = None,
 ):
     """Extend eps_r/sigma/mu_r into the CPML padding so guided modes see an
     impedance-matched absorber, equivalent to UPML. Each CPML face copies
@@ -1614,7 +1613,7 @@ def extend_cpml_pad_materials(
     -------
     (eps_r, sigma, mu_r)
     """
-    arrays = [eps_r, sigma, mu_r] + ([] if extra_arrays is None else list(extra_arrays))
+    arrays = [eps_r, sigma, mu_r]
     poleish = dispersion_pole_mask
 
     def _vacuum(e, s, m):
@@ -1719,8 +1718,6 @@ def extend_cpml_pad_materials(
     )
 
     eps_r, sigma, mu_r = arrays[0], arrays[1], arrays[2]
-    if extra_arrays is not None:
-        extra_arrays[:] = arrays[3:]
     return eps_r, sigma, mu_r
 
 

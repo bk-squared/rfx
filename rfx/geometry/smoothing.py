@@ -1260,6 +1260,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             best_abs_sdf = None
             best_nx = best_ny = best_nz = None
 
+            from rfx.model.realization_integrals import host_owner
             owner = None
             for shape_index, shape in enumerate(sdf_shapes):
                 from rfx._periodic import periodic_sdf
@@ -1268,12 +1269,12 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                     normal_fn=_get_normal_fn(shape))
 
                 if sdf_union is None:
-                    owner = xp.zeros_like(s, dtype=int)
+                    owner = host_owner(s)
                     sdf_union = s
                     best_abs_sdf = xp.abs(s)
                     best_nx, best_ny, best_nz = n_x, n_y, n_z
                 else:
-                    owner = xp.where(s < sdf_union, shape_index, owner)
+                    owner = host_owner(s, shape_index, owner, sdf_union)
                     sdf_union = xp.minimum(sdf_union, s)
                     # Update normal where this shape's surface is closer
                     closer = xp.abs(s) < best_abs_sdf
@@ -1652,8 +1653,8 @@ def compute_inv_eps_tensor_diag(
                 normal_fn=_get_normal_fn(pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
-            from rfx.model.realization_integrals import capture
-            capture(grid, (pec_shape,), f, xp.zeros_like(f, dtype=int), i)
+            from rfx.model.realization_integrals import capture, host_owner
+            capture(grid, (pec_shape,), f, host_owner(f), i)
             inv_c = _kottke_inv_eps_diag(
                 f, xp.inf, eps[i], n_x, n_y, n_z, is_pec=True, xp=xp,
             )[i]

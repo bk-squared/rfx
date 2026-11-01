@@ -53,10 +53,22 @@ def _weights(grid, component, *, face=False):
     return result[0] * result[1] * result[2]
 
 
+def host_owner(sdf, index=0, owner=None, union=None):
+    """Partition concrete samples without adding device operands or tracing."""
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(sdf) or is_tracer(union):
+        return None
+    if union is None:
+        return np.zeros(np.shape(sdf), dtype=np.int32)
+    if owner is not None:
+        np.copyto(owner, index, where=np.asarray(sdf) < np.asarray(union))
+    return owner
+
+
 def capture(grid, shapes, fraction, owner, component, *, face=False):
     from rfx.core.jax_utils import is_tracer
     store = quantities(grid)
-    if not store or is_tracer(fraction) or any(is_tracer(grid.cells(a)) for a in range(3)):
+    if owner is None or not store or is_tracer(fraction) or any(is_tracer(grid.cells(a)) for a in range(3)):
         return
     ids = store.get("owners", {})
     if not any(id(s) in ids for s in shapes):
