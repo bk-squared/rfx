@@ -532,23 +532,8 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
     if dz.size == 0:
         return
     edges = np.concatenate(([0.0], np.cumsum(dz)))
-    # Sample positions must be the ones the RUN uses, and the occupancy
-    # rule must be the run's rule. This validator previously modelled both
-    # by hand — cell centres plus a bare half-open span — and was wrong on
-    # each count: dielectric coordinates are E-NODES (cell edges) since
-    # #562 (the node sampler's thin-sheet branch snaps a sub-cell
-    # dielectric Box onto its nearest node, #48/#75/#371). With the hand
-    # model this check diverged from the rasterizer on boxes straddling a
-    # grading transition — the #325 signature it exists to catch — and
-    # went SILENT on one of them (#562 review, F2). So call the production
-    # path instead of imitating it: node positions through the same two
-    # steps the grid builder composes, and the shape's own mask for a
-    # dielectric; for a PEC Box the production rule is the #931 §1.1
-    # CENTRE-sampled volume rule (half-open on cell centres), spelled by
-    # ``rasterize_grid._box_axis_volume`` and called here. x/y are passed
-    # as single-sample arrays because only the z profile is needed here;
-    # the mask admits the box's own midpoint, so the combined mask's z
-    # profile is the z-axis mask.
+    # Count the production volume window on the graded spine. Only the z
+    # profile is needed; the other axes are sampled at the Box midpoint.
     from rfx.model.graded_grid import node_positions_from_profile
     z_nodes = np.asarray(node_positions_from_profile(dz), dtype=np.float64)
 
@@ -564,21 +549,16 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
 
         x_mid = np.array([0.5 * (float(c1[0]) + float(c2[0]))])
         y_mid = np.array([0.5 * (float(c1[1]) + float(c2[1]))])
-        try:
-            is_pec = (self._resolve_material(entry.material_name).sigma
-                      >= self._PEC_SIGMA_THRESHOLD)
-        except KeyError:
-            is_pec = False
-        if is_pec:
-            # #931 §1.1: a PEC VOLUME is centre-sampled, half-open on
-            # the cell centres — the production rule
-            # (rasterize_grid._box_axis_volume), not the node sampler.
-            from rfx.geometry.rasterize_grid import _box_axis_volume
-            actual = int(np.count_nonzero(
-                np.asarray(_box_axis_volume(z_centres, z_lo, z_hi, np.diff(z_nodes)))))
-        else:
-            mask = np.asarray(entry.shape.mask_on_coords(x_mid, y_mid, z_nodes))
-            actual = int(np.count_nonzero(mask))
+        from rfx.geometry.rasterize_grid import GridCoords, _material_cell_mask
+        coords = GridCoords(x_mid, y_mid, z_nodes[:-1], (1, 1, len(z_centres)))
+        centres = GridCoords(x_mid, y_mid, z_centres, coords.shape)
+        sizes = tuple(np.array([max(abs(c2[a] - c1[a]), float(np.min(dz)))])
+                      for a in (0, 1)) + (np.diff(z_nodes),)
+        declared_z = self._unresolved_domain[2]
+        faces = (None, None, (declared_z, z_nodes[-1]) if declared_z > 0 and len(dz) > 1 else None)
+        mask = _material_cell_mask(entry.shape, coords, centres, cell_sizes=sizes,
+                                   domain_faces=faces, refuse_empty=False)
+        actual = int(np.count_nonzero(np.asarray(mask)))
         local = (edges[:-1] < z_hi) & (edges[1:] > z_lo)
         if not np.any(local):
             continue

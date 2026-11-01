@@ -75,7 +75,7 @@ def _permittivity(sim, port, point, grid, coords, cache, axis=None):
             centres = (centres_from_nonuniform_grid(grid, coords) if nonuniform
                        else centres_from_uniform_grid(grid))
             cache[key] = np.asarray(_material_cell_mask(
-                entry.shape, coords, centres, grid=grid,
+                entry.shape, coords, centres, grid=grid, name=entry.material_name,
                 cell_sizes=(cell_sizes_from_nonuniform_grid(grid) if nonuniform
                             else cell_sizes_from_uniform_grid(grid))))
         if any(cache[key][sample] for sample in samples):

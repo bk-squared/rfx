@@ -48,7 +48,8 @@ def _scene(offset, graded=False, periodic=False, rich=False, smoothing=False, ke
     sim.add(shape, material='box')
     # Nearest node of the DRAWING, with no implementation helper.
     nodes = (np.arange(13) * DX if periodic else nodes, nodes, nodes)
-    indices = tuple(tuple(int(np.argmin(abs(axis_nodes - face))) for face in (lo, hi))
+    indices = tuple(tuple(int(np.flatnonzero(np.isclose(abs(axis_nodes - face),
+                                              np.min(abs(axis_nodes - face)), rtol=0, atol=1e-15))[0]) for face in (lo, hi))
                     for axis_nodes in nodes)
     expected = np.zeros((13, 13, 13), bool)
     expected[tuple(slice(first, last) for first, last in indices)] = True
@@ -79,7 +80,7 @@ def _assert_arrays(built, expected, rich, *, kerr=True, poles=True):
             np.testing.assert_array_equal(np.asarray(built[-1]) > 0, expected)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 @pytest.mark.parametrize('periodic', [False, True], ids=['walls', 'periodic'])
 @pytest.mark.parametrize('rich', [False, True], ids=['eps', 'sigma-mu-lorentz-kerr'])
@@ -102,7 +103,7 @@ class _Built(Exception):
     pass
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('rich', [False, True], ids=['eps', 'sigma-mu-lorentz-kerr'])
 @pytest.mark.parametrize('lane', ['uniform-run', 'uniform-forward', 'graded-run',
                                   'graded-forward', 'distributed_v2-run',
@@ -141,7 +142,7 @@ def test_public_build_reaches_same_cells(monkeypatch, offset, lane, rich):
     _assert_record(sim, indices, nodes)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 def test_vmap_swept_material_mask(offset):
     from rfx.vmap_sweep import _build_batched_materials
     sim, _, expected, indices, nodes = _scene(offset)
@@ -153,7 +154,7 @@ def test_vmap_swept_material_mask(offset):
     _assert_record(sim, indices, nodes)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('rich', [False, True], ids=['eps', 'sigma-mu'])
 def test_subgrid_coarse_and_fine_build(monkeypatch, offset, rich):
     import rfx.geometry.rasterize_grid as raster
@@ -188,7 +189,7 @@ def test_subgrid_coarse_and_fine_build(monkeypatch, offset, rich):
     _assert_arrays(fine, expected_fine, rich, kerr=False, poles=False)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('periodic', [False, True])
 def test_traced_graded_coordinates(offset, periodic):
     sim, shape, expected, _, _ = _scene(offset, graded=True, periodic=periodic)
@@ -229,14 +230,14 @@ def test_subgrid_forward_not_reached_refuses_refinement():
         sim.forward(n_steps=1, skip_preflight=True)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('operation', ['union', 'difference', 'intersection'])
 def test_csg_box_leaves(offset, operation):
     from rfx.geometry import csg
     sim, first, a, _, _ = _scene(offset)
     second = Box((.005 + offset * DX,) * 3, (.010 + offset * DX,) * 3)
     b = np.zeros(a.shape, bool)
-    start, stop = (int(round(v / DX)) for v in (second.corner_lo[0], second.corner_hi[0]))
+    start, stop = (int(np.floor(v / DX + .5 - 1e-10)) for v in (second.corner_lo[0], second.corner_hi[0]))
     b[start:stop, start:stop, start:stop] = True
     expected = {'union': a | b, 'difference': a & ~b, 'intersection': a & b}[operation]
     np.testing.assert_array_equal(getattr(csg, operation)(first, second, sim._build_grid()), expected)
@@ -267,10 +268,12 @@ def test_box_composites_use_volume_leaves(traced):
     patch = CurvedPatch(center=(.0053, .0053, .0033), length=.004,
                         width=.004, radius=.01)
     # Staircase leaves have zero z thickness: they own no volume cell.
-    assert not np.asarray(sample(patch)).any()
+    from rfx.errors import RfxRefusal
+    with pytest.raises(RfxRefusal, match='ZERO cells'):
+        sample(patch)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 def test_dual_average_build_uses_same_primal_widths(monkeypatch, offset):
     import rfx.geometry.rasterize_grid as raster
     from rfx.runners.nonuniform import assemble_interface_eps_nu
@@ -293,7 +296,7 @@ def test_dual_average_build_uses_same_primal_widths(monkeypatch, offset):
     _assert_record(sim, indices, nodes)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('graded', [False, True])
 def test_periodic_image_uses_centre_window(offset, graded):
     sim, _, _, _, nodes = _scene(offset, graded=graded, periodic=True)
@@ -308,7 +311,8 @@ def test_periodic_image_uses_centre_window(offset, graded):
     hi = period + xnodes[2] + offset * (xnodes[3] - xnodes[2])
     shape = Box((lo, .0033, .0033), (hi, .0083, .0083))
     extended = np.r_[xnodes[:-1], period + xnodes]
-    first, last = (int(np.argmin(abs(extended - face))) for face in (lo, hi))
+    first, last = (int(np.flatnonzero(np.isclose(abs(extended - face),
+                                          np.min(abs(extended - face)), rtol=0, atol=1e-15))[0]) for face in (lo, hi))
     expected = np.zeros(grid.shape, bool)
     ylo, yhi = (int(np.argmin(abs(ynodes - face))) for face in (.0033, .0083))
     expected[np.arange(first, last) % 12, ylo:yhi, ylo:yhi] = True
@@ -356,7 +360,7 @@ def test_varying_periodic_profile_not_reached_refuses_grading():
         sim.run(n_steps=1, skip_preflight=True)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 def test_csg_rasterize_uses_material_cells(offset):
     from rfx.geometry.csg import rasterize
     sim, shape, expected, indices, nodes = _scene(offset)
@@ -366,7 +370,7 @@ def test_csg_rasterize_uses_material_cells(offset):
     _assert_record(sim, indices, nodes)
 
 
-@pytest.mark.parametrize('offset', [.3, .7])
+@pytest.mark.parametrize('offset', [.3, .5, .7])
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('periodic', [False, True])
 def test_line_stub_uses_same_material_mask(offset, graded, periodic):
@@ -414,3 +418,143 @@ def test_box_on_declared_domain_face_fills_last_cell(graded, pec):
     else:
         assert entity.axes[0].node_range == (pad, pad + last_node)
         np.testing.assert_allclose(entity.axes[0].bounds_m, (0., last_node * DX), atol=1e-16)
+
+
+ZERO_LANES = ['uniform-run', 'uniform-forward', 'graded-run', 'graded-forward',
+              'distributed_v2-run', 'distributed_v2-forward', 'distributed_nu-run',
+              'distributed_nu-forward', 'vmap-base', 'periodic', 'graded-periodic',
+              'smoothed', 'graded-smoothed', 'subgrid-coarse', 'subgrid-fine',
+              'dual-average', 'csg-rasterize', 'traced', 'line-stub', 'graded-line-stub']
+
+
+@pytest.mark.parametrize('lane', ZERO_LANES)
+@pytest.mark.parametrize('thickness', [0., .1], ids=['zero-thickness', 'no-centre'])
+def test_zero_cell_material_is_refused(monkeypatch, lane, thickness):
+    from rfx.errors import RfxRefusal
+    import rfx.model.materials as assembly
+    graded = lane.startswith(('graded', 'distributed_nu')) or lane == 'dual-average'
+    sim, *_ = _scene(.3, graded=graded, periodic='periodic' in lane,
+                     rich=True, kerr=False, poles=lane != 'subgrid-coarse',
+                     **({'interface_eps': 'dual_average'} if lane == 'dual-average' else {}))
+    # No centre lies in this drawing on either the coarse or half-size grid.
+    from dataclasses import replace
+    sim._geometry[0] = replace(sim._geometry[0], shape=Box(
+        (2 * DX, 2 * DX, 3.1 * DX), (6 * DX, 6 * DX, (3.1 + thickness) * DX)))
+    sim.add_source((DX,) * 3, 'ez', amplitude_kind='current')
+    sim.add_probe((2 * DX,) * 3, 'ez')
+    if lane == 'subgrid-coarse':
+        sim.add_refinement((2 * DX, 10 * DX), ratio=2, validation='research')
+    original = assembly.assemble_cells
+
+    def stop_after_build(*args, **kwargs):
+        original(*args, **kwargs)
+        raise _Built('empty material was admitted')
+
+    monkeypatch.setattr(assembly, 'assemble_cells', stop_after_build)
+    # Traced coordinates report a runtime callback refusal through XLA.
+    error = Exception if lane == 'traced' else RfxRefusal
+    with pytest.raises(error, match='ZERO cells') as caught:
+        if lane == 'subgrid-fine':
+            from rfx.geometry.rasterize_grid import rasterize_geometry
+            lines = np.arange(24) * DX / 2 + DX / 4
+            centres = GridCoords(lines, lines, lines, (24,) * 3)
+            rasterize_geometry(sim._geometry, sim._resolve_material, centres,
+                               centres=centres, cell_sizes=(np.full(24, DX / 2),) * 3)
+        elif lane == 'csg-rasterize':
+            from rfx.geometry.csg import rasterize
+            rasterize(sim._build_grid(), [(sim._geometry[0].shape, 4., .2)])
+        elif lane.endswith('line-stub'):
+            from types import SimpleNamespace
+            from rfx.preflight.line_stub import _permittivity
+            grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+            coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
+            _permittivity(sim, SimpleNamespace(eps_r_sub=1.), (3 * DX,) * 3, grid, coords, {})
+        elif lane == 'traced':
+            grid = sim._build_grid()
+            co = coords_from_uniform_grid(grid)
+            sizes = cell_sizes_from_uniform_grid(grid)
+            def sample(x):
+                coords = GridCoords(x, co.y, co.z, co.shape)
+                return _material_cell_mask(sim._geometry[0].shape, coords,
+                                           cell_centres_from_nodes(coords, sizes),
+                                           cell_sizes=sizes, name='box')
+            jax.jit(sample)(co.x).block_until_ready()
+        elif lane in ('smoothed', 'graded-smoothed'):
+            sim.run(n_steps=1, skip_preflight=True, subpixel_smoothing=True)
+        elif lane == 'vmap-base':
+            from rfx.vmap_sweep import vmap_material_sweep
+            vmap_material_sweep(sim, 'box.eps_r', [4., 5.], n_steps=1)
+        elif lane.endswith(('run', 'forward')) or lane == 'subgrid-coarse':
+            devices = host_devices(2) if lane.startswith('distributed') else None
+            if lane.endswith('forward'):
+                sim.forward(n_steps=1, checkpoint=False, skip_preflight=True,
+                            **(dict(distributed=True, devices=devices) if devices else {}))
+            else:
+                sim.run(n_steps=1, skip_preflight=True, **(dict(devices=devices) if devices else {}))
+        else:
+            grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+            original(sim, grid)
+    assert 'drawn thickness' in str(caught.value)
+    assert 'local cell' in str(caught.value)
+    assert 'Refine' in str(caught.value)
+
+
+@pytest.mark.parametrize('pec', [False, True])
+def test_collapsed_axis_domain_clause_never_shrinks(pec):
+    from rfx.model.materials import assemble_cells
+    sim = Simulation(10e9, (8 * DX, 8 * DX, DX), dx=DX, cpml_layers=0,
+                     boundary='pec', mode='2d_tmz')
+    sim.add_material('volume', **({'sigma': 1e9} if pec else {'eps_r': 4.}))
+    sim.add(Box((2 * DX, 2 * DX, 0.), (6 * DX, 6 * DX, DX)), material='volume')
+    built = assemble_cells(sim, sim._build_grid())
+    mask = np.asarray(built[3]) if pec else np.asarray(built[0].eps_r) == 4.
+    assert mask.sum() == 16
+
+
+def test_zero_thickness_on_domain_face_is_not_inflated():
+    from rfx.errors import RfxRefusal
+    sim = Simulation(10e9, (8 * DX, 8 * DX, 6.4 * DX), dx=DX, cpml_layers=0,
+                     boundary='pec', snap='declared')
+    sim.add_material('film', eps_r=4.)
+    sim.add(Box((2 * DX, 2 * DX, 6.4 * DX), (6 * DX, 6 * DX, 6.4 * DX)), material='film')
+    with pytest.raises(RfxRefusal, match="Material volume 'film'.*ZERO cells"):
+        sim._assemble_materials(sim._build_grid())
+
+
+def test_subgrid_fine_refuses_layer_resolved_only_on_coarse_grid():
+    from rfx.errors import RfxRefusal
+    from rfx.runners.subgridded import _run_subgridded_once
+    from dataclasses import replace
+    sim, *_ = _scene(.3)
+    sim._geometry[0] = replace(sim._geometry[0], shape=Box(
+        (2 * DX, 2 * DX, 3.45 * DX), (6 * DX, 6 * DX, 3.55 * DX)))
+    sim.add_refinement((2 * DX, 10 * DX), ratio=2, validation='research')
+    grid = sim._build_grid()
+    coarse = sim._assemble_materials(grid)
+    assert np.any(np.asarray(coarse[0].eps_r) == 4.)
+    with pytest.raises(RfxRefusal, match="Material volume 'box'.*ZERO cells"):
+        _run_subgridded_once(sim, grid, coarse[0], coarse[3], 1)
+
+
+def test_graded_profile_domain_placeholder_does_not_extend_box():
+    from rfx.errors import RfxRefusal
+    sim = Simulation(10e9, (8 * DX, 8 * DX, 0.), dx=DX, cpml_layers=0,
+                     boundary='pec', dz_profile=np.array([.9, 1.1] * 4) * DX)
+    sim.add_material('film', eps_r=4.)
+    sim.add(Box((2 * DX, 2 * DX, -DX), (6 * DX, 6 * DX, 0.)), material='film')
+    with pytest.raises(RfxRefusal, match="Material volume 'film'.*ZERO cells"):
+        sim._assemble_materials_nu(sim._build_nonuniform_grid())
+
+
+@pytest.mark.parametrize('graded', [False, True])
+def test_one_cell_axis_domain_clause_does_not_inflate_material(graded):
+    from rfx.errors import RfxRefusal
+    sim = Simulation(10e9, (8 * DX, 8 * DX, .4 * DX), dx=DX,
+                     cpml_layers=0, boundary='pec', snap='declared',
+                     **({'dz_profile': np.array([DX])} if graded else {}))
+    sim.add_material('film', eps_r=4.)
+    sim.add(Box((2 * DX, 2 * DX, 0.), (6 * DX, 6 * DX, .4 * DX)), material='film')
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    from rfx.model.materials import assemble_cells
+    with pytest.raises(RfxRefusal, match="Material volume 'film'.*ZERO cells"):
+        assemble_cells(sim, grid)

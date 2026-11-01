@@ -234,7 +234,8 @@ def assemble_cells(
     for declared_entry, entry in zip(sim._geometry, geometry, strict=True):
         mat = sim._resolve_material(entry.material_name)
         mask = _material_cell_mask(entry.shape, _coords, _centres,
-                                   grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces)
+                                   grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
+                                   name=entry.material_name, refuse_empty=mat.sigma < sim._PEC_SIGMA_THRESHOLD)
 
         if mat.sigma >= sim._PEC_SIGMA_THRESHOLD:
             solved_shape = entry.shape if nonuniform else continued_conductor_shape(
@@ -312,7 +313,8 @@ def assemble_cells(
         if mat.debye_poles or mat.lorentz_poles:
             # Poles retain their declared occupancy, before continuation.
             pole_mask = _material_cell_mask(declared_entry.shape, _coords, _centres,
-                                            grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces)
+                                            grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
+                                            name=entry.material_name, refuse_empty=mat.sigma < sim._PEC_SIGMA_THRESHOLD)
             if mat.sigma >= sim._PEC_SIGMA_THRESHOLD and cells is not None:
                 from rfx.geometry.rasterize_grid import pec_volume_cell_mask
                 pole_mask = pec_volume_cell_mask(declared_entry.shape, _centres, _cell_sizes, grid=sampling_grid, domain_faces=domain_faces)

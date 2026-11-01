@@ -351,6 +351,40 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
 
 
 def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
+                        grid=None, cell_sizes=None, domain_faces=None, name=None,
+                        refuse_empty=True):
+    """Sample a material volume and refuse a declaration owning no cells."""
+    if cell_sizes is None:
+        cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
+                      else cell_sizes_from_uniform_grid(grid) if grid is not None
+                      else tuple(axis_cell_sizes(n) for n in coords[:3]))
+    mask = _sample_material_cells(shape, coords, centres, grid=grid,
+                                 cell_sizes=cell_sizes, domain_faces=domain_faces)
+    if refuse_empty:
+        from rfx.geometry.curved import CurvedPatch
+        empty = (True if isinstance(shape, CurvedPatch) else
+                 _volume_is_empty(shape, centres, mask, cell_sizes,
+                                  grid=grid, domain_faces=domain_faces))
+        if empty:
+            diagnostic_sizes, diagnostic_centres = cell_sizes, centres
+            if grid is not None and any(is_tracer(v) for v in (*cell_sizes, *centres[:3])):
+                nonuniform = hasattr(grid, 'dx_arr')
+                diagnostic_sizes = (cell_sizes_from_nonuniform_grid(grid) if nonuniform
+                                    else cell_sizes_from_uniform_grid(grid))
+                diagnostic_centres = (centres_from_nonuniform_grid(grid) if nonuniform
+                                      else centres_from_uniform_grid(grid))
+            _refuse_zero_cells(shape, name, "Material volume",
+                               cell_sizes=diagnostic_sizes, centres=diagnostic_centres)
+        elif empty is None:
+            def check(value, *axes):
+                if not np.any(value):
+                    _refuse_zero_cells(shape, name, "Material volume",
+                                       cell_sizes=axes[:3], centres=axes[3:])
+            jax.debug.callback(check, mask, *cell_sizes, *centres[:3])
+    return mask
+
+
+def _sample_material_cells(shape, coords: GridCoords, centres: GridCoords, *,
                         grid=None, cell_sizes=None, domain_faces=None):
     """Sample material volumes on the primal-cell centres of their grid.
 
@@ -376,7 +410,7 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
     if isinstance(shape, Via):
         result = jnp.zeros(centres.shape, dtype=bool)
         for box in shape._mask_components(cell_sizes[0][0]):
-            result = result | _material_cell_mask(
+            result = result | _sample_material_cells(
                 box, coords, centres, grid=grid, cell_sizes=cell_sizes, domain_faces=domain_faces)
         return result
     shape = periodic_shape(grid, shape)
@@ -434,7 +468,9 @@ def volume_domain_faces(grid):
         return None
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
               else coords_from_uniform_grid(grid))
-    return tuple((domain[t], domain[t] if a in grid.periodic_axes else
+    return tuple(None if grid.shape[t] - getattr(grid, f'pad_{a}_lo') - getattr(grid, f'pad_{a}_hi')
+                 <= (1 if a in grid.periodic_axes else 2) else
+                 (domain[t], domain[t] if a in grid.periodic_axes else
                   coords[t][grid.shape[t] - getattr(grid, f'pad_{a}_hi') - 1])
                  for t, a in enumerate('xyz'))
 
@@ -453,7 +489,8 @@ def _box_axis_volume(centres, lo: float, hi: float, cell_widths, domain_face=Non
     if domain_face is not None:
         declared, realized = domain_face
         xp = jnp if is_tracer(c) or is_tracer(cell_widths) or is_tracer(realized) else np
-        hi = xp.where(abs(hi - declared) <= node_tie_tol(declared, cell_widths, c.dtype),
+        hi = xp.where((declared > 0) & (realized > declared) & (hi > lo) &
+                      (abs(hi - declared) <= node_tie_tol(declared, cell_widths, c.dtype)),
                       realized, hi)
     return half_open_volume_mask(c, lo, hi, cell_widths)
 
@@ -530,7 +567,8 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None,
     faces = domain_faces if domain_faces is not None else volume_domain_faces(grid)
     faces = faces if faces is not None else (None,) * 3
     if (lo is not None and hi is not None and not getattr(grid, 'periodic_axes', '')
-            and not any(is_tracer(c) for c in axes)):
+            and not any(is_tracer(c) for c in (*axes, *cell_sizes))
+            and not any(is_tracer(v) for face in faces if face is not None for v in face)):
         for i in range(3):
             if not np.any(_box_axis_volume(
                     axes[i], float(lo[i]), float(hi[i]), cell_sizes[i], faces[i])):
@@ -541,7 +579,22 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None,
     return not bool(np.any(np.asarray(mask, dtype=bool)))
 
 
-def _refuse_zero_cells(shape, name, what: str):
+def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None):
+    if what == "Material volume":
+        bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
+        thickness = (tuple(float(b - a) for a, b in zip(*bounds))
+                     if bounds is not None else "unavailable")
+        local = "unavailable"
+        if (bounds is not None and cell_sizes is not None and centres is not None
+                and not any(is_tracer(v) for v in (*cell_sizes, *centres[:3]))):
+            local = tuple(float(np.asarray(d)[np.argmin(abs(np.asarray(c) - (a + b) / 2))])
+                          for a, b, c, d in zip(*bounds, centres[:3], cell_sizes))
+        raise RfxRefusal(
+            f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells: "
+            f"drawn thickness (x, y, z) = {thickness} m; local cell widths at the layer midpoint "
+            f"(x, y, z) = {local} m. Refine so a primal-cell centre lies inside "
+            "the layer. There is no sub-cell dielectric film model; a conducting "
+            "sheet uses add_thin_conductor (the sheet API).")
     raise RfxRefusal(
         f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells "
         "on this grid: no primal-cell centre lies inside it, so it would "
@@ -1210,7 +1263,8 @@ def rasterize_geometry(
         mat = material_resolver(entry.material_name)
         mask = _material_cell_mask(entry.shape, coords, centres,
                                    grid=grid if getattr(grid, 'periodic_axes', '') else None,
-                                   cell_sizes=cell_sizes, domain_faces=domain_faces)
+                                   cell_sizes=cell_sizes, domain_faces=domain_faces,
+                                   name=entry.material_name, refuse_empty=mat.sigma < pec_sigma_threshold)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
@@ -1265,7 +1319,8 @@ def rasterize_geometry(
             declared = pole_geometry_entries[entry_index].shape
             pole_mask = _material_cell_mask(declared, coords, centres,
                                             grid=grid if getattr(grid, 'periodic_axes', '') else None,
-                                            cell_sizes=cell_sizes, domain_faces=domain_faces)
+                                            cell_sizes=cell_sizes, domain_faces=domain_faces,
+                                            name=entry.material_name, refuse_empty=mat.sigma < pec_sigma_threshold)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
                 pole_mask = pec_volume_cell_mask(declared, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
 

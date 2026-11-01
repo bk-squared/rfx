@@ -247,8 +247,14 @@ def test_substrate_is_sampled_under_stub_with_realized_masks_and_precedence():
     sim = make_sim()
     sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=9.8)
     sim.add_material('stub_only', eps_r=2.2)
-    # Ends before the port; starts above z=.5 mm but realizes onto that node.
+    from rfx.errors import RfxRefusal
+    # The original layer contains no centre and must not be inflated.
     sim.add(Box((0, 0, .00051), (.0016, .012, .00065)), material='stub_only')
+    with pytest.raises(RfxRefusal, match="Material volume 'stub_only'.*ZERO cells"):
+        line_stub_findings(sim)
+    # Keep the precedence check with a layer containing the .75 mm centre.
+    sim._geometry[-1] = replace(sim._geometry[-1], shape=Box(
+        (0, 0, .00051), (.0016, .012, .00085)))
     f, = line_stub_findings(sim)
     assert f.substrate_eps_r == 2.2
     # Confirm the independently assembled material at the sampled stub node.
