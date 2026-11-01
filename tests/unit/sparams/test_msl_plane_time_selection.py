@@ -14,14 +14,14 @@ def test_msl_records_only_witness_planes(monkeypatch):
     sim.add_dft_plane_probe(axis="x", coordinate=0.006, component="ez",
                             freqs=FREQS, name=USER_PLANE)
     captured = []
-    original_run = sim.run
+    original_run = type(sim).run
 
-    def run(**kwargs):
-        result = original_run(**kwargs)
+    def run(self, **kwargs):
+        result = original_run(self, **kwargs)
         captured.append(result)
         return result
 
-    monkeypatch.setattr(sim, "run", run)
+    monkeypatch.setattr(type(sim), "run", run)
     result = sim.compute_msl_s_matrix(freqs=FREQS, n_steps=N_STEPS)
     assert len(captured) == 2
     for drive, raw in enumerate(captured):
