@@ -519,13 +519,13 @@ def _build_patch_one_cell_short(dx: float) -> Simulation:
 
 
 def _build_substrate_on_the_knife_edge(dx: float) -> Simulation:
-    """The substrate drawn exactly on the ground's outermost nodes (the common
-    nodes) instead of just outside them.  Only the mutation test builds it:
-    a volume whose face sits on a node takes or drops the cell beyond it by
-    rounding, so the laminate no longer overhangs the ground by one cell."""
+    """Draw the high faces below the last ground-cell centres, losing a cell."""
     sim = _sim(dx)
     sim.add(_ground_box(), material="pec")
-    sim.add(_substrate_box(footprint=GROUND_NODE_SPAN_M), material="rt5880")
+    substrate = _substrate_box(footprint=GROUND_NODE_SPAN_M)
+    margin = dx * 1e-3
+    hi = tuple(substrate.corner_hi[a] - dx / 2 - margin for a in (0, 1))
+    sim.add(Box(substrate.corner_lo, (*hi, substrate.corner_hi[2])), material="rt5880")
     sim.add(_patch_box(), material="pec")
     _add_probe_and_witness(sim)
     return sim

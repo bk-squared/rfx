@@ -20,8 +20,7 @@ import math
 import numpy as np
 import pytest
 
-import rfx.grid as rfx_grid
-from rfx import Box, Simulation
+from rfx import Box, Cylinder, Simulation
 from rfx.geometry.rasterize_grid import PadFillShortfall
 
 #: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, cpml_layers 8. +10h
@@ -34,7 +33,7 @@ EPS_R = 3.38
 CPML = 8
 
 
-def _rig(pad_h: float = 10, *, hi_shrink_cells: float = 0.0):
+def _rig(pad_h: float = 10, *, hi_shrink_cells: float = 0.0, cylinder: bool = False):
     dom_x = 38 * H + 2 * (pad_h * H)
     dom_y = 23 * H + 2 * (pad_h * H)
     dom_z = 16 * H
@@ -42,8 +41,10 @@ def _rig(pad_h: float = 10, *, hi_shrink_cells: float = 0.0):
                      boundary="cpml", cpml_layers=CPML)
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
     box_hi_x = dom_x - hi_shrink_cells * DX
-    sim.add(Box((0.0, 0.0, 6 * H), (box_hi_x, dom_y, 8 * H)),
-            material="ro4003c")
+    # The flat cylinder end keeps the shortfall outside the Box domain-face rule.
+    shape = (Cylinder((dom_x / 2, dom_y / 2, 7 * H), H, dom_x, axis="x")
+             if cylinder else Box((0.0, 0.0, 6 * H), (box_hi_x, dom_y, 8 * H)))
+    sim.add(shape, material="ro4003c")
     return sim
 
 
@@ -55,6 +56,20 @@ def _size_by_plain_ceil(monkeypatch) -> None:
                         lambda length, dx, **kw: int(math.ceil(length / dx)))
     monkeypatch.setattr(grid_mod, "realized_cells",  # wall axes too (#1887)
                         lambda length, dx, kind: int(math.ceil(length / dx)))
+
+
+def _assert_box_reaches_realized_face(sim, grid=None):
+    """The declared domain face reaches the last interior node and the pad."""
+    grid = sim._build_grid() if grid is None else grid
+    eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+    entity = sim.realized_geometry().entities[0]
+    for axis in (0, 1):
+        last_node = math.ceil(sim._unresolved_domain[axis] / DX)
+        assert entity.axes[axis].bounds_m[1] == pytest.approx(
+            last_node * DX, rel=0, abs=1e-14)
+        index = [grid.shape[0] // 2, grid.shape[1] // 2, CPML + 28]
+        index[axis] = -1
+        assert eps[tuple(index)] == pytest.approx(EPS_R)
 
 
 def test_the_rig_that_found_this_is_silent_now() -> None:
@@ -72,18 +87,16 @@ def test_the_rig_that_found_this_is_silent_now() -> None:
 
 
 def test_it_fires_when_the_grid_is_sized_the_old_way(monkeypatch) -> None:
-    """Red-before, reached by restoring only the sizing.
-
-    This is the two-node shortfall: ``ceil`` invents node 233 and node 232
-    sits exactly on the box's hi face, which the half-open rule excludes.
-    """
+    """Boxes reach the extra node; a flat-ended cylinder still falls short."""
     _size_by_plain_ceil(monkeypatch)
     sim = _rig(10)
     grid = sim._build_grid()
     assert list(grid.shape) == [250, 189, 81], (
         "the old sizing is not in place; this fixture proves nothing")
+    _assert_box_reaches_realized_face(sim, grid)
+    cylinder = _rig(10, cylinder=True)
     with pytest.raises(PadFillShortfall) as excinfo:
-        sim._assemble_materials(grid)
+        cylinder._assemble_materials(grid)
     message = str(excinfo.value)
     assert "ro4003c" in message
     assert "x-hi" in message
@@ -221,11 +234,10 @@ def test_a_pec_sheet_spanning_the_domain_is_not_reported(monkeypatch) -> None:
 
 
 def test_the_same_body_as_a_dielectric_is_still_reported(monkeypatch) -> None:
-    """The control for the two above: identical geometry and sizing, declared
-    as a dielectric, still raises. Without this, a check that had been
-    disabled outright would pass them both."""
+    """A dielectric Box reaches the pad; a cylinder keeps the refusal live."""
     _size_by_plain_ceil(monkeypatch)
-    sim = _rig(10)
+    _assert_box_reaches_realized_face(_rig(10))
+    sim = _rig(10, cylinder=True)
     with pytest.raises(PadFillShortfall):
         sim._assemble_materials(sim._build_grid())
 
@@ -239,6 +251,11 @@ def test_fidelity_report_names_the_shortfall_instead_of_raising(
     that, so it must appear as a row rather than take the report down."""
     _size_by_plain_ceil(monkeypatch)
     sim = _rig(10)
+    _assert_box_reaches_realized_face(sim)
+    box_report = sim.fidelity_report(print_report=False)
+    assert not any(f.get("kind") == "declared-span-short-of-padded-face"
+                   for item in box_report for f in item.get("findings", []))
+    sim = _rig(10, cylinder=True)
     report = sim.fidelity_report(print_report=False)
 
     hits = [(item, finding)
@@ -263,29 +280,18 @@ def test_pad_fill_shortfall_is_a_value_error() -> None:
 
 # --- the two pad predicates differ on purpose (review of PR #1136, B) ------
 
-def test_the_smoothing_lane_continues_a_corner_at_the_declared_face() -> None:
-    """Same rig, two questions, two answers -- and which fires is the point.
-
-    ``smoothed_shape_pairs`` continues a declared face even when the
-    realized interior-edge node lies beyond it. The material-array lane's
-    independent shortfall check still refuses this deliberately oversized
-    grid before material replication.
-    """
-    import math as _math
-
+def test_the_smoothing_lane_continues_a_corner_at_the_declared_face(monkeypatch) -> None:
+    """Smoothing continues the Box; the material guard still rejects a cylinder."""
     from rfx.geometry.smoothing import smoothed_shape_pairs
 
-    _orig = rfx_grid.cells_spanning
-    rfx_grid.cells_spanning = lambda length, dx, **kw: int(
-        _math.ceil(length / dx))
-    try:
-        sim = _rig(10)
-        grid = sim._build_grid()
-        pairs, unextendable = smoothed_shape_pairs(sim, grid)
-        with pytest.raises(PadFillShortfall):
-            sim._assemble_materials(grid)
-    finally:
-        rfx_grid.cells_spanning = _orig
+    _size_by_plain_ceil(monkeypatch)
+    sim = _rig(10)
+    grid = sim._build_grid()
+    pairs, unextendable = smoothed_shape_pairs(sim, grid)
+    _assert_box_reaches_realized_face(sim, grid)
+    cylinder = _rig(10, cylinder=True)
+    with pytest.raises(PadFillShortfall):
+        cylinder._assemble_materials(grid)
 
     assert unextendable == [], unextendable
     box = sim._geometry[0].shape
@@ -347,9 +353,11 @@ def test_a_lo_face_shortfall_is_silent_and_that_is_the_documented_scope(
     # Silent, with the full assembly and the pad extension on.
     sim._assemble_materials(grid)
 
-    # The contrast: two nodes at a hi face on the defective rig do raise.
+    # The Box reaches the hi face; the cylinder retains the two-node shortfall.
+    _assert_box_reaches_realized_face(_rig(10))
+    cylinder = _rig(10, cylinder=True)
     with pytest.raises(PadFillShortfall):
-        _rig(10)._assemble_materials(_rig(10)._build_grid())
+        cylinder._assemble_materials(cylinder._build_grid())
 
 
 @pytest.mark.parametrize("skip_preflight", [False, True])
@@ -362,6 +370,10 @@ def test_run_raises_pad_fill_shortfall(monkeypatch, skip_preflight):
     import rfx.runners.uniform as uniform
     monkeypatch.setattr(uniform, "run_uniform", lambda *a, **k:
                         Result(None, np.zeros((0, 0)), None, None))
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    sim.run(n_steps=1, skip_preflight=skip_preflight, compute_s_params=False)
+    _assert_box_reaches_realized_face(sim)
+    sim = _rig(10, cylinder=True)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     with pytest.raises(PadFillShortfall, match="x-hi.*2 interior nodes short"):
         sim.run(n_steps=1, skip_preflight=skip_preflight, compute_s_params=False)
