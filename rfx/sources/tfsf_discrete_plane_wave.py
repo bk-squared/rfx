@@ -436,7 +436,7 @@ def incidence(theta_deg=0.0, phi_deg=0.0, direction="+x", polarization="ez",
                 angle_error_deg=error, axis=direction)
 
 
-def tfsf_incidence(self):
+def tfsf_incidence(self) -> dict[str, object]:
     """Return the closed box's realized direction and unit polarization vectors."""
     entry = self._tfsf
     if entry is None or not entry.closed_box:

@@ -7,6 +7,13 @@ inside methods to keep the high-level API wiring additive and cycle-safe.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.artifacts import ArtifactBundle
+    from rfx.api._spec import ForwardResult
+    from rfx.api._spec import Result
+
 import json
 from pathlib import Path
 from typing import Any
@@ -15,7 +22,7 @@ from typing import Any
 class _ArtifactsMixin:
     """Simulation convenience methods for runtime artifact export."""
 
-    def export_scene(self, path: str | Path | None = None, **kwargs: Any):
+    def export_scene(self, path: str | Path | None = None, **kwargs: Any) -> dict[str, object] | Path:
         """Return or write the native runtime scene artifact.
 
         ``path=None`` returns a JSON-serializable dict.  Otherwise the scene is
@@ -33,14 +40,14 @@ class _ArtifactsMixin:
         out.write_text(json.dumps(scene, indent=2, sort_keys=True, default=str) + "\n")
         return out
 
-    def artifact_report(self, result=None, **kwargs: Any):
+    def artifact_report(self, result: Result | ForwardResult | None = None, **kwargs: Any) -> dict[str, object]:
         """Return a runtime artifact report dict for this simulation."""
 
         from rfx.artifacts import build_runtime_report
 
         return build_runtime_report(self, result=result, **kwargs)
 
-    def export_artifact_bundle(self, path: str | Path, result=None, **kwargs: Any):
+    def export_artifact_bundle(self, path: str | Path, result: Result | ForwardResult | None = None, **kwargs: Any) -> ArtifactBundle:
         """Write a runtime artifact bundle and return ``ArtifactBundle``."""
 
         from rfx.artifacts import export_artifact_bundle

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
+
 from rfx._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
@@ -81,7 +86,7 @@ def run(
     wire_refplane_sparams: list | None = None,
     lumped_rlc: list | None = None,
     kerr_chi3: jnp.ndarray | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
     return_state: bool = True,
     mag_sources: list | None = None,
     stencil_order: int = 2,
@@ -761,7 +766,7 @@ def run_until_decay(
     lumped_port_sparams: list | None = None,
     lumped_rlc: list | None = None,
     kerr_chi3: jnp.ndarray | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
     return_state: bool = True,
     mag_sources: list | None = None,
     checkpoint_segments: int | None = None,

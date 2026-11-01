@@ -21,6 +21,13 @@ Reference: Taflove & Hagness, Ch. 8-9.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.farfield import NTFFData
+    import jax
+
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -100,13 +107,13 @@ class ScatteringResponse(NamedTuple):
 
 
 def compute_rcs_jax(
-    ntff_data,
+    ntff_data: NTFFData,
     box: NTFFBox,
     grid: Grid,
-    theta,
-    phi,
-    e_inc_amplitude,
-):
+    theta: ArrayLike,
+    phi: ArrayLike,
+    e_inc_amplitude: ArrayLike,
+) -> jax.Array:
     """JAX-differentiable RCS(θ,φ) from NTFF data — the AD counterpart of ``compute_rcs``.
 
     ``compute_rcs`` orchestrates (TFSF setup → ``run`` → far-field → RCS) with a numpy

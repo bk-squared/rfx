@@ -1,0 +1,36 @@
+name: mypy
+
+# Non-required: the main branch ruleset is managed outside this repository.
+# Slow enough to stay out of scripts/ci/local.sh; run the same script locally.
+on:
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with dev dependencies and pinned mypy
+        run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2" "mypy==1.20.2"
+
+      - name: Check mypy error count
+        run: python scripts/ci/check_mypy_count.py

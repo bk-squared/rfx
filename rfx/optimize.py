@@ -19,6 +19,11 @@ Example
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.api import Simulation
+
 from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
@@ -297,7 +302,7 @@ def _adam_multistart(
 
 
 def optimize(
-    sim,
+    sim: Simulation,
     region: DesignRegion,
     objective: Callable,
     *,
@@ -594,7 +599,7 @@ class GradientCheckResult:
 
 
 def gradient_check(
-    sim,
+    sim: Simulation,
     design_params: jnp.ndarray,
     objective_fn: Callable,
     *,
@@ -749,7 +754,7 @@ def _resize_latent(latent: jnp.ndarray, new_shape: tuple[int, int, int],
 
 
 def progressive_optimize(
-    sim_factory: Callable[[float], object],
+    sim_factory: Callable[[float], Simulation],
     region: DesignRegion,
     objective: Callable,
     schedule: list[ProgressiveStage],

@@ -47,6 +47,23 @@ _SPEC.loader.exec_module(changed_paths)
 
 HEAVY_JOBS = ("guards-and-preflight", "fast-suite")
 
+# mypy is non-required; required contexts are configured in GitHub's main ruleset.
+
+
+def test_non_required_mypy_uses_the_lint_lane_setup_and_one_script_call() -> None:
+    workflow = load(WORKFLOW_DIR / "mypy.yml")
+    lint = load(LINT)
+    for key in (True, "on", "concurrency", "permissions"):
+        assert workflow.get(key) == lint.get(key)
+    assert list(workflow["jobs"]) == ["mypy"]
+    steps = workflow["jobs"]["mypy"]["steps"]
+    assert steps[:2] == lint["jobs"]["ruff"]["steps"][:2]
+    assert run_blocks(workflow) == [
+        'pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2" "mypy==1.20.2"',
+        "python scripts/ci/check_mypy_count.py",
+    ]
+    assert "check_mypy_count.py" not in LOCAL_SH.read_text()
+
 
 def workflow_files() -> list[Path]:
     return sorted([*WORKFLOW_DIR.glob("*.yml"), *WORKFLOW_DIR.glob("*.yaml")])

@@ -26,6 +26,17 @@ exports automatically. An explicit ``layout`` overrides detection.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.farfield import FarFieldResult
+    from collections.abc import Mapping
+    from rfx.optimize import OptimizeResult
+    from rfx.api._spec import Result
+    from rfx.api import Simulation
+    from rfx.topology import TopologyResult
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -734,10 +745,10 @@ def network_quality_metrics(
 # Result export (HDF5)
 # =========================================================================
 
-def save_optimization_result(path, result, metadata=None, *,
-                             include_latent=True,
-                             include_density=True,
-                             include_history=True):
+def save_optimization_result(path: str | Path, result: OptimizeResult | TopologyResult, metadata: Mapping[str, object] | None = None, *,
+                             include_latent: bool = True,
+                             include_density: bool = True,
+                             include_history: bool = True) -> None:
     """Save OptimizeResult or TopologyResult to HDF5.
 
     Parameters
@@ -783,7 +794,7 @@ def save_optimization_result(path, result, metadata=None, *,
                 f.attrs[k] = v
 
 
-def load_optimization_result(path):
+def load_optimization_result(path: str | Path) -> dict[str, np.ndarray | dict[str, object]]:
     """Load optimization result from HDF5.
 
     Returns
@@ -801,7 +812,7 @@ def load_optimization_result(path):
     return data
 
 
-def save_far_field(path, ff_result, metadata=None):
+def save_far_field(path: str | Path, ff_result: FarFieldResult, metadata: Mapping[str, object] | None = None) -> None:
     """Save FarFieldResult to HDF5.
 
     Parameters
@@ -831,7 +842,7 @@ def save_far_field(path, ff_result, metadata=None):
                 f.attrs[k] = v
 
 
-def export_radiation_pattern(path, ff_result, freq_idx=0, *, input_power=None):
+def export_radiation_pattern(path: str | Path, ff_result: FarFieldResult, freq_idx: int = 0, *, input_power: ArrayLike | None = None) -> None:
     """Export radiation pattern as CSV for measurement comparison.
 
     Columns: theta_deg, phi_deg, E_theta_mag, E_theta_phase_deg,
@@ -878,7 +889,7 @@ def export_radiation_pattern(path, ff_result, freq_idx=0, *, input_power=None):
 # Geometry export (JSON)
 # =========================================================================
 
-def export_geometry_json(path, sim):
+def export_geometry_json(path: str | Path, sim: Simulation) -> None:
     """Export a lightweight geometry *index* as JSON (bounding boxes only).
 
     Intended for dataset indexing and eyeball review. Each geometry entry is
@@ -940,7 +951,7 @@ def export_geometry_json(path, sim):
 # Experiment report
 # =========================================================================
 
-def save_experiment_report(path, sim, result, extra=None):
+def save_experiment_report(path: str | Path, sim: Simulation, result: Result | OptimizeResult | TopologyResult, extra: Mapping[str, object] | None = None) -> None:
     """Save standardized experiment metadata as JSON.
 
     Auto-collects: sim config, grid shape, timing, loss history.
@@ -960,7 +971,7 @@ def save_experiment_report(path, sim, result, extra=None):
     if hasattr(result, "grid") and result.grid is not None:
         grid = result.grid
 
-    report = {
+    report: dict[str, object] = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "simulation": {
             "freq_max": sim._freq_max,
@@ -1005,11 +1016,11 @@ def save_experiment_report(path, sim, result, extra=None):
 # Surrogate/ML training data export
 # =========================================================================
 
-def save_simulation_dataset(path, sim, result, *,
-                            include_fields=False,
-                            include_time_series=True,
-                            include_s_params=True,
-                            include_config=True):
+def save_simulation_dataset(path: str | Path, sim: Simulation, result: Result, *,
+                            include_fields: bool = False,
+                            include_time_series: bool = True,
+                            include_s_params: bool = True,
+                            include_config: bool = True) -> None:
     """Save simulation input-output pair for surrogate model training.
 
     Creates an HDF5 file with selectable sections:

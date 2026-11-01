@@ -17,6 +17,11 @@ and may be added as a future fast-path.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 from dataclasses import dataclass
 from collections.abc import Mapping, Sequence
 from typing import Callable, Any
@@ -161,7 +166,7 @@ class SweepResult:
 def parametric_sweep(
     sim_factory: Callable,
     param_name: str,
-    param_values,
+    param_values: ArrayLike,
     *,
     n_steps: int | None = None,
     until_decay: float | None = None,

@@ -117,8 +117,8 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     return e_update_coefficient_at(materials, idx, component, grid.dt, periodic, **electric_grid_kwargs(grid))
 
 
-def make_source(grid: Grid, position, component, waveform_fn, n_steps,
-                materials=None, amplitude_kind=None):
+def make_source(grid: Grid, position: tuple[float, ...] | list[float], component: str, waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int,
+                materials: MaterialArrays | None = None, amplitude_kind: str | None = None) -> SourceSpec:
     """Create a SourceSpec by precomputing a waveform function (raw E-field add).
 
     WARNING: raw field source causes DC accumulation on PEC surfaces.
@@ -187,7 +187,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
                       component=component, waveform=waveform)
 
 
-def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
+def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps: int) -> SourceSpec:
     """Create a SourceSpec for a lumped port (Cb-corrected waveform).
 
     The port impedance must already be folded into *materials* via
@@ -236,7 +236,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
     return specs
 
 
-def make_probe(grid: Grid, position, component):
+def make_probe(grid: Grid, position: tuple[float, ...] | list[float], component: str) -> ProbeSpec:
     """Create a ProbeSpec from a physical position."""
     idx = _grid_metric.field_index(grid, position, component)
     return ProbeSpec(i=idx[0], j=idx[1], k=idx[2], component=component)

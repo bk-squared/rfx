@@ -6,6 +6,11 @@ re-exports every name here.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 from typing import NamedTuple
 
 import numpy as np
@@ -545,11 +550,11 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
 
 
 def make_band_profile(
-    edges,
-    cell_sizes,
+    edges: ArrayLike,
+    cell_sizes: ArrayLike,
     *,
     max_ratio: float = 1.4,
-    protected=None,
+    protected: ArrayLike | None = None,
     boundary_cell: float | None = None,
     min_cells: int = 1,
 ) -> np.ndarray:

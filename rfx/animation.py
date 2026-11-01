@@ -6,6 +6,13 @@ ffmpeg for MP4.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.api._spec import Result
+    from rfx._uniform_specs import SimResult
+
 import numpy as np
 
 from rfx._plotting import _pyplot
@@ -28,7 +35,7 @@ def _animation_frame_times(result, component: str, interval: int):
 
 
 def save_field_animation(
-    result,
+    result: Result | SimResult | dict[str, ArrayLike],
     filename: str,
     *,
     component: str = "ez",
@@ -41,7 +48,7 @@ def save_field_animation(
     dpi: int = 100,
     figsize: tuple = (6, 5),
     interval: int = 1,
-):
+) -> str:
     """Save field animation from simulation snapshots.
 
     Parameters
@@ -99,6 +106,7 @@ def save_field_animation(
     # ------------------------------------------------------------------
     # Extract snapshot data
     # ------------------------------------------------------------------
+    snapshots: dict | None
     if isinstance(result, dict):
         snapshots = result
     elif hasattr(result, "snapshots"):
