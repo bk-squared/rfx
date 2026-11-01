@@ -271,6 +271,7 @@ def _g5_call(case, monkeypatch, error):
         from rfx.measurement import ringdown_tail
         monkeypatch.setattr(ringdown_tail, "plain_dft", lambda *a: np.zeros(1))
         monkeypatch.setattr(ringdown_tail, "tail_dft", lambda *a: np.zeros(1))
+        monkeypatch.setattr(ringdown_tail, "completion_tail", lambda *a, **kw: np.zeros(1))
         monkeypatch.setattr(ringdown, "identify", lambda *a, **kw: None)
         monkeypatch.setattr(ringdown, "_tail_influence", lambda *a: (None, None))
         monkeypatch.setattr(ringdown, "_floor_pole", lambda *a: (0., None, (), 0))

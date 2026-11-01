@@ -125,6 +125,7 @@ import numpy as np
 
 from rfx.measurement.ringdown_model import RingdownModel, RingdownPole, _as_2d, _cmul
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+from rfx.measurement.ringdown_resolution import _static_pole, _zero_frequency
 
 # Import the module explicitly for its matrix-pencil planning helpers.
 _harminv = import_module("rfx.harminv")
@@ -396,16 +397,16 @@ class RingdownResult(NamedTuple):
 from rfx.measurement.ringdown_tail import _given_spectra
 
 
-def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> np.ndarray:
+def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int, *, unit_tol=1e-6) -> np.ndarray:
     """Plain DFT of samples ``0 .. n_record - 1`` plus the closed-form tail after them."""
-    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+    from rfx.measurement.ringdown_tail import plain_dft, completion_tail as tail_dft
     Y, one_d = _as_2d(series)
     n_record = int(n_record)
     if not (0 < n_record <= Y.shape[0]):
         raise ValueError(f"n_record={n_record} outside a series of {Y.shape[0]} samples")
     if float(dt) != float(model.dt):
         raise ValueError(f"dt={dt} differs from the model's dt={model.dt}")
-    out = plain_dft(Y[:n_record], dt, freqs) + tail_dft(model, n_record - 1, freqs)
+    out = plain_dft(Y[:n_record], dt, freqs) + tail_dft(model, n_record - 1, freqs, unit_tol=unit_tol)
     return out[:, 0] if one_d else out
 
 
@@ -486,7 +487,7 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
     difference of the two observables. ``plain`` may carry the plain DFT of
     ``series[:n_record]`` at ``freqs`` when the caller already has it.
     """
-    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+    from rfx.measurement.ringdown_tail import plain_dft, completion_tail as tail_dft
     n_record, n_start = int(n_record), int(n_start)
     n_split = int(round(float(split) * n_record))
     if not (n_start < n_split < n_record):
@@ -502,8 +503,8 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
         plain = plain_dft(Y, dt, freqs)
     else:
         plain = _given_spectra(plain, np.size(freqs), Y.shape[1], "plain")
-    spectra = plain + tail_dft(model, n_record - 1, freqs)
-    spectra_short = plain + tail_dft(model_short, n_record - 1, freqs)
+    spectra = plain + tail_dft(model, n_record - 1, freqs, unit_tol=unit_tol)
+    spectra_short = plain + tail_dft(model_short, n_record - 1, freqs, unit_tol=unit_tol)
     obs = (lambda a: a) if observable is None else observable
     value = float(np.max(np.abs(np.asarray(obs(spectra), dtype=np.complex128)
                                 - np.asarray(obs(spectra_short), dtype=np.complex128))))
@@ -538,7 +539,7 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     the completion from ``[window_start T, T]`` and ``plain`` the plain DFT of
     ``series[:n_record]`` when the caller already has them.
     """
-    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+    from rfx.measurement.ringdown_tail import plain_dft, completion_tail as tail_dft
     n_record = int(n_record)
     n_start = int(round(float(window_start) * n_record))
     n_long = _long_window_start(n_record, window_start)
@@ -557,35 +558,13 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
         spectra = _given_spectra(spectra, np.size(freqs), Y.shape[1], "spectra")
     if spectra is None:
         spectra = plain + tail_dft(identify(Y, dt, n_start, n_record, **kw),
-                                   n_record - 1, freqs)
+                                   n_record - 1, freqs, unit_tol=unit_tol)
     model_long = identify(Y, dt, n_long, n_record, **kw)
-    spectra_long = plain + tail_dft(model_long, n_record - 1, freqs)
+    spectra_long = plain + tail_dft(model_long, n_record - 1, freqs, unit_tol=unit_tol)
     obs = (lambda a: a) if observable is None else observable
     value = float(np.max(np.abs(np.asarray(obs(spectra), dtype=np.complex128)
                                 - np.asarray(obs(spectra_long), dtype=np.complex128))))
     return EarlyStartWitness(value, spectra_long, model_long, n_long)
-
-
-def _zero_frequency(f_hz: float, record_s: float) -> bool:
-    """``|f| < 1 / record``: the record cannot tell this pole's frequency from DC.
-
-    The one definition the growing-pole exemption (:func:`growing_poles`) and
-    the early stop's floor (:func:`_floor_pole`) share.
-    """
-    return abs(float(f_hz)) < 1.0 / float(record_s)
-
-
-def _static_pole(p: RingdownPole, record_s: float, unit_tol: float) -> bool:
-    """A static field: ``|f| < 1 / record`` and ``|1 - |lambda|| < unit_tol``.
-
-    A field left behind in a closed box identifies as a pole the record cannot
-    tell from DC (:func:`_zero_frequency`) on the unit circle to rounding
-    (rfx #1254, the Q 533 cavity). The one definition the growing-pole
-    exemption (:func:`growing_poles`) and the early stop's floor
-    (:func:`_floor_pole`) share; a decaying low-frequency mode is not one.
-    """
-    return (_zero_frequency(p.f_hz, record_s)
-            and abs(p.abs_lambda - 1.0) < float(unit_tol))
 
 
 # ---------------------------------------------------------------------------
@@ -1685,13 +1664,13 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
     are read as :meth:`RingdownRun._complete` reads them. Returns the check's
     fields; the floor's own-check reading is ``tau_own_s`` / ``own_pole``.
     """
-    from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+    from rfx.measurement.ringdown_tail import plain_dft, completion_tail as tail_dft
     kw = dict(freq_max=ref_hz, guard=spec.guard, sv_rel=spec.sv_rel,
               unit_tol=spec.unit_tol)
     try:
         plain = plain_dft(Y, dt, f_bins)
         model = identify(Y, dt, n_start, n_record, **kw)
-        spectra = plain + tail_dft(model, n_record - 1, f_bins)
+        spectra = plain + tail_dft(model, n_record - 1, f_bins, unit_tol=spec.unit_tol)
     except IdentificationMemoryRefused:
         raise
     except (ValueError, np.linalg.LinAlgError) as exc:
@@ -2549,13 +2528,13 @@ class RingdownForward(RingdownRun):
         Y = jnp.stack(cols, axis=1)
 
         def identify_window(w_raw):
-            """run()'s float64 rebuild and identification, on a window of the raw columns."""
+            from rfx.measurement.ringdown_resolution import completion_poles
             arrays = [_port_arrays(w_raw, lay) for lay in local]
             Yw = _rebuild_channels(lane, host_pms, [a[0] for a in arrays],
                                    [a[1] for a in arrays])
             Yw = np.concatenate((Yw, np.asarray(w_raw[:, identification_cols], dtype=np.float64)), axis=1)
-            return identify(Yw, dt, 0, Yw.shape[0], freq_max=ref_hz, guard=spec.guard,
-                            sv_rel=spec.sv_rel, unit_tol=spec.unit_tol).s
+            return completion_poles(identify(Yw, dt, 0, Yw.shape[0], freq_max=ref_hz, guard=spec.guard,
+                            sv_rel=spec.sv_rel, unit_tol=spec.unit_tol), n, spec.unit_tol)
 
         half = jnp.asarray(np.asarray(half_step_current_phase(f_bins, dt))
                            .astype(np.complex128), dtype=cdt)

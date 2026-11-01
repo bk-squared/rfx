@@ -4,6 +4,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from rfx.measurement.ringdown_resolution import in_window_shares, pole_classes
+
 
 # A record is skipped only when both its peak and its end-of-record level are
 # at the rounding level of its cell. A weak record still ringing above that
@@ -55,6 +57,8 @@ def _rounding_only_records(records, groups):
 
 
 _POLE_RULE = (
+    "The symmetric resolution edge is |Re(s) dt| = log1p(unit_tol)/D. "
+    "Unresolved poles of either sign use the judge's tail bound, never an aggregate tail. "
     "Kept non-static growing poles use judge_growing_poles: tail share through "
     "twice the model decay horizon (at least the record length), bar 1e-2, "
     "with (1 + unit_tol)^(2H/D) <= 2. For each discarded growing or non-decaying "
@@ -89,14 +93,16 @@ def _pole_contributions(model, series, bins, denominator, record_s, *, growth=No
     time = np.arange(len(window)) * model.dt
     if growth is None:
         growth = judge_growing_poles(model, round(record_s / model.dt), bins, denominator)
-    values = {"kept non-static growing": growth.share_per_bin}
+    values = {"kept non-static growing": growth.growing_share_per_bin}
     for rule, selected in indices.items():
         value = np.zeros(len(bins))
+        if rule == 'non-decaying sinusoidal':
+            if selected:
+                value = np.max(in_window_shares(model, selected, bins, denominator), axis=(1, 2))
+            values[rule] = value
+            continue
         for k in selected:
-            if rule == 'discarded growing':
-                samples = np.exp((time - time[-1]) * model.s_growing[k])[:, None] * joint[k]
-            else:
-                samples = np.exp(time * model.s[k])[:, None] * model.c[k]
+            samples = np.exp((time - time[-1]) * model.s_growing[k])[:, None] * joint[k]
             with np.errstate(divide='ignore', invalid='ignore'):
                 ratio = np.abs(plain_dft(samples, model.dt, bins)) / denominator
             value = np.maximum(value, np.max(ratio, axis=1))
@@ -248,12 +254,13 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                         reasons.append(
                             f"{label}: {rule} pole at read bin {bins[k]:.12g} Hz; "
                             f"identification-window term DFT / whole-record DFT = {value[k]:.12g} {comparison}")
-            def without_static(model):
-                keep = np.array([not _static_pole(model.pole(k), n*dt, 1e-6)
+            def resolved_nonstatic(model):
+                classes = pole_classes(model)
+                keep = np.array([classes[k] != 0 and not _static_pole(model.pole(k), n*dt, 1e-6)
                                  for k in range(len(model.s))], dtype=bool)
                 return replace(model, s=model.s[keep], c=model.c[keep])
 
-            main, other = without_static(main), without_static(other)
+            main, other = resolved_nonstatic(main), resolved_nonstatic(other)
             tail = tail_dft(main, n - 1, bins)
             alt = tail_dft(other, n - 1, bins)
             with np.errstate(divide="ignore", invalid="ignore"):
