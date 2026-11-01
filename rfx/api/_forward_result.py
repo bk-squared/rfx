@@ -91,7 +91,7 @@ def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, fre
         dft_planes=({entry.name: probe for entry, probe in zip(sim._dft_planes, planes)}
                     if sim._dft_planes and planes else None),
         **package_declared_measurements(
-            sim, grid, flux_monitors=result.flux_monitors or (),
+            sim, grid, entry="forward()", flux_monitors=result.flux_monitors or (),
             waveguide_cfgs=result.waveguide_ports or ()),
         # The scan's own step: stencil_order=4 derates it below grid.dt.
         dt=result.dt,
