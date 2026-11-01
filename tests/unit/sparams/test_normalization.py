@@ -1,7 +1,7 @@
 """Tests for two-run waveguide S-parameter normalization.
 
-Verifies that the normalization pattern cancels Yee-grid numerical
-dispersion and achieves |S21| > 0.95 for an empty straight waveguide.
+Verifies reference subtraction and transmission at the declared port planes.
+The empty guide retains propagation and has |S21| > 0.95.
 """
 
 import math
@@ -86,10 +86,8 @@ def test_straight_waveguide_helper_cross_section_follows_a_wg():
 def test_normalized_s21_straight_waveguide():
     """Empty straight waveguide: normalized |S21| > 0.95 above cutoff.
 
-    Without normalization the single-run extraction gives |S21| that
-    deviates from 1.0 due to Yee-grid dispersion and standing-wave
-    artifacts. The two-run normalization should cancel this bias and
-    push |S21| very close to unity.
+    The empty-guide runs have the same incident wave, so both lanes
+    return the same complex transmission, including Yee dispersion.
     """
     a_wg = 0.04
     f_c = C0 / (2 * a_wg)
@@ -125,10 +123,11 @@ def test_normalized_s21_straight_waveguide():
         f"Normalized mean |S21| = {mean_norm:.4f}, expected > 0.95"
     )
 
-    # Normalization should be closer to unity than raw
-    assert norm_err < raw_err, (
-        f"Normalization did not improve accuracy: norm_err={norm_err:.4f} vs raw_err={raw_err:.4f}"
-    )
+    # The same empty-guide incident wave normalizes both lanes.
+    for i, j in ((1, 0), (0, 1)):
+        actual = np.asarray(result_norm.s_params[i, j])
+        expected = np.asarray(result_raw.s_params[i, j])
+        assert np.max(np.abs(actual - expected)) <= 1e-5 * np.max(np.abs(expected))
 
 
 def test_normalized_s_matrix_with_obstacle():
