@@ -234,7 +234,7 @@ def _run_subgridded_once(
     y_off = (fj_lo - grid_coarse.pad_y_lo) * dx_c
     z_off = (fk_lo - grid_coarse.pad_z_lo) * dx_c
 
-    from rfx.geometry.rasterize_grid import coords_from_fine_grid, rasterize_geometry
+    from rfx.geometry.rasterize_grid import coords_from_fine_grid, rasterize_geometry, volume_domain_faces
 
     coords_f = coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off)
     # #931: the fine-region coordinates are already cell CENTRES
@@ -250,6 +250,7 @@ def _run_subgridded_once(
         coords_f,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
         centres=coords_f,
+        domain_faces=volume_domain_faces(grid_coarse),
         cell_sizes=tuple(np.full(n, dx_f) for n in coords_f.shape),
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False

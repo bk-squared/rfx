@@ -95,12 +95,11 @@ def test_the_pad_values_that_lose_only_one_node_stay_silent(
         monkeypatch, pad_h: int) -> None:
     """The original +8h/+12h faces lose two nodes under plain ceil and #1138.
 
-    Add .7/8 H to each pad so x/y faces sit 0.7 cell past a node.
-    Nearest-node ownership includes the partial cell; ceil leaves one
-    empty boundary node for pad extension to repair.
+    Add H/16 to each pad so x/y faces sit half a cell past a node, outside
+    the band: ceil leaves one empty node, which #627a repairs.
     """
     _size_by_plain_ceil(monkeypatch)
-    sim = _rig(pad_h + .7 / 8)
+    sim = _rig(pad_h + 1 / 16)
     grid = sim._build_grid()
     raw = np.asarray(sim._assemble_materials(
         grid, include_cpml_pad_extension=False)[0].eps_r)

@@ -724,6 +724,8 @@ def realized_geometry(sim: Simulation) -> dict:
         (int(xi.min()) - i_c, int(xi.max()) - i_c) if xi.size else None)
     out["substrate_y_nodes_from_centre"] = (
         (int(yj.min()) - j_c, int(yj.max()) - j_c) if yj.size else None)
+    out["substrate_x_faces_m"] = (float(xs[xi.min()]), float(xs[xi.max() + 1])) if xi.size else None
+    out["substrate_y_faces_m"] = (float(ys[yj.min()]), float(ys[yj.max() + 1])) if yj.size else None
     return out
 
 
@@ -842,7 +844,10 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
     for axis in ("x", "y"):
         rng = g[f"substrate_{axis}_nodes_from_centre"]
         n = g[f"substrate_{axis}_cells"]
-        if rng is None or rng[0] != -rng[1] or rng[1] - rng[0] + 1 != n:
+        faces = g[f"substrate_{axis}_faces_m"]
+        centre = cx if axis == "x" else cy
+        if (faces is None or abs((faces[0] + faces[1]) / 2 - centre) > SPAN_REALIZED_TOL_M
+                or abs(faces[1] - faces[0] - n * dx) > SPAN_REALIZED_TOL_M):
             raise AssertionError(
                 f"dx={dx*1e6:.2f}µm: the substrate's cells along {axis} run from "
                 f"node {None if rng is None else rng[0]} to "

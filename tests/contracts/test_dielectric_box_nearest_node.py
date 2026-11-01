@@ -380,3 +380,37 @@ def test_line_stub_uses_same_material_mask(offset, graded, periodic):
     assert _permittivity(sim, SimpleNamespace(eps_r_sub=1.), point, grid, coords, cache) == 4.
     np.testing.assert_array_equal(next(iter(cache.values())), expected)
     _assert_record(sim, indices, nodes)
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('pec', [False, True], ids=['dielectric', 'pec-volume'])
+def test_box_on_declared_domain_face_fills_last_cell(graded, pec):
+    from rfx.geometry.rasterize_grid import pec_volume_cell_mask
+    from rfx.model.materials import assemble_cells
+    domain = (60.4 * DX, 6 * DX, 6 * DX)
+    sim = Simulation(10e9, domain, dx=DX, cpml_layers=2, boundary='cpml',
+                     **({'dz_profile': np.array([.9, 1.1] * 3) * DX} if graded else {}))
+    sim.add_material('volume', **({'sigma': 1e9} if pec else {'eps_r': 4.}))
+    box = Box((0.,) * 3, domain)
+    sim.add(box, material='volume')
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    built = assemble_cells(sim, grid, include_cpml_pad_extension=False)
+    if pec:
+        # Inspect the declared volume before conductor continuation into CPML.
+        centres = centres_from_nonuniform_grid(grid) if graded else centres_from_uniform_grid(grid)
+        sizes = cell_sizes_from_nonuniform_grid(grid) if graded else cell_sizes_from_uniform_grid(grid)
+        mask = np.asarray(pec_volume_cell_mask(box, centres, sizes, grid=grid))
+    else:
+        mask = np.asarray(built[0].eps_r) == 4.
+    # The drawing ends on the domain face: ceil(60.4) is the bounding node.
+    last_node = int(np.ceil(domain[0] / DX))
+    pad = 2
+    assert mask[pad + last_node - 1, pad + 2, pad + 2]
+    assert not mask[pad + last_node, pad + 2, pad + 2]
+    entity = sim.realized_geometry().entities[0]
+    if pec:
+        # The solved PEC body continues through the absorber past this face.
+        assert entity.axes[0].bounds_m[1] >= last_node * DX
+    else:
+        assert entity.axes[0].node_range == (pad, pad + last_node)
+        np.testing.assert_allclose(entity.axes[0].bounds_m, (0., last_node * DX), atol=1e-16)
