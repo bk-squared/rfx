@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from rfx.measurement.plane_records import init_plane_records
+
 import jax
 import jax.numpy as jnp
 
@@ -57,7 +59,7 @@ def run_nonuniform(
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
     design_box=None,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -109,10 +111,7 @@ def run_nonuniform(
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
-    if record_dft and dft_planes:
-        carry_init["dft_time_records"] = tuple(
-            jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
-            for p in dft_planes)
+    init_plane_records(carry_init, dft_planes, record_dft, n_steps)
     init_graded_records(carry_init, n_steps, setup)
     src_waveforms = setup.src_waveforms
 
@@ -275,7 +274,7 @@ def run_nonuniform_until_decay(
     sheet_impedance=None,
     design_box=None,
     stop_fn=None,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
     advisory: dict | None = None,
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
@@ -363,10 +362,7 @@ def run_nonuniform_until_decay(
         design_box=design_box,
     )
     carry = setup.carry_init
-    if record_dft and dft_planes:
-        carry["dft_time_records"] = tuple(
-            jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
-            for p in dft_planes)
+    init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_graded_records(carry, max_steps, setup)
 
     # Source table: pad/truncate to max_steps so every chunk slice is
