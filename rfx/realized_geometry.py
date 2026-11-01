@@ -7,7 +7,7 @@ Arrays are read-only numpy arrays; this API is not an autodiff interface.
 from __future__ import annotations
 
 from rfx._grid_metric import field_index
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 
 import numpy as np
 
@@ -168,7 +168,12 @@ class RealizedGeometry:
     probes: tuple[ProbeGeometry, ...] = ()
     dt: float | None = None
     cells_per_wavelength: CellsPerWavelength | None = None
-    realization_table: object = None
+    realization_table: InitVar[object] = None
+
+    def __post_init__(self, realization_table):
+        # Execution metadata is outside the historical compared record fields.
+        # InitVar also lets dataclasses.replace preserve this reference.
+        object.__setattr__(self, 'realization_table', realization_table)
 
     @property
     def conductors(self):

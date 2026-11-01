@@ -839,6 +839,7 @@ def _forward_from_materials(
     return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd,
+        realized_geometry=stepping_product._realization_record,
     )), conductors.design_findings)
 
 

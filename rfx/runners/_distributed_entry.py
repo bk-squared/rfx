@@ -280,6 +280,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
             "transform (jax.jit, jax.grad or jax.vmap), so this request cannot be traced on this path: "
             "call forward() directly, or run on one device (omit distributed=True).") from error
     packed = pack_nu_forward_result(
+        realized_geometry=result.realized_geometry,
         diagnostics=result.diagnostics, time_series=result.time_series,
         grid=result.grid, dt=result.dt, dft_planes=result.dft_planes,
         flux_monitors=result.flux_monitors, waveguide_ports=result.waveguide_ports,
