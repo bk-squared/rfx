@@ -118,9 +118,10 @@ a PEC- or PMC-walled length by more than 1 % is refused (`snap="declared"`
 accepts it with a warning). The example runs in seconds on a CPU. The
 calculator's warnings name the absorber depth and simulation time it needs; 26
 layers and 48 periods satisfy them here. `normalize=False` (the default) is the
-modal V/I decomposition from one run per port; `normalize=True` divides by a
-reference run of the empty guide, which cancels the grid's dispersion in
-transmission but not in reflection; `normalize="flux"` takes every |S|, S11
+modal V/I decomposition from one run per port; `normalize=True` divides every
+entry by the incident wave of an empty-guide reference run and subtracts that
+guide's own reflection from S11, while S21 keeps the grid's one-way dispersion,
+as with `normalize=False`; `normalize="flux"` takes every |S|, S11
 included, from the Poynting flux and the phase from the modal V/I. The last two
 cost 2 × N_ports runs. There is no single `CalcPort` equivalent:
 `run(compute_s_params=True)` is only for lumped and wire `add_port(...)` ports.

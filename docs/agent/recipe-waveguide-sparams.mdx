@@ -97,7 +97,7 @@ S21 = S[1, 0, :]
 
 | Parameter | Guidance |
 |-----------|----------|
-| `normalize` | Use `normalize=True` for transmission measurements — cancels one-way Yee numerical-dispersion bias in |S21|. Use `normalize=False` for |S11| of strong reflectors (PEC short, high-Q resonators) where the round-trip dispersion error in the two-run path exceeds the impedance-mismatch error of the single-run path. Use `normalize="flux"` for simultaneous accuracy in both reflection and transmission. |
+| `normalize` | `normalize=True` divides every entry by the reference run's incident wave at the driven port and subtracts the empty guide's own reflection from the diagonal; S21 keeps the one-way Yee dispersion, as with `normalize=False` (for an insertion ratio divide by S21 of the empty guide at the same planes). Use `normalize=False` for |S11| of strong reflectors (PEC short, high-Q resonators) where the round-trip dispersion error in the two-run path exceeds the impedance-mismatch error of the single-run path. Use `normalize="flux"` for simultaneous accuracy in both reflection and transmission. |
 | `num_periods` | Must be long enough for the source pulse and port monitor response to settle. A range of 20–40 periods covers most practical cases. |
 | `f0`, `bandwidth` | Set explicitly to match your target band: `f0 = (f_min + f_max) / 2` and `bandwidth = (f_max - f_min) / f0`. The defaults (`freq_max/2`, `bw=0.5`) may not cover your measurement band. |
 | `probe_offset` | Distance in Yee cells from the port plane to the probe plane. Must be far enough from any obstacle to avoid source-plane artifacts. Typical value: 10 cells. |
