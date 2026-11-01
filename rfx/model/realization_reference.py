@@ -30,23 +30,25 @@ register_pytree_node(_DeclaredDomain, lambda domain: (tuple(domain), domain.decl
 
 def remember_kernel(sim, root, record):
     """Keep only the primary execution's host rows and per-axis metadata."""
+    from rfx.api._declarations import declaration_key
     from rfx.model.realization_integrals import quantities
-    if any(row.traced_inputs for row in record.realization_table.rows):
+    if record.lane.startswith("fwd_") or any(row.traced_inputs for row in record.realization_table.rows):
         return
-    cached = _kernel_views.get(sim)
-    if cached is not None:
-        if cached[0].lane.startswith("run_") and record.lane.startswith("fwd_"):
-            return
-    _kernel_views[sim] = record, quantities(root.grid).get("smoothing", 0)
+    _kernel_views[sim] = record, quantities(root.grid).get("smoothing", 0), declaration_key(sim)
 
 
 def kernel_view(sim):
     """Prepare requested arrays afresh and verify the solved table's rows."""
+    from rfx.api._declarations import declaration_key
     cached = _kernel_views.get(sim)
     if cached is None:
         return None
+    record, smoothing, key = cached
+    if key != declaration_key(sim):
+        forget_kernel(sim)
+        return None
     from rfx.model.realization_report import rebuild_view
-    return rebuild_view(sim, *cached)
+    return rebuild_view(sim, record, smoothing)
 
 
 def traced_inputs(sim, grid):
