@@ -34,17 +34,14 @@ def unit_waveform(t):
 
 
 def model(lane, row, fill=False):
-    """``fill`` puts the material over the whole domain instead of a block:
-    the only material the ADI lanes carry (#1373), used for their
-    consumption witness."""
+    """Shared checks for the supported solver paths."""
     sg = lane == "run_subgridded"
     kw = dict(freq_max=10e9, domain=(12*MM, 11*MM, (20 if sg else 12)*MM),
               dx=MM, boundary="cpml" if row.startswith("open_") else "pec",
               cpml_layers=3)
     if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*4)
-    if lane in ("run_adi", "fwd_adi"):
-        kw["solver"] = "adi"
+    pass
     if row == "conformal":
         kw["boundary"] = BoundarySpec(
             x=Boundary(lo="pec", hi="pec", conformal=True),
@@ -134,7 +131,6 @@ def material_pairs(dump, row, axis):
     sites = {r["site"] for r in records}
     expected = ({"sat.c", "sat.f"} if row == "sat" else
                 {"aniso.E"} if row == "conformal" else
-                {"adi.E"} if dump.lane in ("run_adi", "fwd_adi") else
                 {"distributed.E"} if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed") else
                 {"distributed_nu.E"} if row != "mu" and dump.lane in ("run_distributed_nu", "fwd_distributed_nu") else
                 set())
@@ -205,8 +201,6 @@ def drive_pairs(dump, row):
     if not records:
         raise RuntimeError(f"no record at source site: {dump.lane} {row}")
     if row in ("soft_none", "open_none"):
-        # The default's reference is this lane's explicit current declaration,
-        # including ADI's own coefficient and remaining material convention.
         current = measured(dump.lane, row.replace("_none", "_current"))
         references = [r for r in current.records if "drive_scale" in r]
         if len(records) != len(references):
@@ -295,8 +289,7 @@ def test_realized_cell(lane, row, axis):
     if cell.kind == "refuses":
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            reason = ("unmatched graded-conductivity sponge"
-                      if row.startswith("open_") and lane in ("run_adi", "fwd_adi") else None)
+            reason = (None)
             with pytest.raises((ValueError, NotImplementedError), match=reason):
                 sim = model(lane, row)
                 run(sim, lane, row)
@@ -306,13 +299,12 @@ def test_realized_cell(lane, row, axis):
 
 @pytest.mark.parametrize("lane,row", [(lane, row) for lane in T.LANES
                          for row in ("eps", "sigma", "mu")
-                         if not (row == "mu" and lane in ("run_adi", "fwd_adi"))])
+                         if not (row == "mu" and lane in ())])
 def test_dump_is_consumed(lane, row):
     quantity_name = {"eps": "eps_e", "sigma": "sigma_e", "mu": "mu_h"}[row]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        # ADI refuses a material interface (#1373): its witness is a fill.
-        sim = model(lane, row, fill=lane in ("run_adi", "fwd_adi"))
+        sim = model(lane, row, fill=lane in ())
         plain = np.asarray(run(sim, lane, row, steps=16).time_series)
         with _realized.capture() as saved:
             observed = np.asarray(run(sim, lane, row, steps=16).time_series)
@@ -360,7 +352,7 @@ def test_dump_is_consumed(lane, row):
 
 @pytest.mark.parametrize("row", ["eps", "mu", "override_drive"])
 def test_missing_record_is_not_a_departure(row):
-    dump = _realized.Capture(lane="run_adi")
+    dump = _realized.Capture(lane="run_uniform")
     with pytest.raises(RuntimeError, match="no record"):
         assert_cell(dump, row)
 

@@ -181,21 +181,6 @@ def measure(case, entry, n_steps=2):
                 return original_fast(*args, **kwargs)
             with patch.object(jax, "default_backend", lambda: "gpu"), patch.object(stepping_uniform, "update_he_fast", observed_fast):
                 result = execute(sim, "run")
-        elif entry == "adi":
-            import rfx.adi as adi
-            original_adi = adi.run_adi_3d
-            def observed_adi(*args, **kwargs):
-                result = original_adi(*args, **kwargs)
-                jax.block_until_ready(result[0])
-                jax.effects_barrier()
-                reference_args = list(args)
-                reference_args[7] = jnp.zeros_like(reference_args[7])
-                reference = original_adi(*reference_args, **kwargs)
-                jax.block_until_ready(reference[0])
-                jax.effects_barrier()
-                return result
-            with patch.object(adi, "run_adi_3d", observed_adi):
-                result = execute(sim, entry)
         else:
             result = execute(sim, entry, n_steps)
         jax.block_until_ready(result.time_series)
@@ -225,7 +210,7 @@ def measured_fields(records, grid, entry):
         assert matching, "No scan with the declared grid shape"
         record = matching[0]
         fields = record["fields"]
-        reference = matching[1]["fields"] if entry == "adi" else None
+        reference = None
     assert fields.shape[-3:] == grid.shape, (
         f"Selected fields {fields.shape[-3:]} != grid {grid.shape}")
     if reference is not None:

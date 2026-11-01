@@ -96,7 +96,7 @@ class _ExecuteMixin:
 
         order=4 is implemented ONLY in the plain uniform-Cartesian core_step
         kernel (``rfx.simulation.update_e``/``update_h``). The nonuniform,
-        distributed, distributed-NU, and ADI lanes are SEPARATE runners that
+        distributed and distributed-NU lanes are SEPARATE runners that
         do not flow through that kernel; CPML/UPML boundaries pull the E/H
         update onto the absorber path. None of those honour ``stencil_order``,
         so a 4th-order request there would silently fall back to 2nd order —
@@ -123,8 +123,6 @@ class _ExecuteMixin:
         )
         if is_nonuniform:
             unsupported.append("non-uniform mesh (dx/dy/dz profile)")
-        if self._solver == "adi":
-            unsupported.append("solver='adi'")
         if self._refinement is not None:
             unsupported.append("subgridding (refinement)")
         if distributed:
@@ -552,7 +550,6 @@ class _ExecuteMixin:
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
 
-    from rfx.runners.adi import _run_adi_from_materials
 
     from rfx.runners.uniform_forward import _forward_from_materials
 
@@ -1112,7 +1109,7 @@ class _ExecuteMixin:
 
             Fenced, not degraded — for a design PERMITTIVITY
             (*design_eps_override*): ``distributed=True``,
-            ``solver='adi'``, ``boundary='upml'``, Debye/Lorentz
+            ``boundary='upml'``, Debye/Lorentz
             dispersion, Kerr, subpixel/anisotropic permittivity,
             ``pec_occupancy_override``, ``stencil_order=4``, the oblique
             Bloch path, combining with ``eps_override`` / ``sigma_override``
@@ -1160,7 +1157,7 @@ class _ExecuteMixin:
             ``checkpoint=False`` with it, for the reason above.
 
             Uniform single-device Yee lane only; a graded mesh,
-            ``distributed=True`` and ``solver='adi'`` raise. So do a
+            ``distributed=True`` raises. So do a
             periodic axis (the incident rule wraps across the seam, so the
             box's window is no longer the whole set of cells its occupancy
             can move), combining it with *design_eps_override* in one call,
@@ -1548,23 +1545,17 @@ class _ExecuteMixin:
                 "for differentiable nonlinear (Kerr) design."
             )
 
-        # Both single-device lanes build TFSF; distributed/ADI lanes do not.
+        # Both single-device lanes build TFSF; distributed lanes do not.
         if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
             raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward refuses distributed and "
-                f"ADI lanes, including {plan.lane!r}. Use a uniform or graded "
+                "Differentiable TFSF plane-wave forward refuses distributed "
+                f"lanes, including {plan.lane!r}. Use a uniform or graded "
                 "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
         # material-override paths do not thread it, so fail loud instead of
         # silently dropping it to a zero-gradient no-op.
-        if mu_r_override is not None and self._solver == "adi":
-            raise NotImplementedError(
-                "forward(mu_r_override=...) is not supported with solver='adi': "
-                "the ADI update does not read the permeability override. "
-                "Use solver='yee' on a uniform single-device mesh, or omit mu_r_override."
-            )
         if mu_r_override is not None and plan.lane != "fwd_uniform":
             raise NotImplementedError(
                 "mu_r_override (differentiable permeability) is supported only on "
@@ -1572,7 +1563,7 @@ class _ExecuteMixin:
             )
 
         # #1179/#1183 design box: the lanes that carry it. The distributed
-        # and ADI runners never see ``design_box``, so without this they
+        # runners never see ``design_box``, so without this they
         # would run the BACKGROUND design variable and return a zero
         # gradient — a silent wrong answer.
         _design_requested = (design_box is not None
@@ -1591,12 +1582,6 @@ class _ExecuteMixin:
                     + f" forward lane(s), not {plan.lane!r}"
                     ". "
                     "Use eps_override / pec_occupancy_override there.")
-            if self._solver != "yee":
-                raise NotImplementedError(
-                    "forward(design_box=...) is supported only on the Yee "
-                    f"solver, not solver={self._solver!r}: the ADI "
-                    "lane builds its own implicit update coefficients from "
-                    "``materials``. Use eps_override there.")
 
         if plan.lane == "fwd_distributed_nu" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' cannot combine with forward eps_override or distributed NU")
@@ -1674,11 +1659,7 @@ class _ExecuteMixin:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
         if n_steps is None:
-            if self._solver == "adi":
-                dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
-            else:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+            n_steps = grid.num_timesteps(num_periods=num_periods)
 
         # #677: node-thin sheet ctx against the realized PEC edges of this
         # forward run (PEC wins on overlapping edges).  #931: the PEC
@@ -1929,7 +1910,7 @@ class _ExecuteMixin:
 
             Supported on the **uniform lane only** (both the fixed
             ``n_steps`` scan and ``until_decay``); the distributed,
-            non-uniform, ADI and subgridded lanes warn and drop it rather
+            non-uniform and subgridded lanes warn and drop it rather
             than silently producing no output. It is forward-only and
             raises under ``jax.jit``/``grad``/``vmap`` (the check inspects
             the carry, the per-step inputs and the material / geometry

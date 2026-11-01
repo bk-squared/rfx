@@ -127,16 +127,6 @@
       "outputs": []
     },
     {
-      "path": "examples/tutorials/adi_solver_demo.py",
-      "lane": "pr",
-      "kind": "script",
-      "builders": [
-        {"name": "build_cavity", "required_args": ["solver", "adi_cfl_factor"], "returns": "Simulation"}
-      ],
-      "runs_solve": true,
-      "outputs": []
-    },
-    {
       "path": "examples/tutorials/antenna_farfield_pattern.py",
       "lane": "pr",
       "kind": "script",

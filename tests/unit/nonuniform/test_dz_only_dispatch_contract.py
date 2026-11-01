@@ -323,14 +323,6 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
     assert plan_fwd.lane == "fwd_nonuniform", plan_fwd
 
 
-# ---------------------------------------------------------------------------
-# Source-level class lock: a dispatch predicate that tests dx_profile AND
-# dy_profile must test dz_profile too. rfx/api/__init__.py is excluded on
-# purpose: its ADI guard tests dx/dy only because dz_profile is rejected
-# separately one line above (solver='adi' raises ValueError on nonuniform
-# dz_profile) — a deliberate per-axis check, not this defect class. ADI has
-# no z-graded lane; ZCZ names the Zheng-Chen-Zhang scheme, not a dz lane.
-# ---------------------------------------------------------------------------
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",
     # #980 Phase 2 moves the compute_* bodies -- including the #811 dx/dy/dz

@@ -26,11 +26,7 @@ the ``vmap_material_sweep()`` batched kernel and the uniform
 now through one shared check. ``forward()`` and ``topology_optimize()`` both
 enter the uniform forward lane (``_forward_from_materials``), which refuses it
 once for both; ``optimize()`` goes through ``forward()``, and
-``differentiable_material_fit()`` runs its own uniform scan.
-
-The ADI lane never dropped a refinement: ``_validate_adi_configuration``
-refuses it. Locked here too.
-"""
+``differentiable_material_fit()`` runs its own uniform scan."""
 
 from __future__ import annotations
 
@@ -428,14 +424,7 @@ def test_differentiable_material_fit_refuses():
             n_iterations=1, learning_rate=0.0, verbose=False))
 
 
-# ---------------------------------------------------------------------------
-# ADI: refused before #1240, locked
-# ---------------------------------------------------------------------------
 
-def test_adi_refuses_a_refinement():
-    with pytest.raises(ValueError, match="does not support subgridding"):
-        _quiet(lambda: _box(True, graded=False, solver="adi").run(
-            n_steps=N_STEPS, skip_preflight=True))
 
 
 # ---------------------------------------------------------------------------

@@ -85,8 +85,8 @@ Always pass `amplitude_kind`:
 - `"field"`: the amplitude is added to E each step, in V/m.
 
 Omitting it or passing `None` selects `"current"` and warns once per simulation.
-The default is boundary- and mesh-independent on Yee paths; ADI requires
-explicit `"field"`. Tested in `tests/unit/sources/test_source_amplitude_kind.py`.
+The default is boundary- and mesh-independent on Yee paths.
+Tested in `tests/unit/sources/test_source_amplitude_kind.py`.
 
 ### Polarized sources
 
@@ -415,7 +415,7 @@ Getting an accurate result:
   several devices see [Run on several devices](/rfx/run/multi-device/).
   Wire ports on a graded mesh are experimental.
 - **Microstrip** `mode="eigenmode"` is unsupported. Graded-mesh microstrip has
-  no external comparison yet. ADI, subgridding and TFSF are refused.
+  no external comparison yet. Subgridding and TFSF are refused.
 - **Coax** calculators are checked on one
   geometry family, and only azimuthally symmetric discontinuities.
 - **TFSF on a graded x axis:** normal incidence runs, with the incident line

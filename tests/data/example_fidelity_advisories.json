@@ -2,14 +2,6 @@
  "_comment": "Per-row disposition for every preflight advisory pinned in example_fidelity_snapshot.json (#737 item 1). The snapshot pins WHAT each audited example emits; this file says WHY each of those rows is there, so the gate is a zero-UNEXPLAINED-advisory bar rather than a drift pin. Entries are keyed by (variant, code) and carry the number of pinned rows that pair covers -- rows that share a code on one variant are the same condition on different ports, axes or entities, and the snapshot already pins each one's full text. test_example_fidelity_contract.py asserts the mapping is a bijection and that the row counts add up, so a new advisory, a removed one, or a stale entry all fail. disposition: 'intended' = the example deliberately shows or tolerates this condition (reason cites the example's own docstring/comment or the physics); 'defect-open' = the example should not emit this and the fix needs work beyond this file's PR, with the issue number that tracks it. A defect small enough to fix leaves no entry -- the row is gone from the snapshot instead. validation/crossval/* scripts belong to the crossval leader session (#928): their rows are classified here, never edited.",
  "entries": [
   {
-   "code": "adi_3d_accuracy",
-   "disposition": "intended",
-   "reason": "This variant exists to SHOW the advisory. The tutorial reads TE101 three ways (yee, ADI at factor 2, ADI at factor 5) and prints the frequency error each way 'so the accuracy-vs-timestep trade is visible rather than asserted'; its own docstring says the default factor 5 'carries a visible wavelength-scale error (shown below)'. run_and_read() prints the report verbatim and labels it 'quoted verbatim, not suppressed'.",
-   "ref": "examples/tutorials/adi_solver_demo.py:26-31,40-45,102-105",
-   "rows": 1,
-   "variant": "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl5"
-  },
-  {
    "code": "floating_port",
    "disposition": "intended",
    "reason": "The demo never time-steps: its docstring is 'Create a shareable rfx artifact bundle (scene + mesh + report) WITHOUT running FDTD', and main() only calls export_artifact_bundle(). The advisory is about excitation coupling during a solve (a single-cell port in substrate cannot drive the patch TM mode, issue #71); this scene has no patch and no solve, and the advisory itself is part of what the exported review report carries. No number this example prints depends on the port.",

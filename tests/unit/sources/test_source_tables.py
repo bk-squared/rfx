@@ -215,11 +215,10 @@ def test_mutation_plain_coefficient_in_sweep_is_detected(monkeypatch):
         _sweep_oracle('seam')
 
 
-@pytest.mark.parametrize('lane', ['uniform-pec', 'uniform-cpml', 'graded', 'adi'])
+@pytest.mark.parametrize('lane', ['uniform-pec', 'uniform-cpml', 'graded'])
 def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane):
     options = {'dx_profile': np.full(8, .001)} if lane == 'graded' else {}
-    if lane == 'adi':
-        options['solver'] = 'adi'
+    pass
     sim = Simulation(freq_max=8e9, domain=(.008,) * 3, dx=.001,
                      boundary='cpml' if lane == 'uniform-cpml' else 'pec',
                      cpml_layers=2 if lane == 'uniform-cpml' else 0, **options)
@@ -235,13 +234,13 @@ def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane)
     _patch_source_table(monkeypatch, capture)
     def table(a):
         built.clear()
-        override = a if lane == 'adi' else jnp.ones(grid.shape) * a
+        override = jnp.ones(grid.shape) * a
         sim.forward(n_steps=4, eps_override=override,
                     checkpoint=False, skip_preflight=True)
         assert built
         return built[-1]
     actual, tangent = jax.jvp(table, (jnp.float32(1.1),), (jnp.float32(1.),))
-    dt = grid.dt * (sim._adi_cfl_factor if lane == 'adi' else 1.)
+    dt = grid.dt * (1.)
     expected = jax.vmap(_wave)(jnp.arange(4, dtype=jnp.float32) * dt)
     np.testing.assert_array_equal(actual, expected)
     assert np.all(np.asarray(tangent) == 0.)

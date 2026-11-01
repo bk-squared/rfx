@@ -6,9 +6,9 @@ import pytest
 from rfx.api import Simulation
 
 
-@pytest.mark.parametrize("lane", ("adi", "distributed", "graded-occupancy", "cpml"))
+@pytest.mark.parametrize("lane", ( "distributed", "graded-occupancy", "cpml"))
 def test_estimator_and_forward_refuse_design_box(lane):
-    options = dict(solver="adi", boundary="pec", cpml_layers=0) if lane == "adi" else dict(boundary="cpml", cpml_layers=2)
+    options = dict(boundary="cpml", cpml_layers=2)
     if lane == "graded-occupancy":
         options["dz_profile"] = np.full(12, .001)
     sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.001, **options)

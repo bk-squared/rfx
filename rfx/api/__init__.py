@@ -283,31 +283,13 @@ class Simulation(
         quantity of interest is a reflection coefficient, an S-parameter,
         or anything else living near the absorber floor — use
         ``"float32"`` (the default) for those.
-    solver : str
-        ``"yee"`` (default) for the standard explicit scheme or
-        ``"adi"`` for the experimental ADI-FDTD path. The homogeneous,
-        lossless split with compatible domain boundaries removes the
-        explicit CFL stability restriction. Interior PEC (sheets, wires,
-        volumes) is refused at every factor on both lanes: its projection
-        does not inherit that guarantee. Cavity accuracy without interior
-        PEC is tested in 2D TMz (``mode="2d_tmz"``, 2% resonance gate at
-        5x CFL, ``test_adi_cavity_resonance``) and 3D
-        (full Zheng–Chen–Zhang two-sub-step scheme: 2% PEC-cavity eigenfrequency gate at 2x
-        CFL, ~15 cells/wavelength). 3D dispersion error grows ~dt^2, so
-        preflight emits an ``adi_3d_accuracy`` envelope advisory when
-        ``adi_cfl_factor > 2`` on a 3D grid — large factors trade
-        wavelength-scale accuracy for stiff-mesh throughput.
-    adi_cfl_factor : float
-        Timestep multiplier relative to the grid's Yee CFL timestep when
-        ``solver="adi"``. Default 2.0; for quantitative wavelength-scale
-        3D results prefer <= 2.0 (see ``solver``).
     stencil_order : int
         Spatial finite-difference order for the explicit Yee update: ``2``
         (default, the standard (2,2) scheme — BYTE-IDENTICAL to prior
         releases) or ``4`` (the (2,4) fourth-order-in-space stencil). Order
         4 is supported ONLY on the plain uniform Cartesian vacuum/dielectric
         path: boundary ``pec``/``periodic`` (NOT cpml/upml), default ``yee``
-        solver (NOT adi), uniform mesh (no dz/dx/dy profile), no dispersive
+        solver, uniform mesh (no dz/dx/dy profile), no dispersive
         materials, no anisotropic/subpixel eps, no conformal PEC, no Kerr,
         not distributed. Any unsupported combination with
         ``stencil_order=4`` raises ``NotImplementedError``. Order 4 derates
@@ -332,7 +314,7 @@ class Simulation(
         nominal_profiles: dict | None = None,
         precision: str = "float32",
         solver: str = "yee",
-        adi_cfl_factor: float = 2.0,
+        adi_cfl_factor: float | None = None,
         stencil_order: int = 2,
         interface_eps: str = "sampled",
         snap: str = "strict",
@@ -377,10 +359,8 @@ class Simulation(
             raise ValueError(
                 f"precision must be 'float32', 'mixed', or 'float64', got {precision!r}"
             )
-        if solver not in ("yee", "adi"):
-            raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")
-        if adi_cfl_factor <= 0:
-            raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
+        from rfx.model import admit_solver
+        admit_solver(solver, adi_cfl_factor)
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
         from rfx.model import admit_graded_profiles
@@ -424,24 +404,12 @@ class Simulation(
         self._dt_min_cell = dt_min_cell
         self._precision = precision
         self._solver = solver
-        self._adi_cfl_factor = adi_cfl_factor
         # (2,4) fourth-order-in-space stencil (PR-1b). 2 = default,
         # byte-identical. 4 is reachable ONLY on the plain uniform Cartesian
         # vacuum/dielectric path; the comprehensive API fence
         # (_check_stencil_order_supported) rejects every unsupported runner.
         self._stencil_order = stencil_order
 
-        if self._solver == "adi":
-            if self._mode not in ("2d_tmz", "3d"):
-                raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
-            if self._boundary == "upml":
-                raise ValueError("solver='adi' does not support boundary='upml'")
-            from rfx._adi_notice import require_closed_boundary
-            require_closed_boundary(self)
-            if self._dz_profile is not None:
-                raise ValueError("solver='adi' does not support nonuniform dz_profile")
-            if self._dx_profile is not None or self._dy_profile is not None:
-                raise ValueError("solver='adi' does not support nonuniform dx/dy profile")
 
         # Registered items
         self._materials: dict[str, MaterialSpec] = {}
@@ -519,38 +487,6 @@ class Simulation(
                               face_origins=(),
                               domain=domain),
         )
-
-        # solver='adi' has no per-face absorber. Its absorbing layer is a
-        # graded sigma stamped on ALL SIX faces at the scalar cpml_layers
-        # (rfx/adi.py make_adi_absorbing_sigma{,_3d}, reached from
-        # rfx/api/_execute.py under `self._boundary == "cpml"`), and
-        # `self._boundary` is 'cpml' as soon as ANY face absorbs. So a
-        # per-face spec with PEC faces, or with a per-face thickness
-        # override, would silently get an absorber where the caller asked
-        # for a reflector — the SILENT_WRONG class preflight exists to
-        # remove (issue #647 grep sweep). Reject it instead of absorbing
-        # into a wall.
-        if self._solver == "adi" and self._cpml_layers > 0:
-            _adi_faces = {
-                f"{ax}_{side}":
-                    getattr(getattr(self._boundary_spec, ax), side)
-                for ax in "xyz" for side in ("lo", "hi")
-            }
-            from rfx.boundaries import adi_uniform_faces
-            if not adi_uniform_faces(self._boundary_spec, cpml_layers):
-                _layout = ", ".join(
-                    f"{face}={tok!r}"
-                    for face, tok in sorted(_adi_faces.items())
-                )
-                raise ValueError(
-                    "solver='adi' supports only a uniform absorber: its "
-                    "absorbing layer is stamped on all six faces at the "
-                    "scalar cpml_layers, so a per-face boundary layout "
-                    f"({_layout}) would silently absorb on the faces you "
-                    "declared as reflectors. Use solver='yee' for per-face "
-                    "boundaries, or make every face 'cpml' with no per-face "
-                    "thickness override."
-                )
 
         # T7 Phase 2 PR2: per-face CPML thickness now runs end-to-end
         # via the padded-profile engine in rfx/boundaries/cpml.py.
@@ -801,8 +737,7 @@ class Simulation(
 
             - ``'current'``: the amplitude is a current moment I(t) in A·m,
               realized as ``E += Cb * I / dV`` on every path and boundary
-              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI refuses
-              ``'current'`` and requires explicit ``'field'``,
+              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``;
               ``dV`` = local cell volume). Resolution-independent injected
               power; Meep's convention; the declaration default.
             - ``'field'``: the amplitude is a raw E-field increment per
@@ -1062,7 +997,7 @@ class Simulation(
             and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``. Both the uniform and
             the non-uniform (``dz_profile``)
             ``run()``/S-parameter lanes apply the operator; lanes that do
-            not (distributed, subgridded, ADI, UPML, dispersive-overlap,
+            not (distributed, subgridded, UPML, dispersive-overlap,
             multimode-waveguide, MSL-junction/mixed, optimize/topology
             drivers) refuse f0 sheets loudly rather than silently dropping
             them; ``compute_msl_s_matrix`` applies the sheet through its

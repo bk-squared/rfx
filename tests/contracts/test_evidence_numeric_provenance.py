@@ -694,6 +694,7 @@ CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
 CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260928_model_assembly_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20261004_showcase_lens_filter_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20261029_remove_adi_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/20261010_absorber_curl_coefficient.md": NO_ARTIFACT_REFERENCE,
     "docs/public/api/generated/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/machine-readable.mdx": NO_ARTIFACT_REFERENCE,
@@ -713,7 +714,6 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/examples/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/gallery/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/gallery/waveguide_wr90.mdx": NO_ARTIFACT_REFERENCE,
-    "docs/public/guide/adi-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/api-reference.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/design/gradients.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/benchmarks.mdx": GATED,

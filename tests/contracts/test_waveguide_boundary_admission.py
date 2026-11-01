@@ -226,17 +226,13 @@ def test_terminal_planes_use_realized_pads():
 
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("path", ["uniform", "nonuniform", "distributed_v2",
-                                  "distributed_nu", "subgridded", "adi"])
+                                  "distributed_nu", "subgridded"])
 def test_explicit_absorbing_guide_refused_on_every_dispatch_path(skip, path, monkeypatch):
     """Addendum 5f extends the explicit-guide refusal to graded dispatch paths."""
     import jax
     import numpy as np
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}
-    if path == "adi":
-        mesh["solver"] = "adi"
-        with pytest.raises(ValueError, match='solver="adi" refuses absorbing boundaries'):
-            guide("cpml", **mesh)
-        return  # this declaration cannot reach ADI dispatch
+    pass
     sim = guide("cpml", **mesh)
     if path == "subgridded":
         sim.add_refinement(z_range=(0., .004), ratio=2, validation="research")

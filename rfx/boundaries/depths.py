@@ -114,11 +114,6 @@ def has_positive_cpml_faces(spec, budget):
             and all(face.realized > 0 for face in resolve_face_depths(spec, budget=budget)))
 
 
-def adi_uniform_faces(spec, budget):
-    """ADI's scalar-only absorber cannot carry a wall or a depth override."""
-    return all(face.kind == Kind.ABSORBER and face.declared == budget
-               for face in resolve_face_depths(spec, budget=budget)) and all(
-                   token == "cpml" for _, _, token in spec.faces())
 
 
 def distributed_electric_walls(grid):

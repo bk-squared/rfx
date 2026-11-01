@@ -135,11 +135,11 @@
         "S uses positive real analytic power-wave references exposed in reference_impedances, separately from fitted Z0 and source/load resistance; unequal-reference transmission changes from legacy voltage ratios",
         "Result.s_params is not used; call compute_msl_s_matrix(...)",
         "outside JAX tracing, reliable[p,k]=false invalidates the whole slice S[:,:,k] (S is solved jointly across drives, #507); the mask covers every driven/port record the solve consumes (#522); true is not an accuracy guarantee",
-        "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
+        "mode=eigenmode, SBP-SAT subgridding, TFSF, and mixed port families are unsupported",
         "the larger strong-reflector staircase-Z0 floor this matrix used to quote is RETIRED (#487: extractor defects fixed in PR #516); a smaller floor survives, tracking |Gamma_implied|=|(Z0-Z0_HJ)/(Z0+Z0_HJ)| on resolvable #487 re-sweep points; the sweep cannot resolve whether the mechanism still holds below its resolution limit (band-mean-Z0 vs band-mean-|S11| comparison, no per-bin trace, and a fitted-Z0 estimator) -- a resolution limit, not a confirmed second mechanism; no single envelope number is published either way, since the floors are fixture-specific; see scripts/diagnostics/msl_z0_bias_floor_sweep.py",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
         "the auto n_probe_offset solves the upstream/downstream clearance interval at driver time and warns loudly when a short feed cannot satisfy both (#469); library witness probes are excluded from preflight advisories and the #332 tail advisory (#470)",
-        "surface-impedance (surface_impedance_f0) sheets are applied on this lane's device runs (#679; realized on its node plane by the #677 per-step operator inside run()/forward()); the trace itself must remain hard PEC (a Box volume, a zero-thickness Box, or a PEC add_thin_conductor sheet) because the Ampere-loop current and V span anchor on realized PEC wall planes and an f0 sheet realizes no PEC edge; the lane finds the trace through realized_wall_planes, so a sheet-declared trace works (#931); combination refusals (dispersive, subpixel/conformal, UPML, ADI/subgridded/distributed) fire at the run-lane entry; a sheet inside a probed span biases the lossless-line N-probe Z0/q fit while the V-I S extraction stays valid; the mixed (wire+MSL junction) lane still refuses f0 sheets"
+        "surface-impedance (surface_impedance_f0) sheets are applied on this lane's device runs (#679; realized on its node plane by the #677 per-step operator inside run()/forward()); the trace itself must remain hard PEC (a Box volume, a zero-thickness Box, or a PEC add_thin_conductor sheet) because the Ampere-loop current and V span anchor on realized PEC wall planes and an f0 sheet realizes no PEC edge; the lane finds the trace through realized_wall_planes, so a sheet-declared trace works (#931); combination refusals (dispersive, subpixel/conformal, UPML, subgridded/distributed) fire at the run-lane entry; a sheet inside a probed span biases the lossless-line N-probe Z0/q fit while the V-I S extraction stays valid; the mixed (wire+MSL junction) lane still refuses f0 sheets"
       ],
       "evidence_level": "E5-narrow/eigenmode-blocked",
       "validation_gaps": [
@@ -505,7 +505,7 @@
         "off-diagonal phase provisional (cross-family reference-plane mismatch)",
         "per-column power is an ALGEBRAIC IDENTITY on the flux channel and is not a passivity check; reciprocity is the only independent internal witness",
         "residual reciprocity disagreement traced to a driven-port diagonal; which diagonal is open (issue #313 wire port-cell vs the MSL analytic Z0 anchor)",
-        "waveguide, Floquet, coaxial, TFSF, bare sources, 0-ohm ports, mixed lumped+wire sets, reference_plane_cells, non-uniform meshes, SBP-SAT and ADI are all rejected loudly"
+        "waveguide, Floquet, coaxial, TFSF, bare sources, 0-ohm ports, mixed lumped+wire sets, reference_plane_cells, non-uniform meshes and SBP-SAT are all rejected loudly"
       ],
       "evidence_level": "experimental/internal-witness-only",
       "validation_gaps": [

@@ -631,8 +631,6 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
         raise RfxUnsupported(
             f"{caller}(ringdown=...) needs mode='3d'; this model is mode={sim._mode!r}.")
     _refuse_stencil_order(sim, caller)
-    if getattr(sim, "_solver", None) == "adi":
-        raise RfxUnsupported(f"{caller}(ringdown=...) is not supported with solver='adi'.")
     if getattr(sim, "_refinement", None) is not None:
         raise RfxUnsupported(
             f"{caller}(ringdown=...) is not supported on the subgridded lane.")

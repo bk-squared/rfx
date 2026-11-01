@@ -8,7 +8,7 @@ sidebar:
 ## What it is for
 
 rfx steps a model in time on one of several solver paths: a uniform mesh, a
-graded mesh, several devices, ADI, or a subgridded mesh. Each path implements
+graded mesh, several devices, or a subgridded mesh. Each path implements
 part of what `Simulation` can declare. An input a path does not implement would,
 if it were simply skipped, give a result for a different structure: a Kerr
 block solved as linear, a port that launches nothing, a periodic wall solved as
@@ -57,12 +57,12 @@ The subgridded lane is unstable and unverified: an empty lossless PEC cavity's f
 
 Every refusal message has the same three parts: what is refused on which path,
 the reason, and what to do instead. Some inputs are refused as soon as you
-declare them. Asking for ADI with an absorbing boundary raises when the
-`Simulation` is created, with this message (abridged):
+declare them. Asking for `solver="adi"` raises when the
+`Simulation` is created, with this message:
 
 ```text
 ValueError
-solver="adi" refuses absorbing boundaries: this boundary is not a CPML but an unmatched graded-conductivity sponge (electric loss only, no magnetic loss). ... Use solver="yee" with boundary="cpml" for open structures, or solver="adi" with boundary="pec" for closed cavities.
+ADI was removed in 2.1: its unmatched absorber, half-cell interface error and unstable interior PEC outweigh the median 1.22x time-step gain. Use solver="yee" on a graded mesh (dz_profile, dx_profile, dy_profile) for thin layers, or local refinement where it is supported.
 ```
 
 What to expect:
@@ -116,7 +116,6 @@ Most refusals have the same few ways through:
 |---|---|
 | the input is not implemented on a graded mesh or on several devices | run it on a uniform mesh, or on one device |
 | subgridding is not validated | use a graded mesh for local resolution |
-| ADI does not implement ports, dispersive materials, lumped elements or absorbers | use the default solver; ADI is experimental |
 | a `run()` argument the path does not implement | drop the argument, or run on a path that has it (the message names one) |
 | S-parameters asked from one run with several lumped or wire ports excited | run once per driven port with the others passive (`excite=False`), or use `run(compute_s_params=True)` on a uniform mesh, which drives one port per run |
 | a far-field box in a model with a PEC, PMC or zero-depth absorbing face (a symmetry plane, an infinite ground plane) | draw a finite ground plane as geometry and keep every face absorbing |

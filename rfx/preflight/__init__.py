@@ -11,7 +11,7 @@ advisory-text snapshot in
 Eight modules, and the motion is complete: every check family and the
 realization layer they all read now live here, and the facade keeps the
 EXECUTION family (``preflight``, ``preflight_sparameters``, the request
-validators and routers, the ADI/x64/settling-witness configuration checks)
+validators and routers, the x64/settling-witness configuration checks)
 plus the re-export blocks and the class-body rebinds. Leg 8 then added a
 ninth module that moves nothing: ``_registry``, which turns the composition
 point itself into data.

@@ -13,8 +13,8 @@ def sphere_sim(graded=False, radius=.0023, *, debye=False, chi3=0.0, solver="yee
     profile = np.array([.001] * 4 + [.0008] * 5 + [.001] * 4)
     sim = Simulation(freq_max=20e9, domain=(.012, .012, .012), dx=.001,
                      dz_profile=profile if graded else None,
-                     boundary="pec" if solver == "adi" else "cpml",
-                     cpml_layers=0 if solver == "adi" else 2, solver=solver)
+                     boundary="cpml",
+                     cpml_layers=2, solver=solver)
     sim.add_material("sphere", eps_r=4.0, chi3=chi3,
                      debye_poles=[DebyePole(delta_eps=1., tau=1e-11)] if debye else None)
     sim.add(Sphere((.00537, .00613, .00573), radius), material="sphere")
@@ -152,9 +152,6 @@ def test_distributed_smoothing_refused(graded):
     ).replace("omit distributed=True", "omit devices=")
 
 
-def test_adi_smoothing_refused():
-    with pytest.raises(NotImplementedError, match="subpixel_smoothing"):
-        sphere_sim(solver="adi").forward(n_steps=1, subpixel_smoothing=True)
 
 
 def test_kerr_smoothing_refused():

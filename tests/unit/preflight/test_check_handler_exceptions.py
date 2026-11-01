@@ -32,7 +32,6 @@ def _sim():
 CASES = [
     ("ad_memory", ValueError, True),
     ("run_dc", ValueError, False),
-    ("adi", ValueError, False),
     ("dielectric_grid", ValueError, False),
     ("dielectric_shapes", NotImplementedError, False),
     ("thin_depths", ValueError, False),
@@ -70,12 +69,6 @@ def _case(name, monkeypatch, fail):
         monkeypatch.setattr(sim, "_run_nonuniform", _runner)
         monkeypatch.setattr(run_module, "bind_solve_call", lambda assembly, call: (call, None))
         return lambda: sim.run(n_steps=1, until_decay=1e-4, compute_s_params=False), lambda r: r == "runner"
-    if name == "adi":
-        import rfx.runners._admission as admission
-        sim._solver = "adi"
-        monkeypatch.setattr(admission, "_adi_homogeneous", fail)
-        monkeypatch.setattr(sim, "_campaign_ctx", lambda: NS(error=None, realized=lambda: NS(empty=True)))
-        return lambda: sim._validate_cfg_adi_interior_pec(warnings), lambda r: r is None
     if name.startswith("dielectric_"):
         if name == "dielectric_grid":
             monkeypatch.setattr(sim, "_build_grid", fail)
@@ -209,8 +202,6 @@ def test_check_exception_policy(monkeypatch, name, expected, recorded, failure):
                 assert outcome
             if name == "waveguide_sparams":
                 assert any("UNCHECKED" in str(w.message) for w in seen)
-            if name == "adi":
-                assert not seen
     assert reached, f"{name}: injected callee was not reached"
 
 

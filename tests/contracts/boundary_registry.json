@@ -143,51 +143,6 @@
   ],
   "sites": [
     {
-      "file": "rfx/_radiated_power.py",
-      "function": "integrate_radiated_power",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "_apply_pec_2d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "_apply_pec_3d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "adi_step_2d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "adi_step_2d",
-      "kind": "difference"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "adi_step_3d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "apply_adi_cpml_2d",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "apply_adi_cpml_2d",
-      "kind": "difference"
-    },
-    {
-      "file": "rfx/stepping/adi.py",
-      "function": "run_adi_2d_loop.step_fn",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/auto_config.py",
       "function": "_make_dz_profile",
       "kind": "difference"

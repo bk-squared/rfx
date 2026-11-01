@@ -93,13 +93,6 @@ def test_old_writer_default_layout(tmp_path, n_ports):
     np.testing.assert_allclose(read_touchstone_full(external).s_params, expected.transpose(1, 0, 2))
 
 
-def test_adi_default_and_forward_result_export():
-    assert inspect.signature(Simulation).parameters["adi_cfl_factor"].default == 2.0
-    sim = Simulation(freq_max=1e9, domain=(.03, .03, .03), solver="adi", boundary="pec")
-    assert sim._adi_cfl_factor == 2.0
-    from rfx.api._spec import ForwardResult
-    assert rfx.ForwardResult is ForwardResult
-    assert "ForwardResult" in rfx.__all__
 
 
 @pytest.mark.parametrize("version,n_ports", [("1.0", 2), ("2.0", 2), ("2.0", 3)])

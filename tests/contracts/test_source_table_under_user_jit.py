@@ -121,7 +121,7 @@ def test_c_forward_keeps_port_coefficient_gradient():
     np.testing.assert_allclose(gradient, expected_grad, rtol=1e-6, atol=0)
 
 
-@pytest.mark.parametrize("sampler", ["uniform", "graded", "adi"])
+@pytest.mark.parametrize("sampler", ["uniform", "graded"])
 def test_other_concrete_source_samples_under_user_jit(sampler):
     waveform = GaussianPulse(f0=2.4e9, bandwidth=1.2)
     grid = SimpleNamespace(dt=7.5e-13, dx=1e-3)

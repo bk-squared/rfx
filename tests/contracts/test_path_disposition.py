@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # "grid-level: <why>" for a function that takes a Grid, not a Simulation.
 KERNEL_CALLERS = {
     "rfx/runners/run.py:run_after_admission":
-        "internal to run_uniform, run_nonuniform, run_subgridded, run_adi, run_distributed, run_distributed_nu",
+        "internal to run_uniform, run_nonuniform, run_subgridded, run_distributed, run_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin.forward":
         "internal to fwd_uniform, fwd_nonuniform, fwd_distributed, fwd_distributed_nu",
     "rfx/runners/uniform_forward.py:_forward_from_materials":
@@ -41,7 +41,6 @@ KERNEL_CALLERS = {
     "rfx/runners/_distributed_nu_execute.py:execute_from_materials":
         "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/_distributed_nu_execute.py:dispatch_forward": "internal to fwd_distributed_nu",
-    "rfx/runners/adi.py:_run_adi_from_materials": "internal to run_adi, fwd_adi",
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",
     "rfx/runners/_distributed_entry.py:execute_distributed":
@@ -69,8 +68,6 @@ KERNEL_CALLERS = {
 # Top-level functions that call a field update themselves: a new one is a new
 # kernel, and its paths need cells.
 FIELD_STEPPERS = {
-    "rfx/stepping/adi.py:run_adi_2d_loop": "internal to run_adi",
-    "rfx/stepping/adi.py:run_adi_3d_loop": "internal to run_adi",
     "rfx/stepping/slab_update.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:_update_e_local_with_dispersion":
@@ -98,12 +95,12 @@ FIELD_STEPPERS = {
 
 _KERNELS = {
     "_forward_from_materials", "_forward_nonuniform_from_materials",
-    "_forward_distributed_nonuniform_from_materials", "_run_adi_from_materials",
+    "_forward_distributed_nonuniform_from_materials",
     "_execute_distributed_nonuniform_from_materials",
     "_run_nonuniform", "_run_subgridded", "run_uniform", "run_nonuniform_path",
     "run_subgridded_path", "run_disjoint_stage2_path", "run_distributed",
-    "run_nonuniform_distributed_pec", "run_subgridded_jit", "run_adi_2d",
-    "run_adi_3d", "run_nonuniform", "run_uniform_loop",
+    "run_nonuniform_distributed_pec", "run_subgridded_jit",
+    "run_nonuniform", "run_uniform_loop",
 }
 _SIMULATION_KERNELS = {"run", "run_until_decay"}  # rfx.simulation, under any alias
 # rfx.simulation re-exports run from the module that defines it; a read there is the same kernel.
@@ -113,7 +110,7 @@ _FIELD_UPDATES = {
     "update_e", "update_h", "update_e_nu", "update_h_nu", "update_he_fast",
     "update_e_fast", "update_h_fast", "update_e_aniso", "update_e_aniso_inv",
     "update_e_nu_aniso", "_update_e_local", "_update_h_local",
-    "_update_e_local_nu", "_update_h_local_nu", "adi_step_2d", "adi_step_3d",
+    "_update_e_local_nu", "_update_h_local_nu",
 }
 
 

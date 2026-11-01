@@ -34,14 +34,8 @@ NOTES = (("#1373", "H permeability is the own-axis face harmonic mean, weighted 
 for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
     # Filled explicitly below where admission refuses a declared material.
     for lane in LANES:
-        if lane in ("run_adi", "fwd_adi") and row == "mu":
-            TABLE[row][lane] = Cell("refuses", note="ADI refuses magnetic materials")
-        elif row == "mu":
+        if row == "mu":
             TABLE[row][lane] = Cell("compares", note="length-weighted harmonic face permeability; independent NumPy reference")
-        elif row in ("eps", "sigma") and lane in ("run_adi", "fwd_adi"):
-            TABLE[row][lane] = Cell("refuses", note="#1373: ADI read per-cell E material, so it "
-                                    "refuses a material interface; its consumption witness "
-                                    "is a whole-domain fill")
         elif row in ("eps", "sigma") and lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
             TABLE[row][lane] = Cell(note="#1303, fixed by #1326")
 
@@ -54,18 +48,13 @@ for lane in LANES:
     TABLE["sat"][lane] = (Cell(issue="#1373", note="per-cell SAT face epsilon")
                           if lane == "run_subgridded" else Cell("not reachable",
                           note="no coarse/fine interface on this lane"))
-    # ADI admits only explicit field declarations (#1373).
-    if lane in ("run_adi", "fwd_adi"):
-        for source in ("soft_none", "open_none", "soft_current", "open_current"):
-            TABLE[source][lane] = Cell("refuses", note="ADI implements only field sources")
+    pass
     for kind in ("field", "current", "none"):
-        if lane in ("run_adi", "fwd_adi"):
-            TABLE["open_" + kind][lane] = Cell("refuses", note="ADI refuses absorbing boundaries")
+        pass
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")
     for port in ("lumped", "wire"):
-        if lane in ("run_adi", "fwd_adi"):
-            TABLE[port + "_none"][lane] = Cell("refuses")
+        pass
         for kind in ("field", "current"):
             TABLE[port + "_" + kind][lane] = Cell("not reachable",
                 note="add_port has no amplitude_kind argument")
@@ -73,9 +62,7 @@ for lane in LANES:
 # Consumption witnesses are separate from comparison / admission kinds.
 # J4 replays and perturbs each listed material quantity at non-SAT sites.
 CONSUMPTION = {row: {lane: (
-    "J4 replay and perturbation" if row in ("eps", "sigma") or
-    (row == "mu" and lane not in ("run_adi", "fwd_adi")) else
-    "no consumption witness: ADI refuses mu" if row == "mu" else
+    "J4 replay and perturbation" if row in ("eps", "sigma", "mu") else
     "no consumption witness: SAT apply path not exercised" if row == "sat" else
     "J4 kernel replay: aniso.E sigma_e; no eps_e bit-identity witness" if row == "conformal" else
     "no consumption witness: drive tables not replayed"
@@ -89,22 +76,18 @@ for row in ("eps", "sigma"):
         TABLE[row][lane] = old._replace(note=(old.note + "; " if old.note else "") + predicate)
 
 # Site-level coverage: apply capability alone is not a consumption witness.
-CONSUMPTION_SITES = {
-    "yee.E": "J4: eps_e, sigma_e",
-    "precompute.E": "J4 kernel replay: eps_e, sigma_e",
-    "adi.E": "J4: eps_e, sigma_e",
-    "distributed.E": "J4: eps_e, sigma_e",
-    "distributed_nu.E": "J4: eps_e, sigma_e",
-    "yee.H": "J4: mu_h",
-    "precompute.H": "J4 kernel replay: mu_h",
-    "aniso.E": "J4 kernel replay: sigma_e; no eps_e bit-identity witness",
-    "sat.c": "no witness: apply exists; SAT faces not replayed",
-    "sat.f": "no witness: apply exists; SAT faces not replayed",
-    "distributed_nu.drive": "no witness: apply exists; runtime scales not replayed",
-    **{site + ".sources": "no witness: source tables have no apply path"
-       for site in ("uniform", "graded", "adi", "distributed",
-                    "distributed_nu", "subgrid")},
-}
+CONSUMPTION_SITES = {"yee.E": "J4: eps_e, sigma_e",
+                    "precompute.E": "J4 kernel replay: eps_e, sigma_e",
+                    "distributed.E": "J4: eps_e, sigma_e",
+                    "distributed_nu.E": "J4: eps_e, sigma_e",
+                    "yee.H": "J4: mu_h",
+                    "precompute.H": "J4 kernel replay: mu_h",
+                    "aniso.E": "J4 kernel replay: sigma_e; no eps_e bit-identity witness",
+                    "sat.c": "no witness: apply exists; SAT faces not replayed",
+                    "sat.f": "no witness: apply exists; SAT faces not replayed",
+                    "distributed_nu.drive": "no witness: apply exists; runtime scales not replayed",
+                    **{site + ".sources": "no witness: source tables have no apply path"
+       for site in ("uniform", "graded", "distributed", "distributed_nu", "subgrid")}}
 
 # Uniform forward consumes the same material operands as distributed run.
 for _row in ROWS:

@@ -14,10 +14,6 @@ def refuse_forward_smoothing(sim, *, subpixel_smoothing,
     refuse_full_tensor_conformal(subpixel_smoothing, bool(faces), faces)
     if not subpixel_smoothing:
         return
-    if sim._solver == "adi":
-        sim._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
-            "subpixel_smoothing": subpixel_smoothing},
-            instead="use the default solver='yee'")
     if sim._uses_nonuniform_mesh and subpixel_smoothing == "kottke_pec":
         raise RfxUnsupported(
             "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "

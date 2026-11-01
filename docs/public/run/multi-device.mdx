@@ -135,7 +135,7 @@ step. These are refused:
 | override, design or checkpoint arguments, `n_warmup`, `emit_time_series=False`, `ringdown`, a gradient through port S | `forward(distributed=True)` on a uniform mesh | a graded mesh for the material overrides, or one device |
 | `exchange_interval` other than 1 | all multi-device | 1 |
 | a graded mesh whose largest cell on an axis is more than 5 times its smallest (`run()` warns above 3 times; `forward()` checks only when preflight runs) | graded mesh | a gentler grading |
-| `solver="adi"`, `interface_eps="dual_average"` | all multi-device | the default solver and interface rule |
+| `interface_eps="dual_average"` | all multi-device | the default interface rule |
 | devices from several JAX processes | graded mesh, `run(devices=...)` | one process, or `forward(distributed=True)` for the probe signals |
 | an outer `jax.jit` on GPUs with command buffers on | all multi-device | see the outer-jit rule |
 | a Drude or Lorentz medium whose material values or cell sizes are traced by an outer `jax.jit` or a nested `jax.vmap` (the time-step limit cannot be checked inside a multi-device program; concrete values are checked, also for a medium that spans several slabs) | all multi-device | the call without `jax.jit` (`jax.grad` or one `jax.vmap` alone is checked), or one device |

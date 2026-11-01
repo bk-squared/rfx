@@ -14,13 +14,7 @@ Convention:
   that documents the actual behavior.
 
 Confirmed items here are candidates for promotion to
-``docs/agent-memory/rfx-known-issues.md`` once a fix lands.
-
-Covered: CORE-C2, GEO-C1, PROBE-C1, RIS-C2, OPT-C1 (adi_step_3d
-3D-cavity eigenfrequency — FIXED 2026-07-13 by the ZCZ full 3D ADI
-scheme; the former strict-xfail marker was removed on XPASS per the
-convention above).
-"""
+``docs/agent-memory/rfx-known-issues.md`` once a fix lands."""
 
 from __future__ import annotations
 
@@ -33,7 +27,6 @@ from rfx.core.yee import FDTDState, MaterialArrays, EPS_0, MU_0
 from rfx.stepping.yee import update_h_nu, update_e_nu
 from rfx.stepping.kerr import apply_kerr_ade
 from rfx.probes.probes import init_flux_monitor, flux_spectrum
-from rfx.adi import run_adi_3d
 from rfx.grid import C0
 
 
@@ -257,107 +250,11 @@ def test_risc2_np_interp_complex_part_behavior():
         "— RIS-C2 confirmed (imaginary part discarded).")
 
 
-# ===========================================================================
-# OPT-C1 — adi_step_3d 3D PEC-cavity eigenfrequency  (FIXED 2026-07-13)
-# ===========================================================================
-#
-# HISTORY: adi_step_3d used an LOD split that, by its own code comment,
-# applied the tridiagonal solve to ALL E components along each axis —
-# artificial diffusion on components whose curl has no derivative along
-# that axis. Under the honest comparator (below) the 12^3-cavity peak at
-# 2x CFL was 2.077 GHz, a 46% miss, and the mode energy decayed within
-# ~4 ns. This test was xfail(strict) against that scheme.
-#
-# VERDICT (2026-07-13, marker removed per module convention): adi_step_3d
-# now implements the full Zheng–Chen–Zhang two-sub-step 3D ADI (issue
-# #338 follow-up — the "fully unconditionally-stable 3D ADI" the
-# 2026-05-30 R2-STOP verdict sanctioned). Measured on this test's
-# committed settings: f_peak = 3.8079 GHz vs analytic 3.8543 GHz ->
-# rel_err = 1.204% < 2% (PASS), late/early probe RMS 0.999 (the mode
-# rings; no artificial dissipation), and the CFL-5x stability rung in
-# tests/unit/runners/test_adi.py stays green (bounded at 10x/50x as free witnesses).
-# Evidence: scripts/diagnostics/gate_honesty_20260713/lane_338_adi_redesign/.
-#
-# This test runs a lossless 3D PEC cubic cavity at a modest CFL factor
-# (where splitting error is small) and compares the dominant resonance
-# to the analytic mode  f_mnp = (C0/2)*sqrt((m/Lx)^2+(n/Ly)^2+(p/Lz)^2).
-#
-# COMPARATOR CONVENTION (issue #338): _apply_pec_3d zeroes tangential E
-# at node indices 0 and N-1, so the PEC walls sit L_eff = (N-1)*dx apart
-# — the fence-post convention Grid documents ("PEC walls at index 0 and
-# index N span exactly N*dx": a physical span of L needs N+1 nodes).
-# Computing f_analytic from L = N*dx biased it 9.1% low — larger than
-# the 2% gate itself, so the strict xfail could never legitimately
-# XPASS. The falsifier test below pins the corrected convention: the
-# known-good explicit Yee scheme on the SAME 12^3 node cavity lands
-# 0.21% from the corrected analytic and 8.9% from the biased one.
-#
-# NOT touched by the lattice ownership contract (#931 §1.8): these walls are
-# DOMAIN-boundary PEC (a BoundarySpec face, applied by _apply_pec_3d), not a
-# conductor body, and the contract fences domain-face PEC out explicitly —
-# E_tan = 0 on the face plane at index 0 / N, unchanged. The (N-1)*dx here is
-# therefore NOT the same species as the oracle compensations #931 deletes
-# (cv19's (L_c+1)*dx, cv15's ground drawn one cell low), which existed because
-# a conductor BODY never realized its far face. Do not "fix" this one by
-# analogy: L_eff = (N-1)*dx is what _apply_pec_3d actually realizes on a
-# 12-node cavity, and the falsifier below is what proves it.
 
-def test_optc1_adi_3d_cavity_eigenfrequency():
-    L = 0.06           # nominal 60 mm cube
-    dx = dy = dz = 0.005   # 12 cells per side
-    N = int(round(L / dx))
-    # Walls at nodes 0 and N-1 (node-indexed PEC, see block comment above):
-    # the honest analytic length is one cell short of the nominal L.
-    L_eff = (N - 1) * dx
-
-    # Degenerate fundamental: TE_101 / TE_011 / TE_110 of the L_eff cube.
-    f_analytic = (C0 / 2.0) * np.sqrt((1.0 / L_eff) ** 2 + (1.0 / L_eff) ** 2)
-
-    # 3D CFL limit; ADI is run at a modest factor so splitting error is small.
-    dt_cfl = dx / (C0 * np.sqrt(3.0))
-    dt = 2.0 * dt_cfl
-    n_steps = 1500
-
-    shape = (N, N, N)
-    z = jnp.zeros(shape, dtype=jnp.float32)
-    eps_r = jnp.ones(shape, dtype=jnp.float32)
-    sigma = jnp.zeros(shape, dtype=jnp.float32)   # lossless — isolates the scheme
-
-    # Short Gaussian pulse on Ey at an off-centre interior cell.
-    t_arr = jnp.arange(n_steps) * dt
-    tau = 8.0 * dt
-    t0 = 4.0 * tau
-    waveform = jnp.exp(-((t_arr - t0) / tau) ** 2).astype(jnp.float32)
-    src = (N // 3, N // 2, N // 3, "ey", waveform)
-    prb = (2 * N // 3, N // 2, 2 * N // 3, "ey")
-
-    out = run_adi_3d(z, z, z, z, z, z, eps_r, sigma,
-                     dt, dx, dy, dz, n_steps,
-                     sources=[src], probes=[prb])
-    probe_data = out[-1]
-    signal = np.asarray(probe_data[:, 0], dtype=np.float64)
-
-    skip = int(n_steps * 0.2)               # drop the excitation transient
-    late = signal[skip:]
-    freqs = np.fft.rfftfreq(len(late), d=float(dt))
-    spectrum = np.abs(np.fft.rfft(late))
-    spectrum[0] = 0.0                       # ignore DC
-    f_peak = freqs[int(np.argmax(spectrum))]
-
-    rel_err = abs(f_peak - f_analytic) / f_analytic
-    assert rel_err < 0.02, (
-        f"3D ADI cavity resonance {f_peak/1e9:.4f} GHz vs analytic "
-        f"{f_analytic/1e9:.4f} GHz — error {rel_err*100:.2f}% > 2%")
 
 
 def test_optc1_falsifier_yee_matches_corrected_analytic():
     """Falsifier for the OPT-C1 comparator length (issue #338).
-
-    The SAME 12^3 node cavity as test_optc1_adi_3d_cavity_eigenfrequency,
-    advanced by the known-good explicit Yee scheme (the test_cavity.py
-    rung: update_h / update_e / apply_pec — production PEC also zeroes
-    tangential E at nodes 0 and N-1), must resonate within the same 2%
-    gate of the CORRECTED analytic built from L_eff = (N-1)*dx.
 
     Discrimination: had the honest cavity length been N*dx instead, the
     Yee peak would sit ~8.9% from that analytic — asserted below, so
@@ -381,7 +278,6 @@ def test_optc1_falsifier_yee_matches_corrected_analytic():
     state = init_state((N, N, N))
     materials = init_materials((N, N, N))
 
-    # Same pulse width and source/probe cells as the ADI rung above.
     tau = 16.0 * dx / (C0 * np.sqrt(3.0))
     t0 = 4.0 * tau
     si, sj, sk = N // 3, N // 2, N // 3

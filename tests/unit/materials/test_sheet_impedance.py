@@ -607,21 +607,12 @@ def test_g9_distributed_runners_refuse():
 
 
 def test_g9_refusal_helper_message_names_the_lane():
-    """UNIT test of the helper's message formatting ONLY.
-
-    It proves nothing about whether any lane calls the helper: delete
-    ``refuse_f0_sheets(self._thin_conductors, "ADI run()")`` from
-    ``rfx/api/_execute.py`` and this test stays green (measured
-    2026-08-19) while ``sim.run(solver="adi")`` stops refusing. The
-    call-site proofs live in ``tests/unit/materials/test_sheet_impedance.py``.
-    """
+    """UNIT test of the helper's message formatting ONLY."""
     tc = ThinConductor(shape=Box((0, 0, 0), (1e-3, 1e-3, 0)),
                        sigma_bulk=1e4, thickness=35e-6,
                        surface_impedance_f0=F0)
     with pytest.raises(ValueError, match="subgridded"):
         refuse_f0_sheets([tc], "subgridded (SBP-SAT) run()")
-    with pytest.raises(ValueError, match="ADI"):
-        refuse_f0_sheets([tc], "ADI run()")
     refuse_f0_sheets([], "anything")   # no sheets -> no raise
 
 
@@ -856,27 +847,8 @@ def _fence(entry, *, where, match):
 # refuse_f0_sheets() call sites
 # ---------------------------------------------------------------------------
 
-def test_fence_adi_run():
-    """Honest scope note for BOTH ADI tests, measured 2026-08-19: with this
-    call site deleted the ADI lane still refuses, from a pre-existing guard
-    that predates #677 — ``_preflight._validate_adi_configuration`` rejects
-    ANY registered thin conductor
-    (``solver='adi' does not support thin-conductor corrections yet``). So
-    ADI's exposure to a silently sheet-free run was lower than the other
-    lanes' even before #677; what these two tests pin is that the #677
-    fence is wired and names the right lane, not that it is ADI's only
-    net."""
-    _fence(lambda: _cube(solver="adi").run(n_steps=4, skip_preflight=True),
-           where=("_execute.py", "run"),
-           match=r"on the ADI run\(\) lane")
 
 
-def test_fence_adi_forward():
-    """See the scope note on ``test_fence_adi_run``: ADI carries a second,
-    older thin-conductor guard behind this fence on both entry points."""
-    _fence(lambda: _cube(solver="adi").forward(n_steps=4, skip_preflight=True),
-           where=("uniform_forward.py", "_forward_from_materials"),
-           match=r"on the ADI forward lane")
 
 
 def test_fence_subgridded_run():
@@ -1154,8 +1126,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         ("tests.unit.runners.test_forward_subpixel_smoothing",
          "test_surface_impedance_smoothing_refusal_matches_run"),
     # --- refuse_f0_sheets(...) call sites ---
-    ("rfx/runners/uniform_forward.py", "_forward_from_materials", "ADI forward"):
-        (__name__, "test_fence_adi_forward"),
     ("rfx/runners/_distributed_nu_execute.py", "dispatch_forward",
      "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),
@@ -1165,8 +1135,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/_distributed_entry.py", "execute_distributed",
      "distributed multi-device forward()"):
         (__name__, "test_fence_distributed_multidevice_forward"),
-    ("rfx/runners/run.py", "run_after_admission", "ADI run()"):
-        (__name__, "test_fence_adi_run"),
     ("rfx/runners/run.py", "run_after_admission", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",

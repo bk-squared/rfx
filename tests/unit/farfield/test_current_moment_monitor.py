@@ -2318,7 +2318,7 @@ def test_declaration_rejects_an_unknown_keyword():
 def _sim_with_monitor(**kw):
     from rfx import Simulation
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, float(np.sum(kw["dz_profile"])) if "dz_profile" in kw else 2.4e-2), dx=DX,
-                     cpml_layers=6, boundary="pec" if kw.get("solver") == "adi" else "cpml", **kw)
+                     cpml_layers=6, boundary="cpml", **kw)
     sim.add_source(position=(1.2e-2, 1.2e-2, 1.2e-2), component="ez")
     sim.add_current_moment_monitor(
         corner_lo=(0.6e-2, 0.6e-2, 0.6e-2), corner_hi=(1.8e-2, 1.8e-2, 1.8e-2),
@@ -2386,19 +2386,6 @@ def test_the_distributed_nu_forward_lane_carries_it():
     assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b))
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-def test_the_adi_lane_refuses_it(entry):
-    """The ADI update is not the Yee Ampere step, so the identity the monitor
-    rests on does not hold there at all."""
-    sim = _sim_with_monitor(solver="adi")
-    # The lane's own refusal, before any step (the backstop would raise only
-    # after the whole run, with a different message).
-    with pytest.raises(NotImplementedError,
-                       match="not supported on the ADI lane"):
-        if entry == "run":
-            sim.run(n_steps=4, skip_preflight=True)
-        else:
-            sim.forward(n_steps=4, skip_preflight=True)
 
 
 def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
@@ -2446,7 +2433,7 @@ def test_every_user_facing_return_carries_the_backstop():
             counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)
     # Each file that hands a result back guards every such site.
     assert all(r == g for r, g in counts.values()), counts
-    assert sum(r for r, _ in counts.values()) == 6, counts
+    assert sum(r for r, _ in counts.values()) == 5, counts
 
 
 def test_the_traceable_moment_unpack_matches_the_host_one():

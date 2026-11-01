@@ -133,8 +133,7 @@ def compute_msl_s_matrix(
     ``boundary='upml'`` refusals come from ``run_uniform`` with run-lane
     wording, while the ``forward()`` / ``eps_override`` channel never
     enters ``run_uniform`` and raises instead from the forward-lane
-    entry in ``rfx/api/_execute.py``, naming that lane. ADI refuses on both channels through the shared
-    ``refuse_f0_sheets`` helper; the subgridded and distributed lanes
+    entry in ``rfx/api/_execute.py``, naming that lane. The subgridded and distributed lanes
     carry their own call sites at whichever entry reaches them —
     ``FENCE_REGISTRY`` in ``tests/unit/materials/test_sheet_impedance.py`` is the
     authoritative per-lane list, AST-guarded against drift.
@@ -339,11 +338,6 @@ def compute_msl_s_matrix(
         raise diagnostic_refusal(RfxUnsupported(
             "compute_msl_s_matrix() is not supported with SBP-SAT "
             "subgridding."
-        ), _diagnostics)
-    if self._solver == "adi":
-        raise diagnostic_refusal(RfxUnsupported(
-            "compute_msl_s_matrix() is not supported with solver='adi'; "
-            "use the uniform Yee solver."
         ), _diagnostics)
 
     # Issue #704: an NTFF box would be silently dropped on this path.

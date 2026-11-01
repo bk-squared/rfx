@@ -71,7 +71,10 @@ def generate(builders):
                                   None if equivalent else b if on_a else a, steps))
     # These paths are outside equivalence scope: only their refusals run.
     for row, admitted in admission._ADMITTED_ON.items():
-        for lane in ('run_adi', 'fwd_adi', 'run_subgridded'):
+        # The constructor refuses every non-Yee solver.
+        if row == ('_solver', ''):
+            continue
+        for lane in ('run_subgridded',):
             if lane not in admitted:
                 assert row in builders, f'S0 missing refusal builder: {row}'
                 cells.append(Cell(row, lane, 'refusal', False, False, lane, 0))
@@ -80,7 +83,7 @@ def generate(builders):
 
 # Filled from the measured cold-solve cost of passing 12-step candidates.
 PR_CHOICES = {
-    "_adi_cfl_factor": "_adi_cfl_factor::run_uniform:run_nonuniform:constant:12",
+
     "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
     "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
     "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
@@ -112,7 +115,6 @@ PR_CHOICES = {
 }
 
 
-# Experimental ADI/subgrid refusals remain weekly unless selected as a cause witness.
 PR_REFUSAL_LANES = frozenset((
     'run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
     'run_distributed', 'run_distributed_nu', 'fwd_distributed_nu',

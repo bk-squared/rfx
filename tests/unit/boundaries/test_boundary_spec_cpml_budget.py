@@ -792,52 +792,8 @@ def test_quick_convergence_clone_of_a_scalar_sim_is_unchanged():
     assert clone._build_grid().face_pads == sim._build_grid().face_pads
 
 
-# --------------------------------------------------------------------------
-# 7. ADI has no per-face absorber (found by the #647 grep sweep).
-# --------------------------------------------------------------------------
-
-def test_adi_rejects_a_non_uniform_absorber_layout():
-    """The former ADI sponge stamped absorbing sigma on all six faces.
-
-    It reached that path off ``self._boundary == 'cpml'``, which is true as
-    soon as ANY face absorbs, so a per-face spec used to get an absorber
-    exactly where the caller asked for a reflector — with nothing said.
-    """
-    with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
-        Simulation(
-            freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
-            boundary=BoundarySpec(x="cpml", y="cpml",
-                                  z=Boundary(lo="pec", hi="cpml")),
-            solver="adi",
-        )
 
 
-def test_adi_rejects_a_per_face_thickness_override():
-    """Same blindness through the thickness knob rather than the token."""
-    with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
-        Simulation(
-            freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
-            boundary=BoundarySpec(
-                x="cpml", y="cpml",
-                z=Boundary(lo="cpml", hi="cpml", hi_thickness=2)),
-            solver="adi",
-        )
 
 
-@pytest.mark.parametrize("boundary", ["cpml", "pec", BoundarySpec.uniform("cpml")])
-def test_adi_uniform_boundary_runs_or_refuses_absorber(boundary):
-    """Only the uniform PEC case remains executable."""
-    if boundary != "pec":
-        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
-            Simulation(freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  # solved length; #1887
-                       cpml_layers=8, boundary=boundary, solver="adi")
-        return
-    sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,  # solved length; #1887
-        boundary=boundary, solver="adi",
-    )
-    sim.add_source((0.03, 0.03, 0.03), "ez", amplitude_kind="field")
-    sim.add_probe((0.02, 0.02, 0.02), "ez")
-    trace = np.asarray(sim.run(n_steps=6, skip_preflight=True).time_series)
-    assert np.all(np.isfinite(trace))
-    assert np.max(np.abs(trace)) > 0.0
+

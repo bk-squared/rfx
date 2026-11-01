@@ -145,7 +145,7 @@ def vacuum_source_table(samples, kind, dt, volume):
 
 
 def field_source_samples(waveform, n_steps, dt):
-    """ADI's prescribed field table, using its solver-specific timestep."""
+    """Prescribed field table sampled at the supplied timestep."""
     import jax
     import jax.numpy as jnp
     from rfx.sources._sampling import concrete_waveform_eval

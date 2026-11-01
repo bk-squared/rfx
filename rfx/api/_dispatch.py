@@ -28,7 +28,7 @@ class _DispatchPlan(NamedTuple):
     n_steps:
         Resolved timestep count for lanes whose step count is derived from
         a *throwaway* grid build (the non-uniform / distributed lanes). For
-        lanes that build-and-reuse a grid (uniform / adi / subgridded), this
+        lanes that build-and-reuse a grid (uniform / subgridded), this
         is ``None`` and the caller resolves ``n_steps`` from the grid it
         already holds — avoiding a duplicate grid build.
 
@@ -82,7 +82,7 @@ def _dispatch_plan(
     disjoint lane-token sets:
 
     - forward: ``fwd_distributed`` / ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
-    - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` / ``run_adi`` /
+    - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` /
       ``run_subgridded`` / ``run_uniform``
 
     ``n_steps`` is returned resolved for the NU/distributed lanes (whose
@@ -98,17 +98,13 @@ def _dispatch_plan(
     # the aperture edges are not judged there, as on the runner entries.
     admit_waveguide(self, lane=f"{mode} dispatch",
                     edges=not (distributed or (devices is not None and len(devices) > 1)))
-    # ADI must first report that it does not support NTFF accumulation.
-    if self._solver != "adi":
-        admit_ntff(self, lane=f"{mode} dispatch")
+    admit_ntff(self, lane=f"{mode} dispatch")
     from rfx.boundaries.tfsf import admit_simulation
     admit_simulation(self, material_overrides=tfsf_material_overrides)
     # Constructor checks cover explicit profiles only. Geometry can make
     # auto mesh non-uniform later, so validate the declared solver against
     # the completed mesh before ANY Yee lane (including distributed) wins
     # dispatch. This is execution legality, independent of preflight.
-    if self._solver == "adi":
-        self._require_uniform_mesh("solver='adi'")
     self._require_mode_the_nonuniform_lane_solves()
     # Every non-uniform lane below, single-device and distributed, run()
     # and forward(), has no subgrid and would drop a refinement (#1240).
@@ -171,8 +167,6 @@ def _dispatch_plan(
     # with more than one device.
     multi_device = (distributed if mode == "forward"
                     else devices is not None and len(devices) > 1)
-    if multi_device and self._solver == "adi":
-        raise ValueError("solver='adi' does not support distributed execution")
     if multi_device and self._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 
@@ -279,10 +273,6 @@ def _dispatch_plan(
                 "<= 5:1 for shared-dt stability; got "
                 f"{_max_ratio:.2f}:1."
             )
-        if self._solver == "adi":
-            raise ValueError(
-                "Distributed + non-uniform does not support solver='adi'."
-            )
         if _max_ratio > 3.0:
             _wmod.warn(
                 f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
@@ -312,9 +302,6 @@ def _dispatch_plan(
         _reject_lane_precision("run_nonuniform")
         return _DispatchPlan(lane="run_nonuniform", n_steps=_n)
 
-    # ---- ADI lane (n_steps resolved by caller from the reused grid) ----
-    if self._solver == "adi":
-        return _DispatchPlan(lane="run_adi", n_steps=n_steps)
 
     # ---- Subgridded lane (n_steps resolved by caller — refinement ratio
     # scaling needs the reused grid) ----

@@ -129,13 +129,10 @@ def test_lumped_port_releases_its_edge(path):
     assert np.max(np.abs(result.time_series)) > 0
 
 
-@pytest.mark.parametrize('solver', ['adi', 'subgrid'])
+@pytest.mark.parametrize('solver', [ 'subgrid'])
 def test_experimental_paths_refuse_before_lane_dispatch(solver):
     sim = model()
-    if solver == 'adi':
-        sim._solver = 'adi'
-    else:
-        sim.add_refinement(z_range=(0., 4 * DX), ratio=2, validation='research')
+    sim.add_refinement(z_range=(0., 4 * DX), ratio=2, validation='research')
     with pytest.raises(ValueError, match='Soft source'):
         execute(sim, 'uniform', skip=False)
 

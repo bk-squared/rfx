@@ -219,7 +219,7 @@ def test_g5_mutation(precision, record_property):
 
 @pytest.mark.parametrize("path", ["graded", "distributed", "ringdown", "ports",
     "debye", "lorentz", "kerr", "upml", "occupancy", "whole_grid", "missing_box",
-    "tfsf", "precision", "solver", "invalid", "sheet", "current_moments", "stencil",
+    "tfsf", "precision", "invalid", "sheet", "current_moments", "stencil",
     "ntff", "h_plane", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
     "different_bins", "time_domain"])
 def test_g5_refusals(path):
@@ -267,8 +267,6 @@ def test_g5_refusals(path):
     elif path == "stencil":
         sim._stencil_order = 4
         match = "stencil_order"
-    elif path == "solver":
-        sim._solver = "adi"
     elif path == "invalid":
         options["gradient"] = "unknown"
         match = "gradient must"
