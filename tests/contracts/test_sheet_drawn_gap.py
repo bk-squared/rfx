@@ -210,10 +210,6 @@ def test_k3_unchanged(graded, kind):
     same(root.pec_edges, old.pec_edges)
 
 
-_FILM_JOIN = pytest.mark.xfail(strict=True, reason=(
-    '#2146 DC films lack #1624 drawn-extent join; cell-centre sampling closes gaps up to ~1 cell'))
-
-
 def _film_rows(graded, intervals, rows):
     sim = model(graded)
     for lo, hi in intervals:
