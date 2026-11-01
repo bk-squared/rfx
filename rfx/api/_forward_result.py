@@ -41,6 +41,9 @@ def pack_nu_forward_result(
     separate fields, or ``None`` for a kind with no spectra.
     """
     from rfx.api._spec import ForwardResult
+    if realized_geometry is None:
+        from rfx.model.realization_transport import take_forward_geometry
+        realized_geometry = take_forward_geometry(grid)
     return ForwardResult(
         realized_geometry=realized_geometry,
         diagnostics=diagnostics,

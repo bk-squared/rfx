@@ -1,4 +1,23 @@
 """Static JAX metadata for host realization records."""
+from contextvars import ContextVar
+import weakref
+
+
+_forward_geometry = ContextVar("forward_geometry", default=None)
+
+
+def publish_forward_geometry(grid, record):
+    """Bridge the graded runner result to its immediate legacy field packer."""
+    _forward_geometry.set((id(grid), weakref.ref(grid.dx_arr), record))
+    return record
+
+
+def take_forward_geometry(grid):
+    """Consume only this execution's record, without retaining its grid."""
+    found = _forward_geometry.get()
+    _forward_geometry.set(None)
+    return (found[2] if found is not None and found[0] == id(grid)
+            and found[1]() is grid.dx_arr else None)
 
 
 class GeometryMetadata:

@@ -1341,9 +1341,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
     _stop = r.get("decay_stop")
     from rfx.model.design_admission import with_design_diagnostics
+    from rfx.model.realization_transport import publish_forward_geometry as _forward_geometry
     return with_design_diagnostics(Result(
         diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
-        realized_geometry=geometry_record,
+        realized_geometry=(_forward_geometry(grid, geometry_record)
+                           if lane == "fwd_nonuniform" else geometry_record),
         state=r["state"],
         time_series=r["time_series"],
         s_params=s_params,
