@@ -48,8 +48,7 @@
       "items": [
         "rfx/run/run-and-forward",
         "rfx/run/memory-and-speed",
-        "rfx/run/multi-device",
-        "rfx/guide/adi-solver"
+        "rfx/run/multi-device"
       ]
     },
     {

@@ -193,7 +193,7 @@ error bound.
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
-| `until_decay` | multi-device (`devices=`), ADI, subgridded | refused before the first step: these paths run exactly `n_steps` | set `n_steps` or `num_periods` |
+| `until_decay` | multi-device (`devices=`), subgridded | refused before the first step: these paths run exactly `n_steps` | set `n_steps` or `num_periods` |
 | `radiated_flux_box` without a positive `until_decay`, or on a closed boundary | all | `ValueError`: the box only selects the radiated-flux stop | a positive `until_decay` with `cpml` or `upml`; for a fixed-length measurement, `add_flux_monitor()` |
 | `until_decay` with a plane-wave source driven by a `CustomWaveform` | all | refused: the waveform has no time at which it is off | set `n_steps` |
 | `until_decay` | graded mesh with closed boundaries | refused: a closed domain's energy does not decay and the graded path has no single-sample fallback | set `n_steps`, or use absorbing boundaries |
@@ -201,7 +201,7 @@ error bound.
 | `decay_energy_consecutive` below 2 | uniform and graded mesh | refused | 2 or more |
 | `ringdown=` with `until_decay` | all | refused: the completion needs a run of fixed length | pass `n_steps` or `num_periods` |
 | `ringdown=` with `devices=` | multi-device | refused | run on one device |
-| `ringdown=` | ADI, subgridded, periodic axes, a plane-wave source, a Kerr (χ³) material, `mode` other than `"3d"`, `stencil_order=4` | refused, with the reason | run without `ringdown=` and lengthen the run |
+| `ringdown=` | subgridded, periodic axes, a plane-wave source, a Kerr (χ³) material, `mode` other than `"3d"`, `stencil_order=4` | refused, with the reason | run without `ringdown=` and lengthen the run |
 | `ringdown=` with a microstrip, waveguide, coaxial or Floquet port, or a one-cell lumped port (`add_port` without `extent=`) | all | refused: only wire ports are completed | declare a wire port, or lengthen the run |
 | `ringdown=` with `reference_plane_cells=` on a port | all | refused | drop `reference_plane_cells` |
 | `ringdown=` with no driven wire port | all | `ValueError` | declare and drive a wire port |

@@ -116,7 +116,7 @@ every `interval` steps, optionally on one slice (`slice_axis`, `slice_index`),
 in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
 snapshot of every step is large; take a slice. Snapshots are taken on a uniform
 mesh, on one device or several, and by `run(devices=...)` on a graded mesh. A
-graded mesh on one device, ADI, subgridding and an oblique plane wave on the
+graded mesh on one device, subgridding and an oblique plane wave on the
 Bloch path (`angle_deg`) refuse `snapshot=`; an oblique closed box takes it.
 
 ### JAX transforms
@@ -133,22 +133,17 @@ probe records but refuses port S. An outer
 `jax.jit` over several GPUs is refused while XLA command buffers are on, and
 the message says how to turn them off.
 
-### ADI and subgridding
+### Subgridding
 
-Two solver paths are outside what 2.0 validates:
+Subgridding is outside what 2.0 validates:
 
-- **ADI** (`Simulation(solver="adi")`) allows a time step above the usual
-  stability limit. It is experimental: it needs closed (PEC) boundaries, a
-  homogeneous fill, a soft source with `amplitude_kind="field"` and float32,
-  and refuses ports, interior metal, dispersive materials, μr ≠ 1, lumped
-  elements, refinement, DFT planes, flux monitors and the far-field box.
 - **Subgridding** (`add_refinement` on a uniform mesh) is refused by default
   because it is not yet stable and verified. `validation="research"` (or
   `"off"`) lets `run()` run it with a warning, and its result is yours to check.
-  `forward()`, a graded mesh, several devices and ADI refuse a refinement in
+  `forward()`, a graded mesh and several devices refuse a refinement in
   every mode. Use a graded mesh for local resolution instead.
 
-The [support page](/rfx/support/) gives both one row each.
+The [support page](/rfx/support/) lists its limits.
 
 ## How rfx checks it
 
@@ -164,13 +159,13 @@ finds them equal for every combination both calls accept
 | Input | Solver path | Instead |
 |---|---|---|
 | `precision="float64"` outside `jax.enable_x64()` | all | build and run inside the block |
-| `precision="float64"` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
-| `until_decay` | multi-device, ADI, subgridded, a graded mesh with closed boundaries, a plane wave at an angle | `n_steps` |
+| `precision="float64"` | graded mesh, multi-device, subgridded | a uniform mesh on one device |
+| `until_decay` | multi-device, subgridded, a graded mesh with closed boundaries, a plane wave at an angle | `n_steps` |
 | `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, port S inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
 | `forward()` with `Boundary(conformal=True)` | all | `run()` |
-| `run(snapshot=...)` | graded mesh on one device, ADI, subgridded, an oblique plane wave | a uniform mesh, or `run(devices=...)` on a graded mesh |
+| `run(snapshot=...)` | graded mesh on one device, subgridded, an oblique plane wave | a uniform mesh, or `run(devices=...)` on a graded mesh |
 | `add_refinement` without `validation="research"` or `"off"` | uniform mesh, `run()` | a graded mesh |
-| `add_refinement` in any mode | `forward()`, graded mesh, multi-device, ADI | a graded mesh |
+| `add_refinement` in any mode | `forward()`, graded mesh, multi-device | a graded mesh |
 | an outer `jax.jit` over several GPUs with command buffers on | multi-device | call unjitted, or turn command buffers off |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
