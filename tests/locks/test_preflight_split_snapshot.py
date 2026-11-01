@@ -1858,3 +1858,30 @@ def test_reported_cell_count_mutation_trips_split_lock(monkeypatch, replacement,
             test_preflight_report_matches_the_committed_snapshot(*fixture)
     else:
         test_preflight_report_matches_the_committed_snapshot(*fixture)
+
+
+@pytest.mark.parametrize('fixture_id,dielectric', [
+    ('stack_snapped_patch', 4.),
+    ('coax_junction_short', 2.1),
+    ('wire_port_dead_cell_nu', 3.66),
+])
+def test_sheet_warning_vanishes_at_material_interface(fixture_id, dielectric):
+    """Centre sampling ends the dielectric at the previously buried sheet."""
+    import numpy as np
+    from rfx.model.materials import assemble_cells
+
+    build = next(row[1] for row in _FIXTURES if row[0] == fixture_id)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = build()
+        sim._snap = 'declared'
+        grid = (sim._build_nonuniform_grid() if sim._dz_profile is not None
+                else sim._build_grid())
+        sheets = []
+        materials = assemble_cells(sim, grid, pec_sheets=sheets)[0]
+    sheet = sheets[0]
+    eps = np.asarray(materials.eps_r)
+    occupied = np.isclose(eps, dielectric)
+    transverse = tuple(a for a in range(3) if a != sheet.normal_axis)
+    high_node = np.flatnonzero(occupied.any(axis=transverse))[-1] + 1
+    assert high_node == sheet.plane
