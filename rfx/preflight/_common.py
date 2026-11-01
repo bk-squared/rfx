@@ -499,6 +499,12 @@ class PreflightReport(list):
         return error
 
     @property
+    def realization_table(self):
+        """Kernel metadata when the lent execution has reached its time step."""
+        reader = getattr(self, "_realization_reader", None)
+        return None if reader is None else reader()
+
+    @property
     def diagnostics(self) -> tuple[Diagnostic, ...]:
         """Complete tuple, including mechanical records for unmoved families."""
         return tuple(getattr(issue, "diagnostic", None) or from_legacy(issue)

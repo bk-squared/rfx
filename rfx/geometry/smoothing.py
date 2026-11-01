@@ -1321,6 +1321,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             best_abs_sdf = None
             best_nx = best_ny = best_nz = None
 
+            owner = None
             for shape_index, shape in enumerate(sdf_shapes):
                 from rfx._internal._periodic import periodic_sdf
                 s, (n_x, n_y, n_z), image = periodic_sdf(
@@ -1328,12 +1329,14 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                     normal_fn=_get_normal_fn(shape), return_image=True)
 
                 if sdf_union is None:
+                    owner = xp.zeros_like(s, dtype=int)
                     sdf_union = s
                     best_abs_sdf = xp.abs(s)
                     best_nx, best_ny, best_nz = n_x, n_y, n_z
                     normal_source = xp.asarray(shape_index, dtype=xp.int32)
                     normal_image = image
                 else:
+                    owner = xp.where(s < sdf_union, shape_index, owner)
                     sdf_union = xp.minimum(sdf_union, s)
                     # Update normal where this shape's surface is closer
                     closer = xp.abs(s) < best_abs_sdf
@@ -1349,6 +1352,8 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             extents = cell_len[comp] if isinstance(cell_len, dict) else cell_len
             length = _normal_cell_length(xp, extents, (best_nx, best_ny, best_nz))
             f = xp.clip(0.5 - sdf_union / length, 0.0, 1.0)
+            from rfx.model.realization_integrals import capture
+            capture(grid, sdf_shapes, f, owner, ("ex", "ey", "ez").index(comp))
 
             # Fix #1: fully-inside voxels get bulk eps, no smoothing
             inside = f >= 1.0
@@ -1717,6 +1722,8 @@ def compute_inv_eps_tensor_diag(
                 normal_fn=_get_normal_fn(pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
+            from rfx.model.realization_integrals import capture
+            capture(grid, (pec_shape,), f, xp.zeros_like(f, dtype=int), i)
             inv_c = _kottke_inv_eps_diag(
                 f, xp.inf, eps[i], n_x, n_y, n_z, is_pec=True, xp=xp,
             )[i]
