@@ -78,6 +78,12 @@ if TYPE_CHECKING:  # pragma: no cover
 # have to resolve as globals of this module. Listed explicitly, not
 # ``import *``: the surface is the contract.
 # ---------------------------------------------------------------------------
+from rfx.measurement.waveguide_s import (
+    WAVEGUIDE_PHASE_MAG_FLOOR,
+    WAVEGUIDE_PHASE_BETA_CONVENTION,
+    s21_phase_residual_deg_rms,
+    _waveguide_s21_phase_residual,
+)
 from rfx.sparams._common import (
     _msl_cell_profile,
     msl_modal_voltage,
@@ -100,10 +106,6 @@ from rfx.sparams._common import (
     _warn_if_nonpassive_smatrix,
     _finalize_sparam_result,
     _C0_SPARAMS,
-    WAVEGUIDE_PHASE_MAG_FLOOR,
-    WAVEGUIDE_PHASE_BETA_CONVENTION,
-    s21_phase_residual_deg_rms,
-    _waveguide_s21_phase_residual,
     _warn_junction_probe_clearance,
     _warn_junction_cpml_thickness,
     _warn_ntff_box_dropped,
