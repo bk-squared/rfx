@@ -754,7 +754,7 @@ SOURCE_END_NAMES = {"source_end_step", "simulation_source_end_step", "sampled_so
 CALLERS = ("rfx/api/_settling.py", "rfx/probes/sparam_driver.py", "rfx/sparams/msl.py",
            "rfx/sparams/mixed.py", "rfx/sparams/coax.py", "rfx/runners/uniform.py",
            "rfx/runners/nonuniform.py", "rfx/measurement/rcs.py", "rfx/measurement/decay.py",
-           "rfx/measurement/settling.py", "rfx/ringdown.py")
+           "rfx/measurement/settling.py", "rfx/ringdown/__init__.py")
 # An off step from a drive table: a threshold relative to the table's peak.
 OFF_STEP = re.compile(r"nonzero\([^\n]*>[^\n]*peak")
 

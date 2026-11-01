@@ -63,6 +63,12 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
     current = baseline(read(BASELINE))
     if current.get("counts") != "code-lines":
         raise ValueError("current baseline counts must be code-lines")
+    if head:
+        paths = [p.decode() for p in git(
+            repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
+        ).split(b"\0") if p.endswith(b".py")]
+    else:
+        paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
     failures = []
     transition = False
     if base:
@@ -70,6 +76,16 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
         if git(repo, "ls-tree", base, "--", BASELINE):
             previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
             transition = "counts" not in previous
+            gone = previous["files"].keys() - set(paths) - current["files"].keys()
+            renames = {}
+            if gone and not transition and current["files"].keys() - previous["files"].keys():
+                revisions = (base, head) if head else (base,)
+                changes = git(
+                    repo, "diff", "-M90%", "--name-status", "--diff-filter=R", "-z",
+                    *revisions, "--", "rfx/",
+                ).split(b"\0")
+                for index in range(0, len(changes) - 1, 3):
+                    renames[changes[index + 2].decode()] = changes[index + 1].decode()
             if current["cap"] > previous["cap"]:
                 failures.append(
                     f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
@@ -77,17 +93,19 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                 )
             for path, value in current["files"].items():
                 old = previous["files"].get(path, previous["cap"] if transition else None)
+                if old is None and path in paths:
+                    source = (path.removesuffix("/__init__.py") + ".py"
+                              if path.endswith("/__init__.py") else None)
+                    if source not in gone:
+                        source = renames.get(path)
+                    if source in gone:
+                        old = previous["files"][source]
+                        gone.remove(source)
                 if old is None or value > old:
                     failures.append(
                         f"{path}: baseline {old if old is not None else 'unlisted'}, "
                         f"count {value} in proposed baseline" + SPLIT_ADVICE
                     )
-    if head:
-        paths = [p.decode() for p in git(
-            repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
-        ).split(b"\0") if p.endswith(b".py")]
-    else:
-        paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
     if transition:
         for path in sorted(current["files"].keys() - set(paths)):
             failures.append(f"{path}: transition baseline entry has no source file")

@@ -1,4 +1,4 @@
-"""Synthetic oracles for the ring-down completion (``rfx/ringdown.py``, issue #1254).
+"""Synthetic oracles for the ring-down completion (``rfx/ringdown/__init__.py``, issue #1254).
 
 A record made of known damped oscillations, ``y_n = sum_k r_k lambda_k**n``,
 has a known infinite-record DFT, ``dt * sum_k r_k / (1 - lambda_k z)``. The
