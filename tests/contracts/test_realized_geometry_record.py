@@ -128,7 +128,8 @@ def test_result_keeps_its_compact_run_record_without_stepping(monkeypatch):
     assert result.realized_geometry.entities[1].axes == record.entities[1].axes
     assert result.realized_geometry.entities[1].mask is None
     sim.add(Box((0.001, 0.001, 0.006), (0.002, 0.002, 0.007)), material="slab")
-    assert sim.realized_geometry() is not record
+    with pytest.raises(ValueError, match="Realization rows differ from the solved table"):
+        sim.realized_geometry()
     assert len(result.realized_geometry.entities) == 4
 
 
