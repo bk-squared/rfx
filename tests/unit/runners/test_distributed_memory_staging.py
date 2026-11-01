@@ -82,6 +82,8 @@ def _build_box(case):
 
 
 _SETUP_CASES = ('pec', 'cpml', 'debye', 'lorentz', 'mixed', 'lumped')
+_SETUP_POINTS = ['stage_dispersion_debye_return', 'stage_dispersion_lorentz_return',
+                 'realize_materials_return', 'split_entry', 'prepare_end']
 
 
 # Measured on 2991b46e2 immediately before distributed_v2's first cut, using
@@ -114,7 +116,7 @@ def test_setup_whole_arrays_are_base_material_inputs(case):
     records = [json.loads(line.removeprefix('SETUP_CENSUS '))
                for line in run.stdout.splitlines() if line.startswith('SETUP_CENSUS ')]
     assert len(records) == 1, run.stdout
-    assert [s['point'] for s in records[0]['samples']] == ['split_entry', 'prepare_end']
+    assert [s['point'] for s in records[0]['samples']] == _SETUP_POINTS
     for sample in records[0]['samples']:
         whole = [a for a in sample['arrays'] if a['whole']]
         actual = Counter(a['role'] for a in whole)
@@ -185,7 +187,16 @@ def _measure_setup(case, *, base=False):
                 samples.append(dict(point='base_pre_cut', arrays=_setup_census(caller, nx)))
                 raise SetupObserved
         elif not base:
-            if event == 'call' and name == 'split' and module == 'rfx.stepping.slab_wrap':
+            if (event == 'return' and module == 'rfx.stepping.slab_setup'
+                    and name in ('realize_materials', 'stage_dispersion')
+                    and frame.f_locals.get('uniform')
+                    and frame.f_back.f_code.co_name == 'prepare_uniform'
+                    and frame.f_back.f_globals.get('__name__') == 'rfx.stepping.slab_wrap_uniform'):
+                producer = name + ('_' + frame.f_locals['family'] if name == 'stage_dispersion' else '')
+                # A return event still exposes producer locals, before temporary
+                # whole-domain products can be released on the way to split.
+                samples.append(dict(point=producer + '_return', arrays=_setup_census(frame, nx)))
+            elif event == 'call' and name == 'split' and module == 'rfx.stepping.slab_wrap':
                 samples.append(dict(point='split_entry', arrays=_setup_census(frame, nx)))
             elif event == 'return' and name == 'prepare_uniform' and module == 'rfx.stepping.slab_wrap_uniform':
                 samples.append(dict(point='prepare_end', arrays=_setup_census(frame, nx)))
@@ -199,7 +210,7 @@ def _measure_setup(case, *, base=False):
         pass
     finally:
         sys.setprofile(None)
-    assert [s['point'] for s in samples] == (['base_pre_cut'] if base else ['split_entry', 'prepare_end'])
+    assert [s['point'] for s in samples] == (['base_pre_cut'] if base else _SETUP_POINTS)
     print('SETUP_CENSUS ' + json.dumps(dict(case=case, samples=samples)))
 
 
