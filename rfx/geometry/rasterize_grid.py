@@ -382,7 +382,9 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
                 if not np.any(value):
                     _refuse_zero_cells(shape, name, "Material volume",
                                        cell_sizes=axes[:3], centres=axes[3:])
-            jax.debug.callback(check, mask, *cell_sizes, *centres[:3])
+            from rfx._traced_check import traced_check
+            traced_check("material volume", "nonempty cells", check,
+                         mask, *cell_sizes, *centres[:3])
     return mask
 
 
