@@ -329,9 +329,8 @@ The solver paths refuse what they do not implement:
 
 | Input | Solver path | Instead |
 |---|---|---|
-| any PEC inside the domain, or a sheet | ADI | the default solver |
 | a sheet, a wire, or a lossy film | subgridded | a graded mesh |
-| a surface-impedance sheet (`surface_impedance_f0`) | multi-device, subgridded, ADI, UPML; the calculators `compute_mixed_s_matrix`, `topology_optimize` and `differentiable_material_fit` | one device, uniform or graded mesh, `run()` or `forward()` |
+| a surface-impedance sheet (`surface_impedance_f0`) | multi-device, subgridded, UPML; the calculators `compute_mixed_s_matrix`, `topology_optimize` and `differentiable_material_fit` | one device, uniform or graded mesh, `run()` or `forward()` |
 | a design box that reaches a surface-impedance sheet or a lumped element | uniform and graded mesh | keep the box clear of it; under a whole-domain design occupancy rfx keeps the sheet's edges free of design metal, with a warning |
 | a surface-impedance sheet with `subpixel_smoothing` or `conformal_pec` | all | one or the other |
 | a surface-impedance sheet with a Debye or Lorentz material | uniform and graded mesh, `run()` and `forward()` | a non-dispersive material, or a lossy film |
