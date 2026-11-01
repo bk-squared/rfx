@@ -297,7 +297,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 if pe.impedance != 0 else pe for pe in sim._ports]
             record = run_nonuniform_path(drive, n_steps=n_steps, compute_s_params=True,
                                          s_param_freqs=freqs, conformal_pec=conformal_pec,
-                                         subpixel_smoothing=subpixel_smoothing, _drive_scan=True)
+                                         subpixel_smoothing=subpixel_smoothing, _drive_scan=True,
+                                         waveguide_reference_only=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
             raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt}
         elif devices is not None:
