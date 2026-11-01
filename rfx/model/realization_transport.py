@@ -43,3 +43,36 @@ def register_metadata(cls):
     from jax.tree_util import register_pytree_node
     register_pytree_node(cls, lambda record: ((), _Metadata(record)),
                         lambda metadata, children: metadata.record)
+
+
+def with_forward_geometry(base):
+    """Attach host geometry without changing the legacy positional tuple."""
+    import inspect
+    from jax.tree_util import GetAttrKey, register_pytree_with_keys
+
+    class Result(base):
+        def __new__(cls, *args, realized_geometry=None, **kwargs):
+            result = super().__new__(cls, *args, **kwargs)
+            result._realized_geometry = realized_geometry
+            return result
+
+        @property
+        def realized_geometry(self):
+            return getattr(self, "_realized_geometry", None)
+
+        def _replace(self, **kwargs):
+            record = kwargs.pop("realized_geometry", self.realized_geometry)
+            result = super()._replace(**kwargs)
+            result._realized_geometry = record
+            return result
+
+    Result.__name__, Result.__qualname__, Result.__module__ = base.__name__, base.__qualname__, base.__module__
+    Result.__doc__ = base.__doc__
+    signature = inspect.signature(base)
+    Result.__signature__ = signature.replace(parameters=[*signature.parameters.values(),
+        inspect.Parameter("realized_geometry", inspect.Parameter.KEYWORD_ONLY, default=None)])
+    register_pytree_with_keys(Result,
+        lambda result: (tuple((GetAttrKey(name), value) for name, value in zip(base._fields, result)),
+                        _Metadata(result.realized_geometry)),
+        lambda metadata, values: Result(*values, realized_geometry=metadata.record))
+    return Result

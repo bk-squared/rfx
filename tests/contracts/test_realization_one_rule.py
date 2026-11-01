@@ -218,6 +218,46 @@ def test_traced_mesh_reference(nominal, monkeypatch):
         assert row.axes == ()
 
 
+@pytest.mark.parametrize("nominal", [False, True], ids=("unresolved", "nominal"))
+def test_forward_traced_dz_with_live_dt(nominal, monkeypatch):
+    import jax
+    import jax.numpy as jnp
+    profile = np.array((1., .8, 1.2, .9, 1.1, .7, 1.3, 1., 1., 1.)) * D
+
+    def build(widths, reference):
+        sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D,
+                         boundary="pec", dz_profile=widths,
+                         nominal_profiles={"z": profile} if reference else None)
+        sim.add_material("glass", eps_r=2.)
+        sim.add(Box(tuple(LO), tuple(HI)), material="glass")
+        sim.add_source((4*D, 4*D, 4*D), component="ez")
+        sim.add_probe((4*D, 4*D, 5*D), component="ez")
+        return sim
+
+    concrete = build(profile, False).forward(n_steps=4, skip_preflight=True).realized_geometry
+    observed = []
+    stepped = watch_steps(monkeypatch)
+
+    def evaluate(delta):
+        widths = jnp.asarray(profile).at[3].add(delta).at[4].add(-delta)
+        result = build(widths, nominal).forward(n_steps=4, skip_preflight=True)
+        observed.append(result.realized_geometry)
+        return jnp.sum(result.time_series**2)
+
+    assert np.isfinite(jax.grad(evaluate)(0.))
+    record = observed[0]
+    assert len(stepped) == 1 and stepped[0] is record.realization_table
+    rows = record.realization_table.rows
+    assert all("mesh.z" in row.traced_inputs for row in rows)
+    if nominal:
+        assert all(row.status == "evaluated: nominal_profiles" for row in rows)
+        assert tuple(replace(row, status="evaluated", traced_inputs=()) for row in rows) == concrete.realization_table.rows
+        assert record.dt == concrete.dt
+    else:
+        assert all(row.status == "not evaluated: traced" and row.axes == () for row in rows)
+        assert record.dt is None
+
+
 @pytest.mark.parametrize("entry", ("run", "forward"))
 def test_adi_boundary(entry):
     sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", solver="adi")
