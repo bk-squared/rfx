@@ -3,7 +3,12 @@ from contextvars import ContextVar
 from functools import wraps
 
 
+def is_replay():
+    return _replay.get()
+
+
 _records = ContextVar("realization_records", default=None)
+_replay = ContextVar("realization_replay", default=False)
 
 
 def publish(record):
@@ -17,15 +22,17 @@ def forward_metadata(entry):
     @wraps(entry)
     def wrapped(*args, **kwargs):
         records = []
+        replay = _replay.set(_records.get() is not None or entry.__name__ != "forward")
         token = _records.set(records)
         try:
             result = entry(*args, **kwargs)
             from rfx.api._spec import ForwardResult
             if isinstance(result, ForwardResult) and result.realized_geometry is None and records:
-                result = result._replace(realized_geometry=records[-1])
+                result = result._replace(realized_geometry=records[0])
             return result
         finally:
             _records.reset(token)
+            _replay.reset(replay)
     return wrapped
 
 
