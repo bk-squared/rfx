@@ -256,7 +256,7 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
                                        num_periods=280.0)
     _trunc = [
         str(w.message) for w in _settling
-        if "#332" in str(w.message) or "ring-down truncated" in str(w.message)
+        if "ring-down truncated" in str(w.message)
     ]
     print("\n[NU-MSL-GATE] framework #332 ring-down energy witness: "
           f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")
