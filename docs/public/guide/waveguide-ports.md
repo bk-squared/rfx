@@ -79,9 +79,13 @@ the extraction is wrong, not the physics.
 
 ## A single port with `run()`
 
-A plain `run()` with one waveguide port gives that port's calibrated S11 and
-S21 in `result.waveguide_sparams`. Use it as a quick diagnostic. It is not the
-driven-in-turn matrix.
+A plain `run()` with one waveguide port gives per-port values in
+`result.waveguide_sparams`. Use them as a quick diagnostic. They are not the
+driven-in-turn matrix. In `res.waveguide_sparams[name]`, `s11` is the
+reflection at the port's reference plane; `s21` is the port's own lead-in
+propagation factor, the forward wave at its probe plane over the forward wave
+at its reference plane. It is not transmission between ports, which comes from
+`compute_waveguide_s_matrix()`.
 
 ```python
 single = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),

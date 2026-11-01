@@ -182,17 +182,22 @@ between the S21 phase and `−βL` for a single-mode two-port. On an empty or
 matched guide it measures the port's discretization error. With a device
 between the planes, it includes the device's own phase.
 
-**Coax.** Check `status == "passed"` before using `s11`. This result does not
-go through the shared passivity check.
+**Coax.** Check `status == "passed"` before using `s11`. Its only passivity
+check is the warning when `|s11|` exceeds 1.01; it does not go through the
+shared column-power check.
 
 ## Checking a result
 
 Some checks run automatically and warn without changing the arrays:
 
-- `run()` and the uniform `forward()` check `time_series` and lumped/wire
-  `s_params` for NaN/Inf and for any `|S| > 1.1`. They do not test the total
-  power in a column.
-- The microstrip and waveguide calculators check column power and each entry.
+- Every `s_params` from `run()`/`forward()` and every S from the `compute_*`
+  calculators warns when its largest singular value exceeds 1.01 at any bin (a
+  lower bound where only some columns are measured). `waveguide_sparams` and
+  `compute_floquet_s_params` are not checked.
+- `run()` on one device (uniform or graded) and the uniform `forward()` also check `time_series` and lumped/wire
+  `s_params` for NaN/Inf and for any `|S| > 1.1`.
+- The microstrip and waveguide calculators also check column power and each
+  entry.
 - Every calculator warns when its record has not rung down to −40 dB.
 
 Nothing checks DFT planes, flux, NTFF data or the state. Use
