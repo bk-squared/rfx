@@ -301,9 +301,8 @@ def test_occupied_layer_reaches_without_a_declared_face(axis, side, kind):
 
 
 
-def test_one_traced_mesh_axis_refuses_every_reached_absorbing_face():
+def test_one_traced_mesh_axis_continues_every_reached_absorbing_face():
     import jax
-    from rfx._traced_refusal import TracedStructureRefusal
 
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2, dz_profile=np.ones(8))
@@ -321,32 +320,32 @@ def test_one_traced_mesh_axis_refuses_every_reached_absorbing_face():
                                 boundary="cpml", cpml_layers=2, dz_profile=dz,
                                 nominal_profiles={"z": np.ones(8)},
                                 dt=1e-12, dt_min_cell=1.)
-        continued_conductor_shape(traced_sim, traced_sim._build_nonuniform_grid(),
-                                  shape, unextendable=[])
-        return dz
+        traced_sim.add(shape, material="pec")
+        return assemble_materials_nu(traced_sim, traced_sim._build_nonuniform_grid(),
+                                     pec_sheets=[], pec_wires=[])[3]
 
-    with pytest.raises(TracedStructureRefusal, match="x-lo, x-hi, y-lo, y-hi") as caught:
-        traced(np.ones(8))
-    assert "mesh axis z is traced" in str(caught.value)
-    assert "dz_profile" in str(caught.value)
-    with pytest.raises(TracedStructureRefusal):
-        traced(np.ones(8))
+    np.testing.assert_array_equal(traced(np.ones(8)), concrete)
 
 
 @pytest.mark.parametrize("axis", range(3))
 @pytest.mark.parametrize("side", ("lo", "hi"))
-@pytest.mark.parametrize("nominal,gap,refuse_lo,refuse_hi", [
-    (None, 1., True, True), (None, 1.1, True, True),
-    ([1.] * 8, 1., True, True), ([1.] * 8, 1.1, False, False),
-    ([2., 2., 1., 1., .5, .5, .5, .5], 1.5, True, False),
-    ([2., 2., 1., 1., .5, .5, .5, .5], 2.1, False, False),
-    ([.5] * 16, .75, False, False),
+@pytest.mark.parametrize("nominal,gap", [
+    (None, 1.), (None, 1.1),
+    ([1.] * 8, 1.), ([1.] * 8, 1.1),
+    ([2., 2., 1., 1., .5, .5, .5, .5], 1.5),
+    ([2., 2., 1., 1., .5, .5, .5, .5], 2.1),
+    ([.5] * 16, .75),
 ])
-def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap, refuse_lo, refuse_hi):
+def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap):
     import jax
     from rfx._traced_refusal import TracedStructureRefusal
 
     name = "xyz"[axis]
+    # Concrete x/y grids require matching boundary cells; only z admits
+    # the asymmetric pair. x additionally requires those cells to equal dx.
+    if nominal is not None and axis < 2 and nominal[0] != nominal[-1]:
+        nominal = [2., .5, .5, 1., 1., .5, .5, 2.]
+    dx = nominal[0] if nominal is not None and axis == 0 else 1.
     lo, hi = [3.] * 3, [5.] * 3
     if side == "lo":
         lo[axis] = gap
@@ -354,31 +353,31 @@ def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap
         hi[axis] = 8. - gap
     shape = Box(tuple(lo), tuple(hi))
 
-    @jax.jit
-    def traced(profile):
-        sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+    def assemble(profile):
+        from rfx.core.jax_utils import is_tracer
+        from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays
+        sim = Simulation(domain=(8., 8., 8.), dx=dx, freq_max=1e6,
                          boundary="cpml", cpml_layers=2, dt=1e-12, dt_min_cell=.5,
-                         nominal_profiles=None if nominal is None else {name: nominal},
+                         nominal_profiles={name: nominal} if nominal is not None and is_tracer(profile) else None,
                          **{f"d{name}_profile": profile})
-        continued_conductor_shape(sim, sim._build_nonuniform_grid(), shape)
-        return profile
+        sim.add(shape, material="pec")
+        return arrays(sim)
 
+    traced = jax.jit(assemble)
     profile = np.ones(8) if nominal is None else np.array(nominal)
-    refused = refuse_lo if side == "lo" else refuse_hi
-    if refused:
-        match = f"nominal_profiles for axis {name}" if nominal is None else f"{name}-{side}"
-        with pytest.raises(TracedStructureRefusal, match=match):
+    if nominal is None:
+        with pytest.raises(TracedStructureRefusal, match=f"nominal_profiles for axis {name}"):
             traced(profile)
     else:
-        np.testing.assert_array_equal(traced(profile), profile)
+        from tests.contracts.test_traced_mesh_conductor_matches_concrete import equal_arrays
+        equal_arrays(traced(profile), assemble(profile))
 
 
 @pytest.mark.parametrize("axis", range(3))
-@pytest.mark.parametrize("side,refused", [("lo", True), ("hi", False)])
+@pytest.mark.parametrize("side", ["lo", "hi"])
 @pytest.mark.parametrize("device_array", [False, True])
-def test_traced_grid_nodes_use_concrete_profile_edges_and_name_axis(axis, side, refused, device_array):
+def test_traced_grid_nodes_use_concrete_profile_edges(axis, side, device_array):
     import jax
-    from rfx._traced_refusal import TracedStructureRefusal
 
     name = "xyz"[axis]
     # Concrete x/y profiles require matching boundary cells; z permits unequal edges.
@@ -398,11 +397,13 @@ def test_traced_grid_nodes_use_concrete_profile_edges_and_name_axis(axis, side, 
 
     @jax.jit
     def traced(cells):
-        continued_conductor_shape(sim, grid._replace(**{field: cells}), shape)
-        return cells
+        solved = continued_conductor_shape(sim, grid._replace(**{field: cells}), shape)
+        from rfx.geometry.rasterize_grid import centres_from_nonuniform_grid
+        coords = centres_from_nonuniform_grid(grid)
+        return solved.mask_on_coords(coords.x, coords.y, coords.z)
 
-    if refused:
-        with pytest.raises(TracedStructureRefusal, match=f"mesh axis {name} is traced"):
-            traced(getattr(grid, field))
-    else:
-        np.testing.assert_array_equal(traced(getattr(grid, field)), getattr(grid, field))
+    solved = continued_conductor_shape(sim, grid, shape)
+    from rfx.geometry.rasterize_grid import centres_from_nonuniform_grid
+    coords = centres_from_nonuniform_grid(grid)
+    np.testing.assert_array_equal(traced(getattr(grid, field)),
+                                  solved.mask_on_coords(coords.x, coords.y, coords.z))

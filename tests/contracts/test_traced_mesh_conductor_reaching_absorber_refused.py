@@ -39,21 +39,10 @@ def _record(dz, reaching, near_face=False):
         n_steps=12, checkpoint=False, skip_preflight=True).time_series
 
 
-def test_reaching_box_refused_before_stepping(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail("a conductor cut at the absorber reached stepping")
-
-    monkeypatch.setattr(jax.lax, "scan", forbidden)
-    with pytest.raises(TracedStructureRefusal) as caught:
-        jax.jit(lambda dz: _record(dz, True))(PROFILE)
-    message = str(caught.value)
-    for expected in ("x-lo", "Cannot continue", "ground cut at the absorber entrance",
-                     "reaches or ends within one cell of", "mesh axis z is traced",
-                     "dz_profile", "concrete NumPy array", "for this run"):
-        assert expected in message
-    assert "dx_profile" not in message
-    assert "dy_profile" not in message
-    assert "#" not in message
+def test_reaching_box_continues():
+    from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays, equal_arrays
+    equal_arrays(jax.jit(lambda dz: arrays(_scene(dz, True)))(PROFILE),
+                 arrays(_scene(PROFILE, True)))
 
 
 def test_clear_box_record_matches_concrete_without_continuation_warning():
@@ -81,41 +70,30 @@ def test_concrete_reaching_box_still_runs_and_continues():
     assert np.isfinite(np.asarray(_record(PROFILE, True))).all()
 
 
-def test_box_ending_one_tenth_cell_short_on_traced_axis_refused(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail("a conductor ending in the outermost cell reached stepping")
-
-    monkeypatch.setattr(jax.lax, "scan", forbidden)
-    with pytest.raises(TracedStructureRefusal, match="absorbing face\\(s\\) z-hi"):
-        jax.jit(lambda dz: _record(dz, False, near_face=True))(PROFILE)
+def test_box_ending_one_tenth_cell_short_on_traced_axis_continues():
+    from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays, equal_arrays
+    equal_arrays(jax.jit(lambda dz: arrays(_scene(dz, False, near_face=True)))(PROFILE),
+                 arrays(_scene(PROFILE, False, near_face=True)))
 
 
 @pytest.mark.parametrize("nominal", [False, True], ids=["no_nominal", "nominal_edge"])
-def test_e_three_dx_edge_cell_refuses_box_at_one_point_two_dx(nominal, monkeypatch):
+def test_e_three_dx_edge_cell_needs_nominal_at_one_point_two_dx(nominal):
     # z-lo is 1.2*DX from the face, inside its 3*DX edge cell.
-    def forbidden(*args, **kwargs):
-        pytest.fail("the Box inside the 3*DX edge cell reached stepping")
-
-    monkeypatch.setattr(jax.lax, "scan", forbidden)
-
-    @jax.jit
-    def traced(dz):
+    from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays, equal_arrays
+    def assemble(dz):
         sim = Simulation(domain=(8*DX, 8*DX, 24*DX), dx=DX, freq_max=20e9,
                          boundary="cpml", cpml_layers=2, dz_profile=dz,
-                         nominal_profiles={"z": np.full(8, 3*DX)} if nominal else None,
+                         nominal_profiles={"z": np.full(8, 3*DX)} if nominal and is_tracer(dz) else None,
                          dt=1e-12, dt_min_cell=DX)
         sim.add(Box((2*DX, 2*DX, 1.2*DX), (6*DX, 6*DX, 12*DX)), material="pec")
-        return sim.forward(n_steps=1, checkpoint=False, skip_preflight=True).time_series
+        return arrays(sim)
 
-    with pytest.raises(TracedStructureRefusal) as caught:
-        traced(np.full(8, 3*DX))
-    message = str(caught.value)
+    profile = np.full(8, 3*DX)
     if nominal:
-        assert "absorbing face(s) z-lo" in message
-        assert "within one cell" in message
-        assert "nominal_profiles" not in message
+        equal_arrays(jax.jit(assemble)(profile), assemble(profile))
     else:
-        assert "Declare nominal_profiles for axis z, or keep it concrete" in message
+        with pytest.raises(TracedStructureRefusal, match="Declare nominal_profiles for axis z, or keep it concrete"):
+            jax.jit(assemble)(profile)
 
 
 def test_f_windowed_nominal_profile_allows_clear_box():
