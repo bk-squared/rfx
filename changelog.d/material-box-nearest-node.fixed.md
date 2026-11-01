@@ -9,3 +9,4 @@ refine until a cell centre lies inside the layer, or use `add_thin_conductor` fo
 conducting sheet. A volume Box drawn to the declared domain's high face now fills the
 last cell when the grid is one cell longer than the declared domain.
 `interface_eps='dual_average'` now gives the same coefficients as the default.
+Mixed Box and non-Box CSG now samples each operand as it would alone (it may now refuse).
