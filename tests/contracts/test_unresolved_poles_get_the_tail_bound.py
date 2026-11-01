@@ -139,7 +139,7 @@ def test_m3_completion_omits_unresolved_tail(monkeypatch, rate):
     # The traced forward completion retains both signs in its residue fit,
     # while masking only their infinite-sum tails. Use real conjugate pairs.
     import jax.numpy as jnp
-    from rfx import _ringdown_jax as rj
+    from rfx.ringdown import _jax as rj
     from rfx.measurement.ringdown_resolution import completion_poles
     from tests._x64_compat import enable_x64
 
