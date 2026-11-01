@@ -369,11 +369,12 @@ def _waveguide_scene(path, frequencies):
     return sim
 
 
-@pytest.mark.parametrize("path, entry", [
-    ("uniform", "run"), ("graded", "run"),
-    ("uniform", "forward"), ("graded", "forward"),
-])
-@pytest.mark.parametrize("case", ["above", "below", "lead-in", "shared"])
+@pytest.mark.parametrize("case, path, entry", [
+    (case, path, entry)
+    for case in ("above", "below", "lead-in", "shared")
+    for path, entry in (("uniform", "run"), ("graded", "run"),
+                        ("uniform", "forward"), ("graded", "forward"))
+] + [("lumped", "graded", "run")])
 def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     import rfx.api._spec as spec
     import rfx.measurement.waveguide_s as waveguide
@@ -381,9 +382,10 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     if path == "uniform" and entry == "run" and case == "shared":
         pytest.skip("uniform run refuses several waveguide ports at admission")
     frequencies = [np.array([9e9, 10e9, 11e9])]
-    reflections = [np.array([1.005, 1.02 if case == "above" else 1.005, .5], dtype=complex)]
+    above = case in ("above", "lumped")
+    reflections = [np.array([1.005, 1.02 if above else 1.005, .5], dtype=complex)]
     transmissions = [np.full(3, .5, dtype=complex)]
-    expected_count, worst, bins, diagonal = int(case == "above"), 10, "1 of 3", ""
+    expected_count, worst, bins, diagonal = int(above), 10, "1 of 3", ""
     if case == "lead-in":
         reflections[0][:] = .5j
         transmissions[0][:] = 1.05j
@@ -396,11 +398,17 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
         expected_count, worst = 1, 10
     before = [(s11.copy(), s21.copy()) for s11, s21 in zip(reflections, transmissions)]
     sim = _waveguide_scene(path, frequencies)
+    if case == "lumped":
+        from rfx import GaussianPulse
+
+        for index, x in enumerate((.012, .018)):
+            sim.add_port((x, .010, .006), "ez", impedance=50.,
+                         waveform=GaussianPulse(f0=10e9), excite=index == 0)
     extracted, assembled, fields = [], [], []
     constructor = spec.WaveguideSParamResult
 
     def extract(cfg, **kwargs):
-        index = len(extracted)
+        index = len(extracted) % len(reflections)
         extracted.append(cfg)
         return reflections[index], transmissions[index]
 
@@ -452,12 +460,14 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path):
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
     extract = waveguide.extract_waveguide_sparams
     traced = []
+    extracted = []
     helper_calls = []
     helper = declared.warn_if_singular_value_exceeds_one
 
     def capture(cfg, **kwargs):
         s11, s21 = extract(cfg, **kwargs)
         traced.append(is_tracer(s11))
+        extracted.append(s11)
         return s11, s21
 
     def check(*args, **kwargs):
@@ -465,8 +475,11 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path):
         return helper(*args, **kwargs)
 
     def loss(eps_override):
+        extracted.clear()
         result = sim.forward(eps_override=eps_override, n_steps=6,
                              skip_preflight=True, checkpoint=False)
+        for index, name in enumerate(result.waveguide_sparams):
+            assert result.waveguide_sparams[name].s11 is extracted[index]
         return sum(jnp.real(jnp.sum(port.s11)) for port in result.waveguide_sparams.values())
 
     monkeypatch.setattr(waveguide, "extract_waveguide_sparams", capture)
@@ -480,4 +493,5 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path):
     assert not helper_calls
     assert not [w for w in seen if "waveguide_sparams" in str(w.message)]
     assert np.isfinite(actual).all()
+    assert np.any(actual != 0)
     np.testing.assert_array_equal(actual, expected)
