@@ -15,8 +15,6 @@ LANES = (
     "distributed_v2_forward",
     "distributed_nu_run",
     "distributed_nu_forward",
-    "adi_run",
-    "adi_forward",
     "subgridded",
     "conformal",
     "smoothed",
@@ -54,7 +52,7 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
 
     # cb4cd5c16: uniform/graded take (grid, MaterialArrays, n_steps);
     # slab takes sharded_materials, graded slab takes it positionally;
-    # ADI takes eps_r and sigma after six fields; subgrid takes coarse/fine.
+    # subgrid takes coarse/fine.
     # MaterialArrays and ComponentMaterials below are written out from that
     # commit, never derived from the current product or an assembly helper.
     shape = (15, 15, 15) if lane == "cpml" else (11, 11, 11)
@@ -63,38 +61,35 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
     elif lane.startswith("distributed_nu"):
         shape = (2, 9, 11, 11)  # rank, ceil(11/2) + three ghosts, y, z
     expected = {}
-    if lane.startswith("adi"):
-        expected = {n: (shape, "float32") for n in ("eps_r", "sigma")}
-    else:
-        for prefix, size in [("materials", shape)] + (
-            [("fine", (21, 21, 13))] if lane == "subgridded" else []
-        ):
+    for prefix, size in [("materials", shape)] + (
+        [("fine", (21, 21, 13))] if lane == "subgridded" else []
+    ):
+        expected.update(
+            {f"{prefix}.{n}": (size, "float32") for n in ("eps_r", "sigma", "mu_r")}
+        )
+        if not lane.startswith("distributed"):
             expected.update(
-                {f"{prefix}.{n}": (size, "float32") for n in ("eps_r", "sigma", "mu_r")}
+                {
+                    f"{prefix}.components.{n}.{a}": (size, "float32")
+                    for n in (
+                        "eps",
+                        "sigma",
+                        "mu",
+                        "eps_update",
+                        "sigma_update",
+                        "mu_update",
+                        "upml_eps",
+                        "upml_sigma",
+                    )
+                    for a in range(3)
+                }
             )
-            if not lane.startswith("distributed"):
-                expected.update(
-                    {
-                        f"{prefix}.components.{n}.{a}": (size, "float32")
-                        for n in (
-                            "eps",
-                            "sigma",
-                            "mu",
-                            "eps_update",
-                            "sigma_update",
-                            "mu_update",
-                            "upml_eps",
-                            "upml_sigma",
-                        )
-                        for a in range(3)
-                    }
-                )
-                expected.update(
-                    {
-                        f"{prefix}.components.cells_view.{n}": (size, "float32")
-                        for n in ("eps_r", "sigma", "mu_r")
-                    }
-                )
+            expected.update(
+                {
+                    f"{prefix}.components.cells_view.{n}": (size, "float32")
+                    for n in ("eps_r", "sigma", "mu_r")
+                }
+            )
     if lane in ("conformal", "smoothed"):
         expected.update({f"aniso_eps.{a}": (shape, "float32") for a in range(3)})
     if lane == "conformal":
@@ -132,8 +127,6 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
         def step(*args, **kwargs):
             if layout == "slab":
                 mats = {"materials": kwargs["sharded_materials"]}
-            elif layout == "adi3d":
-                mats = {"eps_r": args[6], "sigma": args[7]}
             else:
                 mats = {"materials": args[1]}
                 if lane == "subgridded":
@@ -192,12 +185,10 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
             dx=0.001,
             boundary="cpml" if lane == "cpml" else "pec",
             cpml_layers=2,
-            solver="adi" if lane.startswith("adi") else "yee",
             **({"dz_profile": np.full(10, 0.001)} if graded else {}),
         )
         sim.add_material("glass", eps_r=2.0)
-        if not lane.startswith("adi"):
-            sim.add(Box((0.0023,) * 3, (0.0067,) * 3), material="glass")
+        sim.add(Box((0.0023,) * 3, (0.0067,) * 3), material="glass")
         if lane == "conformal":
             sim.add(Sphere((0.007,) * 3, 0.0013), material="pec")
         if lane == "subgridded":

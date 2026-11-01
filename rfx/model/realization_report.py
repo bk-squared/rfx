@@ -2,7 +2,7 @@
 from dataclasses import replace
 
 
-def rebuild_view(sim, solved, smoothing):
+def rebuild_view(sim, solved, smoothing, conformal=None):
     import copy
     from rfx.model.conductors import PreparedSolve, preview_port_stages
     from rfx.model.realization_table import finish_table
@@ -21,7 +21,7 @@ def rebuild_view(sim, solved, smoothing):
             root.pec_cells, 0, _warn_experimental=False, _prepare_only=True)
     else:
         root = preview_port_stages(reader, root)
-    _integrals(reader, root, solved.realization_table, smoothing)
+    _integrals(reader, root, solved.realization_table, smoothing, conformal)
     rebuilt = finish_table(reader, root, lane=solved.lane)
     table = solved.realization_table
     if rebuilt.realization_table.rows != table.rows:
@@ -39,9 +39,10 @@ def rebuild_view(sim, solved, smoothing):
     return record
 
 
-def _integrals(sim, root, table, smoothing):
+def _integrals(sim, root, table, smoothing, conformal=None):
     """Use the solver's producers for optional fill and open-area quantities."""
-    conformal = any(row.open_area_m2 is not None for row in table.rows)
+    if conformal is None:
+        conformal = any(row.open_area_m2 is not None for row in table.rows)
     if not smoothing and not conformal:
         return
     mode = {0: False, 1: True, 2: "full_tensor", 3: "kottke_pec"}[smoothing]

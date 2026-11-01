@@ -26,6 +26,27 @@ class GeometryMetadata:
     __slots__ = ("realization_table", "_conductors",
                  "_report_grid", "_quantity_grid")
 
+    def __reduce__(self):
+        attachments = {name: getattr(self, name) for name in self.__slots__
+                       if hasattr(self, name)}
+        return _restore_geometry, (type(self), vars(self), attachments)
+
+
+def _restore_geometry(cls, values, attachments):
+    """Reconstruct frozen records through their keyword metadata constructor.
+
+    Both pickle and deepcopy use this path; inherited slots cannot be restored
+    by the default reducer's setattr on a frozen dataclass.
+    """
+    from dataclasses import fields
+    names = {field.name for field in fields(cls)}
+    record = cls(**{name: values[name] for name in names},
+                 realization_table=attachments.get("realization_table"))
+    for name, value in {**values, **attachments}.items():
+        if name not in names and name != "realization_table":
+            object.__setattr__(record, name, value)
+    return record
+
 
 class _Metadata:
     def __init__(self, record):

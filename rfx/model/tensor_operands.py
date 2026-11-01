@@ -62,7 +62,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     waveguide device supplies ``zero_inverse_on`` for interior PEC cells.
     """
     from rfx.model.realization_integrals import begin
-    begin(sim, grid, conformal_shapes=pec_shapes or (), smoothing=subpixel_smoothing)
+    begin(sim, grid, conformal_shapes=pec_shapes or (), smoothing=subpixel_smoothing,
+          conformal=conformal)
     conformal_module.validate_conformal_min_weight(conformal_min_weight)
     # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
     # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step

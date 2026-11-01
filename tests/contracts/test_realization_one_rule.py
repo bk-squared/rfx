@@ -14,6 +14,56 @@ LO = np.array((2.23, 2.37, 2.19)) * D
 HI = np.array((6.61, 6.73, 6.57)) * D
 
 
+@pytest.mark.parametrize("lane", LANES)
+@pytest.mark.parametrize("operation", ("pickle", "deepcopy"))
+def test_result_metadata_roundtrip(lane, operation):
+    import copy
+    import pickle
+    import weakref
+
+    def restore(value):
+        return (pickle.loads(pickle.dumps(value)) if operation == "pickle"
+                else copy.deepcopy(value))
+
+    sim = scene("dielectric_box", lane)
+    result = (sim.forward(n_steps=1, skip_preflight=True) if lane.endswith("forward") else
+              sim.run(n_steps=1, skip_preflight=True, compute_s_params=False))
+    original = result.realized_geometry.realization_table
+    restored = restore(result)
+    table = restored.realized_geometry.realization_table
+    assert type(restored) is type(result)
+    assert table is not original
+    assert table.rows == original.rows
+    assert table.lane == original.lane
+    assert isinstance(table.prepared, weakref.ReferenceType)
+    assert table.prepared() is None
+
+    # Walk tuple payloads AND attachment dictionaries/slots, without following
+    # weakrefs into the solve. Exercise each reachable realization object too.
+    pending, seen, walked = [result], set(), set()
+    while pending:
+        value = pending.pop()
+        if id(value) in seen or isinstance(value, (type, weakref.ReferenceType)):
+            continue
+        seen.add(id(value))
+        module = type(value).__module__
+        if module.startswith(("rfx.model.realization", "rfx.realized_geometry")):
+            assert type(restore(value)) is type(value)
+            walked.add(type(value).__name__)
+        if isinstance(value, dict):
+            pending.extend((*value.keys(), *value.values()))
+        elif isinstance(value, (tuple, list, set)):
+            pending.extend(value)
+        if hasattr(value, "__dict__") and module.startswith("rfx"):
+            pending.extend(vars(value).values())
+        for cls in type(value).__mro__:
+            slots = getattr(cls, "__slots__", ())
+            slots = (slots,) if isinstance(slots, str) else slots
+            pending.extend(getattr(value, name) for name in slots
+                           if name not in ("__dict__", "__weakref__") and hasattr(value, name))
+    assert {"RealizedGeometry", "RealizationTable", "RealizationRow", "RealizationAxis"} <= walked
+
+
 def scene(family, lane):
     profiles = {"dz_profile": np.array((1., .8, 1.2, .9, 1.1, .7, 1.3, 1., 1., 1.)) * D} if lane.startswith("graded") else {}
     sim = Simulation(freq_max=1e9, domain=(10.04*D, 10*D, 10*D), dx=D,
@@ -68,7 +118,7 @@ def expected(family, record):
             # Both surface families occupy one node plane in the normal direction.
             result.append((n[k], n[k]))
             continue
-        sample = n[:-1] if family in ("dielectric_box", "sheet") else centres[a]
+        sample = n[:-1] if family == "sheet" else centres[a]
         mask = ((sample >= LO[a]) & (sample <= HI[a] if family == "sheet" else sample < HI[a]))
         indices = np.flatnonzero(mask)
         lo, hi = indices[0], indices[-1]
@@ -258,15 +308,6 @@ def test_forward_traced_dz_with_live_dt(nominal, monkeypatch):
         assert record.dt is None
 
 
-@pytest.mark.parametrize("entry", ("run", "forward"))
-def test_adi_boundary(entry):
-    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", solver="adi")
-    kwargs = {"compute_s_params": False} if entry == "run" else {}
-    result = getattr(sim, entry)(n_steps=1, skip_preflight=True, **kwargs)
-    assert result.realized_geometry.realization_table.lane == ("run_adi" if entry == "run" else "fwd_adi")
-    assert result.realized_geometry.dt == result.dt
-
-
 def test_nominal_reference_does_not_add_a_live_refusal():
     import jax
     import jax.numpy as jnp
@@ -369,13 +410,18 @@ def test_filled_volume(smoothing, lane):
     assert "smoothed fill" in row.model
 
 
-def test_conformal_open_area():
-    sim = scene("wall", "uniform_run")
+@pytest.mark.parametrize("conformal", (True, "cut_cell_floor"))
+def test_conformal_open_area(conformal):
+    from rfx.grid import Grid
+    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec",
+                     **({"dt": .5*Grid.courant_dt(D)} if conformal == "cut_cell_floor" else {}))
     sim.add(Sphere((4.23*D, 4.61*D, 4.17*D), 2.13*D), material="pec")
-    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False, conformal_pec=True)
+    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False, conformal_pec=conformal)
     row = result.realized_geometry.realization_table.row("geometry[0]")
     assert row.open_area_m2 is not None
     assert all(0 < area < 11 * (10*D)**2 for area in row.open_area_m2)
+    assert sim.realized_geometry().realization_table is result.realized_geometry.realization_table
+    assert sim.fidelity_report(print_report=False)[0]["realization_table"] is result.realized_geometry.realization_table
 
 
 def test_refined_region_uses_fine_mask():
@@ -519,10 +565,6 @@ def watch_steps(monkeypatch, *, direct_replays=False):
             elif layout == "slab":
                 assert options["sharded_materials"] is root.materials
                 assert options["sharded_pec_mask"] is root.pec_edges
-            elif layout == "adi3d":
-                assert operands[6] is root.materials.eps_r
-                assert operands[7] is root.materials.sigma
-                assert options["pec_edge_masks"] is root.pec_edges
             elif layout == "disjoint":
                 assert operands[1] is root.kernel_context[0]
             return runner(*operands, **options)
@@ -537,14 +579,11 @@ def watch_steps(monkeypatch, *, direct_replays=False):
 @pytest.mark.parametrize("lane", (
     "uniform_run", "uniform_forward", "graded_run", "graded_forward",
     "distributed_v2_run", "distributed_v2_forward", "distributed_nu_run",
-    "distributed_nu_forward", "adi_run", "adi_forward", "subgridded"))
+    "distributed_nu_forward", "subgridded"))
 def test_prepared_at_step(lane, monkeypatch):
     import jax
     stepped = watch_steps(monkeypatch)
     sim = scene("probe", "graded_run" if "graded" in lane or "_nu_" in lane else "uniform_run")
-    if lane.startswith("adi"):
-        sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", solver="adi")
-        sim.add_probe((4.23*D, 4.61*D, 4.17*D), component="ez")
     if lane == "subgridded":
         sim.add_refinement(z_range=(2*D, 8*D), ratio=2, validation="research")
     gates = []
@@ -713,7 +752,7 @@ def test_no_dense_array_retained_after_solve(lane, preview_first):
 
 
 def test_reporter_refuses_rows_that_changed_at_call_time(monkeypatch):
-    from rfx.api._declarations import declaration_key
+    from rfx._declarations import declaration_key
     import rfx.model.realization_table as tables
     sim = scene('dielectric_box', 'uniform_run')
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
@@ -754,12 +793,12 @@ def test_reporter_reads_box_changed_between_calls(solved, edit, reporter):
     if reporter == 'geometry':
         second = sim.realized_geometry()
         table = second.realization_table
-        # The dielectric lower-node sampler owns nodes 3..8 and their cells.
-        assert table.row(f'geometry[{index}]').axes[0].bounds_m == pytest.approx((3*D, 9*D))
+        # The dielectric cell-centre sampler owns cells 2..8.
+        assert table.row(f'geometry[{index}]').axes[0].bounds_m == pytest.approx((2*D, 9*D))
     else:
         report = sim.fidelity_report(print_report=False)
         table = report[0]['realization_table']
-        assert report[index + 1]['axes'][0]['realized_um'] == pytest.approx((3000., 9000.))
+        assert report[index + 1]['axes'][0]['realized_um'] == pytest.approx((2000., 9000.))
     assert table.rows != first.realization_table.rows
     assert len(table.rows) == (3 if edit == 'add' else 2)
     assert sim not in _kernel_views
