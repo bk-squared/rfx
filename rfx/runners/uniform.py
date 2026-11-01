@@ -832,7 +832,7 @@ def run_uniform(
         )
 
     declared_measurements = package_declared_measurements(
-        sim, grid,
+        sim, grid, entry="run()",
         flux_monitors=sim_result.flux_monitors or (),
         waveguide_cfgs=sim_result.waveguide_ports or (),
     )

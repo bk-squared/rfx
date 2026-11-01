@@ -350,3 +350,134 @@ def test_no_finite_column_exits(monkeypatch, exit_name, peak, expected_count):
         assert "lower bound from the finite columns" in message
     np.testing.assert_array_equal(returned, before.astype(np.asarray(returned).dtype))
     np.testing.assert_array_equal(s, before)
+
+
+def _waveguide_scene(path, frequencies):
+    from rfx import Simulation
+
+    sim = Simulation(
+        freq_max=20e9, domain=(.030, .020, .012), dx=.002,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=2,
+        **({"dz_profile": np.full(6, .002)} if path == "graded" else {}),
+    )
+    for index, freqs in enumerate(frequencies):
+        sim.add_waveguide_port(
+            .006 if index == 0 else .024, direction="+x" if index == 0 else "-x",
+            f0=10e9, freqs=freqs, probe_offset=2, ref_offset=1,
+            name=f"port{index}",
+        )
+    return sim
+
+
+@pytest.mark.parametrize("path, entry", [
+    ("uniform", "run"), ("graded", "run"),
+    ("uniform", "forward"), ("graded", "forward"),
+])
+@pytest.mark.parametrize("case", ["above", "below", "lead-in", "shared"])
+def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
+    import rfx.api._spec as spec
+    import rfx.measurement.waveguide_s as waveguide
+
+    if path == "uniform" and entry == "run" and case == "shared":
+        pytest.skip("uniform run refuses several waveguide ports at admission")
+    frequencies = [np.array([9e9, 10e9, 11e9])]
+    reflections = [np.array([1.005, 1.02 if case == "above" else 1.005, .5], dtype=complex)]
+    transmissions = [np.full(3, .5, dtype=complex)]
+    expected_count, worst, bins, diagonal = int(case == "above"), 10, "1 of 3", ""
+    if case == "lead-in":
+        reflections[0][:] = .5j
+        transmissions[0][:] = 1.05j
+    elif case == "shared":
+        frequencies.append(frequencies[0].copy())
+        reflections.append(np.array([1.005, 1.04, .5], dtype=complex))
+        transmissions.append(np.full(len(frequencies[1]), .5, dtype=complex))
+        reflections[0][0] = 1.02
+        bins, diagonal = "2 of 3", " (diagonal-only lower bound of sigma_max)"
+        expected_count, worst = 1, 10
+    before = [(s11.copy(), s21.copy()) for s11, s21 in zip(reflections, transmissions)]
+    sim = _waveguide_scene(path, frequencies)
+    extracted, assembled, fields = [], [], []
+    constructor = spec.WaveguideSParamResult
+
+    def extract(cfg, **kwargs):
+        index = len(extracted)
+        extracted.append(cfg)
+        return reflections[index], transmissions[index]
+
+    def assemble(**kwargs):
+        result = constructor(**kwargs)
+        assembled.append(result)
+        fields.append(tuple(kwargs.values()))
+        return result
+
+    monkeypatch.setattr(waveguide, "extract_waveguide_sparams", extract)
+    monkeypatch.setattr(spec, "WaveguideSParamResult", assemble)
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        result = getattr(sim, entry)(
+            n_steps=1, skip_preflight=True, **({"checkpoint": False} if entry == "forward" else {}),
+        )
+    notices = [w for w in seen if "waveguide_sparams" in str(w.message)]
+    assert len(notices) == expected_count
+    if notices:
+        assert notices[0].category is AccuracyWarning
+        peak = 1.04 if case == "shared" else 1.02
+        assert str(notices[0].message) == (
+            f"{entry}() waveguide_sparams: the returned S is not passive at {bins} "
+            f"frequency bins, worst sigma_max = {peak}{diagonal} at {worst} GHz. "
+            "S is returned as extracted. A passive structure cannot scatter more power "
+            "than it receives, so these bins are an extraction or record artifact."
+        )
+    assert list(result.waveguide_sparams) == [f"port{i}" for i in range(len(frequencies))]
+    assert result.flux_monitors is None
+    for index, record in enumerate(assembled):
+        assert result.waveguide_sparams[f"port{index}"] is record
+        assert result.waveguide_ports[f"port{index}"] is extracted[index]
+        assert record.s11 is reflections[index]
+        assert record.s21 is transmissions[index]
+        assert all(value is original for value, original in zip(record, fields[index]))
+        np.testing.assert_array_equal(record.freqs, np.asarray(frequencies[index], dtype=np.float32))
+        np.testing.assert_array_equal(record.s11, before[index][0])
+        np.testing.assert_array_equal(record.s21, before[index][1])
+
+
+@pytest.mark.parametrize("path", ["uniform", "graded"])
+def test_waveguide_forward_gradient_unchanged(monkeypatch, path):
+    import rfx.measurement.declared as declared
+    import rfx.measurement.waveguide_s as waveguide
+    from rfx.core.jax_utils import is_tracer
+
+    sim = _waveguide_scene(path, [np.array([9e9, 10e9, 11e9])] * 2)
+    grid = sim._build_nonuniform_grid() if path == "graded" else sim._build_grid()
+    eps = jnp.ones(grid.shape, dtype=jnp.float32)
+    extract = waveguide.extract_waveguide_sparams
+    traced = []
+    helper_calls = []
+    helper = declared.warn_if_singular_value_exceeds_one
+
+    def capture(cfg, **kwargs):
+        s11, s21 = extract(cfg, **kwargs)
+        traced.append(is_tracer(s11))
+        return s11, s21
+
+    def check(*args, **kwargs):
+        helper_calls.append(True)
+        return helper(*args, **kwargs)
+
+    def loss(eps_override):
+        result = sim.forward(eps_override=eps_override, n_steps=6,
+                             skip_preflight=True, checkpoint=False)
+        return sum(jnp.real(jnp.sum(port.s11)) for port in result.waveguide_sparams.values())
+
+    monkeypatch.setattr(waveguide, "extract_waveguide_sparams", capture)
+    monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", check)
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        actual = np.asarray(jax.grad(loss)(eps))
+        monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", lambda *a, **kw: None)
+        expected = np.asarray(jax.grad(loss)(eps))
+    assert traced == [True] * 4
+    assert not helper_calls
+    assert not [w for w in seen if "waveguide_sparams" in str(w.message)]
+    assert np.isfinite(actual).all()
+    np.testing.assert_array_equal(actual, expected)

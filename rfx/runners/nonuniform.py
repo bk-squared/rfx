@@ -1305,7 +1305,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.measurement import package_declared_measurements
     declared_measurements = package_declared_measurements(
-        sim, grid,
+        sim, grid, entry="forward()" if lane == "fwd_nonuniform" else "run()",
         flux_monitors=r.get("flux_monitors", ()),
         waveguide_cfgs=r.get("waveguide_ports", ()),
         waveguide_reference_only=waveguide_reference_only,
