@@ -224,6 +224,12 @@ smaller aperture needs a conductor on every edge: draw PEC walls there, or a bar
 edge is refused on both meshes. Waveguide ports
 need `mode="3d"`, and cannot share a simulation with lumped ports.
 
+A port measures at `freqs`, or at `n_freqs` points from `freq_max/10` to
+`freq_max` when `freqs` is not given (50 by default), on every path.
+`forward()` and a graded `run()` share one frequency vector across waveguide
+ports and refuse ports whose bins differ; `compute_waveguide_s_matrix()`
+accepts them.
+
 ```python
 wg = Simulation(freq_max=12e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
                 boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
