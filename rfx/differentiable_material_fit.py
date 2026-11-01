@@ -61,6 +61,12 @@ Example
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.material_fit import DebyeFitResult
+    from rfx.material_fit import LorentzFitResult
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, field
 from typing import Callable
@@ -382,7 +388,7 @@ def differentiable_material_fit(
     *,
     n_iterations: int = 50,
     learning_rate: float = 0.01,
-    initial_guess=None,
+    initial_guess: DebyeFitResult | LorentzFitResult | None = None,
     weight_mag: float = 1.0,
     weight_phase: float = 0.1,
     checkpoint: bool = True,

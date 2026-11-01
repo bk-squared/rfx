@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
+    from rfx.grid import Grid
+    from rfx.core.yee import MaterialArrays
+
 import jax.numpy as jnp
 import numpy as np
 from rfx.boundaries.axes import resolve_cpml_axes
@@ -312,8 +319,8 @@ def _s_matrix_port_waves(cfg, *, ref_shift):
 
 
 def extract_waveguide_s_matrix(
-    grid,
-    materials,
+    grid: Grid,
+    materials: MaterialArrays,
     port_cfgs: list[WaveguidePortConfig],
     n_steps: int,
     *,
@@ -332,7 +339,7 @@ def extract_waveguide_s_matrix(
     settling_details: list | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
 
