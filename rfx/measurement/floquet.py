@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from rfx.core.yee import FDTDState
+from rfx.errors import RfxRefusal
 from rfx.floquet import FloquetDFTAccumulator
 from rfx.grid import C0
 import jax.numpy as jnp
@@ -62,8 +63,11 @@ def update_floquet_dft(
 ) -> FloquetDFTAccumulator:
     """Accumulate one timestep into the Floquet DFT.
 
-    Extracts tangential fields at the port plane and applies running
-    DFT at each frequency point.
+    Call once per step after the E update. H is averaged across the two
+    adjacent normal planes and stamped half a step earlier than E, so the
+    tangential fields share the E plane's position and time in the DFT.
+    For a y-normal plane, the stored H partner of Ex is -Hz, giving the
+    forward pair the sign of propagation along +y.
 
     Parameters
     ----------
@@ -72,7 +76,8 @@ def update_floquet_dft(
     state : FDTDState
         Current FDTD field state.
     port_index : int
-        Grid index along the port normal axis.
+        Grid index along the port normal axis, at least 1. Index 0 has no
+        H plane below it and is refused.
     axis : int
         Normal axis (0=x, 1=y, 2=z).
     freqs : (n_freqs,) array
@@ -82,36 +87,44 @@ def update_floquet_dft(
     step : int
         Current timestep index.
     """
+    if port_index < 1:
+        raise RfxRefusal(
+            f"Floquet port_index must be at least 1 to centre H on E; got {port_index}."
+        )
     t = step * dt
     # DFT kernel: exp(-j * 2*pi*f*t) for each frequency
     phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t)  # (n_freqs,)
+    h_phase = phase * jnp.exp(1j * 2.0 * jnp.pi * freqs * dt / 2.0)
 
     # Extract tangential field plane based on normal axis
     if axis == 2:  # z-normal
         sl = (slice(None), slice(None), port_index)
+        below = (slice(None), slice(None), port_index - 1)
         e1 = state.ex[sl]  # (nx, ny)
         e2 = state.ey[sl]
-        h1 = state.hx[sl]
-        h2 = state.hy[sl]
+        h1 = (state.hx[below] + state.hx[sl]) / 2.0
+        h2 = (state.hy[below] + state.hy[sl]) / 2.0
     elif axis == 0:  # x-normal
         sl = (port_index, slice(None), slice(None))
+        below = (port_index - 1, slice(None), slice(None))
         e1 = state.ey[sl]  # (ny, nz)
         e2 = state.ez[sl]
-        h1 = state.hy[sl]
-        h2 = state.hz[sl]
+        h1 = (state.hy[below] + state.hy[sl]) / 2.0
+        h2 = (state.hz[below] + state.hz[sl]) / 2.0
     else:  # y-normal
         sl = (slice(None), port_index, slice(None))
+        below = (slice(None), port_index - 1, slice(None))
         e1 = state.ex[sl]  # (nx, nz)
         e2 = state.ez[sl]
-        h1 = state.hx[sl]
-        h2 = state.hz[sl]
+        h1 = (state.hx[below] + state.hx[sl]) / 2.0
+        h2 = -(state.hz[below] + state.hz[sl]) / 2.0
 
     # Accumulate: outer product of phase vector with field plane
     # phase: (n_freqs,), field: (nu, nv) -> (n_freqs, nu, nv)
     e1_contrib = phase[:, None, None] * e1[None, :, :]
     e2_contrib = phase[:, None, None] * e2[None, :, :]
-    h1_contrib = phase[:, None, None] * h1[None, :, :]
-    h2_contrib = phase[:, None, None] * h2[None, :, :]
+    h1_contrib = h_phase[:, None, None] * h1[None, :, :]
+    h2_contrib = h_phase[:, None, None] * h2[None, :, :]
 
     return FloquetDFTAccumulator(
         e_tang1_dft=acc.e_tang1_dft + e1_contrib,

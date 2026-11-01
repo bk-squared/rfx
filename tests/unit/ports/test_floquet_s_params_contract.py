@@ -16,15 +16,10 @@ claim. It does three things:
    function actually guarantees: the returned dict carries ``S11``/``S21``/
    ``freqs`` and every entry is finite.
 
-   It deliberately does NOT assert ``|S11| <= 1.05`` on this naive single-run
-   drive — see ``test_compute_floquet_s_params_passivity_pure_wave`` for why.
-   A single bidirectional soft additive source radiates in BOTH +z and -z, so
-   no monitor plane in the open cell contains a pure forward wave; the
-   single-plane E/H forward/backward split that ``extract_floquet_modes`` uses
-   then reports a large spurious ``b/a`` and ``|S11|`` can exceed 1. That is a
-   limitation of the DRIVE (which must pre-isolate the incident/reflected/
-   transmitted waves), not a bug in the function. The measured |S11| is
-   recorded here as a witness, not gated.
+   It also asserts |S11| <= 1 + 1e-2. The excess reflection came from
+   splitting E and H at different positions and times. Centring H on E
+   corrects that split. A reflection plane belongs between the source and
+   the structure; a plane on the far side reads the source's backward wave.
 
 2. ``test_compute_floquet_s_params_passivity_pure_wave`` — feeds the function
    the CLEAN pure-wave accumulators it is documented to expect (a forward TE
@@ -55,6 +50,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
+from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
 from rfx.stepping.yee import update_e, update_h
 from rfx.floquet import (
@@ -86,12 +82,13 @@ def _drive_unit_cell_accumulators(n_steps: int = 400):
     Lx, Ly, Lz = 0.015, 0.015, 0.06
     grid = Grid(
         freq_max=10e9, domain=(Lx, Ly, Lz), dx=0.0015,
-        cpml_layers=8, cpml_axes="z", mode="3d",
+        cpml_layers=8, cpml_axes="z", periodic_axes="xy", mode="3d",
     )
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     dt, dx = grid.dt, grid.dx
     periodic = (True, True, False)
+    cpml, cpml_state = init_cpml(grid)
 
     f0, bw = 5e9, 0.5
     tau_g = 1.0 / (f0 * bw * math.pi)
@@ -110,7 +107,13 @@ def _drive_unit_cell_accumulators(n_steps: int = 400):
 
     for step in range(n_steps):
         state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
+        state, cpml_state = apply_cpml_h(
+            state, cpml, cpml_state, grid, "z", materials=materials, periodic=periodic,
+        )
         state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
+        state, cpml_state = apply_cpml_e(
+            state, cpml, cpml_state, grid, "z", materials=materials,
+        )
 
         t = step * dt
         arg = (t - t0) / tau_g
@@ -154,11 +157,8 @@ def test_compute_floquet_s_params_real_fdtd_runs():
     input): the dict carries 'S11','freqs' (and 'S21' since a transmission
     plane is supplied) and every entry is finite.
 
-    NOT asserted: |S11| <= 1.05 on this naive single-run drive — a single
-    bidirectional soft source leaves no pure-forward monitor plane, so the
-    single-plane E/H split can report |S11|>1. That is a drive-isolation
-    limitation, documented at module level. Passivity on the function's
-    INTENDED (pre-isolated) input is gated in the pure-wave test below.
+    The real drive also obeys |S11| <= 1 + 1e-2 with H centred on E.
+    The reflection plane is on the forward side of the source.
     """
     acc_inc, acc_ref, acc_trans, freqs, dx, Lx, Ly, state = (
         _drive_unit_cell_accumulators(n_steps=400)
@@ -187,9 +187,8 @@ def test_compute_floquet_s_params_real_fdtd_runs():
     assert np.all(np.isfinite(s11)), f"non-finite S11: {s11}"
     assert np.all(np.isfinite(s21)), f"non-finite S21: {s21}"
 
-    # Record the measured magnitudes as a witness (NOT a passivity gate — see
-    # the module docstring; the open-cell single-soft-source drive does not
-    # isolate the incident/reflected waves the function presumes).
+    assert np.all(np.abs(s11) <= 1 + 1e-2), f"non-passive S11: {s11}"
+
     print("\n[real-FDTD drive] |S11| =", np.abs(s11))
     print("[real-FDTD drive] |S21| =", np.abs(s21))
     print("[real-FDTD drive] |S11|^2+|S21|^2 =",
