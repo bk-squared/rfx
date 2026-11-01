@@ -58,7 +58,7 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
         # scan carry. It is transient, but still belongs to the record budget.
         import inspect
         from rfx.runners._rank import mesh_ranks
-        state = inspect.currentframe().f_back.f_locals["sharded_state"]
+        state = inspect.currentframe().f_back.f_locals["carry"]["fdtd"]
         moment = self.layouts["moments"]
         previous = moment.prepare(state, ranks=mesh_ranks(moment.mesh))
         measured = {**buffers, "moment_previous_e": previous}

@@ -1,6 +1,5 @@
 """PMC high ghosts are held by coefficients, with identical CPU field records."""
 import os
-import platform
 
 os.environ.setdefault('XLA_FLAGS', '--xla_force_host_platform_device_count=2')
 
@@ -67,8 +66,6 @@ def test_pmc_high_ghost_zero_on_one_and_two_devices(pec_box_records):
     check_ghosts(slabs, 'x', 'slabs')
 
 
-@pytest.mark.xfail(platform.machine() in ('x86_64', 'AMD64'), strict=True,
-                   reason='#2086 uniform multi-device PMC face: 1- and 2-device fields differ on x86 CPU')
 def test_pmc_high_ghost_bit_identity(pec_box_records):
     one, slabs = pec_box_records
     for c in FIELDS:
