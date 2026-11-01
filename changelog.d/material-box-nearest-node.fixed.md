@@ -8,3 +8,4 @@ inflated a 0.3-cell film 3.3 times). There is no sub-cell dielectric film model:
 refine until a cell centre lies inside the layer, or use `add_thin_conductor` for a
 conducting sheet. A volume Box drawn to the declared domain's high face now fills the
 last cell when the grid is one cell longer than the declared domain.
+`interface_eps='dual_average'` now gives the same coefficients as the default.
