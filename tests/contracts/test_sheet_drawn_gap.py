@@ -469,7 +469,8 @@ def test_k4_staged_slabs(monkeypatch, graded, location, k, gap):
                                sigma_bulk=5.8e7, thickness=1e-5)
     expected = C.solve_conductors(sim, grid, nonuniform=graded).pec_edges
     staged = []
-    original = C.stage_distributed_edges if graded else D.cut
+    from rfx.stepping import slab_wrap
+    original = C.stage_distributed_edges if graded else slab_wrap.cut
 
     class Staged(Exception):
         pass
@@ -481,7 +482,7 @@ def test_k4_staged_slabs(monkeypatch, graded, location, k, gap):
             raise Staged
         return result
 
-    monkeypatch.setattr(C if graded else D, 'stage_distributed_edges' if graded else 'cut', capture)
+    monkeypatch.setattr(C if graded else slab_wrap, 'stage_distributed_edges' if graded else 'cut', capture)
     sim.add_source((.003, .003, .002), 'ez', amplitude_kind='field')
     with pytest.raises(Staged):
         sim.run(n_steps=2, devices=jax.devices('cpu')[:2], compute_s_params=False, skip_preflight=True)

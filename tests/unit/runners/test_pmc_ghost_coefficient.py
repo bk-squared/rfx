@@ -132,8 +132,11 @@ def test_pmc_high_ghost_with_transverse_upml(axis):
 def seeded_run(monkeypatch, graded, devices):
     """One step from whole arrays seeded to hy = +7, hz = -7 and ez = 1."""
     import jax.numpy as jnp
+    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    from rfx.stepping import slab_wrap
 
     original_scan = jax.lax.scan
+    run_steps = slab_wrap.run_steps
     seeded = []
 
     def scan(function, initial, *args, **kwargs):
@@ -155,8 +158,13 @@ def seeded_run(monkeypatch, graded, devices):
         initial = jax.tree_util.tree_map(seed, initial, is_leaf=is_state)
         return original_scan(function, initial, *args, **kwargs)
 
+    def observed_steps(*args, **kwargs):
+        kwargs.setdefault('scan_loop', scan)
+        return run_steps(*args, **kwargs)
+
     with monkeypatch.context() as patched:
         patched.setattr(jax.lax, 'scan', scan)
+        patched.setattr(slab_wrap, 'run_steps', observed_steps)
         result = scene(graded=graded).run(n_steps=1, devices=jax.devices('cpu')[:devices],
                                         compute_s_params=False, skip_preflight=True)
     assert seeded, 'initial H carry was not injected'

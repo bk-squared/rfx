@@ -379,6 +379,36 @@ def _install(patch, kind):
     helper = _mutant(kind)
     for module in (common, slab_update, slab_cpml):
         patch.setattr(module, "slab_e_component_materials", helper)
+    _install_wrapped(patch, helper)
+
+
+def _install_wrapped(patch, helper, *, psi_only=False):
+    """Feed the same mutated slab means to the wrapped step's operands."""
+    from rfx.model.materials import unpadded_high_walls
+    from rfx.stepping import slab_wrap_uniform
+    real = slab_wrap_uniform.prepare_uniform
+
+    def prepare(grid, materials, pec_edges, sources, probes, layout, mesh, **kwargs):
+        slabs, nx_per = _staged(materials, layout.n_devices)
+        means = [helper(slab, nx_per, layout.nx, rank=rank,
+                        high_wall=unpadded_high_walls(grid))
+                 for rank, slab in enumerate(slabs)]
+        carry, inputs, waves, advance = real(
+            grid, materials, pec_edges, sources, probes, layout, mesh, **kwargs)
+        components = inputs['materials'].components
+        eps, sigma = tuple(tuple(jax.device_put(
+            jnp.concatenate([row[q][c] for row in means]),
+            components.eps_update[c].sharding) for c in range(3)) for q in range(2))
+        inputs = dict(inputs)
+        if not psi_only:
+            inputs['materials'] = inputs['materials']._replace(
+                components=components._replace(eps_update=eps, sigma_update=sigma))
+        if inputs['cpml_inv_eps_r'] is not None:
+            inputs['cpml_inv_eps_r'] = tuple(1 / e for e in eps)
+            inputs['e_loss'] = (eps, sigma)
+        return carry, inputs, waves, advance
+
+    patch.setattr(slab_wrap_uniform, 'prepare_uniform', prepare)
 
 
 # --------------------------------------------------------------------------
@@ -488,9 +518,7 @@ def _matrix(n_dev, boundaries, cases, mutation=None):
 
 def _matrix_main(n_dev, boundaries, cases, mutation):
     if mutation != "none":
-        helper = _mutant(mutation)
-        for module in (common, slab_update, slab_cpml):
-            setattr(module, "slab_e_component_materials", helper)
+        _install(pytest.MonkeyPatch(), mutation)
     for boundary in boundaries:
         for case in cases:
             for lane in ("run", "fwd"):
@@ -596,6 +624,7 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     # The uniform runner's CPML wrapper calls the name bound in its own module;
     # its E update reads _distributed_common's, which keeps the real helper.
     monkeypatch.setattr(slab_cpml, "slab_e_component_materials", cell)
+    _install_wrapped(monkeypatch, cell, psi_only=True)
     # The forward lane hands its CPML the means built before the loop; the
     # correction is given the cell array; all mean-builder calls stay in place.
     sim = _box("cpml", "fwd", "faces", 2)
@@ -671,6 +700,7 @@ def test_vacuum_and_homogeneous_models_keep_mains_bits(monkeypatch, lane, eps_r,
     with monkeypatch.context() as patch:
         for module in (common, slab_update, slab_cpml):
             patch.setattr(module, "slab_e_component_materials", main_rule)
+        _install_wrapped(patch, main_rule)
         old = _filled_record(lane, eps_r, sigma)
     for a, b in zip(new, old):
         assert np.any(b), "a zero record cannot witness the coefficients"
