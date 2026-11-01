@@ -504,6 +504,21 @@ not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
 
+### `compute_waveguide_s_matrix(normalize=True)` on a reflecting two-port returns a matrix whose phases do not belong to one set of reference planes.
+
+Tracker: #2308
+
+`normalize=True` keeps reflection at the port plane and refers transmission to a separate reference run.
+On a reflecting two-port, each column of the returned matrix carries the right total power, and `|S11|` equals `|S22|`.
+The relative phase between reflection and transmission is not that of one set of reference planes.
+Using the matrix as a whole is therefore wrong: cascading it with another network, de-embedding it, or forming the response to a combined excitation.
+On a synthetic lossless dielectric slab in a PEC-walled guide (4.5–8 GHz), every column carries power 0.998–1.002 while the largest singular value of S reaches 1.414.
+A lossless network has 1 at every frequency.
+`compute_waveguide_s_matrix` warns when the largest singular value exceeds 1.01; on the slab that is 19 of 20 bins.
+Where the slab's electrical length is near an odd multiple of π, S stays unitary and gets no warning while S21 has the wrong sign (derived from the cause, not measured).
+`normalize` defaults to False, so only calls that set it are affected.
+When phase matters, use `normalize=False` or `normalize="flux"` (on a graded mesh only `"flux"`, because `normalize=False` is refused there).
+
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
 Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_msl_feed_shift_eps_override.py::test_override_varying_along_the_shifted_length_is_refused_by_port_name)
