@@ -135,6 +135,8 @@ thickness is therefore not part of the model, and a microstrip line built from s
 sheet reads slightly electrically long against the same line with its real thickness.
 Widening the sheet does not correct it.
 Preflight now reports declared metal-sheet thickness above 2 % of the nearest overlapping Box dielectric's height, with the expected electrical-length shift.
+A PEC `Box` with zero extent along one axis also has zero thickness, and preflight does not report it: the check reads only `add_thin_conductor` thickness.
+Against a reference with the real copper thickness, a zero-thickness microstrip reads +0.45, +0.57 and +0.99 % electrically long at thickness 4.5, 8.5 and 17.5 % of the substrate height.
 
 ---
 
@@ -187,6 +189,9 @@ jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
 True gives first-order convergence at curved dielectric interfaces, worst at high contrast (eps ~30 and above).
+`run()` warns (`CurvedSmoothingWarning`) only for a smoothed `Sphere` or `Cylinder` at 10 times the contrast of its neighbour or more.
+Below that no message is given, and convergence is still first order: a lossless eps-4 sphere's extinction converges first order against Mie over three meshes.
+There smoothing is still closer to Mie than the staircase at each mesh.
 A measured eps-38 rod resonance was off by 1–2% on practical meshes, and up to 8x further off than without smoothing.
 Grid-aligned faces are not affected. Judge such resonances by at least three refinements and compare against
 `subpixel_smoothing=False`; disagreement means neither series has converged.
@@ -324,6 +329,17 @@ to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz f
 1 mm port, so its S does not converge with the mesh. `run()` and `sim.preflight()`
 report it (code `wire_port_no_radius`).
 
+### A multi-cell wire port's load-plane reflection misses the 2 dB and 0.1 bars on two loads at 25 µm.
+
+Tracker: #1614
+
+A wire port (`add_port(..., extent=...)`) on a coaxial line closed by a load, read at the load plane
+over 1–10 GHz with 25 µm cells, gives a reflection magnitude 2.31 dB off at 8.8 GHz on a 2·Zc load and
+`|Γ|` 0.102 at 10 GHz on a matched load. The bars are 2 dB and 0.1. Short, open and Zc/2 loads stay inside them.
+The error ripples over frequency, with maxima that grow toward 10 GHz.
+No message reports it. Only one mesh was measured, so the trend with the cell and the cause are not known.
+Check a wire-port reflection on three meshes before using it as a converged number.
+
 ### The coax→microstrip transition reads more power out than in.
 
 Tracker: #1479
@@ -433,6 +449,8 @@ The excess comes from the port's V·I* reading of power near its plane: at 10–
 Why V and I misread the power there is not determined.
 Workaround on lines like this one: place the first probe plane 12 mm or more from the feed plane (`add_msl_port(..., n_probe_offset=...)`, in cells: 60 cells at 0.2 mm); with it at 12 mm the same line's `|S21|` exceeds 0 dB by at most 0.017 dB (largest singular value up to 1.0034).
 This is one line's evidence (record kept with the project); a clearance rule or default waits for a sweep over several lines.
+On a one-stub line, moving only the probes changes `|S21|` by up to 0.47 dB on the null's upper shoulder and the null depth by 2.8–3.4 dB; at bins where S stays passive no message reports it.
+The automatic first-probe offset is at least five substrate heights (4 mm at h = 0.8 mm), inside the zone above.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
@@ -479,6 +497,9 @@ end: 1.44, 1.14 and 1.06 % at h/4, h/8 and h/12, where h is the substrate thickn
 difference is larger and not flat. The stopband minima are shallower in rfx: −35 and −41 dB, against −39 and −59 dB in
 HFSS. The cause is not known. On a uniform mesh the gap is larger and falls first order with the cell (3.86, 2.44 and
 1.96 %), because a free PEC sheet edge is solved 0.35 cell beyond its last node.
+The stopband minima also move with the feed length: with longer feeds they are 5.8 and 16.6 dB deeper, and the
+passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
+power reading near its plane (entry above) is part of this; how much is not known.
 
 ## Ring-down completion and the early stop
 
