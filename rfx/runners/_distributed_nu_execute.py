@@ -329,6 +329,7 @@ def execute_from_materials(
     )
     if port_plan is not None:
         del sharded_materials
+        prepared_step.release_dense(stepping_product)
         result = result()
 
     return (

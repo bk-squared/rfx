@@ -269,12 +269,20 @@ def finish_table(sim, conductors, *, lane):
     if record is None:
         return None
     table = conductors.realization_table
+    object.__setattr__(table, "lane", lane)
+    if any(row.traced_inputs for row in table.rows):
+        # The reference record already holds nominal values, or no values.
+        # Finalization must not replace them with live traced metrics.
+        record = replace(record, lane=lane)
+        object.__setattr__(conductors, "_realization_record", record)
+        return record
     from rfx.model.realization_integrals import read_rows
     object.__setattr__(table, "rows", read_rows(table.rows, conductors.grid, sim))
-    object.__setattr__(table, "lane", lane)
     if conductors.refinements:
         object.__setattr__(table, "rows", _refined_rows(table, conductors.refinements, sim).rows)
-    record = replace(record, lane=lane, dt=float(conductors.grid.dt))
+    from rfx.core.jax_utils import is_tracer
+    record = replace(record, lane=lane,
+                     dt=record.dt if is_tracer(conductors.grid.dt) else float(conductors.grid.dt))
     if lane == "run_subgridded" and not conductors.refinements and conductors.kernel_context is None:
         record = replace(record, limitations=("refined region not represented",))
     if not any(row.traced_inputs for row in table.rows):
