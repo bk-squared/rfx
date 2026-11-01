@@ -74,6 +74,7 @@ ALLOW_LIST = (
     ('rfx/realized_placement.py', '_probes', 'recorded in ProbeGeometry.error'),
     ('rfx/ringdown/__init__.py', '_judge_record', 'recorded in note'),
     ('rfx/ringdown/__init__.py', '_error_witnesses', 'recorded in RingdownWitness.note'),
+    ('rfx/stepping/rank.py', '_staged_by_enclosing_program', 'fails closed: a probe failure refuses the run'),
     ('rfx/surrogate.py', 'export_geometry_sdf', 're-raises with context'),
 )
 
