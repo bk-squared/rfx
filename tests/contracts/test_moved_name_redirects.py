@@ -109,7 +109,6 @@ MOVED = [
      'rfx.sources.tfsf_oblique_open.measure_incident_spectrum moved to rfx.measurement.incident.measure_incident_spectrum; import it from there. The old path will be removed in rfx 3.0.'),
 ]
 OWNED = [
-    ('rfx.materials', 'update_e_debye', 'rfx.stepping.poles'),
     ('rfx.sources', 'WaveguidePort', 'rfx.sources.waveguide_port'),
     ('rfx.sources', 'WaveguidePortConfig', 'rfx.sources.waveguide_port'),
     ('rfx.sources', 'init_waveguide_port', 'rfx.sources.waveguide_port'),
