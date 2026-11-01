@@ -618,3 +618,43 @@ def test_body_crossing_a_refinement_boundary_is_held_by_the_coarse_grid(top):
     sim.add_source((6 * DX, 6 * DX, 6 * DX), 'ez', amplitude_kind='current')
     sim.add_probe((6.5 * DX, 6 * DX, 6 * DX), 'ez')
     sim.run(n_steps=2, skip_preflight=True)
+
+
+@pytest.mark.parametrize('offset', [.3, .5])
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('periodic', [False, True], ids=['walls', 'periodic'])
+@pytest.mark.parametrize('operation', ['union', 'difference', 'intersection'])
+def test_mixed_csg_matches_standalone_material_cells(offset, graded, periodic, operation):
+    """Mixed CSG applies each primitive's centre rule before its boolean op."""
+    from dataclasses import replace
+    from rfx import Sphere
+    from rfx.geometry import csg
+    from rfx.geometry.rasterize_grid import rasterize_geometry
+
+    sim, box, expected_box, _, nodes = _scene(offset, graded, periodic)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    sphere = Sphere(((6.1 + offset) * DX,) * 3, 2.6 * DX)
+    # Drawing-derived centres; no production coordinate or mask helper in the oracle.
+    axes = []
+    for a, line in enumerate(nodes):
+        widths = np.diff(line)
+        centres = line + np.r_[widths, widths[-1]] / 2
+        axes.append(centres[:-1] if periodic and a == 0 else centres)
+    x, y, z = np.meshgrid(*axes, indexing='ij')
+    expected_sphere = sum((v - c)**2 for v, c in zip((x, y, z), sphere.center)) <= sphere.radius**2
+    combine = {'union': np.logical_or, 'difference': lambda a, b: a & ~b,
+               'intersection': np.logical_and}[operation]
+    expected = combine(expected_box, expected_sphere)
+
+    coords = (coords_from_nonuniform_grid(grid) if graded
+              else coords_from_uniform_grid(grid))
+    standalone = []
+    for shape, want in ((box, expected_box), (sphere, expected_sphere)):
+        entry = replace(sim._geometry[0], shape=shape)
+        material = rasterize_geometry([entry], sim._resolve_material, coords, grid=grid)[0]
+        mask = np.asarray(material.eps_r) == 4.
+        np.testing.assert_array_equal(mask, want)
+        standalone.append(mask)
+    actual = getattr(csg, operation)(box, sphere, grid)
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(actual, combine(*standalone))

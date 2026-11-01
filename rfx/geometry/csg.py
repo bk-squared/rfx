@@ -572,8 +572,6 @@ def _material_masks(grid, shapes):
         cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
         coords_from_nonuniform_grid, coords_from_uniform_grid,
     )
-    if not all(isinstance(shape, Box) for shape in shapes):
-        return tuple(shape.mask(grid) for shape in shapes)
     nonuniform = hasattr(grid, "dx_arr")
     coords = (coords_from_nonuniform_grid(grid) if nonuniform
               else coords_from_uniform_grid(grid))
