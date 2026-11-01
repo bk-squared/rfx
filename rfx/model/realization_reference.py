@@ -1,6 +1,14 @@
 """Reference metadata for inputs whose live geometry cannot be read on host."""
 from dataclasses import fields, is_dataclass
-from weakref import proxy
+from weakref import WeakKeyDictionary
+
+
+# Compact snapshots follow simulation lifetime without becoming solve arguments.
+_kernel_views = WeakKeyDictionary()
+
+
+def forget_kernel(sim):
+    _kernel_views.pop(sim, None)
 
 
 class _DeclaredDomain(tuple):
@@ -24,20 +32,19 @@ def remember_kernel(sim, root, record):
     """Keep only the primary execution's compact host snapshot."""
     from rfx.api._declarations import declaration_key
     from rfx.model.realization_snapshot import snapshot
-    from rfx.model.realization_transport import is_replay
     if any(row.traced_inputs for row in record.realization_table.rows):
         return
-    cached = getattr(sim, "_kernel_realization", None)
+    cached = _kernel_views.get(sim)
     if cached is not None and cached[0] == declaration_key(sim):
-        if is_replay() or (cached[1].table.lane.startswith("run_") and record.lane.startswith("fwd_")):
+        if cached[1].table.lane.startswith("run_") and record.lane.startswith("fwd_"):
             return
-    sim._kernel_realization = declaration_key(sim), snapshot(sim, root, record)
+    _kernel_views[sim] = declaration_key(sim), snapshot(sim, root, record)
 
 
 def kernel_view(sim):
     """Restore legacy arrays from host storage, without another record build."""
     from rfx.api._declarations import declaration_key
-    cached = getattr(sim, "_kernel_realization", None)
+    cached = _kernel_views.get(sim)
     if cached is None or cached[0] != declaration_key(sim):
         return None
     return cached[1].restore()

@@ -64,7 +64,6 @@ DECLARATIONS = (
 NOT_DECLARATIONS = (
     ("_pf_campaign_ctx", "cache"),
     ("_realized_geometry_record", "cache"),
-    ("_kernel_realization", "cache"),
     ("_coax_geometry", "cache"),
     ("_mesh_resolution", "cache keyed on its inputs; not released"),
     ("_msl_default_memo", "cache"),
