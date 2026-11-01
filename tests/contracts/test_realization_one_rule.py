@@ -139,11 +139,15 @@ def test_spans_and_assembly(family, lane, monkeypatch):
         assert row.declared_area_m2 == pytest.approx(declared)
         assert row.area_equivalent_length_m == pytest.approx(np.sqrt(area))
         assert row.area_miss_percent == pytest.approx(100*(np.sqrt(area/declared)-1))
-    # Diagnostic views share one prepared table and keep their historical types.
+    # Run diagnostics share the solved table; forward leaves pre-run reporting.
     count = len(builds)
     preview = sim.realized_geometry()
     assert len(builds) - count <= 1
-    assert preview.realization_table is table
+    if lane.endswith("forward"):
+        assert preview.realization_table is not table
+        assert preview.realization_table.rows == table.rows
+    else:
+        assert preview.realization_table is table
     count = len(builds)
     assert sim.realized_geometry().realization_table is preview.realization_table
     assert len(builds) - count <= 1
@@ -173,8 +177,13 @@ def test_prior_preview_releases_cache_and_reads_kernel_table(lane):
     assert sim._realized_geometry_record is None
     table = result.realized_geometry.realization_table
     assert table is not before.realization_table
-    assert sim.realized_geometry().realization_table is table
-    assert sim.fidelity_report(print_report=False)[0]["realization_table"] is table
+    preview = sim.realized_geometry().realization_table
+    if lane.endswith("forward"):
+        assert preview is not table
+        assert preview.rows == table.rows
+    else:
+        assert preview is table
+    assert sim.fidelity_report(print_report=False)[0]["realization_table"] is preview
 
 
 @pytest.mark.parametrize("nominal", [False, True], ids=("unresolved", "nominal"))
@@ -298,8 +307,13 @@ def test_other_distributed_reporters_share_the_kernel_table(lane, monkeypatch):
     np.testing.assert_allclose([a.bounds_m for a in record.realization_table.row("geometry[0]").axes],
                                expected("dielectric_box", record), atol=1e-12, rtol=0)
 
-    assert sim.realized_geometry().realization_table is record.realization_table
-    assert sim.fidelity_report(print_report=False)[0]["realization_table"] is record.realization_table
+    preview = sim.realized_geometry().realization_table
+    if lane.endswith("forward"):
+        assert preview is not record.realization_table
+        assert preview.rows == record.realization_table.rows
+    else:
+        assert preview is record.realization_table
+    assert sim.fidelity_report(print_report=False)[0]["realization_table"] is preview
 
 
 @pytest.mark.parametrize("smoothing", (True, "full_tensor", "kottke_pec"))
@@ -515,7 +529,12 @@ def test_prepared_at_step(lane, monkeypatch):
     table = result.realized_geometry.realization_table
     assert len(stepped) == 1 and stepped[0] is table
     assert gates and all(t is table for t in gates)
-    assert sim.realized_geometry().realization_table is table
+    preview = sim.realized_geometry().realization_table
+    if lane.endswith("forward"):
+        assert preview is not table
+        assert preview.rows == table.rows
+    else:
+        assert preview is table
     if lane == "subgridded":
         hand = np.array(((4*D,)*2, (4.5*D,)*2, (4*D,)*2))
     else:
@@ -638,29 +657,70 @@ def test_no_dense_array_retained_after_solve(lane, preview_first):
     assert not list(reachable_arrays(_kernel_views.get(sim)))
 
 
-def test_reporter_refuses_rows_that_changed_at_call_time():
+def test_reporter_refuses_rows_that_changed_at_call_time(monkeypatch):
+    from rfx.api._declarations import declaration_key
+    import rfx.model.realization_table as tables
     sim = scene('dielectric_box', 'uniform_run')
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
-    sim.add(Box((D, D, D), (2*D, 2*D, 2*D)), material='glass')
+    key = declaration_key(sim)
+    original_axis = tables._axis
+
+    def changed_rule(axis, declared, realized, cell):
+        return original_axis(axis, declared, (realized[0], realized[1] + cell), cell)
+
+    # Change only the reporter-time rule, keeping the solved declarations intact.
+    monkeypatch.setattr(tables, '_axis', changed_rule)
+    assert declaration_key(sim) == key
     with pytest.raises(ValueError, match='Realization rows differ from the solved table'):
         sim.realized_geometry()
+    with pytest.raises(ValueError, match='Realization rows differ from the solved table'):
+        sim.fidelity_report(print_report=False)
     assert len(result.realized_geometry.realization_table.rows) == 2
 
 
 @pytest.mark.parametrize('solved', (False, True))
-def test_reporter_reads_box_changed_between_calls(solved):
+@pytest.mark.parametrize('edit', ('add', 'replace'))
+@pytest.mark.parametrize('reporter', ('geometry', 'fidelity'))
+def test_reporter_reads_box_changed_between_calls(solved, edit, reporter):
+    from rfx.model.realization_reference import _kernel_views
     sim = scene('dielectric_box', 'uniform_run')
+    result = None
     if solved:
-        sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+        result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     first = sim.realized_geometry()
     # Keep the previous preparation alive while replacing the declaration.
     entry = sim._geometry[0]
-    sim._geometry[0] = replace(entry, shape=Box(tuple(LO), (8.61*D, HI[1], HI[2])))
-    if solved:
-        with pytest.raises(ValueError, match='Realization rows differ from the solved table'):
-            sim.realized_geometry()
+    box = Box(tuple(LO), (8.61*D, HI[1], HI[2]))
+    if edit == 'add':
+        sim.add(box, material='glass')
     else:
+        sim._geometry[0] = replace(entry, shape=box)
+    index = 1 if edit == 'add' else 0
+    if reporter == 'geometry':
         second = sim.realized_geometry()
-        assert second.realization_table.rows != first.realization_table.rows
+        table = second.realization_table
         # The dielectric lower-node sampler owns nodes 3..8 and their cells.
-        assert second.realization_table.row('geometry[0]').axes[0].bounds_m == pytest.approx((3*D, 9*D))
+        assert table.row(f'geometry[{index}]').axes[0].bounds_m == pytest.approx((3*D, 9*D))
+    else:
+        report = sim.fidelity_report(print_report=False)
+        table = report[0]['realization_table']
+        assert report[index + 1]['axes'][0]['realized_um'] == pytest.approx((3000., 9000.))
+    assert table.rows != first.realization_table.rows
+    assert len(table.rows) == (3 if edit == 'add' else 2)
+    assert sim not in _kernel_views
+    if result is not None:
+        assert result.realized_geometry.realization_table is first.realization_table
+        assert len(result.realized_geometry.realization_table.rows) == 2
+
+
+@pytest.mark.parametrize('lane', ('uniform_forward', 'graded_forward'))
+def test_forward_leaves_sim_report_on_pre_run_path(lane):
+    from rfx.model.realization_reference import _kernel_views
+    sim = scene('dielectric_box', lane)
+    before = sim.realized_geometry()
+    result = sim.forward(n_steps=1, skip_preflight=True)
+    assert sim not in _kernel_views
+    after = sim.realized_geometry()
+    assert after.realization_table.rows == before.realization_table.rows
+    assert after.realization_table is not result.realized_geometry.realization_table
+    assert sim.fidelity_report(print_report=False)[0]['realization_table'] is after.realization_table

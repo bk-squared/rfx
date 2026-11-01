@@ -243,6 +243,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     """Admit the fixed-model forward request, execute once, and pack observables."""
     import jax
     from rfx.api._forward_result import pack_nu_forward_result
+    from rfx.model.realization_reference import forget_kernel
     sim._refuse_unsupported_run_kwargs(
         "uniform distributed forward", {
             **overrides,
@@ -279,6 +280,9 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
             "forward(distributed=True) on a uniform mesh read a traced value on the host inside a JAX "
             "transform (jax.jit, jax.grad or jax.vmap), so this request cannot be traced on this path: "
             "call forward() directly, or run on one device (omit distributed=True).") from error
+    finally:
+        # The shared run adapter lends its rows only to this forward result.
+        forget_kernel(sim)
     packed = pack_nu_forward_result(
         realized_geometry=result.realized_geometry,
         diagnostics=result.diagnostics, time_series=result.time_series,
