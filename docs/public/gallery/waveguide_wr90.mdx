@@ -185,9 +185,9 @@ frequency above cutoff. The figure plots how far rfx is from it, `|S11|` and
 so that 6×10⁻⁴ is extraction error as well. The calculation is
 `normalize=False`, the modal voltage and current at each port with no reference
 run. `normalize=True` and `normalize="flux"` divide by a reference run of the
-empty guide, which for this structure is the same run, so they return
-`|S11| = 0` and `|S21| = 1` by construction: on an empty guide they are not a
-check of the port.
+empty guide, which for this structure is the same run. Both return `|S11| = 0`
+by construction, and `normalize="flux"` also `|S21| = 1`: on an empty guide
+they are not a check of the port's reflection.
 
 ![|S11| and |S21| vs the exact matched empty-guide answer](/rfx/gallery/assets/waveguide_wr90/validation.png)
 
