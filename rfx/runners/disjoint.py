@@ -111,7 +111,8 @@ def run_disjoint_stage2_path(
     ]
     samples = []
     from rfx.model.realization_legacy import disjoint_kernel
-    _, geometry_record = disjoint_kernel(sim, grid_coarse, config, contract)
+    conductors, geometry_record = disjoint_kernel(sim, grid_coarse, config, contract)
+    from rfx.stepping import prepared as prepared_step
     for step in range(int(n_steps)):
         t = float(step * config.dt)
         if source_timing == "pre_step":
@@ -127,7 +128,7 @@ def run_disjoint_stage2_path(
                         dtype=state.ex_f.dtype,
                     ),
                 )
-        state = stepper(state, config)
+        state = prepared_step.advance(conductors, stepper, state, config, _operand_layout="disjoint")
         if source_timing == "post_step":
             for mapping, pe in source_entries:
                 state = _add_fine_source(

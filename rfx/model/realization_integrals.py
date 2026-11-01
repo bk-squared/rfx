@@ -6,21 +6,31 @@ The reduction never evaluates a shape or introduces another sampling rule.
 import numpy as np
 
 
+_stores = {}
+
+
+def quantities(grid, *, create=False):
+    import weakref
+    owner = getattr(grid, "dx_arr", grid)
+    key = id(owner)
+    found = _stores.get(key)
+    if found is not None and found[0]() is owner:
+        return found[1]
+    if not create:
+        return {}
+    store = {}
+    _stores[key] = weakref.ref(owner, lambda ref: _stores.pop(key, None)), store
+    return store
+
+
 def begin(sim, grid, *, shapes=(), conformal_shapes=(), smoothing=None):
-    from rfx.model.materials import assembled_as_pec
-    store = getattr(grid, "realization_quantities", None)
-    if store is None:
-        if not hasattr(grid, "__dict__"):
-            return
-        store = {}
-        grid.realization_quantities = store
+    store = quantities(grid, create=True)
     if smoothing is not None:
         store["smoothing"] = (2 if smoothing == "full_tensor" else 3 if smoothing == "kottke_pec"
                               else int(bool(smoothing)))
-    dielectric = [i for i, e in enumerate(sim._geometry) if not assembled_as_pec(sim, e)]
-    metal = [i for i, e in enumerate(sim._geometry) if assembled_as_pec(sim, e)]
-    store.setdefault("owners", {}).update({id(shape): index for index, (shape, _) in zip(dielectric, shapes)})
-    store["owners"].update({id(shape): index for index, shape in zip(metal, conformal_shapes)})
+    owners = {id(entry.shape): i for i, entry in enumerate(sim._geometry)}
+    store.setdefault("owners", {}).update({id(shape): owners[id(shape)]
+        for shape in (*[s for s, _ in shapes], *conformal_shapes) if id(shape) in owners})
 
 
 def _weights(grid, component, *, face=False):
@@ -35,10 +45,8 @@ def _weights(grid, component, *, face=False):
         w[lo:end] = d[lo:end]
         dual = (a != component) if not face else a == component
         if dual:
-            previous = np.roll(w, 1)
-            if not periodic:
-                previous[0] = 0
-            w = (w + previous) / 2
+            from rfx._grid_metric import dual_spacings_from_cells
+            w = dual_spacings_from_cells(np.r_[w[-1] if periodic else 0., w])[1:]
         if face and a == component:
             w = (w > 0).astype(float)
         result.append(w.reshape(tuple(len(w) if b == a else 1 for b in range(3))))
@@ -47,7 +55,7 @@ def _weights(grid, component, *, face=False):
 
 def capture(grid, shapes, fraction, owner, component, *, face=False):
     from rfx.core.jax_utils import is_tracer
-    store = getattr(grid, "realization_quantities", None)
+    store = quantities(grid)
     if not store or is_tracer(fraction) or any(is_tracer(grid.cells(a)) for a in range(3)):
         return
     ids = store.get("owners", {})
@@ -77,7 +85,7 @@ def capture(grid, shapes, fraction, owner, component, *, face=False):
 
 def read_rows(rows, grid, sim):
     from dataclasses import replace
-    store = getattr(grid, "realization_quantities", None) or {}
+    store = quantities(grid) or {}
     result = []
     for row in rows:
         if row.label.startswith("geometry["):

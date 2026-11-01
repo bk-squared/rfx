@@ -86,29 +86,37 @@ def label(family):
 @pytest.mark.parametrize("family", FAMILIES)
 @pytest.mark.parametrize("lane", LANES)
 def test_spans_and_assembly(family, lane, monkeypatch):
-    import rfx.model.conductors as conductors
     import rfx.model.realization_table as tables
     sim = scene(family, lane)
     builds, roots, reports = [], [], []
-    original_build, original_kernel = tables.realization_table, conductors.at_kernel
+    original_build = tables.realization_table
 
     def build(prepared):
         builds.append(prepared)
         return original_build(prepared)
 
-    def kernel(sim, root, **kwargs):
-        reports.append(sim._preflight_impl(strict=False, _conductors=root))
-        final, record = original_kernel(sim, root, **kwargs)
-        roots.append(final)
-        assert record.realization_table.prepared() is final
-        return final, record
+    from rfx.stepping import prepared as stepping
+    original_step = stepping.advance
+
+    def step(root, runner, *args, **kwargs):
+        roots.append(root)
+        assert root.realization_table.prepared() is root
+        assert builds[0].conductors is root
+        return original_step(root, runner, *args, **kwargs)
+
+    original_gate = sim._run_preflight_gate
+    def gate(report, **kwargs):
+        assert report.realization_table is not None
+        reports.append(report)
+        return original_gate(report, **kwargs)
 
     monkeypatch.setattr(tables, "realization_table", build)
-    monkeypatch.setattr(conductors, "at_kernel", kernel)
+    monkeypatch.setattr(stepping, "advance", step)
+    monkeypatch.setattr(sim, "_run_preflight_gate", gate)
     if lane.endswith("forward"):
-        result = sim.forward(n_steps=1, skip_preflight=True)
+        result = sim.forward(n_steps=1, skip_preflight=False)
     else:
-        result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+        result = sim.run(n_steps=1, skip_preflight=False, compute_s_params=False)
     record = result.realized_geometry
     assert len(builds) == len(roots) == 1
     assert builds[0].conductors is roots[0]
@@ -119,10 +127,11 @@ def test_spans_and_assembly(family, lane, monkeypatch):
     hand = expected(family, record)
     np.testing.assert_allclose([a.bounds_m for a in row.axes], hand, rtol=0, atol=1e-12)
     np.testing.assert_allclose([a.realized_span_m for a in row.axes], hand[:, 1]-hand[:, 0], rtol=0, atol=1e-12)
-    for axis in row.axes:
-        assert axis.miss_cells == pytest.approx((axis.realized_span_m-axis.declared_span_m)/axis.cell_size_m)
-        assert axis.centroid_shift_cells == pytest.approx((sum(axis.bounds_m)-sum(axis.declared_bounds_m))/(2*axis.cell_size_m))
-    if family in ("sheet", "dc_film"):
+    for a, axis in enumerate(row.axes):
+        cell = independent_cell(family, record, hand, a)
+        assert axis.miss_cells == pytest.approx((axis.realized_span_m-axis.declared_span_m)/cell)
+        assert axis.centroid_shift_cells == pytest.approx((sum(axis.bounds_m)-sum(axis.declared_bounds_m))/(2*cell))
+    if family == "dc_film":
         area = float(np.prod(hand[:2, 1]-hand[:2, 0]))
         declared = float(np.prod((HI-LO)[:2]))
         assert row.realized_area_m2 == pytest.approx(area)
@@ -164,10 +173,11 @@ def test_prior_preview_preserves_cache_and_reads_kernel_table(lane):
 
 
 @pytest.mark.parametrize("nominal", [False, True], ids=("unresolved", "nominal"))
-def test_traced_mesh_reference(nominal):
+def test_traced_mesh_reference(nominal, monkeypatch):
     import jax
     import jax.numpy as jnp
     observed = []
+    stepped = watch_steps(monkeypatch)
     profile = np.full(10, D)
 
     def evaluate(delta):
@@ -183,6 +193,7 @@ def test_traced_mesh_reference(nominal):
 
     jax.grad(evaluate)(0.)
     record = observed[0]
+    assert len(stepped) == 1 and stepped[0] is record.realization_table
     row = record.realization_table.row("geometry[0]")
     assert "mesh.z" in row.traced_inputs
     if nominal:
@@ -232,24 +243,23 @@ def test_distributed_run(family, monkeypatch):
         pytest.skip("requires two CPU devices")
     sim = scene(family, "uniform_run")
     observed, builds = [], []
-    original_kernel, original_build = conductors.at_kernel, tables.realization_table
+    original_build = tables.realization_table
 
     def build(prepared):
         builds.append(id(prepared.conductors))
         return original_build(prepared)
 
-    def kernel(sim, root, **kwargs):
-        report = sim._preflight_impl(strict=False, _conductors=root)
-        final, record = original_kernel(sim, root, **kwargs)
-        table = record.realization_table
-        assert table.prepared() is final
-        assert report.realization_table is table
-        assert builds == [id(final)]
+    from rfx.stepping import prepared as stepping
+    original_step = stepping.advance
+    def step(root, runner, *args, **kwargs):
+        table = root.realization_table
+        assert table.prepared() is root
+        assert builds == [id(root)]
         observed.append(table)
-        return final, record
+        return original_step(root, runner, *args, **kwargs)
 
     monkeypatch.setattr(tables, "realization_table", build)
-    monkeypatch.setattr(conductors, "at_kernel", kernel)
+    monkeypatch.setattr(stepping, "advance", step)
     result = sim.run(n_steps=1, devices=jax.devices("cpu")[:2],
                      skip_preflight=True, compute_s_params=False)
     record = result.realized_geometry
@@ -374,11 +384,13 @@ def test_material_continuation_reads_actual_pad_copy(graded, smoothed):
     assert np.asarray(record.materials.eps_r)[-1, 5, 5] == 2.
 
 
-def test_disjoint_research_lane_reports_its_vacuum_model():
+def test_disjoint_research_lane_reports_its_vacuum_model(monkeypatch):
+    stepped = watch_steps(monkeypatch)
     sim = scene("dielectric_box", "uniform_run")
     sim.add_refinement(z_range=(2*D, 8*D), ratio=2, validation="research",
                        topology="stage2_disjoint_3d")
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    assert len(stepped) == 1 and stepped[0] is result.realized_geometry.realization_table
     row = result.realized_geometry.realization_table.row("geometry[0]")
     assert row.status == "not represented: disjoint vacuum stepper has no material operands"
     assert row.axes == ()
@@ -402,3 +414,169 @@ def test_inplane_profile_preserves_drawn_wall_extent(frozen):
     solved = result.realized_geometry.realization_table.row("domain").axes[0]
     assert solved.declared_span_m == 12*D
     np.testing.assert_allclose(solved.realized_span_m, 10*D)
+
+
+def independent_cell(family, record, hand, axis):
+    nodes, cells = record.nodes[axis], record.cell_sizes[axis]
+    if family == "wall":
+        return float(np.mean(cells[:10]))
+    if family == "probe":
+        return float(cells[np.argmin(abs(nodes - hand[axis, 0]))])
+    if family in ("sheet", "dc_film") and axis == 2:
+        return float(cells[np.argmin(abs(nodes - 4.27*D))])
+    if family == "sheet":
+        indices = np.flatnonzero((nodes[:-1] >= LO[axis]) & (nodes[:-1] <= HI[axis]))
+    else:
+        lo, hi = hand[axis]
+        left = np.argmin(abs(nodes-lo))
+        right = np.argmin(abs(nodes-hi)) - (family != "wire")
+        indices = np.arange(left, right+1)
+    return float(np.mean(cells[indices]))
+
+
+def watch_steps(monkeypatch, *, direct_replays=False):
+    """Observe ownership at take(), then the product and operands at stepping."""
+    from rfx.model.conductors import PreparedSolve
+    from rfx.stepping import prepared
+    import weakref
+    taken, stepped = [], []
+    original_take, original_step = PreparedSolve.take, prepared.advance
+
+    def take(self, **kwargs):
+        root = original_take(self, **kwargs)
+        taken.append(weakref.ref(root))
+        return root
+
+    def advance(root, runner, *args, **kwargs):
+        if not (direct_replays and stepped):
+            assert taken and taken[-1]() is root, "stepping must receive the take() product"
+        table = root.realization_table
+        assert table.prepared() is root, "table was built from a separate assembly"
+        stepped.append(table)
+        layout = kwargs.get("_operand_layout", "grid")
+
+        def operands(*operands, **options):
+            if layout in ("grid", "graded_slab"):
+                assert operands[0] is root.grid
+                assert operands[1] is root.materials
+                if layout == "graded_slab":
+                    assert operands[2] is root.pec_edges
+                elif "pec_edge_masks" in options:
+                    assert options["pec_edge_masks"] is root.pec_edges
+            elif layout == "slab":
+                assert options["sharded_materials"] is root.materials
+                assert options["sharded_pec_mask"] is root.pec_edges
+            elif layout == "adi3d":
+                assert operands[6] is root.materials.eps_r
+                assert operands[7] is root.materials.sigma
+                assert options["pec_edge_masks"] is root.pec_edges
+            elif layout == "disjoint":
+                assert operands[1] is root.kernel_context[0]
+            return runner(*operands, **options)
+
+        return original_step(root, operands, *args, **kwargs)
+
+    monkeypatch.setattr(PreparedSolve, "take", take)
+    monkeypatch.setattr(prepared, "advance", advance)
+    return stepped
+
+
+@pytest.mark.parametrize("lane", (
+    "uniform_run", "uniform_forward", "graded_run", "graded_forward",
+    "distributed_v2_run", "distributed_v2_forward", "distributed_nu_run",
+    "distributed_nu_forward", "adi_run", "adi_forward", "subgridded"))
+def test_prepared_at_step(lane, monkeypatch):
+    import jax
+    stepped = watch_steps(monkeypatch)
+    sim = scene("probe", "graded_run" if "graded" in lane or "_nu_" in lane else "uniform_run")
+    if lane.startswith("adi"):
+        sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", solver="adi")
+        sim.add_probe((4.23*D, 4.61*D, 4.17*D), component="ez")
+    if lane == "subgridded":
+        sim.add_refinement(z_range=(2*D, 8*D), ratio=2, validation="research")
+    gates = []
+    original_gate = sim._run_preflight_gate
+
+    def gate(report, **kwargs):
+        assert report.realization_table is not None
+        gates.append(report.realization_table)
+        return original_gate(report, **kwargs)
+
+    monkeypatch.setattr(sim, "_run_preflight_gate", gate)
+    kwargs = dict(n_steps=1, skip_preflight=False)
+    if lane.startswith("distributed"):
+        devices = jax.devices("cpu")[:2]
+        assert len(devices) == 2
+        kwargs["devices"] = devices
+        if lane.endswith("forward"):
+            kwargs["distributed"] = True
+    result = (sim.forward(**kwargs) if lane.endswith("forward") else
+              sim.run(compute_s_params=False, **kwargs))
+    table = result.realized_geometry.realization_table
+    assert len(stepped) == 1 and stepped[0] is table
+    assert gates and all(t is table for t in gates)
+    assert sim.realized_geometry().realization_table is table
+    if lane == "subgridded":
+        hand = np.array(((4*D,)*2, (4.5*D,)*2, (4*D,)*2))
+    else:
+        hand = expected("probe", result.realized_geometry)
+    np.testing.assert_allclose([a.bounds_m for a in table.row("probe[0]").axes], hand, atol=1e-12, rtol=0)
+    # Neither sim nor the result pins the solve's dense product.
+    import gc
+    gc.collect()
+    assert table.prepared() is None
+
+
+def test_two_port_primary_table(monkeypatch):
+    from rfx import GaussianPulse
+    import rfx.realized_geometry as records
+    calls = []
+    original = records.record_from_conductors
+
+    def build(*args, **kwargs):
+        assert kwargs.get("compact", True)
+        calls.append(kwargs["lane"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(records, "record_from_conductors", build)
+    stepped = watch_steps(monkeypatch, direct_replays=True)
+    sim = Simulation(freq_max=10e9, domain=(12*D, 10*D, 10*D), dx=D, boundary="pec")
+    sim.add_material("glass", eps_r=2.)
+    sim.add(Box((2.3*D, 2.4*D, 2.2*D), (8.6*D, 6.7*D, 4.6*D)), material="glass")
+    for x in (3.5*D, 8.5*D):
+        sim.add_port((x, 5.5*D, 6.5*D), "ez", impedance=50., waveform=GaussianPulse(f0=5e9, bandwidth=.9))
+    result = sim.run(n_steps=5, compute_s_params=True, s_param_freqs=np.array([4e9, 5e9]), skip_preflight=True)
+    table = result.realized_geometry.realization_table
+    assert table is stepped[0]
+    assert len(stepped) == 3
+    assert len(calls) == len({id(t) for t in stepped})  # One compact record per prepared product.
+    assert sim.realized_geometry().realization_table is table
+    assert table.lane == "run_uniform"
+    assert {"port[0]", "port[1]"} <= {row.label for row in table.rows}
+    import gc
+    gc.collect()
+    assert all(t.prepared() is None for t in stepped)
+
+
+def test_fidelity_comparisons_read_only_table_rows(monkeypatch):
+    sim = scene("dielectric_box", "uniform_run")
+    sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    record = sim.realized_geometry()
+    expected_axes = sim.fidelity_report(print_report=False)[1]["axes"]
+    corrupted = replace(record, entities=tuple(replace(e, axes=tuple(
+        replace(a, face_residual_m=(999., 999.), declared_bounds_m=(999., 999.),
+                bounds_m=(999., 999.), extent_m=999.) for a in e.axes),
+        declared_bounds_m=((999.,)*3, (999.,)*3)) for e in record.entities))
+    object.__setattr__(corrupted, "_report_grid", record._report_grid)
+    monkeypatch.setattr(sim, "realized_geometry", lambda: corrupted)
+    assert sim.fidelity_report(print_report=False)[1]["axes"] == expected_axes
+
+
+def test_conformal_owner_is_declaration_identity():
+    from rfx.model.realization_integrals import begin, quantities
+    sim = scene("dielectric_box", "uniform_run")
+    conductor = Sphere((5*D,)*3, 2*D)
+    sim.add(conductor, material="pec")
+    grid = sim._build_grid()
+    begin(sim, grid, conformal_shapes=(conductor,))
+    assert quantities(grid)["owners"][id(conductor)] == 1

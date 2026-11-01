@@ -422,8 +422,13 @@ def _sample_material_cells(shape, coords: GridCoords, centres: GridCoords, *,
         cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
                       else cell_sizes_from_uniform_grid(grid) if grid is not None
                       else tuple(axis_cell_sizes(n) for n in coords[:3]))
+    from rfx.model.realization_integrals import quantities
+    sampling = quantities(grid, create=True) if grid is not None else {}
+    rules = sampling.setdefault("material_sampling", {})
+    declared_id = id(shape)
     if isinstance(shape, Box):
         _box_zero_axes(shape.corner_lo, shape.corner_hi)
+        rules[declared_id] = "cell-centre material mask"
         return pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
     if isinstance(shape, Via):
         result = jnp.zeros(centres.shape, dtype=bool)
@@ -433,9 +438,12 @@ def _sample_material_cells(shape, coords: GridCoords, centres: GridCoords, *,
         return result
     shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
+        rules[declared_id] = "cell-centre material mask"
         return periodic_mask(grid, shape, centres[:3])
     if getattr(grid, 'periodic_axes', ''):
+        rules[declared_id] = "periodic node material mask"
         return periodic_mask(grid, shape, coords[:3])
+    rules[declared_id] = "shape material mask"
     if grid is not None:
         return shape.mask(grid)
     return shape.mask_on_coords(coords.x, coords.y, coords.z)

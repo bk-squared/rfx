@@ -21,41 +21,26 @@ register_pytree_node(_DeclaredDomain, lambda domain: (tuple(domain), domain.decl
 
 
 def remember_kernel(sim, root, record):
-    """Lend the concrete execution to subsequent diagnostic readers."""
+    """Keep only the primary execution's compact host snapshot."""
     from rfx.api._declarations import declaration_key
-    from rfx.model.realization_table import PreparedRealization
+    from rfx.model.realization_snapshot import snapshot
+    from rfx.model.realization_transport import is_replay
     if any(row.traced_inputs for row in record.realization_table.rows):
         return
-    if "distributed" in record.lane:
-        from rfx.model.realization_snapshot import snapshot
-        value = snapshot(sim, root, record)
-    else:
-        value = PreparedRealization(proxy(sim), root, record.lane, record)
-    sim._kernel_realization = declaration_key(sim), value
+    cached = getattr(sim, "_kernel_realization", None)
+    if cached is not None and cached[0] == declaration_key(sim):
+        if is_replay() or (cached[1].table.lane.startswith("run_") and record.lane.startswith("fwd_")):
+            return
+    sim._kernel_realization = declaration_key(sim), snapshot(sim, root, record)
 
 
 def kernel_view(sim):
-    """Expand legacy diagnostic arrays without assembling or rebuilding the table."""
-    from dataclasses import replace
+    """Restore legacy arrays from host storage, without another record build."""
     from rfx.api._declarations import declaration_key
-    from rfx.model.realization_table import PreparedRealization
-    from rfx.realized_geometry import record_from_conductors, _conductor_view
     cached = getattr(sim, "_kernel_realization", None)
     if cached is None or cached[0] != declaration_key(sim):
         return None
-    key, value = cached
-    from rfx.model.realization_snapshot import DistributedSnapshot
-    if isinstance(value, DistributedSnapshot):
-        value = value.restore()
-        sim._kernel_realization = key, value
-    if isinstance(value, PreparedRealization):
-        record = record_from_conductors(sim, value.conductors, lane=value.lane, compact=False)
-        if record is None:
-            return None
-        value = _conductor_view(replace(record, realization_table=value.record.realization_table),
-                                value.conductors)
-        sim._kernel_realization = key, value
-    return value
+    return cached[1].restore()
 
 
 def traced_inputs(sim, grid):
@@ -104,7 +89,8 @@ def nominal_record(sim, conductors, lane, *, compact):
             root = preview_port_stages(reference, root)
         except RfxRefusal:
             return None
-        mode = (getattr(conductors.grid, "realization_quantities", None) or {}).get("smoothing", 0)
+        from rfx.model.realization_integrals import quantities
+        mode = quantities(conductors.grid).get("smoothing", 0)
         if mode:
             from rfx.geometry.smoothing import smoothed_shape_pairs, compute_smoothed_eps_nonuniform
             from rfx.model.realization_integrals import begin
