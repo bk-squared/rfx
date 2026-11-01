@@ -21,7 +21,10 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.measurement.phasors import exp_j
-from rfx.measurement.waveguide_s import assemble_normalized_waveguide_column
+from rfx.measurement.waveguide_s import (
+    assemble_normalized_waveguide_column,
+    _waveguide_s21_phase_residual,
+)
 from rfx.sources.waveguide_port import (
     extract_waveguide_s_matrix,
     extract_waveguide_s_matrix_flux,
@@ -43,7 +46,6 @@ from rfx.sparams._common import (
     _warn_junction_cpml_thickness,
     _warn_ntff_box_dropped,
     _warn_thin_absorber_vs_guide_wavelength,
-    _waveguide_s21_phase_residual,
 )
 
 from typing import TYPE_CHECKING
