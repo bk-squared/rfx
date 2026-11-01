@@ -85,8 +85,8 @@ def test_different_bins_refused_before_fields(path, difference, monkeypatch):
         bins = bins.astype(np.float32)
         assert f"port '{name}' has {bins.size} bins" in message
         assert f"first={bins[0]:.9g} Hz, last={bins[-1]:.9g} Hz" in message
-    assert "same freqs on every port" in message
-    assert "compute_waveguide_s_matrix()" in message
+    assert "Declare the same freqs, or the same n_freqs, on every port." in message
+    assert "compute_waveguide_s_matrix" not in message
 
 
 @pytest.mark.parametrize("path", SHARED_PATHS)

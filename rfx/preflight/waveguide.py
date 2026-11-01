@@ -127,8 +127,7 @@ def resolve_shared_waveguide_port_freqs(sim, *, route):
                     f"(first={expected[0]:.9g} Hz, last={expected[-1]:.9g} Hz); "
                     f"port '{entry.name}' has {other.size} bins "
                     f"(first={other[0]:.9g} Hz, last={other[-1]:.9g} Hz). "
-                    "Declare the same freqs on every port, or use "
-                    "compute_waveguide_s_matrix()."
+                    "Declare the same freqs, or the same n_freqs, on every port."
                 )
     return freqs
 
