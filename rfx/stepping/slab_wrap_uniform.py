@@ -82,75 +82,107 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None):
 def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                     *, n_steps, boundary, debye_spec, lorentz_spec, port_plan,
                     record_vref=True):
-    """Build native operands once and publish their per-slab cuts."""
+    """Form every spatial step operand from its owning slab's material rows."""
     from types import SimpleNamespace
-    from rfx._uniform_specs import _StepContext
-    from rfx.core.drives import drive_layout
-    from rfx.measurement import init_uniform_records
-    from rfx.model.electric_metrics import stage_forward_materials
-    from rfx.stepping.graded import graded_probe_table
-    from rfx.stepping.slab import cut, place
-    from rfx.stepping.slab_setup import stage_dispersion
-    from rfx.stepping.slab_wrap import split
-    from rfx.stepping.uniform_setup import _build_step_setup, core_step_invariants
     from jax.sharding import NamedSharding
+    from rfx._uniform_specs import _StepContext
+    from rfx.boundaries.pec import resolve_wall_faces
+    from rfx.core.drives import drive_layout
+    from rfx.core.yee import FDTDState, CurlBoundary
+    from rfx.model.materials import kernel_materials
+    from rfx.stepping.graded import graded_probe_table
+    from rfx.stepping.slab_setup import realize_materials, stage_dispersion, input_materials
+    from rfx.stepping.slab_wrap import cut, split
 
-    pole_materials = (stage_forward_materials(materials, layout, mesh, uniform=True)
-                      if debye_spec is not None or lorentz_spec is not None else materials)
+    sharding = NamedSharding(mesh, P('x'))
+    replicated = NamedSharding(mesh, P())
+    cells = materials._replace(components=None, edge_keep=None)
+    cells = type(cells)(**{name: jax.tree.map(
+        lambda a: a if np.ndim(a) == 0 else cut(a, layout,
+            name if name in ('eps_r', 'sigma', 'mu_r') else 'lumped', mesh=mesh),
+        value) for name, value in zip(cells._fields, cells)})
+    pole_materials = input_materials(cells, layout, mesh)
     debye = stage_dispersion(pole_materials, grid.dt, debye_spec, grid, layout, mesh,
                             'debye', uniform=True)
     lorentz = stage_dispersion(pole_materials, grid.dt, lorentz_spec, grid, layout, mesh,
                               'lorentz', debye_spec=debye_spec, uniform=True)
-    if lorentz is not None:
-        from rfx.materials.lorentz import mark_judged
-        lorentz = (mark_judged(lorentz[0]), lorentz[1])
-    wires = [m for m, s in zip(port_plan.metadata, port_plan.specs) if s[2] == 'wire']
-    lumped = [m for m, s in zip(port_plan.metadata, port_plan.specs) if s[2] == 'lumped']
-    setup = _build_step_setup(grid, materials, boundary=boundary,
-        cpml_axes='xyz', pec_axes=None, periodic=(False,) * 3,
-        debye=debye, lorentz=lorentz, tfsf=None, sources=sources, probes=probes,
-        dft_planes=[], flux_monitors=[], waveguide_ports=[], ntff=None,
-        aniso_eps=None, aniso_inv_eps=None, aniso_inv_eps_smooth=False,
-        pec_mask=None, pec_sheets=None, pec_wires=None, pec_edge_masks=pec_edges,
-        pec_occupancy=None, conformal_weights=None, wire_port_sparams=wires,
-        lumped_port_sparams=lumped, lumped_rlc=[], kerr_chi3=None,
-        field_dtype=jnp.float32, mag_sources=[])
-    ctx = _StepContext(**setup.ctx_kwargs, use_fast_he=False, use_snapshot=False,
-        use_monitor=False, use_flux_window=False, cpml_grid=grid,
-        port_record_specs=port_plan.specs, port_record_vref=record_vref)
-    inputs = core_step_invariants(ctx)
-    ctx = inputs.pop('ctx')
-    factors = inputs.pop('magnetic_factors')
-    inputs.update(materials=ctx.materials, pec_edge_masks=ctx.pec_edge_masks,
-        drives=drive_layout(setup.src_meta, jnp.float32),
-        probe_table=graded_probe_table(setup.prb_meta, grid.shape, dtype=jnp.float32))
-    if port_plan.specs:
-        inputs['port_table'] = port_plan.table
-    table, port_table = inputs['probe_table'], inputs.get('port_table')
-    carry = dict(setup.carry_init)
-    init_uniform_records(carry, n_steps, wires, lumped, (), jnp.float32, specs=port_plan.specs)
-    staged = {key: carry.pop(key) for key in ('debye', 'lorentz') if key in carry}
+    use_cpml = boundary == 'cpml' and grid.cpml_layers > 0
+    local_materials, inverse, loss = realize_materials(
+        pole_materials, grid, layout, mesh, cpml=use_cpml,
+        debye=debye is not None, lorentz=lorentz is not None, uniform=True)
+    local_materials = kernel_materials(local_materials,
+        electric=debye is None and lorentz is None)
+    pec_faces, pmc_faces = resolve_wall_faces(grid, (False,) * 3, None)
+    wires = tuple(m for m, s in zip(port_plan.metadata, port_plan.specs) if s[2] == 'wire')
+    lumped = tuple(m for m, s in zip(port_plan.metadata, port_plan.specs) if s[2] == 'lumped')
+    ctx = _StepContext(grid=grid, materials=None, dt=grid.dt, dx=grid.dx,
+        periodic=(False,) * 3, pec_axes=''.join(a for a in 'xyz'
+            if {a + '_lo', a + '_hi'} <= pec_faces), stencil_order=2,
+        use_fast_he=False, use_upml=False, use_cpml=use_cpml, use_tfsf=False,
+        use_debye=debye is not None, use_lorentz=lorentz is not None,
+        use_ntff=False, use_dft_planes=False, use_flux_monitors=False,
+        use_waveguide_ports=False, use_pec_faces=bool(pec_faces),
+        use_pmc_faces=bool(pmc_faces), use_aniso_inv=False, aniso_inv_eps_smooth=False,
+        use_pec_edges=pec_edges is not None, use_pec_occupancy=False,
+        use_conformal=False, use_wire_sparams=bool(wires), use_lumped_sparams=bool(lumped),
+        use_lumped_rlc=False, use_kerr=False, use_snapshot=False, use_monitor=False,
+        use_flux_window=False, cpml_grid=grid, cpml_axes='xyz',
+        pec_faces_frozen=pec_faces, pmc_faces_frozen=pmc_faces,
+        curl_boundary=CurlBoundary(pec_faces, pmc_faces, (False,) * 3),
+        port_record_specs=port_plan.specs, port_record_vref=record_vref,
+        wire_sparam_meta=wires, lumped_sparam_meta=lumped)
+    field_shape = (layout.n_devices * layout.nx_local, *grid.shape[1:])
+    carry = {'fdtd': FDTDState(**{name: jnp.zeros(field_shape, jnp.float32, device=sharding)
+        for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')},
+        step=jax.device_put(jnp.int32(0), replicated))}
     profiles = {}
-    if ctx.use_cpml:
+    if use_cpml:
+        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         from rfx.stepping.slab_cpml import publish
+
+        def allocate_psi(name, shape, dtype):
+            local_x = shape[0] if name.split('_')[-1][0] == 'x' else layout.nx_local
+            return jnp.zeros((layout.n_devices * local_x, *shape[1:]), dtype, device=sharding)
+
+        params, carry['cpml'] = init_cpml(grid, state_allocator=allocate_psi)
+        ctx = replace(ctx, cpml_params=params, apply_cpml_e=apply_cpml_e, apply_cpml_h=apply_cpml_h)
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx),
                                 invariants={}, carry_init=carry)
-        ctx, profiles, published = publish(shell, layout, mesh)
-        staged['cpml'] = published['cpml']
-        carry.pop('cpml')
+        ctx, profiles, carry = publish(shell, layout, mesh, staged_state=True)
+    for family, bundle in (('debye', debye), ('lorentz', lorentz)):
+        if bundle is not None:
+            carry[family] = bundle[1]
+    if port_plan.specs:
+        carry['sparam_time_records'] = tuple(jnp.zeros(
+            (layout.n_devices, n_steps, 4 if s[2] == 'wire' else 3),
+            jnp.float32, device=sharding) for s in port_plan.specs)
+    for kind, metas, count in (('wire', wires, 5), ('lumped', lumped, 3)):
+        if metas:
+            carry[kind + '_sparam_accs'] = tuple(tuple(jnp.zeros(
+                (layout.n_devices, len(m.freqs)),
+                jnp.result_type(jnp.complex64, jnp.float64), device=sharding)
+                for _ in range(count)) for m in metas)
+    table = graded_probe_table([(p.i, p.j, p.k, p.component) for p in probes],
+                               grid.shape, dtype=jnp.float32)
+    inputs = dict(materials=local_materials,
+        pec_edge_masks=cut(pec_edges, layout, 'pec_edge', mesh=mesh),
+        cpml_inv_eps_r=inverse, e_loss=loss, sheet_coeffs=None, conformal_zero_masks=None,
+        drives=drive_layout([(s.i, s.j, s.k, s.component) for s in sources], jnp.float32),
+        probe_table=table)
+    port_table = port_plan.table if port_plan.specs else None
+    if port_table is not None:
+        inputs['port_table'] = port_table
     waves = (jnp.stack([s.waveform for s in sources], axis=-1) if sources
              else jnp.zeros((n_steps, 0), jnp.float32))
-    port_carry = {key: carry.pop(key) for key in _PORT_CARRY if key in carry}
-    inputs, carry = split(inputs, carry, layout, mesh, waveforms=waves, dt=grid.dt)
+    inputs, carry = split(inputs, carry, layout, mesh, waveforms=waves, dt=grid.dt, staged=True)
     if ctx.use_pec_edges:
         row = jnp.arange(layout.n_devices * layout.nx_local) % layout.nx_local
         real = (row >= layout.ghost_width) & (row < layout.nx_local - layout.ghost_width)
         inputs['pec_edge_masks'] = jax.tree.map(
             lambda mask: mask & real[:, None, None], inputs['pec_edge_masks'])
-    carry.update(staged)
-    carry.update(jax.tree.map(lambda a: place(jnp.broadcast_to(a,
-        (layout.n_devices,) + a.shape), NamedSharding(mesh, P('x'))), port_carry))
     inputs.update(profiles)
+    from rfx.boundaries.pmc import magnetic_update_factors
+    factors = magnetic_update_factors(pmc_faces, grid.shape, ctx.periodic)
     inputs['magnetic_factors'] = tuple(
         cut(a, layout, 'pmc_h_factor', mesh=mesh) if axis == 0 and a is not None else a
         for axis, a in enumerate(factors))
@@ -159,8 +191,6 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
             inputs[family + '_coeffs'] = bundle[0]
     waves = inputs['drives'].waves
     inputs['drives'] = inputs['drives']._replace(waves=None)
-    ctx = replace(ctx, materials=None, pec_edge_masks=None, pec_static_edge_masks=None,
-                  debye_coeffs=None, lorentz_coeffs=None, drives=None)
     return carry, inputs, waves, wrap_uniform(ctx, layout, mesh,
                                              table=table, port_table=port_table)
 

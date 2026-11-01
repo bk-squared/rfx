@@ -82,7 +82,7 @@ def import_state(psi, canonical, layout, *, native=False):
     return type(psi)(**fields)
 
 
-def publish(setup, layout, mesh):
+def publish(setup, layout, mesh, *, staged_state=False):
     """Publish dynamic whole profiles and rank-local ``init_cpml_slabs`` psi.
 
     X faces retain one-device depth on each rank; y/z faces use local x rows.
@@ -116,6 +116,9 @@ def publish(setup, layout, mesh):
     fields = {}
     psi = setup.carry_init['cpml']
     for name, value in zip(psi._fields, psi):
+        if staged_state:
+            fields[name] = value
+            continue
         face = name.split('_')[-1]
         if face[0] == 'x':
             owner = 0 if face.endswith('lo') else layout.n_devices - 1

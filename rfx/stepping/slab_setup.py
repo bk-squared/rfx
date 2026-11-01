@@ -233,12 +233,13 @@ def _pole_first_map(mesh):
 
 
 def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=False,
-                      debye=False, lorentz=False, _material_inputs=()):
-    """Realize concrete materials on the whole CPU grid, then cut host products.
+                      debye=False, lorentz=False, _material_inputs=(), uniform=False):
+    """Realize uniform materials per slab; retain graded host staging.
 
-    Traced or non-addressable inputs and multi-process meshes retain the
-    per-slab producer; a missing CPU backend also
-    retains it, with one RuntimeWarning per process. Whole-grid host arrays
+    Uniform callers always use the per-slab producer. Graded concrete inputs
+    may use whole CPU host products. Traced or non-addressable inputs and
+    multi-process meshes retain the per-slab producer; a missing CPU backend
+    also retains it, with one RuntimeWarning per process. Whole-grid host arrays
     live during formation. Fresh-process macOS measurements (ru_maxrss in
     bytes), with occupancy and CPML operands, including compilation and cut
     placement but no time steps: peak RSS increments were 2289.13 B/cell at
@@ -247,7 +248,9 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     """
     from rfx.model.occupancy import with_edge_keep
     from rfx.stepping.absorber import graded_cpml_operands
-    device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
+    device = None
+    if not uniform:
+        device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
     with jax.ensure_compile_time_eval() if device is not None else nullcontext():
         inputs = input_materials(materials, layout, mesh)
         occ = uniform_from_cut(occupancy, layout, mesh, outside=0)

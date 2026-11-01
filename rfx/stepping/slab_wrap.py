@@ -112,14 +112,16 @@ def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
     return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
 
 
-def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
-    """Cut every spatial operand with the shared FILL policy, and route nodes."""
+def split(invariants, carry, layout, mesh, *, waveforms, dt=None, staged=False):
+    """Route nodes and cut spatial operands unless already staged per slab."""
     tags = dict(inv_dx='inv_dx', inv_dx_h='inv_dx_h', dx_arr='width',
                 pec_edge_masks='pec_edge', pec_static_edge_masks='pec_edge',
                 pec_occupancy='pec_occupancy')
     result = {}
     for key, value in invariants.items():
-        if key in tags:
+        if staged and key not in ('drives', 'probe_table', 'port_table'):
+            result[key] = value
+        elif key in tags:
             result[key] = cut(value, layout, tags[key], mesh=mesh)
         elif key == 'e_loss' and value is not None:
             eps, sigma, inverse = value
@@ -168,6 +170,8 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     result['owns_x'] = {face: _place(np.asarray([pair[side] for pair in layout.faces]), mesh)
                         for side, face in enumerate(('x_lo', 'x_hi'))}
     state = carry['fdtd']
+    if staged:
+        return result, carry
     local = {name: cut(getattr(state, name), layout, 'state', mesh=mesh)
              for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
     local_carry = {'fdtd': FDTDState(**local, step=state.step)}
