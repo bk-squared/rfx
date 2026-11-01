@@ -24,6 +24,7 @@ program contains any of it.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, RfxRefusal
 
@@ -527,7 +528,7 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
         message = (f"{head}: requested threshold {rule.thr:.3g}; the energy stopped falling at "
                    f"{reached:.3g} of the after-drive reference ({w / wmax:.3g} of the drive's "
                    f"peak energy); {FLOOR_TEXT}")
-        warnings.warn(message, AccuracyWarning, stacklevel=3)
+        warnings.warn(message, AccuracyWarning, stacklevel=user_stacklevel())
     elif quantity == "conserved_energy" and rule.n_end is None:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    "a drive was still on at decay_max_steps, so the energy stop could not fire")
@@ -710,7 +711,7 @@ def warn_dc_floor(sim, *, dt, n_table):
                 "until_decay may cap-hit. Increase decay_max_steps (or run "
                 "with a fixed n_steps) so the table covers the full pulse; raising the "
                 "waveform cutoff makes this WORSE (it lengthens the onset).",
-                AccuracyWarning, stacklevel=3)
+                AccuracyWarning, stacklevel=user_stacklevel())
         else:
             warnings.warn(
                 f"soft source at {label}: waveform {name} has relative DC {rel_dc:.2e} "
@@ -720,7 +721,7 @@ def warn_dc_floor(sim, *, dt, n_table):
                 "the until_decay threshold and the run may cap-hit; thin "
                 "source cells make a small charge's field large, so this warns from "
                 f"relative DC {DC_ADVISE:g}. Remedies: {REMEDIES}.",
-                AccuracyWarning, stacklevel=3)
+                AccuracyWarning, stacklevel=user_stacklevel())
 
 
 def advisory_inputs(sim, *, dt, n_table):
@@ -818,7 +819,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
             "out of band and the record stays correct. Remedies: a fixed n_steps, "
             "radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator, or a larger "
             "until_decay threshold.",
-            AccuracyWarning, stacklevel=3)
+            AccuracyWarning, stacklevel=user_stacklevel())
         return
     warnings.warn(
         f"run(until_decay=...) cap-hit at max_steps without the energy criterion firing, "
@@ -828,4 +829,4 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
         "Soft drives with relative DC above "
         f"{DC_ADVISE:g} or not evaluated: {'; '.join(named)}. "
         f"Remedies: {REMEDIES}.",
-        AccuracyWarning, stacklevel=3)
+        AccuracyWarning, stacklevel=user_stacklevel())

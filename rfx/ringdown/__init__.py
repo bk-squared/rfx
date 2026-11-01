@@ -90,7 +90,7 @@ report in ``Result.ringdown.stop``.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported; from rfx._warning_origin import user_stacklevel  # noqa: E702
 
 from typing import TYPE_CHECKING
 
@@ -1167,7 +1167,7 @@ class RingdownRun:
             warnings.warn(
                 f"ring-down completion not produced -- {nc.name} failed: "
                 f"{nc.message} Result.ringdown.s_params is None; every other "
-                "output of this run is as without ringdown=.", AccuracyWarning, stacklevel=3)
+                "output of this run is as without ringdown=.", AccuracyWarning, stacklevel=user_stacklevel())
             return stripped._replace(ringdown=RingdownResult(
                 s_params=None, freqs=result.freqs, report=report))
         if not report.ok:
@@ -1177,7 +1177,7 @@ class RingdownRun:
             warnings.warn(
                 f"ring-down completion: witness failed -- {failed}; "
                 "Result.ringdown.s_params is not supported by its own check "
-                "(see Result.ringdown.report).", AccuracyWarning, stacklevel=3)
+                "(see Result.ringdown.report).", AccuracyWarning, stacklevel=user_stacklevel())
         warn_if_singular_value_exceeds_one(S, result.freqs, extractor="run(ringdown)")
         return stripped._replace(ringdown=RingdownResult(
             s_params=S, freqs=result.freqs, report=report))

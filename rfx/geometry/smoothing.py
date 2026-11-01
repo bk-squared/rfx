@@ -25,6 +25,7 @@ Three design improvements over the original rfx linear-SDF scheme:
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
 
@@ -903,7 +904,7 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
                 "can be further off than with subpixel_smoothing=False. Check a mesh series "
                 "against the unsmoothed run, or use subpixel_smoothing='full_tensor' on a uniform "
                 "single-device mesh; see docs/guides/known_limitations.md.",
-                CurvedSmoothingWarning, stacklevel=3)
+                CurvedSmoothingWarning, stacklevel=user_stacklevel())
 
 
 def smoothed_shape_pairs(sim, grid):

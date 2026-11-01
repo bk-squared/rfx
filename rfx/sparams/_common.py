@@ -22,6 +22,7 @@ import time.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.model.graded_admission import host_cells
@@ -792,7 +793,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                     + " "
                     + _MSL_PROBE_CLEARANCE_GUIDANCE
                 ),
-                stacklevel=3,
+                stacklevel=user_stacklevel(),
             )
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe
@@ -810,7 +811,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                     ),
                 )
             ),
-            stacklevel=3,
+            stacklevel=user_stacklevel(),
         )
     return resolved
 

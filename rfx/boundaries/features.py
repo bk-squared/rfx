@@ -7,6 +7,7 @@ Admission never changes mesh metrics.
 from __future__ import annotations
 
 from rfx.errors import RfxRefusal, RfxWarning
+from rfx._warning_origin import user_stacklevel
 from rfx.model.graded_admission import host_cells
 
 from dataclasses import replace
@@ -224,7 +225,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
                 warnings.warn(PreflightWarning(
                     text + "; accepted with snap='declared'.",
                     code="wall_axis_off_node", loc=axis, source="judge_wall_axes"),
-                    stacklevel=3)
+                    stacklevel=user_stacklevel())
                 warned.add(key)
         else:
             raise ValueError(message)

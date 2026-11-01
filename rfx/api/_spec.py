@@ -17,7 +17,7 @@ the method body) — do not hoist it to module scope.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning; from rfx._warning_origin import user_stacklevel  # noqa: E702
 from rfx.sources.tfsf_discrete_plane_wave import _TFSFEntry
 
 from dataclasses import dataclass
@@ -513,7 +513,7 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
 
     _w.warn(
         f"[{context}] result contains non-finite values in {detail} — {_NONFINITE_CAUSE_HINT}",
-        AccuracyWarning, stacklevel=3,
+        AccuracyWarning, stacklevel=user_stacklevel(),
     )
 
 

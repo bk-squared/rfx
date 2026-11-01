@@ -6,7 +6,7 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning; from rfx._warning_origin import user_stacklevel  # noqa: E702
 from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple

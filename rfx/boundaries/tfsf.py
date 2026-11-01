@@ -5,6 +5,7 @@ and read-only monitors are not used as proxies for those arrays.
 """
 
 from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx._warning_origin import user_stacklevel
 from dataclasses import fields, is_dataclass
 import warnings
 
@@ -236,7 +237,7 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
             warnings.warn(
                 f"TF/SF {axis}_lo, {axis}_hi: invariance was not judged for traced "
                 f"{feature}; the {operator} operator is retained (Addendum 5c).",
-                UnjudgedTFSFInvarianceWarning, stacklevel=2)
+                UnjudgedTFSFInvarianceWarning, stacklevel=user_stacklevel())
         elif not okay:
             materials = values.get('materials') if isinstance(values, dict) else None
             tensor = getattr(getattr(materials, 'components', None), 'tensor', None)
