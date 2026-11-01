@@ -16,7 +16,26 @@ from rfx.stepping.uniform import make_uniform_step
 _PORT_CARRY = ('wire_sparam_accs', 'lumped_sparam_accs', 'sparam_time_records')
 
 
-def wrap_uniform(context, layout, mesh, *, table, port_table=None):
+def _slab_materials(materials, grid, layout, rank):
+    """Form component operands from the slab's raw cells inside its step."""
+    from rfx.core.yee import component_h_materials
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    from rfx.model.electric_metrics import slab_e_component_materials
+    from rfx.model.materials import KernelComponents
+    from rfx.stepping.slab_update import magnetic_low_ghost
+
+    high_wall = unpadded_high_walls(grid)
+    eps, sigma = slab_e_component_materials(
+        materials, layout.nx_per_rank, layout.nx, rank=rank, high_wall=high_wall)
+    mu = magnetic_low_ghost(materials.mu_r, rank, layout.ghost_width,
+        nx_per=layout.nx_per_rank, nx=layout.nx, high_wall=high_wall)
+    magnetic = component_h_materials(materials._replace(mu_r=mu),
+                                     high_wall=(False, *high_wall[1:]))
+    return materials._replace(components=KernelComponents(eps, sigma, magnetic))
+
+
+def wrap_uniform(context, layout, mesh, *, table, port_table=None,
+                 means_inside_step=False):
     """Attach exchanges to each local uniform step, retaining owner samples.
 
     E exchange follows the PEC mask and sources: a neighbour's next H update
@@ -36,6 +55,9 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None):
                 frame.st, mesh, layout.n_devices, ranks=rank, local=True)
 
         inputs = dict(invariants)
+        if means_inside_step:
+            inputs['materials'] = _slab_materials(
+                inputs['materials'], context.grid, layout, rank)
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
         inputs['probe_table'] = local_table(table, inputs['probe_table'])
         if port_table is not None:
@@ -94,6 +116,11 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.stepping.slab_wrap import split
     from rfx.stepping.uniform_setup import _build_step_setup, core_step_invariants
     from jax.sharding import NamedSharding
+    from rfx.boundaries.depths import Kind, grid_face_depths
+
+    # The global model's face kinds select one placement for every rank.
+    means_inside_step = not any(
+        face.kind == Kind.ABSORBER for face in grid_face_depths(grid))
 
     pole_materials = (stage_forward_materials(materials, layout, mesh, uniform=True)
                       if debye_spec is not None or lorentz_spec is not None else materials)
@@ -123,6 +150,8 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     inputs.update(materials=ctx.materials, pec_edge_masks=ctx.pec_edge_masks,
         drives=drive_layout(setup.src_meta, jnp.float32),
         probe_table=graded_probe_table(setup.prb_meta, grid.shape, dtype=jnp.float32))
+    if means_inside_step:
+        inputs['materials'] = materials._replace(components=None)
     if port_plan.specs:
         inputs['port_table'] = port_plan.table
     table, port_table = inputs['probe_table'], inputs.get('port_table')
@@ -161,7 +190,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     ctx = replace(ctx, materials=None, pec_edge_masks=None, pec_static_edge_masks=None,
                   debye_coeffs=None, lorentz_coeffs=None, drives=None)
     return carry, inputs, waves, wrap_uniform(ctx, layout, mesh,
-                                             table=table, port_table=port_table)
+        table=table, port_table=port_table, means_inside_step=means_inside_step)
 
 
 def run_prepared(prepared, records, mesh, *, n_steps):

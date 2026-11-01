@@ -1,4 +1,4 @@
-"""Wrapped slabs share the one-device material-mean placement."""
+"""Uniform slabs hoist CPML means and form PEC means inside the step."""
 import inspect
 import re
 from pathlib import Path
@@ -117,7 +117,7 @@ def assert_mean_placement(means, boundary, stage, *, driver):
     # The retained old-loop contract applies only to that driver's lowered PEC
     # program; optimization can move its invariant work.
     assert driver in ('wrapped', 'old_loop')
-    if driver == 'wrapped' or boundary == 'cpml':
+    if boundary == 'cpml':
         assert not means, f'material means inside while body: {means}'
     elif stage == 'lowered':
         assert means, 'PEC must form material means inside the while body'
