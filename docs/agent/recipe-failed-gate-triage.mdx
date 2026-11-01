@@ -91,12 +91,10 @@ own dispersion, which no change to the extraction removes.
 
 ### D. A curved metal body that does not converge
 
-`conformal_pec=True` exists, but it currently makes a curved metal body
-electrically larger and less accurate than the staircase: it gives cut edges a
-raised permittivity instead of cut H-face areas. The update with cut H-face
-areas (Dey–Mittra) is planned under tracker 1651. Until it lands, use the
-staircase and a mesh series of at least three meshes, refined locally with a
-graded mesh.
+`conformal_pec=True` uses cut-cell lengths and areas. On a PEC sphere it is
+closer to Mie than the staircase, but the error falls only first order with the
+cell size (tracker 1651). Judge a curved body by a mesh series of at least
+three meshes with either model; conformal PEC runs on a uniform mesh only.
 
 ### E. "We need subgridding"
 
