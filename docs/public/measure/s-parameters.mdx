@@ -420,14 +420,22 @@ The default tolerances are 1e-12, which a float32 result will rarely meet, so
 pass tolerances that match your precision. Other keys include `finite`,
 `max_abs_s`, `max_column_power` and `is_reciprocal`.
 
-The calculators also warn by themselves, but the checks differ by family:
+The calculators also warn by themselves. Every S that rfx returns is checked
+for passivity: when the largest singular value of S exceeds 1.01 at any bin,
+one warning gives the number of such bins and the worst one. Where only the
+diagonal or some columns are measured, that value is a lower bound and the
+warning says so. This covers `run()` and `forward()` on every path (uniform,
+graded, multi-device, subgridded, and the completed S of `ringdown=`) and every
+calculator, on an eager call (under `jax.grad` or `jax.jit` nothing is checked).
+`compute_msl_s_matrix` warns already above float32 rounding and
+returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 
-| Calculator | Automatic checks |
+| Calculator | Further automatic checks |
 |---|---|
-| `run(compute_s_params=True)` | non-finite entries, any single `|S| > 1.1` (not column power) |
+| `run(compute_s_params=True)`, `forward(port_s11_freqs=...)` with lumped or wire ports | non-finite entries, any single `|S| > 1.1` |
 | `compute_msl_s_matrix`, `compute_waveguide_s_matrix` | single entries and total column power |
-| `compute_coaxial_two_port` | the shared passivity check |
-| `compute_coaxial_line_reflection` | none: read its `status`, `fit_residual` and `recurrence_residual` |
+| `compute_coaxial_two_port` | the shared column-power check |
+| `compute_coaxial_line_reflection` | read its `status`, `fit_residual` and `recurrence_residual` |
 
 A warning never changes the returned numbers. No warning means only that no
 check fired; it does not mean the S-matrix is correct.
@@ -522,8 +530,9 @@ For plotting S-parameters, fields and time series, see
 - **`reliable` is False at some bins** → don't plot, fit or optimize those
   bins as data; refine the mesh, lengthen the record, or check whether a real
   notch is there.
-- **Passivity warning (|S| or column power above 1)** → usually a record that
-  ended too early or a mesh too coarse. The returned S is not clipped.
+- **Passivity warning (largest singular value, |S| or column power above 1)** →
+  usually a record that ended too early or a mesh too coarse. The returned S
+  is not clipped.
 - **Microstrip line runs into the absorber** → CPML reflects a guided line
   noticeably; end the line at its port instead.
 - **Coax refuses the model with a lateral-absorber message** → the line's
