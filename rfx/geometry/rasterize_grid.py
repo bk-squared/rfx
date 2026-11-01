@@ -1072,7 +1072,8 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
 
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
-                       cell_sizes=None, *, name=None, grid=None, domain_faces=None):
+                       cell_sizes=None, *, name=None, grid=None, domain_faces=None,
+                       sub_region=False):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
 
     Returns ``(cell_mask, sheet, wire)`` with exactly one of the three set:
@@ -1127,7 +1128,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             if subcell:
                 _refuse_subcell(subcell, shape, name)
         mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
-        if (not traced and _overlaps_cells(shape, centres, cell_sizes)
+        if (not traced and (not sub_region or _overlaps_cells(shape, centres, cell_sizes))
                 and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces)):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
@@ -1211,6 +1212,7 @@ def rasterize_geometry(
     pole_geometry_entries=None,
     geometry_masks: list | None = None,
     assembly_entries: list | None = None,
+    sub_region: bool = False,
 ):
     """Rasterize geometry entries onto material arrays.
 
@@ -1287,7 +1289,7 @@ def rasterize_geometry(
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
-        refuse = mat.sigma < pec_sigma_threshold and _overlaps_cells(entry.shape, centres, cell_sizes)
+        refuse = mat.sigma < pec_sigma_threshold and (not sub_region or _overlaps_cells(entry.shape, centres, cell_sizes))
         mask = _material_cell_mask(entry.shape, coords, centres,
                                    grid=grid if getattr(grid, 'periodic_axes', '') else None,
                                    cell_sizes=cell_sizes, domain_faces=domain_faces,
@@ -1296,7 +1298,8 @@ def rasterize_geometry(
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, cell_sizes,
-                name=entry.material_name, grid=grid, domain_faces=domain_faces)
+                name=entry.material_name, grid=grid, domain_faces=domain_faces,
+                sub_region=sub_region)
             if assembly_entries is not None:
                 declared_entry = entry if pole_geometry_entries is None else pole_geometry_entries[entry_index]
                 assembly_entries.append((id(declared_entry), cells, sheet, wire, entry.shape))

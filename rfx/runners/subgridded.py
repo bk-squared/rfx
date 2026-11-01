@@ -252,6 +252,7 @@ def _run_subgridded_once(
         centres=coords_f,
         domain_faces=volume_domain_faces(grid_coarse),
         cell_sizes=tuple(np.full(n, dx_f) for n in coords_f.shape),
+        sub_region=True,  # a body drawn wholly outside the fine region is the coarse grid's
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 

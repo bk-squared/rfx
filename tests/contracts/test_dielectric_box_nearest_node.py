@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, LorentzPole, Simulation
+from rfx.errors import RfxRefusal
 from rfx.boundaries.spec import BoundarySpec
 from rfx.geometry.rasterize_grid import (
     GridCoords, _material_cell_mask, cell_centres_from_nodes,
@@ -514,8 +515,21 @@ def test_body_outside_a_refinement_region_is_not_a_zero_cell_body(material):
     lines = np.arange(10) * DX / 2 + DX / 4 + 3 * DX   # fine centres, z 3..8 mm
     centres = GridCoords(lines, lines, lines, (10,) * 3)
     mats, *_rest = rasterize_geometry(sim._geometry, sim._resolve_material, centres,
-                                      centres=centres, cell_sizes=(np.full(10, DX / 2),) * 3)
+                                      centres=centres, cell_sizes=(np.full(10, DX / 2),) * 3,
+                                      sub_region=True)
     assert float(jnp.max(mats.eps_r)) == 1.0
+
+
+@pytest.mark.parametrize('material', ['dielectric', 'pec'])
+def test_body_outside_the_whole_grid_is_still_refused(material):
+    # Only a refinement region's own sampling may skip a body it does not reach;
+    # on the full grid a body with no cell (e.g. drawn in mm as metres) refuses.
+    sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
+    sim.add_material('outside', eps_r=4.)
+    sim.add(Box((3., 3., 3.), (6., 6., 6.)), material='outside' if material == 'dielectric' else 'pec')
+    sim.add_source((6 * DX, 6 * DX, 6 * DX), component='ez')
+    with pytest.raises(RfxRefusal, match='ZERO cells'):
+        sim.run(n_steps=1, skip_preflight=True)
 
 
 @pytest.mark.parametrize('pec', [False, True])
