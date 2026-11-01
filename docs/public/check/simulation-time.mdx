@@ -170,8 +170,10 @@ value makes the result `undetermined`. A pole whose decay or growth per time
 step is too small for the fit to resolve (below ln(1 + 10⁻⁶) divided by the
 fit's decimation factor) is judged the same way as a growing term: it does not
 lengthen the time the check looks ahead, which is the longer of the run and the
-time the slowest resolved decaying pole needs to fall to 1 %, and its tail over
-twice that time must stay within 1 % of the frequency's value. The frequencies read are those every
+time the slowest resolved decaying pole that still moves a value needs to
+fall to 1 %, and its tail over twice that time must stay within 1 % of the
+frequency's value. When that time is too long for the fit to resolve growth
+over it, the result is `undetermined` as well. The frequencies read are those every
 spectral output of the result stores: S-parameter frequencies, DFT planes, flux
 monitors and the far-field box.
 
@@ -192,8 +194,9 @@ answers is the check, judged against `witness_tol`. When the source is still
 on in that earlier window, a shorter second window is compared instead. The
 report also checks that no completed |S| exceeds 1 by more than
 `passivity_tol` and that no growing pole was kept. A pole too slow for the fit
-to resolve is left out of the completion: its tail is judged as in the
-settling check, not added to the spectrum. None of these checks is an
+to resolve, judged with `RingdownSpec.unit_tol` in place of 10⁻⁶, is left out
+of the completion unless it is static: its tail is judged as in the settling
+check, not added to the spectrum. None of these checks is an
 error bound.
 
 ## Inputs rfx refuses
