@@ -67,6 +67,15 @@ class RealizationTable:
     def row(self, label):
         return next(row for row in self.rows if row.label == label)
 
+    def __reduce__(self):
+        return _restore_table, (self.rows, self.lane)
+
+
+def _restore_table(rows, lane):
+    # Execution identity is process-local; restored metadata owns no assembly.
+    owner = PreparedRealization(None, None, lane, None)
+    return RealizationTable(rows, lane, weakref.ref(owner))
+
 
 @dataclass(frozen=True)
 class PreparedRealization:

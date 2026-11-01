@@ -14,6 +14,56 @@ LO = np.array((2.23, 2.37, 2.19)) * D
 HI = np.array((6.61, 6.73, 6.57)) * D
 
 
+@pytest.mark.parametrize("lane", LANES)
+@pytest.mark.parametrize("operation", ("pickle", "deepcopy"))
+def test_result_metadata_roundtrip(lane, operation):
+    import copy
+    import pickle
+    import weakref
+
+    def restore(value):
+        return (pickle.loads(pickle.dumps(value)) if operation == "pickle"
+                else copy.deepcopy(value))
+
+    sim = scene("dielectric_box", lane)
+    result = (sim.forward(n_steps=1, skip_preflight=True) if lane.endswith("forward") else
+              sim.run(n_steps=1, skip_preflight=True, compute_s_params=False))
+    original = result.realized_geometry.realization_table
+    restored = restore(result)
+    table = restored.realized_geometry.realization_table
+    assert type(restored) is type(result)
+    assert table is not original
+    assert table.rows == original.rows
+    assert table.lane == original.lane
+    assert isinstance(table.prepared, weakref.ReferenceType)
+    assert table.prepared() is None
+
+    # Walk tuple payloads AND attachment dictionaries/slots, without following
+    # weakrefs into the solve. Exercise each reachable realization object too.
+    pending, seen, walked = [result], set(), set()
+    while pending:
+        value = pending.pop()
+        if id(value) in seen or isinstance(value, (type, weakref.ReferenceType)):
+            continue
+        seen.add(id(value))
+        module = type(value).__module__
+        if module.startswith(("rfx.model.realization", "rfx.realized_geometry")):
+            assert type(restore(value)) is type(value)
+            walked.add(type(value).__name__)
+        if isinstance(value, dict):
+            pending.extend((*value.keys(), *value.values()))
+        elif isinstance(value, (tuple, list, set)):
+            pending.extend(value)
+        if hasattr(value, "__dict__") and module.startswith("rfx"):
+            pending.extend(vars(value).values())
+        for cls in type(value).__mro__:
+            slots = getattr(cls, "__slots__", ())
+            slots = (slots,) if isinstance(slots, str) else slots
+            pending.extend(getattr(value, name) for name in slots
+                           if name not in ("__dict__", "__weakref__") and hasattr(value, name))
+    assert {"RealizedGeometry", "RealizationTable", "RealizationRow", "RealizationAxis"} <= walked
+
+
 def scene(family, lane):
     profiles = {"dz_profile": np.array((1., .8, 1.2, .9, 1.1, .7, 1.3, 1., 1., 1.)) * D} if lane.startswith("graded") else {}
     sim = Simulation(freq_max=1e9, domain=(10.04*D, 10*D, 10*D), dx=D,
