@@ -97,9 +97,10 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
 
     pole_materials = (stage_forward_materials(materials, layout, mesh, uniform=True)
                       if debye_spec is not None or lorentz_spec is not None else materials)
-    debye = stage_dispersion(pole_materials, grid.dt, debye_spec, grid, layout, mesh, 'debye')
+    debye = stage_dispersion(pole_materials, grid.dt, debye_spec, grid, layout, mesh,
+                            'debye', uniform=True)
     lorentz = stage_dispersion(pole_materials, grid.dt, lorentz_spec, grid, layout, mesh,
-                              'lorentz', debye_spec=debye_spec)
+                              'lorentz', debye_spec=debye_spec, uniform=True)
     if lorentz is not None:
         from rfx.materials.lorentz import mark_judged
         lorentz = (mark_judged(lorentz[0]), lorentz[1])

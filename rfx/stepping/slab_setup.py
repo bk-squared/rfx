@@ -293,8 +293,38 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     return staged, inverse, loss
 
 
-def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_spec=None):
-    """Judge owned cell reductions, then realize concrete ADE operands on CPU."""
+def _uniform_dispersion(inputs, dt, poles, masks, grid, layout, mesh, family):
+    """Build pole terms and finish E operands on each rank's own x window."""
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    from rfx.runners._distributed_common import stage_slab_pole_coeffs
+    from rfx.model.electric_metrics import slab_e_component_materials
+    from rfx.stepping.slab_update import slab_dispersion_coeffs
+    from rfx.stepping.rank import rank_shard_map, mesh_ranks
+
+    high_wall = unpadded_high_walls(grid)
+    masks = jax.tree.map(lambda a: cut(a, layout, 'pole_mask', mesh=mesh), masks)
+    coeffs, state = stage_slab_pole_coeffs(
+        poles, masks, dt, family, mesh, layout.nx_per_rank, layout.nx,
+        grid.shape, high_wall=high_wall)
+
+    def finish(coeffs, cells, *, rank):
+        # The common input window includes one extra low row for producers.
+        # The uniform pole helper uses the original one-ghost slab convention.
+        cells = jax.tree.map(lambda a: a[0, 1:] if jnp.ndim(a) else a, cells)
+        means = slab_e_component_materials(cells, layout.nx_per_rank,
+                                           layout.nx, rank, high_wall=high_wall)
+        return slab_dispersion_coeffs(coeffs, means, dt, layout.nx_per_rank,
+                                      layout.nx, rank=rank)
+
+    specs = jax.tree.map(lambda a: P() if jnp.ndim(a) == 0 else P('x'), inputs)
+    finish = jax.jit(rank_shard_map(finish, mesh=mesh,
+        in_specs=(P('x'), specs), out_specs=P('x'), check_rep=False))
+    return finish(mesh_ranks(mesh), coeffs, inputs), state
+
+
+def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_spec=None,
+                     uniform=False):
+    """Judge owned cell reductions, then realize concrete ADE operands per slab."""
     from rfx.model.pole_stability import (pole_set_extremes, combine_pole_extremes,
                                          judge_pole_sets, courant_budget)
     from rfx.materials.debye import debye_e_coeffs, DebyeState
@@ -344,6 +374,8 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
                         grid_kind=type(grid).__name__, in_program=mesh.devices.size < 2)
+    if uniform:
+        return _uniform_dispersion(inputs, dt, poles, masks, grid, layout, mesh, family)
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
     model_grid = _host_arrays(grid) if device is not None else grid
     def local(cells, index, masks, widths):
