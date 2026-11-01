@@ -38,7 +38,7 @@ modes per port, and the mesh path.  This module exports the extractors; the
     >1       uniform     False         extract_multimode_s_matrix
     >1       uniform     True          (unsupported — raises ValueError)
     >1       uniform     "flux"        extract_multimode_s_matrix_flux
-    1        non-uniform True/"flux"   inline flux/normalized logic in
+    1        non-uniform True/"flux"   shared normalized / inline flux in
                                        compute_waveguide_s_matrix (mirrors the
                                        uniform extractors; normalize=False and
                                        multi-mode are unsupported on NU)
@@ -46,10 +46,10 @@ modes per port, and the mesh path.  This module exports the extractors; the
 ``normalize=`` semantics:
   - ``False`` — single-run V/I wave decomposition, no reference run.  Carries
     documented Yee-dispersion + band-edge error (|S11| can exceed 1); cheapest.
-  - ``True``  — two-run reference normalization (``b_dev / b_ref`` off-diagonal,
-    ``(b_dev − b_ref) / a_inc`` diagonal).  Cancels one-way Yee dispersion for
-    transmission; AD-traceable.  Unsupported for multi-mode ports because the
-    empty-guide cross-mode reference ``b_ref ≈ 0`` produces a 0/0.
+  - ``True`` — one S at the declared planes: ``b_dev / a_inc_ref`` transmission,
+    ``(b_dev − b_ref) / a_inc_ref`` reflection. Retains one-way Yee dispersion.
+    Outside the differentiable chain; multi-mode assembly is unsupported.
+    Insertion ratio: device S21 / empty-guide S21 from calls at the same planes.
   - ``"flux"`` — two-run power-flux magnitude (Poynting-flux ratio for the
     single-mode path, ``0.5·Re(V·I*)`` modal-power ratio for the multi-mode
     path) combined with modal-V/I phase.  Most robust at band edges; NOT
