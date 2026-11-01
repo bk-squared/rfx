@@ -192,9 +192,9 @@ Some checks run automatically and warn without changing the arrays:
 
 - Every `s_params` from `run()`/`forward()` and every S from the `compute_*`
   calculators warns when its largest singular value exceeds 1.01 at any bin (a
-  lower bound where only some columns are measured). `waveguide_sparams` is not
-  checked.
-- `run()` and the uniform `forward()` also check `time_series` and lumped/wire
+  lower bound where only some columns are measured). `waveguide_sparams` and
+  `compute_floquet_s_params` are not checked.
+- `run()` on one device (uniform or graded) and the uniform `forward()` also check `time_series` and lumped/wire
   `s_params` for NaN/Inf and for any `|S| > 1.1`.
 - The microstrip and waveguide calculators also check column power and each
   entry.
