@@ -1,6 +1,6 @@
 {
   "version": 7,
-  "updated": "2026-10-12",
+  "updated": "2026-11-01",
   "result_convention": {
     "full_s_matrix_shape": "(n_ports, n_ports, n_freqs)",
     "frequency_shape": "(n_freqs,)",
@@ -27,7 +27,7 @@
       ],
       "validation_status": "Limited to the one-cell impedance model on uniform and graded meshes. Analytic extractor, real V/I replay, replay/passivity/reciprocity, and narrow rfx/OpenEMS PEC-box magnitude checks exist. Broad matched/open/short/load external validation is absent.",
       "known_limits": [
-        "on a graded mesh, run() and forward(port_s11_freqs=...) form lumped S for all-lumped records with one driven port, on one device or several; graded periodic run() S requests are refused",
+        "on a graded mesh, run() on one device forms every column (one drive per port); run() on several devices forms S only for a record with one lumped port (a passive port is refused there); forward(port_s11_freqs=...) reads the driven column on one device or several; graded periodic run() S requests are refused",
         "forward(port_s11_freqs=...) returns S11 vectors on uniform and graded meshes, on one device or with distributed=True",
         "TFSF, waveguide ports, and mixed port families are unsupported in the same S-parameter calculation",
         "automatic runtime checks cover non-finite and excessive individual |S| values; they do not apply the full column-power guard"

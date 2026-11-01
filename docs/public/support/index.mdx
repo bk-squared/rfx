@@ -81,7 +81,7 @@ you, except for a model with only lumped or wire ports, which it refuses (call
 |---|---|---|---|
 | lumped `add_port(...)` | `run(compute_s_params=True)` | **limited** | A one-cell feed model, not a calibrated transmission-line mode. Refused together with a plain source or a 0 Ω port. |
 | wire `add_port(..., extent=...)` | `run(compute_s_params=True)` | **limited** | A pin radius (`radius=`) is accepted up to 0.2 of the transverse cell; a larger one is refused (`tests/unit/ports/test_wire_port_radius.py`). |
-| lumped / wire | `forward(port_s11_freqs=...)` | **limited** | S11 at the requested frequencies, on one device, uniform or graded mesh. |
+| lumped / wire | `forward(port_s11_freqs=...)` | **limited** | S11 at the requested frequencies, uniform or graded mesh, on one device or several. |
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | **limited** | Quasi-TEM (`mode="laplace"`), directions ±x and ±y. The strip is a zero-thickness sheet. A strip drawn behind a port is an open stub; it is refused when its quarter-wave resonance falls near the band. Graded mesh experimental; `mode="eigenmode"` outside scope. |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | **limited** | Single-mode magnitude on a uniform mesh is tested on the WR-90 chain (`tests/oracle/test_waveguide_chain_battery_v18_close.py`); phase, junctions and multimode are checked less. A full-aperture port needs PEC transverse walls. S is a power-wave S only when all ports share one cross-section. Graded mesh experimental. |
 | `add_waveguide_port(...)` | `run(...)` → `waveguide_sparams` | **limited** | Per-port diagnostic, not the full matrix. |

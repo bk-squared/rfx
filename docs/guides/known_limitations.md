@@ -298,13 +298,15 @@ What to do: size a run on three or more GPUs in one process from its two-GPU pea
 Tracker: #1432
 
 `preflight()`, `realized_geometry()` and the automatic preflight of `run()`, `forward()` and the S-matrix calculators
-leave their whole-domain realization arrays on the `Simulation` after the call returns, about 21 bytes per cell (21.1 B
-on 81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33). Before thin PEC sheets kept only their plane masks, a board of about
-1e8 graded cells with many sheets held about 31 GiB of host memory and 15.5 GiB of GPU memory through the solve this
-way, and did not start on a 64 GiB host; that board has not been measured since. On main (2.0.1) the memory these
-arrays hold no longer grows with the number of sheets: a board of 161 sheets on 3.05 M cells, with `preflight()`,
-`realized_geometry()` and a second model kept in the same process, completes on an 8 GB card at a 0.46 GiB peak, where
-2.0.0 ran out of memory. No public call frees the arrays before `run()`; deleting the `Simulation` frees them.
+leave their whole-domain realization arrays on the `Simulation` after the call returns. Measured before the thin-sheet
+change below: about 21 bytes per cell (21.1 B on 81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33), and on a board of about
+1e8 graded cells with many sheets about 31 GiB of host memory and 15.5 GiB of GPU memory held through the solve, so that
+the run did not start on a 64 GiB host. Neither has been measured since. On main after 2.0.0, thin PEC sheets keep only
+their plane masks, so the GPU memory these arrays hold no longer grows with the number of sheets (host memory not
+measured): a board of 161 sheets on 3.05 M cells, with `preflight()`, `realized_geometry()` and a second model kept in
+the same process, completes with the GPU pool capped at about 5.6 GiB at a 0.46 GiB peak, where 2.0.0 ran out of
+memory. No public call frees the arrays before `run()`. Deleting the `Simulation` frees them only while no
+`realized_geometry()` record is kept: the record holds the same arrays.
 
 ## Ports and extraction
 
