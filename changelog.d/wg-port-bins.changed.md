@@ -5,3 +5,4 @@ A port declaring neither `freqs` nor `n_freqs` now gets 50 bins from `freq_max/1
 where those paths previously used 20 bins from `freq_max/2` to `freq_max`.
 Ports whose resolved bins differ are refused on those paths, which share one frequency vector.
 `run()` and `forward()` give the same bins for the same declaration within float32 rounding.
+On a graded mesh, `compute_waveguide_s_matrix` previously computed S on 20 bins from `freq_max/2` to `freq_max` regardless of the ports' declarations and labelled S with the declared bins; S is now computed on the declared bins.

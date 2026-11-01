@@ -96,3 +96,19 @@ def test_equal_explicit_bins_on_both_ports(path):
     result = _solve(_scene(path, declarations), path)
     for name, _ in declarations:
         _assert_bins(result, name, expected, path)
+
+
+def test_graded_calculator_s_uses_declared_bins():
+    sim = Simulation(freq_max=FMAX, domain=(.032, .016, .016), dx=.002,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                     cpml_layers=4, dz_profile=np.full(8, .002))
+    for name, position, direction in (("input", .008, "+x"), ("output", .024, "-x")):
+        sim.add_waveguide_port(position, direction=direction, f0=12e9,
+                              ref_offset=1, probe_offset=2, mode_profile="analytic",
+                              name=name, n_freqs=7)
+    result = sim.compute_waveguide_s_matrix(n_steps=30, normalize=True, skip_preflight=True)
+    expected = np.linspace(FMAX / 10, FMAX, 7)
+    assert result.s_params.shape == (2, 2, 7)
+    assert result.freqs.shape == expected.shape
+    np.testing.assert_allclose(result.freqs, expected,
+                               rtol=2 * np.finfo(np.float32).eps, atol=0)
