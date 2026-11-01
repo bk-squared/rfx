@@ -565,7 +565,8 @@ def extract_waveguide_s_matrix_flux(
         |S_ii|² = |F_ref[i] − F_dev[i]| / |F_ref[i]|   (reflection)
         |S_ji|² = |F_dev[j]|            / |F_ref[i]|   (transmission, j≠i)
 
-    Phase is taken from the modal V/I decomposition of the device run.
+    Phase is the device outgoing wave over the reference incident wave,
+    retaining propagation between the declared planes as on ``normalize=True``.
     This resolves both the Z_TE impedance-mismatch error that corrupts
     ``normalize=False`` S11 (~3 % at dx/λ=0.07) and the round-trip
     dispersion error in the ``normalize=True`` diagonal formula.
@@ -787,6 +788,28 @@ def extract_waveguide_s_matrix_flux(
     return s_matrix
 
 
+def assemble_normalized_waveguide_column(
+    b_dev, b_ref, a_inc_ref, drive_idx, *, diagonal_floor, transmission_floor, xp,
+):
+    """Assemble one column at the declared planes using reference incidence.
+
+    Arrays have receiving port as their first axis. Only the driven port's
+    outgoing reference wave is subtracted; both ratios use its incident wave.
+    ``xp`` supplies NumPy-compatible operations without host conversion.
+    """
+    safe_diagonal = xp.where(
+        xp.abs(a_inc_ref) > diagonal_floor, a_inc_ref, xp.ones_like(a_inc_ref),
+    )
+    safe_transmission = xp.where(
+        xp.abs(a_inc_ref) > transmission_floor, a_inc_ref, xp.ones_like(a_inc_ref),
+    )
+    return xp.stack([
+        (b_dev[i] - b_ref[i]) / safe_diagonal if i == drive_idx
+        else b_dev[i] / safe_transmission
+        for i in range(len(b_dev))
+    ])
+
+
 def extract_waveguide_s_params_normalized(
     grid,
     materials,
@@ -833,17 +856,18 @@ def extract_waveguide_s_params_normalized(
     masks; per-port reference geometry supplies its own.
 
 
-    Cancels Yee-grid numerical dispersion for **transmission** (off-diagonal)
-    terms by normalizing device outgoing waves against reference-run waves
-    measured at the same port location.
+    Returns one scattering matrix at the declared port planes, retaining
+    the same one-way Yee dispersion as ``normalize=False``.
+    For the empty-guide insertion ratio, divide device S21 by S21 from a
+    second call on the same guide without the device, at the same planes.
 
     For each driven port j:
+
       1. Run reference (empty guide) with port j driven.
       2. Run device with port j driven.
       3. Off-diagonal (i != j):
-           S_ij = b_out_device[i] / b_out_reference[i]
-         The reference b_out[i] accumulates the same one-way dispersion as
-         the device wave, so the ratio cancels the bias exactly.
+           S_ij = b_out_device[i] / a_inc_reference[j]
+         The reference incident wave refers every entry to the same planes.
       4. Diagonal (i == j):
            S_jj = (b_out_device[j] - b_out_reference[j]) / a_inc_reference[j]
          The subtraction removes the empty-guide CPML/discretization
@@ -963,19 +987,14 @@ def extract_waveguide_s_params_normalized(
                 "waveguide S-matrix extraction expected one final config per port"
             )
 
-        # Incident wave at the driven port (for diagonal normalization)
+        # Incident wave at the driven port normalizes the whole column.
         a_inc_ref, _ = _s_matrix_port_waves(
             ref_final_cfgs[drive_idx],
             ref_shift=ref_shifts[drive_idx],
         )
         a_inc_ref_np = np.array(a_inc_ref)
-        safe_a_inc = np.where(
-            np.abs(a_inc_ref_np) > 1e-30,
-            a_inc_ref_np,
-            np.ones_like(a_inc_ref_np),
-        )
 
-        # Outgoing waves at all ports (for off-diagonal normalization)
+        # Reference outgoing waves supply the driven-port subtraction.
         b_out_ref = []
         for recv_idx in range(n_ports):
             _, b_ref_i = _s_matrix_port_waves(
@@ -1021,27 +1040,17 @@ def extract_waveguide_s_params_normalized(
                 from rfx.sparams._tail_witness import combine_witness_details
                 settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
 
+        b_out_dev = []
         for recv_idx, cfg in enumerate(dev_final_cfgs):
             _, b_recv_dev = _s_matrix_port_waves(
                 cfg,
                 ref_shift=ref_shifts[recv_idx],
-                )
-            b_recv_dev_np = np.array(b_recv_dev)
-
-            if recv_idx == drive_idx:
-                # Diagonal: subtract the reference-run reflection so the
-                # result captures only device-induced reflection.
-                s_matrix[recv_idx, drive_idx, :] = (
-                    b_recv_dev_np - b_out_ref[recv_idx]
-                ) / safe_a_inc
-            else:
-                # Off-diagonal: normalize by reference outgoing at same port
-                safe_b_ref = np.where(
-                    np.abs(b_out_ref[recv_idx]) > 1e-30,
-                    b_out_ref[recv_idx],
-                    np.ones_like(b_out_ref[recv_idx]),
-                )
-                s_matrix[recv_idx, drive_idx, :] = b_recv_dev_np / safe_b_ref
+            )
+            b_out_dev.append(np.array(b_recv_dev))
+        s_matrix[:, drive_idx, :] = assemble_normalized_waveguide_column(
+            b_out_dev, b_out_ref, a_inc_ref_np, drive_idx,
+            diagonal_floor=1e-30, transmission_floor=1e-30, xp=np,
+        )
 
     if return_settling:
         import numpy as _np
@@ -1262,13 +1271,11 @@ def extract_multimode_s_matrix_flux(
         |S_{qn,pm}|² = |F_ref[qn] − F_dev[qn]| / |P_inc|   (q==p, n==m: reflection)
         |S_{qn,pm}|² = |F_dev[qn]|             / |P_inc|   (otherwise: transmission / mode conversion)
 
-    All ratios are referenced to the (always-nonzero) incident modal power,
-    so cross-mode channels do not hit the 0/0 blow-up of the two-run
-    normalized scheme (the single-mode
-    :func:`extract_waveguide_s_params_normalized` ``b_dev/b_ref`` with
-    ``b_ref ≈ 0`` for an uncoupled empty-guide channel — its multi-mode
-    generalization is unsupported for exactly this reason). Phase is taken
-    from the modal V/I wave decomposition of the device run.
+    All ratios are referenced to the incident modal power. The modal
+    ``normalize=True`` extractor also uses incident-wave normalization,
+    but supports single-mode ports only; its multi-mode assembly is not
+    implemented. Phase is taken from the modal V/I wave decomposition of
+    the device run and retains propagation between the declared planes.
 
     Per-mode net power ``F`` comes from :func:`_modal_net_power`
     (``0.5·Re(V·I*)``), avoiding the modal-impedance discretization bias.

@@ -42,6 +42,7 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.measurement.phasors import exp_j
+from rfx.measurement.waveguide_s import assemble_normalized_waveguide_column
 from rfx.sources.waveguide_port import (
     extract_waveguide_s_matrix,
     extract_waveguide_s_matrix_flux,
@@ -144,14 +145,16 @@ def compute_waveguide_s_matrix(
         differentiable chain: a traced ``eps_override`` /
         ``sigma_override`` flows through it.
 
-        ``True`` — two-run modal normalization.  Cancels one-way
-        Yee dispersion for **transmission** (off-diagonal) by
-        dividing device outgoing waves by reference outgoing waves
-        at the same port.  **Does not** cancel dispersion for
-        reflection (round-trip vs one-way path mismatch); use
-        ``normalize=False`` or ``normalize="flux"`` for S11 of
-        strong reflectors.  Host-assembled and **outside the
-        differentiable chain**: a traced ``eps_override`` /
+        ``True`` — two-run modal normalization at the declared port planes.
+        Every entry divides by the driven port's reference incident wave;
+        the diagonal first subtracts the reference outgoing wave. Retains
+        the same one-way Yee dispersion as ``False``. Unlike ``False``,
+        the denominator excludes device-reflection leakage into the modal
+        incident-wave split, and the diagonal removes reference reflection.
+        Form the empty-guide insertion ratio from two calls: device S21
+        divided by S21 of the same guide without the device, at the same planes.
+        Host-assembled and **outside the differentiable chain**: a traced
+        ``eps_override`` /
         ``sigma_override`` (``jax.grad``, ``jax.jit``) raises
         ``NotImplementedError`` at this call, before any FDTD run;
         a concrete override still runs forward.
@@ -292,11 +295,8 @@ def compute_waveguide_s_matrix(
         warnings.warn(
             "compute_waveguide_s_matrix(normalize=False): S21 and "
             "S-parameter phase include Yee numerical dispersion. "
-            "normalize=True removes it from S21 by referring transmission "
-            "to a separate run while reflection stays at the port plane, so "
-            "its reflection and transmission do not share reference planes; "
-            "where the matrix is used as a whole (cascading, de-embedding) "
-            "use normalize='flux'. "
+            "normalize=True also retains propagation between the declared "
+            "planes, using the reference incident wave for every entry. "
             "For |S11| of strong reflectors (PEC short, resonators) "
             "normalize=False is more accurate — see the normalize "
             "parameter docstring.", AccuracyWarning,
@@ -522,7 +522,7 @@ def compute_waveguide_s_matrix(
             # normalize=False carries documented Yee-dispersion + band-edge
             # |S11| overshoot (validated paths reach ~1.4-1.7), so use a
             # loose bound there that still catches gross extractor bugs
-            # (|S11|>>1); normalize=True/"flux" correct dispersion -> tight.
+            # (|S11|>>1); reference subtraction / flux use the tighter bound.
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
@@ -867,19 +867,11 @@ def compute_waveguide_s_matrix(
                 settling_details=settling_details_mm,
             )
         elif normalize:
-            # The two-run normalized extractor divides each receiving
-            # channel by its own empty-guide outgoing wave
-            # (b_dev/b_ref). For cross-mode channels the empty-guide
-            # reference is ~0 (orthogonal modes do not couple in a
-            # uniform guide), so the ratio blows up (measured
-            # cross-mode |S| ~ 4.7 on an over-moded WR-90 slab).
-            # Use normalize="flux" instead — power ratios referenced
-            # to the always-nonzero incident modal power avoid the
-            # 0/0 and also fix the reflection noise floor.
+            # Multi-mode modal reference subtraction is not implemented.
             raise ValueError(
                 "compute_waveguide_s_matrix(normalize=True) is not "
-                "supported with n_modes > 1 (cross-mode channels hit a "
-                "0/0 in the two-run normalization). Use "
+                "supported with n_modes > 1 (multi-mode modal reference "
+                "subtraction is not implemented). Use "
                 "normalize='flux' for multi-mode S-matrices."
             )
         else:
@@ -1196,9 +1188,10 @@ def _compute_waveguide_s_matrix_nu(
 
     Extracts ``a_inc`` / ``b_out`` via the same
     ``extract_waveguide_port_waves`` helper as the uniform path and
-    applies the same diagonal-subtraction + off-diagonal-division
-    normalisation (see ``extract_waveguide_s_params_normalized``
-    in ``rfx/sources/waveguide_port.py``).
+    assembles one S at the declared planes: transmission divides by the
+    driven port's reference incident wave, and reflection first subtracts
+    its reference outgoing wave. One-way Yee dispersion remains, as on
+    ``normalize=False``. See ``extract_waveguide_s_params_normalized``.
     """
     # The non-uniform scan has no Dey-Mittra update; the uniform lane of
     # this calculator has one.
@@ -1464,7 +1457,7 @@ def _compute_waveguide_s_matrix_nu(
                 s_columns.append(recv_col)
                 continue
 
-            recv_col: list = []
+            b_out_ref, b_out_dev = [], []
             for recv_idx in range(n_ports):
                 recv_name = original_entries[recv_idx].name
                 _, b_ref = extract_waveguide_port_waves(
@@ -1473,27 +1466,14 @@ def _compute_waveguide_s_matrix_nu(
                 _, b_dev = extract_waveguide_port_waves(
                     dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
                 )
-                if recv_idx == drive_idx:
-                    recv_col.append((b_dev - b_ref) / safe_a_inc)
-                else:
-                    # Use a tighter guard than the diagonal safe_a_inc
-                    # (1e-30): the NU path operates at lower float32
-                    # signal levels (~1e-31) because the TFSF table
-                    # injection scales with dt/dx. The reference
-                    # outgoing wave b_ref at non-driven ports is
-                    # proportional to the driven-port incident wave and
-                    # can fall to ~1e-31 in float32. A 1e-30 guard
-                    # fires falsely and replaces b_ref with 1.0, giving
-                    # S21 = b_dev * 1e-31 instead of b_dev/b_ref ≈ 1.
-                    # 1e-60 is safely below float32 underflow (~1e-38)
-                    # so it only fires when b_ref is genuinely zero.
-                    safe_b = jnp.where(
-                        jnp.abs(b_ref) > 1e-60,
-                        b_ref,
-                        jnp.ones_like(b_ref),
-                    )
-                    recv_col.append(b_dev / safe_b)
-            s_columns.append(recv_col)
+                b_out_ref.append(b_ref)
+                b_out_dev.append(b_dev)
+            # The lower transmission floor preserves the graded lane's
+            # small-signal guard; the diagonal keeps its existing floor.
+            s_columns.append(assemble_normalized_waveguide_column(
+                b_out_dev, b_out_ref, a_inc_ref, drive_idx,
+                diagonal_floor=1e-30, transmission_floor=1e-60, xp=jnp,
+            ))
     finally:
         self._waveguide_ports = original_entries
 

@@ -1493,11 +1493,8 @@ def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
     Post-solve and report-only: no gate, no tolerance, no effect on any
     returned number. Silent (and ``None``) whenever the residual is not
     defined — a non-two-port result, a traced AD run, two ports on different
-    axes or with different discrete cutoffs, a fully masked band, or a
-    ``normalize=True`` lane: that lane divides the empty-guide reference
-    run's propagation phase out of S21, so ``angle(S21) + beta*L`` is not
-    the port residual there (``normalize="flux"`` and ``False`` keep the
-    modal phase and are reported).
+    axes or with different discrete cutoffs, or a fully masked band. All
+    normalization lanes retain propagation phase and report the residual.
 
     Scope of the claim: a port witness only for an EMPTY or matched guide
     between the two reference planes. A device between them adds its own
@@ -1512,13 +1509,6 @@ def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
         "masked_bins": 0,
         "normalize": normalize,
     }
-    if normalize is True:
-        meta["reason"] = (
-            "normalize=True divides the empty-guide reference run's propagation "
-            "phase out of S21, so wrap(angle(S21) + beta*L) is not the port "
-            "residual on this lane; normalize='flux' or normalize=False keep it"
-        )
-        return None, meta
     cfgs = [c[0] if isinstance(c, list) else c for c in cfgs]
     if len(cfgs) != 2:
         meta["reason"] = f"{len(cfgs)} waveguide ports; the residual is two-port"
