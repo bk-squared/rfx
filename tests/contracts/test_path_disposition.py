@@ -83,7 +83,8 @@ FIELD_STEPPERS = {
     # grid-level eager lumped and wire extractors all build their step here.
     "rfx/stepping/uniform.py:make_uniform_step":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
-        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched",
+        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched, "
+        "run_distributed, fwd_distributed",
     # The one graded-mesh step (S3-2 stage B).
     "rfx/stepping/graded.py:make_graded_step": "internal to run_nonuniform, fwd_nonuniform",
     "rfx/stepping/subgrid_disjoint.py:_yee_step": "internal to run_subgridded",

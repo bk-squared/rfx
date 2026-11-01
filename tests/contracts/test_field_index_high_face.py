@@ -543,7 +543,7 @@ def test_c8_consumers(consumer, monkeypatch):
 
         # Stop after run_distributed resolves its port cells with field_index,
         # before measurement setup or any stepping can obscure that consumer.
-        monkeypatch.setattr(uniform_slab_ports, 'UniformSlabPorts', capture)
+        monkeypatch.setattr(uniform_slab_ports, 'UniformPortPlan', capture)
         with pytest.raises(CellsCaptured):
             run_distributed(sim, n_steps=2, devices=jax.devices('cpu')[:2])
         assert seen[0][3] == cell
