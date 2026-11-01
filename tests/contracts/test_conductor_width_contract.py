@@ -292,7 +292,7 @@ def _extractor_context_cell(monkeypatch, lane, model):
     class HandoffReached(Exception):
         pass
 
-    def handoff(*args, **kwargs):
+    def handoff(self, *args, **kwargs):
         used.append(kwargs['sheet_impedance'])
         raise HandoffReached
 
@@ -308,7 +308,7 @@ def _extractor_context_cell(monkeypatch, lane, model):
         if lane == 's_matrix_scan':
             sim = _record_model(model)
             sim.add_port((5*DX, 5*DX, 3*DX), 'ez')
-            patch.setattr(sim, '_forward_from_materials', handoff)
+            patch.setattr(type(sim), '_forward_from_materials', handoff)
             with pytest.raises(HandoffReached):
                 compute_lumped_wire_s_matrix_via_scan(sim, np.array([F0]), n_steps=4)
         elif lane == 'waveguide_s_matrix':

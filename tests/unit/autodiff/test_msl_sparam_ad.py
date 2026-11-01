@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 
 from pathlib import Path
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -236,13 +236,14 @@ def _run_manufactured_assembly(*, use_x64: bool):
             sim.add_msl_port(position=(feed, 6 * u, 0), width=4 * u, height=2 * u,
                              direction=direction, mode="uniform", eps_r_sub=2.0,
                              n_probe_offset=10, n_probe_spacing=2, n_probes=3)
-        sim.run = MethodType(fake_run, sim)
-        result = sim.compute_msl_s_matrix(
-            n_steps=1, freqs=freqs, num_periods=1.0, enforce_passivity=False)
-        assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
-        assert result.assembly == "multi_drive_solve"
-        assert np.max(result.cond_a) < 2
-        actual = np.asarray(probe0_s(result, line_s(result)))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(Simulation, "run", fake_run)
+            result = sim.compute_msl_s_matrix(
+                n_steps=1, freqs=freqs, num_periods=1.0, enforce_passivity=False)
+            assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
+            assert result.assembly == "multi_drive_solve"
+            assert np.max(result.cond_a) < 2
+            actual = np.asarray(probe0_s(result, line_s(result)))
     for driven in range(2):
         for port, target in enumerate((12 * u, 28 * u)):
             for component in ("hy", "hz"):
@@ -492,26 +493,27 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 
     def objective(theta):
         sim = _build_thru_line_sim()
-        sim.run = MethodType(_fake_run_for_theta(theta), sim)
-        result = sim.compute_msl_s_matrix(
-            n_steps=1,
-            freqs=freqs,
-            num_periods=1.0,
-            # Explicit, mode-independent — do NOT rely on the default. The
-            # default gates passivity projection on
-            # `eps_override is None and not is_tracer(S)` (rfx/api/_sparams.py),
-            # so a traced call (jax.grad) and an eager call (e.g. an FD
-            # cross-check) silently take DIFFERENT branches on this
-            # eps_override=None path and would compare two different
-            # functions (PR #468 defect class; see this test's docstring,
-            # "CROSS-CHECK CORRECTION"). This flag makes objective() return
-            # the identical (raw) reduction either way. Since 2026-09-21 it
-            # is also the default — kept explicit anyway, because what this
-            # objective needs is a MODE-INDEPENDENT flag, not whichever
-            # value the default happens to hold.
-            enforce_passivity=False,
-        )
-        return msl_band_mean_s21_sq(result.S)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(Simulation, "run", _fake_run_for_theta(theta))
+            result = sim.compute_msl_s_matrix(
+                n_steps=1,
+                freqs=freqs,
+                num_periods=1.0,
+                # Explicit, mode-independent — do NOT rely on the default. The
+                # default gates passivity projection on
+                # `eps_override is None and not is_tracer(S)` (rfx/api/_sparams.py),
+                # so a traced call (jax.grad) and an eager call (e.g. an FD
+                # cross-check) silently take DIFFERENT branches on this
+                # eps_override=None path and would compare two different
+                # functions (PR #468 defect class; see this test's docstring,
+                # "CROSS-CHECK CORRECTION"). This flag makes objective() return
+                # the identical (raw) reduction either way. Since 2026-09-21 it
+                # is also the default — kept explicit anyway, because what this
+                # objective needs is a MODE-INDEPENDENT flag, not whichever
+                # value the default happens to hold.
+                enforce_passivity=False,
+            )
+            return msl_band_mean_s21_sq(result.S)
 
     grad = jax.grad(objective)(jnp.asarray(0.7, dtype=jnp.float32))
     print(f"\n[AD smoke] grad = {float(grad):.6e}")

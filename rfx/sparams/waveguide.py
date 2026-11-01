@@ -1,28 +1,7 @@
-"""Waveguide S-matrix calculators, moved verbatim out of ``rfx.api._sparams``.
+"""Waveguide S-matrix calculators bound onto the public Simulation API.
 
-Issue #980 Phase 2. ``compute_waveguide_s_matrix`` and its non-uniform-mesh
-sibling ``_compute_waveguide_s_matrix_nu`` were two methods of the
-``_SparamMixin`` class body in ``rfx/api/_sparams.py``; they are relocated here
-byte for byte, dedented by exactly four spaces and otherwise untouched — same
-signatures, same docstrings, same logic, nothing renamed, reordered or cleaned
-up. The move is gated on bit identity of the extracted S arrays
-(``tests/locks/test_sparams_split_bit_identity.py``).
-
-They are MODULE-LEVEL FUNCTIONS whose first parameter is still ``self``: it is
-the ``Simulation`` instance, exactly as before. ``rfx.api._sparams`` binds them
-back onto ``_SparamMixin`` as class attributes at the same place in the class
-body, so ``sim.compute_waveguide_s_matrix(...)`` keeps its name, signature,
-docstring and bound-method behaviour, and ``_compute_waveguide_s_matrix_nu``
-keeps writing ``self._waveguide_ports`` on that same instance. (``__qualname__``
-is restored at the foot of this module; ``inspect.getdoc`` is byte-identical to
-the pre-move value, while the raw ``__doc__`` differs by exactly the four-space
-dedent, which is what dedenting a class body costs.) A class wrapper may follow
-in a later step.
-
-Import contract, inherited from ``rfx.api._sparams``: import ONLY
-``rfx.api._spec`` plus external ``rfx.*`` / stdlib / jax / numpy, never the
-``rfx.api`` package itself, so ``rfx/api/__init__.py`` stays the sole
-composition point and the import graph stays acyclic.
+Drive-specific declarations and run state belong to private declaration
+variants. The caller retains its declared port and observer containers.
 """
 
 from __future__ import annotations
@@ -34,7 +13,7 @@ from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes
-import copy
+from rfx._declarations import declaration_variant
 
 import jax
 import jax.numpy as jnp
@@ -1178,10 +1157,9 @@ def _compute_waveguide_s_matrix_nu(
     Drives each port in turn, running device + homogeneous-reference
     scans through ``run_nonuniform_path`` so ``dx_profile`` /
     ``dy_profile`` / ``dz_profile`` actually flow into the Yee update. The per-port
-    drive is implemented by temporarily zeroing ``amplitude`` on
-    non-driven entries; the original port list is restored in a
-    ``finally`` block. The reference's whole domain has the shared port
-    medium. Unequal port media are refused before launching either scan.
+    drive uses a private declaration variant with zero ``amplitude`` on
+    non-driven entries; the caller's port list remains unchanged. The reference's
+    whole domain has the shared port medium. Unequal port media are refused before launching either scan.
 
     Current scope (matches the uniform path minus a few niceties):
       - ``normalize=True`` or ``normalize='flux'``.
@@ -1301,201 +1279,198 @@ def _compute_waveguide_s_matrix_nu(
     final_cfgs: list | None = None
 
     original_entries = list(entries)
-    try:
-        for drive_idx in range(n_ports):
-            self._waveguide_ports = [
-                _dc_replace(
-                    e,
-                    amplitude=(e.amplitude if idx == drive_idx else 0.0),
-                )
-                for idx, e in enumerate(original_entries)
-            ]
-
-            # Device run: thread the public eps/sigma override (the
-            # traced design variable) into the device Yee update so the
-            # gradient flows from eps_override -> device fields -> flux
-            # -> S-matrix (mirrors the uniform PR #172 flux-AD wiring).
-            # When eps_override is None the assembled device materials
-            # are used unchanged (device fields identical); the np->jnp
-            # flux extraction below matches the prior np path to
-            # rtol<=1e-5 (float reassociation only, per uniform PR #172).
-            # issue #73: translate the uniform `checkpoint_segments` (K
-            # segments) → the NU runner's `checkpoint_every` (chunk size).
-            # This calculator chooses a divisor of n_steps nearest to
-            # n_steps/K. The NU runner handles non-divisors with a real tail
-            # segment; it does not pad the time record. Checkpoint ONLY the
-            # *device* run — the vacuum reference is constant in the design
-            # variable so it carries no AD tape. The √N tape win is realised
-            # under jax.grad (normalize='flux' + eps_override); plain forward
-            # is identical.
-            from rfx.simulation import _nearest_divisor
-            _ckpt_every = None
-            if checkpoint_segments is not None and checkpoint_segments > 1:
-                _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
-                if 0 < _ck < n_steps:
-                    _ckpt_every = _ck
-            # The #704 warning promises no NTFF accumulation in this calculator.
-            device = copy.copy(self)
-            device._ntff = None
-            dev_result = run_nonuniform_path(
-                device, n_steps=n_steps,
-                eps_override=eps_override,
-                sigma_override=sigma_override,
-                attach_waveguide_flux=_flux_mode, waveguide_reference_only=True,
-                checkpoint_every=_ckpt_every,
+    for drive_idx in range(n_ports):
+        run_entries = [
+            _dc_replace(
+                e,
+                amplitude=(e.amplitude if idx == drive_idx else 0.0),
             )
-            # Same active modal port and guide walls, independent vacuum physics.
-            reference._waveguide_ports = list(self._waveguide_ports)
-            ref_result = run_nonuniform_path(
-                reference, n_steps=n_steps, attach_waveguide_flux=_flux_mode, waveguide_reference_only=True,
+            for idx, e in enumerate(original_entries)
+        ]
+
+        # Device run: thread the public eps/sigma override (the
+        # traced design variable) into the device Yee update so the
+        # gradient flows from eps_override -> device fields -> flux
+        # -> S-matrix (mirrors the uniform PR #172 flux-AD wiring).
+        # When eps_override is None the assembled device materials
+        # are used unchanged (device fields identical); the np->jnp
+        # flux extraction below matches the prior np path to
+        # rtol<=1e-5 (float reassociation only, per uniform PR #172).
+        # issue #73: translate the uniform `checkpoint_segments` (K
+        # segments) → the NU runner's `checkpoint_every` (chunk size).
+        # This calculator chooses a divisor of n_steps nearest to
+        # n_steps/K. The NU runner handles non-divisors with a real tail
+        # segment; it does not pad the time record. Checkpoint ONLY the
+        # *device* run — the vacuum reference is constant in the design
+        # variable so it carries no AD tape. The √N tape win is realised
+        # under jax.grad (normalize='flux' + eps_override); plain forward
+        # is identical.
+        from rfx.simulation import _nearest_divisor
+        _ckpt_every = None
+        if checkpoint_segments is not None and checkpoint_segments > 1:
+            _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
+            if 0 < _ck < n_steps:
+                _ckpt_every = _ck
+        # The #704 warning promises no NTFF accumulation in this calculator.
+        device = declaration_variant(self, _waveguide_ports=run_entries, _ntff=None)
+        dev_result = run_nonuniform_path(
+            device, n_steps=n_steps,
+            eps_override=eps_override,
+            sigma_override=sigma_override,
+            attach_waveguide_flux=_flux_mode, waveguide_reference_only=True,
+            checkpoint_every=_ckpt_every,
+        )
+        # Same active modal port and guide walls, independent vacuum physics.
+        ref_variant = declaration_variant(reference, _waveguide_ports=list(run_entries))
+        ref_result = run_nonuniform_path(
+            ref_variant, n_steps=n_steps, attach_waveguide_flux=_flux_mode, waveguide_reference_only=True,
+        )
+
+        dev_wg = dev_result.waveguide_ports or {}
+        ref_wg = ref_result.waveguide_ports or {}
+        if len(dev_wg) != n_ports or len(ref_wg) != n_ports:
+            raise RuntimeError(
+                "NU waveguide S-matrix expected one final cfg per "
+                "port on both device and reference runs"
             )
 
-            dev_wg = dev_result.waveguide_ports or {}
-            ref_wg = ref_result.waveguide_ports or {}
-            if len(dev_wg) != n_ports or len(ref_wg) != n_ports:
+        # Issue #827 (the waveguide instance of the NU witness gap):
+        # energy ring-down witness per drive, worst over BOTH runs of
+        # the pair -- the reference run feeds a_inc/P_inc, so its
+        # truncation corrupts the same S values (same composition as
+        # the uniform normalized/flux lanes, #538). NaN under tracing
+        # propagates instead of being max()-eaten.
+        _sd_dev, _detail_dev = settling_db_from_port_records(
+            [dev_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+        _sd_ref, _detail_ref = settling_db_from_port_records(
+            [ref_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+        settling_runs.append(
+            float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
+            else max(_sd_dev, _sd_ref))
+        from rfx.sparams._tail_witness import combine_witness_details
+        settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
+
+        # Compute ref_shifts from the first drive's configs (same
+        # measured planes for every drive / run).
+        if ref_shifts is None:
+            shifts = []
+            for entry in original_entries:
+                cfg = dev_wg[entry.name]
+                planes = waveguide_plane_positions(cfg)
+                desired = resolve_reported_planes(entry, cfg, grid=grid).reference
+                reference_planes.append(desired)
+                shifts.append(desired - planes["reference"])
+            ref_shifts = tuple(shifts)
+            # The same final configs, kept for the post-solve S21
+            # phase residual below (its beta ingredients are the
+            # extractor's own f_cutoff / dt / dx, not re-derived).
+            final_cfgs = [dev_wg[e.name] for e in original_entries]
+
+        drive_name = original_entries[drive_idx].name
+        a_inc_ref, _ = extract_waveguide_port_waves(
+            ref_wg[drive_name], ref_shift=ref_shifts[drive_idx],
+        )
+        safe_a_inc = jnp.where(
+            jnp.abs(a_inc_ref) > 1e-30,
+            a_inc_ref,
+            jnp.ones_like(a_inc_ref),
+        )
+
+        if _flux_mode:
+            # Power-flux magnitude + modal phase (mirrors the
+            # uniform extract_waveguide_s_matrix_flux). Immune to
+            # the band-edge a_inc_ref denominator collapse that
+            # makes the normalize=True diagonal blow up (issue #88):
+            # P_inc = |F_ref[drive]| is large and well-conditioned
+            # across the whole band, not source-spectrum-weighted.
+            F_ref = ref_result.waveguide_port_flux
+            F_dev = dev_result.waveguide_port_flux
+            if F_ref is None or F_dev is None:
                 raise RuntimeError(
-                    "NU waveguide S-matrix expected one final cfg per "
-                    "port on both device and reference runs"
+                    "normalize='flux' on the NU path requires "
+                    "per-port flux spectra; run_nonuniform_path did "
+                    "not return waveguide_port_flux."
                 )
-
-            # Issue #827 (the waveguide instance of the NU witness gap):
-            # energy ring-down witness per drive, worst over BOTH runs of
-            # the pair -- the reference run feeds a_inc/P_inc, so its
-            # truncation corrupts the same S values (same composition as
-            # the uniform normalized/flux lanes, #538). NaN under tracing
-            # propagates instead of being max()-eaten.
-            _sd_dev, _detail_dev = settling_db_from_port_records(
-                [dev_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
-            _sd_ref, _detail_ref = settling_db_from_port_records(
-                [ref_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
-            settling_runs.append(
-                float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
-                else max(_sd_dev, _sd_ref))
-            from rfx.sparams._tail_witness import combine_witness_details
-            settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
-
-            # Compute ref_shifts from the first drive's configs (same
-            # measured planes for every drive / run).
-            if ref_shifts is None:
-                shifts = []
-                for entry in original_entries:
-                    cfg = dev_wg[entry.name]
-                    planes = waveguide_plane_positions(cfg)
-                    desired = resolve_reported_planes(entry, cfg, grid=grid).reference
-                    reference_planes.append(desired)
-                    shifts.append(desired - planes["reference"])
-                ref_shifts = tuple(shifts)
-                # The same final configs, kept for the post-solve S21
-                # phase residual below (its beta ingredients are the
-                # extractor's own f_cutoff / dt / dx, not re-derived).
-                final_cfgs = [dev_wg[e.name] for e in original_entries]
-
-            drive_name = original_entries[drive_idx].name
-            a_inc_ref, _ = extract_waveguide_port_waves(
-                ref_wg[drive_name], ref_shift=ref_shifts[drive_idx],
+            # jnp-native (mirrors the uniform PR #172 flux-AD fix):
+            # no np.asarray() concretization — keeps the whole flux
+            # extraction on the AD tape so an eps_override-traced
+            # device run yields finite gradients through the
+            # S-matrix. Uses the DOUBLE-WHERE trick at sqrt(0) /
+            # angle(0) (guard the INPUT, not just the output): a
+            # single jnp.where still leaks NaN grad through the dead
+            # branch (#171/#172/#148). Forward values are identical
+            # to the prior np version for P_inc / P > 0.
+            P_inc = jnp.abs(F_ref[drive_idx])
+            safe_P_inc = jnp.where(
+                P_inc > 1e-60, P_inc, jnp.ones_like(P_inc)
             )
-            safe_a_inc = jnp.where(
-                jnp.abs(a_inc_ref) > 1e-30,
-                a_inc_ref,
-                jnp.ones_like(a_inc_ref),
-            )
-
-            if _flux_mode:
-                # Power-flux magnitude + modal phase (mirrors the
-                # uniform extract_waveguide_s_matrix_flux). Immune to
-                # the band-edge a_inc_ref denominator collapse that
-                # makes the normalize=True diagonal blow up (issue #88):
-                # P_inc = |F_ref[drive]| is large and well-conditioned
-                # across the whole band, not source-spectrum-weighted.
-                F_ref = ref_result.waveguide_port_flux
-                F_dev = dev_result.waveguide_port_flux
-                if F_ref is None or F_dev is None:
-                    raise RuntimeError(
-                        "normalize='flux' on the NU path requires "
-                        "per-port flux spectra; run_nonuniform_path did "
-                        "not return waveguide_port_flux."
-                    )
-                # jnp-native (mirrors the uniform PR #172 flux-AD fix):
-                # no np.asarray() concretization — keeps the whole flux
-                # extraction on the AD tape so an eps_override-traced
-                # device run yields finite gradients through the
-                # S-matrix. Uses the DOUBLE-WHERE trick at sqrt(0) /
-                # angle(0) (guard the INPUT, not just the output): a
-                # single jnp.where still leaks NaN grad through the dead
-                # branch (#171/#172/#148). Forward values are identical
-                # to the prior np version for P_inc / P > 0.
-                P_inc = jnp.abs(F_ref[drive_idx])
-                safe_P_inc = jnp.where(
-                    P_inc > 1e-60, P_inc, jnp.ones_like(P_inc)
-                )
-                recv_col = []
-                for recv_idx in range(n_ports):
-                    recv_name = original_entries[recv_idx].name
-                    _, b_recv_dev = extract_waveguide_port_waves(
-                        dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
-                    )
-                    # AD-safe angle (double-where): angle() has an
-                    # undefined gradient at 0; angle(1)=0 matches
-                    # np.angle(0)=0 so the primal is unchanged.
-                    ratio = b_recv_dev / safe_a_inc
-                    ratio_ok = jnp.abs(ratio) > 0.0
-                    phase = jnp.angle(
-                        jnp.where(ratio_ok, ratio, jnp.ones_like(ratio))
-                    )
-                    if recv_idx == drive_idx:
-                        P_num = jnp.abs(F_ref[drive_idx] - F_dev[drive_idx])
-                    else:
-                        P_num = jnp.abs(F_dev[recv_idx])
-                    # AD-safe sqrt (double-where): a perfect match/null
-                    # makes the power ratio exactly 0, where
-                    # d(sqrt)/dx = inf would leak 0*inf=nan through the
-                    # backward pass; primal stays exactly sqrt(x) for
-                    # x>0 and exactly 0 at x=0.
-                    p_ratio = _flux_power_ratio(P_num, safe_P_inc)
-                    p_ok = p_ratio > 0.0
-                    mag = jnp.where(
-                        p_ok,
-                        jnp.sqrt(
-                            jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))
-                        ),
-                        0.0,
-                    )
-                    recv_col.append(mag * exp_j(phase, xp=jnp))
-                s_columns.append(recv_col)
-                continue
-
-            recv_col: list = []
+            recv_col = []
             for recv_idx in range(n_ports):
                 recv_name = original_entries[recv_idx].name
-                _, b_ref = extract_waveguide_port_waves(
-                    ref_wg[recv_name], ref_shift=ref_shifts[recv_idx],
-                )
-                _, b_dev = extract_waveguide_port_waves(
+                _, b_recv_dev = extract_waveguide_port_waves(
                     dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
                 )
+                # AD-safe angle (double-where): angle() has an
+                # undefined gradient at 0; angle(1)=0 matches
+                # np.angle(0)=0 so the primal is unchanged.
+                ratio = b_recv_dev / safe_a_inc
+                ratio_ok = jnp.abs(ratio) > 0.0
+                phase = jnp.angle(
+                    jnp.where(ratio_ok, ratio, jnp.ones_like(ratio))
+                )
                 if recv_idx == drive_idx:
-                    recv_col.append((b_dev - b_ref) / safe_a_inc)
+                    P_num = jnp.abs(F_ref[drive_idx] - F_dev[drive_idx])
                 else:
-                    # Use a tighter guard than the diagonal safe_a_inc
-                    # (1e-30): the NU path operates at lower float32
-                    # signal levels (~1e-31) because the TFSF table
-                    # injection scales with dt/dx. The reference
-                    # outgoing wave b_ref at non-driven ports is
-                    # proportional to the driven-port incident wave and
-                    # can fall to ~1e-31 in float32. A 1e-30 guard
-                    # fires falsely and replaces b_ref with 1.0, giving
-                    # S21 = b_dev * 1e-31 instead of b_dev/b_ref ≈ 1.
-                    # 1e-60 is safely below float32 underflow (~1e-38)
-                    # so it only fires when b_ref is genuinely zero.
-                    safe_b = jnp.where(
-                        jnp.abs(b_ref) > 1e-60,
-                        b_ref,
-                        jnp.ones_like(b_ref),
-                    )
-                    recv_col.append(b_dev / safe_b)
+                    P_num = jnp.abs(F_dev[recv_idx])
+                # AD-safe sqrt (double-where): a perfect match/null
+                # makes the power ratio exactly 0, where
+                # d(sqrt)/dx = inf would leak 0*inf=nan through the
+                # backward pass; primal stays exactly sqrt(x) for
+                # x>0 and exactly 0 at x=0.
+                p_ratio = _flux_power_ratio(P_num, safe_P_inc)
+                p_ok = p_ratio > 0.0
+                mag = jnp.where(
+                    p_ok,
+                    jnp.sqrt(
+                        jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))
+                    ),
+                    0.0,
+                )
+                recv_col.append(mag * exp_j(phase, xp=jnp))
             s_columns.append(recv_col)
-    finally:
-        self._waveguide_ports = original_entries
+            continue
+
+        recv_col: list = []
+        for recv_idx in range(n_ports):
+            recv_name = original_entries[recv_idx].name
+            _, b_ref = extract_waveguide_port_waves(
+                ref_wg[recv_name], ref_shift=ref_shifts[recv_idx],
+            )
+            _, b_dev = extract_waveguide_port_waves(
+                dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
+            )
+            if recv_idx == drive_idx:
+                recv_col.append((b_dev - b_ref) / safe_a_inc)
+            else:
+                # Use a tighter guard than the diagonal safe_a_inc
+                # (1e-30): the NU path operates at lower float32
+                # signal levels (~1e-31) because the TFSF table
+                # injection scales with dt/dx. The reference
+                # outgoing wave b_ref at non-driven ports is
+                # proportional to the driven-port incident wave and
+                # can fall to ~1e-31 in float32. A 1e-30 guard
+                # fires falsely and replaces b_ref with 1.0, giving
+                # S21 = b_dev * 1e-31 instead of b_dev/b_ref ≈ 1.
+                # 1e-60 is safely below float32 underflow (~1e-38)
+                # so it only fires when b_ref is genuinely zero.
+                safe_b = jnp.where(
+                    jnp.abs(b_ref) > 1e-60,
+                    b_ref,
+                    jnp.ones_like(b_ref),
+                )
+                recv_col.append(b_dev / safe_b)
+        s_columns.append(recv_col)
+
 
     # Issue #827 (waveguide instance): the ring-down witness now reaches
     # the NU lane -- same aggregate truncation warning and settling_db

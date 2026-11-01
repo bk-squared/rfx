@@ -8,7 +8,6 @@ magnitudes, and unprojected S.
 """
 from __future__ import annotations
 
-from types import MethodType
 
 import jax.numpy as jnp
 import numpy as np
@@ -99,8 +98,8 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
 ):
     sim, target = _case(direction)
     mode, captures = {"affine": False}, []
-    monkeypatch.setattr(sim, "_forward_from_materials",
-                        MethodType(_backend(target, direction, mode, captures), sim))
+    monkeypatch.setattr(Simulation, "_forward_from_materials",
+                        _backend(target, direction, mode, captures))
 
     def extract():
         captures.clear()
@@ -169,11 +168,11 @@ def test_strict_mixed_preflight_refuses_before_runner(monkeypatch, entry):
     assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
     calls = []
 
-    def runner(*args, **kwargs):
+    def runner(self, *args, **kwargs):
         calls.append(True)
         raise AssertionError("runner reached despite strict preflight error")
 
-    monkeypatch.setattr(sim, "_forward_from_materials", runner)
+    monkeypatch.setattr(Simulation, "_forward_from_materials", runner)
     with pytest.raises(ValueError, match="conductor sheet dimension"):
         getattr(sim, entry)(freqs=FREQS, n_steps=1, num_periods=1,
                             magnitude_channel="wave", enforce_passivity=False)

@@ -1,6 +1,6 @@
 """Sparse DFT-region contracts for MSL port extraction."""
 
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -100,7 +100,7 @@ def test_sparse_monitor_gradient_matches_full_plane():
     )
 
 
-def test_compute_msl_registers_sparse_regions():
+def test_compute_msl_registers_sparse_regions(monkeypatch):
     """The production MSL path must opt every internal plane into cropping."""
     from tests.unit.autodiff.test_msl_sparam_ad import (
         _build_thru_line_sim,
@@ -135,7 +135,7 @@ def test_compute_msl_registers_sparse_regions():
             compute_s_params=compute_s_params,
         )
 
-    sim.run = MethodType(audited_run, sim)
+    monkeypatch.setattr(type(sim), "run", audited_run)
     sim.compute_msl_s_matrix(
         n_steps=1,
         freqs=jnp.asarray([1.0e9], dtype=jnp.float32),
