@@ -1,6 +1,7 @@
 """Subgridded (SBP-SAT) run path extracted from Simulation."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx._grid_metric import field_index
 from rfx._grid_metric import nearest_uniform_index
@@ -649,7 +650,7 @@ def _run_subgridded_once(
             "the correction is not derivable here. Diagnostic only; do not "
             "report these S-parameters as physics.",
             PreDecisionLumpedDiagonalWarning,
-            stacklevel=2,
+            stacklevel=user_stacklevel(),
         )
         v_dft = result.lumped_sparam_v_dft_f
         i_dft = result.lumped_sparam_i_dft_f

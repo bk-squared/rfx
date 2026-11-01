@@ -11,6 +11,7 @@ organisation; the split is no longer load-bearing.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import warnings
@@ -77,7 +78,7 @@ def _pole_key(pole):
             f"can double-apply delta_eps on overlapping geometry"
             f".",
             AccuracyWarning,
-            stacklevel=3,
+            stacklevel=user_stacklevel(),
         )
         return id(pole)
 

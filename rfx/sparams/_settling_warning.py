@@ -1,6 +1,7 @@
 """Warnings for concrete settling verdicts and their remedies."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import numpy as np
@@ -68,5 +69,5 @@ def _warn_if_ringdown_truncated(
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
         f"record has no passing value witness.{consequence_text} {advice}"
         f"{quoted_thing} (see the result's settling_db and settling_witness fields).", AccuracyWarning,
-        stacklevel=2,
+        stacklevel=user_stacklevel(),
     )

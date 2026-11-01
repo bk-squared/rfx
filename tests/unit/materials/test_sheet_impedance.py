@@ -1165,9 +1165,9 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/_distributed_entry.py", "execute_distributed",
      "distributed multi-device forward()"):
         (__name__, "test_fence_distributed_multidevice_forward"),
-    ("rfx/api/_execute.py", "run", "ADI run()"):
+    ("rfx/runners/run.py", "run_after_admission", "ADI run()"):
         (__name__, "test_fence_adi_run"),
-    ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
+    ("rfx/runners/run.py", "run_after_admission", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
