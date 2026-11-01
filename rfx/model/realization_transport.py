@@ -1,4 +1,13 @@
 """Static JAX metadata for host realization records."""
+
+
+class GeometryMetadata:
+    """Keep execution attachments outside the historical record dictionary."""
+
+    __slots__ = ("realization_table", "_packed_record", "_conductors",
+                 "_report_grid", "_quantity_grid")
+
+
 class _Metadata:
     def __init__(self, record):
         self.record = record

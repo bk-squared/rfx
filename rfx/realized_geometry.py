@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from rfx._grid_metric import field_index
 from dataclasses import InitVar, dataclass
+from rfx.model.realization_transport import GeometryMetadata
 
 import numpy as np
 
@@ -130,7 +131,7 @@ class CellsPerWavelength:
 
 
 @dataclass(frozen=True)
-class RealizedGeometry:
+class RealizedGeometry(GeometryMetadata):
     """Immutable geometry metadata with optional build-time diagnostic arrays.
 
     ``entities`` are in geometry then thin-conductor declaration order.
@@ -188,6 +189,10 @@ class RealizedGeometry:
         kwargs.setdefault("periodic", self.periodic)
         return realized_wall_planes(self.edge_masks, axis, **kwargs)
 
+
+# The generated constructor has captured the InitVar default. Expose the
+# inherited slot so metadata stays outside both fields() and vars(record).
+del RealizedGeometry.realization_table
 
 from rfx.model.realization_transport import register_metadata
 register_metadata(RealizedGeometry)

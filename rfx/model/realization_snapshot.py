@@ -55,8 +55,17 @@ class DistributedSnapshot:
     table: object
 
     def restore(self):
+        from rfx.model.conductors import RealizedConductors
         record = replace(_unpack(self.packed), realization_table=self.table)
         object.__setattr__(record, "_report_grid", self.grid)
+        # Diagnostic arrays belong to this requested view, never to the cache.
+        view = RealizedConductors(
+            lane="nonuniform" if hasattr(self.grid, "dx_arr") else "uniform",
+            grid=self.grid, materials=record.materials, pec_cells=record.pec_mask,
+            pec_edges=record.edge_masks, sheets=record.sheets, wires=record.wires,
+            sheet_impedance=(), periodic=record.periodic, geometry_masks={},
+            mode="audit", assembly_from_sim=False, realization_table=self.table)
+        object.__setattr__(record, "_conductors", view)
         return record
 
 

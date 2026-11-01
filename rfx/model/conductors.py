@@ -433,6 +433,8 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve", n_devices=n_devices)
         refuse_dead_soft_sources(sim, root)
+    # The prepared owner survives transfer to slabs; the assembly view need not.
+    root = replace(root)
     from rfx.model.realization_table import bind_table
     bind_table(sim, root, lane=root.lane)
     if preflight is not None:
@@ -552,6 +554,10 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
     if record is not None and not _traced_product(conductors):
         from rfx.model.realization_reference import remember_kernel
         remember_kernel(sim, conductors, record)
+    if "distributed" in lane:
+        # Keep the full-domain conductor view stable while its prepared owner
+        # transfers operands to shards. This shares arrays, never reassembles.
+        return replace(conductors, _prepared_owner=conductors), record
     return conductors, record
 
 
