@@ -16,10 +16,10 @@ claim. It does three things:
    function actually guarantees: the returned dict carries ``S11``/``S21``/
    ``freqs`` and every entry is finite.
 
-   It also asserts |S11| <= 1 + 1e-2. The excess reflection came from
-   splitting E and H at different positions and times. Centring H on E
-   corrects that split. A reflection plane belongs between the source and
-   the structure; a plane on the far side reads the source's backward wave.
+   It also tests the centred split on an open, empty cell with |S11| <= 1e-2:
+   an empty cell has no physical reflection. The excess reflection came
+   from splitting E and H at different positions and times. Centring H on E
+   corrects that split. The reflection plane is on the forward side of the source.
 
 2. ``test_compute_floquet_s_params_passivity_pure_wave`` — feeds the function
    the CLEAN pure-wave accumulators it is documented to expect (a forward TE
@@ -157,7 +157,7 @@ def test_compute_floquet_s_params_real_fdtd_runs():
     input): the dict carries 'S11','freqs' (and 'S21' since a transmission
     plane is supplied) and every entry is finite.
 
-    The real drive also obeys |S11| <= 1 + 1e-2 with H centred on E.
+    The centred split on this open, empty cell obeys |S11| <= 1e-2.
     The reflection plane is on the forward side of the source.
     """
     acc_inc, acc_ref, acc_trans, freqs, dx, Lx, Ly, state = (
@@ -187,7 +187,7 @@ def test_compute_floquet_s_params_real_fdtd_runs():
     assert np.all(np.isfinite(s11)), f"non-finite S11: {s11}"
     assert np.all(np.isfinite(s21)), f"non-finite S21: {s21}"
 
-    assert np.all(np.abs(s11) <= 1 + 1e-2), f"non-passive S11: {s11}"
+    assert np.all(np.abs(s11) <= 1e-2), f"empty-cell reflection S11: {s11}"
 
     print("\n[real-FDTD drive] |S11| =", np.abs(s11))
     print("[real-FDTD drive] |S21| =", np.abs(s21))

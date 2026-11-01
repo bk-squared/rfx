@@ -116,7 +116,8 @@ def update_floquet_dft(
         below = (slice(None), port_index - 1, slice(None))
         e1 = state.ex[sl]  # (nx, nz)
         e2 = state.ez[sl]
-        h1 = (state.hx[below] + state.hx[sl]) / 2.0
+        # The tangential order (x, z) is left-handed, so negate both H components.
+        h1 = -(state.hx[below] + state.hx[sl]) / 2.0
         h2 = -(state.hz[below] + state.hz[sl]) / 2.0
 
     # Accumulate: outer product of phase vector with field plane

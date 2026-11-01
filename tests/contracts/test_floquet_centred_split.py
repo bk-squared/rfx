@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
-from rfx.core.yee import init_state, init_materials
+from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
 from rfx.errors import RfxRefusal
 from rfx.floquet import init_floquet_dft, compute_floquet_s_params
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -22,7 +22,7 @@ def _cell(scene, axis=2):
     domain = [.015] * 3
     domain[axis] = .090
     grid = Grid(
-        freq_max=10e9, domain=tuple(domain), dx=dx, cpml_layers=8,
+        freq_max=10e9, domain=tuple(domain), dx=dx, cpml_layers=16,
         cpml_axes=normal, periodic_axes=''.join(a for a in 'xyz' if a != normal),
     )
     dt = float(grid.dt)
@@ -84,12 +84,14 @@ def _cell(scene, axis=2):
 def test_empty_cell_floor():
     # Vacuum has no physical interface and therefore zero reflected amplitude.
     s11 = _cell('empty')
+    print(f'empty max |S11| = {np.max(np.abs(s11)):.9g}; bound = 0.005')
     assert np.all(np.abs(s11) <= 5e-3), np.abs(s11)
 
 
 def test_pec_total_reflection():
     # A lossless PEC sheet reflects all incident power: |Gamma| = 1.
     s11 = _cell('pec')
+    print(f'PEC max ||S11| - 1| = {np.max(np.abs(np.abs(s11) - 1)):.9g}; bound = 0.01')
     assert np.all(np.abs(np.abs(s11) - 1) <= 1e-2), np.abs(s11)
 
 
@@ -102,7 +104,36 @@ def z_slab():
 def test_slab_orientation(axis, z_slab):
     # Rotating an isotropic dielectric and its TE drive preserves complex S11.
     s11 = _cell('slab', axis)
+    print(f'{"xyz"[axis]} orientation max error = {np.max(np.abs(s11 - z_slab)):.9g}; bound = 0.001')
     assert np.all(np.abs(s11 - z_slab) <= 1e-3), np.abs(s11 - z_slab)
+
+
+@pytest.mark.parametrize('axis', [0, 1, 2], ids=['x', 'y', 'z'])
+def test_forward_wave_second_pair(axis):
+    # Maxwell's H = n cross E / eta gives the physical sign independently.
+    eta = np.sqrt(MU_0 / EPS_0)
+    speed = 1 / np.sqrt(MU_0 * EPS_0)
+    freq, dx, dt = 4e9, .0015, 1e-12
+    normal = np.eye(3)[axis]
+    e_axis = 1 if axis == 2 else 2
+    polarization = np.eye(3)[e_axis]
+    magnetic = np.cross(normal, polarization) / eta
+    position = np.indices((3, 3, 3))[axis] * dx
+    # Forward harmonic samples: E at t=0; Yee H at t=-dt/2 and x+dx/2.
+    electric_phase = np.exp(-2j * np.pi * freq * position / speed)
+    magnetic_phase = np.exp(-2j * np.pi * freq * ((position + dx / 2) / speed + dt / 2))
+    state = init_state((3, 3, 3))._replace(**{
+        **{f'e{a}': jnp.asarray(polarization[i] * electric_phase) for i, a in enumerate('xyz')},
+        **{f'h{a}': jnp.asarray(magnetic[i] * magnetic_phase) for i, a in enumerate('xyz')},
+    })
+    acc = update_floquet_dft(
+        init_floquet_dft(1, (3, 3)), state, 1, axis, jnp.array([freq]), dt, 0,
+    )
+    ratio = np.asarray(eta * acc.h_tang1_dft / acc.e_tang2_dft)
+    # Every stored pair follows the z-normal convention: eta * h1 / e2 = -1.
+    error = np.abs(ratio + 1)
+    print(f'{"xyz"[axis]} second-pair max error = {np.max(error):.9g}; bound = 0.01')
+    assert np.all(error <= 1e-2), ratio
 
 
 @pytest.mark.parametrize('axis', [0, 1, 2], ids=['x', 'y', 'z'])
