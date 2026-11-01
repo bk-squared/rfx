@@ -1105,6 +1105,14 @@ def refuse_undriven_drives(sim) -> None:
     check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
 
 
+def refuse_mixed_waveguide_sources(sim) -> None:
+    """A waveguide drive cannot share a run with lumped/wire ports or TFSF."""
+    if sim._waveguide_ports and (sim._ports or sim._tfsf):
+        raise ValueError(
+            "Waveguide ports are not supported together with lumped ports or TFSF"
+        )
+
+
 def refuse_distributed_sources(sim, lane):
     """Name sources that cannot be stepped on the requested slab lane."""
     if getattr(sim, "_waveguide_ports", ()):

@@ -204,10 +204,8 @@ def run_uniform(
         raise ValueError(
             "TFSF plane-wave source is not supported together with lumped ports"
         )
-    if sim._waveguide_ports and (sim._ports or sim._tfsf):
-        raise ValueError(
-            "Waveguide ports are not supported together with lumped ports or TFSF"
-        )
+    from rfx.runners._admission import refuse_mixed_waveguide_sources
+    refuse_mixed_waveguide_sources(sim)
     if len(sim._waveguide_ports) > 1:
         raise ValueError(
             "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
