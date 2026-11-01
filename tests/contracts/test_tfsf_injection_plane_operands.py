@@ -233,14 +233,15 @@ def test_off_plane_controls(obj):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('kind,x,smoothing', [
     ('dielectric', 6.5, True),
+    ('dielectric', 6.6, True),
     ('dielectric', 7.2, 'full_tensor'),
     ('dielectric', 7.5, 'full_tensor'),
     ('series_RL', 6.5, False),
     ('series_RL', 18.5, False),
 ])
-def test_normal_component_half_cell_admitted(entry, kind, x, smoothing):
+def test_normal_component_half_cell_admission(entry, kind, x, smoothing):
     # Review scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
-    # positions give faces +0.5/+1.2/+1.5 cells from x_lo and Ex edges
+    # positions give faces +0.5/+0.6/+1.2/+1.5 cells from x_lo and Ex edges
     # at x_lo+1/2 and x_hi+1/2; no slicing/placement helper sets these values.
     sim = scene(interior=True)
     cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
@@ -251,6 +252,12 @@ def test_normal_component_half_cell_admitted(entry, kind, x, smoothing):
     else:
         sim.add_lumped_rlc(mm(x, 6, 6), 'ex', R=10., L=1e-9)
     kwargs = {'compute_s_params': False} if entry == 'run' else {'checkpoint': False}
+    if kind == 'dielectric' and x == 6.5:
+        # The exact tie realizes its lower face at node 6, on the TFSF plane.
+        with pytest.raises(ValueError, match=r'x_lo: permittivity \(materials.eps_r\)'):
+            getattr(sim, entry)(n_steps=2, skip_preflight=True,
+                                subpixel_smoothing=smoothing, **kwargs)
+        return
     result = getattr(sim, entry)(n_steps=2, skip_preflight=True,
                                 subpixel_smoothing=smoothing, **kwargs)
     assert np.isfinite(np.asarray(result.time_series)).all()

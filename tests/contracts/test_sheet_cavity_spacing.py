@@ -740,16 +740,21 @@ def test_floor_spacing_one_percent_boundary(mesh, height, refused):
         assert "domain wall z_lo" in str(rows[0])
 
 
-def test_box_touching_off_node_lid_is_solved_open(monkeypatch):
+@pytest.mark.parametrize("top_mm", [5.5, 5.0], ids=["touching-closes", "short-stays-open"])
+def test_box_at_off_node_lid_closes_only_when_drawn_touching(monkeypatch, top_mm):
     sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM, boundary="pec", snap="declared")
     assert_declared_wall_warning(sim)
-    sim.add(Box((2 * MM, 2 * MM, 0), (17 * MM, 15 * MM, 5.5 * MM)), material="pec")
+    sim.add(Box((2 * MM, 2 * MM, 0), (17 * MM, 15 * MM, top_mm * MM)), material="pec")
     sim.add_source((MM, MM, MM), component="ez")
-    # Box upper tie 5.5 -> 5; ceil domain lid 5.5 -> 6; touching -> 1 mm.
+    if top_mm == 5.5:
+        # The declared-domain face extends to the realized 6 mm lid.
+        assert not sim.preflight().by_code(CODE)
+        return
+    # A top drawn short of the lid stays at 5 mm, leaving a real 1 mm gap.
     message = _assert_review_verdict(monkeypatch, sim, "run", "declared",
-                                    "drawn touching/overlapping, solved spacing 1mm")
+                                    "solved spacing 1mm (+100.00%)")
     assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
-    assert "domain wall z_lo" not in message  # Box bottom 0 -> 0, touching shut.
+    assert "domain wall z_lo" not in message
 
 
 @pytest.mark.parametrize("mesh", NODES)

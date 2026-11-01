@@ -26,7 +26,7 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
 from typing import NamedTuple
 
@@ -1395,6 +1395,8 @@ def compute_smoothed_eps_nonuniform(
             continue
         try:
             masks[id(shape)] = _material_fallback_mask(shape, nu_grid)
+        except RfxRefusal:
+            raise  # a refusal already names the cause and the remedy
         except Exception as exc:
             # The uniform builder calls ``shape.mask(grid)`` too, so a
             # uniform mesh is a way out only for a shape that has one.

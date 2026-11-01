@@ -1030,8 +1030,8 @@
               ],
               "realized_extent_um": 1000.0,
               "realized_um": [
-                1000.0,
-                2000.0
+                0.0,
+                1000.0
               ],
               "sub_cell": false
             }
@@ -1748,7 +1748,7 @@
         "geometry|fr4|12000.000,12000.000,16435.570um->72000.000,67000.000,17935.570um": {
           "axes": {
             "x": {
-              "cell_um": 956.666666667,
+              "cell_um": 957.580645161,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 12000.0,
@@ -1756,17 +1756,17 @@
               ],
               "face_residual_um": [
                 315.0,
-                585.0
+                315.0
               ],
-              "realized_extent_um": 60270.0,
+              "realized_extent_um": 59370.0,
               "realized_um": [
                 12315.0,
-                72585.0
+                71685.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 969.649122807,
+              "cell_um": 970.892857143,
               "declared_extent_um": 55000.0,
               "declared_um": [
                 12000.0,
@@ -1774,12 +1774,12 @@
               ],
               "face_residual_um": [
                 315.0,
-                585.0
+                315.0
               ],
-              "realized_extent_um": 55270.0,
+              "realized_extent_um": 54370.0,
               "realized_um": [
                 12315.0,
-                67585.0
+                66685.0
               ],
               "sub_cell": false
             },
@@ -1820,7 +1820,7 @@
             "name": "fr4",
             "sigma": 0.0
           },
-          "n_cells": 21546
+          "n_cells": 20832
         },
         "out-of-scope": {
           "axes": {},
@@ -2064,7 +2064,7 @@
         "geometry|sub|85000.000,85000.000,35285.492um->145000.000,145000.000,36809.492um": {
           "axes": {
             "x": {
-              "cell_um": 1954.83870968,
+              "cell_um": 1953.33333333,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
@@ -2072,17 +2072,17 @@
               ],
               "face_residual_um": [
                 700.0,
-                1300.0
+                700.0
               ],
-              "realized_extent_um": 60600.0,
+              "realized_extent_um": 58600.0,
               "realized_um": [
                 85700.0,
-                146300.0
+                144300.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 1954.83870968,
+              "cell_um": 1953.33333333,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
@@ -2090,12 +2090,12 @@
               ],
               "face_residual_um": [
                 700.0,
-                1300.0
+                700.0
               ],
-              "realized_extent_um": 60600.0,
+              "realized_extent_um": 58600.0,
               "realized_um": [
                 85700.0,
-                146300.0
+                144300.0
               ],
               "sub_cell": false
             },
@@ -2136,7 +2136,7 @@
             "name": "sub",
             "sigma": 0.000460692754792
           },
-          "n_cells": 3844
+          "n_cells": 3600
         },
         "out-of-scope": {
           "axes": {},
@@ -2713,7 +2713,7 @@
         "geometry|substrate|12750.000,12750.000,1250.000um->31250.000,21250.000,2250.000um": {
           "axes": {
             "x": {
-              "cell_um": 247.666666667,
+              "cell_um": 247.635135135,
               "declared_extent_um": 18500.0,
               "declared_um": [
                 12750.0,
@@ -2721,17 +2721,17 @@
               ],
               "face_residual_um": [
                 87.5,
-                162.5
+                87.5
               ],
-              "realized_extent_um": 18575.0,
+              "realized_extent_um": 18325.0,
               "realized_um": [
                 12837.5,
-                31412.5
+                31162.5
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 231.452702703,
+              "cell_um": 231.979166667,
               "declared_extent_um": 8500.0,
               "declared_um": [
                 12750.0,
@@ -2739,12 +2739,12 @@
               ],
               "face_residual_um": [
                 74.375,
-                138.125
+                74.375
               ],
-              "realized_extent_um": 8563.75,
+              "realized_extent_um": 8351.25,
               "realized_um": [
                 12824.375,
-                21388.125
+                21175.625
               ],
               "sub_cell": false
             },
@@ -2769,10 +2769,6 @@
           },
           "findings": [
             {
-              "axis": "x",
-              "kind": "off-lattice-face"
-            },
-            {
               "axis": "y",
               "kind": "off-lattice-face"
             }
@@ -2785,7 +2781,7 @@
             "name": "substrate",
             "sigma": 0.01
           },
-          "n_cells": 11100
+          "n_cells": 10656
         },
         "out-of-scope": {
           "axes": {},
@@ -8311,12 +8307,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8329,12 +8325,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8347,33 +8343,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 26000.0,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                26000.0
+                24000.0
               ],
               "sub_cell": false
             }
           },
           "findings": [
-            {
-              "axis": "x,y,z",
-              "kind": "inside-absorber"
-            },
-            {
-              "axis": "x",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "y",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "z",
-              "kind": "off-lattice-face"
-            },
             {
               "axis": "x,y,z",
               "kind": "clipped-by-domain"
@@ -8387,7 +8367,7 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5733
+          "n_cells": 4800
         },
         "out-of-scope": {
           "axes": {},
@@ -8525,12 +8505,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8543,12 +8523,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8561,33 +8541,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 26000.0,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                26000.0
+                24000.0
               ],
               "sub_cell": false
             }
           },
           "findings": [
-            {
-              "axis": "x,y,z",
-              "kind": "inside-absorber"
-            },
-            {
-              "axis": "x",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "y",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "z",
-              "kind": "off-lattice-face"
-            },
             {
               "axis": "x,y,z",
               "kind": "clipped-by-domain"
@@ -8601,7 +8565,7 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5733
+          "n_cells": 4800
         },
         "out-of-scope": {
           "axes": {},
