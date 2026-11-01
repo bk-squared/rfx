@@ -1290,6 +1290,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     s_params = r.get("s_params")
     freqs_out = r.get("s_param_freqs")
+    if lane == "fwd_nonuniform":
+        from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+        warn_if_singular_value_exceeds_one(s_params, freqs_out, extractor="forward(graded)")
     s_settling = None
     if scan:
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan

@@ -59,3 +59,14 @@ def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     zn1 = np.exp(-1j * wdt * n1)
     one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
     return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
+
+
+def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
+    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
+    a = np.asarray(arr)
+    if a.ndim == 1:
+        a = a[:, None]
+    if a.shape != (nf, n_ch):
+        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
+                         f"or ({nf},) for a single channel")
+    return a

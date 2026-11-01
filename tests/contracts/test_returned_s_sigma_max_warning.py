@@ -183,3 +183,170 @@ def test_tracers_are_skipped_and_conversion_errors_propagate():
     assert not seen
     with pytest.raises(ValueError, match="no host value"):
         warn_if_singular_value_exceeds_one(Unavailable(), FREQS, extractor="unavailable")
+
+
+NEW_EXITS = (
+    "coax", "coax-eager-ad", "distributed-run", "distributed-replay",
+    "distributed-graded-run", "graded-forward", "distributed-forward",
+    "distributed-graded-forward", "subgridded", "subgridded-diagnostic",
+    "ringdown-run", "ringdown-forward",
+)
+
+
+def _port_scene(*, graded=False):
+    from rfx import Simulation, GaussianPulse
+
+    sim = Simulation(freq_max=10e9, domain=(.012, .008, .008), dx=.001,
+                     boundary="pec", **({"dz_profile": np.full(8, .001)} if graded else {}))
+    sim.add_port((.004, .004, .003), "ez", impedance=50.,
+                 waveform=GaussianPulse(f0=2e9), extent=.002)
+    return sim
+
+
+def _coax_exit(monkeypatch, s, *, differentiable):
+    import rfx.simulation as simulation
+    import rfx.sources.coaxial_port as coax
+    from rfx import Simulation
+
+    sim = Simulation(domain=(.008, .008, .040), freq_max=40e9, boundary="cpml")
+    sim.add_coaxial_port((.004, .004, .020), face="top", pin_length=.005)
+    monkeypatch.setattr(simulation, "run", lambda *a, **kw: SimpleNamespace(dft_planes=kw["dft_planes"]))
+    for name in ("coaxial_line_plane_voltage", "coaxial_line_plane_voltage_jnp"):
+        monkeypatch.setattr(coax, name, lambda *a, **kw: jnp.zeros(3, dtype=complex))
+    values = iter(s)
+    monkeypatch.setattr(coax, "coaxial_line_reflection_from_plane_voltages",
+                        lambda *a, **kw: SimpleNamespace(
+                            reflection=next(values), gamma=0j, recurrence_residual=0., fit_residual=0.))
+    result = sim.compute_coaxial_line_reflection(
+        n_steps=1, freqs=FREQS, **({"eps_scale": 1.0} if differentiable else {}))
+    return result.s11
+
+
+def _new_exit(monkeypatch, exit_name, s):
+    from rfx.api._spec import Result
+
+    if exit_name.startswith("coax"):
+        return _coax_exit(monkeypatch, s, differentiable=exit_name == "coax-eager-ad")
+    if exit_name.startswith("ringdown"):
+        from rfx.ringdown import RingdownRun, RingdownForward, RingdownForwardResult
+
+        result = Result(state=None, time_series=np.zeros((2, 1)), s_params=np.zeros_like(s), freqs=FREQS)
+        cls = RingdownRun if exit_name == "ringdown-run" else RingdownForward
+        plan = object.__new__(cls)
+        plan.probe_keys, plan.n_steps = ("internal",), 2
+        if exit_name == "ringdown-run":
+            monkeypatch.setattr(plan, "_host_report", lambda *a: (s, SimpleNamespace(ok=True), None))
+            completed = plan._finish(result, 0)
+        else:
+            value = RingdownForwardResult(s, s, FREQS, None, (), result.s_params,
+                                          None, None, None, None, None)
+            monkeypatch.setattr(plan, "_traced", lambda *a: value)
+            completed = plan._finish_forward(result, 0)
+        assert completed.s_params is result.s_params
+        np.testing.assert_array_equal(completed.time_series, np.zeros((2, 0)))
+        assert completed.ringdown.s_params is s
+        return completed.ringdown.s_params
+    if exit_name.startswith("subgridded"):
+        from rfx import Simulation, GaussianPulse
+        from rfx.runners import subgridded
+
+        sim = Simulation(freq_max=10e9, domain=(.012, .012, .020), dx=.002, boundary="pec")
+        sim.add_refinement((0., .014), ratio=2, validation="research")
+        for x in (.004, .008):
+            sim.add_port((x, .006, .004), "ez", impedance=50., waveform=GaussianPulse(f0=2e9))
+        calls = []
+
+        def replay(*a, **kw):
+            calls.append(kw.get("diagnostic_lumped_sparam_driven_index_override"))
+            return Result(state=None, s_params=s, freqs=FREQS, time_series=np.zeros((1, 0)))
+
+        monkeypatch.setattr(subgridded, "_run_subgridded_once", replay)
+        diagnostic = exit_name == "subgridded-diagnostic"
+        result = sim.run(n_steps=1, compute_s_params=not diagnostic,
+                         s_param_freqs=None if diagnostic else FREQS, skip_preflight=True)
+        assert calls == ([None] if diagnostic else [None, 0, 1])
+        return result.s_params
+
+    from rfx.measurement import port_s
+    graded = "graded" in exit_name
+    sim = _port_scene(graded=graded)
+    if graded:
+        assemble = port_s.assemble_graded_ports_result
+
+        def assembled(*a, **kw):
+            result = assemble(*a, **kw)
+            result["s_params"] = s
+            result["s_param_freqs"] = FREQS
+            return result
+
+        monkeypatch.setattr(port_s, "assemble_graded_ports_result", assembled)
+    elif exit_name == "distributed-replay":
+        from rfx.probes import sparam_driver
+        monkeypatch.setattr(port_s, "main_record_port_s", lambda *a, **kw: None)
+        monkeypatch.setattr(sparam_driver, "compute_lumped_wire_s_matrix_via_scan",
+                            lambda *a, **kw: (s, None))
+    else:
+        monkeypatch.setattr(port_s, "port_s_from_record", lambda *a, **kw: s)
+    options = dict(n_steps=1, skip_preflight=True)
+    if exit_name.startswith("distributed"):
+        options["devices"] = jax.devices("cpu")[:2]
+        assert len(options["devices"]) == 2
+    if "forward" in exit_name:
+        result = sim.forward(**options, port_s11_freqs=FREQS,
+                             distributed=exit_name.startswith("distributed"), checkpoint=False)
+    else:
+        result = sim.run(**options, compute_s_params=True, s_param_freqs=FREQS)
+    return result.s_params
+
+
+@pytest.mark.parametrize("exit_name", NEW_EXITS)
+@pytest.mark.parametrize("peak, expected_count", [(1.02, 1), (1.005, 0)])
+def test_new_returned_s_exits(monkeypatch, exit_name, peak, expected_count):
+    s = np.array([1.005, peak, 1.005], dtype=complex) if exit_name.startswith("coax") else _matrix(peak)
+    before = s.copy()
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        returned = _new_exit(monkeypatch, exit_name, s)
+    notices = [w for w in seen if "worst sigma_max" in str(w.message)]
+    assert len(notices) == expected_count
+    if notices:
+        assert notices[0].category is AccuracyWarning
+        assert "1 of 3 frequency bins" in str(notices[0].message)
+        assert "sigma_max = 1.02" in str(notices[0].message)
+        assert "at 2 GHz" in str(notices[0].message)
+    # Some lanes publish complex64; these exactly represent the input after casting.
+    np.testing.assert_array_equal(returned, before.astype(np.asarray(returned).dtype))
+    np.testing.assert_array_equal(s, before)
+
+
+@pytest.mark.parametrize("exit_name", ["finalize", "mixed", "lumped"] + [
+    name for name in NEW_EXITS if not name.startswith("coax")])
+@pytest.mark.parametrize("peak, expected_count", [(1.04, 1), (1.005, 0)])
+def test_no_finite_column_exits(monkeypatch, exit_name, peak, expected_count):
+    # Every column contains NaN; the final bin has no finite entry at all.
+    s = np.array([[[np.nan, np.nan, np.nan], [1.005, peak * 1j, np.nan]],
+                  [[0.2, 0.2, np.nan], [np.nan, np.nan, np.nan]]])
+    before = s.copy()
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        if exit_name == "finalize":
+            result = SimpleNamespace(s_params=s, freqs=FREQS, port_names=("a", "b"))
+            assert _finalize_sparam_result(result, extractor="contract", strict=False) is result
+            returned = result.s_params
+        elif exit_name == "mixed":
+            returned = _mixed_exit(monkeypatch, s).S
+        elif exit_name == "lumped":
+            warn_if_nonpassive_lumped_s11(s, FREQS, extractor="contract")
+            returned = s
+        else:
+            returned = _new_exit(monkeypatch, exit_name, s)
+    notices = [w for w in seen if "worst sigma_max" in str(w.message)]
+    assert len(notices) == expected_count
+    if notices:
+        assert notices[0].category is AccuracyWarning
+        message = str(notices[0].message)
+        assert "1 of 3 frequency bins" in message
+        assert "sigma_max = 1.04" in message and "at 2 GHz" in message
+        assert "lower bound from the finite columns" in message
+    np.testing.assert_array_equal(returned, before.astype(np.asarray(returned).dtype))
+    np.testing.assert_array_equal(s, before)

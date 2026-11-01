@@ -344,6 +344,9 @@ def forward_from_materials(
         **kwargs,
     )
     from rfx.api._forward_result import pack_nu_forward_result
+    from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+    warn_if_singular_value_exceeds_one(
+        result.get('s_params'), result.get('s_param_freqs'), extractor="forward(distributed graded)")
     return pack_nu_forward_result(
         diagnostics=result.get('diagnostics', diagnostics),
         time_series=result.get('time_series'), grid=grid, dt=grid.dt,

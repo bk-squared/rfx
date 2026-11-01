@@ -17,6 +17,7 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
     A diagonal-only array gives a lower bound, not the full matrix norm.
     Observed columns likewise give a lower bound when drives are missing.
     A bin with non-finite columns is judged on its remaining finite columns.
+    Without a finite column, its largest finite entry supplies a lower bound.
     Tracers are skipped; a host conversion error propagates.
     """
     if is_tracer(s_params) or is_tracer(freqs):
@@ -36,6 +37,8 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
             if np.any(keep):
                 sig = np.linalg.svd(matrix[:, keep].astype(np.complex128), compute_uv=False)
                 excess[k] = max(float(sig[0]) - 1.0, 0.0)
+            elif np.any(np.isfinite(matrix)):
+                excess[k] = float(np.max(np.abs(matrix[np.isfinite(matrix)]))) - 1.0
         if s.shape[0] != s.shape[1]:
             lower_bound = " (observed-column lower bound of sigma_max)"
     elif s.ndim in (1, 2):
