@@ -14,6 +14,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from rfx.measurement.plane_records import update_plane_records
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -459,9 +461,8 @@ def make_graded_step(
     def finish(frame: GradedFrame):
         new_carry = {"fdtd": frame.st}
         if "dft_time_records" in frame.carry:
-            new_carry["dft_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
-                for record, sample in zip(frame.carry["dft_time_records"], frame.plane_samples))
+            new_carry["dft_time_records"] = update_plane_records(
+                frame.carry["dft_time_records"], frame.plane_samples, frame.step_idx)
         if "sparam_time_records" in frame.carry:
             assert len(frame.carry["sparam_time_records"]) == len(frame.port_samples)
             new_carry["sparam_time_records"] = tuple(
