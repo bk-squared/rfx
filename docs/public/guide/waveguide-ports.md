@@ -62,7 +62,7 @@ see the same grid.
 | `normalize` | Runs | What it corrects | Use it for |
 |---|---|---|---|
 | `False` (default) | one per port | nothing; magnitudes carry a few-percent Yee impedance error | \|S11\| of strong reflectors (shorts, high-Q loads) on a uniform mesh |
-| `True` | two per port | the empty guide's own reflection at the driven port, subtracted from S11; the incident wave taken from the reference run | a matrix at the declared planes when no gradient is needed |
+| `True` | two per port | the empty guide's own reflection at the driven port (subtracted from the driven port's diagonal entry), and device reflection leaking into the incident wave (taken from the reference run) | modal S with the empty guide's port reflection removed, when no gradient is needed. Not for \|S11\| of strong reflectors (use `False`). |
 | `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; recommended on a graded mesh (`normalize=False` is refused there) |
 
 `normalize=True` divides every entry by the incident wave of an empty-guide
