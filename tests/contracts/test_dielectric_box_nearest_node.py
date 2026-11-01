@@ -603,3 +603,18 @@ def test_two_d_collapsed_axis_holds_the_slab_whatever_its_drawn_height(z):
     sim.add(Box((2 * DX, 2 * DX, z[0]), (6 * DX, 6 * DX, z[1])), material='d')
     eps = np.asarray(assemble_cells(sim, sim._build_grid())[0].eps_r)
     assert eps.shape[2] == 1 and int((eps == 4.).sum()) == 16   # x, y nodes 2..6: 4 x 4 cells
+
+
+@pytest.mark.parametrize('top', [5.2, 5.4], ids=['sliver-below-fine-centre', 'sliver-holding-fine-centre'])
+def test_body_crossing_a_refinement_boundary_is_held_by_the_coarse_grid(top):
+    # The fine region starts at z = 5 mm (first fine centre 5.25 mm). A substrate held
+    # by the coarse grid reaches a fraction of a fine cell into the
+    # refinement region: the fine grid holds only that sliver (none below a fine centre),
+    # which is not a zero-cell body.
+    sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
+    sim.add_material('sub', eps_r=4.)
+    sim.add(Box((0, 0, 0), (12 * DX, 12 * DX, top * DX)), material='sub')
+    sim.add_refinement((5 * DX, 9 * DX), ratio=2, validation='research')
+    sim.add_source((6 * DX, 6 * DX, 6 * DX), 'ez', amplitude_kind='current')
+    sim.add_probe((6.5 * DX, 6 * DX, 6 * DX), 'ez')
+    sim.run(n_steps=2, skip_preflight=True)

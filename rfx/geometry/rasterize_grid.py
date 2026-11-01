@@ -1128,7 +1128,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             if subcell:
                 _refuse_subcell(subcell, shape, name)
         mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
-        if (not traced and (not sub_region or _overlaps_cells(shape, centres, cell_sizes))
+        if (not traced and (not sub_region or _inside_cells(shape, centres, cell_sizes))
                 and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces)):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
@@ -1184,13 +1184,14 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     return mask, None, None
 
 
-def _overlaps_cells(shape, centres, cell_sizes) -> bool:
-    """Whether a shape's drawing reaches the cells sampled here (a sub-region such as a
-    refinement region holds no cell of a body drawn wholly outside it; that is not a zero-cell body)."""
+def _inside_cells(shape, centres, cell_sizes) -> bool:
+    """Whether a shape is drawn wholly inside the cells sampled here. A refinement region
+    holds only part of a body that crosses its boundary (or none of one outside it); the
+    coarse grid holds that body and refuses it there if it owns no cell at all."""
     box = getattr(shape, "bounding_box", lambda: None)()
     if box is None or _is_traced_coords(centres):
         return True
-    return all(float(lo) < float(c[-1] + w[-1] / 2) and float(hi) > float(c[0] - w[0] / 2)
+    return all(float(lo) >= float(c[0] - w[0] / 2) and float(hi) <= float(c[-1] + w[-1] / 2)
                for lo, hi, c, w in zip(box[0], box[1], centres[:3], cell_sizes))
 
 
@@ -1289,7 +1290,7 @@ def rasterize_geometry(
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
-        refuse = mat.sigma < pec_sigma_threshold and (not sub_region or _overlaps_cells(entry.shape, centres, cell_sizes))
+        refuse = mat.sigma < pec_sigma_threshold and (not sub_region or _inside_cells(entry.shape, centres, cell_sizes))
         mask = _material_cell_mask(entry.shape, coords, centres,
                                    grid=grid if getattr(grid, 'periodic_axes', '') else None,
                                    cell_sizes=cell_sizes, domain_faces=domain_faces,
