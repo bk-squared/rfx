@@ -2,6 +2,7 @@
 import contextlib
 import contextvars
 import functools
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -62,12 +63,12 @@ def compile_time_switch():
     is turned off. A JAX that fails the probe in any way (the declared
     0.4.20 floor implements the region differently) gets ``None``, and
     :func:`recorded_scan` uses its fallback. Every plain ``run()`` reaches
-    this probe, so no exception it raises may escape.
+    this probe, so probe failures warn and return None; timeout signals still escape.
     """
     try:
         from jax._src import config as _config
         switch = _config.eager_constant_folding
-    except Exception:
+    except (ImportError, AttributeError):
         return None
     seen = []
 
@@ -81,7 +82,10 @@ def compile_time_switch():
 
     try:
         jax.make_jaxpr(probe)()
-    except Exception:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in warning message
+        warnings.warn(f"compile_time_switch probe failed: {type(exc).__name__}: {exc}",
+                      RuntimeWarning, stacklevel=2)
         return None
     return switch if seen == [True] else None
 

@@ -56,7 +56,8 @@ def _version_of(dist: str) -> str:
     """Best-effort installed-distribution version string ("?" if unknown)."""
     try:
         return metadata.version(dist)
-    except Exception:
+    except (TimeoutError,): raise
+    except (ImportError, OSError):
         return "?"
 
 
@@ -91,7 +92,8 @@ def _check_rfx_import(report: _Report) -> None:
             f"rfx {version} (from {location})",
             critical=True,
         )
-    except Exception as exc:  # pragma: no cover - exercised via monkeypatch
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
         report.record(
             FAIL,
             "import rfx",
@@ -114,7 +116,8 @@ def _check_jax(report: _Report) -> None:
             f"jax {jax_v}, jaxlib {jaxlib_v}",
             critical=True,
         )
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
         report.record(
             FAIL,
             "jax / jaxlib",
@@ -144,7 +147,8 @@ def _check_jax(report: _Report) -> None:
                 f"(not a failure)",
                 critical=False,
             )
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
         report.record(
             WARN,
             "jax backend",
@@ -167,7 +171,8 @@ def _check_jax(report: _Report) -> None:
                 "jax.config.update('jax_enable_x64', True)",
                 critical=False,
             )
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
         report.record(WARN, "jax x64", f"could not read config: {exc!r}", critical=False)
 
 
@@ -189,7 +194,8 @@ def _check_core_deps(report: _Report) -> None:
                 _version_of(dist_name),
                 critical=True,
             )
-        except Exception as exc:
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in report.lines
             report.record(
                 FAIL,
                 f"core dep {import_name}",
@@ -216,7 +222,8 @@ def _check_optional_extras(report: _Report) -> None:
                 f"{_version_of(dist_name)} ({purpose})",
                 critical=False,
             )
-        except Exception:
+        except (TimeoutError,): raise
+        except Exception:  # noqa: BLE001 - recorded in report.lines
             report.record(
                 INFO,
                 f"optional {dist_name}",
@@ -278,7 +285,8 @@ def _check_smoke(report: _Report) -> None:
                 "probe time series contained NaN/Inf — the run diverged",
                 critical=True,
             )
-    except Exception as exc:  # pragma: no cover - exercised via monkeypatch
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
         report.record(
             FAIL,
             "FDTD smoke run",

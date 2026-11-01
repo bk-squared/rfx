@@ -148,13 +148,14 @@ def invariant(value, axis, shape):
         # is known. Inspect that realized value without changing its trace.
         while hasattr(array, "primal"):
             array = array.primal
+        from rfx.core.jax_utils import is_tracer
+        if is_tracer(array):
+            unjudged = name
+            continue
         try:
             host = np.asarray(array)
-        except Exception as exc:
-            from jax.errors import TracerArrayConversionError
-            if isinstance(exc, TracerArrayConversionError):
-                unjudged = name
-                continue
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in invariance reason
             return False, f"{name} ({type(exc).__name__}: invariance unavailable)"
         host = _without_duplicated_end_edge(name, host, axis, index)
         first = np.take(host, [0], axis=index)

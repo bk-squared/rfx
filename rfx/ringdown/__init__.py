@@ -1325,9 +1325,9 @@ class RingdownRun:
             we_value, we_note = we.value, ""
             state["long_rank"] = we.model_long.rank
             state["long_n_kept"] = int(we.model_long.s.size)
-        except Exception as exc:  # the completed S already exists: never lose it here
-            we_value = math.nan
-            we_note = (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in RingdownWitness.note
+            we_value, we_note = math.nan, (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
                        "a WE that cannot be read fails")
         return [
             RingdownWitness("WE", we_value, tol, we_value <= tol, we_rule, we_note),
@@ -1700,9 +1700,9 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
     note = ""
     try:
         we = early_start_witness(Y, dt, f_bins, n_record, spec.window_start,
-                                 observable=observable, plain=plain,
-                                 spectra=spectra, **kw).value
-    except Exception as exc:  # a WE that cannot be read fails, as in the report
+                                 observable=observable, plain=plain, spectra=spectra, **kw).value
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in note
         we, note = math.nan, (f"the identification on "
                               f"[{0.5 * spec.window_start:g} T, T] failed: {exc}")
     record_s = n_record * dt

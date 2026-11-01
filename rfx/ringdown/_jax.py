@@ -148,7 +148,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
             s = np.asarray(identify_window(w), dtype=np.complex128).ravel()
         except IdentificationMemoryRefused:
             raise
-        except Exception:  # noqa: BLE001  (reported by the host report, not here)
+        except (TimeoutError,): raise
+        except Exception:  # noqa: BLE001 - recorded in status (STATUS_FAILED)
             s, status = np.zeros(0, dtype=np.complex128), STATUS_FAILED
         count = -1 if status == STATUS_FAILED else s.size
         if s.size > K:

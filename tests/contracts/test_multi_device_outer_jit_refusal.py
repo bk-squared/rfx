@@ -159,6 +159,14 @@ def test_T6_probe_uncertainty_refuses(monkeypatch):
     assert rank._staged_by_enclosing_program() is True
 
 
+def test_T6_probe_lets_a_timeout_through(monkeypatch):
+    def timed_out(*args):
+        raise TimeoutError("run budget")
+    monkeypatch.setattr(rank, "jax", SimpleNamespace(lax=SimpleNamespace(add=timed_out)))
+    with pytest.raises(TimeoutError):
+        rank._staged_by_enclosing_program()
+
+
 def test_T6_single_device_never_refused(devices, pretend_gpu):
     mesh = jax.sharding.Mesh(np.asarray(devices[:1]), ("x",))
     finite(jax.jit(lambda: rank.mesh_ranks(mesh))())

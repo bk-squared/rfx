@@ -33,6 +33,23 @@ def test_diagnose_passes_in_this_environment(capsys):
     assert "All critical checks passed" in out
 
 
+def test_diagnose_missing_optional_package_preserves_success_text(monkeypatch, capsys):
+    real_import = diagnostics.importlib.import_module
+
+    def missing_optax(name, *args, **kwargs):
+        if name == "optax":
+            raise ImportError("simulated missing optax")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(diagnostics.importlib, "import_module", missing_optax)
+    assert diagnostics.main([]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [line for line in lines if "optional optax:" in line] == [
+        "  [INFO] optional optax: not installed (optional example optimizers; topology_optimize needs no optax) — install only if needed"
+    ]
+    assert "All critical checks passed" in "\n".join(lines)
+
+
 def test_diagnose_critical_failure_returns_nonzero_without_traceback(
     monkeypatch, capsys
 ):

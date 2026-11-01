@@ -104,10 +104,7 @@ def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
     """
     if self._boundary not in ("cpml", "upml"):
         return
-    try:
-        from rfx.api._spec import MATERIAL_LIBRARY
-    except Exception:
-        MATERIAL_LIBRARY = {}
+    from rfx.api._spec import MATERIAL_LIBRARY
 
     def _resolve(name):
         mspec = self._materials.get(name) if self._materials else None

@@ -197,7 +197,8 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
             ctx = sim._campaign_ctx()
             if not skip_preflight:
                 root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
-        except Exception as exc:
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in stamp_check_findings
             root = replace(root, stamp_check_findings=root.stamp_check_findings + (
                 ('read-failed', (type(exc).__name__, str(exc))),))
         if ctx is not None:

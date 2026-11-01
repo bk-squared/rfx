@@ -106,6 +106,9 @@ def _is_array_like(value: Any) -> bool:
 
 
 def _scalar(value: Any) -> Any:
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(value):
+        return value
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     if isinstance(value, _np.generic):
@@ -115,18 +118,20 @@ def _scalar(value: Any) -> Any:
             item = value.item()
             if item is not value:
                 return _scalar(item)
-    except Exception:
+    except (TimeoutError,): raise
+    except Exception:  # noqa: BLE001 - type dispatch: falls through to _array_summary
         pass
     return value
 
 
 def _safe_float(value: Any) -> float | None:
     value = _scalar(value)
-    if value is None:
+    from rfx.core.jax_utils import is_tracer
+    if value is None or is_tracer(value):
         return None
     try:
         return float(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -137,6 +142,7 @@ def _jsonable(value: Any, *, array_values: bool = False, max_array_values: int =
     fields.  Small explicit coordinate-like arrays can opt into values.
     """
 
+    from rfx.core.jax_utils import is_tracer
     value = _scalar(value)
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
@@ -150,22 +156,26 @@ def _jsonable(value: Any, *, array_values: bool = False, max_array_values: int =
         return [_jsonable(v, array_values=array_values, max_array_values=max_array_values) for v in value]
     if _is_array_like(value):
         size = int(getattr(value, "size", 0) or 0)
-        if array_values and size <= max_array_values:
+        if array_values and size <= max_array_values and not is_tracer(value):
             try:
                 return _np.asarray(value).tolist()
-            except Exception:
+            except (TypeError, ValueError):
                 pass
         return _array_summary(value)
     if hasattr(value, "to_dict") and callable(value.to_dict):
         try:
             return _jsonable(value.to_dict())
-        except Exception:
-            pass
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in error
+            return {"type": type(value).__name__, "repr": repr(value),
+                    "error": f"{type(exc).__name__}: {exc}"}
     if hasattr(value, "_asdict") and callable(value._asdict):
         try:
             return _jsonable(value._asdict())
-        except Exception:
-            pass
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in error
+            return {"type": type(value).__name__, "repr": repr(value),
+                    "error": f"{type(exc).__name__}: {exc}"}
     # Record object identity without chasing arbitrary private state.
     return {"type": type(value).__name__, "repr": repr(value)}
 
@@ -179,11 +189,16 @@ def _array_summary(value: Any, *, include_peak: bool = False) -> dict[str, Any]:
         "dtype": str(getattr(value, "dtype", type(value).__name__)),
         "size": int(getattr(value, "size", 0) or 0),
     }
+    from rfx.core.jax_utils import is_tracer
+    if include_peak and is_tracer(value):
+        summary["peak_error"] = "traced value: peak unavailable"
+        return summary
     if include_peak:
         try:
             arr = _np.asarray(value)
             summary["peak"] = float(_np.max(_np.abs(arr))) if arr.size else 0.0
-        except Exception as exc:  # pragma: no cover - depends on result backend
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in peak_error
             summary["peak_error"] = str(exc)
     return summary
 
@@ -193,7 +208,7 @@ def _sequence_summary(value: Any) -> dict[str, Any]:
         return {"present": False, "count": 0}
     try:
         return {"present": True, "count": len(value)}
-    except Exception:
+    except TypeError:
         return {"present": True, "count": None, "type": type(value).__name__}
 
 
@@ -202,6 +217,9 @@ def _profile_summary(profile: Any) -> dict[str, Any]:
         return {"present": False, "count": 0}
     out = _array_summary(profile)
     out["count"] = out.get("shape", [0])[0] if out.get("shape") else out.get("size", 0)
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(profile):
+        return out
     try:
         arr = _np.asarray(profile, dtype=float)
         if arr.size:
@@ -210,7 +228,7 @@ def _profile_summary(profile: Any) -> dict[str, Any]:
                 "max": float(_np.max(arr)),
                 "sum": float(_np.sum(arr)),
             })
-    except Exception:
+    except (TypeError, ValueError):
         pass
     return out
 
@@ -259,7 +277,8 @@ def _bbox(shape: Any) -> list[list[Any]] | None:
     try:
         lo, hi = shape.bounding_box()
         return [_jsonable(lo, array_values=True), _jsonable(hi, array_values=True)]
-    except Exception as exc:  # pragma: no cover - shape-dependent
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in bounding_box
         return [["error", str(exc)]]
 
 
@@ -406,7 +425,7 @@ def _grid_shape(grid: Any) -> list[int] | None:
     if shape is not None:
         try:
             return [int(x) for x in shape]
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             pass
     dims = [getattr(grid, axis, None) for axis in ("nx", "ny", "nz")]
     if all(dim is not None for dim in dims):
@@ -443,7 +462,8 @@ def _mesh_summary(sim: Any, *, n_steps: int | None, available_memory_gb: float |
             "dx": _safe_float(getattr(grid, "dx", getattr(sim, "_dx", None))),
             "dt": _safe_float(getattr(grid, "dt", None)),
         })
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in mesh.error
         mesh["error"] = f"{type(exc).__name__}: {exc}"
 
     if hasattr(sim, "mesh_intelligence_report"):
@@ -454,7 +474,8 @@ def _mesh_summary(sim: Any, *, n_steps: int | None, available_memory_gb: float |
             audit = sim.mesh_intelligence_report(**kwargs)
             mesh["audit"] = _jsonable(audit.to_dict() if hasattr(audit, "to_dict") else audit)
             mesh["audit"]["status"] = "available"
-        except Exception as exc:
+        except (TimeoutError,): raise
+        except Exception as exc:  # noqa: BLE001 - recorded in mesh.audit.error
             mesh["audit"] = {"status": "unavailable", "error": f"{type(exc).__name__}: {exc}"}
     return mesh
 
@@ -482,7 +503,8 @@ def _preflight_summary(sim: Any, *, n_steps: int | None, available_memory_gb: fl
             "warnings_source": "Simulation.preflight(strict=False) captured host-side",
             "stdout": [line for line in stdout.getvalue().splitlines() if line.strip()],
         }
-    except Exception as exc:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in issues
         return {
             "status": "error",
             "issues": [f"{type(exc).__name__}: {exc}"],
@@ -506,6 +528,9 @@ def _freq_summary(freqs: Any) -> dict[str, Any] | None:
     if freqs is None:
         return None
     out = _array_summary(freqs)
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(freqs):
+        return out
     try:
         arr = _np.asarray(freqs, dtype=float)
         out.update({
@@ -513,7 +538,7 @@ def _freq_summary(freqs: Any) -> dict[str, Any] | None:
             "min": float(_np.min(arr)) if arr.size else None,
             "max": float(_np.max(arr)) if arr.size else None,
         })
-    except Exception:
+    except (TypeError, ValueError):
         pass
     return out
 
@@ -576,7 +601,8 @@ def _git(args: list[str], *, cwd: Path) -> str | None:
             check=False,
             timeout=2,
         )
-    except Exception:
+    except (TimeoutError,): raise
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
         return None
     if proc.returncode != 0:
         return None
