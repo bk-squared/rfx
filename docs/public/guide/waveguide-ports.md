@@ -221,7 +221,14 @@ than running it into the absorber.
 ## Gradients and memory
 
 `compute_waveguide_s_matrix` accepts `eps_override=` / `sigma_override=` for
-differentiation with `normalize=False` or `"flux"`, single-mode only. For
+differentiation with `normalize=False` or `"flux"`, single-mode only. On a
+graded mesh, `normalize="flux"` also differentiates S with respect to the widths
+of a declared window of x cells, `nominal_profiles={"x": NominalProfile(cells,
+traced_cells=(i0, i1))}`: the window's cells grow and the air cells after it
+shrink by the same total, so both port planes stay fixed. Traced y or z widths,
+a window touching a port's planes or the absorber, a window whose total width
+changes, and `run()` or `forward()` with a waveguide port on a traced mesh are
+refused. For
 long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
 On a uniform mesh `K` must divide the number of time steps exactly; on a
 graded mesh it is a target segment count.

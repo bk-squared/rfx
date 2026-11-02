@@ -125,6 +125,9 @@ conductor drawn to an absorbing face continues into the absorber as on a
 concrete mesh, decided on `nominal_profiles` for that axis. A run whose mesh
 changes the outermost absorber layer the conductor occupies is refused:
 re-declare `nominal_profiles` at the current design or keep the axis concrete.
+On a traced axis with an absorber, every conductor with a finite extent on that
+axis needs `nominal_profiles` for the axis, even one clear of every face;
+without it the run is refused before stepping.
 
 Ports, probes and sources given in metres on a traced axis need the concrete
 cell widths at the point being differentiated:

@@ -138,7 +138,7 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 | An input a solver path does not implement (a lumped element, refinement, port, material or control on a path that cannot solve it) | The message names the path that can. Most often: run on one device, or on a uniform mesh. |
 | `precision="float64"` without JAX 64-bit mode | Build and run the model inside `with jax.enable_x64():`. |
 | `jax.jit` around a run on two or more GPUs | Call it without `jax.jit`, or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`. |
-| ADI with an absorbing boundary, a material interface, or a source without `amplitude_kind` | Use `solver="yee"` for open structures and material interfaces; ADI runs only closed (`boundary="pec"`), homogeneously filled cavities, with `amplitude_kind="field"`. |
+| `solver="adi"` | Removed. Use `solver="yee"`, on a graded mesh for thin layers. |
 | `mode="2d_tez"` on a graded mesh, or `mode="2d_tmz"` on more than one z cell between PEC walls | `mode="3d"`, an explicit uniform `dx=`, or the z cell count between walls the message gives. |
 
 **Preflight reports**
