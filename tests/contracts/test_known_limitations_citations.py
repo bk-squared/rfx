@@ -69,9 +69,8 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # #1381 left on 2026-09-30: closed as a stated limit by PI decision (both the
 # completion of an unresolved pair and the early stop it can end). The two ring-down
 # entries stay as standing limitations, with 1381 in RESOLVED_REFERENCES.
-# #1230 replaces #801 on 2026-09-23 for the part PR #1178 does not fix: with a
-# traced mesh axis no conductor is continued into the absorber. #801 is closed;
-# the residual is tracked by #1230.
+# The traced-mesh conductor entry leaves with nominal-grid continuation,
+# pinned by test_traced_mesh_conductor_matches_concrete.py.
 # #1181 left on 2026-09-23: the truncated-record gradient limitation remains,
 # and the witness in PR #1186 is opt-in. Both closed numbers are provenance
 # in RESOLVED_REFERENCES, not arrows to open work.
@@ -104,7 +103,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # pulse is declared) joined on 2026-10-17; OPEN, checked with
 # `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
 # #1812 left with the declared-pulse fix and its always-on contract pins.
-CITED_ISSUES = frozenset({737, 1230, 1373, 1512, 2086, 2150})
+CITED_ISSUES = frozenset({737, 1373, 1512, 2086, 2150})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
