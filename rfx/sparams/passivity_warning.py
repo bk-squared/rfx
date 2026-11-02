@@ -6,6 +6,7 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.errors import AccuracyWarning
+from rfx._warning_origin import user_stacklevel
 
 
 TOL = 1e-2
@@ -65,7 +66,7 @@ def warn_if_singular_value_exceeds_one(s_params, freqs, *, extractor: str) -> No
         "A passive structure cannot scatter more power than it receives, "
         "so these bins are an extraction or record artifact.",
         AccuracyWarning,
-        stacklevel=2,
+        stacklevel=user_stacklevel(),
     )
 
 
@@ -122,5 +123,5 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
         f"wave is weak (spectral band edges). Do not trust or optimize against "
         f"these bins — restrict the band to where the source has energy, or use "
         f"run() for a passive analysis curve.", AccuracyWarning,
-        stacklevel=3,
+        stacklevel=user_stacklevel(),
     )

@@ -17,7 +17,7 @@ the method body) — do not hoist it to module scope.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning; from rfx._warning_origin import user_stacklevel  # noqa: E702
 from rfx.sources.tfsf_discrete_plane_wave import _TFSFEntry
 
 from dataclasses import dataclass
@@ -513,7 +513,7 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
 
     _w.warn(
         f"[{context}] result contains non-finite values in {detail} — {_NONFINITE_CAUSE_HINT}",
-        AccuracyWarning, stacklevel=3,
+        AccuracyWarning, stacklevel=user_stacklevel(),
     )
 
 
@@ -1239,10 +1239,8 @@ class WaveguideSMatrixResult(NamedTuple):
     is not a single-mode two-port, a traced AD run, two ports with different
     discrete cutoffs or on different axes, a band whose every bin fell
     below the weak-signal phase mask
-    (``rfx.api._sparams.WAVEGUIDE_PHASE_MAG_FLOOR``), or a ``normalize=True``
-    lane, whose S21 has the empty-guide reference's propagation phase
-    divided out so the residual is not defined there (``normalize="flux"``
-    and ``normalize=False`` keep it).
+    (``rfx.api._sparams.WAVEGUIDE_PHASE_MAG_FLOOR``). All normalization
+    lanes retain propagation phase and report this residual.
     ``s21_phase_residual_meta`` always carries ``beta_convention``,
     ``f_cutoff_hz``, ``L_m``, ``n_bins``, ``masked_bins`` and ``normalize``
     (the lane the number was read under), plus a ``reason`` when the value

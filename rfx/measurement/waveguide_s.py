@@ -5,6 +5,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
 from rfx.boundaries.axes import resolve_cpml_axes
+from rfx.core.jax_utils import is_tracer
 from rfx.model.waveguide_modes import (
     port_light_speed,
     WaveguidePortConfig,
@@ -14,6 +15,182 @@ from rfx.model.waveguide_modes import (
 from rfx.measurement.settling import (
     settling_db_from_port_records,
 )
+
+
+# Weak-signal phase mask: bins whose |S21| falls below this carry no usable
+# phase and are excluded from the residual below. Same VALUE and same meaning
+# as the repo's other phase masks — crossval 11's ``phase_mag_floor=0.30`` and
+# ``scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py``'s
+# ``PHASE_MAG_FLOOR`` — an ABSOLUTE floor on the 0..1 |S| scale, not a fraction
+# of the band peak. It lives here because the library must not import a
+# diagnostics script; the two are pinned equal by
+# ``tests/unit/sparams/test_waveguide_s21_phase_residual.py``.
+WAVEGUIDE_PHASE_MAG_FLOOR = 0.30
+
+# The one string naming the beta this residual is measured against, carried on
+# the result so a reader never has to guess which convention produced it.
+WAVEGUIDE_PHASE_BETA_CONVENTION = "yee_discrete_at_port_f_cutoff"
+
+
+def s21_phase_residual_deg_rms(
+    s_params,
+    freqs,
+    *,
+    f_cutoff_hz: float,
+    dt: float,
+    dx: float,
+    length_m: float,
+    mag_floor: float = WAVEGUIDE_PHASE_MAG_FLOOR, medium=None,
+):
+    """RMS of ``wrap(angle(S21) + beta(f) * L)`` over the measured bins, degrees.
+
+    Defined for an EMPTY or matched guide between the two reference planes:
+    a device between them adds its own transmission phase to ``angle(S21)``,
+    and this number then measures the device against ``-beta*L``, not the
+    port. It also needs the modal phase intact -- ``normalize=True`` divides
+    the reference run's propagation phase out of S21 and is refused upstream.
+
+    The discretization witness for the waveguide port (#894). On the empty
+    matched WR-90 guide the |S11| magnitude near cutoff carries a
+    dx-independent term set by whether the far-boundary round trip fits inside
+    the DFT record, so an order fitted to it is a clipping artefact. This phase
+    residual does not pass through the absorber at all: measured invariant to
+    absorber thickness (3x), record length (2.5x) and precision, and second
+    order in dx at every band down to ``f/f_c = 1.010``
+    (``tests/fixtures/waveguide_vi_envelope/s21_phase_residual_witness.json``).
+    That is what makes it able to answer "is the port the problem?" when a
+    reflection number looks wrong.
+
+    ``beta`` is the EXTRACTOR'S OWN: ``_compute_beta`` at the port config's
+    discrete ``f_cutoff``, ``dt`` and ``dx`` — the same call
+    ``_shift_modal_waves`` uses to move a wave between reference planes. A
+    continuous-medium ``sqrt(k^2 - kc^2)`` would fold the Yee dispersion of the
+    grid into the residual and stop it being a statement about the port.
+
+    ``length_m`` is the de-embedded separation of the two reference planes
+    along the propagation axis, read off the result's ``reference_planes``.
+
+    Bins whose ``|S21|`` falls below ``mag_floor`` carry no usable phase and
+    are dropped from the RMS; ``masked_bins`` in the returned metadata says how
+    many. Returns ``(None, meta)`` — never a vacuous zero — when the S-matrix
+    is not 2x2, when a value is traced, or when no bin survives the mask. Pure
+    host-side NumPy on arrays the caller already has; it perturbs nothing.
+    """
+    meta = {
+        "beta_convention": WAVEGUIDE_PHASE_BETA_CONVENTION,
+        "f_cutoff_hz": None,
+        "L_m": None,
+        "n_bins": 0,
+        "masked_bins": 0,
+    }
+    if is_tracer(s_params) or is_tracer(freqs):
+        meta["reason"] = "traced arrays (AD path); the witness is host-side"
+        return None, meta
+    s = np.asarray(s_params)
+    if s.ndim != 3 or s.shape[0] != 2 or s.shape[1] != 2:
+        meta["reason"] = (
+            f"S-matrix shape {tuple(s.shape)} is not a two-port (2, 2, n_freqs)"
+        )
+        return None, meta
+    f = np.asarray(freqs, dtype=float).ravel()
+    s21 = np.asarray(s[1, 0], dtype=complex).ravel()
+    if f.size == 0 or f.size != s21.size:
+        meta["reason"] = "frequency grid and S21 column have different lengths"
+        return None, meta
+
+    f_c = float(f_cutoff_hz)
+    L = float(length_m)
+    meta["f_cutoff_hz"] = f_c
+    meta["L_m"] = L
+    if not np.isfinite(L) or L <= 0.0:
+        meta["reason"] = "reference-plane separation is not a positive length"
+        return None, meta
+
+    from rfx.model.waveguide_modes import _compute_beta, PortMedium
+
+    beta = np.real(np.asarray(_compute_beta(
+        jnp.asarray(f), f_c, dt=float(dt), dx=float(dx), medium=medium or PortMedium()),
+        dtype=complex))
+    keep = np.isfinite(np.abs(s21)) & (np.abs(s21) >= float(mag_floor))
+    keep &= np.isfinite(beta)
+    meta["masked_bins"] = int((~keep).sum())
+    meta["n_bins"] = int(keep.sum())
+    if not keep.any():
+        meta["reason"] = (
+            f"every bin's |S21| fell below the phase mask floor "
+            f"{float(mag_floor):g}; a fully masked band would report a "
+            f"vacuous 0 degrees"
+        )
+        return None, meta
+    resid = np.angle(s21[keep]) + beta[keep] * L
+    resid = (resid + np.pi) % (2.0 * np.pi) - np.pi
+    return float(np.degrees(np.sqrt(np.mean(resid ** 2)))), meta
+
+
+def _waveguide_s21_phase_residual(s_params, freqs, reference_planes, cfgs,
+                                  *, normalize=None, announce: bool = True):
+    """The S21 phase residual for one assembled two-port waveguide result.
+
+    Reads the beta ingredients off the port configs the extractor itself ran
+    with (``f_cutoff``, ``dt``, ``dx``) and the length off the reference planes
+    the result reports, then prints ONE banner line after the settling line.
+
+    Post-solve and report-only: no gate, no tolerance, no effect on any
+    returned number. Silent (and ``None``) whenever the residual is not
+    defined — a non-two-port result, a traced AD run, two ports on different
+    axes or with different discrete cutoffs, or a fully masked band. All
+    normalization lanes retain propagation phase and report the residual.
+
+    Scope of the claim: a port witness only for an EMPTY or matched guide
+    between the two reference planes. A device between them adds its own
+    transmission phase to ``angle(S21)``, and the same number then reads the
+    device against ``-beta*L``. The banner says so.
+    """
+    meta = {
+        "beta_convention": WAVEGUIDE_PHASE_BETA_CONVENTION,
+        "f_cutoff_hz": None,
+        "L_m": None,
+        "n_bins": 0,
+        "masked_bins": 0,
+        "normalize": normalize,
+    }
+    cfgs = [c[0] if isinstance(c, list) else c for c in cfgs]
+    if len(cfgs) != 2:
+        meta["reason"] = f"{len(cfgs)} waveguide ports; the residual is two-port"
+        return None, meta
+    axes = {str(getattr(c, "normal_axis", "") or "") for c in cfgs}
+    if len(axes) != 1:
+        meta["reason"] = f"ports on different normal axes {sorted(axes)}"
+        return None, meta
+    fc = [float(c.f_cutoff) for c in cfgs]
+    if fc[0] <= 0.0 or abs(fc[1] - fc[0]) > 1e-9 * fc[0]:
+        meta["reason"] = (
+            f"the two ports carry different discrete cutoffs "
+            f"({fc[0]:.6g} Hz, {fc[1]:.6g} Hz), so one -beta*L is not defined"
+        )
+        return None, meta
+    planes = np.asarray(reference_planes, dtype=float).ravel()
+    if planes.size != 2:
+        meta["reason"] = "reference_planes does not carry one plane per port"
+        return None, meta
+    rms, meta = s21_phase_residual_deg_rms(
+        s_params, freqs,
+        f_cutoff_hz=fc[0], dt=float(cfgs[0].dt), dx=float(cfgs[0].dx), medium=cfgs[0].medium,
+        length_m=abs(float(planes[1]) - float(planes[0])),
+    )
+    # The helper builds its own meta; carry the lane over so the record says
+    # which normalisation the number was read under.
+    meta["normalize"] = normalize
+    if rms is not None and announce:
+        print(
+            f"  [WAVEGUIDE S-MATRIX] S21 phase residual vs -beta*L: "
+            f"{rms:.4g} deg rms over {meta['n_bins']} bins (beta from the "
+            f"port's discrete cutoff {meta['f_cutoff_hz'] / 1e9:.5g} GHz, "
+            f"L = {meta['L_m']:.6g} m; port discretization witness for an "
+            f"EMPTY or matched guide between the planes -- a device between "
+            f"them adds its own transmission phase; not a gate)"
+        )
+    return rms, meta
 
 
 def _co_located_current_spectrum(cfg: WaveguidePortConfig, current_dft: jnp.ndarray) -> jnp.ndarray:
@@ -565,7 +742,8 @@ def extract_waveguide_s_matrix_flux(
         |S_ii|² = |F_ref[i] − F_dev[i]| / |F_ref[i]|   (reflection)
         |S_ji|² = |F_dev[j]|            / |F_ref[i]|   (transmission, j≠i)
 
-    Phase is taken from the modal V/I decomposition of the device run.
+    Phase is the device outgoing wave over the reference incident wave,
+    retaining propagation between the declared planes as on ``normalize=True``.
     This resolves both the Z_TE impedance-mismatch error that corrupts
     ``normalize=False`` S11 (~3 % at dx/λ=0.07) and the round-trip
     dispersion error in the ``normalize=True`` diagonal formula.
@@ -787,6 +965,28 @@ def extract_waveguide_s_matrix_flux(
     return s_matrix
 
 
+def assemble_normalized_waveguide_column(
+    b_dev, b_ref, a_inc_ref, drive_idx, *, diagonal_floor, transmission_floor, xp,
+):
+    """Assemble one column at the declared planes using reference incidence.
+
+    Arrays have receiving port as their first axis. Only the driven port's
+    outgoing reference wave is subtracted; both ratios use its incident wave.
+    ``xp`` supplies NumPy-compatible operations without host conversion.
+    """
+    safe_diagonal = xp.where(
+        xp.abs(a_inc_ref) > diagonal_floor, a_inc_ref, xp.ones_like(a_inc_ref),
+    )
+    safe_transmission = xp.where(
+        xp.abs(a_inc_ref) > transmission_floor, a_inc_ref, xp.ones_like(a_inc_ref),
+    )
+    return xp.stack([
+        (b_dev[i] - b_ref[i]) / safe_diagonal if i == drive_idx
+        else b_dev[i] / safe_transmission
+        for i in range(len(b_dev))
+    ])
+
+
 def extract_waveguide_s_params_normalized(
     grid,
     materials,
@@ -833,17 +1033,18 @@ def extract_waveguide_s_params_normalized(
     masks; per-port reference geometry supplies its own.
 
 
-    Cancels Yee-grid numerical dispersion for **transmission** (off-diagonal)
-    terms by normalizing device outgoing waves against reference-run waves
-    measured at the same port location.
+    Returns one scattering matrix at the declared port planes, retaining
+    the same one-way Yee dispersion as ``normalize=False``.
+    For the empty-guide insertion ratio, divide device S21 by S21 from a
+    second call on the same guide without the device, at the same planes.
 
     For each driven port j:
+
       1. Run reference (empty guide) with port j driven.
       2. Run device with port j driven.
       3. Off-diagonal (i != j):
-           S_ij = b_out_device[i] / b_out_reference[i]
-         The reference b_out[i] accumulates the same one-way dispersion as
-         the device wave, so the ratio cancels the bias exactly.
+           S_ij = b_out_device[i] / a_inc_reference[j]
+         The reference incident wave refers every entry to the same planes.
       4. Diagonal (i == j):
            S_jj = (b_out_device[j] - b_out_reference[j]) / a_inc_reference[j]
          The subtraction removes the empty-guide CPML/discretization
@@ -963,19 +1164,14 @@ def extract_waveguide_s_params_normalized(
                 "waveguide S-matrix extraction expected one final config per port"
             )
 
-        # Incident wave at the driven port (for diagonal normalization)
+        # Incident wave at the driven port normalizes the whole column.
         a_inc_ref, _ = _s_matrix_port_waves(
             ref_final_cfgs[drive_idx],
             ref_shift=ref_shifts[drive_idx],
         )
         a_inc_ref_np = np.array(a_inc_ref)
-        safe_a_inc = np.where(
-            np.abs(a_inc_ref_np) > 1e-30,
-            a_inc_ref_np,
-            np.ones_like(a_inc_ref_np),
-        )
 
-        # Outgoing waves at all ports (for off-diagonal normalization)
+        # Reference outgoing waves supply the driven-port subtraction.
         b_out_ref = []
         for recv_idx in range(n_ports):
             _, b_ref_i = _s_matrix_port_waves(
@@ -1021,27 +1217,17 @@ def extract_waveguide_s_params_normalized(
                 from rfx.sparams._tail_witness import combine_witness_details
                 settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
 
+        b_out_dev = []
         for recv_idx, cfg in enumerate(dev_final_cfgs):
             _, b_recv_dev = _s_matrix_port_waves(
                 cfg,
                 ref_shift=ref_shifts[recv_idx],
-                )
-            b_recv_dev_np = np.array(b_recv_dev)
-
-            if recv_idx == drive_idx:
-                # Diagonal: subtract the reference-run reflection so the
-                # result captures only device-induced reflection.
-                s_matrix[recv_idx, drive_idx, :] = (
-                    b_recv_dev_np - b_out_ref[recv_idx]
-                ) / safe_a_inc
-            else:
-                # Off-diagonal: normalize by reference outgoing at same port
-                safe_b_ref = np.where(
-                    np.abs(b_out_ref[recv_idx]) > 1e-30,
-                    b_out_ref[recv_idx],
-                    np.ones_like(b_out_ref[recv_idx]),
-                )
-                s_matrix[recv_idx, drive_idx, :] = b_recv_dev_np / safe_b_ref
+            )
+            b_out_dev.append(np.array(b_recv_dev))
+        s_matrix[:, drive_idx, :] = assemble_normalized_waveguide_column(
+            b_out_dev, b_out_ref, a_inc_ref_np, drive_idx,
+            diagonal_floor=1e-30, transmission_floor=1e-30, xp=np,
+        )
 
     if return_settling:
         import numpy as _np
@@ -1262,13 +1448,11 @@ def extract_multimode_s_matrix_flux(
         |S_{qn,pm}|² = |F_ref[qn] − F_dev[qn]| / |P_inc|   (q==p, n==m: reflection)
         |S_{qn,pm}|² = |F_dev[qn]|             / |P_inc|   (otherwise: transmission / mode conversion)
 
-    All ratios are referenced to the (always-nonzero) incident modal power,
-    so cross-mode channels do not hit the 0/0 blow-up of the two-run
-    normalized scheme (the single-mode
-    :func:`extract_waveguide_s_params_normalized` ``b_dev/b_ref`` with
-    ``b_ref ≈ 0`` for an uncoupled empty-guide channel — its multi-mode
-    generalization is unsupported for exactly this reason). Phase is taken
-    from the modal V/I wave decomposition of the device run.
+    All ratios are referenced to the incident modal power. The modal
+    ``normalize=True`` extractor also uses incident-wave normalization,
+    but supports single-mode ports only; its multi-mode assembly is not
+    implemented. Phase is taken from the modal V/I wave decomposition of
+    the device run and retains propagation between the declared planes.
 
     Per-mode net power ``F`` comes from :func:`_modal_net_power`
     (``0.5·Re(V·I*)``), avoiding the modal-impedance discretization bias.

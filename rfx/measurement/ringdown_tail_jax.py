@@ -30,7 +30,7 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
                                       precision=HIGHEST)
 
 
-def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
+def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None, *, mask=None):
     """:func:`rfx.ringdown.tail_dft` in JAX.
 
     ``dt sum_k c_k lambda_k**(N+1-n_ref) z**(N+1) / (1 - lambda_k z)`` with
@@ -54,4 +54,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
         dsdt = (s - jax.lax.stop_gradient(s)) * dt
         one_minus_lz = -jnp.expm1(tail_arg + dsdt[None, :])
     amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c     # (K, C)
+    if mask is not None:
+        one_minus_lz = jnp.where(mask[None, :], one_minus_lz, 1)
+        amp = jnp.where(mask[:, None], amp, 0)
     return dt * jnp.matmul(zN1[:, None] / one_minus_lz, amp, precision=HIGHEST)

@@ -9,6 +9,7 @@ error is first order, a radius about 0.2 cell large against the staircase's 0.7.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import warnings
@@ -18,11 +19,14 @@ import jax.numpy as jnp
 
 from rfx.grid import Grid
 from rfx.geometry.conformal_cells import compute_conformal_fractions
-from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
 
 
 def apply_conformal_pec(state, w_ex, w_ey, w_ez):
     """Compatibility entry for weight callers; production forms masks at setup."""
+    # Imported here: geometry loads before the model layer, and a module-level
+    # import would load the time-step layer with it (rfx#1818).
+    from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
+
     return _apply_conformal_pec(state, w_ex == 0.0, w_ey == 0.0, w_ez == 0.0)
 
 
@@ -59,13 +63,17 @@ CONFORMAL_MODEL_ADVISORY = (
     "0.7); judge a curved body by a mesh series (docs/guides/known_limitations.md).")
 
 
-def warn_conformal_model():
-    """Warn on a conformal run that a curved body converges only first order (#1651).
+def warn_conformal_model(conformal_pec=None):
+    """Warn with the selected conformal model's measured limitations (#1651).
 
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
     """
-    warnings.warn(CONFORMAL_MODEL_ADVISORY, AccuracyWarning, stacklevel=3)
+    message = ('conformal_pec="cut_cell_floor" uses the declared reduced step and a q**2 '
+               'cut-face area floor; see the q-specific sphere measurements in '
+               'docs/guides/support_matrix.md' if conformal_pec == "cut_cell_floor"
+               else CONFORMAL_MODEL_ADVISORY)
+    warnings.warn(message, AccuracyWarning, stacklevel=user_stacklevel())
 
 
 # ---------------------------------------------------------------------------

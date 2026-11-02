@@ -27,21 +27,35 @@ from rfx.sources.coaxial_port import (
     SMA_OUTER_RADIUS,
     PTFE_EPS_R,
 )
-from rfx.sources.waveguide_port import (
-    WaveguidePort,
-    WaveguidePortConfig,
-    init_waveguide_port,
-    inject_waveguide_port,
-    apply_waveguide_port_h,
-    apply_waveguide_port_e,
-    update_waveguide_port_probe,
-    extract_waveguide_port_waves,
-    extract_waveguide_s_matrix,
-    extract_waveguide_sparams,
-    extract_waveguide_s11,
-    extract_waveguide_s21,
-    waveguide_plane_positions,
-    solve_rectangular_modes,
-    init_multimode_waveguide_port,
-    extract_multimode_s_matrix,
-)
+
+# rfx.sources.waveguide_port imports the model, stepping and measurement
+# layers, and those layers import submodules of this package; an eager import
+# here would load that file whenever a layer loads (rfx#1818).
+_LAZY_EXPORTS = {
+    "WaveguidePort": "rfx.sources.waveguide_port",
+    "WaveguidePortConfig": "rfx.sources.waveguide_port",
+    "init_waveguide_port": "rfx.sources.waveguide_port",
+    "inject_waveguide_port": "rfx.sources.waveguide_port",
+    "apply_waveguide_port_h": "rfx.sources.waveguide_port",
+    "apply_waveguide_port_e": "rfx.sources.waveguide_port",
+    "update_waveguide_port_probe": "rfx.sources.waveguide_port",
+    "extract_waveguide_port_waves": "rfx.sources.waveguide_port",
+    "extract_waveguide_s_matrix": "rfx.sources.waveguide_port",
+    "extract_waveguide_sparams": "rfx.sources.waveguide_port",
+    "extract_waveguide_s11": "rfx.sources.waveguide_port",
+    "extract_waveguide_s21": "rfx.sources.waveguide_port",
+    "waveguide_plane_positions": "rfx.sources.waveguide_port",
+    "solve_rectangular_modes": "rfx.sources.waveguide_port",
+    "init_multimode_waveguide_port": "rfx.sources.waveguide_port",
+    "extract_multimode_s_matrix": "rfx.sources.waveguide_port",
+}
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value

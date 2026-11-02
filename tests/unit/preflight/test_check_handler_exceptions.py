@@ -63,12 +63,12 @@ def _case(name, monkeypatch, fail):
         monkeypatch.setattr(sim, "_build_grid", fail)
         return sim._ad_memory_static_accounting, lambda r: r["grid_source"] == "estimated_from_domain"
     if name == "run_dc":
-        import rfx.api._execute as execute
+        import rfx.runners.run as run_module  # run()'s body after admission
         monkeypatch.setattr(sim, "_auto_preflight", lambda **kw: NS(diagnostics=()))
         monkeypatch.setattr(sim, "_dispatch_plan", lambda **kw: NS(lane="run_nonuniform", n_steps=1))
         monkeypatch.setattr(sim, "_build_nonuniform_grid", fail)
         monkeypatch.setattr(sim, "_run_nonuniform", _runner)
-        monkeypatch.setattr(execute, "bind_solve_call", lambda assembly, call: (call, None))
+        monkeypatch.setattr(run_module, "bind_solve_call", lambda assembly, call: (call, None))
         return lambda: sim.run(n_steps=1, until_decay=1e-4, compute_s_params=False), lambda r: r == "runner"
     if name == "adi":
         import rfx.runners._admission as admission

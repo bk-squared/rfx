@@ -30,7 +30,7 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
     use_waveguide_ports = setup.use_waveguide_ports
 
     result = {
-        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ())),
+        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ()) if r is not None),
         "state": final["fdtd"],
         "time_series": time_series,
         "dt": dt,

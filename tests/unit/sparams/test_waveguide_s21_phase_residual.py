@@ -198,11 +198,7 @@ def test_a_real_two_port_run_carries_the_field_and_prints_the_banner(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Lane scoping (independent review of PR #925): the residual needs the modal
-# phase intact. ``normalize=True`` divides the empty-guide reference run's
-# propagation phase out of S21 (the coarse thru read 116.5 deg rms there with
-# |S21| identically 1), so the reporter must decline rather than print a
-# number labelled as a port witness. ``normalize='flux'`` and ``False`` keep it.
+# Every normalization lane retains propagation between the declared planes.
 # ---------------------------------------------------------------------------
 
 def _fake_cfgs():
@@ -215,20 +211,20 @@ def _planes():
     return np.asarray([F.REF_LEFT_DEFAULT_M, F.REF_RIGHT_DEFAULT_M], dtype=float)
 
 
-def test_normalize_true_reports_none_with_the_reason():
+def test_normalize_true_reports_the_propagation_residual():
     from rfx.api._sparams import _waveguide_s21_phase_residual
     s21 = np.exp(-1j * _beta() * L_M)
     rms, meta = _waveguide_s21_phase_residual(
         _two_port(s21), FREQS, _planes(), _fake_cfgs(),
         normalize=True, announce=False)
-    assert rms is None
+    assert rms == pytest.approx(0.0, abs=1e-9)
     assert meta["normalize"] is True
-    assert "normalize=True" in meta["reason"]
-    assert meta["n_bins"] == 0
+    assert "reason" not in meta
+    assert meta["n_bins"] == FREQS.size
 
 
-@pytest.mark.parametrize("normalize", ["flux", False])
-def test_flux_and_false_lanes_keep_the_residual_and_scope_the_banner(
+@pytest.mark.parametrize("normalize", [True, "flux", False])
+def test_all_lanes_keep_the_residual_and_scope_the_banner(
         normalize, capsys):
     from rfx.api._sparams import _waveguide_s21_phase_residual
     s21 = np.exp(-1j * _beta() * L_M)

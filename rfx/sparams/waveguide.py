@@ -6,7 +6,7 @@ variants. The caller retains its declared port and observer containers.
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxUnsupported
 from rfx.stepping.step_count import steps_for_periods
 from rfx._diagnostic_transport import report_diagnostics
 from rfx._precision import resolve_field_dtype
@@ -21,6 +21,10 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.measurement.phasors import exp_j
+from rfx.measurement.waveguide_s import (
+    assemble_normalized_waveguide_column,
+    _waveguide_s21_phase_residual,
+)
 from rfx.sources.waveguide_port import (
     extract_waveguide_s_matrix,
     extract_waveguide_s_matrix_flux,
@@ -42,7 +46,6 @@ from rfx.sparams._common import (
     _warn_junction_cpml_thickness,
     _warn_ntff_box_dropped,
     _warn_thin_absorber_vs_guide_wavelength,
-    _waveguide_s21_phase_residual,
 )
 
 from typing import TYPE_CHECKING
@@ -83,6 +86,7 @@ def compute_waveguide_s_matrix(
     num_periods: float = 20.0,
     normalize: bool | str = False,
     subpixel_smoothing: bool | str = False,
+    conformal_pec: str | None = None,
     eps_override: "jnp.ndarray | None" = None,
     sigma_override: "jnp.ndarray | None" = None,
     checkpoint_segments: int | None = None,
@@ -123,14 +127,16 @@ def compute_waveguide_s_matrix(
         differentiable chain: a traced ``eps_override`` /
         ``sigma_override`` flows through it.
 
-        ``True`` — two-run modal normalization.  Cancels one-way
-        Yee dispersion for **transmission** (off-diagonal) by
-        dividing device outgoing waves by reference outgoing waves
-        at the same port.  **Does not** cancel dispersion for
-        reflection (round-trip vs one-way path mismatch); use
-        ``normalize=False`` or ``normalize="flux"`` for S11 of
-        strong reflectors.  Host-assembled and **outside the
-        differentiable chain**: a traced ``eps_override`` /
+        ``True`` — two-run modal normalization at the declared port planes.
+        Every entry divides by the driven port's reference incident wave;
+        the diagonal first subtracts the reference outgoing wave. Retains
+        the same one-way Yee dispersion as ``False``. Unlike ``False``,
+        the denominator excludes device-reflection leakage into the modal
+        incident-wave split, and the diagonal removes reference reflection.
+        Form the empty-guide insertion ratio from two calls: device S21
+        divided by S21 of the same guide without the device, at the same planes.
+        Host-assembled and **outside the differentiable chain**: a traced
+        ``eps_override`` /
         ``sigma_override`` (``jax.grad``, ``jax.jit``) raises
         ``NotImplementedError`` at this call, before any FDTD run;
         a concrete override still runs forward.
@@ -165,6 +171,12 @@ def compute_waveguide_s_matrix(
         the host for every ``normalize`` value and is outside the
         differentiable chain; ``eps_override`` / ``sigma_override``
         differentiation is single-mode only.
+    conformal_pec : str or None
+        None follows Boundary(conformal=True); the keyword only accepts
+        "cut_cell_floor", which uses true edge lengths and floored
+        cut-face areas on uniform device and boundary-wall reference scans.
+        It requires Simulation(dt=q * Grid.courant_dt(realized_dx)), q=0.5
+        or 0.25, and refuses custom port_reference_sims.
     checkpoint_segments : int or None
         Segmented gradient checkpointing for the **uniform** waveguide
         AD path.  Splits the ``n_steps`` scan
@@ -261,6 +273,18 @@ def compute_waveguide_s_matrix(
         Material rasterization is a cell-centre step test on realized nodes.
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
+    if conformal_pec is not None and conformal_pec != "cut_cell_floor":
+        raise RfxUnsupported(
+            f"compute_waveguide_s_matrix received conformal_pec={conformal_pec!r}; "
+            'conformal PEC on this entry is declared with Boundary(conformal=True); '
+            'the keyword only takes "cut_cell_floor"')
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(self, "waveguide_s_matrix", conformal_pec, smoothing=subpixel_smoothing)
+    if conformal_pec is None:
+        conformal_pec = bool(self._boundary_spec.conformal_faces())
+    if conformal_pec == "cut_cell_floor" and port_reference_sims is not None:
+        raise NotImplementedError('conformal_pec="cut_cell_floor" cannot carry port_reference_sims; '
+                                  'use the uniform boundary-wall reference')
     from rfx.boundaries.features import refuse_traced_guide_mesh
     refuse_traced_guide_mesh(self, "compute_waveguide_s_matrix")
     resolve_field_dtype(self._precision)
@@ -271,11 +295,8 @@ def compute_waveguide_s_matrix(
         warnings.warn(
             "compute_waveguide_s_matrix(normalize=False): S21 and "
             "S-parameter phase include Yee numerical dispersion. "
-            "normalize=True removes it from S21 by referring transmission "
-            "to a separate run while reflection stays at the port plane, so "
-            "its reflection and transmission do not share reference planes; "
-            "where the matrix is used as a whole (cascading, de-embedding) "
-            "use normalize='flux'. "
+            "normalize=True also retains propagation between the declared "
+            "planes, using the reference incident wave for every entry. "
             "For |S11| of strong reflectors (PEC short, resonators) "
             "normalize=False is more accurate — see the normalize "
             "parameter docstring.", AccuracyWarning,
@@ -370,7 +391,7 @@ def compute_waveguide_s_matrix(
     from rfx.boundaries.pmc import refuse_waveguide_pmc
     refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix")
+    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
     if port_reference_sims is not None:
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
@@ -501,7 +522,7 @@ def compute_waveguide_s_matrix(
             # normalize=False carries documented Yee-dispersion + band-edge
             # |S11| overshoot (validated paths reach ~1.4-1.7), so use a
             # loose bound there that still catches gross extractor bugs
-            # (|S11|>>1); normalize=True/"flux" correct dispersion -> tight.
+            # (|S11|>>1); reference subtraction / flux use the tighter bound.
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
@@ -560,7 +581,7 @@ def compute_waveguide_s_matrix(
     _wg_pec_wires = tuple(_wg_pec_wires)
     from rfx.model.tensor_operands import refuse_full_tensor_conformal
     refuse_full_tensor_conformal(
-        subpixel_smoothing, self._boundary_spec.conformal_faces(), pec_shapes)
+        subpixel_smoothing, conformal_pec, pec_shapes)
     # The smoothed tensor (Stage 1 and "kottke_pec") is built from the DECLARED
     # shapes and replaces the cell permittivity in the E update, so an
     # eps_override would never reach the solve: S came back identical with a
@@ -587,8 +608,7 @@ def compute_waveguide_s_matrix(
         self._refuse_unsupported_run_kwargs(
             "waveguide S-matrix with Debye/Lorentz materials", {
                 "subpixel_smoothing": subpixel_smoothing,
-                "conformal_pec": bool(
-                    self._boundary_spec.conformal_faces() and pec_shapes),
+                "conformal_pec": conformal_pec if pec_shapes else False,
             },
             instead="remove the Debye/Lorentz poles",
             entry="compute_waveguide_s_matrix()",
@@ -779,7 +799,7 @@ def compute_waveguide_s_matrix(
     )
     aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas = form_tensor_operands(
         self, grid, materials, subpixel_smoothing=subpixel_smoothing,
-        conformal=self._boundary_spec.conformal_faces(), conformal_min_weight=0.1,
+        conformal=conformal_pec, conformal_min_weight=0.1,
         pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
     if subpixel_smoothing:
         from rfx.geometry.smoothing import warn_unextendable_shapes
@@ -793,6 +813,7 @@ def compute_waveguide_s_matrix(
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
+        conformal_pec=conformal_pec,
         reference_eps=float(reference_medium.eps_r))
 
     if has_multimode and _wg_sheet_ctx is not None:
@@ -846,19 +867,11 @@ def compute_waveguide_s_matrix(
                 settling_details=settling_details_mm,
             )
         elif normalize:
-            # The two-run normalized extractor divides each receiving
-            # channel by its own empty-guide outgoing wave
-            # (b_dev/b_ref). For cross-mode channels the empty-guide
-            # reference is ~0 (orthogonal modes do not couple in a
-            # uniform guide), so the ratio blows up (measured
-            # cross-mode |S| ~ 4.7 on an over-moded WR-90 slab).
-            # Use normalize="flux" instead — power ratios referenced
-            # to the always-nonzero incident modal power avoid the
-            # 0/0 and also fix the reflection noise floor.
+            # Multi-mode modal reference subtraction is not implemented.
             raise ValueError(
                 "compute_waveguide_s_matrix(normalize=True) is not "
-                "supported with n_modes > 1 (cross-mode channels hit a "
-                "0/0 in the two-run normalization). Use "
+                "supported with n_modes > 1 (multi-mode modal reference "
+                "subtraction is not implemented). Use "
                 "normalize='flux' for multi-mode S-matrices."
             )
         else:
@@ -1174,9 +1187,10 @@ def _compute_waveguide_s_matrix_nu(
 
     Extracts ``a_inc`` / ``b_out`` via the same
     ``extract_waveguide_port_waves`` helper as the uniform path and
-    applies the same diagonal-subtraction + off-diagonal-division
-    normalisation (see ``extract_waveguide_s_params_normalized``
-    in ``rfx/sources/waveguide_port.py``).
+    assembles one S at the declared planes: transmission divides by the
+    driven port's reference incident wave, and reflection first subtracts
+    its reference outgoing wave. One-way Yee dispersion remains, as on
+    ``normalize=False``. See ``extract_waveguide_s_params_normalized``.
     """
     # The non-uniform scan has no Dey-Mittra update; the uniform lane of
     # this calculator has one.
@@ -1440,7 +1454,7 @@ def _compute_waveguide_s_matrix_nu(
             s_columns.append(recv_col)
             continue
 
-        recv_col: list = []
+        b_out_ref, b_out_dev = [], []
         for recv_idx in range(n_ports):
             recv_name = original_entries[recv_idx].name
             _, b_ref = extract_waveguide_port_waves(
@@ -1449,27 +1463,14 @@ def _compute_waveguide_s_matrix_nu(
             _, b_dev = extract_waveguide_port_waves(
                 dev_wg[recv_name], ref_shift=ref_shifts[recv_idx],
             )
-            if recv_idx == drive_idx:
-                recv_col.append((b_dev - b_ref) / safe_a_inc)
-            else:
-                # Use a tighter guard than the diagonal safe_a_inc
-                # (1e-30): the NU path operates at lower float32
-                # signal levels (~1e-31) because the TFSF table
-                # injection scales with dt/dx. The reference
-                # outgoing wave b_ref at non-driven ports is
-                # proportional to the driven-port incident wave and
-                # can fall to ~1e-31 in float32. A 1e-30 guard
-                # fires falsely and replaces b_ref with 1.0, giving
-                # S21 = b_dev * 1e-31 instead of b_dev/b_ref ≈ 1.
-                # 1e-60 is safely below float32 underflow (~1e-38)
-                # so it only fires when b_ref is genuinely zero.
-                safe_b = jnp.where(
-                    jnp.abs(b_ref) > 1e-60,
-                    b_ref,
-                    jnp.ones_like(b_ref),
-                )
-                recv_col.append(b_dev / safe_b)
-        s_columns.append(recv_col)
+            b_out_ref.append(b_ref)
+            b_out_dev.append(b_dev)
+        # The lower transmission floor preserves the graded lane's
+        # small-signal guard; the diagonal keeps its existing floor.
+        s_columns.append(assemble_normalized_waveguide_column(
+            b_out_dev, b_out_ref, a_inc_ref, drive_idx,
+            diagonal_floor=1e-30, transmission_floor=1e-60, xp=jnp,
+        ))
 
 
     # Issue #827 (waveguide instance): the ring-down witness now reaches

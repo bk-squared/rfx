@@ -17,7 +17,8 @@ axis only, for an x-directed guide `boundary={"x": "cpml", "y": "pec", "z": "pec
 On a uniform mesh `boundary="cpml"` on all faces is refused before the first step. If you leave
 `boundary` out, a uniform mesh solves those faces as PEC and warns once; a graded
 mesh refuses until you declare them. Ports need `mode="3d"`, and cannot share a
-model with lumped ports or a TFSF source.
+model with lumped, wire or passive ports, a point source (`add_source`) or a TFSF
+source; `run()` and `forward()` refuse that model on both meshes.
 
 ## A two-port S-matrix
 

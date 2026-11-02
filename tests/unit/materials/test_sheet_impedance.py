@@ -1165,9 +1165,9 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/_distributed_entry.py", "execute_distributed",
      "distributed multi-device forward()"):
         (__name__, "test_fence_distributed_multidevice_forward"),
-    ("rfx/api/_execute.py", "run", "ADI run()"):
+    ("rfx/runners/run.py", "run_after_admission", "ADI run()"):
         (__name__, "test_fence_adi_run"),
-    ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
+    ("rfx/runners/run.py", "run_after_admission", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
@@ -2114,6 +2114,9 @@ def test_occupancy_guard_does_not_break_the_traced_mesh_path():
         sim.add_thin_conductor(_box_sheet(NU_Z, NU_FOOT),
                                sigma_bulk=SIGMA_BULK, thickness=THICKNESS,
                                surface_impedance_f0=F0)
+    # The traced z axis has absorber cells; its edge cell comes from the
+    # nominal profile (the primal at scale = 1).
+    sim._nominal_profiles = {"z": np.asarray(NU_DZ)}
 
     def loss(scale):
         sim._dz_profile = base * scale

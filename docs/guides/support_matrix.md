@@ -133,6 +133,44 @@ count; the measurement (record kept with the project)
 uses a fitted single-device baseline rather than a direct single-device timing
 for the large box.
 
+## Conformal PEC: cut-cell floor opt-in (v2.1)
+
+The default conformal PEC retains its SC-clamped edge lengths and ordinary step.
+`run(conformal_pec="cut_cell_floor")` keeps the true free edge lengths and raises
+only cut-face areas to `max(sbar, q**2 * max(bounding edge lengths))`.
+Declare the step explicitly with `Simulation(..., dt=0.5 * Grid.courant_dt(dx))`
+or `dt=0.25 * Grid.courant_dt(dx)`. The ratio is checked against the realized
+spacing within relative 1e-9; for 2-D Yee use `Grid.courant_dt(dx, ndim=2)`.
+Every other uniform pin, a pin without this opt-in, or the opt-in without a pin
+is refused. An explicit `n_steps` remains a count of steps and covers half or
+one quarter of the ordinary physical duration.
+
+At q = 0.5, the 9 mm PEC sphere over 8–12 GHz is first order. Its one-radius
+offset against Mie is about +0.02 cell, about 1/9 of the default, at twice the
+default's steps:
+
+| Cell (mm) | Default offset (cell) | q = 0.5 offset (cell) | q = 0.5 backscatter max error (dB) |
+|---|---|---|---|
+| 0.75 | +0.19 | +0.0212 | 0.098 |
+| 0.5 | +0.18 | +0.0212 | 0.063 |
+| 0.375 | +0.20 | +0.0197 | 0.040 |
+
+The convergence-order target (order >= 1.5) was not met.
+Source: internal record 20261030-1651-option-b.
+
+At q = 0.25, the offset is about -0.002 cell at 0.5 and 0.375 mm, at the fit's
+resolution, about 1/100 of the default; four times the default's steps.
+Source: internal record 20261030-1651-floor-f-three-mesh.
+No convergence order is claimed here.
+
+Uniform 3-D and 2-D Yee `run()` and uniform waveguide S-matrix device/reference
+scans carry the floor. The waveguide calculator takes the same run-level
+`conformal_pec="cut_cell_floor"` and explicit `Simulation(dt=...)` declarations.
+`forward()`, graded, multi-device, subgridded, ADI,
+`subpixel_smoothing="kottke_pec"`, and openEMS export refuse the value by name.
+`Boundary(conformal=...)` takes no string opt-in. Existing conformal restrictions,
+including lumped/wire S-matrices and dispersive E updates, still apply.
+
 ## Refused inputs
 
 rfx refuses an input it would not solve, before the first time step, so a model
@@ -219,6 +257,7 @@ Left out of these tables, each for one reason:
 | `boundary='upml'` | `_boundary/upml` | supported | refused | refused | refused (waveguide_s_matrix) | Use `boundary='cpml'`. |
 | A magnetic (PMC) face | `_boundary_spec/pmc_face` | supported | supported | supported | refused (waveguide_s_matrix, vmap_sweep_batched) | The waveguide S-matrix and the batched sweep refuse it; a multi-device run refuses it together with a wire port or lumped-port S on either mesh, and with any port or frequency-domain record on a graded mesh. |
 | Conformal PEC (`Boundary(conformal=True)` or `conformal_pec=True`) | `_boundary_spec/conformal` | supported (run); refused (forward) | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, vmap_sweep_batched, material_fit) | It is solved by a single-device uniform `run()` only. |
+| Conformal PEC cut-cell floor (`conformal_pec="cut_cell_floor"`) | `_dt_pin` + run-level value | supported (uniform Yee run); refused (forward) | refused | refused | supported (uniform waveguide device/reference); refused elsewhere | Explicit q=0.5 or 0.25 Courant pin; see [measured offsets and limits](#conformal-pec-cut-cell-floor-opt-in-v21). |
 | Conformal PEC together with a lumped or wire-port S-matrix request | `_boundary_spec/conformal_s_matrix` | refused | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, vmap_sweep_batched, material_fit) | Request the S-matrix without conformal PEC. |
 | A periodic axis | `_periodic_axes/periodic` | supported | supported (constant cell size along the axis; refused with a graded profile along it, a plane wave or `interface_eps='dual_average'`) | refused | refused (waveguide_s_matrix) | Run it on one device; on a graded mesh keep the periodic axis's cell size constant. |
 | `cpml_kappa_max` other than 1 | `_cpml_kappa_max/kappa` | supported | refused | supported (uniform); refused (graded) | — | Leave `cpml_kappa_max=1` on a graded mesh. |
@@ -280,7 +319,8 @@ error message tells you to do; the last names the test that pins the refusal.
 | A dispersive or nonlinear waveguide port section: Debye or Lorentz poles or a Kerr χ³ there | `admission:waveguide-section-dispersive` | `run()`, `forward()`, `compute_waveguide_s_matrix`, uniform and graded mesh | Start the material beyond the port's reference plane, or fill the section wall to wall with one lossless, isotropic, non-dispersive medium. | `tests/unit/sparams/test_waveguide_section_medium.py::test_other_operands` |
 | An anisotropic waveguide port section: per-component `eps_r` or `mu_r`, or an explicit tensor permittivity that is not the section's one scalar medium | `admission:waveguide-section-anisotropic` | `run()`, `forward()`, `compute_waveguide_s_matrix`, uniform and graded mesh | Start the material beyond the port's reference plane, or fill the section wall to wall with one lossless, isotropic, non-dispersive medium. | `tests/unit/sparams/test_waveguide_section_medium.py::test_per_component_permittivity_refused_by_name`, `::test_conformal_geometry_factor_does_not_hide_material_anisotropy` |
 | A PEC volume in a waveguide port section, or a `forward(design_box=...)` whose update window reaches the section | `admission:waveguide-section-pec-design-box` | `run()`, `forward()`, `compute_waveguide_s_matrix`, uniform and graded mesh | Move the metal or the design box beyond the port's reference plane. | `tests/unit/sparams/test_waveguide_section_medium.py::test_segment_extents`, `::test_design_box_window` |
-| A thin element in a waveguide port section: PEC sheet/wire edges, surface impedance, conductive film, lumped RLC or port stamps, wire permeability or a pinned sheet | `admission:waveguide-section-thin-element` | `run()`, `forward()`, `compute_waveguide_s_matrix`, uniform and graded mesh, also with `skip_preflight=True`; preflight reads PEC sheet/wire edges and film leaves, while setup judges sheet impedance and lumped RLC | Draw the element beyond the reference plane. Tangential PEC edges on the aperture walls remain admitted. | `tests/unit/preflight/test_waveguide_port_section_thin_elements.py::test_inside_refused`, `::test_beyond_reference_admitted`, `::test_other_entries_refuse`, `::test_beyond_sheet_preflight_and_calculator_admitted` |
+| A thin element in a waveguide port section: PEC sheet/wire edges, surface impedance, conductive film, lumped RLC, wire permeability or a pinned sheet | `admission:waveguide-section-thin-element` | `run()`, `forward()`, `compute_waveguide_s_matrix`, uniform and graded mesh, also with `skip_preflight=True`; preflight reads PEC sheet/wire edges and film leaves, while setup judges sheet impedance and lumped RLC | Draw the element beyond the reference plane. Tangential PEC edges on the aperture walls remain admitted. | `tests/unit/preflight/test_waveguide_port_section_thin_elements.py::test_inside_refused`, `::test_beyond_reference_admitted`, `::test_other_entries_refuse`, `::test_beyond_sheet_preflight_and_calculator_admitted` |
+| A waveguide port in the same model as lumped, wire or passive ports, a point source (`add_source`) or a TF/SF source, wherever they sit | `admission:waveguide-mixed-sources` | `run()` and `forward()`, uniform and graded mesh (`compute_waveguide_s_matrix` and `compute_mixed_s_matrix` refuse it by their own checks; the multi-device lanes refuse waveguide ports) | Solve the waveguide port in a model of its own, and the lumped or wire ports in another. | `tests/contracts/test_waveguide_mixed_admission.py::test_mixed_refused_before_fields`, `tests/contracts/test_all_passive_s_refused.py::test_graded_waveguide_illumination_with_passive_wire_refuses` |
 | A traced override over a waveguide port section (it cannot be judged before the run), including one that puts another medium at a port's probe plane | `admission:waveguide-section-traced` | `forward()` and `jax.grad` / `jax.jit` of it | Keep traced parameters beyond the port's reference plane and probe plane. | `tests/unit/sparams/test_waveguide_section_medium.py::test_traced_override_retains_callback`, `::test_traced_override_at_probe_plane_refused` |
 | A multimode waveguide port (`n_modes > 1`) in a filled section | `admission:waveguide-multimode-fill` | `compute_waveguide_s_matrix` on a uniform mesh (`run()` and `forward()` refuse a port with several modes before it, and the graded mesh refuses one in `compute_waveguide_s_matrix`) | Use a single-mode port in the fill, or start the fill beyond the reference plane. | `tests/unit/sparams/test_waveguide_section_medium.py::test_profiles_and_multimode` |
 | `normalize=True` or `"flux"` with waveguide ports in different media, or `port_reference_sims` whose port resolves another medium than the device's port | `admission:waveguide-unequal-media-normalized` | `compute_waveguide_s_matrix` | Use `normalize=False` (power-wave renormalization between the media), or reference guides filled like the device's ports. | `tests/unit/sparams/test_waveguide_section_medium.py::test_unequal_normalized_media_refused`, `::test_vacuum_reference_sim_for_filled_ports_refused` |

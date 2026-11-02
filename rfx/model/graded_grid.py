@@ -7,6 +7,7 @@ name here.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from typing import NamedTuple
 
@@ -222,7 +223,7 @@ class NonUniformGrid(NamedTuple):
                 "positions derived from it carry the float32 quantization "
                 "(~1e-10 m), which flips half-open inclusion at node-aligned "
                 "faces. Build the grid with make_nonuniform_grid.",
-                ExactNodeSpineMissingWarning, stacklevel=2)
+                ExactNodeSpineMissingWarning, stacklevel=user_stacklevel())
             return np.asarray(store, dtype=np.float64)
         return np.asarray(exact, dtype=np.float64)
 
@@ -769,7 +770,7 @@ def _warn_float32_width_resolution(profile, axis):
             f"x={nodes[worst]:.12g} m have r={ratios[worst]:.12g}, "
             f"exceeding the node-band cap {cap:.12g}; faces declared near "
             "such nodes may move one cell. Widths built in float64 avoid it.",
-            Float32WidthResolutionWarning, stacklevel=3)
+            Float32WidthResolutionWarning, stacklevel=user_stacklevel())
 
 
 def make_nonuniform_grid(

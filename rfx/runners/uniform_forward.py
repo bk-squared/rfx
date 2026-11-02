@@ -17,6 +17,8 @@ from rfx.api._refplane_checks import (
     _refplane_reject_msl_ladder_in_plane_zone,
     _refplane_reject_planes_off_the_uniform_line,
 )
+from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
+
 import jax.numpy as jnp
 import numpy as np
 from rfx.api._forward_result import pack_uniform_forward_result
@@ -92,6 +94,10 @@ def _forward_from_materials(
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes (#1299).
         """
+    from rfx.runners._admission import refuse_mixed_waveguide_sources
+    refuse_mixed_waveguide_sources(self)
+    from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
+    wg_freqs = resolve_shared_waveguide_port_freqs(self, route="uniform forward()")
     if subpixel_smoothing and sheet_impedance is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
@@ -104,6 +110,8 @@ def _forward_from_materials(
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,
         conformal_pec=False, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(self, "fwd_uniform", conformal_pec, grid=grid)
     _conformal = (bool(self._boundary_spec.conformal_faces())
                   if conformal_pec is None else bool(conformal_pec))
     from rfx.model.tensor_operands import refuse_full_tensor_conformal
@@ -608,14 +616,6 @@ def _forward_from_materials(
     # Waveguide ports (differentiable DFT accumulation inside scan)
     waveguide_ports = []
     if self._waveguide_ports:
-        wg_freqs = None
-        for pe in self._waveguide_ports:
-            if pe.freqs is not None:
-                wg_freqs = jnp.asarray(pe.freqs, dtype=jnp.float32)
-                break
-        if wg_freqs is None:
-            wg_freqs = jnp.linspace(
-                self._freq_max * 0.5, self._freq_max, 20, dtype=jnp.float32)
         for pe in self._waveguide_ports:
             waveguide_ports.append(
                 self._build_waveguide_port_config(pe, grid, wg_freqs, n_steps))
@@ -736,7 +736,7 @@ def _forward_from_materials(
         lumped_rlc=rlc_metas,
         kerr_chi3=kerr_chi3,
         dft_planes=dft_planes if dft_planes else None,
-        record_dft=bool(getattr(self, "_internal_probe_indices", ())),
+        record_dft=time_recorded_dft_selection(self),
         flux_monitors=flux_monitor_cfgs if flux_monitor_cfgs else None,
         return_state=False,
         stencil_order=self._stencil_order,
@@ -766,8 +766,7 @@ def _forward_from_materials(
             "lumped": result.lumped_port_sparams,
             "wire": result.wire_port_sparams,
             "sparam_time_records": result.sparam_time_records,
-            "dft_time_records": {entry.name: rec for entry, rec in zip(
-                self._dft_planes, result.dft_time_records or ())},
+            "dft_time_records": named_plane_records(self, result.dft_time_records),
             "wire_refplane": result.wire_refplane_sparams,
             "freqs": _raw_freqs,
             # Mixed-family S-matrix hook (issue #488): the DFT plane

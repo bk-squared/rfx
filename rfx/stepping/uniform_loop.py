@@ -17,6 +17,8 @@ from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
 from rfx import _realized, _grid_metric
+from rfx.measurement.plane_records import init_plane_records
+
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout
@@ -92,7 +94,7 @@ def run(
     design_occupancy: DesignOccupancySpec | None = None,
     stop_fn: Callable | None = None,
     stop_interval: int = 250,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
     port_record_specs: tuple | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
@@ -297,10 +299,7 @@ def run(
         design_occupancy=design_occupancy,
     )
     carry_init = _setup.carry_init
-    if record_dft and dft_planes:
-        carry_init["dft_time_records"] = tuple(
-            jnp.zeros((n_steps,) + plane.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
-            for plane in dft_planes)
+    init_plane_records(carry_init, dft_planes, record_dft, n_steps)
     init_uniform_records(carry_init, n_steps, wire_port_sparams, lumped_port_sparams, wire_refplane_sparams, field_dtype, port_record_specs)
     dt = _setup.dt
     periodic = _setup.periodic
@@ -704,7 +703,7 @@ def run(
         lumped_port_sparams=final_lumped_sparams,
         sparam_time_records=uniform_records(final_carry, _step_ctx, int(final_carry["fdtd"].step) if stop_fn is not None else None),
         dft_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
-                                for r in final_carry.get("dft_time_records", ())),
+                                for r in final_carry.get("dft_time_records", ()) if r is not None),
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,
@@ -769,7 +768,7 @@ def run_until_decay(
     report_every: int | None = None,
     report_label: str = "",
     sheet_impedance: object | None = None,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
     port_record_specs: tuple | None = None,
     advisory: dict | None = None,
 ) -> SimResult:
@@ -945,10 +944,7 @@ def run_until_decay(
         sheet_impedance=sheet_impedance,
     )
     carry = _setup.carry_init
-    if record_dft and dft_planes:
-        carry["dft_time_records"] = tuple(
-            jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
-            for plane in dft_planes)
+    init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
@@ -1265,7 +1261,7 @@ def run_until_decay(
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
         sparam_time_records=uniform_records(carry, _step_ctx, actual_steps),
-        dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
+        dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ()) if r is not None),
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,

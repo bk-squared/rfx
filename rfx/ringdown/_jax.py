@@ -106,7 +106,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
 
     ``identify_window(w)`` gets the window as a numpy array of the traced
     window's own dtype and shape, bit for bit, and returns the kept poles
-    (complex, per second, at the original step). ``window`` is
+    (complex, per second, at the original step), or (poles, completion mask).
+    Mask value 2 retains an unresolved pole in the fit but omits its tail. ``window`` is
     ``stop_gradient``-ed here. Returns ``s (k_max,)`` in the working complex
     dtype (the real poles first, then inert ones, ``lambda = 0.5`` per step),
     ``mask (k_max,)`` in the working real dtype, ``status`` (int32):
@@ -145,7 +146,9 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         mask = np.zeros(K, dtype=np.int32)
         status = STATUS_OK
         try:
-            s = np.asarray(identify_window(w), dtype=np.complex128).ravel()
+            identified = identify_window(w)
+            poles, complete = identified if isinstance(identified, tuple) else (identified, True)
+            s = np.asarray(poles, dtype=np.complex128).ravel()
         except IdentificationMemoryRefused:
             raise
         except (TimeoutError,): raise
@@ -155,7 +158,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         if s.size > K:
             s, status = np.zeros(0, dtype=np.complex128), STATUS_OVER_BUDGET
         s_out[:s.size] = s
-        mask[:s.size] = 1
+        if s.size:
+            mask[:s.size] = np.where(complete, 1, 2)
         arg = s_out[None, :] * dt + logz[:, None]                          # float64
         return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg),
                 np.asarray(count, dtype=np.int32))
@@ -267,6 +271,8 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     y = y.astype(rdt)
     yw = y[n_start:]
     Yw = yw.astype(cdt)
+    tail_mask = mask == 1
+    mask = (mask > 0).astype(rdt)
     mask_c = mask.astype(cdt)
 
     # the value: least-squares residues at the host poles
@@ -300,7 +306,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     if plain is None:
         plain = plain_dft(y, dt, freqs)
     spectra = plain + tail_dft(s, c, n_start, n - 1, dt, freqs,
-                               None if mutation == "device_tail_arg" else tail_arg)
+                               None if mutation == "device_tail_arg" else tail_arg, mask=tail_mask)
     if not return_aux:
         return spectra
     aux = {"s_pencil": s0, "mask": mask, "delta_s": ds, "s": s, "c": c, "c0": c0,

@@ -119,10 +119,11 @@ def _get_result():
     global _cached_result
     if _cached_result is None:
         sim = _make_wr90_nu_sim()
+        # Allow the pulse to reach the receiver; transmission retains propagation.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             _cached_result = sim.compute_waveguide_s_matrix(
-                num_periods=2, normalize=True,
+                num_periods=32, normalize=True,
             )
     return _cached_result
 
@@ -189,35 +190,15 @@ def test_nu_s_params_finite():
 
 
 def test_nu_s_params_dispatch_and_dft_liveness():
-    """NU air-thru returns the two-run identity (dispatch + DFT are live).
+    """NU air-thru has exact reference subtraction and live transmission.
 
-    ISSUE #395 — what this actually binds: this is an air-filled WR-90 THRU
-    with ``normalize=True``, so the device run *is* the reference run and
-    ``|S21|≈1`` / ``|S11|≈0`` hold BY CONSTRUCTION (device==reference
-    cancellation), independent of NU physics. Verified 2026-07-20: |S11|
-    range [0.0000, 0.0000], |S21| range [1.0000, 1.0000]. This is therefore
-    a DISPATCH + DFT-liveness gate — it catches the NU-DRIVE-FIX failure mode
-    (all-zero S, i.e. |S21| collapses to 0 when the DFT runs with dt=0), NOT
-    a physical passivity/reflection measurement. Real NU S-physics on a
-    device != reference geometry lives in ``test_waveguide_nu_nontrivial.py``
-    (live invariants).
+    The device and reference runs coincide, so reflection is zero by
+    construction. Transmission divides by reference incidence and retains
+    propagation; it is not an identity. The acquisition must include the
+    arriving pulse for its amplitude to witness DFT liveness.
 
-    FIXED (NU-DRIVE-FIX 2026-05-25): _compute_waveguide_s_matrix_nu now
-    produces the live identity instead of all-zero S. Two bugs were fixed:
-      1. rfx/runners/nonuniform.py _build_waveguide_port_config_nu: missing
-         dt=float(grid.dt) in init_waveguide_port call — e_inc_table/h_inc_table
-         remained size-1 sentinels (dt=0 path), so _rect_dft used dt=0 → all
-         DFT outputs zero (|S21| would read 0, tripping the liveness assert).
-      2. rfx/api/_sparams.py _compute_waveguide_s_matrix_nu: off-diagonal
-         safe_b guard threshold 1e-30 too aggressive — NU TFSF operates at
-         float32 signal level ~1e-31 (dt/dx scaling), causing the guard to
-         substitute 1.0 for b_ref, breaking the b_dev/b_ref≈1 cancellation.
-         Lowered to 1e-60.
-
-    Gates (liveness/identity bounds, not physics):
-      - max |S_ij| < 2.0  (no assembly explosion)
-      - |S11| < 0.50  (air-thru identity keeps the diagonal near 0)
-      - |S21| > 0.05  (DFT is live — the all-zero-S regression drops it to 0)
+    These unchanged bounds catch zero DFT output and assembly explosions.
+    The slab contract separately binds coherent passivity and plane rotation.
     """
     res = _get_result()
     s = np.array(res.s_params)
@@ -237,8 +218,7 @@ def test_nu_s_params_dispatch_and_dft_liveness():
     )
     assert s21_mag.max() > 0.05, (
         f"|S21| max = {s21_mag.max():.4f}; expected > 0.05 — DFT not live. "
-        "BUG: NU path returns zero S21 (dt=0 sentinel) while the live identity "
-        "gives ~1.0."
+        "The settled acquisition must contain the transmitted pulse."
     )
 
 
@@ -247,17 +227,11 @@ def test_nu_s_params_dispatch_and_dft_liveness():
 # ---------------------------------------------------------------------------
 
 def test_nu_vs_uniform_finite_and_comparable():
-    """Side-by-side NU vs uniform S-parameter dump (R5 mandate).
+    """Compare settled NU and uniform transmission at the declared planes.
 
-    Post NU-DRIVE-FIX (2026-05-25) the NU and uniform air-thru paths AGREE:
-    both return the two-run identity |S21|=|S12|≈1, |S11|≈0, so the
-    per-freq deviation is ~0 (measured max|delta|=0.0000 on 2026-07-20 —
-    NOT the ~1.0 the pre-fix all-zero bug produced; the stale "NU returns
-    all-zero" note was removed in issue #395). The loose numeric gate
-    (max|delta| < 1.5) still passes and guards against an assembly-level
-    NaN/explosion on either path; it is not a physics-accuracy gate (both
-    sides are the device==reference identity, so agreement is expected by
-    construction — real NU physics is in test_waveguide_nu_nontrivial.py).
+    The grids differ along propagation, so their numerical dispersion differs.
+    The existing bound catches gross assembly disagreement; it does not claim
+    equality of two propagation phases or serve as a physics accuracy gate.
     """
     # Nonuniform result (already cached)
     res_nu = _get_result()
@@ -291,7 +265,7 @@ def test_nu_vs_uniform_finite_and_comparable():
     )
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res_u = sim_u.compute_waveguide_s_matrix(num_periods=2, normalize=True)
+        res_u = sim_u.compute_waveguide_s_matrix(num_periods=32, normalize=True)
     s_u = np.array(res_u.s_params)
 
     # Shape parity
@@ -318,9 +292,8 @@ def test_nu_vs_uniform_finite_and_comparable():
 
     max_dev = np.abs(s_nu - s_u).max()
     print(f"\n[G-NU] max |S_nu - S_uniform| = {max_dev:.4f}")
-    # Post NU-DRIVE-FIX: max_dev ≈ 0 (both paths give the air-thru identity
-    # |S21|≈1, |S11|≈0). Gate is loose (< 1.5) — it verifies both are finite
-    # and assembly-comparable, not that either is physically correct.
+    # Keep the existing assembly comparison bound on the two settled runs.
+    # The one-plane-set contract supplies the separate physics gates.
     assert max_dev < 1.5, (
         f"NU vs uniform max deviation {max_dev:.4f} >= 1.5 — "
         "suggests assembly-level NaN/explosion (the all-zero-S regression "

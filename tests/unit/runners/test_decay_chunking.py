@@ -88,6 +88,8 @@ def _run(
 ):
     cap = (1000 if branch in ("energy", "point", "flux") else 241) if cap is None else cap
     sim = _loaded_sim("pec" if branch in ("point", "min-cap", "zero-cap") else "cpml")
+    if record_dft:
+        sim._time_recorded_dft_planes = {entry.name for entry in sim._dft_planes}
     freqs = np.array([2e9, 4e9])
     if branch in ("energy", "flux"):
         # NTFF needs absorbing faces; the PEC branches preserve the ringing stop-step witness.
@@ -110,6 +112,10 @@ def _run(
     def capture(*args, **kwargs):
         if record_dft:
             kwargs["record_dft"] = True
+        elif driver is run_until_decay_reference:
+            # The frozen reference accepts bool only; this fixture requests none.
+            assert not any(kwargs["record_dft"])
+            kwargs["record_dft"] = False
         if captured["family_peaks"] is not None:
             kwargs["family_peaks"] = captured["family_peaks"]
         captured["grid"], captured["materials"] = args[:2]

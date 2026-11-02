@@ -11,11 +11,11 @@ from rfx import Box, PolylineWire, Simulation
 ELEMENTS = (
     ("thin_conductor", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\)"),
     ("lumped_rlc", r"lumped RLC element \(lumped_rlc\.ez\)"),
+    ("lumped_resistor", r"lumped conductivity \(materials\.(components\.(cells_view\.)?)?sigma_lumped\.2\)"),
     ("sheet_impedance", r"surface-impedance sheet \(sheet_impedance\.mask_e[yz]\)"),
     ("film", r"film conductivity \(materials\.(components\.cells_view\.)?sigma_film\.[12]\)"),
     ("pec_sheet", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\)"),
     ("pec_wire", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.2\)"),
-    ("lumped_port", r"lumped conductivity \(materials\.(components\.(cells_view\.)?)?sigma_lumped\.2\)"),
 )
 
 
@@ -46,16 +46,14 @@ def _guide(element, *, inside=True, graded=False, two_ports=False):
         sim.add(PolylineWire(((x, 0.009, 0.003), (x, 0.009, 0.009)), radius=0.), material="pec")
     elif element == "lumped_rlc":
         sim.add_lumped_rlc((x, 0.009, 0.006), "ez", R=10., L=1e-9)
+    elif element == "lumped_resistor":
+        sim.add_lumped_rlc((x, 0.009, 0.006), "ez", R=10.)
     elif element == "lumped_port":
         sim.add_port((x, 0.009, 0.006), "ez", excite=False)
     return sim
 
 
 def _execute(sim, entry="run"):
-    # run() already refuses every mixed lumped/modal model, wherever the
-    # lumped port is drawn. forward() reaches the shared section authority.
-    if entry == "run" and sim._ports:
-        entry = "forward"
     kwargs = {"n_steps": 2, "skip_preflight": True}
     if entry == "run":
         kwargs["compute_s_params"] = False
@@ -81,6 +79,16 @@ def test_beyond_reference_admitted(element, label):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         _execute(_guide(element, inside=False))
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("inside", [False, True], ids=["beyond", "inside"])
+def test_lumped_port_refused_regardless_of_section(graded, entry, inside):
+    sim = _guide("lumped_port", inside=inside, graded=graded)
+    with pytest.raises(ValueError, match=(
+            "^Waveguide ports are not supported together with lumped ports or TFSF$")):
+        _execute(sim, entry)
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])

@@ -61,7 +61,7 @@ def test_waveguide_replay_bytes_match_pullback(graded, n_steps, n_bins, segmente
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
 def test_replay_uses_realized_shared_port_bins(graded):
     sim = _scene(graded)
-    for name, bins in (("first", 2), ("second", 5)):
+    for name, bins in (("first", 2), ("second", 2)):
         sim.add_waveguide_port(.004, direction="+x", freqs=jnp.linspace(10e9, 14e9, bins),
                               ref_offset=1, probe_offset=2, mode_profile="analytic", name=name)
     realized_bins = []
@@ -74,7 +74,7 @@ def test_replay_uses_realized_shared_port_bins(graded):
 
         _, pullback = jax.vjp(objective, jnp.ones(sim._build_realized_grid().shape, jnp.float32))
         tables = _tables(pullback, 8, 2)
-        assert realized_bins == [2, 2]  # The solve shares the first explicit frequency grid.
+        assert realized_bins == [2, 2]
         assert len(tables) == 8
         measured_bytes = sum(int(leaf.nbytes) for leaf in tables)
         assert sim.estimate_ad_memory(8).replay_table_bytes == measured_bytes
@@ -87,6 +87,27 @@ def test_replay_uses_realized_shared_port_bins(graded):
             assert estimate.ad_segmented_gb == pytest.approx(
                 estimate.ad_fixed_gb + estimate.ntff_dft_gb
                 + (count * estimate.carry_bytes + live * estimate.tape_step_bytes + measured_bytes) / 1e9)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
+def test_replay_refuses_different_port_bins(graded):
+    sim = _scene(graded)
+    for name, bins in (("first", 2), ("second", 5)):
+        sim.add_waveguide_port(.004, direction="+x", freqs=jnp.linspace(10e9, 14e9, bins),
+                              ref_offset=1, probe_offset=2, mode_profile="analytic", name=name)
+
+    def objective(e):
+        result = sim.forward(n_steps=8, eps_override=e, skip_preflight=True)
+        return sum(jnp.sum(jnp.abs(p.s11) ** 2) for p in result.waveguide_sparams.values())
+
+    with pytest.raises(ValueError, match="first.*2 bins.*second.*5 bins"):
+        jax.vjp(objective, jnp.ones(sim._build_realized_grid().shape, jnp.float32))
+    with pytest.raises(ValueError, match="first.*2 bins.*second.*5 bins"):
+        sim.estimate_ad_memory(8)
+    for options in ({}, {"max_levels": 2}) if graded else ({},):
+        with pytest.raises(ValueError, match="first.*2 bins.*second.*5 bins"):
+            sim.plan_ad_memory(8, available_memory_gb=1e-6, **options)
     jax.clear_caches()
 
 

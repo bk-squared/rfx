@@ -243,6 +243,8 @@ Under conformal PEC these are refused: `conformal_min_weight` other than 0.1; PE
 Judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
+The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
+
 ### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
 
 Tracker: #2274
@@ -267,7 +269,7 @@ three refinements. Measured 2026-10-31 with the conformal update now on main (op
 
 Tracker: #2241
 
-`run()` called inside a user `jax.jit` can differ from plain `run()`. On Linux CPU over 192 steps it was seen with a point current source (up to 487 float32 ULP of a probe's own peak per step on a uniform mesh, 333 on a graded mesh), a lumped port (467, uniform) and a wire port (135, uniform). On a graded mesh, `run()` with a lumped or wire port inside `jax.jit` raises `ConcretizationTypeError`. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. `forward()` inside `jax.jit` matches the plain call on one device without a traced override, for every drive measured (point source, lumped, wire, waveguide and microstrip ports, plane wave); `tests/unit/autodiff/test_forward_jit_contract.py` pins it for wire, microstrip and lumped ports. On several devices, or with a traced `eps_override`, it can also differ. Until a fix lands (planned for 2.1), call `forward()` inside `jax.jit` on one device, or call `run()` without an enclosing `jax.jit`. The cause is not yet localized.
+On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform, graded and ADI meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Two cases still differ: `run(devices=...)` or `forward(distributed=True)` on a uniform mesh with a lumped or wire port (up to 432 float32 ULP of a probe's own peak per step over 192 steps), and `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. Until the multi-device fix lands (planned for 2.1), run a ported model on one device inside `jax.jit`, or call `run()` without an enclosing `jax.jit`.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
@@ -455,7 +457,7 @@ The field increment a source adds on its edge is the update's coefficient times 
 
 - A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge 1/w times harder than the update does, w being the edge's open fraction. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) the launched wave, and with it every absolute field and probe amplitude, reads 2.7 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.6 % with 0.75 mm cells; the excess falls in proportion to the cell size. |S11| and |S21| moved by at most 3e-3, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
 - A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
-- A plane-wave source (`add_tfsf_source`) on a smoothed or conformal edge is not measured; planned for 2.1.
+- A plane-wave source (`add_tfsf_source`) refuses a smoothed or conformal edge on its injection planes, on every path (`tests/contracts/test_tfsf_vacuum_planes.py::test_treated_edges_on_injection_planes`).
 
 Any fix is 2.1. Until then, read absolute amplitudes from a port beside a conformal wall as high by up to these amounts, or put the walls on mesh nodes. Measured 2026-10-29; record kept with the project.
 
@@ -564,18 +566,6 @@ Each value's `settling_db`, `settling_witness` and `dt` come back per value and 
 What to do: pass `dx=` so every value shares one grid and time step; or use `parametric_sweep()`, which returns each
 value's full `Result`.
 
-### The settling check cannot judge a record that holds a very slowly decaying pole, so a longer record does not help.
-
-Tracker: #2319
-
-When the identified poles of a record include a growing one, the settling check asks whether its tail, over twice the time the decaying poles need to fall to 1 % of their size, stays within 1 % of the record's spectrum.
-A significant pole that decays by less than about 9×10⁻⁷ per step (at the decimation factor 15 of the case below), but not so slowly that it counts as a steady sinusoid, makes that time longer than the identification can resolve.
-The check then reports `undetermined` with the reason `growing-pole judge cannot judge: decay horizon is longer than the identification resolves growth: H=…, D=…, band_factor=… > 2`, or, for a pole decaying by less than about 9×10⁻¹⁰ per step, `growing-pole judge cannot judge: non-finite growing pole share or band_factor; H=…, D=…, band_factor=inf`. H is that time in steps and D the decimation factor.
-Extending the record does not change the verdict.
-Seen on v2.0.0 on the WR-90 waveguide filter design start (`scripts/showcase/design_filter.py --stage trial`, a uniform εr 1.5 insert and a second start): every port record was undetermined at the declared record (15,252 steps) and again at 1.5× that, the longest the design step allows, so the design descent did not start; the empty guide passes.
-Which pole causes it on that structure is not yet identified.
-No workaround is known. The published filter and its numbers come from a run on rfx main of 2026-10-05, before v2.0.0.
-
 ## Absorbing boundaries
 
 ### Magnetic faces require the single-device second-order Yee image.
@@ -608,16 +598,23 @@ runs are bit-identical, and on arm64 CPUs both walls give bit-identical runs. Th
 What to do: for a bit-for-bit comparison with one device on x86, use a PEC wall or one device.
 → [#2086](https://github.com/bk-squared/rfx/issues/2086)
 
-### With the mesh as a design variable, a ground plane still ends at the absorber.
+### With the mesh as a design variable, a conductor that reaches or ends within one cell of an absorbing face is refused.
 
 Tracker: #1230
 
 A conductor drawn to an absorbing boundary is continued through the absorber, so
-a grounded board stays grounded inside it.
-With the mesh as a design variable (a `dx_profile`, `dy_profile` or `dz_profile` traced under `jax.grad`, `jax.jvp` or `jax.jit`), a conductor that reaches an absorbing face stops at the absorber entrance instead of continuing into it, and one warning says so.
-On a grounded-board test at the default 16 absorber layers, this changed S11 by 5–9 % of its peak and its gradient by 6–8 %, independent of absorber depth.
-Workaround: keep that mesh axis concrete (pass the profile as a NumPy array) for such a run.
-A refusal replaces the warning in 2.0.1.
+a grounded board stays grounded inside it. When any mesh axis is traced
+(`dz_profile` and its siblings under `jax.grad` or `jax.jit`), a conductor whose
+concrete declared extent reaches or ends within one cell of an absorbing face is
+now refused before stepping. The cell is that face's edge cell from the concrete
+profile, the nominal profile for a traced axis (including windowed profiles), or
+the declared uniform cell when there is no profile. A traced axis with an absorber
+needs `nominal_profiles` for any conductor with finite declared extent on that
+axis, even one clear of every face. Declare that nominal profile or pass the
+axis's profile as a concrete NumPy array for this run. The earlier
+cut changed S11 by 5–9 % of its peak and its gradient by 6–8 % on a
+grounded-board test at 16 absorber layers. Those equal-length records were not
+settled; these are measured record differences, not settled-error estimates.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ### A plane wave requires compatible transverse faces and an invariant absorber replacement.

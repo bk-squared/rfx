@@ -1,11 +1,14 @@
 """Non-uniform grid run path extracted from Simulation."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import ConfigurationWarning
 from rfx.model.graded_admission import host_cells
 
 from rfx._grid_metric import field_index
+from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
+
 import warnings
 from dataclasses import replace
 
@@ -266,14 +269,6 @@ def _range_to_slice_nu(grid, axis, value_range):
             f"range {value_range!r} resolves to invalid aperture span {actual_span}"
         )
     return (lo_idx, hi_idx), actual_span
-
-
-def _resolve_waveguide_run_freqs_nu(sim):
-    """The shared bins built by the graded runner, also read by preflight."""
-    for entry in sim._waveguide_ports:
-        if entry.freqs is not None:
-            return jnp.asarray(entry.freqs, dtype=jnp.float32)
-    return jnp.linspace(sim._freq_max * 0.5, sim._freq_max, 20, dtype=jnp.float32)
 
 
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
@@ -574,6 +569,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx.runners._admission import refuse_mixed_waveguide_sources
+    refuse_mixed_waveguide_sources(sim)
+    from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
+    wg_freqs = resolve_shared_waveguide_port_freqs(
+        sim, route="graded forward()" if lane == "fwd_nonuniform" else "graded run()")
     from rfx.model.occupancy import refuse_graded_occupancy_model
     refuse_graded_occupancy_model(sim, pec_occupancy_override)
     from rfx.measurement.decay import refuse_radiated_flux_stop
@@ -952,7 +952,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # init_waveguide_port (duck-types on grid for per-axis widths).
     waveguide_port_cfgs = []
     if sim._waveguide_ports:
-        wg_freqs = _resolve_waveguide_run_freqs_nu(sim)
         for pe in sim._waveguide_ports:
             waveguide_port_cfgs.append(
                 _build_waveguide_port_config_nu(
@@ -1161,7 +1160,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         pec_faces=getattr(sim, '_pec_faces', None),
         pmc_faces=sim._boundary_spec.pmc_faces() if getattr(sim, '_boundary_spec', None) is not None else None,
         dft_planes=dft_plane_probes if dft_plane_probes else None,
-        record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
+        record_dft=time_recorded_dft_selection(sim),
         flux_monitors=(
             (flux_monitor_objs + wg_flux_monitors)
             if (flux_monitor_objs or wg_flux_monitors) else None
@@ -1264,7 +1263,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "run: chunked progress composes with neither "
                 "checkpoint/segmented-remat nor n_warmup on the NU lane "
                 "(the chunked loop is forward-only).",
-                ConfigurationWarning, stacklevel=2)
+                ConfigurationWarning, stacklevel=user_stacklevel())
         r = run_nonuniform(
             grid, materials, n_steps,
             checkpoint=checkpoint,
@@ -1290,7 +1289,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.measurement import package_declared_measurements
     declared_measurements = package_declared_measurements(
-        sim, grid,
+        sim, grid, entry="forward()" if lane == "fwd_nonuniform" else "run()",
         flux_monitors=r.get("flux_monitors", ()),
         waveguide_cfgs=r.get("waveguide_ports", ()),
         waveguide_reference_only=waveguide_reference_only,
@@ -1341,9 +1340,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         lumped_port_sparams=r.get("lumped_port_sparams"),
         sparam_time_records=r.get("sparam_time_records"),
         sparam_read_ids=r.get("sparam_read_ids"),
-        dft_time_records={
-            entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
-        },
+        dft_time_records=named_plane_records(sim, r.get("dft_time_records", ())),
         **declared_measurements,
         waveguide_port_flux=waveguide_port_flux_result,
         grid=grid,

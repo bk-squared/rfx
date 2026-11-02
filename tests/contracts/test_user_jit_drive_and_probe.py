@@ -32,17 +32,8 @@ DX_GUIDE = np.r_[np.ones(10), [.9, 1.1, .95, 1.05, .9, 1.1, 1.05, .95, 1.3],
 DZ_MSL = np.r_[np.full(6, .5), .5 * 1.25 ** np.arange(1, 6)] * 1e-3
 
 
-XFAILS = dict.fromkeys((1, 3, 5, 15, 29, 30, 31, 32, 40, 43), pytest.mark.xfail(
+XFAILS = dict.fromkeys((29, 30, 31, 32, 43), pytest.mark.xfail(
     strict=True, raises=AssertionError, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
-XFAILS.update(dict.fromkeys((17, 19, 50), pytest.mark.xfail(
-    strict=True, raises=jax.errors.ConcretizationTypeError,
-    reason="#2241 graded port assembly calls float() on a traced cell spacing under a user jit (rfx/model/graded_ports.py:77)")))
-XFAILS[49] = pytest.mark.xfail(
-    strict=True, raises=jax.errors.TracerArrayConversionError,
-    reason="#2241 run()'s lumped-port S extraction converts a traced array to numpy under a user jit (rfx/measurement/port_s.py:32)")
-XFAILS[33] = pytest.mark.xfail(
-    strict=True, raises=ValueError,
-    reason="#2241 the closed-box TF/SF vacuum check uses an ordered debug effect, which multi-device lowering refuses under a user jit (rfx/boundaries/tfsf.py:399)")
 
 
 def _row(path, kind, entry, *, eps=False, always=False):
@@ -75,6 +66,9 @@ for _path in ('uniform', 'graded', 'multi-graded', 'adi'):
     for _kind in (('field',) if _path == 'adi' else ('point', 'lumped')):
         ROWS.append(_row(_path, _kind, 'forward', eps=True,
                          always=_path == 'multi-graded' and _kind == 'lumped'))
+
+# Preserve the original row numbering while moving row 33 to REFUSALS.
+del ROWS[32]
 
 
 def _devices(path):
@@ -290,10 +284,29 @@ def test_drive_and_probe(path, kind, entry, eps, evidence):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('path,kind', [pytest.param('uniform', 'lumped', id='U4-uniform-lumped-S', marks=XFAILS[49]),
-                                      pytest.param('graded', 'wire', id='U5-graded-wire-S', marks=XFAILS[50])])
+@pytest.mark.parametrize('path,kind', [pytest.param('graded', 'wire', id='U5-graded-wire-S')])
 def test_s_drive_and_reference(path, kind, evidence):
     _compare(path, kind, 'run', False, evidence, spectrum=True)
+
+
+@pytest.mark.parametrize('options,exception,fragment', [
+    pytest.param(dict(until_decay=.1, decay_max_steps=32, decay_min_steps=0,
+                      decay_check_interval=8), ValueError,
+                 'cannot be computed before the loop', id='host-until-decay'),
+    pytest.param(dict(n_steps=32, report_every=16), ValueError,
+                 'report_every', id='host-report-every'),
+])
+def test_host_control_keeps_its_user_jit_behavior(options, exception, fragment, evidence):
+    """These existing host paths remain outside the concrete setup region."""
+    try:
+        sim = _scene('uniform', 'point')
+        with pytest.raises(exception, match=fragment) as refusal:
+            jax.jit(lambda: sim.run(skip_preflight=True, compute_s_params=False,
+                                   **options).time_series)()
+        evidence.update(status='pass', refusal=_error_details(refusal.value))
+    except Exception as error:
+        evidence.update(status='fail', **_error_details(error))
+        raise
 
 
 # Literal message fragments are independent of implementation admission helpers.
@@ -329,15 +342,25 @@ for _entry in ('run', 'forward'):
         REFUSALS.append(('adi', _kind, _entry, False, False, _exception, _fragment))
 REFUSALS.append(('multi-graded', 'lumped', 'forward', True, True, NotImplementedError,
                  'Graded multi-device port overrides on Debye/Lorentz live edges'))
+# Decision record rows 33 and 49: actionable refusals under a user jit.
+REFUSALS = [(*row, False) for row in REFUSALS]
+REFUSALS.extend([
+    ('multi-uniform', 'tfsf-closed', 'forward', False, False, NotImplementedError,
+     'use the plain call to forward() or run()', False),
+    ('uniform', 'lumped', 'run', False, False, NotImplementedError,
+     'use forward() with port_s11_freqs or call run() directly (plain call)', True),
+    ('uniform', 'wire', 'run', False, False, NotImplementedError,
+     'use forward() with port_s11_freqs or call run() directly (plain call)', True),
+])
 
 
-@pytest.mark.parametrize('path,kind,entry,eps,debye,exception,fragment', [
+@pytest.mark.parametrize('path,kind,entry,eps,debye,exception,fragment,spectrum', [
     pytest.param(*row, id=f'{row[0]}-{row[1]}{"-eps" if row[3] else ""}'
                  f'{"-debye" if row[4] else ""}-{row[2]}-refused',
                  marks=[pytest.mark.distributed] if row[0].startswith('multi-') else [])
     for row in REFUSALS
 ])
-def test_refused_under_user_jit(path, kind, entry, eps, debye, exception, fragment, evidence):
+def test_refused_under_user_jit(path, kind, entry, eps, debye, exception, fragment, spectrum, evidence):
     try:
         if path == 'adi' and kind == 'waveguide':
             # ADI refuses every CPML scene at construction, before port admission.
@@ -350,7 +373,7 @@ def test_refused_under_user_jit(path, kind, entry, eps, debye, exception, fragme
                      debye=debye)
         value = _input_eps(sim, path) if eps else None
         with pytest.raises(exception, match=re.escape(fragment)) as refusal:
-            jax.jit(lambda e: _call(sim, path, entry, e))(value)
+            jax.jit(lambda e: _call(sim, path, entry, e, spectrum=spectrum))(value)
         evidence.update(status='pass', refusal=_error_details(refusal.value))
     except Exception as error:
         evidence.update(status='fail', **_error_details(error))

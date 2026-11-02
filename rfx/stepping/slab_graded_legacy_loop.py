@@ -14,7 +14,7 @@ from rfx.core.yee import MaterialArrays
 from rfx.core.yee import component_h_materials
 from rfx.model.electric_metrics import SlabElectricMetrics
 from rfx.model.occupancy import publish_slab_occupancy
-from rfx.stepping import segmented_scan
+from rfx.stepping.remat import segmented_scan
 from rfx.stepping.rank import mesh_ranks
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.slab import owned_values

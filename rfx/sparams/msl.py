@@ -717,6 +717,11 @@ def compute_msl_s_matrix(
                 _h_crop_region,
             ))
 
+        variant._time_recorded_dft_planes = (
+            {name for ladder in ez_probe_names for name in ladder}
+            | {name for pairs in h_probe_names for pair in pairs for name in pair}
+        )
+
         # G-AD-WIRE: when eps_override is provided use the
         # differentiable forward() path so jax.grad can flow
         # from eps_override through the DFT plane accumulators

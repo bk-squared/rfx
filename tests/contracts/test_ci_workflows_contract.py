@@ -767,10 +767,10 @@ def test_guards_and_preflight_can_diff_and_read_labels() -> None:
     assert (job.get("permissions") or {}).get("contents") == "read", job.get("permissions")
 
 
-def test_pushes_to_main_still_trigger_the_lane() -> None:
+def test_only_pull_requests_and_merge_groups_trigger_the_lane() -> None:
     triggers = load(PR_TESTS).get("on", load(PR_TESTS).get(True))
-    assert triggers["push"]["branches"] == ["main"]
-    assert "pull_request" in triggers
+    assert set(triggers) == {"pull_request", "merge_group"}
+    assert triggers["merge_group"] == {"types": ["checks_requested"]}
 
 
 # --------------------------------------------------------------------------
@@ -1008,7 +1008,7 @@ def _classify(env: dict[str, str], tmp_path: Path) -> tuple[str, str]:
 
 
 def test_a_push_to_main_is_never_skipped(tmp_path: Path) -> None:
-    """main is what releases, the GPU lane and the weekly suite are cut from."""
+    """Legacy push inputs still fail open; pr-tests no longer subscribes to push."""
     written, log = _classify({"EVENT_NAME": "push"}, tmp_path)
     assert written == "code_changed=true", log
 
@@ -1236,8 +1236,14 @@ def test_required_and_companion_workflows_run_on_merge_group(filename, contexts)
     jobs = workflow["jobs"]
     assert contexts <= {job.get("name", key) for key, job in jobs.items()}
     assert all("if" not in job for job in jobs.values())
+    group = "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    if filename in {"pr-body.yml", "changelog-fragment.yml"}:
+        actions = "github.event.action == 'labeled' || github.event.action == 'unlabeled'"
+        if filename == "pr-body.yml":
+            actions += " || github.event.action == 'edited'"
+        group += "${{ (" + actions + ") && format('-{0}', github.run_id) || '' }}"
     assert workflow["concurrency"] == {
-        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "group": group,
         "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
     }
 

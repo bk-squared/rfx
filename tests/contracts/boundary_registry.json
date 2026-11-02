@@ -403,6 +403,11 @@
     },
     {
       "file": "rfx/geometry/conformal_cells.py",
+      "function": "conformal_b_floor",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/conformal_cells.py",
       "function": "face_fraction.polygon",
       "kind": "roll/diff"
     },

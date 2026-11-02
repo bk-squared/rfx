@@ -142,12 +142,12 @@ def test_direct_runner_default_warns_and_keeps_spectra(mesh, illumination):
     assert bool(np.any(np.asarray(result.time_series))) == (illumination != "none")
 
 
-def test_waveguide_illumination_still_returns_fields_without_s():
-    # The graded runner carries this composition. Uniform run refuses it
-    # independently of S admission, as the separate boundary test pins.
-    result = _default(_scene("graded", wire=True, illumination="waveguide", single=True))
-    assert result.wire_port_sparams
-    assert np.any(np.asarray(result.time_series))
+def test_graded_waveguide_illumination_with_passive_wire_refuses():
+    with pytest.warns(UserWarning, match=REFUSAL):
+        with pytest.raises(ValueError) as caught:
+            _scene("graded", wire=True, illumination="waveguide", single=True).run(
+                n_steps=64, skip_preflight=True)
+    assert str(caught.value) == "Waveguide ports are not supported together with lumped ports or TFSF"
 
 
 def test_uniform_waveguide_composition_keeps_its_existing_refusal():

@@ -694,6 +694,11 @@ def compute_mixed_s_matrix(
             ))
             names.append(nm)
 
+        variant._time_recorded_dft_planes = (
+            {name + f"_ez{q}" for p, name in enumerate(names) for q in range(len(probe_xs[p]))}
+            | {name for pairs in h_names for pair in pairs for name in pair}
+        )
+
         raw = variant._forward_from_materials(
             grid, materials, debye_spec, lorentz_spec,
             n_steps=n_steps, checkpoint=False, pec_mask=pec_mask,

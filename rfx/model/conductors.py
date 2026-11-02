@@ -4,6 +4,7 @@ The classifier and Yee edge rules remain in rasterize_grid and boundaries.pec.
 This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import ConfigurationWarning, RfxRefusal
 
@@ -348,7 +349,7 @@ def release_port_occupancy(occupancy, conductors):
         ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
-                      ConfigurationWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=user_stacklevel())
     import jax.numpy as jnp
     return jnp.asarray(occupancy).at[indices].set(0.0)
 

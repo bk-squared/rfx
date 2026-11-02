@@ -1,6 +1,7 @@
 """One PEC/DC/f0 fold on the realized grid, in declaration order."""
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
+from rfx._warning_origin import user_stacklevel
 from dataclasses import dataclass, replace
 import warnings
 
@@ -305,7 +306,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                 f'{name} DC film: area/layer check not evaluated on traced coordinates; '
                 'snap="declared" runs without checking area or the one-layer rule; '
                 'check the same geometry on a concrete mesh.', code='dc_film_unchecked',
-                source='admit_dc_film'), stacklevel=2)
+                source='admit_dc_film'), stacklevel=user_stacklevel())
         # Keep the coordinate-dependent Box selection and cross-section traced.
         plane_lo, plane_hi = list(lo), list(hi)
         plane_lo[normal] = plane_hi[normal] = mid
@@ -380,7 +381,7 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
             raise DCFilmAdmissionError(message)
         if emit:
             warnings.warn(PreflightWarning(message, code='dc_film_area', severity='warning',
-                                          source='admit_dc_film'), stacklevel=2)
+                                          source='admit_dc_film'), stacklevel=user_stacklevel())
 
 
 def dc_film_plane(shape, grid):

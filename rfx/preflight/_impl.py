@@ -5,6 +5,7 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
+from rfx._warning_origin import user_stacklevel
 from rfx.errors import AccuracyWarning, RfxRefusal
 
 import jax
@@ -241,7 +242,11 @@ _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 
 def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
-    """Apply the same warning/error policy to full or scoped preflight."""
+    """Apply the same warning/error policy to full or scoped preflight.
+
+    The advisory names the first caller frame outside rfx, however many rfx frames lie between;
+    ``stacklevel`` is accepted from older callers and not used.
+    """
     issues = PreflightReport(issues)
     if not len(issues):          # PreflightReport refuses bool() (#980)
         return
@@ -254,7 +259,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
             f"[{context}] preflight found {len(warns)} advisory issue(s) - "
             f"pass skip_preflight=True to suppress:\n  - {body}",
             AccuracyWarning,
-            stacklevel=stacklevel + 1,
+            stacklevel=user_stacklevel(),
         )
     if errors:
         # Error-severity findings are structurally-impossible configs

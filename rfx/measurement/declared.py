@@ -3,9 +3,10 @@
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 
 
-def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs, waveguide_reference_only=False):
+def package_declared_measurements(sim, grid, *, entry, flux_monitors, waveguide_cfgs, waveguide_reference_only=False):
     """Return named declared monitors, port records and reported-plane S."""
     from rfx.api._spec import WaveguideSParamResult
     from rfx.measurement.waveguide_s import (
@@ -27,20 +28,20 @@ def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs, w
     sparams_result = None
     if sim._waveguide_ports and not waveguide_reference_only:
         sparams_result = {}
-        for entry, cfg in zip(sim._waveguide_ports, waveguide_cfgs):
+        for port, cfg in zip(sim._waveguide_ports, waveguide_cfgs):
             plane_positions = waveguide_plane_positions(cfg)
             source_plane = plane_positions["source"]
             measured_reference_plane = plane_positions["reference"]
             measured_probe_plane = plane_positions["probe"]
             reference_plane, probe_plane, calibration_preset = resolve_reported_planes(
-                entry, cfg, grid=grid,
+                port, cfg, grid=grid,
             )
             s11, s21 = extract_waveguide_sparams(
                 cfg,
                 ref_shift=reference_plane - measured_reference_plane,
                 probe_shift=probe_plane - measured_probe_plane,
             )
-            sparams_result[entry.name] = WaveguideSParamResult(
+            sparams_result[port.name] = WaveguideSParamResult(
                 freqs=concrete_array(cfg.freqs),
                 s11=concrete_array(s11),
                 s21=concrete_array(s21),
@@ -50,6 +51,19 @@ def package_declared_measurements(sim, grid, *, flux_monitors, waveguide_cfgs, w
                 measured_probe_plane=measured_probe_plane,
                 reference_plane=reference_plane,
                 probe_plane=probe_plane,
+            )
+        measurements = list(sparams_result.values())
+        if measurements and not any(
+            is_tracer(value.s11) or is_tracer(value.freqs) for value in measurements
+        ):
+            reflections = [value.s11 for value in measurements]
+            frequencies = [value.freqs for value in measurements]
+            if len(measurements) == 1:
+                s11, freqs = reflections[0], frequencies[0]
+            else:
+                s11, freqs = np.stack(reflections), frequencies[0]
+            warn_if_singular_value_exceeds_one(
+                s11, freqs, extractor=f"{entry} waveguide_sparams",
             )
     return {
         "flux_monitors": flux_result,

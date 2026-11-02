@@ -14,6 +14,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from rfx.measurement.plane_records import update_plane_records
+
 import jax
 import jax.numpy as jnp
 
@@ -565,9 +567,8 @@ def make_uniform_step(
         # Rebuild carry
         new_carry: dict = {"fdtd": frame.st}
         if "dft_time_records" in frame.carry:
-            new_carry["dft_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
-                for record, sample in zip(frame.carry["dft_time_records"], frame.plane_samples))
+            new_carry["dft_time_records"] = update_plane_records(
+                frame.carry["dft_time_records"], frame.plane_samples, frame.step_idx)
         if ctx.use_wire_refplanes:
             frame.port_samples.extend(frame.refplane_samples)
         if "sparam_time_records" in frame.carry:

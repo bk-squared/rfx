@@ -142,9 +142,10 @@ def test_no_growing_pole_passes_even_where_a_channel_dft_is_zero():
     assert judge.status == 'pass' and judge.n_kept_growing == 0
 
 
-def test_any_positive_rate_is_judged_and_an_exact_sinusoid_is_not():
+def test_any_positive_rate_and_exact_sinusoid_receive_tail_bounds():
     # A growth of 1e-13 per step is below the in-window rule's sinusoid test but still a
     # growing pole: on a read bin its tail bound is large, so it is refused.
+    # An exactly zero rate is unresolved too; its on-bin bound has a zero divisor.
     slow = (1e-13 + 2j*np.pi*10e9*DT) / DT
     exact = (2j*np.pi*10e9*DT) / DT
     denom = np.full((len(BINS), 1), 1e-10)
@@ -156,8 +157,8 @@ def test_any_positive_rate_is_judged_and_an_exact_sinusoid_is_not():
     np.testing.assert_allclose(slow_judge.share_per_bin[off], expected[off], rtol=1e-9)
     assert slow_judge.share_per_bin[10] > 1e6
     exact_judge = rd.judge_growing_poles(_model([exact], [[1e-3]]), 1024, BINS, denom)
-    assert exact_judge.status == 'pass'
-    np.testing.assert_array_equal(exact_judge.share_per_bin, np.zeros(len(BINS)))
+    assert exact_judge.status == 'cannot judge'
+    assert exact_judge.share_per_bin[10] > 1e6
 
 
 @pytest.mark.parametrize('bad', ['residue', 'denominator', 'overflow'])
@@ -170,8 +171,9 @@ def test_nonfinite_values_cannot_judge(bad):
     else:
         model.s[1] = 1/DT + 2j*np.pi*10e9
     judge = rd.judge_growing_poles(model, n, BINS, denom)
-    assert judge.status == 'cannot judge' and not judge.ok
-    assert 'non-finite' in judge.reason
+    assert judge.status == ('refused' if bad == 'overflow' else 'cannot judge') and not judge.ok
+    if bad != 'overflow':
+        assert 'non-finite' in judge.reason
 
 
 def test_c1_true_decaying_tail_still_fails():
