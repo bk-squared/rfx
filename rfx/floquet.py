@@ -313,28 +313,17 @@ def compute_floquet_s_params(
         (``tests/unit/ports/test_floquet_s_params_contract.py``) — the first real pytest
         caller, a passivity check on pre-isolated pure-wave input, and a
         finite-grad AD smoke (the path is jnp-pure and AD-traceable) — but **no
-        accuracy validation against an external periodic-cell solver**. It also
-        presumes the input accumulators already isolate the incident /
-        reflected / transmitted waves: a naive single-run soft-source drive
-        does NOT (a bidirectional source leaves no pure-forward monitor plane),
-        so ``|S11|`` from such a drive can exceed 1. Do not build accuracy
-        claims on it. Tracking: https://github.com/bk-squared/rfx/issues/141
+        accuracy validation against an external periodic-cell solver**.
 
-        **Drive-isolation scoping (2026-07-05, R2-STOP):** the obvious fix — a
-        two-run empty-vs-device reference subtraction (``E_scat = E_dev −
-        E_empty`` at a +z-side plane, the pattern that works for waveguide/coax
-        ports) — does NOT resolve this for a periodic Floquet cell. On an εr=4
-        slab vs the exact analytic Airy S11, the two-run extraction is
-        non-physical: |S11|≈1.5 at band-center 6 GHz where Airy=0.09 (the ~1.5
-        extraction-error floor swamps the small true reflection) and larger
-        blow-ups at band edges (small-incident normalization noise). TFSF
-        one-way plane-wave sources — the clean isolation route — are explicitly
-        barred with Floquet ports (see ``add_floquet_port``). A real fix needs
-        dedicated numerics (clean incident normalization + higher-order-mode
-        filtering, or a Floquet-compatible one-way source), NOT a parameter
-        flip; and drive-isolation is the PREREQUISITE to any external (RCWA /
-        Meep-Bloch) accuracy validation — the external reference is moot until
-        FDTD yields a physical |S11|≤1 on a real periodic structure.
+        On a uniform soft TE sheet drive at normal incidence, the excess
+        reflection came from splitting E and H at different positions and
+        times. ``update_floquet_dft`` centres H on E before that split.
+        Empty-cell, PEC-sheet and dielectric-slab checks support this
+        correction. Put the reflection plane between the source and the
+        structure: a plane on the far side of the source reads the source's
+        own backward wave. A bidirectional source does not prevent the
+        forward/backward split on the structure side. These checks do not
+        establish accuracy for oblique incidence or higher-order modes.
 
     Uses incident, reflected, and (optionally) transmitted plane
     DFT data to compute S11 (reflection) and S21 (transmission).
