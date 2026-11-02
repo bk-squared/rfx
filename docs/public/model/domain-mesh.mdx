@@ -125,7 +125,10 @@ value is kept as given and is not checked against the profile, so pass
 
 Keep the interfaces on node planes, as the `assert` above checks. A sheet
 conductor lands on the nearest node plane, so a substrate face between nodes
-leaves a gap between the copper and the dielectric. Preflight's
+leaves a gap between the copper and the dielectric. A dielectric `Box` face
+between nodes also goes to the nearest node plane, and a dielectric layer with no
+cell centre inside it is refused before the run: refine until one lies inside.
+Preflight's
 `graded_box_rasterization` warning fires when a thin `Box` gets far fewer
 cells than the fine spacing nearby implies; fix the profile rather than the
 warning.
