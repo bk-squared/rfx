@@ -443,6 +443,13 @@ returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 A warning never changes the returned numbers. No warning means only that no
 check fired; it does not mean the S-matrix is correct.
 
+`compute_floquet_s_params` reads the accumulators that `update_floquet_dft`
+builds in your own time loop: call `update_floquet_dft` once per step, after the
+E update, on a plane at index 1 or above. The split takes the wave travelling
+toward +normal as the incident one, so put the structure on the +normal side of
+the source and the reflection plane between them. A plane on the far side of the
+source reads the source's own backward wave as the reflection.
+
 ## Is the run finished?
 
 Every spectrum on this page is the Fourier transform of a finite record. If
