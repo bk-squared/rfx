@@ -470,7 +470,8 @@
         "max_memory_mb",
         "waveform",
         "thin_conductors",
-        "domain"
+        "domain",
+        "dt_override"
       ]
     },
     "axial_ratio": {
@@ -2759,6 +2760,7 @@
       "num_periods",
       "normalize",
       "subpixel_smoothing",
+      "conformal_pec",
       "eps_override",
       "sigma_override",
       "checkpoint_segments",

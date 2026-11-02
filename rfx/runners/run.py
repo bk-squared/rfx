@@ -11,7 +11,7 @@ from rfx.api._spec import Result, _warn_if_nonfinite_result
 from rfx.model import conductors as _conductors
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.ringdown import RingdownSpec
-from rfx.runners._admission import refuse_coaxial_port
+from rfx.runners._admission import refuse_coaxial_port, resolve_run_conformal, refuse_tfsf_decay_without_source_off
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 from rfx.simulation import SnapshotSpec
@@ -39,7 +39,7 @@ def run_after_admission(
     s_param_n_steps: int | None = None,
     snapshot: SnapshotSpec | None = None,
     subpixel_smoothing: bool | str = False,
-    conformal_pec: bool | None = None,
+    conformal_pec: bool | str | None = None,
     conformal_min_weight: float = 0.1,
     devices: list | None = None,
     exchange_interval: int = 1,
@@ -51,11 +51,7 @@ def run_after_admission(
 ) -> Result:
     validate_exchange_interval(exchange_interval)
     fixed_num_periods = n_steps is None
-    if until_decay is not None and self._tfsf is not None:
-        from rfx.sources.sources import CustomWaveform
-        if isinstance(self._tfsf.waveform, CustomWaveform):
-            raise NotImplementedError(
-                "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
+    refuse_tfsf_decay_without_source_off(self, until_decay)
     if until_identified is not False:
         from rfx.ringdown import refuse_until_identified
         until_identified = refuse_until_identified(
@@ -77,14 +73,7 @@ def run_after_admission(
         decay_max_steps=decay_max_steps,
     )
 
-    # ---- Stage 1 conformal PEC auto-routing ----
-    # When the user passes ``conformal_pec=None`` (default), derive
-    # it from ``BoundarySpec.conformal_faces()``: any axis declared
-    # ``Boundary(conformal=True)`` flips conformal_pec on. Explicit
-    # True/False from the caller is preserved as a power-user
-    # override (e.g. for A/B regression diagnosis).
-    if conformal_pec is None:
-        conformal_pec = bool(self._boundary_spec.conformal_faces())
+    conformal_pec = resolve_run_conformal(self, conformal_pec, devices, subpixel_smoothing)
 
     refuse_coaxial_port(self, "run")
     compute_s_params = self._validate_run_sparameter_request(
