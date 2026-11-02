@@ -768,9 +768,9 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     nodes = (coords.x, coords.y, coords.z)
     traced_axes = tuple(a for a, n in enumerate(nodes) if is_tracer(n))
     if traced_axes:
-        from rfx.geometry._traced_conductor import refuse_traced_conductor_at_absorber
-        refuse_traced_conductor_at_absorber(sim, grid, shape, traced_node_axes=traced_axes)
-        return shape
+        from rfx.geometry._traced_conductor import continued_traced_conductor_shape
+        return continued_traced_conductor_shape(
+            sim, grid, shape, traced_node_axes=traced_axes, entry=entry, unextendable=unextendable)
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
     # A shape without a bounding box has nothing to continue (no face to
