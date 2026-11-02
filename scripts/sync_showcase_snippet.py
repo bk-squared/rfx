@@ -18,7 +18,7 @@ import textwrap
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "scripts/showcase/patch_sensitivity.py"
-PAGES = ("docs/public/index.mdx", "docs/public/showcase/sensitivity-map.mdx")
+PAGES = ("docs/public/index.mdx",)
 START = "{/* rfx-showcase-objective:start */}"
 END = "{/* rfx-showcase-objective:end */}"
 SETUP = "...  # imports, board, corners, freqs, n_steps, checkpoint_segments, eps_bg: see the full script"
