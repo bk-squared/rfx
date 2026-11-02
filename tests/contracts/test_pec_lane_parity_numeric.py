@@ -6,10 +6,6 @@ SHEET, and no solver lane applied it — a sheet owns no cell, and every
 solve entry took only ``pec_mask``. A simulation with a sheet-declared
 ground plane ran as if the metal were not there.
 
-So this file drives the actual lanes and compares fields. ADI's unstable
-interior-PEC projection is refused; its contract below pins that refusal
-and checks that declared sheets and wires still reach the shared owner.
-
 Battery, on a 20 mm PEC-walled box at dx = 1 mm with an Ez source below
 the conductor and a probe above it:
 
@@ -219,104 +215,12 @@ def test_the_shmap_distributed_lane_realizes_the_same_conductor():
             kind, distributed, empty)
 
 
-def _adi_conductor(kind, mode="3d", **kwargs):
-    """The measured slab classes, with an in-plane slab on TMz."""
-    from rfx import PolylineWire
-
-    sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, boundary="pec",
-                     solver="adi", mode=mode, **kwargs)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        if kind == "wire":
-            sim.add(PolylineWire(((10e-3, 10e-3, 8e-3),
-                                  (10e-3, 10e-3, 14e-3)), radius=0.),
-                    material="pec")
-        else:
-            thickness = {"sheet": 0, "volume": DX, "thick_volume": 3 * DX}[kind]
-            if mode == "3d":
-                lo, hi = (4e-3, 4e-3, 10e-3), (16e-3, 16e-3, 10e-3 + thickness)
-            else:
-                lo, hi = (4e-3, 10e-3, 0), (16e-3, 10e-3 + thickness, 20e-3)
-            sim.add(Box(lo, hi), material="pec")
-    sim.add_source(position=SRC if mode == "3d" else (10e-3, 5e-3, 0),
-                   component="ez")
-    sim.add_probe(position=PROBE if mode == "3d" else (10e-3, 15e-3, 0),
-                  component="ez")
-    return sim
 
 
-@pytest.mark.parametrize("mode", ["3d", "2d_tmz"])
-@pytest.mark.parametrize("kind", ["sheet", "volume", "thick_volume"])
-@pytest.mark.parametrize("entrypoint", ["run", "forward"])
-def test_adi_default_refuses_interior_pec_even_without_preflight(mode, kind, entrypoint):
-    """The shipped factor must refuse before returning the measured overflow.
-
-    A finite 200-step factor-1 trace was not a stability bound: longer
-    measurements also grew at factor 1. No supported interior-PEC ADI
-    factor is inferred from these short conductor-realization witnesses.
-    """
-    sim = _adi_conductor(kind, mode)
-    assert sim._adi_cfl_factor == 2.0  # #1448 ADI default CFL 5 -> 2
-    with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
-        getattr(sim, entrypoint)(n_steps=4, skip_preflight=True)
 
 
-@pytest.mark.parametrize("kind", ["sheet", "wire"])
-@pytest.mark.parametrize("entrypoint", ["run", "forward"])
-def test_adi_refusal_preserves_sheet_and_wire_forwarding(monkeypatch, kind, entrypoint):
-    """A refusal must not conceal a return of #931's dropped-conductor bug.
-
-    Both spies call production code: the declaration reaches the ADI
-    helper, its shared owner realizes nonempty edges, and the solver then
-    refuses. Neither an early declaration-only rejection nor dropping the
-    sheet/wire arguments satisfies this contract.
-    """
-    import rfx.boundaries.pec as pec
-
-    sim = _adi_conductor(kind)
-    original_lane = sim._run_adi_from_materials
-    original_owner = pec.realized_pec_edge_masks
-    lane_calls = []
-    owner_calls = []
-    in_lane = False
-
-    def owner_spy(*args, **kwargs):
-        masks = original_owner(*args, **kwargs)
-        if in_lane:
-            owner_calls.append(masks)
-        return masks
-
-    def lane_spy(*args, **kwargs):
-        nonlocal in_lane
-        lane_calls.append(kwargs)
-        in_lane = True
-        try:
-            return original_lane(*args, **kwargs)
-        finally:
-            in_lane = False
-
-    monkeypatch.setattr(pec, "realized_pec_edge_masks", owner_spy)
-    monkeypatch.setattr(sim, "_run_adi_from_materials", lane_spy)
-    with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
-        getattr(sim, entrypoint)(n_steps=4, skip_preflight=True)
-
-    assert len(lane_calls) == 1
-    assert lane_calls[0]["pec_mask"] is None
-    assert len(lane_calls[0]["pec_sheets" if kind == "sheet" else "pec_wires"]) == 1
-    assert len(owner_calls) == 1
-    assert any(np.any(np.asarray(mask)) for mask in owner_calls[0])
 
 
-def test_the_adi_forward_lane_refuses_the_thin_conductor_it_cannot_realize():
-    """``add_thin_conductor`` has no carrier on the ADI lane, so both entry
-    points refuse it by name rather than solving a board without its metal."""
-    sim = _build("thin", solver="adi")
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        with pytest.raises(ValueError, match="thin-conductor"):
-            sim.run(n_steps=4, skip_preflight=True)
-        with pytest.raises(ValueError, match="thin-conductor"):
-            _build("thin", solver="adi").forward(n_steps=4, skip_preflight=True)
 
 
 def test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize():

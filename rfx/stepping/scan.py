@@ -71,7 +71,7 @@ def _scan_with_opaque_operands(f, init, xs, length, kwargs, anchor):
 def recorded_scan(f, init, xs=None, length=None, **kwargs):
     """``jax.lax.scan`` for a time-stepping loop: recorded, never run while tracing.
 
-    Every time-stepping scan entry (uniform, graded, ADI) calls this instead
+    Every time-stepping scan entry (uniform, graded) calls this instead
     of ``jax.lax.scan``. Inside :func:`declaration_setup` a scan whose
     operands are all constants would otherwise be evaluated at trace time:
     JAX 0.6.2 raises ``Evaluation rule for 'empty' not implemented`` (#1354),

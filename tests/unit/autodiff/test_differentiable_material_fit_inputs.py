@@ -30,7 +30,7 @@ CASES = [
     ("periodic_spec", "periodic axes", "Remove"),
     ("conformal", "conformal=True", "Remove"),
     ("kerr", "chi3=", "Remove"),
-    ("adi", "solver='adi'", "Use solver='yee'"),
+
     ("mixed", "precision='mixed'", "Use precision='float32'"),
     ("float64", "precision='float64'", "Use precision='float32'"),
     ("stencil", "stencil_order=4", "Use stencil_order=2"),
@@ -49,8 +49,6 @@ def _fixture(case, eps_inf, debye_poles, lorentz_poles):
     elif case == "conformal":
         kwargs["boundary"] = BoundarySpec(
             x="pec", y=Boundary(lo="pec", hi="pec", conformal=True), z="pec")
-    elif case == "adi":
-        kwargs["solver"] = "adi"
     elif case in ("mixed", "float64"):
         kwargs["precision"] = case
     elif case == "stencil":

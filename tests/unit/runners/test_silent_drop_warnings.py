@@ -1,18 +1,5 @@
 """A ``Simulation.run`` argument a lane does not implement is refused.
 
-Before 2.0 the distributed, non-uniform, subgridded and ADI lanes warned
-that an argument "is silently ignored" and ran without it, so the result
-was a different computation from the one requested: a staircase PEC
-instead of the Dey-Mittra conformal boundary (``conformal_pec``), scalar
-eps at interfaces instead of the smoothed tensor (``subpixel_smoothing``),
-a fixed ``n_steps`` instead of a run to decay (``until_decay``), no field
-snapshot (``snapshot``), a full AD tape instead of checkpointing
-(``checkpoint``), an S-parameter record of the wrong length
-(``s_param_n_steps``). Each of those now raises ``NotImplementedError``
-naming the argument and the lane, before any time step. The rows below pin
-every (lane x argument) pair that refuses; the controls pin that the same
-argument still runs on a lane that implements it.
-
 ``report_every`` only prints progress, so it stays a warning.
 
 The file keeps its old name because other files cite it. It also carries
@@ -96,19 +83,6 @@ def _subgrid_sim(pec=False):
     return _quiet(build)
 
 
-def _adi_sim(pec=False):
-    def build():
-        dx = 0.5e-3 if pec else 299792458.0 / 10e9 / 20.0
-        domain = (0.02, 0.02, 0.01) if pec else (14 * dx, 14 * dx, 0.01)
-        sim = Simulation(freq_max=10e9, domain=domain, dx=dx,
-                         boundary="pec", mode="2d_tmz", solver="adi")  # solved length; #1887
-        if pec:
-            sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),
-                    material="pec")
-        sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
-        sim.add_probe((0.012, 0.01, 0.0), "ez")
-        return sim
-    return _quiet(build)
 
 
 def _devices():
@@ -122,14 +96,14 @@ LANES = {
     "non-uniform": (_nu_sim, "non-uniform mesh", {}),
     "distributed": (_distributed_sim, "distributed multi-device", None),
     "subgridded": (_subgrid_sim, "subgridded (SBP-SAT)", {}),
-    "adi": (_adi_sim, "ADI (solver='adi')", {}),
+
 }
 
 REFUSED = [
     ("non-uniform", "snapshot"),
     ("non-uniform", "until_decay"),      # closed boundary: no decay stop
     ("non-uniform", "conformal_pec"),
-    *[(lane, kw) for lane in ("distributed", "subgridded", "adi")
+    *[(lane, kw) for lane in ("distributed", "subgridded")
       for kw in ASKS if (lane, kw) != ("distributed", "snapshot")],
 ]
 
@@ -790,7 +764,7 @@ def test_nu_lane_still_smooths_a_dielectric():
     assert np.max(np.abs(a - b)) > 1e-3 * np.max(np.abs(b))
 
 
-@pytest.mark.parametrize("lane", ["adi", "subgridded"])
+@pytest.mark.parametrize("lane", [ "subgridded"])
 def test_report_every_stays_a_warning(lane):
     """Progress lines change no result: the lane says so and runs on."""
     build, label, _ = LANES[lane]

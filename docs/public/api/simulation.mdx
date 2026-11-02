@@ -18,7 +18,7 @@ Simulation(freq_max, domain, *, boundary="cpml", cpml_layers=16,
            cpml_kappa_max=1.0, dx=None, mode="3d",
            dz_profile=None, dx_profile=None, dy_profile=None, dt=None,
            dt_min_cell=None, precision="float32", solver="yee",
-           adi_cfl_factor=2.0, stencil_order=2, nominal_profiles=None,
+           stencil_order=2, nominal_profiles=None,
            interface_eps="sampled", snap="strict")
 ```
 
@@ -46,7 +46,7 @@ sim = Simulation(
 | `mode` | `"3d"` (default), `"2d_tmz"` (Ez, Hx, Hy) or `"2d_tez"` (Hz, Ex, Ey). |
 | `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). The last two run on the uniform single-device solver only. |
 | `pec_occupancy_model` | `"edge_keep"` (default) scales the E-edge update; `"kottke"` converts occupancy to an inverse-permittivity tensor on single-device uniform `forward()` and topology. Graded `forward()` (including distributed) refuses `"kottke"` with an occupancy input. Uniform distributed `forward()` refuses occupancy overrides; `run()` has no occupancy input. |
-| `solver` | `"yee"` (default) or the experimental `"adi"`. See [ADI Solver](/rfx/guide/adi-solver/). |
+| `solver` | `"yee"` (default). `"adi"` was removed in 2.1 and is refused by name. |
 | `stencil_order` | `2` (default) or `4`. Order 4 only runs on a uniform, PEC or periodic, non-dispersive model. |
 | `dt`, `dt_min_cell` | Pin the time step on a graded mesh (for mesh-as-design-variable work). Refused on a uniform mesh. |
 
@@ -156,9 +156,8 @@ studies.
 | `skip_preflight=True` | Skip the automatic preflight. Use only after you have read it once. |
 
 A run argument that the selected solver path does not implement **raises
-before the first step**, for example snapshots on a graded mesh or `until_decay`
-with the ADI solver. The one exception is `report_every`, which only prints
-progress: the graded, ADI, subgridded and multi-device paths ignore it with a
+before the first step**, for example snapshots on a graded mesh. The one exception is `report_every`, which only prints
+progress: the graded, subgridded and multi-device paths ignore it with a
 warning.
 
 **Warnings after the run.** `run()` warns when a probe recorded no field,

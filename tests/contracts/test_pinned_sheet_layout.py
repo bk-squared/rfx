@@ -216,14 +216,6 @@ def test_same_simulation_then_zero_layout_bytes(compiled):
         assert sim.__dict__.get(name) is value
 
 
-@pytest.mark.parametrize('lane', ['run_adi', 'run_subgridded'])
-def test_pinned_sheet_not_reachable_on_adi_or_subgrid(lane):
-    from rfx.runners._admission import admit, refused
-    sim = board(graded=False)
-    # These production lane gates reject the declaration itself before stepping.
-    assert ('_pinned_sheets', 'pec_sheet') in refused(sim, lane)
-    with pytest.raises(NotImplementedError, match='pinned sheet'):
-        admit(sim, lane)
 
 
 def seam_board(ranges, names):

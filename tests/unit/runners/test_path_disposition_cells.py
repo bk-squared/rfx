@@ -1,34 +1,5 @@
 """The executable cells of the path-disposition table, run.
 
-Each cell of ``tests/contracts/path_disposition.py`` on a row with a model
-here is checked on a tiny model: a 12 mm PEC box with 1 mm cells, an Ez soft
-source at x = 4 mm and an Ez probe at x = 8 mm, 40 steps. The graded lanes
-get a one-size ``dx_profile`` (the same mesh, so the lane is the only
-difference, as in #1282); the ADI lanes (``run()`` and ``forward()``) set
-``solver='adi'``; the subgridded lane gets a 20 mm tall box whose refinement
-covers z = 0-14 mm, which production validation accepts.
-
-* ``refuses``: the model is built first (or, for a ``declared`` cell, its
-  declaration raises); then the path raises ``NotImplementedError`` or
-  ``ValueError`` naming the cell's ``raises`` fragment, before any kernel
-  scan starts.
-* ``carries``: the declared input changes the probe record by more than
-  ``EFFECT_FLOOR`` of its peak, compared with the same model without it. On
-  the lanes that share the reference lane's mesh and time step
-  (``PARITY_LANES``) the record must also agree with it to ``PARITY_TOL``:
-  ``sim.run()`` of the same model, or ``run()`` of the ADI model for
-  ``fwd_adi``. An observer carries when its result field is filled. On the
-  ADI lanes an absorber is checked in the conductivity handed to the kernel,
-  because declaring one also pads the grid.
-* ``falls back``: the path warns and returns the named lane's result.
-* a cell with ``wrong`` is a strict expected failure against its issue
-  (``raises=AssertionError``, so a crash is not taken for it). Its check
-  passes only when the path refuses the input or carries it (effect, parity
-  for a ``carries`` cell, and no departure where
-  ``tests/contracts/test_realized_boundary.py`` measures the boundary), so
-  fixing the issue either way turns it into an unexpected pass that forces
-  the table to be updated.
-
 ``EFFECT_FLOOR`` and ``PARITY_TOL`` are relative to the probe peak. The float32
 noise between two lanes doing the same arithmetic in a different order on
 this model is below 3e-6 (``test_thresholds_clear_float32_noise`` measures
@@ -50,7 +21,7 @@ import jax
 import numpy as np
 import pytest
 
-import rfx.adi
+
 from rfx import (Box, DebyePole, GaussianPulse, PolylineWire, Simulation,
                  Sphere, drude_pole, lorentz_pole)
 from rfx.runners import _admission as A
@@ -62,14 +33,13 @@ from tests.unit.nonuniform.test_refinement_refused_on_graded_mesh import _box as
 N_STEPS = 40
 EFFECT_FLOOR = 1e-3
 PARITY_TOL = 1e-4
-PARITY_LANES = ("run_nonuniform", "run_distributed", "run_distributed_nu", "fwd_uniform",
-                "fwd_nonuniform", "fwd_distributed", "fwd_distributed_nu", "fwd_adi")
+PARITY_LANES = ("run_nonuniform", "run_distributed", "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed", "fwd_distributed_nu")
 GRADED = ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu")
-ADI = ("run_adi", "fwd_adi")
+
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)
 # Modules whose lax.scan is a time loop; a refusal must come before any of them.
 _KERNEL_MODULES = ("rfx/stepping/uniform_loop.py", "rfx/stepping/uniform_setup.py", "rfx/nonuniform.py", "rfx/stepping/graded_setup.py", "rfx/stepping/graded_loop.py", "rfx/runners/", "rfx/stepping/slab_",
-                   "rfx/stepping/adi.py", "rfx/subgridding/", "rfx/stepping/subgrid_jit.py", "rfx/stepping/vmap_scan.py",
+                   "rfx/subgridding/", "rfx/stepping/subgrid_jit.py", "rfx/stepping/vmap_scan.py",
                    "rfx/stepping/progress_scan.py")
 
 
@@ -98,8 +68,7 @@ def _simulation(lane, domain, *, ref=False, **ctor):
         ctor.setdefault("cpml_layers", 4)
     if not ref and lane in GRADED and "dx_profile" not in ctor:
         ctor["dx_profile"] = np.full(domain[0], 1e-3)
-    if lane in ADI:
-        ctor["solver"] = "adi"
+    pass
     return Simulation(**ctor)
 
 
@@ -127,17 +96,7 @@ def _probe(result):
 
 
 class Feature(NamedTuple):
-    """How to declare one input on one lane.
-
-    ``build(lane, on, ref)`` returns the model with (``on``) or without the
-    input. ``off`` names a model without the input that other features share,
-    so it runs once per lane. ``variant(lane)`` names a model that differs
-    between lanes beyond the lane's own mesh and solver; the parity reference
-    is built per variant. ``boundary`` maps a lane to the
-    ``test_realized_boundary.py`` (case, entry) that measures its walls, and
-    ``adi_layers`` is the absorber thickness to find in the conductivity the
-    ADI kernel receives.
-    """
+    """How to declare one input on one lane."""
     build: Callable
     read: Callable = _probe
     steps: Callable = lambda lane: N_STEPS
@@ -147,7 +106,6 @@ class Feature(NamedTuple):
     observer: str = ""   # result field an observer fills
     off: str = ""
     boundary: dict = {}
-    adi_layers: int = 0
 
 
 def _added(add, **base):
@@ -168,7 +126,7 @@ def _plus(add):
 def _observer(add, field, **base):
     def build(lane, on, ref=False):
         options = base | ({"boundary": "pec"}
-                          if lane in ADI or (field == "ntff_data" and lane == "run_subgridded") else {})
+                          if (field == "ntff_data" and lane == "run_subgridded") else {})
         return _added(add, **options)(lane, on, ref)
     return Feature(build, observer=field)
 
@@ -203,15 +161,13 @@ def _interface_eps(lane, on, ref=False):
 
 
 def _board(lane, on, ref=False):
-    """A microstrip: 1 mm εr 3.66 substrate, 2 mm PEC trace, the port the only
-    drive. ADI refuses any trace, so its board has none: that is the #1308 case."""
+    """Shared checks for the supported solver paths."""
     subgrid = lane == "run_subgridded" and not ref
     length = 24
     sim = _simulation(lane, (length, 12, 10 if subgrid else 6), ref=ref)
     sim.add_material("substrate", eps_r=3.66)
     sim.add(Box((0, 0, 0), mm(length, 12, 1)), material="substrate")
-    if lane not in ADI:
-        sim.add(Box(mm(1, 5, 1), mm(length - 1, 7, 2)), material="pec")
+    sim.add(Box(mm(1, 5, 1), mm(length - 1, 7, 2)), material="pec")
     if on:
         sim.add_msl_port(position=mm(2, 6, 0), width=2e-3, height=1e-3, direction="+x",
                          impedance=50.0, waveform=GaussianPulse(f0=7e9, bandwidth=0.8))
@@ -223,10 +179,8 @@ def _board(lane, on, ref=False):
 
 
 def _guide(lane, on, ref=False, n_modes=1):
-    """A 12 × 6 mm PEC guide absorbing on x; the TE10 port the only drive.
-    ADI refuses the CPML box required by the port at construction."""
-    spec = ("cpml" if lane in ADI else
-            BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec")))
+    """Shared checks for the supported solver paths."""
+    spec = (BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec")))
     sim = _simulation(lane, (30, 12, 6), ref=ref, freq_max=20e9, boundary=spec)
     if on:
         sim.add_waveguide_port(6e-3, direction="+x", mode=(1, 0), mode_type="TE",
@@ -251,12 +205,11 @@ def _plane_wave(lane, on, ref=False, *, closed=False):
 
 
 def _floquet_cell(scan_theta):
-    """A 6 mm periodic cell absorbing on z, the Floquet port the only drive.
-    On the ADI lanes PEC z faces, to reach the port refusal."""
+    """Shared checks for the supported solver paths."""
     def build(lane, on, ref=False):
-        spec = BoundarySpec(x="periodic", y="periodic", z="pec" if lane in ADI else "cpml")
+        spec = BoundarySpec(x="periodic", y="periodic", z="cpml")
         sim = _simulation(lane, (6, 6, 20), ref=ref, boundary=spec,
-                          **({"cpml_layers": 0} if lane in ADI else {}))
+                          **({}))
         if on or scan_theta:
             sim.add_floquet_port(4e-3, axis="z", f0=5e9, scan_theta=scan_theta if on else 0.0)
         sim.add_probe(mm(3, 3, 14), "ez")
@@ -293,7 +246,7 @@ def _refinement(lane, on, ref=False):
             sim._refinement["validation"] = "production"
         return sim
     return _refined_box_1282(on, graded=lane in GRADED,
-                             solver="adi" if lane in ADI else "yee")
+                             solver="yee")
 
 
 def _boundary(on_ctor, *, cpml_off=False, **options):
@@ -314,9 +267,8 @@ def _profile(axis):
 
 
 def _mode(lane, on, ref=False):
-    """A 2d_tmz model against the same box in 3d: one z cell between PEC
-    walls, three on the ADI lanes (a one-cell 3d box dies there)."""
-    thick = 3 if lane in ADI else 1
+    """Shared checks for the supported solver paths."""
+    thick = 1
     sim = _simulation(lane, (12, 12, thick), ref=ref, mode="2d_tmz" if on else "3d")
     sim.add_source(mm(4, 6, thick // 2), "ez", waveform=WAVEFORM, amplitude_kind="field")
     sim.add_probe(mm(8, 6, thick // 2), "ez")
@@ -394,16 +346,15 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_tfsf", "plane_wave"): Feature(_plane_wave),
     ("_tfsf", "closed_box"): Feature(lambda lane, on, ref=False: _plane_wave(lane, on, ref, closed=True)),
     ("_refinement", "slab"): Feature(_refinement, parity=False),
-    ("_boundary", "cpml"): _boundary({"boundary": "cpml"}, adi_layers=4,
-                                     boundary={lane: ("cpml", "adi") for lane in ADI}),
+    ("_boundary", "cpml"): _boundary({"boundary": "cpml"}),
     ("_boundary", "upml"): _boundary({"boundary": "upml"}),
     ("_pec_faces", "pec_face"): _boundary(
         {"boundary": BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))},
         cpml_off=True),
-    ("_boundary_spec", "pmc_face"): _boundary({"boundary": _PMC_X}, boundary={
-        "run_uniform": ("pmc-pec", "run"), "run_nonuniform": ("pmc-pec", "nonuniform"),
-        "fwd_uniform": ("pmc-pec", "forward"), "run_distributed": ("pmc-pec", "distributed"),
-        "run_adi": ("pmc-pec", "adi"), "fwd_adi": ("pmc-pec", "adi")}),
+    ("_boundary_spec", "pmc_face"): _boundary({"boundary": _PMC_X}, boundary={"run_uniform": ("pmc-pec", "run"),
+                                                                             "run_nonuniform": ("pmc-pec", "nonuniform"),
+                                                                             "fwd_uniform": ("pmc-pec", "forward"),
+                                                                             "run_distributed": ("pmc-pec", "distributed")}),
     ("_boundary_spec", "conformal"): Feature(_sphere()),
     ("_boundary_spec", "conformal_s_matrix"): Feature(
         _sphere(ports=True), read=_s_params,
@@ -412,8 +363,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_boundary_spec", "absorbing_lid"): Feature(_lid, steps=lambda lane: LID_STEPS),
     ("_periodic_axes", "periodic"): _boundary({"boundary": _PERIODIC_Y}, boundary={
         "run_uniform": ("periodic-xy", "run"), "fwd_uniform": ("periodic-xy", "forward")}),
-    ("_cpml_layers", "layers"): _boundary({"boundary": "cpml", "cpml_layers": 8}, cpml_off=True,
-                                          adi_layers=8),
+    ("_cpml_layers", "layers"): _boundary({"boundary": "cpml", "cpml_layers": 8}, cpml_off=True),
     ("_cpml_kappa_max", "kappa"): _boundary({"boundary": "cpml", "cpml_kappa_max": 5.0}, cpml_off=True),
     ("_interface_eps", "dual_average"): Feature(_interface_eps, parity=False),
     ("_dx_profile", "graded"): Feature(_profile("x"), off="base"),
@@ -502,11 +452,8 @@ def _without(name, feature, lane):
 
 
 def _reference(name, feature, lane):
-    """The record the lane must agree with: run() of the ADI model for
-    fwd_adi, else ``sim.run()`` of the same model on one device, which unless
-    the lane's model is a variant is the run_uniform cell's own record."""
-    if lane == "fwd_adi":
-        return _with(name, feature, "run_adi")
+    """Shared checks for the supported solver paths."""
+    pass
     variant = feature.variant(lane)
     if not variant:
         return _with(name, feature, "run_uniform")
@@ -562,28 +509,6 @@ def _assert_refused(name, feature, lane, c):
         f"({c.raises!r}): {message[:300]}")
 
 
-def _adi_absorber(name, feature, lane):
-    """Problems with the absorber in the conductivity handed to the ADI
-    kernel: nonzero in exactly the outer ``adi_layers - 1`` cells of every
-    face (the innermost layer of the grading is zero) of the vacuum box."""
-    handed = []
-    real = rfx.adi.run_adi_3d
-
-    def spy(*args, **kwargs):
-        handed.append(np.asarray(args[7]))
-        return real(*args, **kwargs)
-
-    with patch.object(rfx.adi, "run_adi_3d", spy):
-        _run(_build(feature, lane, True), lane, feature)
-    sigma = handed[0]
-    depth = np.min(np.stack(np.meshgrid(
-        *[np.minimum(np.arange(n), n - 1 - np.arange(n)) for n in sigma.shape],
-        indexing="ij")), axis=0)
-    expected = depth <= feature.adi_layers - 2
-    if np.array_equal(sigma > 0, expected):
-        return []
-    return [f"the ADI kernel received σ > 0 on {int(np.sum(sigma > 0))} cells, where a "
-            f"{feature.adi_layers}-layer absorber covers {int(np.sum(expected))}"]
 
 
 def _observed(name, feature, lane):
@@ -601,20 +526,17 @@ def _carried(name, feature, lane, *, parity, first_only=False):
     if feature.observer:
         return [] if _observed(name, feature, lane) else [f"{feature.observer} came back empty"]
     problems = []
-    if lane in ADI and feature.adi_layers:
-        problems += _adi_absorber(name, feature, lane)
-    elif parity and feature.parity and lane in PARITY_LANES:
+    if parity and feature.parity and lane in PARITY_LANES:
         agreement = relative(_with(name, feature, lane), _reference(name, feature, lane))
         if agreement > PARITY_TOL:
             problems.append(f"it differs from its reference run by {agreement:.3e} of the peak "
                             f"(tolerance {PARITY_TOL:g})")
     if problems and first_only:
         return problems
-    if not (lane in ADI and feature.adi_layers):
-        effect = relative(_with(name, feature, lane), _without(name, feature, lane))
-        if effect <= EFFECT_FLOOR:
-            problems.append(f"declaring it moved the record by {effect:.3e} of its peak "
-                            f"(floor {EFFECT_FLOOR:g})")
+    effect = relative(_with(name, feature, lane), _without(name, feature, lane))
+    if effect <= EFFECT_FLOOR:
+        problems.append(f"declaring it moved the record by {effect:.3e} of its peak "
+                        f"(floor {EFFECT_FLOOR:g})")
     if problems and first_only:
         return problems
     if lane in feature.boundary:
@@ -875,16 +797,9 @@ def test_a_wire_is_judged_by_the_cells_at_its_own_vertices(x_mm, kind):
         np.testing.assert_array_equal(got, unadmitted)
 
 
-@pytest.mark.parametrize("attr,feature,lane,named", [
-    ("_materials", "mu", "run_adi", "uniform run()"),
-    ("_cpml_kappa_max", "kappa", "run_nonuniform", "multi-device run(devices=...)"),
-])
+@pytest.mark.parametrize("attr,feature,lane,named", [("_cpml_kappa_max", "kappa", "run_nonuniform", "multi-device run(devices=...)")])
 def test_the_refusal_names_lanes_that_carry_the_rest_of_the_model(attr, feature, lane, named):
-    """The message names, as alternatives, the lanes that carry every input
-    of the model apart from the rows that choose the lane (solver, mesh
-    profiles, refinement). ADI with a magnetic block names the Yee lanes; a
-    graded CPML box with kappa names the multi-device run(), whose own Phase B
-    refusal of a graded CPML box is not admission's."""
+    """Shared checks for the supported solver paths."""
     spec = FEATURES[attr, feature]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -945,10 +860,7 @@ def test_every_executable_row_has_a_builder():
 
 
 def test_thresholds_clear_float32_noise():
-    """Two lanes doing the same arithmetic in another order differ by float32
-    rounding only. On the dielectric-block model that is below 3e-6 of the
-    peak; the parity tolerance and the effect floor must stand well clear.
-    The ADI lanes refuse the block since #1373, so fwd_adi is not among them."""
+    """Shared checks for the supported solver paths."""
     spec = FEATURES["_materials", "eps"]
     noise = max(relative(_with("_materials/eps", spec, lane),
                          _reference("_materials/eps", spec, lane))
@@ -1045,26 +957,17 @@ def test_the_relaxed_validation_detector_fires_on_its_models(mode, name):
     assert A.DETECTORS[_RELAXED](_relaxed(mode, RELAXED_INPUTS[name]))
 
 
-# The rows the base model declares, written out per lane: every model has
-# freq_max and a domain, the base passes dx and adds an Ez source and an Ez
-# probe, and each lane's base carries the lane's own selector (a dx_profile on
-# the graded lanes, solver='adi' on the ADI lanes, a refinement on the
-# subgridded lane). Leader's ruling on J2b, 2026-09-27: exactly these fire.
 _EVERY_BASE = {("_freq_max", ""), ("_domain", ""), ("_dx", ""), ("_ports", "source"),
                ("_probes", "probe")}
-BASE_ROWS = {
-    "run_uniform": _EVERY_BASE,
-    "run_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
-    "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
-    "run_adi": _EVERY_BASE | {("_solver", "")},
-    "run_distributed": _EVERY_BASE,
-    "fwd_distributed": _EVERY_BASE,
-    "run_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
-    "fwd_uniform": _EVERY_BASE,
-    "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
-    "fwd_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
-    "fwd_adi": _EVERY_BASE | {("_solver", "")},
-}
+BASE_ROWS = {"run_uniform": _EVERY_BASE,
+            "run_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
+            "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
+            "run_distributed": _EVERY_BASE,
+            "fwd_distributed": _EVERY_BASE,
+            "run_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
+            "fwd_uniform": _EVERY_BASE,
+            "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
+            "fwd_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")}}
 
 
 @pytest.mark.parametrize("lane", T.LANES)

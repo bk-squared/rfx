@@ -212,15 +212,6 @@ def test_graded_waveguide_drops_ntff_before_runner(monkeypatch):
     assert sim._ntff is registered
 
 
-@pytest.mark.parametrize("entry", ("run", "forward"))
-def test_adi_ntff_refusal_precedes_exterior(entry, monkeypatch):
-    sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.002,
-                     boundary="pec", solver="adi")
-    sim.add_ntff_box((.002, .002, .002), (.018, .018, .018), freqs=[5e9])
-    forbid_field_loops(monkeypatch)
-    with pytest.raises(ValueError) as caught:
-        getattr(sim, entry)(n_steps=1)
-    assert str(caught.value) == "solver='adi' does not support NTFF accumulation yet"
 
 
 WAVEGUIDE_TABLE = (

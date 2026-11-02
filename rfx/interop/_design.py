@@ -814,7 +814,6 @@ def _dump_list(
 _OPTIONAL_SOLVER_DEFAULTS = {"snap": "strict", "pec_occupancy_model": "edge_keep"}
 
 EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
-    "_adi_cfl_factor",
     "_boundary",
     "_boundary_spec",
     "_boundary_explicit",
@@ -1264,7 +1263,7 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
     ):
         note(
             "solver",
-            "ADI, mixed precision and the (2,4) stencil are rfx-specific "
+            "Mixed precision and the (2,4) stencil are rfx-specific "
             "solver settings with no counterpart in openEMS or Meep",
         )
 
@@ -1487,7 +1486,6 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             **{key: check_text(getattr(sim, f"_{key}"), what=f"_{key}") for key in _OPTIONAL_SOLVER_DEFAULTS},
             "precision": check_text(sim._precision, what="_precision"),
             "solver": check_text(sim._solver, what="_solver"),
-            "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
             "stencil_order": _integer(sim._stencil_order, what="_stencil_order"),
             # A pinned time step (Simulation(dt=..., dt_min_cell=...)) is a design
             # input: a rebuilt design without it would derive its own dt and
@@ -1743,8 +1741,8 @@ def simulation_from_design(document: Any) -> Any:
     solver = _section(document, "solver", what="design document")
     _require_exact_keys(
         solver,
-        {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
-         "dt_pin", "dt_min_cell"} | (_OPTIONAL_SOLVER_DEFAULTS.keys() & set(solver)),
+        {"precision", "solver", "stencil_order", "interface_eps",
+         "dt_pin", "dt_min_cell"} | ((_OPTIONAL_SOLVER_DEFAULTS.keys() | {"adi_cfl_factor"}) & set(solver)),
         what="solver",
     )
 
@@ -1792,7 +1790,6 @@ def simulation_from_design(document: Any) -> Any:
         **{key: check_text(solver.get(key, default), what=f"solver.{key}") for key, default in _OPTIONAL_SOLVER_DEFAULTS.items()},
         precision=check_text(solver["precision"], what="solver.precision"),
         solver=check_text(solver["solver"], what="solver.solver"),
-        adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
         stencil_order=_integer(solver["stencil_order"], what="solver.stencil_order"),
         interface_eps=check_text(solver["interface_eps"], what="solver.interface_eps"),
         dt=None if solver["dt_pin"] is None else check_number(solver["dt_pin"], what="solver.dt_pin"),
@@ -2054,6 +2051,9 @@ def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
     # Older documents use defaults for optional solver keys they do not carry.
     document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
+    if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:
+        document = {**document, "solver": {key: value for key, value in document["solver"].items()
+                                          if key != "adi_cfl_factor"}}
     if _equal(rebuilt, document):
         return
     where = _first_difference(rebuilt, document) or "<unknown>"

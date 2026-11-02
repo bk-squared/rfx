@@ -66,10 +66,11 @@ def test_run_warning_origin(monkeypatch, case, text):
     the warning functions and the run/runner/loop call chain stay intact.
     A one-step cap leaves E from injection and H=0 for both remnant branches.
     """
-    sim = (_sim(solver="adi", boundary="pec", amplitude_kind="field") if case == "report-every"
+    sim = (_sim(boundary="pec", amplitude_kind="field") if case == "report-every"
            else _sim(waveform=jnp.ones_like))
     kwargs = dict(n_steps=1, compute_s_params=False, skip_preflight=True)
     if case == "report-every":
+        sim.add_refinement(z_range=(0., .004), ratio=2, validation="research")
         kwargs["report_every"] = 1
     else:
         kwargs.update(until_decay=.001, decay_min_steps=0,

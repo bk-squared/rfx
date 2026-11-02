@@ -254,7 +254,6 @@ def _simulation_summary(sim: Any) -> dict[str, Any]:
         "mesh_profiles": _mesh_profiles(sim),
         "precision": getattr(sim, "_precision", None),
         "solver": getattr(sim, "_solver", None),
-        "adi_cfl_factor": _safe_float(getattr(sim, "_adi_cfl_factor", None)),
         "periodic_axes": getattr(sim, "_periodic_axes", ""),
         "refinement": _jsonable(getattr(sim, "_refinement", None)),
     }

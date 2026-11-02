@@ -28,7 +28,7 @@ soft: it adds to the field there and leaves the field free to pass through.
 | `amplitude_kind` | The amplitude is | Use it when |
 |---|---|---|
 | `"current"` | a current moment I·l in A·m, the strength of a short current element | you want the radiated field to stay the same when you change the mesh |
-| `"field"` | an increment of E added at the cell every time step | you need a raw field kick, or the solver path takes only this (ADI) |
+| `"field"` | an increment of E added at the cell every time step | you need a raw field kick |
 
 Leaving `amplitude_kind` out means `"current"` and gives one
 `DeprecationWarning` per simulation. Pass it explicitly.
@@ -150,7 +150,6 @@ checks that it implements the source (below).
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
-| `amplitude_kind="current"` | ADI | refused | pass `amplitude_kind="field"` |
 | a plane wave added after a port or a point source (the message names lumped ports); a port added after a plane wave | all | refused | drive the port alone, or use a probe for the response |
 | a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
 | `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
