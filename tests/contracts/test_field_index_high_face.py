@@ -15,7 +15,7 @@ DISPLACED = {'ex': (0,), 'ey': (1,), 'ez': (2,),
 HIGH = (19, 15, 11)
 NODE_HIGH = (20, 16, 12)
 LANES = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
-         'two_uniform_run', 'two_graded_forward', 'adi_run', 'subgrid_run')
+         'two_uniform_run', 'two_graded_forward',  'subgrid_run')
 FREQS = np.array([3e9, 5e9, 7e9])
 JAX012_HIGH_FACE_XFAILS = frozenset({
     ('i', 2, 'pmc', 'uniform_run'),
@@ -31,8 +31,7 @@ def model(lane, axis, boundary, mirrored=False):
     if 'graded' in lane:
         widths = np.array([1] + [.9, 1.1] * ((NODE_HIGH[axis] - 2) // 2) + [1]) * .001
         kw['d' + 'xyz'[axis] + '_profile'] = widths[::-1] if mirrored else widths
-    if lane == 'adi_run':
-        kw['solver'] = 'adi'
+    pass
     sim = Simulation(**kw)
     if lane == 'subgrid_run':
         sim.add_refinement((.003, .009), ratio=2, xy_margin=.003)
@@ -131,7 +130,7 @@ def solve(lane, axis, boundary, row, d, side):
         src, comps = (wall, (ea,)) if row == 'i' else (center, (eb, 'e' + 'xyz'[(axis + 2) % 3]))
         for comp in comps:
             sim.add_source(tuple(src), comp, waveform=pulse,
-                           amplitude_kind='field' if lane == 'adi_run' else 'current')
+                           amplitude_kind='current')
         probes = [(center, eb)] if row == 'i' else [(wall, ea)] + [
             (wall, 'h' + c) for c in 'xyz' if c != 'xyz'[axis]]
         for pos, comp in probes:
@@ -152,7 +151,7 @@ def solve(lane, axis, boundary, row, d, side):
                 if back:
                     index[back_axis] -= 1
                 sim.add_probe(tuple(grid.node_of(a, index[a]) for a in range(3)), comp)
-    result = execute(sim, lane, port=row == 'iii' and not recorded_vi and lane != 'adi_run')
+    result = execute(sim, lane, port=row == 'iii' and not recorded_vi)
     data = np.array(result.time_series)
     spectrum = None
     if row == 'iii':
@@ -208,9 +207,7 @@ def test_c2_c2b(lane, boundary, axis, row, record_property, request):
     refusal = None
     if lane == 'subgrid_run':
         refusal = 'subgridd|production|unstable'
-    elif row == 'iii' and lane == 'adi_run':
-        refusal = 'port|impedance|ADI|adi|distributed|PMC|magnetic'
-    elif boundary == 'pmc' and (lane == 'adi_run' or (row == 'iii' and lane.startswith('two_'))):
+    elif boundary == 'pmc' and ((row == 'iii' and lane.startswith('two_'))):
         refusal = 'PMC|pmc|magnetic'
     if refusal:
         for side, d in (('lo', 0.), ('hi', 0.), ('hi', .4), ('hi', 1.)):
@@ -226,7 +223,7 @@ def test_c2_c2b(lane, boundary, axis, row, record_property, request):
             assert_identical(high, inside)
             if row == 'iii':
                 assert_identical(spectrum_high, spectrum_inside)
-            if lane != 'adi_run' and (boundary == 'pec' or axis == 2):
+            if (boundary == 'pec' or axis == 2):
                 low, spectrum_low = solve(lane, axis, boundary, row, d, 'lo')
                 signs = (-1,) if row == 'i' else (-1, -1, -1) if row == 'ii' else (1, -1)
                 fields = ('e',) if row == 'i' else ('e', 'h', 'h') if row == 'ii' else ('v', 'e')
@@ -260,7 +257,7 @@ def test_c4(lane, axis, monkeypatch):
     monkeypatch.setattr(source_admission, 'field_index', observe)
     sim = model(lane, axis, 'pec')
     sim.add_source(tuple(pos), component, waveform=GaussianPulse(f0=5e9, bandwidth=.8),
-                   amplitude_kind='field' if lane == 'adi_run' else 'current')
+                   amplitude_kind='current')
     sim.add_probe(C, 'e' + 'xyz'[(axis + 1) % 3])
     sim.preflight()
     assert (component, expected) in seen
@@ -290,12 +287,12 @@ def test_c2b_rlc(lane, boundary, axis, record_property):
         sim.add_lumped_rlc(tuple(point), 'e' + 'xyz'[axis], R=50., L=1e-9, C=1e-13)
         sim.add_source(C, 'e' + 'xyz'[(axis + 1) % 3],
                        waveform=GaussianPulse(f0=5e9, bandwidth=.8),
-                       amplitude_kind='field' if lane == 'adi_run' else 'current')
+                       amplitude_kind='current')
         sim.add_probe(tuple(point), 'e' + 'xyz'[axis])
         return np.asarray(execute(sim, lane).time_series)
 
     try:
-        if lane.startswith('two_') or lane in ('adi_run', 'subgrid_run'):
+        if lane.startswith('two_') or lane in ('subgrid_run',):
             for d in (0., .4, 1.):
                 with pytest.raises((ValueError, NotImplementedError), match='lumped|RLC|rlc|subgridd|PMC|magnetic'):
                     response(d)

@@ -24,7 +24,7 @@ FACADE and holds three things:
    then iterates ``rfx/preflight/_registry.py``'s ``CORE_CONFIG_CHECKS``,
    whose ORDER is the observable
    ``tests/locks/test_preflight_split_snapshot.py`` pins —
-   ``_collect_flux_regions``, and the x64 / ADI / settling-witness
+   ``_collect_flux_regions``, and the x64 / settling-witness
    configuration checks.
 2. The module-level RE-EXPORT blocks. Every name any leg moved is re-bound
    here, so the module namespace is exactly as wide as it was before the
@@ -425,11 +425,6 @@ class _PreflightMixin:
                 + "."
             )
 
-        if self._solver == "adi":
-            raise NotImplementedError(
-                "run(compute_s_params=True) is not supported with "
-                "solver='adi'; use the uniform Yee solver."
-            )
         if devices is not None and len(devices) > 1:
             from rfx.model.distributed_ports import refuse_unsupported_distributed_features
             refuse_unsupported_distributed_features(
@@ -1420,107 +1415,9 @@ class _PreflightMixin:
     # ------------------------------------------------------------------
 
 
-    def _validate_adi_interior_pec(self, pec_edge_masks) -> None:
-        """Unskippable lane guard shared by run and forward after assembly."""
-        from rfx.adi import _validate_interior_pec
-        _validate_interior_pec(pec_edge_masks)
 
-    def _validate_cfg_adi_interior_pec(self, _w) -> None:
-        """Report the same refusal from the production conductor assembly."""
-        if self._solver != "adi" or self._mode not in ("3d", "2d_tmz"):
-            return
-        # #1373: the same realized-material test lane admission applies.
-        # Reported here, beside the other ADI geometry refusal, so the
-        # registry sequence is unchanged.
-        from rfx.runners._admission import _adi_homogeneous
-        if self._geometry and not self._uses_nonuniform_mesh:
-            try:
-                homogeneous = _adi_homogeneous(self, None)
-            except (ValueError, NotImplementedError, KeyError, IndexError):
-                homogeneous = None
-            if homogeneous is False:
-                from rfx.adi import ADI_INTERFACE_MESSAGE
-                _w.warn(PreflightErrorWarning(
-                    ADI_INTERFACE_MESSAGE,
-                    code="adi_material_interface_unsupported",
-                    source="_validate_cfg_adi_interior_pec",
-                ), stacklevel=2)
-        if not self._geometry and not self._thin_conductors:
-            return
-        from rfx.adi import ADI_INTERIOR_PEC_MESSAGE
-        ctx = self._campaign_ctx()
-        realized = None if ctx.error else ctx.realized()
-        if realized is not None and realized.empty:
-            return
-        detail = ""
-        if realized is None:
-            detail = (
-                f" Interior PEC compatibility could not be evaluated: "
-                f"{ctx.error or ctx.assembly_error}. Resolve assembly first.")
-        _w.warn(PreflightWarning(
-            ADI_INTERIOR_PEC_MESSAGE + detail,
-            code="adi_interior_pec_unsupported",
-            severity="error",
-            source="_validate_cfg_adi_interior_pec",
-        ), stacklevel=2)
 
-    def _validate_cfg_adi_boundary(self, _w) -> None:
-        from rfx._adi_notice import ADI_SPONGE_REFUSAL, has_absorber
-        if self._solver == "adi" and has_absorber(self):
-            _w.warn(PreflightWarning(
-                ADI_SPONGE_REFUSAL,
-                code="adi_absorber_unsupported",
-                severity="error",
-                source="_validate_cfg_adi_boundary",
-            ), stacklevel=2)
 
-    def _validate_cfg_adi_3d_accuracy(self, _w) -> None:
-        """Advise on the 3D ADI large-timestep accuracy envelope (OPT-C1 fixed).
-
-        HISTORY: until 2026-07-13 the 3D ADI path was an LOD split with
-        artificial diffusion (OPT-C1) and this validator flagged it as
-        KNOWN-INACCURATE unconditionally. ``adi_step_3d`` now implements the
-        full Zheng–Chen–Zhang two-sub-step 3D ADI (issue #338 follow-up):
-        eigenfrequency error measured 1.2% at 2x CFL on the 12^3 PEC-cavity
-        adjudication test (``tests/unit/misc/test_review_tier1_validation_battery.py::
-        test_optc1_adi_3d_cavity_eigenfrequency``, 2% gate, ~15 cells/wave).
-
-        What remains is the honest large-dt envelope of ANY Crank–Nicolson-
-        class implicit scheme: dispersion error grows ~dt^2, so at ~15
-        cells per wavelength the <2% eigenfrequency envelope holds only for
-        CFL factors up to ~2x (von Neumann: -1.4% at 2x, -2.8% at 3x, -6.7%
-        at 5x). This envelope is for a cavity without interior PEC; it is
-        not a stability guarantee for projected conductors or arbitrary
-        material interfaces. Advise (WARNING severity) when
-        ``adi_cfl_factor > 2.0`` on a 3D grid.
-        The 2D TMz cavity accuracy check is separate. Interior PEC on
-        either lane is refused by the independent conductor guard.
-        """
-        if self._solver != "adi" or self._mode != "3d":
-            return
-        if self._adi_cfl_factor <= 2.0:
-            return
-        _w.warn(
-            PreflightWarning(
-                f"solver='adi' with a 3D grid at adi_cfl_factor="
-                f"{self._adi_cfl_factor:g}: the homogeneous, lossless ADI "
-                f"split with compatible domain boundaries removes the "
-                f"explicit CFL stability restriction. This does not "
-                f"guarantee stability with interior PEC projection "
-                f"(refused) or arbitrary material interfaces. For the "
-                f"cavity without interior PEC, dispersion error grows "
-                f"~dt^2 — at ~15 cells/wavelength the <2% eigenfrequency "
-                f"envelope holds only up to ~2x CFL (measured -1.4% at 2x; "
-                f"-2.8% at 3x, -6.7% at 5x by von Neumann analysis). Use "
-                f"adi_cfl_factor <= 2 for wavelength-scale accuracy, or "
-                f"reserve large factors for geometrically stiff meshes "
-                f"(features far below the wavelength).",
-                code="adi_3d_accuracy",
-                severity="warning",
-                source="_validate_cfg_adi_3d_accuracy",
-            ),
-            stacklevel=2,
-        )
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 4: the eight contiguous absorber-configuration
@@ -2008,42 +1905,3 @@ class _PreflightMixin:
     _congruence_origin_shift = staticmethod(_congruence_origin_shift)
 
 
-    def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
-        """Validate that the current simulation is compatible with the ADI path."""
-        if self._mode not in ("2d_tmz", "3d"):
-            raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
-        if self._boundary == "upml":
-            raise ValueError("solver='adi' does not support boundary='upml'")
-        from rfx._adi_notice import require_closed_boundary
-        require_closed_boundary(self)
-        if self._refinement is not None:
-            raise ValueError("solver='adi' does not support subgridding yet")
-        if self._tfsf is not None:
-            raise ValueError("solver='adi' does not support TFSF sources yet")
-        if self._waveguide_ports or self._floquet_ports:
-            raise ValueError("solver='adi' does not support waveguide or Floquet ports yet")
-        if self._periodic_axes:
-            raise ValueError("solver='adi' does not support manual periodic axes yet")
-        if self._dft_planes:
-            raise ValueError("solver='adi' does not support DFT plane probes yet")
-        if self._ntff is not None:
-            raise ValueError("solver='adi' does not support NTFF accumulation yet")
-        if self._coaxial_ports:
-            raise ValueError("solver='adi' does not support coaxial ports yet")
-        if self._lumped_rlc:
-            raise ValueError("solver='adi' does not support lumped RLC elements yet")
-        if self._thin_conductors:
-            raise ValueError("solver='adi' does not support thin-conductor corrections yet")
-        if debye_spec is not None or lorentz_spec is not None:
-            raise ValueError("solver='adi' does not support dispersive materials yet")
-        # Conductivity is now supported: implicit sigma in ADI tridiagonal.
-        # Internal absorbing layers also use sigma, so no restriction needed.
-        for pe in self._ports:
-            if pe.impedance != 0.0 or pe.extent is not None:
-                raise ValueError("solver='adi' currently supports only add_source()-style soft sources")
-            if self._mode == "2d_tmz" and pe.component != "ez":
-                raise ValueError("solver='adi' in 2D TMz mode supports only Ez soft sources")
-        _valid_adi_probes = {"ez", "hx", "hy"} if self._mode == "2d_tmz" else {"ex", "ey", "ez", "hx", "hy", "hz"}
-        for probe in self._probes:
-            if probe.component not in _valid_adi_probes:
-                raise ValueError(f"solver='adi' supports probes on {_valid_adi_probes} only")

@@ -187,7 +187,7 @@ the final result. See
   the uniform grid, with a fixed `n_steps` or with `until_decay`. The frames
   are `interval` steps apart (default 10); read their times from
   `result.snapshot_axes`. Multi-device runs record them on both meshes. On one
-  device, a graded mesh, the ADI solver and a subgridded run do not, and raise
+  device, a graded mesh and a subgridded run do not, and raise
   if you ask for them.
 - **A built-in material library.** `fr4`, `rogers4003c`, `rogers4350b`,
   `rt_duroid_5880`, `alumina`, `ptfe`, `silicon`, `copper`, `aluminum`, `pec`,

@@ -10,7 +10,6 @@ realized-model object follow (plan: rfx-archive rfx/plans/20261004-s1-realized-m
 # rfx.preflight._impl, early_run_record in rfx.realized_geometry, bind_solve_call in
 # rfx.runners.nonuniform.
 from rfx.model.conductors import (
-    admit_adi_sources,
     distributed_kernel_inputs,
     distributed_solve_inputs,
     drawn_launch_eps,
@@ -87,7 +86,7 @@ from rfx.model.waveguide_waveform import (
 )
 
 __all__ = [
-    "admit_adi_sources",
+    "admit_solver",
     "admit_graded_profiles",
     "admit_thin_conductor",
     "apply_material_overrides",
@@ -140,3 +139,5 @@ __all__ = [
     "with_graded_edge_keep",
     "with_sheet_layout_reports",
 ]
+
+from rfx.model.solver_admission import admit_solver  # noqa: F401

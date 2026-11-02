@@ -3,8 +3,8 @@
 Expected indices are calculated from the drawing, without raster/grid helpers.
 Build probes stop after the real material builder, before time stepping. The
 public realized record is read separately where the lane exposes one.
-Not reached: GPU resonance/settling/passivity measurements; ADI refuses material
-interfaces; subgrid forward refuses refinement; subgrid run refuses Lorentz poles;
+Not reached: GPU resonance/settling/passivity measurements;
+subgrid forward refuses refinement; subgrid run refuses Lorentz poles;
 graded/distributed runs refuse Kerr material; a periodic axis refuses a varying
 profile (the graded periodic fixtures grade the other two axes). The subgrid fine lane has no
 public fine realized record, so its actual rasterizer output is inspected.
@@ -215,13 +215,6 @@ def test_traced_dielectric_bounds_stay_refused():
     with pytest.raises(TracedShapeDimensionError, match='traced extent'):
         jax.jit(lambda lo: _material_cell_mask(
             Box((lo,) * 3, (.0083,) * 3), coords, centres, grid=grid))(.0033)
-
-
-@pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_adi_not_reached_refuses_material_interface(entry):
-    sim, *_ = _scene(.3, solver='adi')
-    with pytest.raises(NotImplementedError, match='interface'):
-        getattr(sim, entry)(n_steps=1, skip_preflight=True)
 
 
 def test_subgrid_forward_not_reached_refuses_refinement():

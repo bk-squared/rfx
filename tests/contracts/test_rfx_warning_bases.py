@@ -37,21 +37,7 @@ PRINT_SITES = {
     ("stepping/subgrid_loop.py", "run_subgridded_loop"): "subgridding progress line",
 }
 
-CUSTOM_BASES = [
-    ("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning),
-    ("rfx._adi_notice", "ExperimentalADIWarning", AccuracyWarning),
-    ("rfx._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning),
-    ("rfx.api._mesh", "AutoMeshWarning", RfxWarning),
-    ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning),
-    ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning),
-    ("rfx.geometry.rasterize_grid", "ExactNodeSpineMissingWarning", AccuracyWarning),
-    ("rfx.geometry.smoothing", "CurvedSmoothingWarning", AccuracyWarning),
-    ("rfx.model.graded_admission", "DeclaredZWarning", RfxWarning),
-    ("rfx.preflight._common", "PreflightWarning", RfxWarning),
-    ("rfx.preflight._common", "PreflightErrorWarning", RfxWarning),
-    ("rfx.probes.probes", "PreDecisionLumpedDiagonalWarning", AccuracyWarning),
-    ("rfx.subgridding._notice", "ExperimentalSubgridWarning", AccuracyWarning),
-]
+CUSTOM_BASES = [("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning), ("rfx._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning), ("rfx.api._mesh", "AutoMeshWarning", RfxWarning), ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning), ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning), ("rfx.geometry.rasterize_grid", "ExactNodeSpineMissingWarning", AccuracyWarning), ("rfx.geometry.smoothing", "CurvedSmoothingWarning", AccuracyWarning), ("rfx.model.graded_admission", "DeclaredZWarning", RfxWarning), ("rfx.preflight._common", "PreflightWarning", RfxWarning), ("rfx.preflight._common", "PreflightErrorWarning", RfxWarning), ("rfx.probes.probes", "PreDecisionLumpedDiagonalWarning", AccuracyWarning), ("rfx.subgridding._notice", "ExperimentalSubgridWarning", AccuracyWarning)]
 
 
 def test_public_warning_mros_and_exports():

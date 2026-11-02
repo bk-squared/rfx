@@ -208,7 +208,7 @@ def compute_coaxial_line_reflection(
     if self._solver != "yee":
         raise ValueError(
             "compute_coaxial_line_reflection() supports solver='yee' only; "
-            "solver='adi' is not supported."
+            "Only solver='yee' is supported."
         )
     if self._precision != "float32":
         raise ValueError("compute_coaxial_line_reflection() requires precision='float32'.")
@@ -683,7 +683,7 @@ def compute_coaxial_two_port(
     if self._solver != "yee":
         raise ValueError(
             "compute_coaxial_two_port() supports solver='yee' only; "
-            "solver='adi' is not supported."
+            "Only solver='yee' is supported."
         )
     if self._precision != "float32":
         raise ValueError("compute_coaxial_two_port() requires precision='float32'.")

@@ -328,16 +328,6 @@ def _nonuniform_xy_design() -> Simulation:
     )
 
 
-def _adi_mixed_precision() -> Simulation:
-    return Simulation(
-        freq_max=10e9,
-        domain=(0.020, 0.020, 0.020),
-        dx=1e-3,
-        boundary="pec",
-        solver="adi",
-        adi_cfl_factor=2.0,
-        precision="mixed",
-    )
 
 
 def _fourth_order_2d() -> Simulation:
@@ -412,7 +402,7 @@ DESIGN_BUILDERS = {
     "legacy_all_periodic": _legacy_all_periodic,
     "auto_mesh": _auto_mesh_design,
     "nonuniform_xy": _nonuniform_xy_design,
-    "adi_mixed_precision": _adi_mixed_precision,
+
     "fourth_order_2d": _fourth_order_2d,
     "pec_sheet_and_volume": _pec_sheet_and_volume,
     "current_moment_monitor": _current_moment_monitor_design,

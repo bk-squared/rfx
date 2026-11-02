@@ -26,25 +26,7 @@ from tests.contracts.boundary_fields import measure, measured_fields
 ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "scripts/diagnostics/boundary_model/B1"
 # Stable leading phrases, without counts, face lists, or explanatory advice.
-REFUSAL_PREFIXES = (
-    'solver="adi" refuses absorbing boundaries',
-    "PMC magnetic face(s)",
-    "subgrid validation: supported=False",
-    "[run] preflight found",
-    "boundary='upml' does not support",
-    "solver='adi' does not support",
-    "solver='adi' supports only a uniform absorber",
-    "vmap_sweep: a magnetic (pmc) boundary face is not supported",
-    "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes",
-    "run(compute_s_params=True) has a single result schema",
-    "periodic axes",
-    "Lumped ports are not supported together with the TFSF",
-    "Floquet ports do not support non-uniform z mesh",
-    # Lane admission (rfx/runners/_admission.py): a declared input the lane
-    # does not carry, named with the lane.
-    "The ADI run() lane would solve this Simulation as if",
-    "The graded run() lane would solve this Simulation as if",
-)
+REFUSAL_PREFIXES = ("PMC magnetic face(s)", "subgrid validation: supported=False", "[run] preflight found", "boundary='upml' does not support", "vmap_sweep: a magnetic (pmc) boundary face is not supported", "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes", "run(compute_s_params=True) has a single result schema", "periodic axes", "Lumped ports are not supported together with the TFSF", "Floquet ports do not support non-uniform z mesh", "The graded run() lane would solve this Simulation as if")
 
 
 def refusal_prefix(message):

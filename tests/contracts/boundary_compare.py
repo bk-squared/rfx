@@ -89,7 +89,7 @@ def departures(model, grid, measured, entry):
                 step = "B1.5"
             problems.append(dict(face=face.name, code=code, step=step, detail=detail))
         if face.kind == Kind.PMC:
-            refused_lane = entry in ("subgridded", "adi", "distributed") or any(
+            refused_lane = entry in ("subgridded",  "distributed") or any(
                 r.feature.startswith("waveguide:") for r in model.requirements)
             magnetic_step = ("B1.5" if refused_lane else "B3" if entry in
                              ("run", "forward", "wire-fast", "gpu-query") else "B4")
