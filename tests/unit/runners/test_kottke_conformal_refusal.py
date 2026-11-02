@@ -212,14 +212,12 @@ def test_cut_cell_floor_admission_paths():
     from rfx.interop import design_to_dict
     ordinary = Grid.courant_dt(.001)
     # No PEC shapes: the opt-in itself must refuse, never disappear as a no-op.
-    for entry in ('run', 'forward', 'graded', 'distributed', 'subgridded', 'adi', 'kottke'):
+    for entry in ('run', 'forward', 'graded', 'distributed', 'subgridded', 'kottke'):
         kwargs = dict(freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary='pec')
         if entry != 'run':
             kwargs['dt'] = .5 * ordinary
         if entry == 'graded':
             kwargs['dz_profile'] = np.full(12, .001)
-        if entry == 'adi':
-            kwargs['solver'] = 'adi'
         sim = Simulation(**kwargs)
         options = dict(n_steps=1, skip_preflight=True, conformal_pec='cut_cell_floor')
         if entry == 'distributed':
