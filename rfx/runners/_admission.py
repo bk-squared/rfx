@@ -905,7 +905,6 @@ def resolve_run_conformal(sim, conformal_pec, devices, smoothing):
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
     lane = ("run_distributed" if devices is not None and len(devices) > 1 else
             "run_subgridded" if sim._refinement is not None else
-            "run_adi" if sim._solver == "adi" else
             "run_nonuniform" if sim._uses_nonuniform_mesh else "run_uniform")
     admit_conformal_floor(sim, lane, conformal_pec, smoothing=smoothing)
     return conformal_pec
