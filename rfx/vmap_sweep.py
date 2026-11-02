@@ -388,7 +388,7 @@ def _build_batched_materials(
         centres = centres_from_uniform_grid(grid)
         for entry in sim._geometry:
             if entry.material_name == mat_name:
-                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid)
+                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid, name=entry.material_name)
 
         # For each batch: where mask, use param_values[b]; else keep base.
         # The two unswept fields still have to be broadcast to the batch

@@ -261,7 +261,8 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
               if nu else sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=[]))
     mask = np.asarray(result[1 if kind == "debye" else 2][1][0])
     assert not mask[:2].any() and not mask[-3:-1].any()
-    assert mask.sum() == (32 if sheet else 128)
+    # A zero-thickness sheet owns no primal-cell centres for volume poles.
+    assert mask.sum() == (0 if sheet else 128)
     conductor = np.asarray(sheets[0].footprint if sheet else result[3])
     assert conductor[:2].any() and conductor[-3:-1].any()
     # Assembled as PEC (the mask above), so it leaves the dielectric average

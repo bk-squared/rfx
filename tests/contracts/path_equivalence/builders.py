@@ -186,6 +186,10 @@ def build(row, lane, *, graded=False, dt=None):
     elif row[0] == '_waveguide_ports':
         # Beyond the port's reference plane: its section must be vacuum (rfx#1994).
         sim.add(Box(point(6.2, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
+    elif row[0] == '_current_moments':
+        # The block's z faces must stay inside the monitor's interior (from node 2):
+        # a lower face drawn at 1.3 cells rounds to node 1 under the nearest-node rule.
+        sim.add(Box(point(3.2, 2.1, 1.7), point(6.4, 4.3, 3.2)), material='block')
     else:
         sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
     # add_source is a zero-impedance _PortEntry internally. Driven port,

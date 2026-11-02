@@ -299,8 +299,13 @@ def test_value_perturbed_poles_stay_distinct():
     # 2026-10 each pole kept its whole box, so the overlap carried both poles
     # under the later material's permittivity; a block drawn into a
     # dispersive body kept the body's poles). mat_b is drawn second.
-    mask_a = np.array(Box(*_BOX_A).mask(grid))
-    mask_b = np.array(Box(*_BOX_B).mask(grid))
+    # Pole occupancy follows the half-open window on primal-cell centres.
+    centres = [(np.arange(n) - pad + 0.5) * grid.dx
+               for n, pad in zip(grid.shape, grid.axis_pads)]
+    def expected(bounds):
+        axes = [(c >= lo) & (c < hi) for c, lo, hi in zip(centres, *bounds)]
+        return axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+    mask_a, mask_b = expected(_BOX_A), expected(_BOX_B)
     assert (mask_a & mask_b).any()
     assert np.array_equal(np.array(masks[0]), mask_a & ~mask_b)
     assert np.array_equal(np.array(masks[1]), mask_b)

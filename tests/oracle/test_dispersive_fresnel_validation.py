@@ -141,11 +141,11 @@ def _build_sim(kind, with_slab):
         else:
             sim.add_material("slab", eps_r=LOR_EPS_INF,
                              lorentz_poles=[lorentz_pole(LOR_DELTA_EPS, LOR_W0, LOR_DELTA)])
-        # Cell-aligned thickness (inclusive Box bounds -> nudge upper corner
-        # by -dx/2). Oversize the transverse corners: TFSF forces y/z periodic,
+        # Cell-centre sampling realizes the drawn node-to-node thickness.
+        # Oversize the transverse corners: TFSF forces y/z periodic,
         # so the material must span the full transverse extent incl. CPML.
         x_lo = CENTER_X - D_SLAB / 2.0
-        x_hi = CENTER_X + D_SLAB / 2.0 - DX / 2.0
+        x_hi = CENTER_X + D_SLAB / 2.0
         sim.add(Box((x_lo, -1.0, -1.0), (x_hi, 1.0, 1.0)), material="slab")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")

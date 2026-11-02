@@ -54,19 +54,6 @@
         "source": "_validate_mesh_quality"
       },
       {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          21.0,
-          4.0,
-          36.0,
-          127.0,
-          17.0
-        ],
-        "severity": "warning",
-        "source": null
-      },
-      {
         "code": "no_sources",
         "loc": null,
         "numbers": [],
@@ -226,7 +213,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 13,
+    "n_issues": 12,
     "ok": true
   }
 }

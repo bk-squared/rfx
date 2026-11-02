@@ -519,13 +519,13 @@ def _build_patch_one_cell_short(dx: float) -> Simulation:
 
 
 def _build_substrate_on_the_knife_edge(dx: float) -> Simulation:
-    """The substrate drawn exactly on the ground's outermost nodes (the common
-    nodes) instead of just outside them.  Only the mutation test builds it:
-    a volume whose face sits on a node takes or drops the cell beyond it by
-    rounding, so the laminate no longer overhangs the ground by one cell."""
+    """Draw the high faces below the last ground-cell centres, losing a cell."""
     sim = _sim(dx)
     sim.add(_ground_box(), material="pec")
-    sim.add(_substrate_box(footprint=GROUND_NODE_SPAN_M), material="rt5880")
+    substrate = _substrate_box(footprint=GROUND_NODE_SPAN_M)
+    margin = dx * 1e-3
+    hi = tuple(substrate.corner_hi[a] - dx / 2 - margin for a in (0, 1))
+    sim.add(Box(substrate.corner_lo, (*hi, substrate.corner_hi[2])), material="rt5880")
     sim.add(_patch_box(), material="pec")
     _add_probe_and_witness(sim)
     return sim
@@ -724,6 +724,8 @@ def realized_geometry(sim: Simulation) -> dict:
         (int(xi.min()) - i_c, int(xi.max()) - i_c) if xi.size else None)
     out["substrate_y_nodes_from_centre"] = (
         (int(yj.min()) - j_c, int(yj.max()) - j_c) if yj.size else None)
+    out["substrate_x_faces_m"] = (float(xs[xi.min()]), float(xs[xi.max() + 1])) if xi.size else None
+    out["substrate_y_faces_m"] = (float(ys[yj.min()]), float(ys[yj.max() + 1])) if yj.size else None
     return out
 
 
@@ -797,7 +799,7 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
 
     # --- one board on every rung: the sheets and the substrate -------------------
     # PI 2026-09-25: the patch and ground node spans are the common nodes, and
-    # the substrate's cells span the ground's node span plus one cell, on every
+    # the substrate's cells span the ground's node span under centre sampling on every
     # rung.  A rung that realizes anything else solves a different antenna, and
     # a ladder through it would put that change into the mesh trend.
     held = (("the patch's node span along x (the resonant length)",
@@ -809,9 +811,9 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
             ("the ground's node span along y", g["ground"]["y_node_span_m"],
              GROUND_NODE_SPAN_M[1]),
             ("the substrate's cells along x times dx", g["substrate_x_m"],
-             GROUND_NODE_SPAN_M[0] + dx),
+             GROUND_NODE_SPAN_M[0]),
             ("the substrate's cells along y times dx", g["substrate_y_m"],
-             GROUND_NODE_SPAN_M[1] + dx))
+             GROUND_NODE_SPAN_M[1]))
     for name, got, want in held:
         if abs(got - want) > SPAN_REALIZED_TOL_M:
             raise AssertionError(
@@ -842,7 +844,10 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
     for axis in ("x", "y"):
         rng = g[f"substrate_{axis}_nodes_from_centre"]
         n = g[f"substrate_{axis}_cells"]
-        if rng is None or rng[0] != -rng[1] or rng[1] - rng[0] + 1 != n:
+        faces = g[f"substrate_{axis}_faces_m"]
+        centre = cx if axis == "x" else cy
+        if (faces is None or abs((faces[0] + faces[1]) / 2 - centre) > SPAN_REALIZED_TOL_M
+                or abs(faces[1] - faces[0] - n * dx) > SPAN_REALIZED_TOL_M):
             raise AssertionError(
                 f"dx={dx*1e6:.2f}µm: the substrate's cells along {axis} run from "
                 f"node {None if rng is None else rng[0]} to "

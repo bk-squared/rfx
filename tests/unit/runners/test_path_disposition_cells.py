@@ -136,7 +136,8 @@ class Feature(NamedTuple):
     is built per variant. ``boundary`` maps a lane to the
     ``test_realized_boundary.py`` (case, entry) that measures its walls, and
     ``adi_layers`` is the absorber thickness to find in the conductivity the
-    ADI kernel receives.
+    ADI kernel receives. ``default_equivalence`` names why a carried option
+    must agree with the default within PARITY_TOL instead of changing it.
     """
     build: Callable
     read: Callable = _probe
@@ -148,6 +149,7 @@ class Feature(NamedTuple):
     off: str = ""
     boundary: dict = {}
     adi_layers: int = 0
+    default_equivalence: str = ""
 
 
 def _added(add, **base):
@@ -415,7 +417,9 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_cpml_layers", "layers"): _boundary({"boundary": "cpml", "cpml_layers": 8}, cpml_off=True,
                                           adi_layers=8),
     ("_cpml_kappa_max", "kappa"): _boundary({"boundary": "cpml", "cpml_kappa_max": 5.0}, cpml_off=True),
-    ("_interface_eps", "dual_average"): Feature(_interface_eps, parity=False),
+    ("_interface_eps", "dual_average"): Feature(
+        _interface_eps, parity=False, default_equivalence=
+        "Centre-sampled production cells already use the same dual-width edge mean."),
     ("_dx_profile", "graded"): Feature(_profile("x"), off="base"),
     ("_dy_profile", "graded"): Feature(_profile("y"), off="base"),
     ("_dz_profile", "graded"): Feature(_profile("z"), off="base"),
@@ -612,7 +616,11 @@ def _carried(name, feature, lane, *, parity, first_only=False):
         return problems
     if not (lane in ADI and feature.adi_layers):
         effect = relative(_with(name, feature, lane), _without(name, feature, lane))
-        if effect <= EFFECT_FLOOR:
+        if feature.default_equivalence:
+            if effect > PARITY_TOL:
+                problems.append(f"{feature.default_equivalence} Default disagreement {effect:.3e} "
+                                f"exceeds tolerance {PARITY_TOL:g}")
+        elif effect <= EFFECT_FLOOR:
             problems.append(f"declaring it moved the record by {effect:.3e} of its peak "
                             f"(floor {EFFECT_FLOOR:g})")
     if problems and first_only:

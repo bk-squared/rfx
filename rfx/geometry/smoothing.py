@@ -27,7 +27,7 @@ Three design improvements over the original rfx linear-SDF scheme:
 from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
-from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
 from typing import NamedTuple
 
@@ -1162,6 +1162,24 @@ def _fallback_masks(shapes, mask_fn) -> dict:
     return {id(s): mask_fn(s) for s in shapes if not _has_sdf(s)}
 
 
+def _material_fallback_mask(shape, grid):
+    """Use material-cell ownership for staircase dielectric Box composites."""
+    from rfx.geometry.curved import CurvedPatch
+    from rfx.geometry.via import Via
+    if not isinstance(shape, (CurvedPatch, Via)):
+        return shape.mask(grid)
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, cell_centres_from_nodes,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    graded = hasattr(grid, "dx_arr")
+    coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
+    sizes = cell_sizes_from_nonuniform_grid(grid) if graded else cell_sizes_from_uniform_grid(grid)
+    return _material_cell_mask(shape, coords, cell_centres_from_nodes(coords, sizes),
+                               grid=grid, cell_sizes=sizes)
+
+
 def _normal_cell_length(xp, extents, normal):
     """Project box extents onto the normal; preserve the scalar cubic path."""
     if not isinstance(extents, tuple):
@@ -1371,7 +1389,9 @@ def compute_smoothed_eps_nonuniform(
         if _has_sdf(shape):
             continue
         try:
-            masks[id(shape)] = shape.mask(nu_grid)
+            masks[id(shape)] = _material_fallback_mask(shape, nu_grid)
+        except RfxRefusal:
+            raise  # a refusal already names the cause and the remedy
         except Exception as exc:
             # The uniform builder calls ``shape.mask(grid)`` too, so a
             # uniform mesh is a way out only for a shape that has one.
@@ -1443,7 +1463,7 @@ def compute_smoothed_eps(
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
     coords = coords_from_uniform_grid(grid)
-    masks = _fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
+    masks = _fallback_masks([s for s, _ in shapes], lambda s: _material_fallback_mask(s, grid))
     host = _host_path(*coords[:3], grid.dx, background_eps,
                       *(e for _, e in shapes),
                       *(p for s, _ in shapes for p in _shape_parameters(s)),
@@ -1586,7 +1606,7 @@ def compute_inv_eps_tensor_diag(
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
     coords = coords_from_uniform_grid(grid)
-    diel_masks = _fallback_masks([s for s, _ in dielectric_shapes], lambda s: s.mask(grid))
+    diel_masks = _fallback_masks([s for s, _ in dielectric_shapes], lambda s: _material_fallback_mask(s, grid))
     pec_masks = _fallback_masks(pec_shapes, lambda s: s.mask(grid))
     host = _host_path(*coords[:3], grid.dx, background_eps,
                       *(e for _, e in dielectric_shapes),

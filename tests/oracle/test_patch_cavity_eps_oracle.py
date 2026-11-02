@@ -16,7 +16,7 @@ Two claims, with HONEST oracle labelling (per the review's B-Q2 correction):
 
   B) EFFECT — a PEC cavity HALF filled (ε_r=4 up to a mid-cell height, air above)
      puts the ε interface inside a cell, where the collocated scheme mis-registers
-     it. Kottke subpixel smoothing must move the coarse-mesh resonance UP toward
+     it. Kottke subpixel smoothing must move the coarse-mesh resonance toward
      the converged value. This half-filled case is a DIRECTION+MAGNITUDE witness
      (the coarse on/off delta), NOT an exact-analytic oracle — a fully rigorous
      version would use the half-filled transcendental analytic (deferred).
@@ -92,22 +92,25 @@ def test_full_fill_kottke_is_noop_and_matches_exact_analytic():
         f"Kottke must not change a homogeneous fill: off {f_off:.4f} on {f_on:.4f}"
 
 
-def test_half_fill_kottke_moves_resonance_up_toward_truth():
-    """EFFECT: a mid-cell ε interface ⇒ Kottke subpixel smoothing moves the
-    coarse resonance UP (collocated over-estimates ε_eff → f too low → corrected).
-    Direction+magnitude witness on the coarse on/off delta (not an exact oracle).
-    """
+def test_half_fill_kottke_moves_resonance_toward_the_declared_fill():
+    """Centre sampling sets the staircase; smoothing shifts toward the drawn fill."""
     dx_c = 1.5e-3
-    h = 5.25e-3   # interface at 3.5 cells (mid-cell, worst case) at dx=1.5mm
+    h = 5.25e-3
+    sim = Simulation(freq_max=12e9, domain=(A, B, D), dx=dx_c, boundary="pec")
+    sim.add_material("diel", eps_r=4.0)
+    sim.add(Box((0, 0, 0), (A, B, h)), material="diel")
+    grid = sim._build_grid()
+    materials, *_ = sim._build_materials(grid)
+    column = np.asarray(materials.eps_r)[grid.shape[0] // 2, grid.shape[1] // 2]
+    realized = np.count_nonzero(column == 4.0) * dx_c
+    print(f"realized staircase thickness = {realized!r} m")
+    assert realized != h
     f_off = _fundamental(dx=dx_c, kottke=False, h_diel=h)
     f_on = _fundamental(dx=dx_c, kottke=True, h_diel=h)
     assert f_off is not None and f_on is not None
-    # Kottke moves the resonance UP (the ε-interface correction direction)
-    assert f_on > f_off, \
-        f"Kottke must raise the resonance at a sub-cell ε interface: off {f_off:.4f} on {f_on:.4f}"
-    # and by a meaningful, not-noise amount (measured ~+3% on this fixture)
+    assert (f_on < f_off) if realized < h else (f_on > f_off)
     shift_pct = 100 * (f_on - f_off) / f_off
-    assert shift_pct > 0.5, \
+    assert abs(shift_pct) > 0.5, \
         f"Kottke ε-interface correction too small to be real: {shift_pct:+.2f}%"
 
 
@@ -122,6 +125,7 @@ def test_half_fill_kottke_closes_error_vs_fine_truth():
     f_off = _fundamental(dx=dx_c, kottke=False, h_diel=h)
     f_on = _fundamental(dx=dx_c, kottke=True, h_diel=h)
     assert None not in (f_truth, f_off, f_on)
+    print(f"f_truth={f_truth!r}, f_off={f_off!r}, f_on={f_on!r}")
     err_off = abs(f_off - f_truth) / f_truth
     err_on = abs(f_on - f_truth) / f_truth
     assert err_on < err_off, \

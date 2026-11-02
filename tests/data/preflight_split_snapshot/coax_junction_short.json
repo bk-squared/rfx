@@ -70,19 +70,6 @@
         "source": "line_stub_findings"
       },
       {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          33.0,
-          2.1,
-          52.0,
-          127.0,
-          17.0
-        ],
-        "severity": "warning",
-        "source": null
-      },
-      {
         "code": "lossless_q",
         "loc": null,
         "numbers": [
@@ -136,19 +123,6 @@
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          33.0,
-          2.1,
-          52.0,
-          127.0,
-          17.0
-        ],
-        "severity": "warning",
-        "source": null
-      },
-      {
         "code": "msl_port_conductor_planes",
         "loc": null,
         "numbers": [
@@ -179,19 +153,6 @@
         ],
         "severity": "warning",
         "source": "_check_msl_port_geometry"
-      },
-      {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          33.0,
-          2.1,
-          52.0,
-          127.0,
-          17.0
-        ],
-        "severity": "warning",
-        "source": null
       },
       {
         "code": "coaxial_port_junction_short",
@@ -230,7 +191,7 @@
       }
     ],
     "n_errors": 1,
-    "n_issues": 14,
+    "n_issues": 11,
     "ok": false
   }
 }

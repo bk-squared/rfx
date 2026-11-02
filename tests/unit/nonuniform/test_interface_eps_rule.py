@@ -55,8 +55,8 @@ def test_columns_and_default_table(arm, scale):
     """
     sim, prof = fixture(arm, scale, interface_eps="dual_average")
     grid = sim._build_nonuniform_grid()
-    mats = sim._assemble_materials_nu(grid)[0]
-    ex, ey, ez = nu.assemble_interface_eps_nu(sim, grid, mats, high_wall=unpadded_high_walls(grid))
+    mats, _, _, pec_mask, *_ = sim._assemble_materials_nu(grid)
+    ex, ey, ez = nu.assemble_interface_eps_nu(sim, grid, mats, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))
     idx = (grid.nx//2, grid.ny//2)
     ref = np.asarray(w7.dual_eps_nodes(prof), np.float32)
     rel = np.max(abs(np.asarray(ey[idx])-ref)/ref)
@@ -83,7 +83,8 @@ def test_four_cell_weights_and_pec():
                     (.004, [.002,.006][y], [.003,.008][z])), material=f"m{y}{z}")
     grid = sim._build_nonuniform_grid()
     def ex():
-        return np.asarray(nu.assemble_interface_eps_nu(sim, grid, sim._assemble_materials_nu(grid)[0], high_wall=unpadded_high_walls(grid))[0])
+        mats, _, _, pec_mask, *_ = sim._assemble_materials_nu(grid)
+        return np.asarray(nu.assemble_interface_eps_nu(sim, grid, mats, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))[0])
     expected = (2*2*3 + 4*2*5 + 8*4*3 + 16*4*5)/(6*8)
     assert ex()[0,1,1] == np.float32(expected)
     # Only the large (y1,z1) owner cell is PEC. Exclude its area from the
@@ -101,9 +102,24 @@ def test_opt_in_reaches_stepper(monkeypatch):
     original = nu.run_nonuniform
     seen = []
     def capture(grid, materials, n_steps, **kwargs):
-        expected = nu.assemble_interface_eps_nu(sim, grid, materials, high_wall=unpadded_high_walls(grid))
-        for actual, ref in zip(kwargs["aniso_eps"], expected):
-            np.testing.assert_array_equal(actual, ref)
+        # Independently average the four production cells incident to each edge.
+        widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
+        for component, actual in enumerate(kwargs["aniso_eps"]):
+            ref = np.asarray(materials.eps_r, dtype=np.float64).copy()
+            for axis in range(3):
+                ref = np.take(ref, np.minimum(np.arange(grid.shape[axis]),
+                                             grid.shape[axis] - 2), axis=axis)
+            for axis in range(3):
+                if axis == component:
+                    continue
+                lower = np.maximum(np.arange(grid.shape[axis]) - 1, 0)
+                w = np.asarray(widths[axis])
+                dims = [1, 1, 1]
+                dims[axis] = len(w)
+                fraction = (w / (w + w[lower])).reshape(dims)
+                below = np.take(ref, lower, axis=axis)
+                ref = below + (ref - below) * fraction
+            np.testing.assert_array_equal(actual, ref.astype(materials.eps_r.dtype))
         seen.append(True)
         return original(grid, materials, n_steps, **kwargs)
     monkeypatch.setattr(nu, "run_nonuniform", capture)

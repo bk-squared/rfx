@@ -111,7 +111,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
     lengths, fill_length = node_metrics(grid) if graded else (None, None)
     cell_lengths = fill_length if graded else (uniform_cell(grid),)
-    masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
+    masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: smooth._material_fallback_mask(s, grid))
     host = smooth._host_path(*coords[:3], *cell_lengths, background_eps,
                             *(e for _, e in shapes),
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),

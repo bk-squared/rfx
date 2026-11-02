@@ -220,15 +220,12 @@ def _sheet_congruence_sim(off_lattice_mirror: bool):
 def _slot_sim(slot: bool, dz_profile=None):
     """A PEC sheet on z = 3.0 mm between two dielectrics, dx = 0.5 mm.
 
-    ``slot=True`` (the #702 configuration, now reported instead of
-    re-sampled): the dielectric below ends at 3.0 mm, the one above starts
-    at 3.1 mm — the stack a board export gives when it leaves a slot for
-    the foil. The node sampler is half-open, so the node at 3.0 mm gets
-    neither dielectric; the sheet owns no cell and writes nothing; the
-    normal E edge from the sheet plane into the cell above runs on vacuum.
+    ``slot=True``: the lower dielectric ends at 3.0 mm and the upper
+    starts at 3.5 mm, leaving one complete vacuum cell above the sheet
+    under the nearest-node material rule.
 
-    ``slot=False`` (silent): the upper dielectric is drawn from the sheet
-    plane itself, so the plane's node carries eps_r 2.5.
+    ``slot=False``: the upper dielectric starts at the sheet plane and
+    fills the adjacent cell, so the slot finding is silent.
     """
     # #1138: PEC sheet x/y solved +8.75% off; this tests dielectric-slot advice.
     sim = Simulation(snap="declared", domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
@@ -237,7 +234,7 @@ def _slot_sim(slot: bool, dz_profile=None):
     sim.add_material("diel_hi", eps_r=2.5)
     sim.add(Box((1 * MM, 1 * MM, 1.0 * MM), (7 * MM, 7 * MM, 3.0 * MM)),
             material="diel_lo")
-    z_hi_lo = 3.1 * MM if slot else 3.0 * MM
+    z_hi_lo = 3.5 * MM if slot else 3.0 * MM
     sim.add(Box((1 * MM, 1 * MM, z_hi_lo), (7 * MM, 7 * MM, 5.0 * MM)),
             material="diel_hi")
     sim.add(Box((2 * MM, 2 * MM, 3.0 * MM), (6 * MM, 6 * MM, 3.0 * MM)),
@@ -534,12 +531,7 @@ class TestSheetSlotVacuum:
         assert rep.by_code(SLOT_CODE) == []
 
     def test_fires_on_nonuniform_lane_too(self):
-        """Same slot on a graded z mesh with a node at 3.0 mm. The cell
-        sizes are dyadic (0.75 / 0.25 / 0.5 mm) so every node is exact in
-        float32 too: the NU lane samples dielectrics on float32 node
-        coordinates, and a node at 2.9999998 mm would fall INSIDE the
-        lower dielectric's half-open span — a different (buried-sheet)
-        geometry, reported by the assembly's own warning, not a slot."""
+        """The 3.0..3.5 mm vacuum cell survives on the graded mesh too."""
         dz = np.array([0.75, 0.25, 0.5, 0.5, 0.5, 0.5,
                        0.5, 0.5, 0.5, 0.5, 0.5, 0.5]) * MM
         hits = _slot_sim(True, dz_profile=dz).preflight().by_code(SLOT_CODE)
@@ -956,15 +948,9 @@ def test_shifted_box_warns_with_actual_and_implied_counts():
 
     issues = _issues(sim)
 
-    # 2, not 1: the advisory reports what the RUN realizes, and the run puts
-    # this box on the nodes at z = 1.0 and 2.0 mm (measured on the production
-    # rasterize path). The former "1" came from the validator modelling the
-    # rasterizer with cell centres — of which exactly one, z = 1.5 mm, fell in
-    # the span. #562 made coordinates nodes and this validator now calls
-    # Box.mask_on_coords instead of imitating it, so the number is the true
-    # one. The ADVISORY still fires, which is what this test is about: 2 is
-    # still below ceil(0.5 * 6.0) = 3.
-    assert _has(issues, "rasterizes to 2 z cells (implied 6.0)"), issues
+    # The centre window contains only z = 1.5 mm: realized faces 1..2 mm.
+    # One cell remains below ceil(0.5 * 6.0), so the advisory still fires.
+    assert _has(issues, "rasterizes to 1 z cells (implied 6.0)"), issues
     assert _has(issues, "smooth_grading transition cells may have shifted"), issues
 
 
@@ -993,10 +979,8 @@ def test_uniform_dz_simulation_skips_check():
 # The validator MODELS the rasterizer, so it has to agree with it (#562 F2).
 # --------------------------------------------------------------------------- #
 _AGREEMENT_CASES = [
-    # (z_lo_mm, z_hi_mm) — the 4.50-5.50 case is the reviewer's: it straddles a
-    # grading transition, is classified THIN by Box.mask_on_coords (extent ==
-    # one local cell) and so realizes ONE plane, and the hand-rolled
-    # centre-model counted three and stayed silent where it should warn.
+    # (z_lo_mm, z_hi_mm): the first span covers three cell centres across
+    # the grading transition and realizes faces at 4.0 and 5.5 mm.
     (4.50, 5.50),
     (5.00, 6.00),
     (5.00, 7.00),
@@ -1050,17 +1034,10 @@ def _implied_cells(dz, z_lo, z_hi):
 @pytest.mark.parametrize("z_lo_mm,z_hi_mm", _AGREEMENT_CASES,
                          ids=[f"{a:.2f}-{b:.2f}mm" for a, b in _AGREEMENT_CASES])
 def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
-    """This advisory predicts what the rasterizer will do, and a prediction
-    that disagrees with the thing it predicts is worse than no advisory: it
-    reads as a clean bill of health.
+    """The advisory count must agree with the production material sampler.
 
-    Two separate ways the hand-rolled model was wrong before #562's review:
-    it sampled cell CENTRES where the rasterizer samples E-NODES, and it knew
-    nothing of the THIN-SHEET branch that snaps a box no thicker than its
-    local cell onto a single nearest node. The validator now calls
-    ``Box.mask_on_coords`` on node positions built by the same composition the
-    grid builder uses, so agreement is by construction rather than by a copy
-    that can drift — but only a test that runs both can say it stayed that way.
+    Both the warning and silent cases are checked against the assembled
+    material, so a copied placement model cannot drift unnoticed.
     """
     dz = np.array([1.0e-3] * 5 + [0.25e-3] * 8 + [1.0e-3] * 5)
     sim = Simulation(freq_max=30e9, domain=(4e-3, 4e-3, float(np.sum(dz))),
@@ -1102,10 +1079,10 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
             f"realized count {real} is not under-resolved against "
             f"{implied_local:.1f} implied")
 
-    # and the reviewer's case must actually fire: 1 realized against 4 implied
+    # Three realized cells against four implied no longer warrant a warning.
     if (z_lo_mm, z_hi_mm) == (4.50, 5.50):
-        assert real == 1, real
-        assert predicted == 1, predicted
+        assert real == 3, real
+        assert predicted is None, predicted
 
 
 # ===========================================================================

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.errors import RfxRefusal
 from rfx.preflight._common import _fmt_len
 from tests.contracts.test_sheet_size_verdict import _ReachedRunner, _stub_runners
 
@@ -135,8 +136,8 @@ def test_spacing_is_checked_when_electrical_measures_agree(mesh):
     In mm, the mesh intervals have lengths d0,d1 and eps=1,4. Thus
     C=d0+d1/4 and P=d0+2*d1. A homogeneous physical length L=(C*P²)^(1/3)
     at eps=(P/L)² has exactly the same capacitance and phase measures.
-    Retain 10% of each interval's material in narrow boxes on its sample
-    node; fill the remaining physical length with that homogeneous eps.
+    Retain 10% of each interval's material in narrow boxes around its cell
+    centre; fill the remaining physical length with that homogeneous eps.
     Drawn spacing is 0.1*(d0+d1)+0.9*L, while solved spacing stays 2 mm.
     """
     nodes_mm = NODES[mesh] / MM
@@ -163,6 +164,15 @@ def test_spacing_is_checked_when_electrical_measures_agree(mesh):
                 (16.35 * MM, 14.35 * MM, 4 * MM)), material="pec")
     sim.add(Box((4.65 * MM, 4.65 * MM, (4 + drawn) * MM),
                 (12.35 * MM, 10.35 * MM, (4 + drawn) * MM)), material="pec")
+    with pytest.raises(RfxRefusal, match="Material volume 'sample_low'.*ZERO cells"):
+        sim._assemble_materials(sim._build_realized_grid())
+    # The node-centred 10% films are refused; retain their thicknesses and
+    # dielectric values while moving each drawing around its cell centre.
+    from dataclasses import replace
+    for i, start, width in ((1, 4, d0), (2, 4 + d0, d1)):
+        sim._geometry[i] = replace(sim._geometry[i], shape=Box(
+            (0, 0, (start + .45 * width) * MM),
+            (DOMAIN[0], DOMAIN[1], (start + .55 * width) * MM)))
     report = sim.preflight()
     assert not report.by_code("sheet_cavity_electrical_thickness")
     row, = report.by_code(CODE)
@@ -258,13 +268,12 @@ def _thin_substrate(mesh, snap):
 @pytest.mark.parametrize("mesh", NODES)
 @pytest.mark.parametrize("snap", ["strict", "declared"])
 @pytest.mark.parametrize("entry", ["run", "forward"])
-def test_thin_substrate_collapses_to_ground(monkeypatch, mesh, snap, entry):
-    # 2.0 and 2.2 are both nearest to the 2.0 mm node; gap 0.2 -> 0 mm.
+def test_thin_substrate_collapses_to_ground(mesh, snap, entry):
+    # The 2.0..2.2 mm dielectric contains no centre on .5 mm cells.
     sim = _thin_substrate(mesh, snap)
-    message = _assert_review_verdict(monkeypatch, sim, entry, snap,
-                                    "drawn spacing 200µm, solved spacing 0mm (-100.00%)")
-    assert message.split(" | ")[0].count("plane at 2mm") == 2
-    assert "domain wall z_hi" in message
+    kwargs = {"compute_s_params": False} if entry == "run" else {}
+    with pytest.raises(RfxRefusal, match="Material volume 'sub'.*ZERO cells"):
+        getattr(sim, entry)(n_steps=1, skip_preflight=True, **kwargs)
 
 
 @pytest.mark.parametrize("mesh", NODES)
@@ -351,6 +360,11 @@ def test_named_xyz_profile_remedy_preserves_thin_substrate_planes(monkeypatch):
     from rfx.mesh_edges import edge_aware_profiles
 
     sim = _thin_substrate("uniform", "strict")
+    with pytest.raises(RfxRefusal, match="Material volume 'sub'.*ZERO cells"):
+        sim._assemble_materials(sim._build_realized_grid())
+    # The profile remedy concerns the two conductor planes. Exclude the
+    # unresolved dielectric after checking its independent refusal.
+    sim._geometry = [g for g in sim._geometry if g.material_name == "pec"]
     row, = sim.preflight().by_code(CODE)
     assert 'rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes="xyz")' in str(row)
     sheets = [g.shape for g in sim._geometry if g.material_name == "pec"]
@@ -726,16 +740,21 @@ def test_floor_spacing_one_percent_boundary(mesh, height, refused):
         assert "domain wall z_lo" in str(rows[0])
 
 
-def test_box_touching_off_node_lid_is_solved_open(monkeypatch):
+@pytest.mark.parametrize("top_mm", [5.5, 5.0], ids=["touching-closes", "short-stays-open"])
+def test_box_at_off_node_lid_closes_only_when_drawn_touching(monkeypatch, top_mm):
     sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM, boundary="pec", snap="declared")
     assert_declared_wall_warning(sim)
-    sim.add(Box((2 * MM, 2 * MM, 0), (17 * MM, 15 * MM, 5.5 * MM)), material="pec")
+    sim.add(Box((2 * MM, 2 * MM, 0), (17 * MM, 15 * MM, top_mm * MM)), material="pec")
     sim.add_source((MM, MM, MM), component="ez")
-    # Box upper tie 5.5 -> 5; ceil domain lid 5.5 -> 6; touching -> 1 mm.
+    if top_mm == 5.5:
+        # The declared-domain face extends to the realized 6 mm lid.
+        assert not sim.preflight().by_code(CODE)
+        return
+    # A top drawn short of the lid stays at 5 mm, leaving a real 1 mm gap.
     message = _assert_review_verdict(monkeypatch, sim, "run", "declared",
-                                    "drawn touching/overlapping, solved spacing 1mm")
+                                    "solved spacing 1mm (+100.00%)")
     assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
-    assert "domain wall z_lo" not in message  # Box bottom 0 -> 0, touching shut.
+    assert "domain wall z_lo" not in message
 
 
 @pytest.mark.parametrize("mesh", NODES)
