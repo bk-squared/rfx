@@ -173,7 +173,7 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
         refuse_traced_conductor_at_absorber(sim, grid, shape, traced_node_axes=traced_node_axes)
     try:
         nominal = _nominal_grid(sim)
-    except Exception as exc:
+    except ValueError as exc:
         names = ", ".join(f"{'xyz'[axis]}-{side}" for axis, side in faces)
         axes = ", ".join(name for name in "xyz" if is_tracer(getattr(sim, f"_d{name}_profile")))
         raise TracedStructureRefusal(
