@@ -164,6 +164,13 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
         if unchecked:
             _check_faces(sim, grid, shape, (), unchecked)
         return shape
+    # Non-Box PEC/f0 sheets use equality of two lattice cross-sections.
+    # Outermost occupancy cannot validate that decision, even when the
+    # nominal mesh leaves the sheet unchanged.
+    if (not isinstance(shape, Box)
+            and any(tc.shape is shape and (tc.is_pec or tc.surface_impedance_f0 is not None)
+                    for tc in sim._thin_conductors)):
+        refuse_traced_conductor_at_absorber(sim, grid, shape, traced_node_axes=traced_node_axes)
     try:
         nominal = _nominal_grid(sim)
     except Exception as exc:

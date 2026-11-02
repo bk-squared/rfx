@@ -206,7 +206,7 @@ def test_a8_shape_refusals(kind):
             sim.add(OrientedBox((.002, .005, board.Z_G - board.DX / 2),
                                 (.004, .008, board.DX)), material="pec")
         return arrays(sim)
-    with pytest.raises((ValueError, NotImplementedError), match="sheet's plane|OrientedBox"):
+    with pytest.raises((ValueError, NotImplementedError), match="Cylinder.*axis concrete|OrientedBox"):
         jax.jvp(go, (jnp.float32(0),), (jnp.float32(1),))
 
 
@@ -267,6 +267,70 @@ def test_lattice_wrapper_keeps_refusal():
         return d
     with pytest.raises(TracedStructureRefusal, match="PlanarSheet.*x-lo.*Box volume.*concrete"):
         jax.jvp(go, (jnp.float32(0),), (jnp.float32(1),))
+
+
+@pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])
+def test_holed_impedance_sheet_refused(jit):
+    from tests.unit.materials.test_sheet_impedance import PlanarSheet
+
+    profile = np.array([1., 1., 1., .4, 1.6, 1., 1., 1.])
+
+    def scene(p):
+        sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                         boundary="cpml", cpml_layers=2, dy_profile=p,
+                         dt=1e-12, dt_min_cell=.2,
+                         nominal_profiles={"y": np.ones(8)} if is_tracer(p) else None)
+        sim.add_thin_conductor(
+            PlanarSheet(2, 4., (2., 1.), (8., 7.), hole=((6.5, 3.5), (7.5, 4.5))),
+            surface_impedance_f0=1e6)
+        return sim
+
+    def go(p):
+        return jnp.asarray(scene(p).conductor_mask())
+
+    assert np.count_nonzero(go(profile)) == 63
+    call = jax.jit(go) if jit else lambda p: jax.jvp(go, (p,), (jnp.ones_like(p),))[0]
+    try:
+        with pytest.raises(TracedStructureRefusal, match="PlanarSheet.*x-hi.*axis concrete"):
+            jax.block_until_ready(call(jnp.asarray(profile, dtype=jnp.float32)))
+    except jax.errors.ConcretizationTypeError as exc:
+        # Public f0 admission currently fails before continuation under JIT.
+        if not jit:
+            raise
+        assert "float" in str(exc)
+
+
+@pytest.mark.parametrize("inset", [False, True], ids=["both_x_faces", "inset_1p1"])
+def test_impedance_box_sheet_matches_concrete_and_checks_drift(inset):
+    def scene(d):
+        with patch.object(board, "CPML", 4):
+            sim = board._board(d * 0)
+        sim._ports = []
+        if is_tracer(d):
+            sim._dx_profile = jnp.asarray(board.PROF, dtype=jnp.float32).at[13:26].add(-d / 13)
+        else:
+            sim._dx_profile = board.PROF.copy()
+            sim._dx_profile[13:26] -= float(d) / 13
+        lo = 4 * board.DX if inset else 0.
+        hi = board.LX - 1.1 * board.PROF[-1] if inset else board.LX
+        sim.add_thin_conductor(Box((lo, 2 * board.DX, board.Z_G),
+                                   (hi, 18 * board.DX, board.Z_G)), surface_impedance_f0=1e6)
+        return sim
+
+    def go(d):
+        sim = scene(d)
+        product = solve_conductors(sim, sim._build_nonuniform_grid(), nonuniform=True)
+        spec, = product.sheet_impedance
+        return spec.mask, spec.g_sheet, spec.sigma_sheet
+
+    actual, _ = jax.jvp(go, (jnp.float32(0),), (jnp.float32(1),))
+    equal_arrays(actual, go(0.))
+    # Round-2 review: shrinking by 0.65 mm moves the inset end into the
+    # outermost node row. Expanding by the same amount uncovers that row
+    # for the sheet drawn to both faces.
+    delta = .00065 if inset else -.00065
+    with pytest.raises(TracedStructureRefusal, match="outermost layer at x-hi.*axis concrete"):
+        jax.jvp(go, (jnp.float32(delta),), (jnp.float32(1),))
 
 
 @pytest.mark.parametrize("path", ["nonuniform", "distributed_nu", "uniform", "subgridded"])
