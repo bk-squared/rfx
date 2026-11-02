@@ -5,10 +5,9 @@
       "items": [
         "rfx",
         "rfx/showcase",
-        "rfx/showcase/sensitivity-map",
-        "rfx/showcase/gradient-cost",
-        "rfx/showcase/grin-lens",
-        "rfx/showcase/waveguide-filter"
+        "rfx/showcase/patch-calibration",
+        "rfx/showcase/waveguide-filter",
+        "rfx/showcase/grin-lens"
       ]
     },
     {
