@@ -120,8 +120,11 @@ On a graded mesh, `dx_profile`, `dy_profile` and `dz_profile` can be traced:
 stretching the cells changes the physical size of what sits on them while the
 grid topology stays fixed. A metal sheet on such a mesh is declared with
 `sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` so that it stays on
-its nodes as they move. With a traced mesh axis, a ground plane is not
-continued into the absorber and rfx warns; use at least 8 absorber layers.
+its nodes as they move. With a traced mesh axis, a Box or axial Cylinder
+conductor drawn to an absorbing face continues into the absorber as on a
+concrete mesh, decided on `nominal_profiles` for that axis. A run whose mesh
+changes the outermost absorber layer the conductor occupies is refused:
+re-declare `nominal_profiles` at the current design or keep the axis concrete.
 
 Ports, probes and sources given in metres on a traced axis need the concrete
 cell widths at the point being differentiated:
