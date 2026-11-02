@@ -623,7 +623,7 @@ the declared uniform cell when there is no profile. A traced axis with an absorb
 needs `nominal_profiles` for any conductor with finite declared extent on that
 axis, even one clear of every face. Declare that nominal profile or pass the
 axis's profile as a concrete NumPy array for this run. The earlier
-silent cut changed S11 by 5–9 % of its peak and its gradient by 6–8 % on a
+cut changed S11 by 5–9 % of its peak and its gradient by 6–8 % on a
 grounded-board test at 16 absorber layers. Those equal-length records were not
 settled; these are measured record differences, not settled-error estimates.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
