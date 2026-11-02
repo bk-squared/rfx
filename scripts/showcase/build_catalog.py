@@ -44,7 +44,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/52f0a897c27d/"
+SHARE = "https://remilab.cnu.ac.kr/share/28be71844b36/"
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
@@ -158,8 +158,13 @@ def headlines(share: Share) -> dict[str, list[dict]]:
     fd_days = {b: _derived(patch, f"central finite-difference cost for every cell of box {b}") / 86400
                for b in BOXES}
 
-    def h(quantity, value, unit, fmt, routes, source):
-        return {"quantity": quantity, "printed": _printed(value, fmt), "value": value,
+    def h(quantity, value, unit, fmt, routes, source, range_ok=False):
+        if range_ok:
+            low, high = map(fmt, value)
+            printed = low if low == high else f"{low}–{high}"
+        else:
+            printed = _printed(value, fmt)
+        return {"quantity": quantity, "printed": printed, "value": value,
                 "unit": unit, "routes": list(routes), "from": source}
 
     out: dict[str, list[dict]] = {}
@@ -175,7 +180,7 @@ def headlines(share: Share) -> dict[str, list[dict]]:
     ]
     cost = [
         h("value and gradient / forward wall time, three boxes", [min(ratio), max(ratio)], "1",
-          fixed(1), (HOME,), f"{src} derived 'value_and_grad / forward wall-time ratio', min and max"),
+          fixed(1), (HOME,), f"{src} derived 'value_and_grad / forward wall-time ratio', min and max", range_ok=True),
         h("value and gradient wall time, three boxes", [min(grad), max(grad)], "s", fixed(0),
           (HOME, INDEX), f"{src} claims 'value_and_grad wall time', min and max"),
         h("layer box: cells that are not laminate", boxes["layer"]["n_other_cells"], "cells", comma,

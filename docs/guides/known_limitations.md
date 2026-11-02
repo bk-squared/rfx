@@ -135,6 +135,8 @@ thickness is therefore not part of the model, and a microstrip line built from s
 sheet reads slightly electrically long against the same line with its real thickness.
 Widening the sheet does not correct it.
 Preflight now reports declared metal-sheet thickness above 2 % of the nearest overlapping Box dielectric's height, with the expected electrical-length shift.
+A PEC `Box` with zero extent along one axis also has zero thickness, and preflight does not report it: the check reads only `add_thin_conductor` thickness.
+Against a reference with the real copper thickness, a zero-thickness microstrip reads +0.45, +0.57 and +0.99 % electrically long at thickness 4.5, 8.5 and 17.5 % of the substrate height.
 
 ---
 
@@ -150,9 +152,8 @@ one boundary carry plus 6.5 carries of backward working arrays.
 This calibration uses one graded whole-grid scene, not a runtime guarantee.
 Design boxes use the same whole-grid adjoint workspace estimate and are unmeasured;
 other scenes, backends, and JAX versions are also unmeasured for this coefficient.
-With a design box and `checkpoint=False`, a gradient keeps 24 bytes per step for every cell of the box plus one cell on its plus side along each axis.
-That is twice what an E history needs. The estimate's term for it counts one more cell on the minus side as well, so it reads high:
-1.12 times the compiled amount for a 24 × 24 × 24 box, 1.62 times for a one-cell 24 × 24 layer.
+With a lossless design box and `checkpoint=False`, a gradient keeps half the per-step field history it kept in rfx 2.0.0, and the estimate counts the cells the box writes.
+For that field term the estimate allows up to twice the stored amount, so it can read high.
 Measure a representative run or pull back one output at a time when memory is tight.
 The former 2.2-times advice was exceeded by the measured 16-output row (2.25 times).
 Since rfx 2.0, on a single-device graded run on a GPU, `estimate_ad_memory(..., compiled=True)` compiles the gradient program without running it and returns its device peak in `compiled_total_bytes`: 0.992 to 1.000 of the measured peak on four graded rows on two GPU models, for one compile of 9 to 31 s.
@@ -187,6 +188,9 @@ jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
 True gives first-order convergence at curved dielectric interfaces, worst at high contrast (eps ~30 and above).
+`run()` warns (`CurvedSmoothingWarning`) only for a smoothed `Sphere` or `Cylinder` at 10 times the contrast of the background or of another declared dielectric, or more.
+Below that no message is given, and convergence is still first order: a lossless eps-4 sphere's extinction converges first order against Mie over three meshes.
+There smoothing is still closer to Mie than the staircase at each mesh.
 A measured eps-38 rod resonance was off by 1–2% on practical meshes, and up to 8x further off than without smoothing.
 Grid-aligned faces are not affected. Judge such resonances by at least three refinements and compare against
 `subpixel_smoothing=False`; disagreement means neither series has converged.
@@ -324,6 +328,17 @@ to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz f
 1 mm port, so its S does not converge with the mesh. `run()` and `sim.preflight()`
 report it (code `wire_port_no_radius`).
 
+### A multi-cell wire port's load-plane reflection misses the 2 dB and 0.1 bars on two loads at 25 µm.
+
+Tracker: #1614
+
+A wire port (`add_port(..., extent=...)`) on a coaxial line closed by a load, read at the load plane
+over 1–10 GHz with 25 µm cells, gives a reflection magnitude 2.31 dB off at 8.8 GHz on a 2·Zc load and
+`|Γ|` 0.102 at 10 GHz on a matched load. The bars are 2 dB and 0.1. Short, open and Zc/2 loads stay inside them.
+The error ripples over frequency, with maxima that grow toward 10 GHz.
+No message reports it. Only one mesh was measured, so the trend with the cell and the cause are not known.
+Check a wire-port reflection on three meshes before using it as a converged number.
+
 ### The coax→microstrip transition reads more power out than in.
 
 Tracker: #1479
@@ -433,6 +448,8 @@ The excess comes from the port's V·I* reading of power near its plane: at 10–
 Why V and I misread the power there is not determined.
 Workaround on lines like this one: place the first probe plane 12 mm or more from the feed plane (`add_msl_port(..., n_probe_offset=...)`, in cells: 60 cells at 0.2 mm); with it at 12 mm the same line's `|S21|` exceeds 0 dB by at most 0.017 dB (largest singular value up to 1.0034).
 This is one line's evidence (record kept with the project); a clearance rule or default waits for a sweep over several lines.
+On a one-stub line, moving only the probes changes `|S21|` by up to 0.47 dB on the null's upper shoulder (1.28 dB on a 45 mm feed) and the null depth by 2.8–3.4 dB; at bins where S stays passive no message reports it.
+The automatic first-probe offset is at least five substrate heights (4 mm at h = 0.8 mm), inside the zone above.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
@@ -440,11 +457,11 @@ Tracker: #1373
 
 The field increment a source adds on its edge is the update's coefficient times the drive. A rectangular-waveguide port and a plane-wave source still compute that coefficient apart from the update.
 
-- A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge 1/w times harder than the update does, w being the edge's open fraction. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) the launched wave, and with it every absolute field and probe amplitude, reads 2.7 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.6 % with 0.75 mm cells; the excess falls in proportion to the cell size. |S11| and |S21| moved by at most 3e-3, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
+- A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge with its own coefficient, which differs from the field update's; under the earlier conformal model it drove the edge 1/w times harder than the update, w being the edge's open fraction. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) under the earlier model the launched wave, and with it every absolute field and probe amplitude, read 2.7 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.6 % with 0.75 mm cells; the excess fell in proportion to the cell size. |S11| and |S21| moved by at most 3e-3, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
 - A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
 - A plane-wave source (`add_tfsf_source`) refuses a smoothed or conformal edge on its injection planes, on every path (`tests/contracts/test_tfsf_vacuum_planes.py::test_treated_edges_on_injection_planes`).
 
-Any fix is 2.1. Until then, read absolute amplitudes from a port beside a conformal wall as high by up to these amounts, or put the walls on mesh nodes. Measured 2026-10-29; record kept with the project.
+Any fix is 2.1. On the current model the size and sign of the amplitude error are not measured: do not trust absolute amplitudes from a port beside a conformal wall, or put the walls on mesh nodes. Measured 2026-10-29 with the earlier conformal model, which gave a cut edge an open-fraction permittivity. The cut-cell model that replaced it on 2026-10-31 changed the field update's coefficient on a cut edge, while the port still drives that edge with its own coefficient. The mismatch therefore remains, but these amounts have not been re-measured on the current model.
 
 ### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
@@ -479,6 +496,9 @@ end: 1.44, 1.14 and 1.06 % at h/4, h/8 and h/12, where h is the substrate thickn
 difference is larger and not flat. The stopband minima are shallower in rfx: −35 and −41 dB, against −39 and −59 dB in
 HFSS. The cause is not known. On a uniform mesh the gap is larger and falls first order with the cell (3.86, 2.44 and
 1.96 %), because a free PEC sheet edge is solved 0.35 cell beyond its last node.
+The stopband minima also move with the feed length: with longer feeds they are 5.8 and 16.6 dB deeper, and the
+passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
+power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
 ## Ring-down completion and the early stop
 

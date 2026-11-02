@@ -63,11 +63,14 @@ see the same grid.
 | `normalize` | Runs | What it corrects | Use it for |
 |---|---|---|---|
 | `False` (default) | one per port | nothing; magnitudes carry a few-percent Yee impedance error | \|S11\| of strong reflectors (shorts, high-Q loads) on a uniform mesh |
-| `True` | two per port | one-way grid dispersion in transmission | S21 of a straight guide. Not for S11. |
+| `True` | two per port | the empty guide's own reflection at the driven port (subtracted from the driven port's diagonal entry), and device reflection leaking into the incident wave (taken from the reference run) | modal S with the empty guide's port reflection removed, when no gradient is needed. Not for \|S11\| of strong reflectors (use `False`). |
 | `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; recommended on a graded mesh (`normalize=False` is refused there) |
 
-`normalize=True` divides by an empty-guide reference run. That fixes
-transmission but not reflection. `normalize=True` also cannot be
+`normalize=True` divides every entry by the incident wave of an empty-guide
+reference run at the driven port, so reflection and transmission share the
+declared planes. S21 keeps the one-way grid dispersion between the planes, as
+with `normalize=False`. For an insertion ratio, divide S21 by S21 of the same
+guide without the device, at the same planes. `normalize=True` cannot be
 differentiated; `False` and `"flux"` can.
 
 With `normalize=False`, a passive strong reflector can read slightly above
@@ -218,7 +221,15 @@ than running it into the absorber.
 ## Gradients and memory
 
 `compute_waveguide_s_matrix` accepts `eps_override=` / `sigma_override=` for
-differentiation with `normalize=False` or `"flux"`, single-mode only. For
+differentiation with `normalize=False` or `"flux"`, single-mode only. On a
+graded mesh, `normalize="flux"` also differentiates S with respect to the widths
+of a declared window of x cells, `nominal_profiles={"x": NominalProfile(cells,
+traced_cells=(i0, i1))}`: the window's cells grow and the air cells after it
+shrink by the same total, so both port planes stay fixed. Traced y or z widths,
+a window touching a port's planes or the absorber, a window whose total width
+changes, a time step that follows the traced widths (pin it with `dt=` and
+`dt_min_cell=`), and `run()` or `forward()` with a waveguide port on a traced mesh are
+refused. For
 long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
 On a uniform mesh `K` must divide the number of time steps exactly; on a
 graded mesh it is a target segment count.
