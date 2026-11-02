@@ -15,7 +15,9 @@ from rfx.geometry.csg import Box, Cylinder, declared_bounds
 def _candidate_faces(sim, grid, bounds):
     from rfx.geometry.smoothing import _reaches_pad_face
 
-    faces, missing, unpadded_missing = [], [], []
+    faces: list[tuple[int, str]] = []
+    missing: list[str] = []
+    unpadded_missing: list[str] = []
     nominal = sim._nominal_profiles or {}
     for axis, name in enumerate("xyz"):
         profile = getattr(sim, f"_d{name}_profile")
@@ -210,5 +212,7 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
     result = shape
     for axis, side in changed:
         grow = sm._continue_box if isinstance(shape, Box) else sm._continue_cylinder
-        result = grow(result, axis, side, targets[axis, side])
+        target = targets[axis, side]
+        assert target is not None  # set above for every changed face
+        result = grow(result, axis, side, target)
     return result
