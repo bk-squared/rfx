@@ -584,6 +584,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx.runners._admission import refuse_mixed_waveguide_sources
+    refuse_mixed_waveguide_sources(sim)
     from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
     wg_freqs = resolve_shared_waveguide_port_freqs(
         sim, route="graded forward()" if lane == "fwd_nonuniform" else "graded run()")

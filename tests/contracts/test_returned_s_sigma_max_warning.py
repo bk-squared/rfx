@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxUnsupported
 from rfx.probes.probes import warn_if_nonpassive_lumped_s11
 from rfx.sparams._common import _finalize_sparam_result
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
@@ -422,6 +422,14 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     monkeypatch.setattr(spec, "WaveguideSParamResult", assemble)
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always")
+        if case == "lumped":
+            with pytest.raises(RfxUnsupported) as caught:
+                sim.run(n_steps=1, skip_preflight=True)
+            assert str(caught.value) == (
+                "Waveguide ports are not supported together with lumped ports or TFSF"
+            )
+            assert not [w for w in seen if "waveguide_sparams" in str(w.message)]
+            return
         result = getattr(sim, entry)(
             n_steps=1, skip_preflight=True, **({"checkpoint": False} if entry == "forward" else {}),
         )

@@ -94,6 +94,8 @@ def _forward_from_materials(
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes (#1299).
         """
+    from rfx.runners._admission import refuse_mixed_waveguide_sources
+    refuse_mixed_waveguide_sources(self)
     from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
     wg_freqs = resolve_shared_waveguide_port_freqs(self, route="uniform forward()")
     if subpixel_smoothing and sheet_impedance is not None:
