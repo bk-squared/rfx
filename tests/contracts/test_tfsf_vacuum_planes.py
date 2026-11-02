@@ -142,11 +142,18 @@ def test_traced_x_cell_sizes_refused():
 ])
 def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, placement):
     pec_crossing = source != "closed_box" and treatment in ("kottke_pec", "conformal_pec")
+    subpixel_crossing = placement == "crossing" and source != "closed_box" and treatment == "subpixel"
     if placement == "crossing" and not pec_crossing:
-        # The identical staircase scene must reach stepping with treatment off.
         sim, kwargs = _treated_edge_scene(mesh, source, treatment, entry, placement, False)
-        result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
-        assert np.isfinite(np.asarray(result.time_series)).all()
+        if subpixel_crossing:
+            # The subpixel average at node 8 spans the dual cell [7.5, 8.5].
+            # Any face in that window snaps to node 8, so the plain check already refuses it.
+            with pytest.raises(ValueError, match=r"requires vacuum.*x_lo"):
+                getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+        else:
+            # The identical staircase scene must reach stepping with treatment off.
+            result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+            assert np.isfinite(np.asarray(result.time_series)).all()
 
     sim, kwargs = _treated_edge_scene(mesh, source, treatment, entry, placement, True)
     if placement == "inside":
@@ -164,6 +171,8 @@ def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, place
         }[treatment]
         if source == "closed_box":
             label = "caller-supplied non-vacuum mask"
+        elif subpixel_crossing:
+            label = rf"(?:{label}|permittivity)"
         plane = r"x=(?:7|8)" if source == "closed_box" else r"x_lo(?:-1)?"
         with pytest.raises(ValueError, match=rf"requires vacuum.*{plane}: {label} \(") as caught:
             getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
@@ -184,10 +193,13 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
                         direction="+x", **source_options)
     if not wall:
         # Four pad cells and margin four put x_lo at x=0.8 mm (node 8).
-        # Dielectric at node 8.35 leaves the plain plane vacuum; smoothing reaches it.
         dielectric = treatment in ("subpixel", "full_tensor")
         # Open-slab/Method-B PEC has no treated-only crossing: its half-cell skin also puts staircase Ex on the plane.
         x_face = .00087 if dielectric else .00091 if source == "closed_box" else .00067
+        if dielectric and (treatment == "full_tensor" or source == "closed_box"):
+            # Face at node 8.65 is realized at node 9 under the nearest-node rule.
+            # The plain plane is vacuum; the treatment reaches x_lo.
+            x_face = .00093
         if inside:
             lo, hi = (.00227,) * 3, (.00267,) * 3
         else:
