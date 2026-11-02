@@ -227,7 +227,8 @@ of a declared window of x cells, `nominal_profiles={"x": NominalProfile(cells,
 traced_cells=(i0, i1))}`: the window's cells grow and the air cells after it
 shrink by the same total, so both port planes stay fixed. Traced y or z widths,
 a window touching a port's planes or the absorber, a window whose total width
-changes, and `run()` or `forward()` with a waveguide port on a traced mesh are
+changes, a time step that follows the traced widths (pin it with `dt=` and
+`dt_min_cell=`), and `run()` or `forward()` with a waveguide port on a traced mesh are
 refused. For
 long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
 On a uniform mesh `K` must divide the number of time steps exactly; on a
