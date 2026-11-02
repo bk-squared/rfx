@@ -124,19 +124,6 @@ declarations, by bounding intervals, and across shared faces. Three cases are ou
 - two films whose cells meet only at a diagonal corner node are not separated.
 Draw such gaps as separate declarations that do not touch anywhere along the gap's axis, at least one cell wide.
 
-### A dielectric `Box` face that lies between mesh nodes is built up to one cell toward +, while a PEC `Box` face goes to the nearest node.
-
-Tracker: #2326
-
-Every `Box` that is not PEC (dielectric, magnetic, lossy, dispersive or Kerr) and is thicker than one cell fills a cell when the cell's lower corner node lies inside the drawing.
-Each face that lies between nodes therefore moves to the next node, by up to one cell, always toward +x, +y or +z, on uniform and graded meshes alike.
-A PEC `Box` drawn the same way, and a curved dielectric, use the nearest node.
-On a uniform 1 mm mesh, `Box((1.3, 2, 2) mm, (3.3, 4, 4) mm)` is solved from 2.0 to 4.0 mm in x with `eps_r=4` and from 1.0 to 3.0 mm as PEC; `sim.realized_geometry()` reports the bounds that were built.
-On the probe-fed RT/Duroid 5880 patch (εr 2.2, substrate 3.175 mm) with the substrate top 0.3 cell above a node, the substrate is built one cell above the patch sheet.
-Its resonance (the peak of the input resistance) is then 1.8 % low on a mesh of 4.3 cells through the substrate and 1.2 % low on 8.3 cells, against the same substrate drawn shifted half a cell toward −x, −y and −z so that its faces go to the nearest node (record kept with the project).
-With the top 0.7 cell above a node both rules give the same node, and the two resonances agree within 0.004 %.
-Until a fix lands, draw dielectric `Box` faces on mesh nodes, or read the realized bounds and shift the drawing so the faces land where you mean them.
-
 ### Conductor thickness is not solved: a metal sheet has zero thickness
 
 Tracker: #1523
@@ -267,7 +254,7 @@ three refinements. Measured 2026-10-31 with the conformal update now on main (op
 
 Tracker: #2241
 
-On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform, graded and ADI meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Two cases still differ: `run(devices=...)` or `forward(distributed=True)` on a uniform mesh with a lumped or wire port (up to 432 float32 ULP of a probe's own peak per step over 192 steps), and `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. Until the multi-device fix lands (planned for 2.1), run a ported model on one device inside `jax.jit`, or call `run()` without an enclosing `jax.jit`.
+On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform and graded meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Two cases still differ: `run(devices=...)` or `forward(distributed=True)` on a uniform mesh with a lumped or wire port (up to 432 float32 ULP of a probe's own peak per step over 192 steps), and `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. Until the multi-device fix lands (planned for 2.1), run a ported model on one device inside `jax.jit`, or call `run()` without an enclosing `jax.jit`.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 

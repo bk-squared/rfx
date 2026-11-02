@@ -119,6 +119,12 @@ def test_composite_thin_boxes_translate_without_extra_endpoint_cells(kind, mater
         return realized([shape], material)
     # A composite's sub-cell Boxes must choose their nearest node on the
     # complete image lattice, as a directly declared thin Box does.
+    if material == 'dielectric':
+        from rfx.errors import RfxRefusal
+        for shift in (0, 8):
+            with pytest.raises(RfxRefusal, match='ZERO cells'):
+                arrays(shift)
+        return
     same_fill(tuple(np.roll(a, -8, axis=0) for a in arrays(0)), arrays(8))
 
 

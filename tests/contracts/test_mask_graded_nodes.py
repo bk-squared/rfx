@@ -1,10 +1,11 @@
-"""No-SDF masks use physical nodes, including smoothing's fallback (#1298)."""
+"""Public masks use nodes; Box-composite material volumes use cell centres."""
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from rfx.api._spec import MaterialSpec
+from rfx.errors import RfxRefusal
 from rfx.geometry.csg import Box, PolylineWire, _grid_coords
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.via import Via
@@ -36,11 +37,12 @@ def fixture(kind, axis=2, pad=0):
                                cpml_layers=pad, dx_profile=profiles[0],
                                dy_profile=profiles[1])
     # Independent oracle: cumulative sum of the INPUT profiles, with padding.
-    nodes = []
+    nodes, centres = [], []
     for p in profiles:
         widths = np.pad(p, (pad, pad + 1), mode='edge')
         edges = np.r_[0., np.cumsum(widths)]
         nodes.append(edges[:-1] - edges[pad])
+        centres.append((edges[:-1] + edges[1:]) / 2 - edges[pad])
     xyz = np.meshgrid(*nodes, indexing='ij')
     lo, hi = np.array([.61, .73, .83])*1e-3, np.array([3.67, 3.53, 3.59])*1e-3
     if kind == 'box':
@@ -70,7 +72,7 @@ def fixture(kind, axis=2, pad=0):
         t = np.clip(sum((xyz[a]-start[a])*delta[a] for a in range(3)) /
                     np.dot(delta, delta), 0, 1)
         expected = sum((xyz[a]-start[a]-t*delta[a])**2 for a in range(3)) <= shape.radius**2
-        return grid, shape, expected
+        return grid, shape, expected, centres
     expected = np.zeros(grid.shape, dtype=bool)
     for lower, upper in boxes:
         selected = np.ones(grid.shape, dtype=bool)
@@ -80,7 +82,17 @@ def fixture(kind, axis=2, pad=0):
             else:
                 selected &= (xyz[a] >= lower[a]) & (xyz[a] < upper[a])
         expected |= selected
-    return grid, shape, expected
+    return grid, shape, expected, centres
+
+
+def _via_material_cells(centres):
+    # Independent drawing oracle: the barrel is x=1.02..3.24,
+    # y=.96..3.18, z=.83..3.59 mm. Zero-thickness pads own no cells.
+    lo = np.array([1.02, .96, .83]) * 1e-3
+    hi = np.array([3.24, 3.18, 3.59]) * 1e-3
+    xyz = np.meshgrid(*centres, indexing='ij')
+    return np.logical_and.reduce([(xyz[a] >= lo[a]) & (xyz[a] < hi[a])
+                                  for a in range(3)])
 
 
 @pytest.mark.parametrize('kind', ['box', 'mesh', 'curved', 'via', 'wire'])
@@ -88,7 +100,7 @@ def fixture(kind, axis=2, pad=0):
 @pytest.mark.parametrize('pad', [0, 2])
 @pytest.mark.parametrize('subpixel_smoothing', [False, True])
 def test_graded_placement(kind, axis, pad, subpixel_smoothing):
-    grid, shape, expected = fixture(kind, axis, pad)
+    grid, shape, expected, centres = fixture(kind, axis, pad)
     assert expected.any()
     # Guard the fixture itself: the declared outer extents must not become
     # node/half-node witnesses when the asymmetric profile is edited.
@@ -98,14 +110,22 @@ def test_graded_placement(kind, axis, pad, subpixel_smoothing):
     for corner in shape.bounding_box():
         assert not np.any(np.isclose(corner[axis], ties, rtol=0, atol=1e-12))
     np.testing.assert_array_equal(shape.mask(grid), expected)
-    if subpixel_smoothing:
-        arrays = compute_smoothed_eps_nonuniform(grid, [(shape, 4.)])
-    else:
+
+    def material_arrays():
+        if subpixel_smoothing:
+            return compute_smoothed_eps_nonuniform(grid, [(shape, 4.)])
         materials, *_ = rasterize_geometry(
             [SimpleNamespace(shape=shape, material_name='dielectric')],
             lambda _: MaterialSpec(eps_r=4.), coords_from_nonuniform_grid(grid), grid=grid)
-        arrays = [materials.eps_r]
-    for eps in arrays:
+        return [materials.eps_r]
+
+    if kind == 'curved':
+        with pytest.raises(RfxRefusal, match="Material volume .*CurvedPatch.*ZERO cells"):
+            material_arrays()
+        return
+    if kind == 'via':
+        expected = _via_material_cells(centres)
+    for eps in material_arrays():
         np.testing.assert_array_equal(eps, np.where(expected, 4., 1.))
 
 
@@ -115,7 +135,7 @@ def test_uniform_bit_identity(kind, pad):
     from rfx import Simulation
     from rfx.geometry.smoothing import compute_smoothed_eps
 
-    _, shape, _ = fixture(kind)
+    _, shape, _, _ = fixture(kind)
     grid = Simulation(freq_max=20e9, domain=(.006, .006, .006),
                       dx=.001, cpml_layers=pad)._build_grid()
     # Frozen 292e3903 arithmetic, deliberately independent of the provider.
@@ -126,6 +146,12 @@ def test_uniform_bit_identity(kind, pad):
         assert actual.tobytes() == baseline.tobytes()
     expected = np.asarray(shape.mask_on_coords(*old))
     assert np.asarray(shape.mask(grid)).tobytes() == expected.tobytes()
+    if kind == 'curved':
+        with pytest.raises(RfxRefusal, match="Material volume .*CurvedPatch.*ZERO cells"):
+            compute_smoothed_eps(grid, [(shape, 4.)])
+        return
+    if kind == 'via':
+        expected = _via_material_cells(tuple(nodes + .0005 for nodes in old))
     for eps in compute_smoothed_eps(grid, [(shape, 4.)]):
         baseline = np.where(expected, 4., 1.).astype(np.asarray(eps).dtype)
         assert np.asarray(eps).tobytes() == baseline.tobytes()

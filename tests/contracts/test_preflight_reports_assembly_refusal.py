@@ -269,7 +269,9 @@ def _solve_only_model(case, graded, monkeypatch):
     if case == 'pad_shortfall':
         from tests.unit.geometry.test_pad_fill_paths import _graded_rig, _rig, _size_by_plain_ceil
         _size_by_plain_ceil(monkeypatch)
-        return _graded_rig(monkeypatch) if graded else _rig(10)
+        # A Box now reaches the extra domain-face cell. The flat cylinder
+        # keeps the uniform pad-shortfall refusal active on the same grid.
+        return _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     if case in ('periodic_interval', 'outside_point'):
         from tests.unit.boundaries.test_periodic_extents import model
         sim = model()

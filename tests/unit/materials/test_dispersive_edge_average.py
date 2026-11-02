@@ -394,7 +394,8 @@ def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind
         for first, count, mat in ((4, 5, "m"), (12, 2, "d")):
             for t in range(count):
                 i = (first + shift + t) % n
-                sim.add(Box(((i - 0.45) * dx, -1, -1), ((i + 0.45) * dx, 1, 1)),
+                # Each drawn node-to-node Box owns one primal-cell centre.
+                sim.add(Box((i * dx, -1, -1), ((i + 1) * dx, 1, 1)),
                         material=mat)
         sim.add_source((((1 + shift) % n) * dx, 1.5e-3, 2.5e-3), "ez",
                        amplitude_kind="field",

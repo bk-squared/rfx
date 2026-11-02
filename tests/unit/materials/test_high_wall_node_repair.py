@@ -294,7 +294,7 @@ def test_fine_sample_requires_reached_wall_and_beyond_coordinate(reached, last_i
     assert float(raw.eps_r[index]) == 1.
 
 
-def test_dual_average_rasterization_already_repeats_last_centre(monkeypatch):
+def test_dual_average_reads_production_cells_at_the_high_wall(monkeypatch):
     import rfx.geometry.rasterize_grid as raster
     from rfx.runners.nonuniform import assemble_interface_eps_nu
     grid, result = scene("static", graded=True)
@@ -304,19 +304,11 @@ def test_dual_average_rasterization_already_repeats_last_centre(monkeypatch):
                      interface_eps="dual_average")
     sim.add_material("body", eps_r=4., sigma=.2, mu_r=2.)
     sim.add(Box((0, 3*H, 3*H), (6*H, 8*H, 4*H)), material="body")
-    observed = []
-    original = raster.rasterize_geometry
+    def forbidden(*args, **kwargs):
+        pytest.fail("dual_average must reuse production cells without rasterizing")
 
-    def capture(*args, **kwargs):
-        out = original(*args, **kwargs)
-        observed.append((args[2], out[0]))
-        return out
-
-    monkeypatch.setattr(raster, "rasterize_geometry", capture)
-    eps = assemble_interface_eps_nu(sim, grid, result[0], high_wall=unpadded_high_walls(grid))
-    coords, cells = observed[0]
-    assert coords.y[-1] == coords.y[-2] == 7.5*H
-    np.testing.assert_array_equal(cells.eps_r[:, -1], cells.eps_r[:, -2])
+    monkeypatch.setattr(raster, "rasterize_geometry", forbidden)
+    eps = assemble_interface_eps_nu(sim, grid, result[0], pec_mask=result[3], high_wall=unpadded_high_walls(grid))
     assert float(eps[0][3, -1, grid.pad_z_lo+3]) == 2.5
 
 

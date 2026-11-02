@@ -99,7 +99,7 @@ def test_substrate_resolution_warning_at_3_cells():
 
 
 def test_substrate_checks_count_realized_cells_at_dx_80():
-    """Four epsilon slots do not extend the three-interval source gap."""
+    """Centre sampling gives three epsilon slots in the three-interval source gap."""
     msgs = _msl_warnings(_build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB))
     sub = _normal_interval_warnings(msgs)
     assert len(sub) == 1 and "only 3 normal interval(s)" in sub[0], msgs
@@ -107,7 +107,7 @@ def test_substrate_checks_count_realized_cells_at_dx_80():
     assert len(mixed) == 1, msgs
     for message in (sub[0], mixed[0]):
         assert "gap=240.0µm over 3 normal interval(s)" in message
-        assert "4 same-permittivity sample slot(s), extent 320.0µm" in message
+        assert "3 same-permittivity sample slot(s), extent 240.0µm" in message
         assert "THICKER" not in message and "Z0 moves about" not in message
 
 
@@ -135,7 +135,7 @@ def test_substrate_checks_report_realized_thickness_on_a_dz_profile():
     assert len(mixed) == 1, msgs
     assert "sits 0.175 of a cell above its lower mesh node" in mixed[0]
     assert "gap=240.0µm over 3 normal interval(s)" in mixed[0]
-    assert "4 same-permittivity sample slot(s), extent 320.0µm" in mixed[0]
+    assert "3 same-permittivity sample slot(s), extent 240.0µm" in mixed[0]
     assert "place mesh nodes at the declared ground z=0.0µm and trace z=254.0µm" in mixed[0]
     assert "set dx =" not in mixed[0]
 
@@ -146,8 +146,8 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     z = 10*dx = 800um over an UNRELATED eps_r 9 filler, it reported the
     filler as "the substrate" (n=10, 800um) and never saw the real 254um /
     eps_r 3.66 substrate above it. Now the walk begins at pe.position's
-    substrate-normal coordinate: dx=80um realizes the 254um substrate as 4
-    cells = 320um above the 800um ground, and the mixed-cell message must
+    substrate-normal coordinate: dx=80um realizes the 254um substrate as 3
+    cells = 240um above the 800um ground, and the mixed-cell message must
     say exactly that -- not 10 cells and not 800um."""
     dx = 80e-6
     z_gnd = 10 * dx                       # 800um: ground plane above the floor
@@ -171,7 +171,7 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
-    assert "4 same-permittivity sample slot(s), extent 320.0µm" in mixed[0], mixed[0]
+    assert "3 same-permittivity sample slot(s), extent 240.0µm" in mixed[0], mixed[0]
     assert "10 same-permittivity sample slot(s)" not in mixed[0], mixed[0]
     assert "gap=240.0µm over 3 normal interval(s), from z=800.0µm to 1040.0µm" in mixed[0]
     sub = _normal_interval_warnings(msgs)
@@ -266,7 +266,7 @@ def test_mixed_cell_warning_separates_geometry_from_unvalidated_z0_bias():
         assert qualification in hit, (qualification, hit)
     assert "no subpixel eps assembly" not in hit
     assert "gap=240.0µm over 3 normal interval(s)" in hit
-    assert "4 same-permittivity sample slot(s), extent 320.0µm" in hit
+    assert "3 same-permittivity sample slot(s), extent 240.0µm" in hit
     assert "material extent is not the conductor-plane gap" in hit
     assert "neither predicts a Z0 error" in hit
     assert "frozen sweep cannot establish a current extractor accuracy bound" in hit
@@ -800,7 +800,7 @@ def test_issue510_feed_crossing_names_lumped_port_cleanly():
 # ---------------------------------------------------------------------------
 def test_mixed_cell_snap_survives_a_base_dx_coarser_than_the_substrate_nu():
     """B1, the NEW half: dz_profile of 80µm cells (so the realized
-    substrate is 4 cells = 320µm and frac = 0.175, inside the danger zone)
+    centre-sampled substrate is 3 cells = 240µm and frac = 0.175, inside the danger zone)
     under a base dx of 300µm > h_sub = 254µm. ``int(h_sub/dx)`` is 0 there,
     so the pre-fix snap arithmetic divided by zero and preflight RAISED.
     The merge base returned four MSL advisories on this same simulation.
@@ -812,7 +812,7 @@ def test_mixed_cell_snap_survives_a_base_dx_coarser_than_the_substrate_nu():
     msgs = _msl_warnings(sim)          # must not raise ZeroDivisionError
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
-    assert "4 same-permittivity sample slot(s), extent 320.0µm" in mixed[0], mixed[0]
+    assert "3 same-permittivity sample slot(s), extent 240.0µm" in mixed[0], mixed[0]
     assert "place mesh nodes at the declared ground z=0.0µm and trace z=254.0µm" in mixed[0], mixed[0]
     assert "set dx =" not in mixed[0], mixed[0]
 
@@ -833,14 +833,14 @@ def test_mixed_cell_snap_degrades_when_the_substrate_is_one_cell_uniform():
 
 
 @pytest.mark.parametrize("dx_um,material_extent_um", [
-    (83.28, 333.1), (74.27, 297.1), (73.62, 294.5), (72.78, 291.1),
+    (83.28, 249.8), (74.27, 222.8), (73.62, 220.9), (72.78, 218.3),
 ])
 def test_material_coverage_hole_is_counted_from_the_conductor_interval(
     dx_um, material_extent_um,
 ):
     """Old bbox-thickening cases actually have three normal intervals.
 
-    The dielectric mask has four slots, but the sheet snaps to the lower
+    Centre sampling gives three dielectric slots, and the sheet snaps to the
     third node. Resolution must be reported from that conductor gap.
     """
     sim = _build_sim(dx=dx_um * 1e-6, ly=W_TRACE + 8 * H_SUB)
@@ -849,7 +849,7 @@ def test_material_coverage_hole_is_counted_from_the_conductor_interval(
     sub = _normal_interval_warnings(msgs)
     assert len(sub) == 1 and "only 3 normal interval(s)" in sub[0], msgs
     assert f"gap={3*dx_um:.1f}µm" in sub[0]
-    assert f"4 same-permittivity sample slot(s), extent {material_extent_um:.1f}µm" in sub[0]
+    assert f"3 same-permittivity sample slot(s), extent {material_extent_um:.1f}µm" in sub[0]
     assert "THICKER" not in sub[0]
     assert not [m for m in msgs if "geometry-advisory threshold" in m], msgs
 

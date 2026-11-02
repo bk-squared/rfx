@@ -98,36 +98,22 @@ def _wr90_nu_sim():
 
 
 def _eps_override_for(sim, deps):
-    """NU-grid eps override: production-assembled eps + deps inside the slab.
-
-    #590: this used to reconstruct the slab index range by hand via
-    ``pos_to_nu_index`` (nearest-E-NODE argmin) — a comparator that agreed
-    with the assembled eps only under the pre-#562 cell-CENTRE coordinate
-    convention. #562/#564 moved ``coords_from_nonuniform_grid`` to E-node
-    coordinates and audited two consumers (the subpixel smoother, the #325
-    rasterization advisory); this helper was a third, unaudited one, and
-    went stale silently (16/16 elements, up to 19.8% rel diff against the
-    production no-override run).
-
-    Fixed the #564-review way: derive the baseline from
-    ``assemble_materials_nu`` (the SAME NU materials-assembly path
-    ``compute_waveguide_s_matrix`` calls internally) and the slab region
-    from the Box's own ``mask_on_coords`` on the production node
-    coordinates — never a hand-rolled index reconstruction.
-
-    #931: ``mask_on_coords`` is the DIELECTRIC sampler and §1.8 leaves it
-    alone, so this helper is unchanged. A conductor would not come through
-    here at all — ``realized_pec_edge_masks`` is the one source for PEC
-    edges, and eps_override is an eps override.
-    """
+    """Perturb the production centre-sampled slab region on its NU grid."""
     from rfx.runners.nonuniform import assemble_materials_nu
-    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, centres_from_nonuniform_grid,
+        cell_sizes_from_nonuniform_grid, _material_cell_mask, volume_domain_faces,
+    )
 
     grid = sim._build_nonuniform_grid()
     materials, _debye_spec, _lorentz_spec, _pec_mask = assemble_materials_nu(sim, grid)
     coords = coords_from_nonuniform_grid(grid)
     slab_entry = next(e for e in sim._geometry if e.material_name == "diel_slab")
-    slab_mask = slab_entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+    slab_mask = _material_cell_mask(
+        slab_entry.shape, coords, centres_from_nonuniform_grid(grid, coords),
+        cell_sizes=cell_sizes_from_nonuniform_grid(grid),
+        domain_faces=volume_domain_faces(grid),
+    )
     # Perturb the slab region: base slab eps (=4, from the production
     # assembly) + deps so deps=0 is a no-op vs the assembled materials
     # (gate 3) and deps>0 changes S21 (FD gate).

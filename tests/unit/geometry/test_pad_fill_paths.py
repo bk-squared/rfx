@@ -41,10 +41,11 @@ def _graded_rig(monkeypatch):
 @pytest.mark.parametrize('method', ['run', 'forward'])
 @pytest.mark.parametrize('skip_preflight', [False, True])
 def test_solve_refuses_shortfall(monkeypatch, graded, distributed, method, skip_preflight):
+    """A flat-ended cylinder retains shortfall outside the Box domain-face clause."""
     if method == 'forward' and distributed and not graded:
         pytest.skip('Uniform distributed forward is not implemented by the API')
     _size_by_plain_ceil(monkeypatch)
-    sim = _graded_rig(monkeypatch) if graded else _rig(10)
+    sim = _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     kwargs = dict(n_steps=1, skip_preflight=skip_preflight)
     if distributed:
         if len(jax.devices()) < 2:
@@ -60,8 +61,9 @@ def test_solve_refuses_shortfall(monkeypatch, graded, distributed, method, skip_
 
 @pytest.mark.parametrize('graded', [False, True])
 def test_audits_report_same_shortfall(monkeypatch, graded):
+    """Audit the same non-Box shortfall that the uniform solve refuses."""
     _size_by_plain_ceil(monkeypatch)
-    sim = _graded_rig(monkeypatch) if graded else _rig(10)
+    sim = _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     root = realized_conductors(sim, grid, nonuniform=graded, mode='audit')
     row, = root.pad_fill_findings
