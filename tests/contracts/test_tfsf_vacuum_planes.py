@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx.geometry.csg import Sphere
+from rfx.geometry.csg import Cylinder, Sphere
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
@@ -143,7 +143,7 @@ def test_traced_x_cell_sizes_refused():
 ])
 def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, placement):
     pec_crossing = source != "closed_box" and treatment in ("kottke_pec", "conformal_pec")
-    subpixel_crossing = (placement == "crossing" and (mesh == "graded" or source == "methodB")
+    subpixel_crossing = (placement == "crossing" and mesh == "graded"
                          and treatment == "subpixel")
     if placement == "crossing" and not pec_crossing:
         sim, kwargs = _treated_edge_scene(mesh, source, treatment, entry, placement, False)
@@ -176,7 +176,7 @@ def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, place
         elif subpixel_crossing:
             label = rf"(?:{label}|permittivity)"
         plane = r"x=(?:7|8)" if source == "closed_box" else r"x_lo(?:-1)?"
-        if mesh == "uniform" and source == "slab" and treatment == "subpixel":
+        if mesh == "uniform" and source in ("slab", "methodB") and treatment == "subpixel":
             plane = "x_lo"
         with pytest.raises(ValueError, match=rf"requires vacuum.*{plane}: {label} \(") as caught:
             getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
@@ -188,6 +188,8 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
     wall = treatment == "boundary_conformal" and not inside
     sphere = (mesh == "uniform" and source == "slab"
               and treatment == "subpixel" and not inside)
+    cylinder = (mesh == "uniform" and source == "methodB"
+                and treatment == "subpixel" and not inside)
     options = {"dz_profile": [.00018] * 12 + [.00022] * 12} if mesh == "graded" else {}
     boundary = (BoundarySpec(x="cpml", y=Boundary("pec", "pec", conformal=treated),
                              z="periodic") if wall else "cpml")
@@ -220,8 +222,10 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
                 lo, hi = (x_face, .00227, .00227), (.00147, .00267, .00267)
         if dielectric:
             sim.add_material("dielectric", eps_r=4.)
-        # A curved surface keeps the staircase vacuum while smoothing reaches x_lo.
+        # The curved surface comes within half a cell of x_lo while no column-8 cell centre lies inside it.
         shape = Sphere((.00108, .0024, .00245), .0002) if sphere else Box(lo, hi)
+        if cylinder:
+            shape = Cylinder((.00108, .0024, .0024), .0002, .02, axis="z")
         sim.add(shape, material="dielectric" if dielectric else "pec")
     kwargs = {"compute_s_params": False} if entry == "run" else {"checkpoint": False}
     if not treated:
