@@ -79,13 +79,16 @@ def test_a1_ring_jit():
     equal_arrays(jax.jit(go)(profile), go(profile))
 
 
-def test_a4_clear_shape_is_identity_without_check(monkeypatch):
+def test_a4_clear_shape_is_identity_with_check(monkeypatch):
     import rfx.geometry._traced_conductor as traced
 
-    def forbidden(*args, **kwargs):
-        pytest.fail("a clear conductor added a continuation callback")
-    monkeypatch.setattr(traced, "traced_check", forbidden)
-    monkeypatch.setattr(traced, "_nominal_grid", forbidden)
+    checks = []
+    original = traced.traced_check
+
+    def checked(feature, name, check, *operands, **kwargs):
+        checks.append((feature, name))
+        return original(feature, name, check, *operands, **kwargs)
+    monkeypatch.setattr(traced, "traced_check", checked)
 
     def go(d):
         sim = board_scene(d, inset=True)
@@ -94,6 +97,36 @@ def test_a4_clear_shape_is_identity_without_check(monkeypatch):
         return arrays(sim)
     expected = arrays(board_scene(0., inset=True))
     equal_arrays(jax.jvp(go, (jnp.float32(0),), (jnp.float32(1),))[0], expected)
+    assert checks
+    assert all(pair == ("conductor continuation", "outermost layer") for pair in checks)
+
+
+@pytest.mark.parametrize("k,delta", [(1.05, .00030), (1.1, .00035), (1.5, .00055)])
+@pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])
+def test_noncandidate_checks_realized_layer(k, delta, jit):
+    def scene(d):
+        with patch.object(board, "CPML", 4):
+            sim = board._board(d * 0)
+        if is_tracer(d):
+            sim._dx_profile = jnp.asarray(board.PROF, dtype=jnp.float32).at[13:26].add(-d / 13)
+        else:
+            sim._dx_profile = board.PROF.copy()
+            sim._dx_profile[13:26] -= float(d) / 13
+        sim._ports = []
+        sim.add(Box((4 * board.DX, 2 * board.DX, board.Z_G - board.DX),
+                    (board.LX - k * board.PROF[-1], 18 * board.DX, board.Z_G)), material="pec")
+        return sim
+
+    def go(d):
+        return arrays(scene(d))
+
+    call = jax.jit(go) if jit else lambda d: jax.jvp(go, (d,), (jnp.float32(1),))[0]
+    equal_arrays(jax.block_until_ready(call(jnp.float32(0))), arrays(scene(0.)))
+    error = jax.errors.JaxRuntimeError if jit else TracedStructureRefusal
+    with pytest.raises(error, match="outermost layer at x-hi.*nominal_profiles.*axis concrete") as caught:
+        jax.block_until_ready(call(jnp.float32(delta)))
+    if jit:
+        assert "TracedStructureRefusal" in str(caught.value)
 
 
 @pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])

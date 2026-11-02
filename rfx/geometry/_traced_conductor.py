@@ -85,12 +85,16 @@ def _nominal_grid(sim):
 def _realized_lattice(sim, grid, shape, coords):
     from rfx.geometry.rasterize_grid import (
         cell_centres_from_nodes, cell_sizes_from_nonuniform_grid,
-        classify_pec_entry, sheet_spec_from_shape)
+        classify_pec_entry, sheet_footprint_traced, sheet_spec_from_shape)
 
     sizes = cell_sizes_from_nonuniform_grid(grid)
     thin = next((tc for tc in sim._thin_conductors if tc.shape is shape), None)
     if thin is not None:
-        if thin.is_pec or thin.surface_impedance_f0 is not None:
+        if thin.surface_impedance_f0 is not None:
+            from rfx.materials.thin_conductor import sheet_bounds, sheet_normal_axis
+            normal = sheet_normal_axis(*sheet_bounds(shape))
+            return [(sheet_footprint_traced(shape, coords, normal, sizes), (False,) * 3)]
+        if thin.is_pec:
             sheet = sheet_spec_from_shape(shape, coords, sizes, grid=grid, refuse_thick=True)
             return [(sheet.footprint, (False,) * 3)]
         from rfx.materials.thin_conductor import _thin_conductor_cell_mask
@@ -124,14 +128,14 @@ def _check_faces(sim, grid, shape, nominal_occupied, targets):
                 section = jnp.take(mask, index, axis=axis)
             occupied = occupied | jnp.any(section)
         line = coords[axis]
-        inside = line[0] >= target if side == "lo" else line[-1] <= target
+        inside = True if target is None else (line[0] >= target if side == "lo" else line[-1] <= target)
         agrees.append((occupied == ((axis, side) in nominal_occupied)) & inside)
         faces.append(f"{'xyz'[axis]}-{side}")
 
     def check(values):
         for face, valid in zip(faces, np.asarray(values)):
             if not valid:
-                raise ValueError(
+                raise TracedStructureRefusal(
                     f"conductor continuation: outermost layer at {face} differs "
                     "from the nominal occupancy or the realized pad exceeds its "
                     "continuation. Re-declare nominal_profiles at the current "
@@ -153,6 +157,12 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
     if missing:
         refuse_traced_conductor_at_absorber(sim, grid, shape, traced_node_axes=traced_node_axes)
     if not faces:
+        # A nominally clear shape can occupy an outermost layer after the
+        # traced mesh moves. Keep its geometry, but check that decision too.
+        unchecked = {(axis, side): None for axis in traced_node_axes for side in ("lo", "hi")
+                     if getattr(grid, f"pad_{'xyz'[axis]}_{side}") > 0}
+        if unchecked:
+            _check_faces(sim, grid, shape, (), unchecked)
         return shape
     try:
         nominal = _nominal_grid(sim)
@@ -187,7 +197,8 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
             pad = int(getattr(grid, f"pad_{name}_{side}"))
             if pad:
                 reach = 2 * pad * float(np.max(widths))
-                targets[axis, side] = -reach if side == "lo" else sim._unresolved_domain[axis] + reach
+                targets[axis, side] = ((-reach if side == "lo" else sim._unresolved_domain[axis] + reach)
+                                       if (axis, side) in changed else None)
     _check_faces(sim, grid, shape, occupied, targets)
     result = shape
     for axis, side in changed:
