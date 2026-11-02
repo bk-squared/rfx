@@ -498,7 +498,7 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
 
     #752: conductor intervals and dielectric sample slots are different.
     At dx=80um the foil/port snap to 240um (three intervals), whereas the
-    dielectric column occupies four slots/320um. At dx=100um the conductor
+    centre-sampled dielectric column occupies three slots/240um. At dx=100um the conductor
     gap is 300um over three intervals. Both must warn in every direction;
     the direction does not rotate the substrate normal away from z.
     """
@@ -518,7 +518,7 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     assert "conductor-plane gap=240.0µm" in cells80[0]
     assert frac80, f"mixed-cell check silent for {direction}: {msgs80}"
     assert "sits 0.175 of a cell above its lower mesh node" in frac80[0], frac80[0]
-    assert "4 same-permittivity sample slot(s), extent 320.0µm" in frac80[0], frac80[0]
+    assert "3 same-permittivity sample slot(s), extent 240.0µm" in frac80[0], frac80[0]
 
     # dx = 100 um: the port spans three actual normal intervals too.
     sim100 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,

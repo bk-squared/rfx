@@ -166,7 +166,7 @@ No convergence order is claimed here.
 Uniform 3-D and 2-D Yee `run()` and uniform waveguide S-matrix device/reference
 scans carry the floor. The waveguide calculator takes the same run-level
 `conformal_pec="cut_cell_floor"` and explicit `Simulation(dt=...)` declarations.
-`forward()`, graded, multi-device, subgridded, ADI,
+`forward()`, graded, multi-device, subgridded,
 `subpixel_smoothing="kottke_pec"`, and openEMS export refuse the value by name.
 `Boundary(conformal=...)` takes no string opt-in. Existing conformal restrictions,
 including lumped/wire S-matrices and dispersive E updates, still apply.
@@ -267,7 +267,7 @@ Left out of these tables, each for one reason:
 | A graded mesh along x (`dx_profile`) | `_dx_profile/graded` | n/a | supported | n/a (uniform); supported (graded) | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, material_fit) | Use a uniform mesh with the calculators named, or `run()` / `forward()` on the graded model. |
 | A graded mesh along y (`dy_profile`) | `_dy_profile/graded` | n/a | supported | n/a (uniform); supported (graded) | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, material_fit) | Use a uniform mesh with the calculators named, or `run()` / `forward()` on the graded model. |
 | A graded mesh along z (`dz_profile`) | `_dz_profile/graded` | n/a | supported | n/a (uniform); supported (graded) | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, material_fit) | Use a uniform mesh with the calculators named, or `run()` / `forward()` on the graded model. |
-| `interface_eps='dual_average'` | `_interface_eps/dual_average` | refused | supported | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, vmap_sweep_batched, material_fit) | It runs on a single-device graded mesh only; elsewhere leave the default. |
+| `interface_eps='dual_average'` | `_interface_eps/dual_average` | refused | supported | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, vmap_sweep_batched, material_fit) | It runs on a single-device graded mesh only; elsewhere leave the default. Material cells are now sampled at cell centres on every lane, so it gives the same E-update coefficients as the default `sampled`. |
 
 #### Observers
 

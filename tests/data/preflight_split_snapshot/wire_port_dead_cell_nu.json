@@ -11,19 +11,6 @@
         "source": "_validate_cfg_pec_faces_with_finite_pec"
       },
       {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          3.0,
-          3.66,
-          665.0,
-          127.0,
-          17.0
-        ],
-        "severity": "warning",
-        "source": null
-      },
-      {
         "code": "wire_port_dead_cell_classification_unavailable",
         "loc": null,
         "numbers": [
@@ -156,7 +143,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 9,
+    "n_issues": 8,
     "ok": true
   }
 }
