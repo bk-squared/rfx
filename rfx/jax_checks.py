@@ -13,6 +13,8 @@ from typing import Any, TypeVar
 import jax.numpy as jnp
 from jax.experimental import checkify
 
+T = TypeVar("T")
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -37,14 +39,14 @@ def checkify_invariants(
     return checkify.checkify(fun, errors=errors)
 
 
-def check_finite(value: Any, name: str = "value"):
+def check_finite(value: T, name: str = "value") -> T:
     """Assert that all entries of ``value`` are finite inside JAX tracing."""
     arr = jnp.asarray(value)
     checkify.check(jnp.all(jnp.isfinite(arr)), f"{name} must be finite")
     return value
 
 
-def check_positive(value: Any, name: str = "value", *, allow_zero: bool = False):
+def check_positive(value: T, name: str = "value", *, allow_zero: bool = False) -> T:
     """Assert that all entries of ``value`` are positive or non-negative."""
     arr = jnp.asarray(value)
     if allow_zero:
@@ -55,12 +57,12 @@ def check_positive(value: Any, name: str = "value", *, allow_zero: bool = False)
 
 
 def check_bounds(
-    value: Any,
+    value: T,
     *,
     lower: float | None = None,
     upper: float | None = None,
     name: str = "value",
-):
+) -> T:
     """Assert lower/upper bounds for an array-like value inside JAX tracing."""
     if lower is None and upper is None:
         raise ValueError("at least one of lower or upper must be provided")
@@ -73,11 +75,11 @@ def check_bounds(
 
 
 def check_courant_number(
-    courant: Any,
+    courant: T,
     *,
     limit: float = 1.0,
     name: str = "courant",
-):
+) -> T:
     """Assert a finite positive Courant-like number at or below ``limit``.
 
     The check is inclusive (``courant <= limit``), matching the textbook CFL

@@ -7,6 +7,11 @@ Follows the same conventions as :mod:`rfx.visualize`.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
 import numpy as np
 
 from rfx._plotting import _pyplot
@@ -88,11 +93,11 @@ def plot_smith(
     freqs: np.ndarray,
     *,
     z0: float = 50.0,
-    ax=None,
+    ax: Axes | None = None,
     show_vswr: bool = True,
     markers: list[float] | None = None,
     title: str | None = None,
-):
+) -> Axes:
     """Plot S11 data on a Smith chart.
 
     Parameters

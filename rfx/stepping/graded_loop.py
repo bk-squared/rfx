@@ -2,6 +2,20 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.current_moments import CurrentMomentMonitor
+    from rfx._uniform_specs import DesignBoxSpec
+    from rfx.farfield import NTFFBox
+    from rfx.farfield import NTFFData
+    from collections.abc import Sequence
+    from rfx.materials.thin_conductor import SheetImpedanceCtx, PinnedSheet
+    from rfx.boundaries.pec import SheetSpec
+    from rfx.boundaries.pec import WireSpec
+    import numpy as np
+
 from functools import partial
 
 from rfx.measurement.plane_records import init_plane_records
@@ -28,16 +42,16 @@ def run_nonuniform(
     n_steps: int,
     *,
     cpml_axes: str | None = None,
-    pec_mask=None,
-    pec_sheets=(),
-    pec_wires=(),
-    pec_edge_masks=None,
-    pec_occupancy=None,
-    pinned_sheet_layout=None,
+    pec_mask: jax.Array | np.ndarray | None = None,
+    pec_sheets: Sequence[SheetSpec] = (),
+    pec_wires: Sequence[WireSpec] = (),
+    pec_edge_masks: Sequence[jax.Array | np.ndarray] | None = None,
+    pec_occupancy: jax.Array | None = None,
+    pinned_sheet_layout: tuple[tuple[int, PinnedSheet, tuple[jax.Array, jax.Array]], ...] | None = None,
     sources: list = None,
     probes: list = None,
     wire_ports: list = None,
-    s_param_freqs=None,
+    s_param_freqs: ArrayLike | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     pec_faces: set[str] | None = None,
@@ -45,9 +59,9 @@ def run_nonuniform(
     dft_planes: list | None = None,
     rlc_metas: tuple = (),
     rlc_states: tuple = (),
-    ntff_box=None,
-    ntff_data=None,
-    current_moments=None,
+    ntff_box: NTFFBox | None = None,
+    ntff_data: NTFFData | None = None,
+    current_moments: CurrentMomentMonitor | None = None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     _feature_tfsf: bool = False,
@@ -57,8 +71,8 @@ def run_nonuniform(
     checkpoint_every: int | tuple[int, ...] | None = None,
     n_warmup: int = 0,
     aniso_eps: tuple | None = None,
-    sheet_impedance=None,
-    design_box=None,
+    sheet_impedance: SheetImpedanceCtx | None = None,
+    design_box: DesignBoxSpec | None = None,
     record_dft: bool | tuple[bool, ...] = False,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
