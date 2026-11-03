@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
+
 
 def _validate_mixed_family(
     RfxRefusal, RfxUnsupported, _diagnostics, diagnostic_refusal, self,
@@ -139,7 +141,7 @@ def _prepare_mixed_probes(
 
 
 def _check_mixed_ladder(
-    AccuracyWarning, RfxRefusal, _diagnostics, diagnostic_refusal, entries, grid, probe_xs,
+    RfxRefusal, _diagnostics, diagnostic_refusal, entries, grid, probe_xs,
     self,
 ):
     # Probe-LADDER validation (issue #488 attempt-1 defect D3). The S1
@@ -597,7 +599,7 @@ def _score_mixed_record(
 
 
 def _fit_mixed_impedance(
-    AccuracyWarning, beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
+    beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
     n_lw, n_msl, np, probe_xs, v_lad, z0_hj_per_port,
 ):
     # ---- N-probe line Zc: DIAGNOSTIC ONLY (issue #488) ---------

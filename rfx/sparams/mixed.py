@@ -226,7 +226,7 @@ def compute_mixed_s_matrix(
         MSLPort, grid, msl_h_plane_stencil, msl_probe_x_coords_n, self,
     )
     _mixed_stages._check_mixed_ladder(
-        AccuracyWarning, RfxRefusal, _diagnostics, diagnostic_refusal, entries, grid, probe_xs,
+        RfxRefusal, _diagnostics, diagnostic_refusal, entries, grid, probe_xs,
         self,
     )
 
@@ -367,7 +367,7 @@ def compute_mixed_s_matrix(
     S = jnp.asarray(S, dtype=_complex_dtype)
 
     z0_msl_fit, beta_railed_msl = _mixed_stages._fit_mixed_impedance(
-        AccuracyWarning, beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
+        beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
         n_lw, n_msl, np, probe_xs, v_lad, z0_hj_per_port,
     )
     # β-scan rail flags for the diagnostic N-probe fit (issue

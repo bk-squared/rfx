@@ -987,7 +987,7 @@ def executable(attr: str) -> bool:
 CALCULATOR_CELLS = {
     ('_freq_max', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -998,7 +998,7 @@ CALCULATOR_CELLS = {
     },
     ('_domain', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -1009,7 +1009,7 @@ CALCULATOR_CELLS = {
     },
     ('_dx', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -1020,7 +1020,7 @@ CALCULATOR_CELLS = {
     },
     ('_dt_pin', ''): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a pinned time step (dt=)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a pinned time step (dt=)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a pinned time step (dt=)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a pinned time step (dt=)'),
         'waveguide_s_matrix': refuses('carried only by the graded waveguide builder, through LANE_GATES', raises='a pinned time step (dt=)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a pinned time step (dt=)'),
@@ -1031,7 +1031,7 @@ CALCULATOR_CELLS = {
     },
     ('_dt_min_cell', ''): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='dt_min_cell='),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='dt_min_cell='),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='dt_min_cell='),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='dt_min_cell='),
         'waveguide_s_matrix': refuses('carried only by the graded waveguide builder, through LANE_GATES', raises='dt_min_cell='),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='dt_min_cell='),
@@ -1042,7 +1042,7 @@ CALCULATOR_CELLS = {
     },
     ('_nominal_profiles', ''): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='nominal_profiles='),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='nominal_profiles='),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='nominal_profiles='),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='nominal_profiles='),
         'waveguide_s_matrix': refuses('carried only by the graded waveguide builder, through LANE_GATES', raises='nominal_profiles='),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='nominal_profiles='),
@@ -1053,7 +1053,7 @@ CALCULATOR_CELLS = {
     },
     ('_precision', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a precision other than 'float32'"),
@@ -1066,7 +1066,7 @@ CALCULATOR_CELLS = {
 
     ('_stencil_order', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='stencil_order=4'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='stencil_order=4'),
@@ -1077,7 +1077,7 @@ CALCULATOR_CELLS = {
     },
     ('_mode', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a 2-D mode (mode='2d_tmz' or '2d_tez')"),
@@ -1088,7 +1088,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'eps'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a dielectric (eps_r != 1)'),
@@ -1099,7 +1099,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'sigma'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a conductive material (sigma > 0)'),
@@ -1110,7 +1110,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'mu'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a magnetic material (mu_r != 1)'),
@@ -1121,7 +1121,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'debye'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Debye pole'),
@@ -1132,7 +1132,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'lorentz'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Lorentz pole'),
@@ -1143,7 +1143,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'drude'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Drude pole'),
@@ -1154,7 +1154,7 @@ CALCULATOR_CELLS = {
     },
     ('_materials', 'kerr'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a Kerr χ³ material (chi3 != 0)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a Kerr χ³ material (chi3 != 0)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a Kerr χ³ material (chi3 != 0)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a Kerr χ³ material (chi3 != 0)'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a Kerr χ³ material (chi3 != 0)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Kerr χ³ material (chi3 != 0)'),
@@ -1165,7 +1165,7 @@ CALCULATOR_CELLS = {
     },
     ('_geometry', 'pec_volume'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PEC volume'),
@@ -1176,7 +1176,7 @@ CALCULATOR_CELLS = {
     },
     ('_geometry', 'pec_sheet'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PEC sheet (a zero-thickness PEC Box)'),
@@ -1187,7 +1187,7 @@ CALCULATOR_CELLS = {
     },
     ('_geometry', 'pec_wire'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a sub-cell PEC wire (PolylineWire)'),
@@ -1198,7 +1198,7 @@ CALCULATOR_CELLS = {
     },
     ('_thin_conductors', 'lossy_sheet'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a lossy thin conductor (add_thin_conductor)'),
@@ -1209,7 +1209,7 @@ CALCULATOR_CELLS = {
     },
     ('_thin_conductors', 'pec_sheet'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PEC thin conductor (add_thin_conductor)'),
@@ -1220,7 +1220,7 @@ CALCULATOR_CELLS = {
     },
     ('_thin_conductors', 'surface_impedance'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a surface-impedance sheet (surface_impedance_f0)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a surface-impedance sheet (surface_impedance_f0)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a surface-impedance sheet (surface_impedance_f0)'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a surface-impedance sheet (surface_impedance_f0)'),
@@ -1231,7 +1231,7 @@ CALCULATOR_CELLS = {
     },
     ('_pinned_sheets', 'pec_sheet'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a pinned sheet (add_pinned_sheet)'),
@@ -1242,7 +1242,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'source'): {
         's_matrix_scan': carries('source-only declaration; with an impedance port see PLAIN_SOURCE_S_REQUEST'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a soft source (add_source)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a soft source (add_source)'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a soft source (add_source)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a soft source (add_source)'),
@@ -1253,7 +1253,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'amplitude_kind'): {
         's_matrix_scan': carries('source-only declaration; with an impedance port see PLAIN_SOURCE_S_REQUEST'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="a soft source with amplitude_kind='current'"),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises="a soft source with amplitude_kind='current'"),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises="a soft source with amplitude_kind='current'"),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a soft source with amplitude_kind='current'"),
@@ -1264,7 +1264,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'lumped_port'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a driven lumped port (add_port)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a driven lumped port (add_port)'),
@@ -1275,7 +1275,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'passive_port'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a passive port (add_port(excite=False))'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a passive port (add_port(excite=False))'),
@@ -1286,7 +1286,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'wire_port'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a wire port (add_port(extent=...))'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a wire port (add_port(extent=...))'),
@@ -1297,7 +1297,7 @@ CALCULATOR_CELLS = {
     },
     ('_msl_ports', 'msl_port'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a microstrip port (add_msl_port)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a microstrip port (add_msl_port)'),
@@ -1308,7 +1308,7 @@ CALCULATOR_CELLS = {
     },
     ('_waveguide_ports', 'waveguide_port'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a waveguide port (add_waveguide_port)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a waveguide port (add_waveguide_port)'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a waveguide port (add_waveguide_port)'),
@@ -1319,7 +1319,7 @@ CALCULATOR_CELLS = {
     },
     ('_waveguide_ports', 'n_modes'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans take one configuration per port', raises=WG_MODES),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises=WG_MODES),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises=WG_MODES),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve take one configuration per port', raises=WG_MODES),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: one drive per port and mode on a uniform mesh; the graded branch refuses n_modes > 1 in its own guard (rfx/api/_preflight.py)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises=WG_MODES),
@@ -1330,7 +1330,7 @@ CALCULATOR_CELLS = {
     },
     ('_coaxial_ports', 'coax_port'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a coaxial port (add_coaxial_port)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a coaxial port (add_coaxial_port)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a coaxial port (add_coaxial_port)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a coaxial port (add_coaxial_port)'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a coaxial port (add_coaxial_port)'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -1341,7 +1341,7 @@ CALCULATOR_CELLS = {
     },
     ('_floquet_ports', 'floquet_port'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a Floquet port (add_floquet_port)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a Floquet port (add_floquet_port)'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a Floquet port (add_floquet_port)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Floquet port (add_floquet_port)'),
@@ -1352,7 +1352,7 @@ CALCULATOR_CELLS = {
     },
     ('_floquet_ports', 'scan_angle'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a Floquet port scanned off normal (scan_theta != 0)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a Floquet port scanned off normal (scan_theta != 0)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a Floquet port scanned off normal (scan_theta != 0)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a Floquet port scanned off normal (scan_theta != 0)'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a Floquet port scanned off normal (scan_theta != 0)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a Floquet port scanned off normal (scan_theta != 0)'),
@@ -1363,7 +1363,7 @@ CALCULATOR_CELLS = {
     },
     ('_lumped_rlc', 'R'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a lumped RLC element (add_lumped_rlc)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a lumped RLC element (add_lumped_rlc)'),
@@ -1374,7 +1374,7 @@ CALCULATOR_CELLS = {
     },
     ('_lumped_rlc', 'series_RL'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a series lumped RLC element with an inductance'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a series lumped RLC element with an inductance'),
@@ -1385,7 +1385,7 @@ CALCULATOR_CELLS = {
     },
     ('_tfsf', 'plane_wave'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a TFSF plane-wave source (add_tfsf_source)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a TFSF plane-wave source (add_tfsf_source)'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a TFSF plane-wave source (add_tfsf_source)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a TFSF plane-wave source (add_tfsf_source)'),
@@ -1396,7 +1396,7 @@ CALCULATOR_CELLS = {
     },
     ('_refinement', 'slab'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a subgrid refinement (add_refinement)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a subgrid refinement (add_refinement)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a subgrid refinement (add_refinement)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a subgrid refinement (add_refinement)'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a subgrid refinement (add_refinement)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a subgrid refinement (add_refinement)'),
@@ -1407,7 +1407,7 @@ CALCULATOR_CELLS = {
     },
     ('_refinement', 'relaxed_validation'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
@@ -1418,7 +1418,7 @@ CALCULATOR_CELLS = {
     },
     ('_boundary', 'cpml'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -1429,7 +1429,7 @@ CALCULATOR_CELLS = {
     },
     ('_boundary', 'upml'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a UPML absorber'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a UPML absorber'),
@@ -1440,7 +1440,7 @@ CALCULATOR_CELLS = {
     },
     ('_pec_faces', 'pec_face'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='PEC faces on an absorbing box'),
@@ -1451,7 +1451,7 @@ CALCULATOR_CELLS = {
     },
     ('_boundary_spec', 'pmc_face'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('waveguide_port.init_waveguide_port has no magnetic aperture mode', raises='PMC.*magnetic'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PMC (magnetic wall) face'),
@@ -1462,7 +1462,7 @@ CALCULATOR_CELLS = {
     },
     ('_boundary_spec', 'conformal'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='Boundary(conformal=True) or conformal_pec=True'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='Boundary(conformal=True) or conformal_pec=True'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True'),
@@ -1473,7 +1473,7 @@ CALCULATOR_CELLS = {
     },
     ('_boundary_spec', 'conformal_s_matrix'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
@@ -1484,7 +1484,7 @@ CALCULATOR_CELLS = {
     },
     ('_boundary_spec', 'absorbing_lid'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='an absorbing z lid on a closed PEC box'),
@@ -1495,7 +1495,7 @@ CALCULATOR_CELLS = {
     },
     ('_periodic_axes', 'periodic'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a periodic axis'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a periodic axis'),
@@ -1506,7 +1506,7 @@ CALCULATOR_CELLS = {
     },
     ('_cpml_layers', 'layers'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -1517,7 +1517,7 @@ CALCULATOR_CELLS = {
     },
     ('_cpml_kappa_max', 'kappa'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
+        'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': carries('rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run'),
@@ -1539,7 +1539,7 @@ CALCULATOR_CELLS = {
     },
     ('_interface_eps', 'dual_average'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises="interface_eps='dual_average'"),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="interface_eps='dual_average'"),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises="interface_eps='dual_average'"),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises="interface_eps='dual_average'"),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises="interface_eps='dual_average'"),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="interface_eps='dual_average'"),
@@ -1550,7 +1550,7 @@ CALCULATOR_CELLS = {
     },
     ('_dx_profile', 'graded'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a dx_profile (graded x mesh)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a dx_profile (graded x mesh)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a dx_profile (graded x mesh)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a dx_profile (graded x mesh)'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a dx_profile (graded x mesh)'),
@@ -1561,7 +1561,7 @@ CALCULATOR_CELLS = {
     },
     ('_dy_profile', 'graded'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a dy_profile (graded y mesh)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a dy_profile (graded y mesh)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a dy_profile (graded y mesh)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a dy_profile (graded y mesh)'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a dy_profile (graded y mesh)'),
@@ -1572,7 +1572,7 @@ CALCULATOR_CELLS = {
     },
     ('_dz_profile', 'graded'): {
         's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='a dz_profile (graded z mesh)'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a dz_profile (graded z mesh)'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='a dz_profile (graded z mesh)'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='a dz_profile (graded z mesh)'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a dz_profile (graded z mesh)'),
