@@ -110,38 +110,37 @@ def test_same_permittivity_mask_body_across_sdf_face(path, traced):
 
 
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
-def test_pec_face_reads_bulk_dielectric(traced):
-    """Review finding 3: a PEC boundary cuts a cell containing eps=4.4."""
+def test_gap_reads_same_medium_as_nearest_box_alone(traced):
+    """A half-cell beyond the nearest face is still in the 0.45 mm gap."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     grid = sim.freeze_mesh()
+    nodes = np.asarray(sim.realized_geometry().nodes[2])[:grid.shape[2]]
 
-    def evaluate(face):
-        substrate = Box((-.1, -.1, -.1), (.1, .1, face))
-        pec = Box((-.1, -.1, face), (.1, .1, .1))
-        return compute_inv_eps_tensor_diag(
-            grid, dielectric_shapes=[(substrate, 4.4)], pec_shapes=[pec])
+    def evaluate(faces):
+        lower = (Box((-.1, -.1, -.1), (.1, .1, faces[0])), 4.0)
+        upper = (Box((-.1, -.1, faces[1]), (.1, .1, .1)), 6.0)
+        return tuple(compute_smoothed_eps(grid, pairs)
+                     for pairs in ([lower, upper], [lower], [upper]))
 
-    coordinate = jnp.float32(.0023) if traced else np.float64(.0023)
-    rtol = 2e-5 if coordinate.dtype == np.dtype('float32') else 1e-6
-    result = jax.jit(evaluate)(coordinate) if traced else evaluate(coordinate)
-    # Ez is at 2.25 mm in the 2.0--2.5 mm cell; PEC starts at 2.3 mm.
-    # Its geometric fraction is 0.4, leaving 0.6 of bulk dielectric.
-    f_pec = (.0025 - .0023) / .0005
-    expected = (1 - f_pec) / 4.4
-    actual = float(np.asarray(result[2])[4, 4, 4])
-    print(f'PEC_BULK_FACE traced={traced} inverse_eps={actual:.12g} expected={expected:.12g}')
-    np.testing.assert_allclose(actual, expected, rtol=rtol)
-
-
-def test_pec_stage_keeps_dielectric_face_beyond_pec_support():
-    """Review recheck: a cell with no PEC fill keeps its own dielectric face."""
-    sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
-                     boundary='pec', cpml_layers=0)
-    low = Box((-.1, -.1, -.1), (.1, .1, .0016))
-    up = Box((-.1, -.1, .0016), (.1, .1, .0033))
-    pec = Box((-.1, -.1, .0033), (.1, .1, .1))
-    inv = compute_inv_eps_tensor_diag(
-        sim.freeze_mesh(), dielectric_shapes=[(low, 10.2), (up, 3.38)], pec_shapes=[pec])
-    # Ez at 1.75 mm spans 1.5--2.0 mm: 0.2 of eps 10.2 below 1.6 mm, 0.8 of 3.38 above.
-    np.testing.assert_allclose(float(np.asarray(inv[2])[4, 4, 3]), .2 / 10.2 + .8 / 3.38, rtol=1e-6)
+    faces = (jnp.asarray([.00202, .00247], dtype=jnp.float32) if traced
+             else np.asarray([.00202, .00247], dtype=np.float64))
+    # As above, tolerance follows the SDF arithmetic dtype, not the returned
+    # array dtype: host float64 uses 1e-6; traced float32 uses 2e-5.
+    rtol = 2e-5 if faces.dtype == np.dtype('float32') else 1e-6
+    combined, lower, upper = jax.jit(evaluate)(faces) if traced else evaluate(faces)
+    lo, hi = np.asarray(faces)
+    for axis in range(3):
+        positions = nodes + (grid.dx / 2 if axis == 2 else 0.)
+        near_lower = np.abs(positions - lo) < np.abs(positions - hi)
+        distance = np.where(near_lower, positions - lo, hi - positions)
+        normal = np.where(near_lower, 1., -1.)
+        q = positions + (grid.dx / 2 - distance) * normal
+        selected = (np.abs(distance) < grid.dx / 2) & (q > lo) & (q < hi)
+        assert np.any(selected)
+        expected = np.where(near_lower[None, None, :], np.asarray(lower[axis]),
+                            np.asarray(upper[axis]))[..., selected]
+        actual = np.asarray(combined[axis])[..., selected]
+        print(f'GAP traced={traced} axis={axis} z={positions[selected].tolist()} '
+              f'actual={actual[4, 4].tolist()} expected={expected[4, 4].tolist()}')
+        np.testing.assert_allclose(actual, expected, rtol=rtol)

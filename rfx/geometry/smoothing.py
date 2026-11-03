@@ -1225,7 +1225,7 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
         coords_from_uniform_grid, coords_from_nonuniform_grid,
     )
 
-    offset = xp.where(distance <= 0, xp.abs(distance), 0.0) + .5 * length
+    offset = .5 * length - distance
     points = tuple(p + offset * n for p, n in zip(coords, normal))
     outside = background
     indices = None
@@ -1689,22 +1689,6 @@ def compute_inv_eps_tensor_diag(
     # contribution wins per cell). Each Yee E-component position carries
     # its own half-cell offset.
     sample = _uniform_sample_coords(xp, coords, grid.dx)
-    from collections import OrderedDict
-    from rfx.geometry.node_tensor import _union
-
-    groups = OrderedDict()
-    for shape, eps_r in dielectric_shapes:
-        groups.setdefault(eps_r, []).append(shape)
-    sdf_pec = [shape for shape in pec_shapes if _has_sdf(shape)]
-    outside = {}
-    if sdf_pec:
-        for comp, points in sample.items():
-            _, normal, distance = _union(
-                xp, grid, sdf_pec, points, distance=True, fill_length=grid.dx)
-            length = _normal_cell_length(xp, grid.dx, normal)
-            outside[comp] = _bulk_outside(
-                xp, groups, None, points, distance, normal, length,
-                background_eps, diel_masks, grid)
     promoted = False
     for pec_shape in pec_shapes:
         if not _has_sdf(pec_shape):
@@ -1723,7 +1707,7 @@ def compute_inv_eps_tensor_diag(
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
             inv_c = _kottke_inv_eps_diag(
-                f, xp.inf, outside[comp], n_x, n_y, n_z, is_pec=True, xp=xp,
+                f, xp.inf, eps[i], n_x, n_y, n_z, is_pec=True, xp=xp,
             )[i]
             # Kottke correctly zeros parallel (tangential) components for
             # f > 0, but assigns inv_perp = (1−f)/ε > 0 when the
@@ -1735,9 +1719,7 @@ def compute_inv_eps_tensor_diag(
             # the PEC shape (SDF ≤ 0), force its inv component to 0.
             e_inside = (sdf <= 0.0)
             inv_c = xp.where(e_inside, 0.0, inv_c)
-            # The bulk lookup belongs to a PEC face. Beyond its support,
-            # preserve the dielectric tensor, including dielectric faces.
-            inv[i] = xp.where(f > 0.0, xp.minimum(inv[i], inv_c), inv[i])
+            inv[i] = xp.minimum(inv[i], inv_c)
 
     return _to_jax(inv, host=host, promoted=promoted)
 

@@ -6,4 +6,3 @@
 - In the 20 × 13 × 7 mm PEC cavity with touching εr 3.38 and 10.2 layers,
   the 0.5 mm mesh's TM resonance error changes from +1.5171% to −0.0571%
   against the closed form; the identification indicator passes in both runs.
-- A `"kottke_pec"` PEC|εr 4.4 face with 40% PEC fill now reads inverse permittivity 0.136364.
