@@ -1211,6 +1211,49 @@ def _yee_cell_extents(lengths):
             for component, comp in enumerate(('ex', 'ey', 'ez'))}
 
 
+def _bulk_outside(xp, groups, current, coords, distance, normal, length,
+                  background, masks, grid):
+    """Sample all other groups half a normal cell beyond this surface (#2383).
+
+    SDF groups own points with signed distance <= 0. Mask-only groups own
+    primal cells, clamped at the grid boundary. Existing group priority is
+    retained; neither smoothed Yee operands nor node tensors are read.
+    """
+    from rfx._periodic import periodic_sdf
+    from rfx.geometry.rasterize_grid import (
+        coords_from_uniform_grid, coords_from_nonuniform_grid,
+    )
+
+    offset = xp.where(distance <= 0, xp.abs(distance), 0.0) + .5 * length
+    points = tuple(p + offset * n for p, n in zip(coords, normal))
+    outside = background
+    indices = None
+    for eps_r, group in groups.items():
+        if eps_r == current:
+            continue
+        for shape in group:
+            if _has_sdf(shape):
+                mask = periodic_sdf(grid, shape, points, _get_sdf_fn(shape), xp=xp) <= 0
+            else:
+                mask = masks[id(shape)]
+                if mask is None:
+                    continue
+                if indices is None:
+                    graded = hasattr(grid, 'dx_arr')
+                    nodes = (coords_from_nonuniform_grid(grid) if graded
+                             else coords_from_uniform_grid(grid))
+                    indices = []
+                    for axis, point in enumerate(points):
+                        line = xp.asarray(nodes[axis])
+                        index = (xp.searchsorted(line, point, side='right') - 1 if graded
+                                 else xp.floor((point - line[0]) / grid.dx).astype(xp.int32))
+                        indices.append(xp.clip(index, 0, mask.shape[axis] - 1))
+                    indices = tuple(indices)
+                mask = xp.asarray(mask)[indices]
+            outside = xp.where(mask, eps_r, outside)
+    return outside
+
+
 def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
@@ -1240,6 +1283,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
         :func:`_fallback_masks`); ``None`` skips that shape.
     """
     eps = dict(zip(("ex", "ey", "ez"), eps))
+    background = eps.copy()
     from collections import OrderedDict
     groups: OrderedDict[float, list] = OrderedDict()
     for shape, eps_r in shapes:
@@ -1300,9 +1344,10 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             # Boundary voxels
             bnd = (f > 0.0) & (f < 1.0)
 
-            # The "outside" eps is whatever was there before.
-            # Fix #3: full Kottke tensor averaging
-            kt = _kottke_tensor_eps(f, eps_r, eps[comp], best_nx, best_ny, best_nz)
+            outside = _bulk_outside(
+                xp, groups, eps_r, (Xc, Yc, Zc), sdf_union,
+                (best_nx, best_ny, best_nz), length, background[comp], masks, grid)
+            kt = _kottke_tensor_eps(f, eps_r, outside, best_nx, best_ny, best_nz)
             smooth = kt[("ex", "ey", "ez").index(comp)]
 
             # Apply: interior -> bulk, boundary -> Kottke, exterior -> unchanged
