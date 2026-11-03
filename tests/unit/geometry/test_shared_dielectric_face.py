@@ -132,3 +132,16 @@ def test_pec_face_reads_bulk_dielectric(traced):
     actual = float(np.asarray(result[2])[4, 4, 4])
     print(f'PEC_BULK_FACE traced={traced} inverse_eps={actual:.12g} expected={expected:.12g}')
     np.testing.assert_allclose(actual, expected, rtol=rtol)
+
+
+def test_pec_stage_keeps_dielectric_face_beyond_pec_support():
+    """Review recheck: a cell with no PEC fill keeps its own dielectric face."""
+    sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
+                     boundary='pec', cpml_layers=0)
+    low = Box((-.1, -.1, -.1), (.1, .1, .0016))
+    up = Box((-.1, -.1, .0016), (.1, .1, .0033))
+    pec = Box((-.1, -.1, .0033), (.1, .1, .1))
+    inv = compute_inv_eps_tensor_diag(
+        sim.freeze_mesh(), dielectric_shapes=[(low, 10.2), (up, 3.38)], pec_shapes=[pec])
+    # Ez at 1.75 mm spans 1.5--2.0 mm: 0.2 of eps 10.2 below 1.6 mm, 0.8 of 3.38 above.
+    np.testing.assert_allclose(float(np.asarray(inv[2])[4, 4, 3]), .2 / 10.2 + .8 / 3.38, rtol=1e-6)
