@@ -1243,13 +1243,13 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
                     graded = hasattr(grid, 'dx_arr')
                     nodes = (coords_from_nonuniform_grid(grid) if graded
                              else coords_from_uniform_grid(grid))
-                    indices = []
+                    axis_indices = []
                     for axis, point in enumerate(points):
                         line = xp.asarray(nodes[axis])
                         index = (xp.searchsorted(line, point, side='right') - 1 if graded
                                  else xp.floor((point - line[0]) / grid.dx).astype(xp.int32))
-                        indices.append(xp.clip(index, 0, mask.shape[axis] - 1))
-                    indices = tuple(indices)
+                        axis_indices.append(xp.clip(index, 0, mask.shape[axis] - 1))
+                    indices = tuple(axis_indices)
                 mask = xp.asarray(mask)[indices]
             outside = xp.where(mask, eps_r, outside)
     return outside
