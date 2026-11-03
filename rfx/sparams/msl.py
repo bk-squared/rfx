@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from rfx.sparams import _msl_stages
 
-from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 
 from rfx._declarations import declaration_variant
 from rfx._internal._precision import resolve_field_dtype
@@ -382,7 +382,7 @@ def compute_msl_s_matrix(
             self, trace_k_per_port,
         )
         planes, _ts_result, _diagnostics = _msl_stages._run_msl_drive(
-            ConfigurationWarning, _diagnostics, checkpoint_every, checkpoint_segments, driven, eps_override, merge_diagnostics,
+            _diagnostics, checkpoint_every, checkpoint_segments, driven, eps_override, merge_diagnostics,
             n_ports, n_steps, num_periods, report_diagnostics, report_every, variant,
         )
 
@@ -648,7 +648,7 @@ def compute_msl_s_matrix(
         beta_railed = None
 
     _msl_stages._check_msl_extraction(
-        AccuracyWarning, RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
+        RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
         jax, n_ports, np, probe_clearance, raw_z0, reliable, strict_extractor,
         z0_hj_per_port,
     )

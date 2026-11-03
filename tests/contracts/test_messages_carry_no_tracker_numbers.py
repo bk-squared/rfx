@@ -21,9 +21,9 @@ TRACKER_PATTERNS = (
 ALLOWLIST = (
     ("sparams/_common.py", "Warn-only complex-reciprocity tolerance for the rectangular-waveguide\n",
      "Attribute docstring documenting the tolerance's measured derivation"),
-    ("sparams/msl.py", "PRE-passivity-projection raw extraction referred to the declared feed planes,",
+    ("sparams/_msl_stages.py", "PRE-passivity-projection raw extraction referred to the declared feed planes,",
      "Replay dump production_smatrix_stage metadata, not message text"),
-    ("sparams/msl.py", "N equally spaced voltage probes plus current at probe 0.",
+    ("sparams/_msl_stages.py", "N equally spaced voltage probes plus current at probe 0.",
      "Replay dump deembedding metadata, not message text"),
 )
 

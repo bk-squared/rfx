@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning
+
 
 def _validate_msl_family(
     RfxRefusal, RfxUnsupported, _diagnostics, diagnostic_refusal, self,
@@ -392,7 +394,7 @@ def _prepare_msl_drive(
 
 
 def _run_msl_drive(
-    ConfigurationWarning, _diagnostics, checkpoint_every, checkpoint_segments, driven, eps_override, merge_diagnostics,
+    _diagnostics, checkpoint_every, checkpoint_segments, driven, eps_override, merge_diagnostics,
     n_ports, n_steps, num_periods, report_diagnostics, report_every, variant,
 ):
 
@@ -667,7 +669,7 @@ def _fit_msl_port(
 
 
 def _check_msl_extraction(
-    AccuracyWarning, RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
+    RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
     jax, n_ports, np, probe_clearance, raw_z0, reliable, strict_extractor,
     z0_hj_per_port,
 ):

@@ -751,7 +751,7 @@ def test_s2b_traced_mesh_judges_declared_positions_only(kind):
 
 SOURCE_END_NAMES = {"source_end_step", "simulation_source_end_step", "sampled_source_end_step",
                     "drive_end", "injection_end"}
-CALLERS = ("rfx/api/_settling.py", "rfx/probes/sparam_driver.py", "rfx/sparams/msl.py",
+CALLERS = ("rfx/api/_settling.py", "rfx/probes/sparam_driver.py", "rfx/sparams/_msl_stages.py",
            "rfx/sparams/mixed.py", "rfx/sparams/coax.py", "rfx/runners/uniform.py",
            "rfx/runners/nonuniform.py", "rfx/measurement/rcs.py", "rfx/measurement/decay.py",
            "rfx/measurement/settling.py", "rfx/ringdown/__init__.py")
