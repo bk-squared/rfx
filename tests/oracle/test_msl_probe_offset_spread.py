@@ -31,6 +31,10 @@ LINES = {
 OFFSETS = (5, 12, 25)
 
 
+class SpreadAboveBar(AssertionError):
+    """The measured magnitude spread exceeds the declared bar."""
+
+
 def build_line(line, m):
     er, h, w, length, air, fmax, _, k = LINES[line]
     cell = h / k
@@ -109,10 +113,7 @@ def _report(report):
 
 
 def _measure_line(line):
-    # The L1 and L2 witnesses need 5.39 GiB at stage 2.
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr("rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES", 8 * 2**30)
-        measurements = [measure_offset(line, m) for m in OFFSETS]
+    measurements = [measure_offset(line, m) for m in OFFSETS]
     report = {"line": line, "mesh_cells_per_h": LINES[line][7],
               "runs": [row for _, row in measurements], "spreads": {}}
     if any(row["status"] != "settled" for _, row in measurements):
@@ -147,7 +148,10 @@ def line_report():
 
     def get_report(line):
         if line not in reports:
-            reports[line] = _measure_line(line)
+            # The L1 and L2 witnesses need 5.39 GiB at stage 2.
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr("rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES", 8 * 2**30)
+                reports[line] = _measure_line(line)
         return reports[line]
 
     return get_report
@@ -160,6 +164,7 @@ def line_report():
             line, quantity,
             marks=pytest.mark.xfail(
                 strict=True,
+                raises=SpreadAboveBar,
                 reason=f"MSL port |{quantity}| moves with probe position, "
                        "known limitation (#2393)",
             ) if (line, quantity) != ("L2", "S21") else (),
@@ -180,4 +185,7 @@ def test_msl_probe_offset_spread(line, quantity, line_report):
         f"{line}: non-finite S: spread is undefined"
     )
     largest = report["spreads"][quantity]["largest"]
-    assert largest <= 1e-2, f"{line}: |{quantity}| spread {largest} exceeds 1e-2"
+    if largest > 1e-2:
+        raise SpreadAboveBar(
+            f"{line}: |{quantity}| spread {largest} exceeds 1e-2"
+        )
