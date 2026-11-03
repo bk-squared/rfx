@@ -51,13 +51,14 @@ What this tutorial teaches, in order:
 
 Error budget at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance agrees with openEMS within 1 %: +0.13 to +0.33 % over three
-  rfx meshes (dx = 2 / 1 / 0.5 mm: 2.4479 / 2.4516 / 2.4491 GHz) against the
+- The resonance agrees with openEMS within 1 %: +0.15 to +0.32 % over three
+  rfx meshes (dx = 2 / 1 / 0.5 mm: 2.4474 / 2.4513 / 2.4489 GHz) against the
   converged openEMS ladder (finest 2.4436 GHz, extrapolated about 2.4448 GHz);
-  this script at dx = 2 mm prints +0.18 %.  The narrow-band condition (a
-  frequency within 10 % of the resonance's 2.35 % bandwidth (1/Q, Q 42.6),
-  0.235 %) is NOT
-  judged: the scatter of rfx's own three meshes (0.15 %, not monotone) is as
+  this script at dx = 2 mm prints +0.15 %.  Measured 2026-11-03; record kept
+  with the project.  The narrow-band condition (a frequency within 10 % of
+  the resonance's 2.40 % bandwidth (1/Q, Q 41.5 to 41.7 on the three meshes),
+  0.240 %) is NOT
+  judged: the scatter of rfx's own three meshes (0.16 %, not monotone) is as
   large as that margin, so do not read it as passed.  The +1.1 % this
   docstring printed before came from a single openEMS run on one mesh,
   2.4221 GHz, which is 0.88 % below the converged openEMS value.  That run
@@ -94,7 +95,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
   (closed-form cavity comparison in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
   Measured on this fixture (dx = 2 / 1 / 0.5 mm, substrate 4 / 8 / 16 cells):
-  2.4479 / 2.4516 / 2.4491 GHz, so finer cells do not move the resonance
+  2.4474 / 2.4513 / 2.4489 GHz, so finer cells do not move the resonance
   steadily in either direction at this level.
 - Until the lattice ownership contract this model carried a third error that
   had nothing to do with either: the mesh reserved one fine cell for the
@@ -104,9 +105,11 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   the realized cavity is the declared one and the run asserts it at build
   time.
 - The far field agrees as well.  This configuration prints
-  D = 6.59 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
-  -0.24 dB (VESSL 369367270265; 6.60 dBi before #1546; openEMS's value is
-  taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.74 dBi at its
+  D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
+  -0.23 dB (measured 2026-11-03; it read 6.59 dBi in VESSL 369367270265,
+  before the dielectric Box faces moved to nearest nodes, and 6.60 dBi
+  before #1546; openEMS's value is
+  taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.75 dBi at its
   2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
   the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
   too is a measurement rather than a pass.  The pre-#1375 board printed
