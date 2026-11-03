@@ -252,7 +252,7 @@ half_step_current_phase.__annotations__ = {
 
 def probe_spectrum(ts, freqs, dt):
     """Probe spectra using the material-fit floating-time phase and complex64 dot."""
-    from rfx._precision import HIGHEST
+    from rfx._internal._precision import HIGHEST
 
     # Compute DFT of probe time series at target frequencies
     times = jnp.arange(ts.shape[0]) * dt

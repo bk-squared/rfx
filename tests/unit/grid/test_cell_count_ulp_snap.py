@@ -21,7 +21,7 @@ import math
 import numpy as np
 import pytest
 
-from rfx._grid_metric import NODE_TIE_REL
+from rfx._internal._grid_metric import NODE_TIE_REL
 from rfx.grid import CELL_COUNT_ULP_BUDGET, cells_spanning
 
 EPS = float(np.finfo(float).eps)

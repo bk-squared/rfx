@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import NamedTuple
-from rfx import _realized
+from rfx._internal import _realized
 import jax.numpy as jnp
 from rfx.subgridding.material_sat import interface_pair_deltas
 from rfx.core.yee import EPS_0, MU_0

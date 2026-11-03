@@ -4564,7 +4564,7 @@
     "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:nu-mesh-tests/**/*_nu_*]": 0.0074,
     "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:nu-mesh-tests/**/*nonuniform*]": 0.0067,
     "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:nu-mesh-tests/unit/nonuniform/**]": 0.0062,
-    "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:performance-rfx/_precision.py]": 0.0062,
+    "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:performance-rfx/_internal/_precision.py]": 0.0062,
     "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:performance-rfx/ringdown/_jax.py]": 0.0064,
     "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:performance-rfx/model/source_admission.py]": 0.006,
     "tests/contracts/test_governance_intake_contract.py::test_every_glob_matches_something_tracked[lane:performance-rfx/model/source_coefficients.py]": 0.0062,

@@ -15,7 +15,7 @@ from rfx.stepping.slab import (
 
 from functools import partial
 
-from rfx import _realized
+from rfx._internal import _realized
 
 import jax
 import numpy as np

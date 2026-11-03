@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from numpy.typing import DTypeLike
 
-from rfx._uniform_specs import (
+from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
     ProbeSpec,
@@ -21,7 +21,7 @@ from rfx._uniform_specs import (
 from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 from rfx.measurement.plane_records import init_plane_records
 
 import jax

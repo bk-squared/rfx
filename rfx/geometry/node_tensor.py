@@ -65,7 +65,7 @@ def node_metrics(grid):
 
 
 def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
-    from rfx._periodic import periodic_sdf
+    from rfx._internal._periodic import periodic_sdf
 
     union = nearest = normal = None
     for shape in shapes:

@@ -5,7 +5,7 @@ import functools
 
 import jax.numpy as jnp
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.api._dispatch import _declaration_setup_at_trace_time
 from rfx.api._spec import Result, _warn_if_nonfinite_result
 from rfx.model import conductors as _conductors

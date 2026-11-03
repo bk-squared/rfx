@@ -6,7 +6,7 @@ from rfx._warning_origin import user_stacklevel
 from rfx.errors import ConfigurationWarning
 from rfx.model.graded_admission import host_cells
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
 
 import warnings

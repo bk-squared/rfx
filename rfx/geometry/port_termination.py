@@ -1,5 +1,5 @@
 """Declared port terminations and exact contact diagnostics."""
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass
 from numbers import Integral
 from types import SimpleNamespace

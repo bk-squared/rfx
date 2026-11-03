@@ -9,7 +9,7 @@ from __future__ import annotations
 from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 
 from rfx._declarations import declaration_variant
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 from rfx.boundaries.pmc import refuse_port_on_magnetic_face
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit

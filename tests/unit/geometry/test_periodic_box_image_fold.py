@@ -12,7 +12,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries.spec import BoundarySpec
-from rfx._periodic import periodic_mask
+from rfx._internal._periodic import periodic_mask
 
 DX = 1e-3
 
@@ -60,7 +60,7 @@ CASES = [((-0.0004, 0.0003), (0.0011, 0.0009)),
 @pytest.mark.parametrize('kind', ['sheet', 'volume'])
 @pytest.mark.parametrize('lo,hi', CASES)
 def test_per_axis_fold_equals_the_nested_fold(kind, lo, hi, monkeypatch):
-    import rfx._periodic as periodic
+    import rfx._internal._periodic as periodic
     try:
         fast = _assembled(_sim(kind, lo, hi))
     except ValueError as exc:          # an empty footprint is refused either way

@@ -4,7 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole, Simulation, _realized
+from rfx import Box, DebyePole, Simulation
+from rfx._internal import _realized
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import component_e_materials, component_h_materials
 from rfx.geometry.rasterize_grid import unpadded_high_walls

@@ -7,7 +7,7 @@ import jax
 import numpy as np
 
 from rfx import Box, Simulation
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 from tests.unit.runners.test_distributed_edge_averaged_materials import GRADED_1302, WAVEFORM, _mm

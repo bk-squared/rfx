@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
     from rfx.current_moments import CurrentMomentMonitor
-    from rfx._uniform_specs import DesignBoxSpec
+    from rfx._internal._uniform_specs import DesignBoxSpec
     from rfx.farfield import NTFFBox
     from rfx.farfield import NTFFData
     from collections.abc import Sequence

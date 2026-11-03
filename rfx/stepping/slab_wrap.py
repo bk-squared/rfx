@@ -219,7 +219,7 @@ def wrap(step, layout, mesh, *, table, port_table=None):
                     carry[key] = jax.tree.map(lambda a: a[0], carry[key])
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
         advance = make_graded_step(context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
-        from rfx import _realized
+        from rfx._internal import _realized
         if _realized.ACTIVE is None:
             carry, record = advance(carry, xs, inputs)
         else:

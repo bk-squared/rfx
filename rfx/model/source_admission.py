@@ -2,7 +2,7 @@
 
 from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx._warning_origin import user_stacklevel
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
 

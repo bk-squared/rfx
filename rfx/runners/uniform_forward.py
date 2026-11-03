@@ -9,7 +9,7 @@ from rfx.grid import Grid
 from rfx.core.yee import MaterialArrays
 from rfx.model import conductors as _conductors
 from rfx.api._dispatch import _declaration_setup_at_trace_time
-from rfx import _grid_metric
+from rfx._internal import _grid_metric
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.model import occupancy as _occupancy
 from rfx.api._refplane_checks import (
