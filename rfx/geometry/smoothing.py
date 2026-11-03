@@ -1220,7 +1220,7 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     retained, including the current group's mask-only bodies: they do not
     form its SDF surface. Neither smoothed operands nor node tensors are read.
     """
-    from rfx._periodic import periodic_sdf
+    from rfx._internal._periodic import periodic_sdf
     from rfx.geometry.rasterize_grid import (
         coords_from_uniform_grid, coords_from_nonuniform_grid,
     )
