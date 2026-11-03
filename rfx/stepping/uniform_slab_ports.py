@@ -24,7 +24,7 @@ class UniformSlabPorts:
 
     def __init__(self, grid, entries, specs, boundary, layout, mesh, n_steps,
                  dtype, freqs, *, record_vref=True):
-        from rfx._uniform_specs import WirePortSParamSpec, LumpedPortSParamSpec
+        from rfx._internal._uniform_specs import WirePortSParamSpec, LumpedPortSParamSpec
         self.specs = tuple(specs)
         self.mesh, self.dt = mesh, grid.dt
         self.record_vref = record_vref

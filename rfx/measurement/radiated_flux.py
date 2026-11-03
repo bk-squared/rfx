@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 def flux_box_bounds(grid, box):
     """Resolve closed normal planes and half-open tangential cell windows."""
-    from rfx._periodic import interval_indices
+    from rfx._internal._periodic import interval_indices
     lo, hi = interval_indices(grid, *box)
     return (min(lo[0], hi[0]), max(lo[0], hi[0]),
             min(lo[1], hi[1]), max(lo[1], hi[1]),

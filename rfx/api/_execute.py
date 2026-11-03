@@ -24,7 +24,7 @@ from rfx.preflight._impl import auto_preflight, run_preflight_gate, user_stackle
 
 import functools
 
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 from rfx.model import apply_material_overrides, conductors as _conductors, design_box_window
 
 import jax
@@ -83,7 +83,7 @@ class _ExecuteMixin:
 
     def _resolve_field_dtype(self):
         """Resolve the requested field dtype before any allocation."""
-        from rfx._precision import resolve_field_dtype
+        from rfx._internal._precision import resolve_field_dtype
         return resolve_field_dtype(self._precision)
 
     # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
@@ -909,7 +909,7 @@ class _ExecuteMixin:
             if getattr(_pe, "extent", None) is not None:
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
-                from rfx._periodic import interval_indices
+                from rfx._internal._periodic import interval_indices
                 _start_idx, _end_idx = interval_indices(
                     grid, tuple(float(v) for v in _pe.position),
                     tuple(float(v) for v in _end))
@@ -980,7 +980,7 @@ class _ExecuteMixin:
                     "pair of (x, y, z) positions in metres, or an object "
                     "carrying corner_lo/corner_hi (DesignRegion, "
                     f"TopologyDesignRegion). Got {design_box!r}.") from None
-        from rfx._periodic import interval_indices
+        from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = interval_indices(
             grid, tuple(float(v) for v in corner_lo), tuple(float(v) for v in corner_hi))
         return tuple(

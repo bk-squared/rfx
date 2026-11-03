@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx.core.yee import EPS_0
 from rfx.current_moments import CurrentMomentMonitor
 from rfx.current_moments import ETA_0

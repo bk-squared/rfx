@@ -6,7 +6,7 @@ stamp on the build-local descriptor for subsequent source assembly.
 
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field
 
 import math
@@ -541,7 +541,7 @@ def _wire_port_cells(grid, port):
     if port.radius is not None and port.component != ("ex", "ey", "ez")[axis]:
         raise ValueError("a radius wire port's component must follow its start/end axis")
 
-    from rfx._periodic import interval_indices
+    from rfx._internal._periodic import interval_indices
     idx_s, idx_e = interval_indices(grid, tuple(s), tuple(e))
 
     lo = min(idx_s[axis], idx_e[axis])

@@ -22,9 +22,9 @@ from __future__ import annotations
 
 from rfx.errors import RfxUnsupported
 
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 import numpy as np
 
 import jax.numpy as jnp

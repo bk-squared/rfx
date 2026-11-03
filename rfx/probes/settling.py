@@ -1,7 +1,7 @@
 """Host diagnostics for already-recorded user probes, shared by run/forward."""
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 import jax
 import numpy as np

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rfx._uniform_specs import (
+from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
     ProbeSpec,
@@ -16,7 +16,7 @@ from rfx._uniform_specs import (
 from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout

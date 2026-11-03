@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation, _realized
+from rfx import Box, GaussianPulse, Simulation
+from rfx._internal import _realized
 from rfx.model.conductors import at_kernel, realized_conductors
 from rfx.model.conductors import RealizedConductors
 from rfx.runners._admission import admit

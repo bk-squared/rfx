@@ -7,7 +7,7 @@ physics support. Research/off are explicit diagnostic opt-ins.
 
 from __future__ import annotations
 
-from rfx._grid_metric import nearest_uniform_index
+from rfx._internal._grid_metric import nearest_uniform_index
 
 import json
 from typing import NamedTuple

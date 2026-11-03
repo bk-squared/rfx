@@ -7,7 +7,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.core.drives import drive_layout
 from rfx.core.jax_utils import is_tracer
@@ -35,7 +35,7 @@ def _waveguide_port_axis_metrics(grid, cfg):
     test is unaffected.
 
     Which metric each half is entitled to is the interface's table
-    (``rfx/_grid_metric.py``), applied at the plane each correction acts on,
+    (``rfx/_internal/_grid_metric.py``), applied at the plane each correction acts on,
     not at the port's nominal index:
 
     * the H correction lands on the upstream half-cell, ``x_index - 1`` for

@@ -74,7 +74,7 @@ from __future__ import annotations
 
 from rfx.errors import RfxUnsupported
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
 

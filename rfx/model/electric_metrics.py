@@ -3,7 +3,7 @@ import numpy as np
 import jax.numpy as jnp
 from typing import NamedTuple
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.core.yee import MaterialArrays, cell_owned_component_materials, component_e_materials, map_lumped
 from rfx.model.graded_admission import concrete_distributed_x_cells
 

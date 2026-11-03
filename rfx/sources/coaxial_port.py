@@ -30,7 +30,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
+from rfx._internal._precision import HIGHEST
 from rfx.core.jax_utils import complex_inv
 import numpy as np
 
@@ -559,7 +559,7 @@ def _validate_coaxial_tem_geometry(
 
 def _require_coaxial_aperture(grid, axes, center, radius):
     """A radial node aperture needs both rims; periodic images are unsupported."""
-    from rfx._periodic import interval_coordinates
+    from rfx._internal._periodic import interval_coordinates
     for axis, coordinate in zip(axes, center):
         if "xyz"[axis] not in getattr(grid, "periodic_axes", ""):
             continue
@@ -607,7 +607,7 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
         pz + pin_tip_offsets[2],
     )
 
-    from rfx._periodic import interval_coordinates
+    from rfx._internal._periodic import interval_coordinates
     for a in range(3):
         if a == axis_idx:
             interval_coordinates(grid, a, port.position[a], pin_tip[a])

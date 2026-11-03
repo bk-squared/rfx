@@ -14,7 +14,8 @@ import pytest
 
 import rfx.runners.nonuniform as nu_runner
 import rfx.simulation as uniform_kernel
-from rfx import Box, Simulation, _realized
+from rfx import Box, Simulation
+from rfx._internal import _realized
 
 C0 = 299_792_458.0
 DZ = np.array([1e-3] * 3 + [0.75e-3] * 6 + [1e-3] * 3)

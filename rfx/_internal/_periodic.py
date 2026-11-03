@@ -51,7 +51,7 @@ def interval_indices(grid, start, end):
     from rfx.nonuniform import position_to_index
     if not getattr(grid, "periodic_axes", ""):
         return position_to_index(grid, start), position_to_index(grid, end)
-    from rfx._grid_metric import nearest_uniform_index
+    from rfx._internal._grid_metric import nearest_uniform_index
     corners = [list(start), list(end)]
     spans = {a: interval_coordinates(grid, a, start[a], end[a])
              for a in range(3) if "xyz"[a] in grid.periodic_axes and start[a] != end[a]}

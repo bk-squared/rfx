@@ -45,7 +45,7 @@ from rfx.runners._distributed_common import (
     init_cpml_slabs, cpml_slab_frame, cpml_absorbing_faces, cpml_h_materials,
 )
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.stepping import segmented_scan
 from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind, validate_scan_controls
 from rfx.stepping.slab import (

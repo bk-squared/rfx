@@ -1017,7 +1017,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                   or (e.kind == "volume" and isinstance(e.shape, Box))]
     if not conductors:
         return
-    from rfx._grid_metric import node_tie_tol
+    from rfx._internal._grid_metric import node_tie_tol
     from rfx.geometry.rasterize_grid import _local_cell as _rasterize_local_cell
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)

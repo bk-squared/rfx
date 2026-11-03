@@ -33,7 +33,7 @@ def refuse_port_on_magnetic_face(sim, caller, *, reason):
 
     An edge whose node touches the face counts as on the face.
     """
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
     from rfx.measurement.plan import _pec_edges
     from rfx.sources.sources import WirePort, _wire_port_live_cells
 

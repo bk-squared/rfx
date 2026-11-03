@@ -46,7 +46,7 @@ import json
 
 import numpy as np
 
-from rfx._grid_metric import (
+from rfx._internal._grid_metric import (
     NODE_TOUCH_REL, cells_crossed, is_one_cell_size, nearest_node_index,
 )
 from rfx.core.jax_utils import is_tracer
@@ -698,7 +698,7 @@ def _component_is_dead(edges, component: str, idx) -> bool:
 # Preflight runs before a grid is necessarily built, and several checks here
 # would otherwise pay for a full ``_build_nonuniform_grid()`` just to read one
 # cell. These three helpers answer the same questions
-# ``rfx/_grid_metric.py``'s interface answers -- ``boundary_cell(axis, side)``,
+# ``rfx/_internal/_grid_metric.py``'s interface answers -- ``boundary_cell(axis, side)``,
 # ``cells(axis)[i]`` and ``is_constant(axis)`` -- from the profile a caller
 # declared plus the boundary scalar.
 #
@@ -760,7 +760,7 @@ def profile_node_at(scalar_dx: float, profile, coord_m: float) -> float:
     if a is None or a.size == 0:
         if not scalar_dx:
             return float(coord_m)
-        from rfx._grid_metric import nearest_uniform_index
+        from rfx._internal._grid_metric import nearest_uniform_index
         return float(nearest_uniform_index(float(coord_m) / float(scalar_dx)) * float(scalar_dx))
     edges = np.concatenate([[0.0], np.cumsum(a)])
     return float(edges[_profile_node_index(a, edges, coord_m)])
@@ -809,7 +809,7 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     The span crosses the cells it overlaps by more than the node-touch
     tolerance, and cells are one size when they agree to the same relative
     tolerance, both the S-parameter reference-span check's
-    (``rfx._grid_metric.cells_crossed`` / ``is_one_cell_size``). A span
+    (``rfx._internal._grid_metric.cells_crossed`` / ``is_one_cell_size``). A span
     that starts or ends on a node therefore stops there -- counting the cell
     beyond it made a span lying wholly inside one zone look mixed the moment
     it touched the zone's edge -- and a runway built as ``np.diff`` of node

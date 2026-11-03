@@ -19,7 +19,7 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx._traced_refusal import TracedStructureRefusal
-from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
+from rfx._internal._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Box, Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
@@ -410,7 +410,7 @@ def _sample_material_cells(shape, coords: GridCoords, centres: GridCoords, *,
     Node masks remain available for sheets, ports and geometry queries.
     Custom non-periodic uniform shapes may implement only mask(grid).
     """
-    from rfx._periodic import periodic_mask, periodic_shape
+    from rfx._internal._periodic import periodic_mask, periodic_shape
     from rfx.geometry.curved import CurvedPatch
     from rfx.geometry.via import Via
 
@@ -475,7 +475,7 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
             "enlarge the domain.")
     # An exact half-cell tie resolves LOWER. The one tie rule, shared with
     # every point lookup (#1295, #1342).
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     return nearest_node_index(x, pos, d_local)
 
 
@@ -541,7 +541,7 @@ def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None, d
         domain_faces = volume_domain_faces(grid)
     faces = domain_faces if domain_faces is not None else (None,) * 3
     if getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import periodic_mask
+        from rfx._internal._periodic import periodic_mask
         if getattr(shape, 'corner_lo', None) is None or getattr(shape, 'corner_hi', None) is None:
             return periodic_mask(grid, shape, centres[:3])
         def sample(x, y, z):
@@ -672,7 +672,7 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if cell_sizes is None:
         cell_sizes = tuple(axis_cell_sizes(n) for n in node_axes)
     mid = 0.5 * (lo[a] + hi[a])
-    from rfx._periodic import periodic_mask, plane_coordinate
+    from rfx._internal._periodic import periodic_mask, plane_coordinate
     requested_mid = mid
     mid = plane_coordinate(grid, a, mid)
     d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
@@ -888,7 +888,7 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_siz
         c = jnp.asarray(nodes)
         if t == a:
             mid = 0.5 * (lo[a] + hi[a])
-            from rfx._grid_metric import nearest_node_index
+            from rfx._internal._grid_metric import nearest_node_index
             k = jnp.clip(jnp.searchsorted(c, mid, side="right") - 1,
                          0, max(c.size - 2, 0))
             d_local = c[k + 1] - c[k] if c.size > 1 else 1.0
@@ -994,7 +994,7 @@ def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
     Each coordinate uses the shared lower-node tie band. The preflight
     co-location check reads this same function (#1342).
     """
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     nodes = []
     d_min = None
     for p in points:
@@ -1002,7 +1002,7 @@ def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
         for t in range(3):
             x = np.asarray(node_axes[t], dtype=np.float64)
             if 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
-                from rfx._periodic import interval_coordinates
+                from rfx._internal._periodic import interval_coordinates
                 interval_coordinates(grid, t, p[t], p[t])
                 x = np.append(x, float(grid.domain[t]))
             k = nearest_node_index(x, p[t], _local_cell(x, cell_sizes[t], p[t]))
@@ -1051,7 +1051,7 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
     ``wire_vertex_nodes`` does. Mesh-design profiles have no nominal host
     copy in ``make_nonuniform_grid``; never substitute a boundary spacing.
     """
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     widths = []
     for t, (axis, sizes) in enumerate(zip(node_axes, cell_sizes)):
         if is_tracer(sizes):
@@ -1095,7 +1095,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     centre-sampled volume path even when the coordinates are traced.
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
-    from rfx._periodic import periodic_shape
+    from rfx._internal._periodic import periodic_shape
     pts = getattr(shape, "points", None)
     radius = getattr(shape, "radius", None)
     if isinstance(shape, Sphere) and is_tracer(radius):

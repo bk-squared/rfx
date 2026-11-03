@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from tests.unit.runners.test_distributed_nu_wrapped_step import pole_scene
 
 pytestmark = pytest.mark.distributed
