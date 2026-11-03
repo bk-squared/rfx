@@ -91,7 +91,7 @@ from rfx.core.yee import (  # noqa: E402
 )
 from rfx.runners import _distributed_common as common  # noqa: E402
 from rfx.runners import distributed_nu, distributed_v2  # noqa: E402
-from rfx.stepping import slab_update, slab_cpml, slab_graded_legacy_loop  # noqa: E402
+from rfx.stepping import slab_update, slab_cpml, slab_graded_legacy_loop, slab_uniform_loop  # noqa: E402
 from rfx.runners._distributed_common import (  # noqa: E402
     _split_materials, slab_e_component_materials,
 )
@@ -580,9 +580,9 @@ def test_mutation_a_seam_row_reading_its_own_row_sends_the_cut_case_red(monkeypa
 @pytest.mark.slow
 def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_case_red(
         monkeypatch):
-    """The CPML E correction of both lanes takes the cell eps while the update
-    keeps the four-cell mean (#1043's mismatch, restored): the dielectric that
-    runs through the x-face absorber reads 1.5e-3 of the record peak."""
+    """The run lane hands CPML the means formed before the loop, so the mutation
+    also withholds them from the CPML call. The correction takes the cell eps
+    while the E update keeps the four-cell mean, restoring a 1.5e-3 mismatch."""
     _devices(2)
     # The low-level NU mutation below supplies this model's cell array.
     # Measure the vacuum reference before installing it, so the reference
@@ -596,6 +596,12 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     # The uniform runner's CPML wrapper calls the name bound in its own module;
     # its E update reads _distributed_common's, which keeps the real helper.
     monkeypatch.setattr(slab_cpml, "slab_e_component_materials", cell)
+
+    def cell_cpml_shmap(*a, **k):
+        k["e_materials"] = None
+        return slab_cpml._apply_cpml_e_shmap(*a, **k)
+
+    monkeypatch.setattr(slab_uniform_loop, "_apply_cpml_e_shmap", cell_cpml_shmap)
     # The forward lane hands its CPML the means built before the loop; the
     # correction is given the cell array; all mean-builder calls stay in place.
     sim = _box("cpml", "fwd", "faces", 2)
