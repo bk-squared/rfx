@@ -203,6 +203,15 @@ Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
+### Subpixel smoothing forms a false background face where two dielectric shapes of the same permittivity touch.
+
+Tracker: #2385
+
+With subpixel smoothing, two touching shapes of the same permittivity are smoothed as if a thin layer of the background lay between them.
+In a 20 × 13 × 7 mm PEC cavity with εr 3.38 and 10.2 layers on 0.5 mm cells, declaring the εr 10.2 layer as two Boxes that touch at z = 4.95 mm moves the TM resonance 2.86 % and the TE resonance 2.40 % higher than declaring it as one Box.
+This was measured with `subpixel_smoothing=True`; `"kottke_pec"` and `"full_tensor"` build the same union and were not measured.
+Until a fix lands, declare a volume of one permittivity as one shape.
+
 ### Subpixel smoothing with `"kottke_pec"` leaves a late field around a closed curved metal body, so its scattering depends on the record length.
 
 Tracker: #1651, #2291
