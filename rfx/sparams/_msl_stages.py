@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, ConfigurationWarning
+from rfx.errors import AccuracyWarning
 
 
 def _validate_msl_family(
@@ -391,61 +391,6 @@ def _prepare_msl_drive(
         | {name for pairs in h_probe_names for pair in pairs for name in pair}
     )
     return variant, ez_probe_names, h_probe_names
-
-
-def _run_msl_drive(
-    _diagnostics, checkpoint_every, checkpoint_segments, driven, eps_override, merge_diagnostics,
-    n_ports, n_steps, num_periods, report_diagnostics, report_every, variant,
-):
-
-    # G-AD-WIRE: when eps_override is provided use the
-    # differentiable forward() path so jax.grad can flow
-    # from eps_override through the DFT plane accumulators
-    # into the V/I assembly. Otherwise fall back to run()
-    # for imperative (non-AD) workflows.
-    if eps_override is not None:
-        if report_every is not None:
-            import warnings as _w667
-            _w667.warn(
-                "report_every is ignored on the "
-                "compute_msl_s_matrix(eps_override=...) channel: "
-                "that channel routes through forward(), which is "
-                "the differentiable (traced) path, and host-side "
-                "wall-clock progress reporting cannot run under a "
-                "trace.",
-                ConfigurationWarning, stacklevel=3,
-            )
-        fwd_result = variant.forward(
-            eps_override=eps_override,
-            n_steps=n_steps,
-            num_periods=num_periods,
-            checkpoint_every=checkpoint_every,
-            checkpoint_segments=checkpoint_segments,
-        )
-        planes = fwd_result.dft_planes or {}
-        _ts_result = fwd_result
-    else:
-        # Pass the progress kwargs ONLY when reporting is on:
-        # default-off must preserve the CALL SIGNATURE, not just
-        # the numbers. CI shard 2 proved why — test doubles that
-        # monkeypatch sim.run with a fixed signature broke on the
-        # unconditional kwarg, and in two tests the TypeError was
-        # swallowed by a fallback except and surfaced as
-        # DID-NOT-WARN instead (PR #555 class).
-        result = variant.run(
-            n_steps=n_steps,
-            num_periods=num_periods,
-            compute_s_params=False,
-            **({} if report_every is None else {
-                "report_every": report_every,
-                "report_label": f"MSL drive p{driven + 1}/{n_ports}",
-            }),
-        )
-        planes = result.dft_planes or {}
-        _ts_result = result
-
-    _diagnostics = merge_diagnostics(_diagnostics, report_diagnostics(_ts_result))
-    return planes, _ts_result, _diagnostics
 
 
 def _score_msl_record(
@@ -922,3 +867,61 @@ def _dump_msl_record(
             driven_port_indices=np.arange(n_ports, dtype=np.int64),
         )
     return
+
+
+def _shift_msl_reference_planes(
+    S, _complex_dtype, _reported, entries, eps_r_ref_per_port, freqs_arr,
+    grid, jnp, line_eps_per_port, msl_ports, probe_xs, renormalize_power_waves, z0_hj_per_port,
+):
+    # ---- Reference plane: probe 0 -> declared feed plane ----------
+    # S above is referred to each port's probe-0 plane. One resolver
+    # (rfx.measurement.msl_planes, shared with the mixed calculator)
+    # gives the realized feed-to-probe-0 distance L_p and the closed-
+    # form shift beta per bin (Hammerstad-Jensen eps_eff(0) with
+    # Kirschning-Jansen dispersion, from width, height and the eps_r
+    # resolved above; never the fitted beta), and
+    # S_feed[i, j] = D_i S[i, j] D_j with D = exp(-j beta L). beta is
+    # real, so |S|, singular values and cond(A) are unchanged. Applied
+    # before the dump and before the opt-in passivity projection, so
+    # S_raw carries it too.
+    from rfx.measurement.msl_planes import (
+        resolve_msl_planes as _resolve_msl_planes,
+        apply_feed_plane_shift as _apply_feed_plane_shift,
+    )
+    msl_planes = _resolve_msl_planes(
+        grid, msl_ports,
+        [int(pe.n_probe_offset) for pe in entries],
+        [xs[0] for xs in probe_xs],
+        [float(pe.width) for pe in entries],
+        [float(pe.height) for pe in entries],
+        eps_r_ref_per_port,
+        freqs_arr,
+    )
+    # The waves above are at the declared line's Z0 (z0_hj). The phase-
+    # only shift is exact in the reference of the line it moves along,
+    # so under eps_override (#2199) S is first referred to the solved
+    # line's Z0, shifted with that line's beta, and referred to
+    # impedance= from there below.
+    s_line_refs = z0_hj_per_port
+    if line_eps_per_port is None:
+        S = _apply_feed_plane_shift(
+            S, msl_planes.offsets_m, msl_planes.shift_beta,
+        ).astype(_complex_dtype)
+    else:
+        from rfx.measurement.msl_planes import (
+            msl_line_beta_z0 as _line_beta_z0,
+        )
+        _bz = [
+            _line_beta_z0(pe.width, pe.height, e, freqs_arr)
+            for pe, e in zip(entries, line_eps_per_port)
+        ]
+        line_beta = jnp.stack([b for b, _ in _bz])
+        s_line_refs = jnp.stack([z for _, z in _bz])
+        S = renormalize_power_waves(S, z0_hj_per_port, s_line_refs)
+        S = _apply_feed_plane_shift(
+            S, msl_planes.offsets_m, line_beta,
+        ).astype(_complex_dtype)
+        msl_planes = type(msl_planes)(
+            offsets_m=msl_planes.offsets_m,
+            shift_beta=_reported(line_beta, line_beta.shape))
+    return S, msl_planes, s_line_refs

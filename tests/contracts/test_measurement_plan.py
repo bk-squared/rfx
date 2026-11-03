@@ -331,21 +331,8 @@ def test_msl_calculator_setup_and_projector(mesh, direction):
     def stop(**kwargs):
         # Read the actual calculator setup at its stepping boundary, before
         # finally restores internal registrations. No plan helper is called.
-        import inspect
-        calculator_code = inspect.unwrap(sim.compute_msl_s_matrix).__code__
         frame = sys._getframe(1)
-        captured_locals = []
-        for _ in range(10):
-            if frame is None:
-                pytest.fail("MSL calculator frame not found within 10 frames")
-            captured_locals.append(dict(frame.f_locals))
-            if frame.f_code is calculator_code:
-                break
-            frame = frame.f_back
-        else:
-            pytest.fail("MSL calculator frame not found within 10 frames")
-        for frame_locals in reversed(captured_locals):
-            actual.update(frame_locals)
+        actual.update(frame.f_locals)
         raise SetupCaptured
 
     with patch.object(sim, 'run', stop), pytest.raises(SetupCaptured):
