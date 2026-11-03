@@ -464,11 +464,23 @@ At default `compute_msl_s_matrix` warns that S is not passive, with the number o
 The spread does not fall with the cell (0.186 dB at 0.2 mm, 0.172 dB at 0.1 mm), and doubling the lateral and top air margins and the absorber changes neither number by more than 5 %.
 The solved field carries no gain: between the two first-probe planes the real power flux falls by 0.08 to 0.41 dB at those bins.
 The excess comes from the port's V·I* reading of power near its plane: at 10–12 GHz it differs from the real flux by up to 10 % within about 10 mm of each feed plane, and by at most 2.5 % below 9 GHz.
-Why V and I misread the power there is not determined.
+The port splits V and I into waves at a constant closed-form Z0, and on matched lines that split moves the reading with the probe position (next entry, #2393).
 Workaround on lines like this one: place the first probe plane 12 mm or more from the feed plane (`add_msl_port(..., n_probe_offset=...)`, in cells: 60 cells at 0.2 mm); with it at 12 mm the same line's `|S21|` exceeds 0 dB by at most 0.017 dB (largest singular value up to 1.0034).
 This is one line's evidence (record kept with the project); a clearance rule or default waits for a sweep over several lines.
 On a one-stub line, moving only the probes changes `|S21|` by up to 0.47 dB on the null's upper shoulder (1.28 dB on a 45 mm feed) and the null depth by 2.8–3.4 dB; at bins where S stays passive no message reports it.
 The automatic first-probe offset is at least five substrate heights (4 mm at h = 0.8 mm), inside the zone above.
+
+### On a matched microstrip line, the MSL port's |S11| and |S21| move with where its probes sit.
+
+Tracker: #2393
+
+The MSL port splits the recorded voltage and current into forward and backward waves at one constant impedance, the Hammerstad–Jensen Z0 of the declared strip.
+The line's own impedance changes with frequency, so part of the forward wave is counted as reflection, and how much depends on the probe positions.
+On three matched lines the test `tests/oracle/test_msl_probe_offset_spread.py` puts the first probe at 5h, 12h and 25h from each port.
+The spread of |S11| across those three offsets, largest over the band, is 0.043 (εr 2.2, 0.8 mm substrate, 1–12 GHz), 0.110 (εr 3.66, 0.254 mm, 1–40 GHz) and 0.173 (εr 10.2, 1.27 mm, at 12 GHz).
+The spread of |S21| on the same lines is 0.010, 0.009 and 0.023.
+These are the numbers on the test's meshes (cells of h/4, h/3 and h/4); other meshes were not measured.
+Until a fix lands, read the |S11| of a well-matched microstrip structure as uncertain by about this much, and keep the probe offset fixed when you compare designs.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
