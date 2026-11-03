@@ -333,7 +333,7 @@ def compute_msl_s_matrix(
     )
     dz_arr, port_idx_meta, beta0_per_port, z0_hj_per_port, eps_r_ref_per_port, line_eps_per_port, declared_refs, trace_k_per_port = _msl_stages._prepare_msl_geometry(
         _msl_cell_profile, entries, eps_override, freqs_arr, grid, hammerstad_jensen_z0_eps_eff, is_nonuniform,
-        jax, msl_ampere_pair, msl_cell, msl_cross_section_span, msl_ports, n_ports, np,
+        jax, msl_ampere_pair, msl_cell, msl_cross_section_span, msl_ports, n_ports,
         self,
     )
 
@@ -371,7 +371,7 @@ def compute_msl_s_matrix(
     wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
     _witness_base, _witness_total, settling_db_runs, settling_details, observers = _msl_stages._prepare_msl_witnesses(
-        entries, msl_physical_point, n_ports, np, observers, port_idx_meta, probe_xs,
+        entries, msl_physical_point, n_ports, observers, port_idx_meta, probe_xs,
     )
 
     for driven in range(n_ports):
@@ -431,7 +431,7 @@ def compute_msl_s_matrix(
 
         settling_db_runs, settling_details = _msl_stages._score_msl_record(
             _ts_result, _witness_base, _witness_total, driven, dz_arr, ez_probe_names, freqs_arr,
-            grid, h_probe_names, h_stencils, is_tracer, msl_ports, np, port_idx_meta,
+            grid, h_probe_names, h_stencils, is_tracer, msl_ports, port_idx_meta,
             self, settling_db_runs, settling_details, trace_k_per_port, variant,
         )
 
@@ -448,7 +448,7 @@ def compute_msl_s_matrix(
             )
             raw_v, raw_i1, raw_z0, raw_q, raw_beta_railed, res_p, z0_fit = _msl_stages._fit_msl_port(
                 _complex_dtype, beta0_per_port, driven, extract_msl_nprobe, i_f, jnp, msl_axis_roles,
-                msl_ports, n_probes_per_port, np, p_idx, probe_xs, raw_beta_railed, raw_i1,
+                msl_ports, n_probes_per_port, p_idx, probe_xs, raw_beta_railed, raw_i1,
                 raw_q, raw_v, raw_z0, v_per_port, z0_hj_per_port,
             )
             if p_idx == driven:
@@ -645,14 +645,14 @@ def compute_msl_s_matrix(
 
     _msl_stages._check_msl_extraction(
         RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
-        jax, n_ports, np, probe_clearance, raw_z0, reliable, strict_extractor,
+        jax, n_ports, probe_clearance, raw_z0, reliable, strict_extractor,
         z0_hj_per_port,
     )
 
     _msl_stages._dump_msl_record(
         S, Z0_per_run, _reported, beta_first, declared_refs, entries, freqs_arr,
         grid, h_stencils, msl_assembly, msl_planes, n_ports, n_probes_per_port, n_steps,
-        np, num_periods, raw_3probe_dump_path, raw_i1, raw_i1_left, raw_i1_same_index, raw_q,
+        num_periods, raw_3probe_dump_path, raw_i1, raw_i1_left, raw_i1_same_index, raw_q,
         raw_v, raw_z0, s_line_refs, self,
     )
 
