@@ -89,7 +89,8 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
          smooth._normal_cell_length(xp, fill_length, normal))
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
     if distance:
-        result += (union,)
+        distance_result = result + (union,)
+        return distance_result + (source, source_image) if normal_source else distance_result
     return result + (source, source_image) if normal_source else result
 
 

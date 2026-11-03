@@ -253,6 +253,7 @@ def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None,
                 best, normal, winner = distance, candidate, candidate_image
             else:
                 if return_image:
+                    assert winner is not None
                     winner = tuple(xp.where(distance < best, k, old)
                                    for k, old in zip(candidate_image, winner))
                 if normal_fn is not None:
