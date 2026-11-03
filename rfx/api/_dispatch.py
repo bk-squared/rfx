@@ -10,6 +10,7 @@ from typing import NamedTuple
 import numpy as np
 
 from rfx.runners._admission import guard_shape_tangents
+from rfx.preflight.realization import release_inspection
 
 
 class _DispatchPlan(NamedTuple):
@@ -195,6 +196,7 @@ def _dispatch_plan(
             if not is_nonuniform:
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
+                release_inspection(self)
                 return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
             # Uniform and graded distributed runners admit PMC faces.
             # The curl reads the declared magnetic image; no separate
@@ -206,6 +208,7 @@ def _dispatch_plan(
                 "distributed non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_distributed_nu")
+            release_inspection(self)
             return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
 
         if is_nonuniform:
@@ -214,6 +217,7 @@ def _dispatch_plan(
             self._reject_upml_on_nonuniform("non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_nonuniform")
+            release_inspection(self)
             return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
 
         # Uniform forward lane: the remaining kwargs are NU-only.
@@ -247,6 +251,7 @@ def _dispatch_plan(
             )
         # n_steps for the uniform forward lane is resolved by the caller
         # from the grid it builds and reuses for material assembly.
+        release_inspection(self)
         return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
 
     # mode == "run"
@@ -291,6 +296,7 @@ def _dispatch_plan(
                 grid = self._build_grid()
                 _n = grid.num_timesteps(num_periods=num_periods)
         _reject_lane_precision("run_distributed_nu" if is_nonuniform else "run_distributed")
+        release_inspection(self)
         return _DispatchPlan(lane="run_distributed_nu" if is_nonuniform else "run_distributed", n_steps=_n)
 
     # ---- Non-uniform mesh lane ----
@@ -300,6 +306,7 @@ def _dispatch_plan(
         if _n is None:
             _n = self._nu_n_steps(num_periods)
         _reject_lane_precision("run_nonuniform")
+        release_inspection(self)
         return _DispatchPlan(lane="run_nonuniform", n_steps=_n)
 
 
@@ -307,9 +314,11 @@ def _dispatch_plan(
     # scaling needs the reused grid) ----
     if self._refinement is not None:
         _reject_lane_precision("run_subgridded")
+        release_inspection(self)
         return _DispatchPlan(lane="run_subgridded", n_steps=n_steps)
 
     # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----
+    release_inspection(self)
     return _DispatchPlan(lane="run_uniform", n_steps=n_steps)
 
 

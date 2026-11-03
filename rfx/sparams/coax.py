@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from rfx.errors import AccuracyWarning
 from rfx._internal._precision import resolve_field_dtype
+from rfx.preflight.realization import release_inspection
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
@@ -60,41 +61,8 @@ from rfx.sparams._port_reference import (coax_two_port_line_waves,
     renormalize_power_waves, warn_line_reference_mismatch)
 
 
+from rfx.sparams._coax_admission import _require_absorption_on_every_axis
 from rfx.sparams.coax_geometry import _coax_pec_edge_masks
-
-
-def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
-    """Both coax line lanes absorb on x, y and z (issue 1218).
-
-    With absorbers on z only, the lateral pads were vacuum backed by the PEC
-    grid faces: a closed metal can around the line. Every unshielded
-    conductor end — the open termination, and the pin and shell ending one
-    cell past the matched feed — lets field out of the annulus, and the can
-    held it between the shell and its walls; the open end coupled it back,
-    so the open's |S11| rose above 1 and grew with the record (1.018 at 12
-    line traversals, 1.046 at 24, at 9 annulus cells). With the lateral pads
-    absorbing, the same open reads at most 1.0015 and does not move with the
-    record (both in rfx-archive, rfx/records/20260924-coax-closed-can/
-    open_closed_can_arms.json).
-    A face without an absorber is a PEC wall and closes the can again, so
-    every face needs positive CPML thickness.
-    """
-    from rfx.boundaries.depths import has_positive_cpml_faces
-    if not has_positive_cpml_faces(sim._boundary_spec, sim._cpml_layers):
-        raise ValueError(
-            f"{lane}() requires positive CPML thickness on all six faces: "
-            "it absorbs on all three axes, and a face without an absorber "
-            "is a PEC wall that closes a metal can around the line" "."
-        )
-    if cpml_axes is not None and set(cpml_axes) != set("xyz"):
-        raise ValueError(
-            f"{lane}() absorbs on all three axes and accepts only "
-            f"cpml_axes='xyz' (got {cpml_axes!r}). With absorbers on z only "
-            "the lateral pads are vacuum backed by the PEC grid faces, a "
-            "closed metal can that holds the field leaving an unshielded "
-            "conductor end; the open termination's |S11| then rose above 1 "
-            "and grew with the record."
-        )
 
 
 def compute_coaxial_line_reflection(
@@ -460,7 +428,7 @@ def compute_coaxial_line_reflection(
         status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
         s11 = jnp.stack(s11_c)
         warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
-        return CoaxialLineReflectionResult(
+        completed = CoaxialLineReflectionResult(
             s11=s11,
             freqs=jnp.asarray(freqs),
             gamma=jnp.stack(gamma_c),
@@ -471,6 +439,8 @@ def compute_coaxial_line_reflection(
             termination=termination,
             status=status,
         )
+        release_inspection(self)
+        return completed
 
     # --- concrete path: NumPy (byte-identical to the validated result) ---
     v_by_plane = []
@@ -509,7 +479,7 @@ def compute_coaxial_line_reflection(
         status = "passed"
 
     warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
-    return CoaxialLineReflectionResult(
+    completed = CoaxialLineReflectionResult(
         s11=s11,
         freqs=np.asarray(freqs, dtype=float),
         gamma=gamma,
@@ -520,6 +490,8 @@ def compute_coaxial_line_reflection(
         termination=termination,
         status=status,
     )
+    release_inspection(self)
+    return completed
 
 def compute_coaxial_two_port(
     self,
@@ -1092,11 +1064,13 @@ def compute_coaxial_two_port(
         settling_db, ("port1", "port2"), n_steps=int(n_steps),
         witnesses=None if _traced_eps else settling_details,
     )
-    return _finalize_sparam_result(
+    completed = _finalize_sparam_result(
         result_obj,
         extractor="compute_coaxial_two_port",
         strict=strict_passivity,
     )
+    release_inspection(self)
+    return completed
 
 
 # Appended to the shared passivity guard's message when THIS lane refuses, so
@@ -2079,11 +2053,13 @@ def compute_coax_msl_transition(
         settling_db, ("coax", "msl"), n_steps=int(n_steps), witnesses=settling_details,
     )
     try:
-        return _finalize_sparam_result(
+        completed = _finalize_sparam_result(
             result_obj,
             extractor="compute_coax_msl_transition",
             strict=strict_passivity,
         )
+        release_inspection(self)
+        return completed
     except ValueError as exc:
         # Lane-local, on purpose. _finalize_sparam_result's message is shared
         # by five extractors and tells the reader to inspect the V/I dump --
