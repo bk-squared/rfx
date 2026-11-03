@@ -27,4 +27,4 @@ Python shows `DeprecationWarning` raised from code in `__main__` by default.
 Elsewhere, use `python -W default::DeprecationWarning` or pytest's warnings
 summary to see these warnings.
 
-On 2026-11-03, rfx 2.1.0 removed the ADI solver (`solver="adi"`, `adi_cfl_factor`) in a minor release. The 2.0.0 documentation marked ADI as experimental and announced its removal for 2.1, so this removal did not wait for 3.0.
+On 2026-11-03, rfx 2.1.0 removed the ADI solver (`solver="adi"`) in a minor release. The `adi_cfl_factor` parameter stays for one release and refuses any value. The 2.0.0 documentation marked ADI as experimental and announced its removal for 2.1, so this removal did not wait for 3.0.
