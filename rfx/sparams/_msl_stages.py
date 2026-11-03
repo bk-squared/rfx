@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from rfx.errors import AccuracyWarning
 
 
@@ -92,7 +94,7 @@ def _prepare_msl_probes(
 
 def _prepare_msl_geometry(
     _msl_cell_profile, entries, eps_override, freqs_arr, grid, hammerstad_jensen_z0_eps_eff, is_nonuniform,
-    jax, msl_ampere_pair, msl_cell, msl_cross_section_span, msl_ports, n_ports, np,
+    jax, msl_ampere_pair, msl_cell, msl_cross_section_span, msl_ports, n_ports,
     self,
 ):
     # ``probe_xs`` are the N physical x-coordinates fed to the
@@ -279,7 +281,7 @@ def _prepare_msl_geometry(
 
 
 def _prepare_msl_witnesses(
-    entries, msl_physical_point, n_ports, np, observers, port_idx_meta, probe_xs,
+    entries, msl_physical_point, n_ports, observers, port_idx_meta, probe_xs,
 ):
     # Point probes at every port observation plane.
     _witness_base = len(observers._probes)
@@ -395,7 +397,7 @@ def _prepare_msl_drive(
 
 def _score_msl_record(
     _ts_result, _witness_base, _witness_total, driven, dz_arr, ez_probe_names, freqs_arr,
-    grid, h_probe_names, h_stencils, is_tracer, msl_ports, np, port_idx_meta,
+    grid, h_probe_names, h_stencils, is_tracer, msl_ports, port_idx_meta,
     self, settling_db_runs, settling_details, trace_k_per_port, variant,
 ):
     # Score recorded S channels and witness probes.
@@ -570,7 +572,7 @@ def _integrate_msl_port(
 
 def _fit_msl_port(
     _complex_dtype, beta0_per_port, driven, extract_msl_nprobe, i_f, jnp, msl_axis_roles,
-    msl_ports, n_probes_per_port, np, p_idx, probe_xs, raw_beta_railed, raw_i1,
+    msl_ports, n_probes_per_port, p_idx, probe_xs, raw_beta_railed, raw_i1,
     raw_q, raw_v, raw_z0, v_per_port, z0_hj_per_port,
 ):
     # N-probe least-squares wave decomposition (issue #80
@@ -615,7 +617,7 @@ def _fit_msl_port(
 
 def _check_msl_extraction(
     RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
-    jax, n_ports, np, probe_clearance, raw_z0, reliable, strict_extractor,
+    jax, n_ports, probe_clearance, raw_z0, reliable, strict_extractor,
     z0_hj_per_port,
 ):
     # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
@@ -736,7 +738,7 @@ def _check_msl_extraction(
 def _dump_msl_record(
     S, Z0_per_run, _reported, beta_first, declared_refs, entries, freqs_arr,
     grid, h_stencils, msl_assembly, msl_planes, n_ports, n_probes_per_port, n_steps,
-    np, num_periods, raw_3probe_dump_path, raw_i1, raw_i1_left, raw_i1_same_index, raw_q,
+    num_periods, raw_3probe_dump_path, raw_i1, raw_i1_left, raw_i1_same_index, raw_q,
     raw_v, raw_z0, s_line_refs, self,
 ):
     if raw_3probe_dump_path is not None:
