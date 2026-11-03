@@ -217,37 +217,50 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
     return fold(0, coords)
 
 
-def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None):
+def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None,
+                 return_image=False, exclude_image=None, exclude_where=False):
     """Minimum signed distance over fill images, with the winning normal.
 
     Images are reduced one axis at a time; only base-grid arrays are held.
     SDF weights sample a half-cell transition outside a body's bounds, so
     the shared image selector includes that support as well as its interior.
     The non-periodic call is exactly the original SDF/normal evaluation.
+    Optionally retain the winning image's coordinate-shift indices. Outside
+    media lookup can exclude that image at selected samples before folding.
     """
     periodic = getattr(grid, 'periodic_axes', '')
     images = [_fill_image_range(grid, shape, a, padding=.5 * float(grid.cells(a)[0]))
               if 'xyz'[a] in periodic else (0,)
               for a in range(3)]
 
-    def fold(axis, values):
+    def fold(axis, values, image):
         if axis == 3:
             distance = sdf_fn(*values, shape, xp=xp)
             normal = None if normal_fn is None else normal_fn(*values, shape, xp=xp)
-            return distance, normal
-        best = normal = None
+            if exclude_image is not None:
+                excluded = exclude_where
+                for k, source in zip(image, exclude_image):
+                    excluded = excluded & (k == source)
+                distance = xp.where(excluded, xp.inf, distance)
+            return distance, normal, image
+        best = normal = winner = None
         for k in images[axis]:
             shifted = list(values)
             if k:
                 shifted[axis] = coords[axis] + k * float(grid.domain[axis])
-            distance, candidate = fold(axis + 1, shifted)
+            distance, candidate, candidate_image = fold(axis + 1, shifted, image + (k,))
             if best is None:
-                best, normal = distance, candidate
+                best, normal, winner = distance, candidate, candidate_image
             else:
+                if return_image:
+                    winner = tuple(xp.where(distance < best, k, old)
+                                   for k, old in zip(candidate_image, winner))
                 if normal_fn is not None:
                     normal = tuple(xp.where(distance < best, n, old)
                                    for n, old in zip(candidate, normal))
                 best = xp.minimum(best, distance)
-        return best, normal
-    distance, normal = fold(0, coords)
+        return best, normal, winner
+    distance, normal, image = fold(0, coords, ())
+    if return_image:
+        return (distance, image) if normal_fn is None else (distance, normal, image)
     return distance if normal_fn is None else (distance, normal)

@@ -70,15 +70,18 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
 
     union = nearest = normal = None
     for shape_index, shape in enumerate(shapes):
-        sdf, ns = periodic_sdf(
+        sdf, ns, image = periodic_sdf(
             grid, shape, coords, smooth._get_sdf_fn(shape), xp=xp,
-            normal_fn=smooth._get_normal_fn(shape))
+            normal_fn=smooth._get_normal_fn(shape), return_image=True)
         if union is None:
             union, nearest, normal = sdf, xp.abs(sdf), ns
             source = xp.asarray(shape_index, dtype=xp.int32)
+            source_image = image
         else:
             closer = xp.abs(sdf) < nearest
             source = xp.where(closer, shape_index, source)
+            source_image = tuple(xp.where(closer, k, old)
+                                 for k, old in zip(image, source_image))
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
             union = xp.minimum(union, sdf)
@@ -87,7 +90,7 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
     if distance:
         result += (union,)
-    return result + (source,) if normal_source else result
+    return result + (source, source_image) if normal_source else result
 
 
 def _next(xp, a, axis, periodic):
@@ -101,7 +104,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
 
     Same-material groups use the existing union, nearest analytic normal and
     SDF cell-length rule. Outside media are sampled beyond the surface,
-    excluding only the normal-source SDF shape, just as for the Yee operands.
+    excluding only the normal-source (SDF shape, image), as for Yee operands.
     """
     from collections import OrderedDict
     from rfx.geometry.rasterize_grid import (
@@ -165,7 +168,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         supported = [s for s in group if smooth._has_sdf(s)]
         if not supported:
             continue
-        f, ns, signed_distance, source = _union(
+        f, ns, signed_distance, source, source_image = _union(
             xp, grid, supported, nodes, distance=True, fill_length=fill_length,
             normal_source=True)
         interface = (f > 0) & (f < 1)
@@ -173,7 +176,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
                   else uniform_cell(grid))
         outside = smooth._bulk_outside(
             xp, groups, eps, nodes, signed_distance, ns, length,
-            background_eps, masks, grid, normal_source=source)
+            background_eps, masks, grid, normal_source=source,
+            normal_image=source_image)
         inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
         inv_par = 1.0 / (f * eps + (1.0 - f) * outside + 1e-30)
         entries = [n * n * inv_perp + (1 - n * n) * inv_par for n in ns]
