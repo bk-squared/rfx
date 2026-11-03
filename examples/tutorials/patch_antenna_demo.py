@@ -106,7 +106,9 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   time.
 - The far field agrees as well.  This configuration prints
   D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
-  -0.23 dB (VESSL 369367270265; 6.60 dBi before #1546; openEMS's value is
+  -0.23 dB (measured 2026-11-03; it read 6.59 dBi in VESSL 369367270265,
+  before the dielectric Box faces moved to nearest nodes, and 6.60 dBi
+  before #1546; openEMS's value is
   taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.75 dBi at its
   2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
   the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
