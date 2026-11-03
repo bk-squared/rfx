@@ -20,7 +20,7 @@ The website identifies its source version; select the release matching your inst
 
 ## Release status: 2.0
 
-rfx 2.0.0 is the current release. What 2.0 changes for a user:
+rfx 2.1.0 is the current release. What 2.0 changes for a user:
 
 - **An input a solver path does not implement is refused, never dropped.** If `run()`,
   `forward()` or an S-parameter calculator routes your model to a path that does not

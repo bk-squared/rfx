@@ -1,6 +1,6 @@
 ---
 title: "Changelog"
-description: "What changed for users in each rfx release, and what is coming in 2.0."
+description: "What changed for users in each rfx release."
 sidebar:
   order: 1
 ---
@@ -11,7 +11,149 @@ This page summarizes user-visible changes: what moved, and what to change in
 your scripts. The repository's `CHANGELOG.md` has the full detail, including
 the measurements behind each entry.
 
-## Unreleased — 2.0.0
+## v2.1.0 — November 3, 2026
+
+2.1 moves results with conformal PEC, subpixel smoothing on non-cubic or graded
+cells, dielectric `Box` faces that lie between mesh nodes, waveguide S with
+`normalize=True`, Floquet reflection, and the default waveguide port bins on
+uniform `forward()` and graded runs. Re-run any comparison that uses one of them. The ADI
+solver is removed. Several S-parameter exits now warn when the returned S is not
+passive.
+
+### Removed
+
+- **`solver="adi"` is removed** (#2331). It raises `ValueError`. Its absorber did
+  not match, its interfaces were off by half a cell and an interior PEC was
+  unstable, which outweighed its larger time step. Use `solver="yee"` on a graded
+  mesh for thin layers, or local refinement where it is supported.
+  `adi_cfl_factor` still exists for one release and refuses any value. The public
+  ADI names `ADIState2D`, `ADIState3D`, `thomas_solve`, `adi_step_2d`,
+  `adi_step_3d`, `run_adi_2d` and `run_adi_3d` are gone too: `rfx.<name>` raises
+  `AttributeError` with the same message, and `from rfx import <name>` raises
+  `ImportError`.
+
+### Changed
+
+- **A waveguide port's default frequency bins changed on uniform `forward()` and
+  graded `run()`/`forward()`** (#2347). A port that declares neither `freqs` nor
+  `n_freqs` gets 50 bins from `freq_max/10` to `freq_max`, as uniform `run()`
+  already did; these paths used 20 bins from `freq_max/2`. `n_freqs` is honoured
+  on every path, and ports whose bins differ are refused there. On a graded mesh,
+  `compute_waveguide_s_matrix` now computes S on the declared bins; before, it
+  used 20 fixed bins and labelled them with the declared ones.
+- **A waveguide port beside a lumped, wire or passive port, a point source or a
+  TF/SF source is refused** on uniform `forward()` and graded `run()`/`forward()`,
+  as on uniform `run()` (#2348).
+- **On a traced mesh, conductors near an absorber need `nominal_profiles`** (#2312,
+  #2372). When a mesh profile is differentiated or compiled, a `Box` volume or an
+  axial `Cylinder` continues through an absorbing face as on a concrete mesh,
+  decided on the declared nominal profile. A run-time check refuses a changed
+  outermost-layer occupancy or a pad beyond the continuation: re-declare
+  `nominal_profiles` at the current design, or keep the axis concrete. Refused
+  before stepping: a conductor with a finite extent on a traced axis with an
+  absorber and no `nominal_profiles` for it, and a continuation that depends on the
+  lattice.
+- **The Kottke PEC occupancy model is a `Simulation` option**:
+  `Simulation(..., pec_occupancy_model="kottke")` (#2284). The environment variable
+  `RFX_PEC_OCC_KOTTKE` now raises at construction. A graded
+  `forward(pec_occupancy_override=...)` with `"kottke"` raises instead of running the
+  default model.
+- **Lossless design-box gradients without checkpointing use half the memory** for
+  the per-step field history (#2217).
+- **An in-plane graded mesh is validated up to an adjacent cell ratio of 1.4**, as
+  `dz_profile` already was (#2229). The grading warning fires above 1.4 on x and y;
+  `smooth_grading` still builds meshes at 1.3.
+- **`topology_optimize` no longer needs optax** (#2287). Iterates differ from the
+  optax version by float32 rounding only.
+- **The seven `rfx.materials` names that moved** (`MaterialArrays`, `init_materials`,
+  `DebyePole`, `DebyeCoeffs`, `DebyeState`, `init_debye`, `update_e_debye`) warn with
+  `DeprecationWarning` and name the new import path (#2281).
+- **Public functions and `Simulation` methods carry type annotations** (#2295). No
+  signature or behaviour changed.
+- **Graded runs with concrete thin PEC sheets can be called under `jax.jit`** (#1432).
+
+### Added
+
+- **`run(conformal_pec="cut_cell_floor")`** on a uniform Yee mesh, with
+  `Simulation(dt=q * Grid.courant_dt(dx))` for q = 0.5 or 0.25 (#2306). It keeps the
+  true edge lengths and floors the cut-face area at q². On the measured PEC sphere
+  the radius offset falls to about 1/9 of the default at q = 0.5, where it still
+  converges first order, and to about 1/100 at q = 0.25; these runs take two and
+  four times the steps.
+- **A waveguide S gradient with respect to cell widths along the guide**:
+  `compute_waveguide_s_matrix(normalize="flux")` on a graded mesh differentiates S
+  with respect to a declared window of x cells,
+  `nominal_profiles={"x": NominalProfile(cells, traced_cells=(i0, i1))}` (#2230).
+  On a WR-90 slab the derivative of |S21| agrees with central differences within 1 %
+  of its largest value over 8.4–11.6 GHz.
+
+### Fixed
+
+- **Conformal PEC places a metal wall where it is drawn** (#2240). Cut-cell
+  operands replace the eps/w skin that enlarged curved bodies. A flat PEC wall off a
+  node line now sits at its drawn plane within 0.01 cell (it was up to 2.7 cells
+  off); a 9 mm PEC sphere solves 0.19 cell large in radius (the previous model about
+  1.1), with backscatter errors of 0.28–0.56 dB (previously 1.7–4.5 dB). Curved-body
+  error still falls only first order. Newly refused under conformal PEC: PEC shapes
+  with no signed distance (they fell back to a staircase silently), a body holding
+  no grid node, a zero-thickness PEC sheet off the node lattice, and
+  `conformal_min_weight` other than 0.1.
+- **Subpixel smoothing on non-cubic and graded cells** used the cube root of the
+  cell volume as the length across an interface (#2307). On a flat εr 4 slab the
+  interface permittivity was off the closed form by up to 9.2 % on constant
+  non-cubic cells and 13.4 % on graded cells; it now matches. Uniform cubic meshes
+  are unchanged.
+- **A dielectric, magnetic, lossy or dispersive `Box` face between nodes goes to the
+  nearest node**, as a PEC face does; before, it moved up to one cell toward + (#2349).
+  A patch whose substrate top lay 0.3 cell above a node resonated 1.2–1.8 % low. A
+  material layer with no cell centre inside it is now refused: refine until one lies
+  inside, or use `add_thin_conductor` for a conducting sheet. Also from this change:
+  a volume `Box` drawn to the declared domain's high face fills the last cell when
+  the grid is one cell longer than the domain; `interface_eps='dual_average'` gives
+  the same coefficients as the default; and a mix of `Box` and non-`Box` shapes in
+  one CSG body samples each shape as it would alone, so it may now be refused.
+- **Waveguide `normalize=True` returns one scattering matrix** (#2340). Transmission
+  now divides by the driven port's incident wave, like reflection. On a lossless
+  εr 4 slab the largest singular value of S falls from up to 1.41 to at most 1.0011,
+  and |S| moves by at most 0.21 %. S21 now rotates with the declared planes and keeps
+  the one-way grid dispersion between them, as with `normalize=False`; for the old
+  insertion ratio, divide S21 by the empty guide's S21 at the same planes. An empty
+  guide no longer reads |S21| = 1 by construction, so an unsettled record or a band
+  outside the source spectrum now shows.
+- **Floquet reflection reads E and H at the same position and time** (#2354). The
+  worst empty-cell |S11| falls from 0.060 to 0.0022, and a PEC sheet's |S11| from up
+  to 1.045 to at most 1.0032.
+- **Non-passive S now warns** (#2314, #2330, #2345). Coaxial,
+  waveguide, mixed and lumped/wire S, distributed, graded, subgridded and ring-down
+  S, and the coaxial one-port reflection give one `AccuracyWarning` naming the bins
+  where the largest singular value of S exceeds 1.01. `run()` and `forward()` warn
+  when a waveguide port's returned |s11| exceeds 1.01. S itself is unchanged, and the
+  microstrip driver's warning is as before. Expect the warning on a strong reflector
+  such as a PEC short with `normalize=False`, which reads |S11| about 3 % above 1
+  from the grid's impedance mismatch; `normalize="flux"` corrects it.
+- **The settling check no longer lets a pole it cannot resolve set the horizon**
+  (#2327); such poles get a tail bound of either sign, and their unbounded tails are
+  left out of completed spectra.
+- **`run()` under a user `jax.jit` sets up the model as `forward()` does** (#2322).
+  The one-lumped and one-wire port S of `run()` under `jax.jit` is refused with a
+  message naming `forward(port_s11_freqs=...)`, and a multi-device closed-box TF/SF
+  call under `jax.jit` is refused with a message naming a plain call. Warnings from `run()` and
+  `forward()` name the user's calling line.
+- **MSL and mixed-port S runs no longer keep a per-step copy of every user DFT
+  plane** (#2304); 8 user planes of 5,329 cells had added 2.8 GB from 2,000 to
+  8,000 steps.
+- **The MSL, mixed and waveguide S calculators no longer modify the caller's
+  `Simulation` while they run** (#2315).
+- **Preflight sees a mesh profile edited in place** after a first preflight (#2276).
+- **x64 runs no longer crash** in closed-box incident spectra, oblique open TF/SF and
+  uniform multi-device runs (#2273).
+- **`register_msl_wave_probes` raises `ValueError`** for a direction other than
+  "+x" or "-x", also under `python -O` (#2279).
+- **Preflight checks, advisories and diagnostic records no longer skip silently** on
+  an unexpected error, and a timeout is no longer swallowed (#2277, #2320, #2339).
+  The NTFF inverse-design check raises on malformed frequencies.
+
+## v2.0.0 — October 31, 2026
 
 2.0 changes how conductors are built, how several ports read their
 S-parameters, and how the absorber reflects. Expect results with conductors,
