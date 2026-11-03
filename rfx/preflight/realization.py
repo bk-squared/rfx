@@ -825,7 +825,7 @@ def release_inspection(sim):
     sim._coax_geometry = None
 
 
-def clear_inspection_cache(self):
+def clear_inspection_cache(self) -> None:
     """Release this model's cached inspection products.
 
     Clears preflight's assembly context, the realized-geometry record and
