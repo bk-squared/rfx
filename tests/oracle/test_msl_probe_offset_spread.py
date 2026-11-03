@@ -75,6 +75,11 @@ def measure_offset(line, m, *, record_fraction=1.0):
         "offset_h": m, "n_steps_per_drive": n_steps, "drives": 2,
         "record_s": record_s, "realized_record_s": n_steps * dt,
         "freqs_hz": freqs.tolist(), "settling_db": settling.tolist(),
+        "magnitudes": {
+            name: np.abs(s[i, j]).tolist()
+            for name, i, j in (("S11", 0, 0), ("S21", 1, 0),
+                               ("S22", 1, 1), ("S12", 0, 1))
+        },
         "settling_db_worst": float(np.max(settling)),
         "sigma_max": sigma.tolist(), "sigma_max_worst": float(np.max(sigma)),
         "sigma_max_excess": np.asarray(result.sigma_max_excess).tolist(),
@@ -104,7 +109,9 @@ def _report(report):
 
 
 @pytest.mark.parametrize("line", tuple(LINES))
-def test_msl_probe_offset_spread(line):
+def test_msl_probe_offset_spread(line, monkeypatch):
+    # The L1 and L2 witnesses need 5.39 GiB at stage 2.
+    monkeypatch.setattr("rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES", 8 * 2**30)
     measurements = [measure_offset(line, m) for m in OFFSETS]
     report = {"line": line, "mesh_cells_per_h": LINES[line][7],
               "runs": [row for _, row in measurements], "spreads": {}}
