@@ -756,8 +756,7 @@ CLASSIFICATION: dict[str, str] = {
     # The showcase pages (#1345) print numbers from the share host's records;
     # tests/unit/docs/test_showcase_catalog.py holds them to showcase.json.
     "docs/public/showcase/index.mdx": NO_ARTIFACT_REFERENCE,
-    "docs/public/showcase/sensitivity-map.mdx": NO_ARTIFACT_REFERENCE,
-    "docs/public/showcase/gradient-cost.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/patch-calibration.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/showcase/grin-lens.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/showcase/waveguide-filter.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
