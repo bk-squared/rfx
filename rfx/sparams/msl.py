@@ -10,6 +10,7 @@ from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUns
 
 from rfx._declarations import declaration_variant
 from rfx._internal._precision import resolve_field_dtype
+from rfx.preflight.realization import release_inspection
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, diagnostic_refusal
@@ -1530,6 +1531,7 @@ def compute_msl_s_matrix(
         strict=strict_extractor,
         passivity_tol=0.10,
     )
+    release_inspection(self)
     return result
 
 
