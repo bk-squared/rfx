@@ -95,8 +95,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     """Host-float64 concrete geometry, or the smoother's traced JAX path (#833).
 
     Same-material groups use the existing union, nearest analytic normal and
-    SDF cell-length rule. Later groups compose against the prior bulk eps or
-    the reciprocal mean diagonal of a prior interface tensor (decision 3).
+    SDF cell-length rule. Outside media are sampled from the other groups'
+    bulk permittivity beyond the surface, just as for the Yee operands.
     """
     from collections import OrderedDict
     from rfx.geometry.rasterize_grid import (
@@ -163,7 +163,11 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         f, ns, signed_distance = _union(
             xp, grid, supported, nodes, distance=True, fill_length=fill_length)
         interface = (f > 0) & (f < 1)
-        outside = 1.0 / xp.where(bulk, xi[0], (xi[0] + xi[1] + xi[2]) / 3.0)
+        length = (smooth._normal_cell_length(xp, fill_length, ns) if graded
+                  else uniform_cell(grid))
+        outside = smooth._bulk_outside(
+            xp, groups, eps, nodes, signed_distance, ns, length,
+            background_eps, masks, grid)
         inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
         inv_par = 1.0 / (f * eps + (1.0 - f) * outside + 1e-30)
         entries = [n * n * inv_perp + (1 - n * n) * inv_par for n in ns]
