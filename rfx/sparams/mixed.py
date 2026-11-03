@@ -192,7 +192,6 @@ def compute_mixed_s_matrix(
 
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
     from rfx.sources.msl_port import (
-        MSLPort,
         _msl_yz_cells,
         msl_cross_section_span,
         msl_h_plane_stencil,
@@ -223,7 +222,7 @@ def compute_mixed_s_matrix(
         n_steps = grid.num_timesteps(num_periods=num_periods)
 
     entries, n_msl, msl_ports, probe_xs, h_stencils, probe_clearance = _mixed_stages._prepare_mixed_probes(
-        MSLPort, grid, msl_h_plane_stencil, msl_probe_x_coords_n, self,
+        grid, msl_h_plane_stencil, msl_probe_x_coords_n, self,
     )
     _mixed_stages._check_mixed_ladder(
         RfxRefusal, _diagnostics, diagnostic_refusal, entries, grid, probe_xs,
@@ -261,7 +260,7 @@ def compute_mixed_s_matrix(
     z0_hj_per_port, beta0_per_port, eps_r_ref_per_port, trace_k_per_port, n_live_lw = _mixed_stages._prepare_mixed_anchors(
         RfxRefusal, _msl_yz_cells, _mx_pec_edge_masks, _mx_pec_edges_traced, _trace_planes_mx, entries, freqs_arr,
         grid, hammerstad_jensen_z0_eps_eff, lw_entries, materials, msl_ports, n_lw, n_msl,
-        np, port_idx_meta, self, wire_mode,
+        port_idx_meta, self, wire_mode,
     )
 
     if not skip_preflight:
@@ -313,13 +312,13 @@ def compute_mixed_s_matrix(
         _diagnostics, raw, planes, v_lw, i_lw, vref_lw, box_lw, plane_msl = _mixed_stages._run_mixed_drive(
             _diagnostics, _mx_pec_sheets, _mx_pec_wires, box_lw, debye_spec, flux_faces_lw, flux_names_msl,
             freqs_arr, grid, i_lw, lorentz_spec, magnitude_channel, materials, merge_diagnostics,
-            n_freqs_used, n_lw, n_steps, np, pec_mask, plane_msl, run_idx,
+            n_freqs_used, n_lw, n_steps, pec_mask, plane_msl, run_idx,
             v_lw, variant, vref_lw, wire_mode,
         )
 
         settling_db_runs, settling_details = _mixed_stages._score_mixed_record(
             _witness_base, _witness_total, dy_arr, dz_arr, freqs_arr, grid, h_names,
-            h_stencils, is_tracer, msl_ports, names, np, port_idx_meta, probe_xs,
+            h_stencils, is_tracer, msl_ports, names, port_idx_meta, probe_xs,
             raw, run_idx, self, settling_db_runs, settling_details, trace_k_per_port, variant,
         )
 
@@ -368,7 +367,7 @@ def compute_mixed_s_matrix(
 
     z0_msl_fit, beta_railed_msl = _mixed_stages._fit_mixed_impedance(
         beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
-        n_lw, n_msl, np, probe_xs, v_lad, z0_hj_per_port,
+        n_lw, n_msl, probe_xs, v_lad, z0_hj_per_port,
     )
     # β-scan rail flags for the diagnostic N-probe fit (issue
     # #681): a railed bin's |Zc|/β above are the ±35% scan-window
@@ -427,7 +426,7 @@ def compute_mixed_s_matrix(
 
     S, s_wave_full, plane_offsets_all, shift_beta_all = _mixed_stages._shift_mixed_planes(
         S, _complex_dtype, entries, eps_r_ref_per_port, freqs_arr, grid, msl_ports,
-        n_lw, n_msl, np, probe_xs, s_wave_full,
+        n_lw, n_msl, probe_xs, s_wave_full,
     )
 
     # MSL standing-wave-null reliability from each MSL port's own

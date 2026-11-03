@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import numpy as np
+
 from rfx.errors import AccuracyWarning
+from rfx.sources.msl_port import MSLPort
 
 
 def _validate_mixed_family(
@@ -91,7 +94,7 @@ def _validate_mixed_family(
 
 
 def _prepare_mixed_probes(
-    MSLPort, grid, msl_h_plane_stencil, msl_probe_x_coords_n, self,
+    grid, msl_h_plane_stencil, msl_probe_x_coords_n, self,
 ):
     # ---- MSL geometry prep (mirrors compute_msl_s_matrix; uniform
     # lane only, so the NU grid/dz-profile machinery is not needed) ----
@@ -216,7 +219,7 @@ def _prepare_mixed_indices(
 def _prepare_mixed_anchors(
     RfxRefusal, _msl_yz_cells, _mx_pec_edge_masks, _mx_pec_edges_traced, _trace_planes_mx, entries, freqs_arr,
     grid, hammerstad_jensen_z0_eps_eff, lw_entries, materials, msl_ports, n_lw, n_msl,
-    np, port_idx_meta, self, wire_mode,
+    port_idx_meta, self, wire_mode,
 ):
     # Analytic Hammerstad-Jensen anchor per MSL port (eps precedence
     # mirrors compute_msl_s_matrix: explicit eps_r_sub > rasterised
@@ -477,7 +480,7 @@ def _prepare_mixed_drive(
 def _run_mixed_drive(
     _diagnostics, _mx_pec_sheets, _mx_pec_wires, box_lw, debye_spec, flux_faces_lw, flux_names_msl,
     freqs_arr, grid, i_lw, lorentz_spec, magnitude_channel, materials, merge_diagnostics,
-    n_freqs_used, n_lw, n_steps, np, pec_mask, plane_msl, run_idx,
+    n_freqs_used, n_lw, n_steps, pec_mask, plane_msl, run_idx,
     v_lw, variant, vref_lw, wire_mode,
 ):
     raw = variant._forward_from_materials(
@@ -559,7 +562,7 @@ def _run_mixed_drive(
 
 def _score_mixed_record(
     _witness_base, _witness_total, dy_arr, dz_arr, freqs_arr, grid, h_names,
-    h_stencils, is_tracer, msl_ports, names, np, port_idx_meta, probe_xs,
+    h_stencils, is_tracer, msl_ports, names, port_idx_meta, probe_xs,
     raw, run_idx, self, settling_db_runs, settling_details, trace_k_per_port, variant,
 ):
     # Score recorded S channels and witness probes.
@@ -600,7 +603,7 @@ def _score_mixed_record(
 
 def _fit_mixed_impedance(
     beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
-    n_lw, n_msl, np, probe_xs, v_lad, z0_hj_per_port,
+    n_lw, n_msl, probe_xs, v_lad, z0_hj_per_port,
 ):
     # ---- N-probe line Zc: DIAGNOSTIC ONLY (issue #488) ---------
     # This lane does NOT substitute a fitted Zc into the MSL
@@ -703,7 +706,7 @@ def _fit_mixed_impedance(
 
 def _shift_mixed_planes(
     S, _complex_dtype, entries, eps_r_ref_per_port, freqs_arr, grid, msl_ports,
-    n_lw, n_msl, np, probe_xs, s_wave_full,
+    n_lw, n_msl, probe_xs, s_wave_full,
 ):
     # ---- Reference plane: MSL probe 0 -> declared feed plane -------
     # The same resolver as compute_msl_s_matrix (one expression for
