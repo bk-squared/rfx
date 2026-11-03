@@ -64,25 +64,30 @@ def node_metrics(grid):
     return lengths, tuple((minus + plus) / 2 for minus, plus in lengths)
 
 
-def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
+def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
+           normal_source=False):
     from rfx._internal._periodic import periodic_sdf
 
     union = nearest = normal = None
-    for shape in shapes:
+    for shape_index, shape in enumerate(shapes):
         sdf, ns = periodic_sdf(
             grid, shape, coords, smooth._get_sdf_fn(shape), xp=xp,
             normal_fn=smooth._get_normal_fn(shape))
         if union is None:
             union, nearest, normal = sdf, xp.abs(sdf), ns
+            source = xp.asarray(shape_index, dtype=xp.int32)
         else:
             closer = xp.abs(sdf) < nearest
+            source = xp.where(closer, shape_index, source)
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
             union = xp.minimum(union, sdf)
     h = (uniform_cell(grid) if fill_length is None else
          smooth._normal_cell_length(xp, fill_length, normal))
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
-    return result + (union,) if distance else result
+    if distance:
+        result += (union,)
+    return result + (source,) if normal_source else result
 
 
 def _next(xp, a, axis, periodic):
@@ -95,8 +100,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     """Host-float64 concrete geometry, or the smoother's traced JAX path (#833).
 
     Same-material groups use the existing union, nearest analytic normal and
-    SDF cell-length rule. Outside media are sampled from the other groups'
-    bulk permittivity beyond the surface, just as for the Yee operands.
+    SDF cell-length rule. Outside media are sampled beyond the surface,
+    excluding only the normal-source SDF shape, just as for the Yee operands.
     """
     from collections import OrderedDict
     from rfx.geometry.rasterize_grid import (
@@ -160,14 +165,15 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         supported = [s for s in group if smooth._has_sdf(s)]
         if not supported:
             continue
-        f, ns, signed_distance = _union(
-            xp, grid, supported, nodes, distance=True, fill_length=fill_length)
+        f, ns, signed_distance, source = _union(
+            xp, grid, supported, nodes, distance=True, fill_length=fill_length,
+            normal_source=True)
         interface = (f > 0) & (f < 1)
         length = (smooth._normal_cell_length(xp, fill_length, ns) if graded
                   else uniform_cell(grid))
         outside = smooth._bulk_outside(
             xp, groups, eps, nodes, signed_distance, ns, length,
-            background_eps, masks, grid)
+            background_eps, masks, grid, normal_source=source)
         inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
         inv_par = 1.0 / (f * eps + (1.0 - f) * outside + 1e-30)
         entries = [n * n * inv_perp + (1 - n * n) * inv_par for n in ns]
