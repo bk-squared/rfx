@@ -195,6 +195,20 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                                              table=table, port_table=port_table)
 
 
+def run_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
+                boundary, dispersion, port_plan, record_vref=True):
+    """Transfer dense setup operands to slabs before entering the time loop."""
+    grid, materials, pec_edges = operands
+    operands.clear()
+    debye_spec, lorentz_spec = dispersion
+    dispersion.clear()
+    prepared = prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
+        n_steps=n_steps, boundary=boundary, debye_spec=debye_spec,
+        lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref)
+    del materials, pec_edges, debye_spec, lorentz_spec
+    return run_prepared(prepared, records, mesh, n_steps=n_steps)
+
+
 def run_prepared(prepared, records, mesh, *, n_steps):
     """Keep monitor records outside the single-map canonical field step."""
     from rfx.stepping.rank import mesh_ranks

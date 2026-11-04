@@ -38,6 +38,9 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
         args[:2] = product.grid, product.materials
         if "pec_edge_masks" in kwargs:
             kwargs["pec_edge_masks"] = product.pec_edges
+    elif layout == "wrapped_uniform_slab":
+        args.insert(0, [product.grid, product.materials, product.pec_edges])
+        release_dense(product)
     elif layout == "slab":
         kwargs["sharded_materials"] = product.materials
         kwargs["sharded_pec_mask"] = product.pec_edges

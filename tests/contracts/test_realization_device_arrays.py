@@ -13,6 +13,7 @@ LANES = (
     "graded_forward",
     "distributed_v2_run",
     "distributed_v2_forward",
+    "distributed_v2_tfsf",
     "distributed_nu_run",
     "distributed_nu_forward",
     "subgridded",
@@ -56,8 +57,10 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
     # MaterialArrays and ComponentMaterials below are written out from that
     # commit, never derived from the current product or an assembly helper.
     shape = (15, 15, 15) if lane == "cpml" else (11, 11, 11)
-    if lane.startswith("distributed_v2"):
-        shape = (16, 11, 11)  # two x slabs with two ghosts each
+    if lane in ("distributed_v2_run", "distributed_v2_forward"):
+        shape = (11, 11, 11)  # whole-domain inputs to prepare_uniform
+    elif lane == "distributed_v2_tfsf":
+        shape = (20, 15, 15)  # CPML slabs with two ghosts each
     elif lane.startswith("distributed_nu"):
         shape = (2, 9, 11, 11)  # rank, ceil(11/2) + three ghosts, y, z
     expected = {}
@@ -127,6 +130,8 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
         def step(*args, **kwargs):
             if layout == "slab":
                 mats = {"materials": kwargs["sharded_materials"]}
+            elif layout == "wrapped_uniform_slab":
+                mats = {"materials": args[0][1]}
             else:
                 mats = {"materials": args[1]}
                 if lane == "subgridded":
@@ -183,12 +188,14 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
             freq_max=1e9,
             domain=(0.01,) * 3,
             dx=0.001,
-            boundary="cpml" if lane == "cpml" else "pec",
+            boundary="cpml" if lane in ("cpml", "distributed_v2_tfsf") else "pec",
             cpml_layers=2,
             **({"dz_profile": np.full(10, 0.001)} if graded else {}),
         )
         sim.add_material("glass", eps_r=2.0)
         sim.add(Box((0.0023,) * 3, (0.0067,) * 3), material="glass")
+        if lane == "distributed_v2_tfsf":
+            sim.add_tfsf_source(f0=1e9, closed_box=True, margin=1)
         if lane == "conformal":
             sim.add(Sphere((0.007,) * 3, 0.0013), material="pec")
         if lane == "subgridded":
