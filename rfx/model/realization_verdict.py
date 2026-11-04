@@ -49,8 +49,11 @@ def judge_realization(table, snap):
             continue
         axes = tuple(a for a in row.axes if a.declared_span_m is not None
                      and a.axis in getattr(table, "active_axes", "xyz"))
-        centroid = any(a.centroid_shift_cells is not None and
-                       abs(a.centroid_shift_cells) > .25 for a in axes)
+        # Point placement is judged only by interior admission; retain its shift
+        # in the table without treating node rounding as an extent-object warning.
+        centroid = any(a.declared_span_m > 0 for a in axes) and any(
+            a.centroid_shift_cells is not None and
+            abs(a.centroid_shift_cells) > .25 for a in axes)
         if row.family == "domain":
             centroid = False
             axes = tuple(a for a in axes if a.axis not in table.early_domain_axes)
