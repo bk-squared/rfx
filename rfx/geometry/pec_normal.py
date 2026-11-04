@@ -42,12 +42,12 @@ def _touches(xp, shape, points, half):
             & (points[2] + half >= bounds[0][2]) & (points[2] - half <= bounds[1][2]))
 
 
-def normal_box_mask(xp, grid, pec, dielectrics, coords, f, normal):
+def normal_box_mask(xp, grid, pec, shapes, coords, f, normal):
     """Select fractional normal samples with a certified all-Box dual cell."""
     if not isinstance(pec, Box):
         return None
     mask = (xp.abs(normal) >= 1 - 1e-6) & (f > 0) & (f < 1)
-    for shape, _ in dielectrics:
+    for shape in shapes:
         if isinstance(shape, Box):
             continue
         for image in _images(grid, shape):
@@ -62,13 +62,14 @@ def _box_images(xp, grid, shape):
             for image in _images(grid, shape)]
 
 
-def exact_box_inverse(xp, grid, pec, dielectrics, background, coords, axis):
+def exact_box_inverse(xp, grid, pecs, dielectrics, background, coords, axis):
     """Integrate constant material intervals, then invert the parallel mean.
 
     Interval midpoints only identify their constant material; their exact
     lengths are the integration weights. There is no quadrature sampling.
     """
-    metal = _box_images(xp, grid, pec)
+    metal = [bounds for pec in pecs if isinstance(pec, Box)
+             for bounds in _box_images(xp, grid, pec)]
     groups = [(eps, [bounds for shape in shapes if isinstance(shape, Box)
                      for bounds in _box_images(xp, grid, shape)])
               for eps, shapes in dielectric_groups(dielectrics).items()]
@@ -104,8 +105,8 @@ def exact_box_inverse(xp, grid, pec, dielectrics, background, coords, axis):
     return xp.where(short, 0., 1. / xp.where(parallel > 0, parallel, 1.))
 
 
-def replace_normal_boxes(xp, grid, pec, dielectrics, background, coords, axis, mask, legacy):
-    """Bound concrete work by fractional samples, retaining traced arithmetic."""
+def replace_normal_boxes(xp, grid, pecs, dielectrics, background, coords, axis, mask, legacy):
+    """Integrate the metal union with bounded forward and reverse workspace."""
     if mask is None:
         return legacy
     points = xp.broadcast_arrays(*coords)
@@ -114,9 +115,30 @@ def replace_normal_boxes(xp, grid, pec, dielectrics, background, coords, axis, m
         result = legacy.copy()
         for start in range(0, len(indices), 256):
             take = indices[start:start + 256]
-            values = exact_box_inverse(xp, grid, pec, dielectrics, background,
+            values = exact_box_inverse(xp, grid, pecs, dielectrics, background,
                                        tuple(p.ravel()[take] for p in points), axis)
             result.ravel()[take] = values
         return result
-    values = exact_box_inverse(xp, grid, pec, dielectrics, background, points, axis)
-    return xp.where(mask, values, legacy)
+    import jax
+
+    # Fixed-size blocks bound the cubic interval workspace independently of
+    # grid size. Rematerialization is essential: reverse-mode map must not
+    # retain each block's interval arrays for the entire grid.
+    size = mask.size
+    block_size = 256
+    padding = (-size) % block_size
+
+    def blocks(a):
+        return xp.pad(a.ravel(), (0, padding)).reshape(-1, block_size)
+
+    @jax.checkpoint
+    def integrate(block):
+        selected, *positions = block
+        return jax.lax.cond(
+            xp.any(selected),
+            lambda: exact_box_inverse(xp, grid, pecs, dielectrics, background,
+                                      positions, axis),
+            lambda: xp.zeros_like(positions[0]))
+
+    values = jax.lax.map(integrate, (blocks(mask), *(blocks(p) for p in points)))
+    return xp.where(mask, values.ravel()[:size].reshape(mask.shape), legacy)

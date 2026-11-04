@@ -5,7 +5,7 @@ import numpy as np
 
 from rfx import Box, Simulation
 from rfx.core.yee import EPS_0, MU_0
-from rfx.geometry import smoothing
+from rfx.geometry import pec_normal, smoothing
 from rfx.simulation import SnapshotSpec
 
 
@@ -31,6 +31,15 @@ def test_off_grid_block_cpml_energy(monkeypatch):
     departure = end_time + np.linalg.norm(np.asarray(grid.shape)*h) / 299792458.
     steps = int(np.ceil(4*departure/grid.dt)) + 1
     captured = []
+    r1_counts = []
+    original_replace = pec_normal.replace_normal_boxes
+
+    def capture_r1(*args, **kwargs):
+        selected = args[-2]
+        r1_counts.append(np.count_nonzero(selected))
+        return original_replace(*args, **kwargs)
+
+    monkeypatch.setattr(pec_normal, 'replace_normal_boxes', capture_r1)
     original = smoothing.compute_inv_eps_tensor_diag
     def capture(*args, **kwargs):
         result = original(*args, **kwargs)
@@ -40,6 +49,7 @@ def test_off_grid_block_cpml_energy(monkeypatch):
     result = sim.run(n_steps=steps, subpixel_smoothing='kottke_pec', skip_preflight=True,
                      snapshot=SnapshotSpec(interval=1, components=('ex', 'ey', 'ez', 'hx', 'hy', 'hz')))
     assert len(captured) == 1
+    assert sum(r1_counts) > 0, 'B6 must exercise fractional Box-normal R1 samples'
     energy = np.zeros(steps - 1)
     for axis, component in enumerate(('ex', 'ey', 'ez')):
         field = np.asarray(result.snapshots[component][:-1], dtype=float)
@@ -53,6 +63,6 @@ def test_off_grid_block_cpml_energy(monkeypatch):
     after = energy[source_end - 1:]
     assert np.all(np.isfinite(energy)) and after[0] > 0
     growth = np.max(after - np.minimum.accumulate(after)) / after[0]
-    print(f'B6: steps={steps}, duration/departure={steps*grid.dt/departure:.6f}, '
+    print(f'B6: R1_samples={sum(r1_counts)}, steps={steps}, duration/departure={steps*grid.dt/departure:.6f}, '
           f'energy_at_source_end={after[0]:.9g}, max_regrowth={growth:.9g}')
     assert growth <= 1e-6

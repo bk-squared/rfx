@@ -188,3 +188,90 @@ def test_non_box_elsewhere_does_not_disable_normal_box():
     sim.add(sphere, material='remote')
     np.testing.assert_allclose(operands(sim, [(sphere, ER)], metal)[1][4, 4, 5],
                                .5, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize('kind', ['sphere', 'cylinder', 'unbounded'])
+@pytest.mark.parametrize('fraction', [.25, .5])
+@pytest.mark.parametrize('traced', [False, True], ids=['host', 'jnp'])
+def test_non_box_pec_contact_keeps_independent_legacy_limit(kind, fraction, traced):
+    """A second PEC cap in the dual cell excludes the Box's normal sample."""
+    sim, dielectrics, metal = scene('lower', fraction)
+    grid = sim.freeze_mesh()
+
+    class MaskOnly:
+        def mask(self, grid):
+            # Even a remote occupancy-only PEC excludes every R1 sample.
+            return Box((H,)*3, (2*H,)*3).mask(grid)
+
+    cap = {'sphere': Sphere((4*H, 4*H, 3.8*H), .4*H),
+           'cylinder': Cylinder((4*H, 4*H, 3.5*H), .3*H, 1.2*H),
+           'unbounded': MaskOnly()}[kind]
+    # Independent legacy construction at q=(4,4,4.5)h: the slab is a
+    # series dielectric/air cell; both PEC normals there are along z.
+    # The caps end at 4.2h / 4.1h, inside the closed dual cell [4h,5h].
+    qz = 4.5*H
+    face = metal.corner_lo[2]
+    slab_fraction = np.clip(.5 - (qz-face)/H, 0, 1)
+    eps = 1 / (slab_fraction/ER + 1-slab_fraction)
+    box_distance = face-qz
+    box_fill = np.clip(.5-box_distance/H, 0, 1)
+    box_inverse = 0. if box_distance <= 0 else (1-box_fill)/eps
+    cap_top = {'sphere': 4.2*H, 'cylinder': 4.1*H, 'unbounded': 2*H}[kind]
+    cap_fill = np.clip(.5-(qz-cap_top)/H, 0, 1)
+    expected = np.float32(min(np.float32(1/eps), box_inverse, (1-cap_fill)/eps))
+
+    def evaluate(face):
+        slab = Box(dielectrics[0][0].corner_lo, (20*H, 20*H, face))
+        pec = Box((H, H, face), metal.corner_hi)
+        return smoothing.compute_inv_eps_tensor_diag(grid, [(slab, ER)], [pec, cap])[2][4, 4, 4]
+
+    actual = jax.jit(evaluate)(jnp.float32(face)) if traced else evaluate(face)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize('arrangement', ['side', 'sandwich', 'overlap'])
+@pytest.mark.parametrize('reverse', [False, True])
+@pytest.mark.parametrize('traced', [False, True], ids=['host', 'jnp'])
+def test_multiple_pec_boxes_use_one_union_integral(arrangement, reverse, traced):
+    """All metal has zero inverse epsilon, independent of PEC list order."""
+    sim, _, _ = scene('lower', .25)
+    grid = sim.freeze_mesh()
+    other = {
+        'side': Box((H,)*3, (4.3*H, 7*H, 4.4*H)),
+        'sandwich': Box((H,)*3, (7*H, 7*H, 4.2*H)),
+        'overlap': Box((H, H, 4.9*H), (7*H,)*3),
+    }[arrangement]
+    # Ez's cell spans x,y in [3.5,4.5]h and z in [4,5]h.
+    # Top metal removes .2h. Side metal removes another .4h over .8
+    # of the area: .8/.4 + .2/.8 = 2.25 parallel capacitance.
+    # A lower slab leaves a .6h gap; overlapping top slabs remove .2h once.
+    expected = {'side': 1/(.8/.4 + .2/.8), 'sandwich': .6, 'overlap': .8}[arrangement]
+
+    def evaluate(face):
+        upper = Box((H, H, face), (7*H,)*3)
+        pecs = [other, upper] if reverse else [upper, other]
+        return smoothing.compute_inv_eps_tensor_diag(grid, [], pecs)[2][4, 4, 4]
+
+    face = 4.8*H
+    actual = jax.jit(evaluate)(jnp.float32(face)) if traced else evaluate(face)
+    np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=0)
+
+
+def test_chunked_traced_values_and_face_gradient():
+    """A partial final block preserves every operand and the series derivative."""
+    grid = Simulation(freq_max=10e9, domain=(9*H,)*3, dx=H,
+                      boundary='pec', cpml_layers=0).freeze_mesh()
+
+    def evaluate(face):
+        slab = Box((-10*H,)*3, (20*H, 20*H, face))
+        pec = Box((H, H, face), (8*H,)*3)
+        return smoothing.compute_inv_eps_tensor_diag(grid, [(slab, ER)], [pec])
+
+    assert np.prod(grid.shape) % 256 != 0
+    face = 4.6*H
+    host = evaluate(face)
+    traced = jax.jit(evaluate)(jnp.float32(face))
+    for actual, expected in zip(traced, host):
+        np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)
+    gradient = jax.jit(jax.grad(lambda f: evaluate(f)[2][4, 4, 4]))(jnp.float32(face))
+    np.testing.assert_allclose(gradient, 1/(H*ER), rtol=1e-6, atol=0)

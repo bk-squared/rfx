@@ -1627,13 +1627,14 @@ def compute_inv_eps_tensor_diag(
     dielectric_shapes : list of (Shape, eps_r), optional
         Same as ``compute_smoothed_eps`` — applied first.
     pec_shapes : list of Shape, optional
-        PEC objects. Each is folded in via elementwise minimum on the
-        per-component inverse-eps tensor.
+        PEC objects. All-Box fractional normal samples use the exact metal
+        union integral. Elsewhere each object is folded in via elementwise
+        minimum on the per-component inverse-eps tensor.
 
         **Precondition (Stage 2 v1)**: ``pec_shapes`` must be
-        **non-overlapping** in space. Two overlapping PEC bodies with
-        different surface normals at the same Yee point would produce
-        incorrect tensor entries under the current min-merge — each
+        **non-overlapping** in space outside the all-Box R1 samples. Two
+        overlapping PEC bodies with different surface normals at the same
+        Yee point would produce incorrect tensor entries under the current min-merge — each
         body contributes a Kottke result based on its own normal, and
         ``min`` over independently-projected diagonals can collapse to
         zero on both axes even when the geometric union of fills is
@@ -1699,18 +1700,17 @@ def compute_inv_eps_tensor_diag(
     # its own half-cell offset.
     sample = _uniform_sample_coords(xp, coords, grid.dx)
     promoted = False
-    # R1 replaces the dielectric baseline, which can differ from its exact
-    # laminate integral at corners. Other active PEC contributions still win
-    # by minimum; a remote PEC's f=0 baseline must not clamp R1 again.
+    # First retain the legacy merge and collect R1's all-Box normal cells.
+    # Then integrate every Box PEC as metal once per selected component.
     normal_union = [xp.zeros_like(a, dtype=bool) for a in inv]
-    pec_inverse = [xp.full_like(a, xp.inf) for a in inv]
+    from rfx.geometry.pec_normal import normal_box_mask, replace_normal_boxes
+    shapes = [s for s, _ in dielectric_shapes] + list(pec_shapes)
     for pec_shape in pec_shapes:
         if not _has_sdf(pec_shape):
             # Fallback: staircase mask. Cells inside the shape get
             # full-PEC (inv = 0); cells outside are unchanged.
             mask = pec_masks[id(pec_shape)]
             inv = [xp.where(mask, 0.0, a) for a in inv]
-            pec_inverse = [xp.where(mask, 0.0, a) for a in pec_inverse]
             continue
         promoted = True
         for i, comp in enumerate(("ex", "ey", "ez")):
@@ -1727,21 +1727,17 @@ def compute_inv_eps_tensor_diag(
             # Retain the legacy override outside R1's all-Box normal cells.
             e_inside = (sdf <= 0.0)
             inv_c = xp.where(e_inside, 0.0, inv_c)
-            from rfx.geometry.pec_normal import normal_box_mask, replace_normal_boxes
             normal_cells = normal_box_mask(
-                xp, grid, pec_shape, dielectric_shapes, (Xc, Yc, Zc),
+                xp, grid, pec_shape, shapes, (Xc, Yc, Zc),
                 f, (n_x, n_y, n_z)[i])
-            inv_c = replace_normal_boxes(
-                xp, grid, pec_shape, dielectric_shapes, background_eps,
-                (Xc, Yc, Zc), i, normal_cells, inv_c)
             if normal_cells is not None:
                 normal_union[i] = normal_union[i] | normal_cells
-            pec_inverse[i] = xp.minimum(
-                pec_inverse[i], xp.where((f > 0) | e_inside, inv_c, xp.inf))
             inv[i] = xp.minimum(inv[i], inv_c)
 
-    inv = [xp.where(selected, pec, legacy)
-           for selected, pec, legacy in zip(normal_union, pec_inverse, inv)]
+    inv = [replace_normal_boxes(
+        xp, grid, pec_shapes, dielectric_shapes, background_eps,
+        sample[comp], i, normal_union[i], inv[i])
+        for i, comp in enumerate(("ex", "ey", "ez"))]
     return _to_jax(inv, host=host, promoted=promoted)
 
 
