@@ -1160,9 +1160,9 @@ def compute_coax_msl_transition(
         Default ``True`` raises ``ValueError`` for a non-passive extracted S.
         ``False`` returns the diagnostic matrix with a ``UserWarning``.
     skip_preflight : bool, optional
-        Default ``False`` runs the shared sheet-size verdict before stepping:
-        ``snap="strict"`` blocks off-size sheets and ``snap="declared"`` warns.
-        Other preflight families are not run here.
+        Skip advisories only when True (default False); realization refusals
+        still apply: ``snap="strict"`` blocks off-size sheets and
+        ``snap="declared"`` warns. Other preflight families are not run here.
     extra_flux_monitors : list or None, optional
         Default ``None``. Supply monitor entries registered on a separate
         simulation with the same domain. Per-drive net Poynting-flux spectra

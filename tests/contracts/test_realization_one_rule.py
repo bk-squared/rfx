@@ -14,6 +14,43 @@ LO = np.array((2.23, 2.37, 2.19)) * D
 HI = np.array((6.61, 6.73, 6.57)) * D
 
 
+@pytest.mark.parametrize("snap", ("strict", "declared"))
+def test_skip_preflight_keeps_narrowed_microstrip_verdict(snap):
+    import warnings
+
+    # The PEC bottom wall is the ground; the strip rests on the substrate.
+    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", snap=snap)
+    sim.add_material("substrate", eps_r=2.)
+    sim.add(Box((0., 0., 0.), (10*D, 10*D, 4*D)), material="substrate")
+    sim.add(Box((2*D, 3.9*D, 4*D), (8*D, 6.1*D, 5*D)), material="pec")
+    grid = sim._build_grid()
+    cells = np.asarray(grid.cells(1), dtype=float)
+    nodes = np.r_[0., np.cumsum(cells)]
+    centres = (nodes[:-1] + nodes[1:])/2
+    occupied = np.flatnonzero((centres >= 3.9*D) & (centres < 6.1*D))
+    # Occupied centres 4.5, 5.5 mm span faces 4, 6 mm: 2.2 -> 2 mm.
+    width = nodes[occupied[-1]+1] - nodes[occupied[0]]
+    drawn = (6.1-3.9)*D
+    np.testing.assert_allclose(nodes[occupied[[0, -1]]] / D, [4., 5.])
+    assert width == pytest.approx(2*D)
+    assert (width-drawn)/drawn*100 == pytest.approx(-100/11)
+    assert (width-drawn)/cells[occupied[0]] == pytest.approx(-.2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if snap == "strict":
+            with pytest.raises(ValueError, match="y extent miss"):
+                sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+        else:
+            result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+            row = result.realized_geometry.realization_table.row("geometry[1]")
+            assert row.axes[1].realized_span_m == pytest.approx(width)
+    findings = [w.message for w in caught
+                if getattr(w.message, "code", None) == "realization"]
+    assert len(findings) == (snap == "declared")
+    if findings:
+        assert "y extent miss -0.2 cells (-9.09090909091 %)" in str(findings[0])
+
+
 @pytest.mark.parametrize("lane", LANES)
 @pytest.mark.parametrize("operation", ("pickle", "deepcopy"))
 def test_result_metadata_roundtrip(lane, operation):

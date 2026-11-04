@@ -155,7 +155,7 @@ studies.
 | `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
 | `devices=[...]` | Run across several devices (x-slab decomposition). `exchange_interval` must stay 1. |
-| `skip_preflight=True` | Skip the automatic preflight. Use only after you have read it once. |
+| `skip_preflight=True` | Skip advisories only, for both `run()` and `forward()`. Realization refusals still apply; `snap='declared'` warns on geometry size misses. |
 
 A run argument that the selected solver path does not implement **raises
 before the first step**, for example snapshots on a graded mesh. The one exception is `report_every`, which only prints
