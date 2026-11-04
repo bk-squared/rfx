@@ -1289,11 +1289,11 @@ class _ExecuteMixin:
             relief instead — it is exact regardless of placement, at the
             cost of recompute rather than gradient accuracy.
         skip_preflight : bool
-            Skip the consolidated :meth:`preflight` validation suite that
-            normally runs before the forward simulation (default False).
-            Use only when preflight has already been run by the caller
-            (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
-            known-spurious warning on a deliberate configuration.
+            Skip advisory :meth:`preflight` checks only (default False).
+            Realization refusals and runtime admission guards still apply.
+            Use ``snap='declared'`` to warn on geometry size misses.
+            Skip advisories when already reviewed for the same model
+            (e.g. :func:`rfx.optimize` runs preflight once at entry).
         distributed : bool, optional
             Run on several devices: a uniform mesh uses the runner of
             ``run(devices=...)``, a graded mesh the graded multi-device runner;
@@ -1872,7 +1872,7 @@ class _ExecuteMixin:
             "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
-            Skip advisory preflight checks. Runtime admission guards still apply.
+            Skip advisories only; realization refusals and runtime admission still apply.
         decay_monitor_component : str
             Legacy uniform monitor component (default ``"ez"``); does not
             affect the energy or radiated-flux stop.

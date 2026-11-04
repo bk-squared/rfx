@@ -106,7 +106,7 @@ def compute_waveguide_s_matrix(
     Parameters
     ----------
     skip_preflight : bool
-        Skip shared preflight checks when True. Default False.
+        Skip advisories only when True; realization refusals still apply. Default False.
     num_periods : float
         Length of the FDTD run (in source-period multiples) used to
         derive ``n_steps`` when ``n_steps`` is not given. The

@@ -113,8 +113,8 @@ Two options change what the check does:
 - `preflight(strict=True)` collects every finding, warnings and notes
   included, and raises one `ValueError` that lists them all.
 
-`run(skip_preflight=True)` skips the automatic check. Use it only after you
-have read the report once for the same model.
+`run(skip_preflight=True)` skips advisories only; realization refusals still
+apply. Use `snap='declared'` to warn on geometry size misses.
 
 ## How rfx checks it
 
