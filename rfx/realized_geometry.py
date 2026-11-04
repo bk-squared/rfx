@@ -579,7 +579,7 @@ def _mask_ranges(mask):
 def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
-    from rfx.preflight.realization import context_from_conductors
+    from rfx.model.realization_context import context_from_conductors
     from rfx.core.jax_utils import is_tracer
     grid = conductors.grid
     if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):

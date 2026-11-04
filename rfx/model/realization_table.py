@@ -315,7 +315,7 @@ def finish_table(sim, conductors, *, lane):
     if lane == "run_subgridded" and not conductors.refinements and conductors.kernel_context is None:
         record = replace(record, limitations=("refined region not represented",))
     if lane != "coax" and not any(row.traced_inputs for row in table.rows):
-        from rfx.preflight.realization import context_from_conductors
+        from rfx.model.realization_context import context_from_conductors
         from rfx.realized_geometry import _ports
         from rfx.model.realization_placements import placement_rows
         ctx = context_from_conductors(sim, conductors)

@@ -238,7 +238,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
                 remember_legacy(sim, axis, legacy_outcome(
                     f"legacy:wall:{axis}", solved/length-1, .01,
                     text + "; accepted with snap='declared'.",
-                    "wall_axis_off_node", "judge_wall_axes"))
+                    "wall_axis_off_node", "judge_wall_axes", loc=axis))
                 if key in warned:
                     continue
                 warnings.warn(PreflightWarning(

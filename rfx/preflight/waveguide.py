@@ -773,7 +773,10 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 )
                 continue
             rasterized = rec["rasterized"]
-            if abs(declared - rasterized) <= 1e-12:
+            from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready
+            if legacy_table_ready(self._campaign_ctx()):
+                continue
+            if not legacy_mismatch((rasterized-declared)/declared, .01):
                 continue
             note = (
                 ""
