@@ -1212,13 +1212,15 @@ def _yee_cell_extents(lengths):
 
 
 def _bulk_outside(xp, groups, current, coords, distance, normal, length,
-                  background, masks, grid):
+                  background, masks, grid, *, normal_source=None, normal_image=None):
     """Sample bulk media half a normal cell beyond this SDF surface (#2383).
 
     SDF groups own points with signed distance <= 0. Mask-only groups own
     primal cells, clamped at the grid boundary. Existing group priority is
-    retained, including the current group's mask-only bodies: they do not
-    form its SDF surface. Neither smoothed operands nor node tensors are read.
+    retained. In the current group only the (SDF shape, periodic image)
+    supplying the normal is excluded (#2385); the shape index counts SDF
+    shapes only. Other images, shapes and mask-only bodies count. Neither
+    smoothed operands nor node tensors are read.
     """
     from rfx._internal._periodic import periodic_sdf
     from rfx.geometry.rasterize_grid import (
@@ -1230,11 +1232,14 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     outside = background
     indices = None
     for eps_r, group in groups.items():
+        sdf_index = 0
         for shape in group:
             if _has_sdf(shape):
-                if eps_r == current:
-                    continue
-                mask = periodic_sdf(grid, shape, points, _get_sdf_fn(shape), xp=xp) <= 0
+                mask = periodic_sdf(
+                    grid, shape, points, _get_sdf_fn(shape), xp=xp,
+                    exclude_image=normal_image if eps_r == current else None,
+                    exclude_where=normal_source == sdf_index) <= 0
+                sdf_index += 1
             else:
                 mask = masks[id(shape)]
                 if mask is None:
@@ -1316,20 +1321,25 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             best_abs_sdf = None
             best_nx = best_ny = best_nz = None
 
-            for shape in sdf_shapes:
+            for shape_index, shape in enumerate(sdf_shapes):
                 from rfx._internal._periodic import periodic_sdf
-                s, (n_x, n_y, n_z) = periodic_sdf(
+                s, (n_x, n_y, n_z), image = periodic_sdf(
                     grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
-                    normal_fn=_get_normal_fn(shape))
+                    normal_fn=_get_normal_fn(shape), return_image=True)
 
                 if sdf_union is None:
                     sdf_union = s
                     best_abs_sdf = xp.abs(s)
                     best_nx, best_ny, best_nz = n_x, n_y, n_z
+                    normal_source = xp.asarray(shape_index, dtype=xp.int32)
+                    normal_image = image
                 else:
                     sdf_union = xp.minimum(sdf_union, s)
                     # Update normal where this shape's surface is closer
                     closer = xp.abs(s) < best_abs_sdf
+                    normal_source = xp.where(closer, shape_index, normal_source)
+                    normal_image = tuple(xp.where(closer, k, old)
+                                         for k, old in zip(image, normal_image))
                     best_abs_sdf = xp.where(closer, xp.abs(s), best_abs_sdf)
                     best_nx = xp.where(closer, n_x, best_nx)
                     best_ny = xp.where(closer, n_y, best_ny)
@@ -1347,7 +1357,8 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
 
             outside = _bulk_outside(
                 xp, groups, eps_r, (Xc, Yc, Zc), sdf_union,
-                (best_nx, best_ny, best_nz), length, background[comp], masks, grid)
+                (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
+                normal_source=normal_source, normal_image=normal_image)
             kt = _kottke_tensor_eps(f, eps_r, outside, best_nx, best_ny, best_nz)
             smooth = kt[("ex", "ey", "ez").index(comp)]
 
