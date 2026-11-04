@@ -93,6 +93,18 @@ def _preflight_impl(
         admit_waveguide_entries(self)
         self._collect_flux_regions(issues)
         try:
+            if _conductors is None:
+                from rfx.model.realization_table import bind_table
+                from rfx.model.realization_verdict import admit_table
+                ctx = self._campaign_ctx()
+                root = ctx.realized() if ctx.grid is not None else None
+                if root is not None:
+                    bind_table(self, root, lane=root.lane, compact=False)
+                    admit_table(self, root, deliver=False)
+                    admit_table(self, root, finished=True, deliver=False)
+                    table = root.realization_table
+                    issues._realization_reader = lambda: table
+                    issues.extend(table.findings)
             from rfx.model.thin_conductors import warn_dc_films
             warn_dc_films(self, warnings)
             if check_resolution:
@@ -142,8 +154,12 @@ def _preflight_impl(
     dc_findings = {str(w.message) for w in caught
                    if getattr(w.message, 'source', None) == 'admit_dc_film'
                    and getattr(w.message, 'loc', None) is not None}
+    verdict_issues = tuple(issues)
     for w in caught:
         msg = str(w.message)
+        if any(issue.code == getattr(w.message, 'code', None) and str(issue) == msg
+               for issue in verdict_issues):
+            continue
         if (getattr(w.message, 'source', None) == 'admit_dc_film'
                 and getattr(w.message, 'loc', None) is None and msg in dc_findings):
             continue

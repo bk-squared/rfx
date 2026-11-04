@@ -303,6 +303,12 @@ def _prepare_waveguide_references(
             _ref_pec_sheets: list = []
             _ref_pec_wires: list = []
             _ref_sheet_specs: list = []
+            if any(tc.surface_impedance_f0 is not None for tc in _ref_sim._thin_conductors):
+                raise NotImplementedError(
+                    f"port_reference_sims[{_i}] declares a surface-impedance sheet "
+                    "(add_thin_conductor(..., surface_impedance_f0=...)); the reference "
+                    "run does not model sheet impedance and would run without it. "
+                    "Remove it from the reference simulation.")
             from rfx.model.conductors import solve_conductors, assembled_materials
             from rfx.model.realization_table import finish_table
             reference = solve_conductors(_ref_sim, _ref_grid)

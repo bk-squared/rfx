@@ -30,6 +30,14 @@ def judge_realization(table, snap):
                     "Evaluate a concrete mesh and geometry to check the realized dimensions.",
                     code="realization", source="judge_realization"))
             continue
+        if row.status == "not judged: no reference":
+            table.judged.add(row.label)
+            findings.append(PreflightIssue(
+                f"realization {row.label} ({row.family}): not judged: no reference; "
+                "the model integral is reported without a drawn integral comparison. "
+                "Use geometry with a supported analytic reference to judge its realization.",
+                code="realization", loc=row.label, source="judge_realization"))
+            continue
         if row.status != "evaluated":
             continue
         table.judged.add(row.label)
@@ -147,7 +155,7 @@ def legacy_table_ready(ctx):
     return table is not None and "legacy sheets" in table.judged
 
 
-def admit_table(sim, conductors, *, options=None, finished=False, legacy_findings=None):
+def admit_table(sim, conductors, *, options=None, finished=False, legacy_findings=None, deliver=True):
     """Judge only available rows, without moving any solver preparation stage."""
     from rfx.grid import axis_kinds
     from rfx.boundaries.features import grid_face_depths
@@ -158,6 +166,10 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
         smoothing, conformal = options or (False, False)
         for owner in (sim, conductors.grid, sim._unresolved_domain):
             for row, finding in early_outcomes(owner).values():
+                if row.label.startswith("legacy:film-entry:"):
+                    key = int(row.label.rsplit(":", 1)[1])
+                    finding.loc = next((f"thin_conductors[{i}]" for i, tc in
+                                        enumerate(sim._thin_conductors) if id(tc) == key), None)
                 if row.label not in table.judged:
                     table.legacy_rows.append(row)
                     table.judged.add(row.label)
@@ -175,15 +187,16 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
                      ((smoothing and row.family == "material") or
                       (conformal and row.family == "volume")))):
                 table.deferred.add(row.label)
-        if legacy_findings is not None:
+        if "legacy sheets" in table.judged:
+            legacy = []
+        elif legacy_findings is not None:
             table.judged.add("legacy sheets")
             for finding in legacy_findings:
-                finding._realization_delivered = True
                 table.findings.append(finding)
                 retain_sheet_outcome(table, finding)
-            legacy = []
+            legacy = list(legacy_findings)
         elif not any(row.traced_inputs for row in table.rows):
-            from rfx.preflight.realization import context_from_conductors
+            from rfx.model.realization_context import context_from_conductors
             from rfx.preflight.pec_geometry import _warn_sheet_effective_size, _warn_sheet_cavity_spacing
             from rfx.geometry.csg import Box
             from rfx.preflight._common import PreflightIssue
@@ -219,7 +232,8 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
         table.deferred.clear()
         legacy = []
     findings = tuple(legacy) + judge_realization(table, sim._snap)
-    deliver_findings(table, findings)
+    if deliver:
+        deliver_findings(table, findings)
 
 
 def deliver_findings(table, findings):
@@ -243,13 +257,13 @@ def deliver_findings(table, findings):
         raise RfxRefusal("\n".join(errors))
 
 
-def legacy_outcome(label, relative_miss, tolerance, message, code, source):
+def legacy_outcome(label, relative_miss, tolerance, message, code, source, *, loc=None):
     """Retain an early judge result with the legacy caller's rendered message."""
     from rfx.preflight._common import PreflightIssue
     row = SimpleNamespace(label=label, family="legacy", status="evaluated",
         traced_inputs=(), relative_miss=relative_miss, tolerance=tolerance,
         message=message, code=code)
-    finding = PreflightIssue(message, code=code, source=source)
+    finding = PreflightIssue(message, code=code, source=source, loc=loc)
     finding._realization_delivered = True
     return row, finding
 

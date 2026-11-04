@@ -138,7 +138,7 @@ def read_rows(rows, grid, sim):
                                 for k in group if (values := store.get("filled", {}).get(k)))
                     row = replace(row, integral_comparison=("filled volume", reference, total, 3))
                 else:
-                    row = replace(row, status="not evaluated: analytic filled-volume reference unavailable")
+                    row = replace(row, status="not judged: no reference")
                 row = replace(row, continued_faces=tuple(
                     f"{'xyz'[face//2]}-{'hi' if face%2 else 'lo'}" for face in
                     sorted(store.get("smoothed_continued", {}).get(index, ()))))
@@ -160,7 +160,7 @@ def read_rows(rows, grid, sim):
                     row = replace(row, integral_comparison=(
                         "summed open area", group_declared, group_realized, 2))
                 else:
-                    row = replace(row, status="not evaluated: analytic open-area reference unavailable")
+                    row = replace(row, status="not judged: no reference")
         result.append(row)
     return tuple(result)
 

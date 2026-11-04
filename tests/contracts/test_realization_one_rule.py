@@ -1139,11 +1139,17 @@ def test_integral_verdict_boundary_conformal(conformal, miss, snap):
 def test_aperture_verdict_boundary(lane, miss, snap):
     import warnings
     graded = lane.startswith("graded")
-    sim = Simulation(freq_max=100e9, domain=(10*D,)*3, dx=D, boundary="pec", snap=snap,
+    sim = Simulation(freq_max=100e9, domain=(10*D,)*3, dx=D,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=6, snap=snap,
                      **({"dz_profile": np.array((.8, 1.2)*5)*D} if graded else {}))
     length = 4*D/(1+miss)
     centre = (5*D, (4.8 if graded else 5)*D)
     ranges = [(c-length/2, c+length/2) for c in centre]
+    # The aperture's snapped edges are bounded by node-aligned PEC walls.
+    zlo, zhi = ((2.8, 6.8) if graded else (3., 7.))
+    for lo, hi in (((0, 0, 0), (10, 3, 10)), ((0, 7, 0), (10, 10, 10)),
+                   ((0, 0, 0), (10, 10, zlo)), ((0, 0, zhi), (10, 10, 10))):
+        sim.add(Box(tuple(np.array(lo)*D), tuple(np.array(hi)*D)), material="pec")
     sim.add_waveguide_port(5*D, direction="+x", y_range=ranges[0], z_range=ranges[1],
                           freqs=np.array([80e9]), f0=80e9, bandwidth=.4,
                           ref_offset=1, probe_offset=2)
@@ -1155,6 +1161,11 @@ def test_aperture_verdict_boundary(lane, miss, snap):
         lo, hi = [np.argmin(abs(nodes-p)) for p in bounds]
         spans.append(nodes[hi]-nodes[lo])
     np.testing.assert_allclose(np.array(spans)/length-1, miss, atol=2e-6, rtol=0)
+    report = sim.preflight()
+    aperture = [f for f in report if f.code == "realization" and f.loc == "waveguide_port[0]"]
+    assert len(aperture) == (miss > .01)
+    if aperture:
+        assert aperture[0].severity == ("error" if snap == "strict" else "warning")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         options = dict(n_steps=1, skip_preflight=True)
@@ -1170,3 +1181,77 @@ def test_aperture_verdict_boundary(lane, miss, snap):
             np.testing.assert_allclose([a.realized_span_m for a in row.axes[1:]], spans, atol=1e-12, rtol=0)
     messages = [w.message for w in caught if getattr(w.message, "code", None) == "realization"]
     assert len(messages) == (miss > .01 and snap == "declared")
+
+
+@pytest.mark.parametrize("operation", ("preflight", "run", "skip"))
+def test_dc_film_geometry_reuses_one_outcome_per_film(operation, monkeypatch):
+    import warnings
+    from rfx.model import thin_conductors
+    calls = []
+    original = thin_conductors._check_dc_area
+
+    def witness(*args, **kwargs):
+        calls.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(thin_conductors, "_check_dc_area", witness)
+    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", snap="declared")
+    length = 4*D/1.02
+    for z in (3*D, 7*D):
+        sim.add_thin_conductor(Box((5*D-length/2, 5*D-length/2, z),
+                                   (5*D+length/2, 5*D+length/2, z)),
+                               sigma_bulk=100., thickness=35e-6)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if operation == "preflight":
+            report = sim.preflight()
+            messages = [issue for issue in report if issue.code == "dc_film_area"]
+        else:
+            sim.run(n_steps=1, compute_s_params=False, skip_preflight=operation == "skip")
+            messages = [w.message for w in caught if getattr(w.message, "code", None) == "dc_film_area"]
+    assert len(messages) == 2
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("snap", ("strict", "declared"))
+def test_standalone_preflight_reads_the_verdict(snap, monkeypatch):
+    from rfx.model import realization_verdict
+    sim = scene("pec_box", "uniform_run")
+    sim._snap = snap
+    calls = []
+    original = realization_verdict.judge_realization
+
+    def witness(table, mode):
+        findings = original(table, mode)
+        calls.extend(findings)
+        return findings
+
+    monkeypatch.setattr(realization_verdict, "judge_realization", witness)
+    report = sim.preflight()
+    findings = [issue for issue in report if issue.code == "realization"]
+    assert findings
+    assert all(any(issue is finding for finding in calls) for issue in findings)
+    assert any(issue.severity == ("error" if snap == "strict" else "warning") for issue in findings)
+
+
+@pytest.mark.parametrize("smoothing", (True, "full_tensor"))
+def test_integral_without_reference_is_reported(smoothing):
+    import warnings
+    # Overlapping curved unions have no analytic union-volume reference.
+    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec")
+    sim.add_material("glass", eps_r=2.)
+    for x in (4*D, 5*D):
+        sim.add(Sphere((x, 5*D, 5*D), 2*D), material="glass")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False,
+                         subpixel_smoothing=smoothing)
+    table = result.realized_geometry.realization_table
+    for i in range(2):
+        row = table.row(f"geometry[{i}]")
+        assert row.status == "not judged: no reference"
+        assert row.filled_volume_m3 > 0
+        messages = [w.message for w in caught if getattr(w.message, "loc", None) == row.label
+                    and getattr(w.message, "code", None) == "realization"]
+        assert len(messages) == 1
+        assert "not judged: no reference" in str(messages[0])
