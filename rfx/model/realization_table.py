@@ -30,6 +30,7 @@ class RealizationRow:
     family: str
     axes: tuple[RealizationAxis, ...] = ()
     continued_faces: tuple[str, ...] = ()
+    clipped_faces: tuple = ()
     status: str = "evaluated"
     model: str = "mask"
     declared_area_m2: float | None = None
@@ -197,7 +198,8 @@ def realization_table(prepared) -> RealizationTable:
     rows.extend(placement_rows(sim, record, (r.label for r in rows)))
     from rfx.model.realization_integrals import read_rows
     quantity_grid = getattr(record, "_quantity_grid", prepared.conductors.grid)
-    return RealizationTable(read_rows(rows, quantity_grid, sim), prepared.lane,
+    from rfx.model.realization_faces import interior_rows
+    return RealizationTable(interior_rows(read_rows(rows, quantity_grid, sim), record), prepared.lane,
                             weakref.ref(prepared.conductors),
                             active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1),
                             periods={d.axis: d.length_m for d in record.domain

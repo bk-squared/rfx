@@ -49,18 +49,6 @@ def judge_realization(table, snap):
             continue
         axes = tuple(a for a in row.axes if a.declared_span_m is not None
                      and a.axis in getattr(table, "active_axes", "xyz"))
-        if row.family == "volume" and row.wall_positions_m:
-            from rfx.model.realization_table import _axis
-            corrected = []
-            for a in axes:
-                period = table.periods.get(a.axis)
-                walls = row.wall_positions_m["xyz".index(a.axis)]
-                if period and walls and (a.declared_bounds_m[0] < 0 or a.declared_bounds_m[1] > period):
-                    bounds = tuple(min((w + period*round((edge-w)/period) for w in walls),
-                                       key=lambda w: (abs(w-edge), w)) for edge in a.declared_bounds_m)
-                    a = _axis(a.axis, a.declared_bounds_m, bounds, a.cell_size_m)
-                corrected.append(a)
-            axes = tuple(corrected)
         centroid = any(a.centroid_shift_cells is not None and
                        abs(a.centroid_shift_cells) > .25 for a in axes)
         if row.family == "domain":
@@ -93,7 +81,8 @@ def judge_realization(table, snap):
             quantity = "; ".join(
                 f"{a.axis} extent miss {a.miss_cells:+.12g} cells ({a.miss_percent:+.12g} %)"
                 for a in axes if a.miss_percent is not None)
-        if row.model in ("cell-centre footprint; node plane", "weighted f0 sheet end rows"):
+        if ((row.family == "sheet" and row.shape_name == "Box") or
+                row.model in ("cell-centre footprint; node plane", "weighted f0 sheet end rows")):
             mismatch = False  # Existing film admission already judged its size.
         if not mismatch and not centroid:
             continue
@@ -112,6 +101,9 @@ def judge_realization(table, snap):
                   "to place nodes on the drawn edges.")
         if not mismatch:
             quantity = "centroid shift exceeds 0.25 cell"
+        if row.clipped_faces:
+            detail += "; clipped faces " + ", ".join(
+                f"{face}: {drawn:.12g} -> {wall:.12g} m" for face, drawn, wall in row.clipped_faces)
         if row.max_owner_deviation is not None:
             detail += f"; maximum per-owner face deviation {row.max_owner_deviation:.12g} (reported only)"
         finding = PreflightIssue(
