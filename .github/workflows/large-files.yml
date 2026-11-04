@@ -9,6 +9,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,16 +23,27 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
+          PUSH_BRANCH: ${{ github.ref_name }}
           DEFAULT: ${{ github.event.repository.default_branch }}
         run: |
           if [ "$EVENT" = pull_request ]; then
             head=$PR_HEAD
-            base=$(git merge-base "$PR_BASE" "$PR_HEAD")
+            set -- "$PR_BASE"
           else
             head=$AFTER
-            base=$BEFORE
-            if [ "$base" = 0000000000000000000000000000000000000000 ]; then
-              base=$(git merge-base "origin/$DEFAULT" "$head" 2>/dev/null || git hash-object -t tree /dev/null)
+            set -- "$BEFORE"
+            if [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+              set --
+              # Related history: as before, the default branch. Unrelated history: every other branch that does not
+              # contain head (a branch pushed together with head, or just after it, is no proof the remote had it).
+              if git merge-base "origin/$DEFAULT" "$head" >/dev/null 2>&1; then set -- "origin/$DEFAULT"; else
+              for ref in $(git for-each-ref --format='%(refname)' refs/remotes/origin/); do
+                case "$ref" in
+                  refs/remotes/origin/HEAD|"refs/remotes/origin/$PUSH_BRANCH") continue ;;
+                esac
+                git merge-base --is-ancestor "$head" "$ref" && continue
+                set -- "$@" "$ref"
+              done; fi
             fi
           fi
-          sh .githooks/check-large-files.sh "$base" "$head"
+          sh .githooks/check-large-files.sh --new "$head" "$@"
