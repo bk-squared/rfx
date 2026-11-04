@@ -168,6 +168,9 @@ def _dispatch_plan(
     # with more than one device.
     multi_device = (distributed if mode == "forward"
                     else devices is not None and len(devices) > 1)
+    if not multi_device and not is_nonuniform and self._refinement is None:
+        from rfx.runners._smoothing_admission import warn_kottke_pec_volume
+        warn_kottke_pec_volume(self, subpixel_smoothing)
     if multi_device and self._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 

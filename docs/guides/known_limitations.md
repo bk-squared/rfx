@@ -216,7 +216,7 @@ Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
-Tracker: #2390
+Tracker: none — accepted limitation (warns at default: tests/contracts/test_kottke_pec_warning.py::test_kottke_pec_volume_warning)
 
 Where a PEC body rests on a dielectric and the shared face lies between grid nodes, the cell under the face is not averaged by its content.
 With less than half of that cell metal, the smoothed inverse permittivity is larger than the content gives. Under a PEC strip on εr 4.4, with a quarter of the cell metal, `"kottke_pec"` reads 0.315 and `True` 0.420, where the content gives 0.170.
@@ -234,7 +234,13 @@ The error follows how much of the cell under the face is dielectric, not the cel
 The second resonance moves the same way.
 With `"kottke_pec"`, an off-grid side edge of the strip also adds error that does not fall with refinement: −1.40 % at 0.125 mm with the edge half a cell off the grid, against −0.15 % for the staircase.
 Faces on grid nodes are not affected: with every face on a node, the three settings read the same resonance.
-Until a fix lands, put the dielectric face under the metal and the metal's edges on grid nodes: choose the cell size so that they fall on whole cells, or build the profiles with `rfx.mesh_edges.edge_aware_profiles(..., solids=[...], axes="xyz")`.
+The cause lies in the metal model itself, not in one coefficient.
+Under `"kottke_pec"`, any part of a cell that holds metal freezes the field component parallel to the metal face; with `True` and `False` the edge ownership rule freezes the same row.
+So, on the 0.5 mm and 0.125 mm meshes measured, the tangential field row just below the off-grid metal face is frozen in all three settings (on the 0.25 mm mesh that row lies clear of the metal).
+That cuts the half cell of dielectric between that row and the drawn face off from the rest of the substrate, so the metal acts as if it began one row lower.
+A correction to the field normal to the face was measured and cannot reach that row.
+`"kottke_pec"` is therefore not recommended where a metal body rests on a dielectric face that lies between grid nodes.
+Put the dielectric face under the metal and the metal's edges on grid nodes: choose the cell size so that they fall on whole cells, or build the profiles with `rfx.mesh_edges.edge_aware_profiles(..., solids=[...], axes="xyz")`.
 Otherwise use `subpixel_smoothing=False`, which converged on every mesh measured.
 
 ### Subpixel smoothing with `"kottke_pec"` leaves a late field around a closed curved metal body, so its scattering depends on the record length.
