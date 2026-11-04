@@ -3,6 +3,7 @@
 #   .githooks/check-large-files.sh --staged        files added or changed in the index (pre-commit hook)
 #   .githooks/check-large-files.sh <base> <head>   every commit after <base> up to <head> (CI): a file added and
 #                                                  removed again inside one push still stays in history
+#   .githooks/check-large-files.sh --new <head> [<exclude-rev> ...]
 # Every file over 50 MB is refused. Over 5 MB, only manuscript, figure and submission formats may stay on GitHub.
 # A file whose content is already reachable from the base (moved, renamed, added back) is no new upload and passes.
 REPO=rfx
@@ -19,17 +20,17 @@ digest() {
 bad=0
 nl='
 '
-known=''
-trap '[ -n "$known" ] && rm -f "$known"' EXIT
+work=$(mktemp -d) || exit 2
+known=$work/known
+: > "$known"
+commits_checked=0
+paths_checked=0
+fetched=0
+trap 'echo "large-files: commits=$commits_checked paths=$paths_checked fetched=$fetched" >&2; rm -rf "$work"' 0
+trap 'exit 2' HUP INT TERM
 
-# seen <blob>: the blob is reachable from $BASE (a moved or renamed file, or an old file added back), so it is no new
-# upload. Blobs absent from a partial clone still print (as ?<id>) because their trees are present.
+# Excluded history is already on the remote, including blobs absent from a partial clone.
 seen() {
-    [ -n "$BASE" ] || return 1
-    if [ -z "$known" ]; then
-        known=$(mktemp) || exit 2
-        git rev-list --objects --missing=print "$BASE" | cut -d' ' -f1 | sed 's/^?//' > "$known" || exit 2
-    fi
     grep -qx "$1" "$known"
 }
 
@@ -38,6 +39,7 @@ check() {
     rev=$1
     IFS=$nl
     for path in $2; do
+        paths_checked=$((paths_checked + 1))
         seen "$(git rev-parse "$rev:$path")" && continue  # before the size: no blob download for a move
         size=$(git cat-file -s "$rev:$path") || exit 2
         [ "$size" -gt "$SOFT" ] || continue
@@ -75,19 +77,49 @@ check() {
 }
 
 if [ "$1" = --staged ]; then
-    BASE=$(git rev-parse -q --verify HEAD)
+    BASE=$(git rev-parse -q --verify HEAD) || BASE=''
+    if [ -n "$BASE" ]; then
+        git rev-list --objects --missing=print "$BASE" > "$work/objects" || exit 2
+        cut -d' ' -f1 "$work/objects" | sed 's/^?//' > "$known"
+    fi
     check '' "$(git -c core.quotepath=off diff --cached --name-only --no-renames --diff-filter=d)"
 else
-    BASE=$1
-    [ "$1" = "$EMPTY" ] && BASE=''
-    if [ "$1" = "$EMPTY" ]; then
-        commits=$(git rev-list --reverse "$2") || exit 2
+    if [ "$1" = --new ]; then
+        head=$2
+        shift 2
     else
-        commits=$(git rev-list --reverse "$1..$2") || exit 2
+        base=$1
+        head=$2
+        set -- "$base"
+        [ "$base" != "$EMPTY" ] || set --
     fi
+    commits=$(git rev-list --reverse "$head" --not "$@") || exit 2
+    if [ "$#" -gt 0 ] && [ -n "$commits" ]; then
+        git rev-list --objects --missing=print "$@" > "$work/objects" || exit 2
+        cut -d' ' -f1 "$work/objects" | sed 's/^?//' > "$known"
+    fi
+    : > "$work/entries"
     for c in $commits; do
         parent=$(git rev-parse -q --verify "$c^") || parent=$EMPTY
-        check "$c" "$(git -c core.quotepath=off diff --name-only --no-renames --diff-filter=d "$parent" "$c")"
+        git -c core.quotepath=off diff --raw --no-abbrev --no-renames --diff-filter=d "$parent" "$c" > "$work/raw" || exit 2
+        # Raw records contain tree blob IDs; obtaining these does not fetch content.
+        awk -v c="$c" 'BEGIN { FS="\t"; OFS="\t" } { split($1, h, " "); print c, h[4], $2 }' "$work/raw" >> "$work/entries"
+    done
+    cut -f2 "$work/entries" | sort -u > "$work/ids"
+    awk 'FILENAME == ARGV[1] { seen[$1]=1; next } !($1 in seen)' "$known" "$work/ids" > "$work/new"
+    git cat-file --batch-all-objects --batch-check='%(objectname)' > "$work/local" || exit 2
+    awk 'FILENAME == ARGV[1] { local[$1]=1; next } !($1 in local)' "$work/local" "$work/new" > "$work/missing"
+    fetched=$(wc -l < "$work/missing" | tr -d ' ')
+    if [ "$fetched" -gt 0 ]; then
+        split -l 5000 "$work/missing" "$work/batch-" || exit 2
+        for batch in "$work"/batch-*; do
+            git fetch --no-tags --no-write-fetch-head --stdin origin < "$batch" || exit 2
+        done
+    fi
+    for c in $commits; do
+        commits_checked=$((commits_checked + 1))
+        names=$(awk -F '\t' -v c="$c" '$1 == c { print $3 }' "$work/entries")
+        check "$c" "$names"
     done
 fi
 exit $bad

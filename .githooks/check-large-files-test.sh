@@ -2,7 +2,9 @@
 # Cases for check-large-files.sh in a scratch repo. Run: sh .githooks/check-large-files-test.sh "$(git rev-parse --show-toplevel)"
 # Each line prints the exit code next to the expected one.
 W=$1; D=$(mktemp -d)
-cd "$D" && git init -q -b main r && cd r
+trap 'rm -rf "$D"' 0
+cd "$D" && git clone -q --no-checkout --local "$W" r && cd r
+git switch -q --orphan large-files-tests
 mkdir -p .githooks "Papers/X fig"
 cp -p "$W/.githooks/check-large-files.sh" "$W/.githooks/pre-commit" .githooks/
 c() { git -c user.name=t -c user.email=t@t commit -q --no-verify -m "$1"; }
@@ -11,6 +13,7 @@ echo s > "Papers/X fig/a.tex"; git add -A; c base; B0=$(git rev-parse HEAD)
 head -c 6000000 /dev/urandom > "Papers/X fig/run 1.npz"; git add -A; c add
 git rm -q "Papers/X fig/run 1.npz"; c del
 echo "R1 add-then-delete in range (expect 1): $(chk $B0 HEAD)"
+echo "N3 --new matches R1 legacy range (expect 1): $(chk --new HEAD $B0)"
 B1=$(git rev-parse HEAD)
 head -c 4000000 /dev/urandom > "Papers/X fig/small.npz"; git add -A; c small
 B2=$(git rev-parse HEAD)
@@ -48,4 +51,20 @@ g0=$(gone)
 echo "P1 partial clone, move (expect 0): $(pchk $(git rev-parse HEAD~3) HEAD~2)"
 echo "P3 the move check fetched no blob (expect 1): $([ "$(gone)" -eq "$g0" ] && echo 1 || echo 0)"
 echo "P2 partial clone, added then moved (expect 1): $(pchk $(git rev-parse HEAD~2) HEAD)"
+cd "$D/r"
+git branch n1-remote HEAD
+n1=$(sh .githooks/check-large-files.sh --new HEAD n1-remote 2>&1); n1_exit=$?
+echo "N1 commits already on another ref (expect 0): $n1_exit"
+# Exit alone cannot detect a range regression: seen() also skips excluded blobs.
+case $n1 in *'large-files: commits=0 paths=0 fetched=0'*) n1_range=0 ;; *) n1_range=1 ;; esac
+echo "N1 zero-commit range assertion (expect 0): $n1_range"
+other=$(git rev-parse HEAD)
+git switch -q --orphan unrelated
+printf 'root\n' > root.txt; git add root.txt; c unrelated-root
+head -c 6000000 /dev/urandom > fresh.npz; git add fresh.npz; c unrelated-new
+git branch already-remote "$other"
+git clone -q --filter=blob:none --no-checkout "file://$PWD" "$D/n2" 2>/dev/null
+cd "$D/n2"
+n2=$(sh "$W/.githooks/check-large-files.sh" --new HEAD origin/already-remote >/dev/null 2>&1; echo $?)
+echo "N2 unrelated history and a new 6 MB npz (expect 1): $n2"
 cd / && rm -rf "${D:?}"
