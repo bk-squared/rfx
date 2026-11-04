@@ -256,7 +256,11 @@ def _g5_call(case, monkeypatch, error):
         # The record preserves a failed rasterization; the report reconstructs
         # that error for the unbounded conductor's finding.
         row = replace(record.entities[0], mask_error=f"{error.__name__}: {MESSAGE}")
-        monkeypatch.setattr(sim, "realized_geometry", lambda: replace(record, entities=(row,)))
+        table = replace(record.realization_table, rows=tuple(
+            replace(table_row, declared_bounds_m=None) if table_row.label == "geometry[0]" else table_row
+            for table_row in record.realization_table.rows))
+        monkeypatch.setattr(sim, "realized_geometry", lambda: replace(
+            record, entities=(row,), realization_table=table))
         sim._geometry[0] = SimpleNamespace(material_name="pec", shape=SimpleNamespace())
         return lambda: fidelity_report(sim, print_report=False)[1]["findings"]
     if case in {"error_witnesses", "judge_record"}:
