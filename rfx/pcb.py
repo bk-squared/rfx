@@ -28,7 +28,7 @@ from typing import Sequence
 from rfx.geometry.csg import Box
 
 # A layer whose resolved material carries at least this conductivity is a
-# CONDUCTOR layer, and #931 makes it a sheet declaration (see
+# CONDUCTOR layer, represented by a sheet declaration (see
 # ``Stackup.to_shapes``).  Same threshold as
 # ``Simulation._PEC_SIGMA_THRESHOLD``.
 _PCB_PEC_SIGMA_THRESHOLD = 1e6

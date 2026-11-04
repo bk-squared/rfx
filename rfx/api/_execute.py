@@ -46,14 +46,11 @@ from rfx.api._spec import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Phase 3 (issue #44 V3 §M6): module-level flag so the distributed=True
-# UserWarning fires exactly once per process.  Reset to False on import,
-# flipped to True the first time ``Simulation.forward(distributed=True, ...)``
-# is invoked.  Lives here (not in __init__.py) because ``forward`` — which
-# does ``global _DISTRIBUTED_FIRST_CALL_WARNED`` — was moved into this
-# module; the ``global`` statement binds to this module's namespace.
-# ---------------------------------------------------------------------------
+# Module-level flag so the distributed=True UserWarning fires exactly once
+# per process. Reset to False on import and set to True on the first
+# ``Simulation.forward(distributed=True, ...)`` call. The flag belongs to
+# this module because ``forward`` uses ``global
+# _DISTRIBUTED_FIRST_CALL_WARNED``, which binds to this namespace.
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
 
 
@@ -86,7 +83,7 @@ class _ExecuteMixin:
         from rfx._internal._precision import resolve_field_dtype
         return resolve_field_dtype(self._precision)
 
-    # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
+    # ---- (2,4) stencil comprehensive API fence ----
 
     def _check_stencil_order_supported(self, *, distributed: bool = False) -> None:
         """Reject ``stencil_order=4`` on any unsupported execution lane.
@@ -200,7 +197,7 @@ class _ExecuteMixin:
                         conformal_pec=None):
         """Run simulation on non-uniform grid with graded dz.
 
-        ``until_decay`` (issue #383) is threaded through to
+        ``until_decay`` is threaded through to
         ``run_nonuniform_path`` only when the caller has already gated on
         absorbing boundaries. ``run()`` refuses ``until_decay`` for
         closed-boundary NU sims, where the interior energy does not decay. ``decay_monitor_component`` / ``decay_monitor_position``
@@ -279,7 +276,7 @@ class _ExecuteMixin:
         return settling_source_end(self, result, records)
 
     def _settling_probe_selection(self, result):
-        """Numeric probe selection metadata, with the #1090 drive flag.
+        """Numeric probe selection metadata, with the drive flag.
 
         The grid is read off the RESULT (``Result.grid`` /
         ``ForwardResult.grid``) -- the grid the run actually built, not a
@@ -315,7 +312,7 @@ class _ExecuteMixin:
 
         Warn-only, single ``run()``-level site so both lanes that honour
         ``until_decay`` (uniform and absorbing-boundary non-uniform) are
-        covered by one check (post-#392 review):
+        covered by one check:
 
         * ``decay_min_steps > decay_max_steps`` — every check index lies
           past the table end, so zero energy checks occur and the run is
@@ -356,7 +353,7 @@ class _ExecuteMixin:
                                                 compute_s_params) -> None:
         """Fail loudly when reference-plane ports hit a non-uniform lane.
 
-        The issue #313 plane V/I accumulators are wired only into the
+        The plane V/I accumulators are wired only into the
         uniform single-device production scan; silently returning legacy
         port-cell off-diagonals on another lane would defeat the opt-in.
         """
@@ -589,17 +586,16 @@ class _ExecuteMixin:
         from rfx.runners.nonuniform import run_nonuniform_path
 
         # A grid-shaped override is (cells + 1) per axis, because N cells are
-        # bounded by N+1 E-nodes (#562) — the same shape the uniform path has
+        # bounded by N+1 E-nodes — the same shape the uniform path has
         # always wanted. Caller code that sized arrays from the PROFILE length
         # is one sample short, and without this check the mismatch surfaces
-        # deep inside XLA as an opaque broadcast TypeError (#562 review F9).
+        # deep inside XLA as an opaque broadcast TypeError.
         _overrides = (("eps_override", eps_override),
                       ("sigma_override", sigma_override),
                       ("pec_mask_override", pec_mask_override),
                       ("pec_occupancy_override", pec_occupancy_override))
-        # Build the grid ONLY when there is an array to check, so the common
-        # override-free forward() does not pay for a second grid build
-        # (#568 observation 1 — negligible against the solve, but free to skip).
+        # Build the grid only when there is an array to check, so override-free
+        # forward() avoids a second grid build.
         if any(_a is not None and hasattr(_a, "shape") for _n, _a in _overrides):
             _grid = self._build_nonuniform_grid()
             for _name, _arr in _overrides:
@@ -743,7 +739,7 @@ class _ExecuteMixin:
         kerr_chi3,
         holds_ports=False,
     ):
-        """Turn the ``forward(design_box=...)`` arguments into specs (#1179/#1183).
+        """Turn the ``forward(design_box=...)`` arguments into specs.
 
         Resolves the declared corners against the grid the solve builds and
         rejects every combination this lane does not carry. The checks that
@@ -754,8 +750,8 @@ class _ExecuteMixin:
         can be decided from the call itself.
 
         Returns ``(box spec or None, occupancy spec or None)``: one design
-        box, and the design variable it carries — a permittivity (#1179) or
-        a PEC occupancy (#1183).
+        box, and the design variable it carries — a permittivity or
+        a PEC occupancy.
 
         ``holds_ports`` (``forward(design_box_holds_ports=True)``) lets the
         permittivity box contain lumped and wire ports: every edge a port
@@ -950,7 +946,7 @@ class _ExecuteMixin:
 
         ``Grid`` carries the method; ``NonUniformGrid`` is a pytree-registered
         NamedTuple and its resolver is a module function that walks the
-        cumulative cell edges (#1183).
+        cumulative cell edges.
         """
         if hasattr(grid, "position_to_index"):
             return grid.position_to_index(tuple(float(v) for v in position))
@@ -958,7 +954,7 @@ class _ExecuteMixin:
         return _nu_pos_to_idx(grid, tuple(float(v) for v in position))
 
     def _design_box_bounds_from_corners(self, grid, design_box):
-        """Half-open cell bounds of a declared design box (#1179).
+        """Half-open cell bounds of a declared design box.
 
         Same index resolution topology_optimize uses (rfx/topology.py):
         nearest index of each corner, both ends inclusive, so a corner pair
@@ -1433,7 +1429,7 @@ class _ExecuteMixin:
             refuse_forward_request(self, ringdown, distributed=distributed,
                                    emit_time_series=emit_time_series)
 
-        # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
+        # One-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
         # / pending GPU evidence.  The flag lives at module scope so we
         # warn exactly once per process, not per Simulation instance.
@@ -1529,7 +1525,7 @@ class _ExecuteMixin:
                 "add_lumped_rlc elements)."
             )
 
-        # Reactive Kerr χ³ (#437) is threaded through the shared _run scan on the
+        # Reactive Kerr χ³ is threaded through the shared _run scan on the
         # UNIFORM forward lane only.  The non-uniform / distributed forward lanes
         # discard kerr_chi3, so a Kerr material there would silently give LINEAR
         # physics (and a linear gradient) — fail loud on those lanes only.
@@ -1559,7 +1555,7 @@ class _ExecuteMixin:
                 f"the uniform single-device forward lane, not {plan.lane!r}."
             )
 
-        # #1179/#1183 design box: the lanes that carry it. The distributed
+        # design box: the lanes that carry it. The distributed
         # runners never see ``design_box``, so without this they
         # would run the BACKGROUND design variable and return a zero
         # gradient — a silent wrong answer.
@@ -1590,7 +1586,7 @@ class _ExecuteMixin:
         if plan.lane == "fwd_nonuniform":
             _nu_design_spec = None
             if _design_requested:
-                # #1183: the corners resolve against the GRADED grid, whose
+                # the corners resolve against the GRADED grid, whose
                 # z cell edges are not a multiple of any dx. Everything the
                 # resolved step context decides is
                 # ``rfx.model.resolve_design_box``'s, from
@@ -1658,24 +1654,22 @@ class _ExecuteMixin:
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
 
-        # #677: node-thin sheet ctx against the realized PEC edges of this
-        # forward run (PEC wins on overlapping edges).  #931: the PEC
+        # node-thin sheet ctx against the realized PEC edges of this
+        # forward run (PEC wins on overlapping edges).  The PEC
         # sheets AND WIRES belong in that realization too — they own no
         # cell, so the "is there any PEC?" question cannot be asked of
-        # ``pec_mask`` and the sheet list alone.  A model whose only
-        # conductor is a filament used to reach the lossy operator with
-        # ``pec_edge_masks=None``, and the operator then wrote field back
-        # onto the wire's own PEC edge.
+        # ``pec_mask`` and the sheet list alone.  Passing ``pec_edge_masks=None`` for a filament-only model lets the
+        # lossy operator write field back onto the wire's PEC edge.
         #
-        # ``periodic=`` on the OUTER call is the same #689 requirement:
+        # ``periodic=`` on the OUTER call is the same requirement:
         # the builder realizes the f0 footprint's own edges, and on a
         # periodic axis the seam edge (node n-1 to node 0) is in the sheet.
         # Without the flags it is zero-padded away, so the seam carries no
         # loss — measured on an x-periodic f0 sheet at dx = 2 mm, 35 loaded
         # Ex edges through run() against 30 through forward().
-        # ``self._periodic_flags()`` is the single spelling (#931 §1.7).
+        # ``self._periodic_flags()`` is the single spelling.
         _fwd_sheet_ctx = _conductors.forward_sheet_context(conductors, pec_mask)
-        # #679: the same UPML refusal run_uniform carries. forward() reaches
+        # the same UPML refusal run_uniform carries. forward() reaches
         # the solver by its own route (it never enters run_uniform), so
         # WITHOUT this the eps_override / forward() channel silently ran the
         # combination run() refuses: _forward_from_materials passes
@@ -1725,8 +1719,7 @@ class _ExecuteMixin:
             # halves of one grid would be stepped at two precisions: the
             # float32 rounding of ``eps_r * EPS_0`` alone moves the field by
             # ~1e-7 relative, which is 1e9 x the difference between the two
-            # formulations. ``_assemble_materials`` pins float32 (#646
-            # promote-never-pin), so the promotion belongs here.
+            # formulations. ``_assemble_materials`` pins float32, so the promotion belongs here.
             materials = apply_material_overrides(materials, design_box=_design_spec)
 
         _fwd_call = functools.partial(
@@ -1887,7 +1880,7 @@ class _ExecuteMixin:
         decay_monitor_position : tuple or None
             Physical position to monitor. If None, use domain center.
         conformal_pec : bool, str or None
-            Cut-cell conformal PEC (#1651); None reads Boundary(conformal=True).
+            Cut-cell conformal PEC; None reads Boundary(conformal=True).
             "cut_cell_floor" uses true edges and a q**2 face-area floor on uniform Yee.
             Requires Simulation(dt=q * Grid.courant_dt(dx, ndim)), q=0.5 or 0.25.
             An explicit n_steps still counts steps: half or quarter the ordinary duration.

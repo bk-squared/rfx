@@ -182,7 +182,7 @@ def _add_geometry(sim: Simulation, geometry_cfg) -> None:
 
 
 def _add_thin_conductors(sim: Simulation, tc_cfg) -> None:
-    """``thin_conductors:`` — sheet declarations (#931 §1.3).
+    """``thin_conductors:`` — sheet declarations.
 
     A sheet is a footprint on ONE node plane with zero thickness, so the
     front end needs a way to say it: a Box drawn with ``lo == hi`` on its

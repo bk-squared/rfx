@@ -68,13 +68,9 @@ def _msl_axis_spacing(grid, axis: int):
     * traced (mesh-as-design-variable) profiles — ``(None, None, False)``:
       the answer is not available host-side.
 
-    Issue #686: the #469 probe-offset interval solve used to bail on ANY
-    non-uniform grid (``getattr(grid, "dz", None) is not None``). Its
-    stated reason — "cell-counted intervals are ill-defined under graded
-    dx" — is a statement about the PROPAGATION axis, and a ``dz_profile``
-    does not grade dx. For a microstrip the propagation axis is x or y,
-    so on a z-graded mesh (the boundary-fitted stackup case) the interval
-    is perfectly well defined and the solve simply never ran.
+    Cell-counted intervals depend on the PROPAGATION axis, and a
+    ``dz_profile`` does not grade dx. For a microstrip the propagation axis
+    is x or y, so on a z-graded mesh the interval is well defined.
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.model.graded_grid import NonUniformGrid, interior_cells

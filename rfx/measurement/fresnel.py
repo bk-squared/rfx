@@ -89,7 +89,7 @@ def fresnel_reflection_coefficient(
     reflection-amplitude/phase objective. It is the primitive behind
     differentiable RIS / FSS / coating design.
 
-    Method (the #404/#414-validated recipe; see the physics protocol below):
+    Method (the validated recipe; see the physics protocol below):
     two-run reference subtraction of a spatial **plateau** — a line of probes in
     the scattered-field-free total-field region in front of the scatterer. The
     reflected phasor ``T - I`` (scatterer run minus vacuum run) is a pure
@@ -269,7 +269,7 @@ def oblique_reflection_magnitude(
 
     * **+j (conjugate) DFT kernel** — for a complex envelope, ``P(t) ∝ exp(-j2πf0t)`` has its f0 content
       at ``-f0``, so it is extracted with ``exp(+j2πf0t)``. A ``-j`` kernel averages the
-      incident to noise ⇒ nonphysical |Γ|≫1 (the #404 trap).
+      incident to noise ⇒ nonphysical |Γ|≫1 (the trap).
     * **magnitude ratio, de-embed-free** — ``mean|T−I| / mean|I|``. At oblique the reflected
       phase varies by many π across the plateau, so a de-embedded COMPLEX mean cancels
       (a wrong/nominal k_x gives |Γ|→0). The magnitude ratio is robust; the reflected phase

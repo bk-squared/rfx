@@ -63,8 +63,7 @@ def run_after_admission(
                            until_decay=until_decay,
                            compute_s_params=compute_s_params)
 
-    # Behaviour-neutral decay-parameter sanity advisories (post-#392
-    # review): single run()-level site, before dispatch, so both lanes
+    # Behaviour-neutral decay-parameter sanity advisories: single run()-level site, before dispatch, so both lanes
     # that honour until_decay (uniform + absorbing-boundary
     # non-uniform) are covered by one check.
     self._warn_decay_param_sanity(
@@ -135,7 +134,7 @@ def run_after_admission(
 
     # ---- Non-uniform mesh lane ----
     if plan.lane == "run_nonuniform":
-        # #383: absorbing NU domains support the interior-energy decay
+        # absorbing NU domains support the interior-energy decay
         # stop; closed/PEC domains refuse it because their energy does
         # not decay and this lane has no point-field fallback. A single
         # port reads S from the main record; more ports run their own
@@ -172,7 +171,7 @@ def run_after_admission(
             },
         )
         if until_decay is not None:
-            # #388 DC-floor predictor for the NU decay stop. The grid
+            # DC-floor predictor for the NU decay stop. The grid
             # build is pure (no sim-state mutation) and cheap. An
             # unbuildable grid skips this advisory; other failures
             # propagate (the runner will surface configuration errors).
@@ -289,7 +288,7 @@ def run_after_admission(
         n_steps = grid.num_timesteps(num_periods=num_periods)
 
     if until_decay is not None:
-        # #388 DC-floor predictor for the decay stop (rfx.measurement.decay).
+        # DC-floor predictor for the decay stop (rfx.measurement.decay).
         from rfx.measurement import warn_dc_floor
         warn_dc_floor(self, dt=grid.dt, n_table=decay_max_steps)
 

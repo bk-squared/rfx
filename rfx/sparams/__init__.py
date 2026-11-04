@@ -1,9 +1,7 @@
-"""S-matrix calculators split out of ``rfx.api._sparams`` (issue #980).
+"""S-matrix calculators split out of ``rfx.api._sparams``.
 
-``rfx/api/_sparams.py`` was one 8 647-line module holding both the
-module-level S-matrix helpers and the ``_SparamMixin`` class that
-``Simulation`` inherits. #980 Phase 2 takes it apart in verbatim
-code-motion steps, each gated on bit identity of the extracted S arrays.
+This package holds the S-matrix helpers and calculators used by
+``_SparamMixin``, which ``Simulation`` inherits.
 
 Modules:
 
@@ -16,10 +14,10 @@ Modules:
 * :mod:`rfx.sparams.waveguide` — ``compute_waveguide_s_matrix`` and its
   non-uniform-mesh lane ``_compute_waveguide_s_matrix_nu``.
 * :mod:`rfx.sparams.mixed` — ``compute_mixed_s_matrix``, the lumped/wire +
-  MSL two-family driver of issue #488.
+  MSL two-family driver.
 * :mod:`rfx.sparams.msl` — ``compute_msl_s_matrix``.
 * :mod:`rfx.sparams.dispatch` — ``compute_s_matrix`` and ``s_matrix_lane``,
-  the #980 Phase 1 unified entry point that reads the port registrations and
+  the unified entry point that reads the port registrations and
   forwards to exactly one of the calculators above (or names the run lane for
   lumped/wire ports). New surface, not moved code; it invents no defaults and
   refuses to guess where a registration does not determine a lane.

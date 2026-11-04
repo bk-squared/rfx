@@ -148,7 +148,7 @@ def extract_floquet_modes(
     extractor reads the (Ex, Hy) tangential pair and the TE wave impedance
     ``eta0/cos(theta)``). ``n_modes > 1`` (higher-order grating lobes) and TM
     polarization are NOT implemented and are rejected fail-loud rather than
-    silently returning wrong results (RF-audit 2026-07-23).
+    silently returning wrong results.
 
     Parameters
     ----------

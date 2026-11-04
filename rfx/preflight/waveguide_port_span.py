@@ -108,7 +108,7 @@ def _built(grid, axis, x):
             # This lookup only decides membership in the source-reference
             # interval. Admission keeps that interval outside the window;
             # a face inside the window has the same membership on nominal
-            # and realized nodes (PREDECLARE §9, 2026-10-29 16:49).
+            # and realized nodes.
             index = _nearest_on_line(_axis_node_positions(cells, pad), cells, x)
         else:
             index = grid.index_of(name, x)
@@ -163,8 +163,8 @@ def _validate_cfg_waveguide_port_span(self, _w):
                        for a, limits in aperture.items()):
                 continue
             # Open at the source plane, closed at the reference plane: a short
-            # whose face lies on the reference plane reads |S22| 0.50 (review
-            # of #1923), so a face there is an obstacle too. A PEC face is built
+            # whose face lies on the reference plane reads |S22| 0.50, so a face
+            # there is an obstacle too. A PEC face is built
             # on its nearest node (drawn at 80.5 mm, built at 81 mm), so test
             # both; a face outside the domain cannot be built on the plane.
             def inside(face):
@@ -176,7 +176,7 @@ def _validate_cfg_waveguide_port_span(self, _w):
             if volume and faces:
                 # A face counts only where the medium changes across it: two
                 # abutting boxes of one material, or a vacuum box, are a
-                # uniform guide (#1913 review). Sample the realised transverse
+                # uniform guide. Sample the realised transverse
                 # cell centres and overlap centre, 10 um (or half the box) either side.
                 points = tuple(_face_sample_points(grid, lo, hi, aperture))
 

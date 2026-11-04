@@ -43,20 +43,20 @@ class WirePortSParamSpec(NamedTuple):
     jax.lax.scan, avoiding the separate Python-loop S-param extraction.
 
     mid_i, mid_j, mid_k: midpoint cell for V and I measurement — the
-        midpoint of the LIVE wire run (issue #764; identical to the
+        midpoint of the LIVE wire run (identical to the
         historical all-extent midpoint when no extent cell is dead).
     component: 'ez', 'ex', or 'ey'.
     freqs: (n_freqs,) frequency array.
     impedance: port reference impedance (Z0).
-    live_cells: static tuple of (i, j, k) LIVE wire cells (issue #764) for
+    live_cells: static tuple of (i, j, k) LIVE wire cells for
         the whole-port gap-voltage accumulator
         V_port = sum over live cells of -E_c*dx.  Empty tuple = degenerate
-        fallback to the single midpoint cell (pre-#764 constructors).
+        fallback to the single midpoint cell (constructors without live-cell metadata).
     excite: whether this port is genuinely driven in THIS pass.  The
         whole-port driven-diagonal formula
         S_kk = (V_port - Z0*I)/(V_port + Z0*I) applies ONLY when True;
         a passive port's diagonal keeps the legacy per-cell convention
-        (a load-independent port-cell diagnostic, not S_jj — issue #764).
+        (a load-independent port-cell diagnostic, not S_jj).
     """
     mid_i: int
     mid_j: int
@@ -97,7 +97,7 @@ class LumpedPortSParamSpec(NamedTuple):
     -----
     V is sampled as ``-E·dx`` and I as the curl-H loop integral times
     ``dx`` at the port cell, both AFTER source injection, with the Yee
-    half-step phase on I.  Issue #72; sampling slot and diagonal formula
+    half-step phase on I.  The sampling slot and diagonal formula are
     decided by scripts/diagnostics/lumped_port_known_load_line.py.
     """
     i: int
@@ -110,7 +110,7 @@ class LumpedPortSParamSpec(NamedTuple):
 
 
 class DesignBoxSpec(NamedTuple):
-    """One static box whose E update runs on its own permittivity (#1179).
+    """One static box whose E update runs on its own permittivity.
 
     The box is a design region: its permittivity is the quantity being
     differentiated. Handing it here instead of writing it into
@@ -162,7 +162,7 @@ class DesignBoxSpec(NamedTuple):
 
 
 class DesignOccupancySpec(NamedTuple):
-    """One static box whose PEC occupancy is the design variable (#1183).
+    """One static box whose PEC occupancy is the design variable.
 
     The relaxed-conductor rule scales every E component by ``1 - M``, ``M``
     the noisy-OR of the component's incident cells' occupancy. With a traced
@@ -289,7 +289,7 @@ class SnapshotSpec(NamedTuple):
 def _nearest_divisor(n: int, target: int) -> int:
     """Return the divisor of `n` closest to `target` (≥1).
 
-    Used by the segmented-checkpointing path (issue #73) to suggest a
+    Used by the segmented-checkpointing path to suggest a
     valid `checkpoint_segments` value when the user passes one that does
     not divide `n_steps` evenly.
     """
@@ -309,7 +309,7 @@ def _nearest_divisor(n: int, target: int) -> int:
 
 
 def resolve_periodic(grid, periodic):
-    """The run's per-axis periodic flags, after the 2-D lane override (#689).
+    """The run's per-axis periodic flags, after the 2-D lane override.
 
     One spelling, shared by :func:`_build_step_setup` and by any lane that
     must realize the PEC edge masks (§1.7) before calling ``run`` — those
@@ -384,7 +384,7 @@ class _StepContext:
     upml_coeffs: Any = None
     tfsf_cfg: Any = None
     tfsf_is_2d: bool = False
-    bloch: Any = None  # per-axis Bloch phase for oblique-periodic TFSF (#404); None = real path
+    bloch: Any = None  # per-axis Bloch phase for oblique-periodic TFSF; None = real path
     debye_coeffs: Any = None
     lorentz_coeffs: Any = None
     pec_edge_masks: Any = None
@@ -412,19 +412,19 @@ class _StepContext:
     wire_sparam_meta: tuple = ()
     lumped_sparam_meta: tuple = ()
     rlc_meta: tuple = ()
-    # issue #313 opt-in reference-plane channel (defaults keep every
+    # opt-in reference-plane channel (defaults keep every
     # existing caller byte-identical)
     use_wire_refplanes: bool = False
     wire_refplane_meta: tuple = ()
-    # issue #677 node-thin surface-impedance sheet operator (defaults keep
+    # node-thin surface-impedance sheet operator (defaults keep
     # every existing caller byte-identical)
     use_sheet_impedance: bool = False
     sheet_impedance: Any = None
-    # issue #1179 design-box permittivity (defaults keep every existing
+    # design-box permittivity (defaults keep every existing
     # caller byte-identical)
     use_design_box: bool = False
     design_box: Any = None
-    # issue #1183 design-box PEC occupancy (same default discipline)
+    # design-box PEC occupancy (same default discipline)
     use_design_occupancy: bool = False
     design_occupancy: Any = None
 

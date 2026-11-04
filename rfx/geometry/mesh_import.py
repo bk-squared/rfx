@@ -1,4 +1,4 @@
-"""CAD mesh import (issue #358) — a ``Shape`` backed by a watertight triangle mesh.
+"""CAD mesh import — a ``Shape`` backed by a watertight triangle mesh.
 
 ``MeshShape`` lets users bring geometry drawn in CAD (STL/OBJ/PLY, and STEP/STP)
 straight into the solver instead of re-modelling it with CSG primitives. It implements
@@ -29,13 +29,13 @@ from rfx.geometry.csg import _grid_coords
 
 
 # --------------------------------------------------------------------------- #
-# #687: deterministic point-in-mesh containment.
+# deterministic point-in-mesh containment.
 #
 # ``trimesh.ray.ray_util.contains_points`` (what ``mesh.contains`` calls) is
 # NONDETERMINISTIC near mesh surfaces, and the boundary-fitted meshers put
 # rasterization sample points exactly there (a conductor sheet registered at
 # its mid-plane node lands cell centres on its lateral faces). Two defects in
-# that function, both measured here (2026-08-24, fix/687 worktree, trimesh
+# that function, both measured here (trimesh
 # 5.0.0, ray engine ray_triangle):
 #
 # 1. Its forward-hit cull is ``distance > -1e-6`` in MESH UNITS (metres for
@@ -45,8 +45,8 @@ from rfx.geometry.csg import _grid_coords
 #    OS-ENTROPY-SEEDED RNG — a per-call coin flip. Measured: a mid-plane
 #    sample 1 ulp off a sheet's lateral face flipped inside/outside across 40
 #    fresh calls (states 0,1,1,0,1,0,...); 18/121 mid-plane samples of a
-#    17 um sheet reached the RNG branch. Issue #687 measured the same flip
-#    as a 1-cell PEC-count spread on an imported board.
+#    17 um sheet reached the RNG branch. The same flip measured as a 1-cell PEC-count spread on an
+# imported board.
 # 2. The 1 um slack is ABSOLUTE, so the coin-flip shell extends ~0.5 um into
 #    the solid: a point 0.2 um strictly INSIDE a face returned
 #    True,False,False,... over 8 repeated calls. Sub-micron grids would
@@ -65,7 +65,7 @@ from rfx.geometry.csg import _grid_coords
 # so the own-face hit lands at ``t = -eps`` (forward ray) / ``t = +eps``
 # (backward ray) and both parities count it identically and correctly.
 #
-# Boundary convention (documented per the #687 ask): the nudge direction has
+# Boundary convention (documented per the ask): the nudge direction has
 # a strictly POSITIVE component on every axis, so a sample exactly on an
 # axis-aligned face resolves INSIDE on a lo face and OUTSIDE on a hi face —
 # exactly ``Box``'s half-open ``[lo, hi)`` volume convention (``csg.py``).
@@ -103,7 +103,7 @@ def _crossing_parity(intersector, origins, direction):
 
 
 def _contains_deterministic(intersector, pts):
-    """Point-in-mesh for (n, 3) ``pts`` — see the #687 block above."""
+    """Point-in-mesh for (n, 3) ``pts`` — see the block above."""
     origins = pts + _TIE_BREAK_EPS_M * _D1
     fwd = _crossing_parity(intersector, origins, _D1)
     bwd = _crossing_parity(intersector, origins, -_D1)
@@ -160,7 +160,7 @@ class MeshShape:
         Explicitly ``ray_triangle`` rather than ``mesh.ray``: with an embree
         backend installed ``mesh.ray`` would silently switch to a FLOAT32
         engine whose ulp at board coordinates (~3e-11 m at 400 um) swallows
-        the 1e-12 m tie-break nudge, reopening the #687 boundary coin flip."""
+        the 1e-12 m tie-break nudge, reopening the boundary coin flip."""
         if self._ray is None:
             _require_trimesh()
             from trimesh.ray import ray_triangle
@@ -269,7 +269,7 @@ class MeshShape:
         nx, ny, nz = x.size, y.size, z.size
         out = np.zeros((nx, ny, nz), dtype=bool)
 
-        # #687: widen the trivially-outside cull by the tie-break step so a
+        # widen the trivially-outside cull by the tie-break step so a
         # sample within the +-eps tie band of a bounding-box face reaches the
         # ray test (a sample 1 ulp below the lo face must resolve INSIDE per
         # the half-open convention; the raw cull dropped it before the
@@ -282,7 +282,7 @@ class MeshShape:
         if ix.size and iy.size and iz.size:
             X, Y, Z = np.meshgrid(x[ix], y[iy], z[iz], indexing="ij")
             pts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
-            # #687: NOT ``self._mesh.contains`` — that path re-decides any
+            # NOT ``self._mesh.contains`` — that path re-decides any
             # near-surface point along an OS-entropy-random ray direction
             # (nondeterministic; see the module block above). The cache key
             # and the bbox window use the caller's coordinates unchanged;

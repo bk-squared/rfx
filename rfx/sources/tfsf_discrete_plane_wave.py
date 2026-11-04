@@ -709,7 +709,7 @@ def document_fields(_NUM, _INT, _STR, _BOOL, _opt):
         "direction": _STR,
         "angle_deg": _NUM,
         "waveform": _STR,
-        # PR #461: transverse boundary-value-problem selector — 'bloch' runs
+        # transverse boundary-value-problem selector — 'bloch' runs
         # periodic=(F,T,T)/cpml_axes="x" (laterally periodic: infinite array),
         # 'methodB' runs periodic=(F,F,T)/cpml_axes="xy" (open transverse
         # boundary: compact isolated scatterer). Design state, not run control:

@@ -24,7 +24,7 @@ def apply(kernel, ctx, invariants, state, psi, **kwargs):
 
 
 def export_state(psi, grid, layout, *, native=False):
-    """Return psi in the runner's ``init_cpml_slabs`` layout (#1745).
+    """Return psi in the runner's ``init_cpml_slabs`` layout.
 
     Field order with the rank merged into x: y/z faces keep this rank's x rows;
     x faces hold the one-device depth, real only on the owning end rank (rank 0
@@ -55,7 +55,7 @@ def export_state(psi, grid, layout, *, native=False):
 def import_state(psi, canonical, layout, *, native=False):
     """Recover one-device psi from the runner's per-rank input.
 
-    ``init_cpml_slabs`` layout (#1745): field order on every rank, x faces
+    ``init_cpml_slabs`` layout: field order on every rank, x faces
     (s_x, Ny, Nz) at the one-device depth, y/z faces over the rank's local x
     rows; the rank axis is leading or merged into x.
     """
@@ -152,18 +152,17 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
     input: it is threaded into the inner shard so the CPML correction is
-    material-aware (#205). Its arrays are NOT returned, so they get extra
+    material-aware. Its arrays are NOT returned, so they get extra
     ``P("x")`` entries in ``in_specs`` only. ``None`` reproduces the vacuum
-    (pre-#205) coefficient bit-identically.
+     coefficient bit-identically.
 
     The psi coefficient takes the permittivity the E update of the same step
-    used (#1043): with ``e_slab = (nx_per, nx)`` each component's four-cell
+    used: with ``e_slab = (nx_per, nx)`` each component's four-cell
     edge mean, built on each slab by
-    :func:`rfx.model.electric_metrics.slab_e_component_materials`
-    (#1303), including on dispersive models (#1260). ``e_materials`` can
+    :func:`rfx.model.electric_metrics.slab_e_component_materials`, including on dispersive models. ``e_materials`` can
     supply the same means already formed before the time loop.
 
-    ``pad_x`` (#623, same class as #622): forwarded to
+    ``pad_x``: forwarded to
     :func:`rfx.runners.distributed._apply_cpml_e_distributed` so the x-hi
     CPML window on the last rank targets the real physical face (global
     node ``nx - 1``) instead of the padded slab end.
@@ -264,12 +263,12 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
-    READ-ONLY input threaded into the inner shard for material-aware CPML
-    (#205).  Like ``eps_r`` in the E-variant it gets one extra ``P("x")``
+    READ-ONLY input threaded into the inner shard for material-aware CPML.  Like ``eps_r`` in the E-variant it gets one
+    extra ``P("x")``
     in ``in_specs`` only and is not returned.  ``None`` reproduces the
-    vacuum (pre-#205) coefficient bit-identically.
+    vacuum coefficient bit-identically.
 
-    ``pad_x`` (#623, same class as #622): forwarded to
+    ``pad_x``: forwarded to
     :func:`rfx.runners.distributed._apply_cpml_h_distributed` so the x-hi
     CPML window on the last rank targets the real physical face (global
     node ``nx - 1``) instead of the padded slab end.

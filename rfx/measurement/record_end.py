@@ -1,4 +1,4 @@
-"""The known drive beyond a record: one input of the record-end judgement (#2030).
+"""The known drive beyond a record: one input of the record-end judgement.
 
 A drive whose samples are known past the record (a waveguide port's H companion
 near cutoff decays as t^-3/2 and outlives any practical record) adds, to every
@@ -9,7 +9,7 @@ it is a property of the drive alone. The record check adds it to the pole tail
 in one per-bin budget (rfx.sparams._tail_witness); until_decay waits for it
 (rfx.measurement.decay).
 
-Limits (separate-instance review, #2022): the max over a port's E and H drives
+Limits: the max over a port's E and H drives
 bounds the combined share where their responses add, downstream of a one-way
 source (there it is about 2x high); behind the source they cancel and it is not
 a bound. Every scored plane of a waveguide port is downstream of its source.
@@ -17,7 +17,7 @@ The power-sum allowance 2s + s^2 built on this share is an estimate (e = s per
 S entry), adopted after a check against settled records, not a proven bound.
 
 The source end has one rule (``source_end_step``) and one collector
-(``injection_end``) here; no other module computes a source end (#2030 S1).
+(``injection_end``) here; no other module computes a source end.
 The collector reads the drive tables the time step applies: the sampled port,
 MSL and point waveforms, the Floquet table its runner builds, a driven
 waveguide port's ``e_inc_table`` (never the analytic ``v_inc_t``; its H

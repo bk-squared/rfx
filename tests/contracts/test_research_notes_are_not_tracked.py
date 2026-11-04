@@ -190,6 +190,9 @@ REVIEWED = {
         (1, "prose inside a retirement message"),
     "scripts/diagnostics/probe_fed_msl_openems_referee.py":
         (2, "prose stating that the named log is LOCAL-ONLY"),
+    "tests/contracts/test_source_carries_no_tracker_history.py":
+        (1, "the path inside one allow-listed runtime message that names a "
+            "local-only note; the contract compares it as text and reads no file"),
     "tests/contracts/test_guide_citations_resolve.py":
         (4, "sample TEXT fed to that file's own predicate -- the two dead "
             "links it was written to catch, the prose that replaced them, "

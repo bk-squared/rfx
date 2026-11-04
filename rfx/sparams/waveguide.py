@@ -114,8 +114,7 @@ def compute_waveguide_s_matrix(
         time series via a rectangular full-record DFT (matching
         OpenEMS's ``utilities.DFT_time2freq``); ``num_periods``
         therefore governs both the CPML drain horizon AND the DFT
-        integration window. Phase 2 cleanup (2026-04-25) removed
-        the legacy ``num_periods_dft`` early-gate knob — the rect
+        integration window. The rect
         full-record DFT is finite-energy on the recorded transient
         so no gating is needed even on strong reflectors.
     normalize : bool or "flux"
@@ -295,24 +294,15 @@ def compute_waveguide_s_matrix(
         eps_override, normalize, port_reference_sims, self, sigma_override,
     )
 
-    # Issue #704 audit: same silent NTFF drop class as the MSL path.
+    # audit: same silent NTFF drop class as the MSL path.
     _warn_ntff_box_dropped(self, "compute_waveguide_s_matrix()")
 
-    # Non-uniform-mesh dispatch. Earlier the uniform scan ran with
-    # the coarse boundary dx and silently ignored ``dx_profile`` /
-    # ``dy_profile`` (handover v2 experiment 12) — and until #811 a
-    # dz_profile-ONLY mesh still fell through to the uniform lane,
-    # because this gate tested only the transverse profiles while
-    # preflight described the graded mesh. The dedicated NU
-    # two-run extractor below is enabled when its supported scope
-    # is met (``normalize=True``, single-mode ports); otherwise
-    # raise so the user is not given silently-wrong numbers.
-    # Frequency grid resolved HERE rather than after the non-uniform
-    # dispatch below: the NU lane's absorber advisory needs it, and
-    # duplicating the resolver into that branch would be one more hand copy
-    # of production logic (the #576-review class of defect). Pure function of
-    # the entries and freq_max, so moving it earlier only makes the
-    # matching-grid check fail sooner.
+    # Non-uniform-mesh dispatch checks all three profiles, including a
+    # dz_profile-only mesh. The dedicated NU two-run extractor below is enabled
+    # when its supported scope is met (``normalize=True``, single-mode ports);
+    # otherwise raise so the user is not given silently-wrong numbers. Resolve
+    # the frequency grid here because the NU absorber advisory needs it; a
+    # shared resolver also applies the matching-grid check consistently.
     from rfx.api._preflight import resolve_waveguide_port_freqs
 
     def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
@@ -352,7 +342,7 @@ def compute_waveguide_s_matrix(
         _waveguide_stages._validate_waveguide_nu(
             checkpoint_segments, entries, eps_override, normalize, port_reference_sims, sigma_override, subpixel_smoothing,
         )
-        # Far-port absorber advisory, on the NU lane too (#576 review F3).
+        # Far-port absorber advisory, on the NU lane too.
         # It used to sit ~110 lines below this branch's return, i.e. it was
         # UNREACHABLE from here: the guard existed, its text named the exact
         # remedy, and no NU caller ever asked it. That silence is why both NU
@@ -497,8 +487,8 @@ def compute_waveguide_s_matrix(
             for cfg in raw_cfgs
         ]
 
-    # Far-port absorber advisory for EVERY uniform two-port path (issue
-    # #494). Emitted here, before the FDTD runs and before the
+    # Far-port absorber advisory for EVERY uniform two-port path. Emitted here, before the
+    # FDTD runs and before the
     # single-mode / multimode split, because the functional entry points
     # run no sim.preflight() and the port_reference_sims advisory below
     # covers only the junction path.
@@ -607,20 +597,14 @@ def compute_waveguide_s_matrix(
     )
 
     _pec_axes = None
-    # The G-WI5 runtime guardrail that stood here -- "conformal=True is
-    # KNOWN to produce NaN S-parameters at fine mesh" -- was DELETED
-    # 2026-09-15 (#1043 / PR #1047). The NaN was the CPML psi coefficient
-    # reading a different permittivity than the Yee half of the same
-    # timestep: conformal_eps_correction sets aniso_eps to eps_eff = eps/w
-    # at wall cells, which is HIGHER than materials.eps_r, and those cells
-    # run through the x CPML pads. Measured on the tripwire's own rungs,
-    # |S21| at dx 3 / 2 / 1.5 mm: 0.7564 / 0.6974 / nan before, and
-    # 0.7796 / 0.6974 / 0.7274 after. Warning about a NaN that no longer
-    # happens would send users to staircase for no reason.
-    #
-    # NOT claimed by this removal: that conformal PEC is ACCURATE. The
-    # 2026-06-08 accuracy verdicts on the four conformal methods were taken
-    # with the defect present and are still to be re-measured.
+    # The CPML psi coefficient must read the same permittivity as the Yee half
+    # of the timestep: conformal_eps_correction sets aniso_eps to eps_eff =
+    # eps/w at wall cells, which is HIGHER than materials.eps_r, and those cells
+    # run through the x CPML pads. Measured |S21| at dx 3 / 2 / 1.5 mm was
+    # 0.7564 / 0.6974 / nan with mismatched permittivities, and 0.7796 / 0.6974
+    # / 0.7274 with matching values. This stability evidence does not establish
+    # conformal-PEC accuracy; accuracy measurements made with the mismatch
+    # require remeasurement.
 
     settling_details = []
     if normalize == "flux":
@@ -712,7 +696,7 @@ def compute_waveguide_s_matrix(
         dtype=float,
     )
     _port_names = tuple(entry.name for entry in entries)
-    # Issue #538: the energy ring-down witness now reaches the waveguide
+    # the energy ring-down witness reaches the waveguide
     # path — same aggregate truncation warning as the lumped/MSL path.
     # NaN entries (traced AD runs) are skipped by the warner's finite
     # mask; the array itself is always attached for the record.
@@ -818,7 +802,7 @@ def _compute_waveguide_s_matrix_nu(
         through the jnp-native flux extraction and back to the
         S-matrix gradient. The reference keeps the fixed section medium. They are
         rejected for ``normalize=True`` (its diagonal a_inc_ref
-        denominator carries the #88 band-edge fragility).
+        denominator carries the band-edge fragility).
 
     Extracts ``a_inc`` / ``b_out`` via the same
     ``extract_waveguide_port_waves`` helper as the uniform path and
@@ -940,12 +924,12 @@ def _compute_waveguide_s_matrix_nu(
         # Device run: thread the public eps/sigma override (the
         # traced design variable) into the device Yee update so the
         # gradient flows from eps_override -> device fields -> flux
-        # -> S-matrix (mirrors the uniform PR #172 flux-AD wiring).
+        # -> S-matrix.
         # When eps_override is None the assembled device materials
         # are used unchanged (device fields identical); the np->jnp
         # flux extraction below matches the prior np path to
-        # rtol<=1e-5 (float reassociation only, per uniform PR #172).
-        # issue #73: translate the uniform `checkpoint_segments` (K
+        # rtol<=1e-5 (float reassociation only).
+        # translate the uniform `checkpoint_segments` (K
         # segments) → the NU runner's `checkpoint_every` (chunk size).
         # This calculator chooses a divisor of n_steps nearest to
         # n_steps/K. The NU runner handles non-divisors with a real tail
@@ -960,7 +944,7 @@ def _compute_waveguide_s_matrix_nu(
             _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
             if 0 < _ck < n_steps:
                 _ckpt_every = _ck
-        # The #704 warning promises no NTFF accumulation in this calculator.
+        # The warning promises no NTFF accumulation in this calculator.
         device = declaration_variant(self, _waveguide_ports=run_entries, _ntff=None)
         dev_result = run_nonuniform_path(
             device, n_steps=n_steps,
@@ -983,11 +967,10 @@ def _compute_waveguide_s_matrix_nu(
                 "port on both device and reference runs"
             )
 
-        # Issue #827 (the waveguide instance of the NU witness gap):
-        # energy ring-down witness per drive, worst over BOTH runs of
+        # Energy ring-down witness per drive, worst over BOTH runs of
         # the pair -- the reference run feeds a_inc/P_inc, so its
         # truncation corrupts the same S values (same composition as
-        # the uniform normalized/flux lanes, #538). NaN under tracing
+        # the uniform normalized/flux lanes). NaN under tracing
         # propagates instead of being max()-eaten.
         _sd_dev, _detail_dev = settling_db_from_port_records(
             [dev_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
@@ -1029,7 +1012,7 @@ def _compute_waveguide_s_matrix_nu(
             # Power-flux magnitude + modal phase (mirrors the
             # uniform extract_waveguide_s_matrix_flux). Immune to
             # the band-edge a_inc_ref denominator collapse that
-            # makes the normalize=True diagonal blow up (issue #88):
+            # makes the normalize=True diagonal blow up:
             # P_inc = |F_ref[drive]| is large and well-conditioned
             # across the whole band, not source-spectrum-weighted.
             F_ref = ref_result.waveguide_port_flux
@@ -1040,14 +1023,14 @@ def _compute_waveguide_s_matrix_nu(
                     "per-port flux spectra; run_nonuniform_path did "
                     "not return waveguide_port_flux."
                 )
-            # jnp-native (mirrors the uniform PR #172 flux-AD fix):
+            # jnp-native:
             # no np.asarray() concretization — keeps the whole flux
             # extraction on the AD tape so an eps_override-traced
             # device run yields finite gradients through the
             # S-matrix. Uses the DOUBLE-WHERE trick at sqrt(0) /
             # angle(0) (guard the INPUT, not just the output): a
             # single jnp.where still leaks NaN grad through the dead
-            # branch (#171/#172/#148). Forward values are identical
+            # branch. Forward values are identical
             # to the prior np version for P_inc / P > 0.
             P_inc = jnp.abs(F_ref[drive_idx])
             safe_P_inc = jnp.where(
@@ -1108,9 +1091,8 @@ def _compute_waveguide_s_matrix_nu(
         ))
 
 
-    # Issue #827 (waveguide instance): the ring-down witness now reaches
-    # the NU lane -- same aggregate truncation warning and settling_db
-    # field as the uniform single-mode lanes (#538). NaN entries (traced
+    # The ring-down witness covers the NU lane -- same aggregate truncation warning and settling_db
+    # field as the uniform single-mode lanes. NaN entries (traced
     # AD runs) are skipped by the warner's finite mask; the array itself
     # is always attached for the record.
     settling_db = np.asarray(settling_runs, dtype=float)

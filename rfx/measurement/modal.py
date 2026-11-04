@@ -17,8 +17,8 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
     The S-parameter spectra are computed POST-SCAN by
     ``_extract_global_waves_from_time_series`` via a rectangular
     full-record DFT on the recorded arrays. No in-scan windowed DFT
-    accumulators are kept (Phase 2 cleanup, 2026-04-25). The previous
-    in-scan windowed/gated path silently integrated partially-decayed
+    accumulators are kept. In-scan windowed/gated accumulation
+    integrates partially-decayed
     standing waves and produced ``|S11| → ∞`` as the gate widened.
     """
     from rfx.measurement.waveguide_modal import modal_voltage, modal_current

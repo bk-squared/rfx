@@ -1,4 +1,4 @@
-"""The ring-down completion as a JAX map whose derivative is right (issue #1254, PR 3).
+"""The ring-down completion as a JAX map whose derivative is right.
 
 Physics. After the pulse, every port voltage and current is a finite sum of the
 same damped oscillations, ``y_n = sum_k r_k lambda_k**n``; the completion

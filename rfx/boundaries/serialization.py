@@ -9,7 +9,7 @@ def constructor_boundary(sim):
     if sim._boundary_explicit is None:
         return resolved_guide_spec(sim)
     # A Floquet port and an open TF/SF source replace the shorthand's lateral
-    # faces; an explicit spec would declare them (#1944, #1945).
+    # faces; an explicit spec would declare them.
     open_tfsf = sim._tfsf is not None and not sim._tfsf.closed_box
     if (sim._floquet_ports or open_tfsf) and sim._boundary_spec is scalar_spec(sim):
         return str(sim._boundary) if boundary_was_explicit(sim) else DEFAULT_BOUNDARY
@@ -78,7 +78,7 @@ def legacy_spec(sim):
     """Expand the constructor's scalar and remember its original face spec.
 
     ``sim._boundary`` stays a plain ``str``: writers such as h5py refuse a
-    ``str`` subclass (#2214). The expansion is kept beside it, keyed to the
+    ``str`` subclass. The expansion is kept beside it, keyed to the
     scalar it came from; deepcopy keeps both and their shared spec reference.
     """
     sim._boundary = str(sim._boundary)

@@ -19,8 +19,6 @@ TRACKER_PATTERNS = (
 # These constants are record provenance or documentation, never message text.
 # Keep prefixes narrow, and require every exception to still be used.
 ALLOWLIST = (
-    ("sparams/_common.py", "Warn-only complex-reciprocity tolerance for the rectangular-waveguide\n",
-     "Attribute docstring documenting the tolerance's measured derivation"),
     ("sparams/_msl_stages.py", "PRE-passivity-projection raw extraction referred to the declared feed planes,",
      "Replay dump production_smatrix_stage metadata, not message text"),
     ("sparams/_msl_stages.py", "N equally spaced voltage probes plus current at probe 0.",

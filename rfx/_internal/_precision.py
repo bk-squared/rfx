@@ -5,7 +5,7 @@ On Ampere-class and newer NVIDIA GPUs, JAX's default precision for a float32
 mantissa before multiplying, about 1e-3 relative per product. On an RTX 3090
 that moved a completed S-parameter by up to 4e-4, twenty times the float32
 bar of the ring-down tests; with ``HIGHEST`` the same tests agree to 1e-6
-(rfx #1364; records ``rfx-archive`` ``rfx/records/20260929-tf32-ab/``).
+(records ``rfx-archive`` ``rfx/records/20260929-tf32-ab/``).
 CPUs and older GPUs compute the same thing either way.
 
 Every ``jnp.einsum`` / ``jnp.matmul`` / ``jnp.dot`` / ``lax.conv*`` in rfx passes
@@ -35,7 +35,7 @@ FLOAT64_MODE_ERROR = (
 
 # The jax-mps plugin (Apple-silicon GPUs) has no float64: a float64 transfer
 # fails, a float64 value inside jit is cast to float32, and a complex128
-# transfer returns wrong values without an error (#1824). Under JAX 64-bit
+# transfer returns wrong values without an error. Under JAX 64-bit
 # mode a float32 run also forms complex128 spectra (DFT accumulators, S), so
 # the mode itself is refused there, whatever the precision.
 FLOAT64_MPS_ERROR = (

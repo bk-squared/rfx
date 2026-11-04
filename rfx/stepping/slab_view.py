@@ -1,4 +1,4 @@
-"""What a per-slab setup producer receives (rfx #1402, W1 staging).
+"""What a per-slab setup producer receives.
 
 A multi-device run realizes the model on each x slab, not on the whole grid and
 then cut: a whole-grid setup leaves whole-domain arrays on every device. Each
@@ -216,7 +216,7 @@ def slab_views(grid, n_devices, *, globals=None, halo_lo=HALO_LO, halo_hi=HALO_H
                         grid, dict(globals or {}))
         if layout.nx > 1 and view.hi - view.lo == 1:
             # The neighbour rules treat a length-1 axis as the 2-D lane's
-            # self-adjacency and wrap it (rfx #1402, found by idm's review).
+            # self-adjacency and wrap it (found by idm's review).
             raise ValueError(
                 f"slab {rank} of {layout.n_devices} would read a single x row of {layout.nx}; "
                 "a one-row slab takes the 2-D self-adjacency rule. Use fewer devices.")
@@ -341,7 +341,7 @@ def device_rows(value, mesh, *, unpack):
 
     A leaf is a field array (packed ``(rows, ny, nz)``, unpacked
     ``(device, rows, ny, nz)``). Pole coefficients are staged pole-first and
-    are split by their leading axis instead (rfx #1834), so any other rank
+    are split by their leading axis instead, so any other rank
     is refused.
     """
     field = 3 if unpack else 4

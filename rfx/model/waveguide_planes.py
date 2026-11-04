@@ -1,4 +1,4 @@
-"""Where a waveguide port measures, computed from the declaration for admission (#1913)."""
+"""Where a waveguide port measures, computed from the declaration for admission."""
 from __future__ import annotations
 
 from rfx.model.graded_admission import host_cells

@@ -1,4 +1,4 @@
-"""Waveguide incident-table waveform admission (#1942)."""
+"""Waveguide incident-table waveform admission."""
 
 DG_REFUSAL = (
     "waveform='differentiated_gaussian' is refused on waveguide ports: its "

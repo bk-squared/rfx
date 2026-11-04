@@ -410,9 +410,8 @@ def maximize_directivity(
     return objective
 
 
-# Alias for discoverability — the issue #32 fix aligned the default with
-# the ratio-based formulation, so `maximize_directivity_ratio` is simply
-# the new default under an explicit name.
+# Alias for discoverability — `maximize_directivity_ratio` is simply
+# the ratio-based default under an explicit name.
 maximize_directivity_ratio = maximize_directivity
 
 
@@ -511,7 +510,7 @@ def minimize_s11_at_freq_wave_decomp(
     target_freq: float,
     port_idx: int = 0,
 ) -> Callable:
-    """Single-frequency |S11|² objective via V/I wave decomposition (issue #72).
+    """Single-frequency |S11|² objective via V/I wave decomposition.
 
     Reads ``result.s_params`` populated by
     ``Simulation.forward(port_s11_freqs=...)`` (which uses the
