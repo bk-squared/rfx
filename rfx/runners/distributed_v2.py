@@ -645,13 +645,13 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx.runners._distributed_records import SlabRecords
     n_prb = len(probes)
     if not legacy_step:
-        from rfx.stepping.slab_wrap_uniform import run_uniform
+        from rfx.stepping.slab_wrap_uniform import run_wrapped_uniform
         prepared_step.stage(stepping_product, grid=grid, materials=materials, pec_edges=pec_edges)
         dispersion = [debye_spec, lorentz_spec]
         del materials, pec_edges, pec_mask, pec_shapes, debye_spec, lorentz_spec
         records = SlabRecords(sim, grid, nx_per, mesh, jnp.float32, n_steps, snapshot)
         final_carry, probe_ts, final_state_sharded, records = prepared_step.advance(
-            stepping_product, run_uniform, sources, probes, layout, mesh, records,
+            stepping_product, run_wrapped_uniform, sources, probes, layout, mesh, records,
             _operand_layout="wrapped_uniform_slab", n_steps=n_steps,
             boundary=sim._boundary, dispersion=dispersion, port_plan=ports,
             record_vref=_record_vref)

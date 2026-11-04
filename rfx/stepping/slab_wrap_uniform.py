@@ -195,7 +195,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                                              table=table, port_table=port_table)
 
 
-def run_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
+def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
                 boundary, dispersion, port_plan, record_vref=True):
     """Transfer dense setup operands to slabs before entering the time loop."""
     grid, materials, pec_edges = operands
