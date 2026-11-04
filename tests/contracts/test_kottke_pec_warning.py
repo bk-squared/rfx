@@ -12,7 +12,8 @@ from rfx.errors import ConfigurationWarning
 
 MESSAGE = (
     "subpixel_smoothing='kottke_pec' with a PEC volume is "
-    "experimental, not recommended for metal; see known limitations (#2390)"
+    "experimental, not recommended for metal; see known limitations, "
+    '"A metal face resting on a dielectric between grid nodes"'
 )
 
 
@@ -61,7 +62,7 @@ def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         jax.block_until_ready(call(1.0))
-    notices = [w for w in caught if "#2390" in str(w.message)]
+    notices = [w for w in caught if "not recommended for metal" in str(w.message)]
     assert len(notices) == int(expected), "first call must warn exactly for kottke_pec + PEC volume"
     if expected:
         assert str(notices[0].message) == MESSAGE
@@ -73,7 +74,7 @@ def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
         # The once-per-object state is shared across the public entries too.
         other = "forward" if entry == "run" else "run"
         getattr(sim, other)(n_steps=2, skip_preflight=True, subpixel_smoothing=smoothing)
-    assert not [w for w in caught if "#2390" in str(w.message)]
+    assert not [w for w in caught if "not recommended for metal" in str(w.message)]
 
 
 @pytest.mark.parametrize("smoothing", ["kottke_pec", True])
@@ -108,7 +109,7 @@ def test_waveguide_kottke_pec_volume_warning(monkeypatch, smoothing):
             with pytest.raises(AdmissionComplete):
                 sim.compute_waveguide_s_matrix(n_steps=1, normalize=True,
                                                subpixel_smoothing=smoothing)
-        notices = [w for w in caught if "#2390" in str(w.message)]
+        notices = [w for w in caught if "not recommended for metal" in str(w.message)]
         expected = smoothing == "kottke_pec" and call_index == 0
         assert len(notices) == int(expected)
         if expected:

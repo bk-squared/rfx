@@ -28,7 +28,8 @@ def warn_kottke_pec_volume(sim, subpixel_smoothing):
             continue  # A zero-radius PolylineWire declares a filament.
         warnings.warn(
             "subpixel_smoothing='kottke_pec' with a PEC volume is "
-            "experimental, not recommended for metal; see known limitations (#2390)",
+            "experimental, not recommended for metal; see known limitations, "
+            '"A metal face resting on a dielectric between grid nodes"',
             ConfigurationWarning, stacklevel=user_stacklevel(),
         )
         _warned_kottke_pec.add(sim)
