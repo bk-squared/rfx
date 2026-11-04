@@ -1,4 +1,4 @@
-"""Conformal PEC as partially filled cells: E free lengths, H free areas, and the SC clamp (#1651).
+"""Conformal PEC as partially filled cells: E free lengths, H free areas, and the SC clamp.
 
 Each E edge cut by a PEC surface gets permittivity eps/lbar, lbar its PEC-free length (from the signed distances at its
 two end nodes); each H face gets permeability mu*sbar, sbar its PEC-free area (marching squares on its corner nodes);
@@ -24,7 +24,7 @@ from rfx.geometry.conformal_cells import compute_conformal_fractions
 def apply_conformal_pec(state, w_ex, w_ey, w_ez):
     """Compatibility entry for weight callers; production forms masks at setup."""
     # Imported here: geometry loads before the model layer, and a module-level
-    # import would load the time-step layer with it (rfx#1818).
+    # import would load the time-step layer with it.
     from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
 
     return _apply_conformal_pec(state, w_ex == 0.0, w_ey == 0.0, w_ez == 0.0)
@@ -64,7 +64,7 @@ CONFORMAL_MODEL_ADVISORY = (
 
 
 def warn_conformal_model(conformal_pec=None):
-    """Warn with the selected conformal model's measured limitations (#1651).
+    """Warn with the selected conformal model's measured limitations.
 
     Under Python's default warning filter it is shown once per calling
     location, not on every run.
@@ -237,7 +237,7 @@ def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
         Volume relative permittivity per E component, already averaged
         onto the Yee edges (``rfx.core.yee.edge_mean_components``), or one
         scalar / array shared by all three components. A heterogeneous
-        cell-centred array must be edge-averaged first (#1373), and a
+        cell-centred array must be edge-averaged first, and a
         lumped capacitor is added afterwards, never divided by ``w``.
     w_ex, w_ey, w_ez : jnp.ndarray
         Clamped conformal weights.

@@ -624,8 +624,7 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
 # These helpers build the per-cell ``SourceSpec`` / ``MagneticSourceSpec`` lists
 # for a transverse E/M coaxial plane source.  The coax line lanes
 # (``compute_coaxial_line_reflection`` and the lanes built like it) drive their
-# FDTD runs with them; the single-plane lane that first used them was removed
-# in #1212.  The helpers are intentionally low-level: a higher-level method is
+# FDTD runs with them.  The helpers are intentionally low-level: a higher-level method is
 # responsible for plane index, DFT probe setup, V/I extraction, and S-matrix
 # bookkeeping.
 #
@@ -1009,8 +1008,7 @@ def extract_coaxial_plane_vi_from_dft(
 ) -> CoaxialTEMCartesianPlaneVI:
     """Pull V/I phasors from DFT plane probes at the coaxial reference plane.
 
-    A convenience wrapper (its first caller, the single-plane coaxial lane,
-    was removed in #1212): it takes the DFT-plane outputs (one per
+    A convenience wrapper: it takes the DFT-plane outputs (one per
     Ex/Ey/Hx/Hy component) and delegates to
     :func:`coaxial_tem_reference_plane_vi_from_cartesian_plane`, which
     already implements the radial line-integral / azimuthal loop-integral
@@ -1057,8 +1055,7 @@ def extract_coaxial_plane_vi_from_dft(
 # ===========================================================================
 # Coaxial transmission-line S-parameter extraction (broad-E5 redesign)
 #
-# Rationale (verified 2026-06-05..07): the single-plane V/I power-wave path
-# (the coaxial S-matrix lane, removed in #1212) reported non-physical |S11|>1
+# A single-plane V/I power-wave measurement reported non-physical |S11|>1
 # for a lossless short. Root cause was NOT the V/I extractor (its math is exact for a clean
 # lossless TEM field) but the measurement TOPOLOGY: a ~5mm coax stub in a
 # hardcoded closed PEC box has no transmission line for a clean reflection.
@@ -1354,7 +1351,7 @@ def coaxial_line_reflection_from_plane_voltages(
 
 
 class TwoPortWaveSolve(NamedTuple):
-    """Result of :func:`solve_two_port_from_wave_amplitudes` (issue #489).
+    """Result of :func:`solve_two_port_from_wave_amplitudes`.
 
     ``s_params`` has shape ``(2, 2, n_freqs)`` with ``S[j, i]`` the response at
     port *j* when driving port *i*. ``cond_a`` is the per-frequency 2-norm
@@ -1373,7 +1370,7 @@ class TwoPortWaveSolve(NamedTuple):
 
 
 def _solve_two_port_from_wave_amplitudes_jnp(a_inc, b_out) -> TwoPortWaveSolve:
-    """``jax.numpy`` core of :func:`solve_two_port_from_wave_amplitudes` (#489 AD leg).
+    """``jax.numpy`` core of :func:`solve_two_port_from_wave_amplitudes`.
 
     Reached ONLY for *traced* wave amplitudes (``jax.grad`` / ``jax.jit``); the
     concrete path stays in NumPy, UNCHANGED, so the validated cond/NaN-handling
@@ -1415,7 +1412,7 @@ def solve_two_port_from_wave_amplitudes(
     cond_warn: float = 1.0e3,
     _prefer_jnp: bool = False,
 ) -> TwoPortWaveSolve:
-    """Two-drive 2x2 S-matrix solve from measured wave amplitudes (issue #489).
+    """Two-drive 2x2 S-matrix solve from measured wave amplitudes.
 
     Parameters
     ----------
@@ -1465,7 +1462,7 @@ def solve_two_port_from_wave_amplitudes(
     at ``|Gamma_t| = 0.5``; a run through the production extractor at 12 GHz
     (where propagation phase enters) measured 2.4 for the same terminator.
     Either way the matrix is nowhere near singular, which is why no terminator
-    improvement is a prerequisite for issue #489.
+    improvement is a prerequisite for the two-port wave solve.
 
     This function is pure linear algebra on amplitudes someone else measured.
     It cannot detect a mis-measured amplitude — that is what the reciprocity
@@ -1518,7 +1515,7 @@ def solve_two_port_from_wave_amplitudes(
     not under ``jax.grad``) still routes through this SAME jnp core rather
     than silently falling back to this NumPy path (mirrors
     ``coaxial_line_reflection_from_plane_voltages``'s own ``_prefer_jnp``,
-    and the PR #468 / #559-B1 lesson: an AD-vs-FD comparator must hit the
+    because an AD-vs-FD comparator must hit the
     identical branch on both sides, not two functions that merely agree in
     the well-conditioned case).
     """
@@ -1713,7 +1710,7 @@ def stamp_coaxial_line(
     # nodes i AND i + 1, so on the high side of an axis the realized wall
     # reaches one node past its last cell and the clamp's cell of clearance
     # can realize as none: a conductor on an absorber's inner face. The coax
-    # lanes absorb on x and y (issue 1218), so the realized clearance is
+    # lanes absorb on x and y, so the realized clearance is
     # checked, in whole cells, against every padded lateral face.
     conductor = np.asarray(shell | pin_mask)
     for axis, name, n_axis, pad_lo_, pad_hi_ in (

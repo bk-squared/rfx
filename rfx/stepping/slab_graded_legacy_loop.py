@@ -95,7 +95,7 @@ def run_graded_legacy_slab_loop(
     def _update_h_shmap(st, mat, spacings, *, ranks):
         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]
-        # #1038 leg 4: body moved VERBATIM to
+        # body is defined in
         # _distributed_common.update_h_nu_shmap, which distributed_v2.py's
         # `if is_nu:` branch also calls now. The eight locals this closure read
         # are passed explicitly; the call sites below did not move.
@@ -107,9 +107,9 @@ def run_graded_legacy_slab_loop(
 
     def _update_e_shmap(st, mat, spacings, e_materials, *, ranks):
         inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
-        # #1038 leg 4: body moved VERBATIM to
+        # body is defined in
         # _distributed_common.update_e_nu_shmap, shared with the `is_nu`
-        # branch of distributed_v2.run_distributed. #1303: this lane hands it
+        # branch of distributed_v2.run_distributed. This lane hands it
         # the four-cell means run_fn built once, before the loop.
         return update_e_nu_shmap(
             st, mat, mesh, dt,
@@ -429,7 +429,7 @@ def run_graded_legacy_slab_loop(
                 P("x"), P("x"), P("x"), P("x"),
                 # z-face psi (sliced per rank)
                 P("x"), P("x"), P("x"), P("x"),
-                P("x"),  # mu_r slab (material-aware CPML coeff, #205)
+                P("x"),  # mu_r slab (material-aware CPML coeff)
                 (P("x"), P(None), P(None)),
             ),
             out_specs=(
@@ -497,7 +497,7 @@ def run_graded_legacy_slab_loop(
 
     def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials, e_curl_coeff, *, ranks):
         # The psi coefficient takes the permittivity the E update of this
-        # step used (#1043): each component's four-cell edge mean -- the one
+        # step used: each component's four-cell edge mean -- the one
         # run_fn built before the loop, including dispersive models.
         @partial(
             rank_shard_map,
@@ -508,7 +508,7 @@ def run_graded_legacy_slab_loop(
                 P("x"), P("x"), P("x"), P("x"),  # x-face psi
                 P("x"), P("x"), P("x"), P("x"),  # y-face psi
                 P("x"), P("x"), P("x"), P("x"),  # z-face psi
-                P("x"),  # materials (material-aware CPML coeff, #205)
+                P("x"),  # materials (material-aware CPML coeff)
                 P("x"),  # the four-cell eps/sigma means
                 P("x"),  # the E update's in-loop dispersive curl coefficient
             ),
@@ -656,7 +656,7 @@ def run_graded_legacy_slab_loop(
         #    Ey/Ez on its right ghost plane, and that plane's PEC edges are
         #    zeroed by the OWNER rank (stages 7/8 impose the hard conductors).
         #    Exchanging before the PEC stages handed the ghost the
-        #    un-zeroed value — the #931 seam-cell divergence (2.107e-01
+        #    un-zeroed value — the seam-cell divergence (2.107e-01
         #    final-step error on a one-cell body at rank 1's first real
         #    cell; see the docstring).
         st = _exchange_e_ghosts_nu(st, mesh, n_devices, ranks=ranks)
@@ -752,7 +752,7 @@ def run_graded_legacy_slab_loop(
         electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local, high_wall)
         scales = None
         if drives:
-            # #1279: the drive sees the materials the E update sees -- the
+            # the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
             scales = material_drive_scales(invariants[0].eps_r, invariants[0].sigma, mesh, drives, dt,
                 ranks=ranks, grid=electric_grid, sigma_film=invariants[0].sigma_film)
@@ -767,7 +767,7 @@ def run_graded_legacy_slab_loop(
         if warmup_xs is not None:
             warmup_xs = _drive_xs(warmup_xs, scales, ranks, weights)
         opt_xs = _drive_xs(opt_xs, scales, ranks, weights)
-        # #1303: each component's four-cell mean, built once for the
+        # each component's four-cell mean, built once for the
         # warm-up and the optimize scans (and every remat segment) -- see
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
         # coefficients are finished from these same means inside the loop.

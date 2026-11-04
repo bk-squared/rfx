@@ -93,11 +93,10 @@ def _validate_waveguide_nu(
     if any(entry.n_modes > 1 for entry in entries):
         unsupported.append("multi-mode ports (n_modes>1) are not supported")
     # The differentiable eps/sigma AD channel is wired on the NU
-    # path only for normalize='flux' (mirrors the uniform PR #172
-    # flux-AD fix): the flux extractor is now jnp-native end-to-end
+    # path only for normalize='flux': the flux extractor is jnp-native end-to-end
     # so a traced eps_override flows into the device Yee update and
     # back through the S-matrix. normalize=True is kept out of scope
-    # — its diagonal a_inc_ref denominator carries the #88 band-edge
+    # — its diagonal a_inc_ref denominator carries the band-edge
     # fragility, so accepting eps_override there could yield
     # silently-wrong gradients.
     if eps_override is not None and normalize != "flux":
@@ -133,7 +132,7 @@ def _validate_waveguide_uniform(
     eps_override, is_tracer, normalize, port_reference_sims, self, sigma_override,
 ):
     # This extractor assembles volume materials directly, without the
-    # run()/forward() RLC folding or element updates (#1263).
+    # run()/forward() RLC folding or element updates.
     for model in (self, *(port_reference_sims or ())):
         if model._lumped_rlc:
             raise NotImplementedError(
@@ -143,7 +142,7 @@ def _validate_waveguide_uniform(
                 "with these elements, or remove them from the S-matrix model.")
 
     # The uniform waveguide scan has no subgrid and never read
-    # add_refinement (#1240); the graded branch above is refused by its runner.
+    # add_refinement; the graded branch above is refused by its runner.
     self._require_no_refinement_without_a_subgrid(
         "compute_waveguide_s_matrix()")
 
@@ -153,7 +152,7 @@ def _validate_waveguide_uniform(
     # extract_waveguide_s_params_normalized converts the device-run
     # outgoing wave with np.array, so a TRACED eps_override /
     # sigma_override (jax.grad, jax.jit) cannot flow through it.
-    # Measured 2026-09-02 (tests/unit/autodiff/test_waveguide_two_run_lane_traced_override.py):
+    # Measured (tests/unit/autodiff/test_waveguide_two_run_lane_traced_override.py):
     # only the device-run site fires — the vacuum reference run carries
     # no design variable. Raise here, naming the lane, instead of a
     # TracerArrayConversionError deep in the extractor. A concrete
@@ -185,7 +184,7 @@ def _validate_waveguide_materials(
     # The smoothed tensor (Stage 1 and "kottke_pec") is built from the DECLARED
     # shapes and replaces the cell permittivity in the E update, so an
     # eps_override would never reach the solve: S came back identical with a
-    # slab's permittivity doubled, and d/d(eps_override) was zero (#1524).
+    # slab's permittivity doubled, and d/d(eps_override) was zero.
     # sigma_override is read by the tensor kernels and is not affected.
     if eps_override is not None and subpixel_smoothing:
         self._refuse_unsupported_run_kwargs(
@@ -232,15 +231,14 @@ def _validate_waveguide_materials(
 def _prepare_waveguide_conductors(
     base_materials, conductors, eps_override, sigma_override, subpixel_smoothing,
 ):
-    # #931 §1.7: the realized PEC edges of this device — volumes,
-    # sheets and wires — built ONCE and handed to every device run of
-    # the extractors below.  This replaces the sigma=1e10 CELL fold
-    # this lane used to do (see the note at the old fold site).
+    # The realized PEC edges of this device — volumes, sheets and
+    # wires — are built ONCE and handed to every device run of the
+    # extractors below.
     _wg_pec_edge_masks = conductors.pec_edges
     # The junction geometry census also needs these edges when Kottke
     # below encodes PEC in inverse permittivity and clears solver masks.
     _wg_geometry_pec_edges = _wg_pec_edge_masks
-    # #677: node-thin sheet ctx for the DEVICE runs of this lane; the
+    # node-thin sheet ctx for the DEVICE runs of this lane; the
     # edge exclusion uses the same realized edges so sheet and PEC
     # never contend for one edge.  The vacuum REFERENCE runs never
     # receive the ctx (explicit strip at the extractor call sites).
@@ -251,12 +249,10 @@ def _prepare_waveguide_conductors(
             "supported with subpixel_smoothing / conformal on the "
             "waveguide S-matrix method: the sheet operator "
             "assumes the plain isotropic E update at its edges.")
-    # #931 §1.7: the interior PEC of this lane is the realized edge
-    # set, applied per step by the shared ``apply_pec_edges``.  The
-    # sigma=1e10 CELL fold that stood here was a fourth realization of
-    # the same geometry and damped only the components indexed by the
-    # occupied cell, so a one-cell iris or wall got its lower face and
-    # never its far one.
+    # The interior PEC of this lane is the realized edge set, applied
+    # per step by the shared ``apply_pec_edges``. A sigma=1e10 CELL
+    # fold would damp only the components indexed by the occupied
+    # cell, omitting the far face of a one-cell iris or wall.
     # **Stage 2 caveat, unchanged**: under ``subpixel_smoothing=
     # "kottke_pec"`` the inverse-eps tensor already encodes the PEC
     # zero (inv = 0 freezes the field) and is the single source of
@@ -306,14 +302,14 @@ def _prepare_waveguide_references(
             _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(
                 _ref_grid, pec_sheets=_ref_pec_sheets,
                 pec_wires=_ref_pec_wires, sheet_specs=_ref_sheet_specs)
-            # The reference run carries no sheet context (#677): refuse, never drop.
+            # The reference run carries no sheet context: refuse, never drop.
             if _ref_sheet_specs:
                 raise NotImplementedError(
                     f"port_reference_sims[{_i}] declares a surface-impedance sheet "
                     "(add_thin_conductor(..., surface_impedance_f0=...)); the reference "
                     "run does not model sheet impedance and would run without it. "
                     "Remove it from the reference simulation.")
-            # The reference run carries no poles (#2058): refuse, never drop.
+            # The reference run carries no poles: refuse, never drop.
             if _ref_debye is not None or _ref_lorentz is not None:
                 raise NotImplementedError(
                     f"port_reference_sims[{_i}] declares a dispersive (Debye or "
@@ -342,7 +338,7 @@ def _prepare_waveguide_configs(
     raw_cfgs = [self._build_waveguide_port_config(entry, grid, freqs, n_steps) for entry in entries]
     from rfx.boundaries.features import resolve_waveguide_section_medium
     # Each reference runs these ports on its own model: admit its sections
-    # against its own materials and PEC cells, as a direct entry would (#2058).
+    # against its own materials and PEC cells, as a direct entry would.
     for _i, (_ref_base, _ref_pec_mask) in enumerate(zip(ref_materials_per_port or (), ref_pec_masks)):
         try:
             resolve_waveguide_section_medium(
@@ -432,7 +428,7 @@ def _extract_waveguide_multimode(
         )
     # Report the ABSOLUTE de-embed target plane (matches the single-mode + coax paths and
     # the WaveguideSMatrixResult schema), NOT the relative shift ref_shifts_mm — that is the
-    # extractor's phase-shift input, not a plane coordinate (RF-audit 2026-07-23).
+    # extractor's phase-shift input, not a plane coordinate.
     reference_planes = np.array(desired_refs_mm, dtype=float)
     # Build port names including mode indices
     port_names_mm = []

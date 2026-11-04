@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
-    """Both coax line lanes absorb on x, y and z (issue 1218).
+    """Both coax line lanes absorb on x, y and z.
 
     With absorbers on z only, the lateral pads were vacuum backed by the PEC
     grid faces: a closed metal can around the line. Every unshielded

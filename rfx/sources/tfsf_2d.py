@@ -13,12 +13,12 @@ Supports two modes:
 Both modes use the same cell size ``dx`` as the 3D simulation so
 numerical dispersion matches exactly at any angle.
 
-Oblique wavevector — Bloch field-transformation (#404)
+Oblique wavevector — Bloch field-transformation
 -------------------------------------------------------
 The intended oblique transverse wavenumber is ``k_y = k0·sinθ`` (``k0 =
 2π·f0/c``).  A plain-periodic transverse wrap (``jnp.roll`` with no phase)
 cannot sustain a non-commensurate ``k_y`` and pulls the effective angle DOWN
-(the #404 under-tilt: 60° injected as ~25°).  The fix uses the standard
+(the under-tilt: 60° injected as ~25°).  The fix uses the standard
 **field-transformation** method: write the physical field as
 ``F_phys(x,y,t) = P(x,y,t)·exp(-j·k_y·y)`` with ``P`` genuinely L_y-periodic.
 A **y-uniform** complex ``P`` then represents the oblique wave exactly.  The
@@ -53,7 +53,7 @@ from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 
 
 # ---------------------------------------------------------------------------
-# Auxiliary-grid absorber (#888)
+# Auxiliary-grid absorber
 # ---------------------------------------------------------------------------
 # The aux grid's own absorber sets the injected incident field for EVERY
 # consumer of the oblique Bloch path, and R/T normalise by a probe of that same
@@ -253,7 +253,7 @@ def init_tfsf_2d(
 
     # i0_x: 2D x-index that maps to 3D x_lo
     i0_x = n_cpml_2d + n_margin_x
-    # Legacy rewrite, PR3b: this oblique auxiliary wrap is unchanged by
+    # This oblique auxiliary wrap is unchanged by
     # boundary-model predeclaration Addendum 5 (the parent pads are included).
     i0_y = 0  # periodic transverse, no padding
 
@@ -266,7 +266,7 @@ def init_tfsf_2d(
     # CFS-CPML profile (x-direction only).  sigma_max is DERIVED from a target
     # reflection through the same law the 3-D absorber uses
     # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
-    # heuristic -- see AUX_CPML_* above and #888.
+    # heuristic -- see AUX_CPML_* above.
     profile_options = dict(
         order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
@@ -296,7 +296,7 @@ def init_tfsf_2d(
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
-    # Signed transverse wavenumber for the Bloch field-transformation (#404).
+    # Signed transverse wavenumber for the Bloch field-transformation.
     # k_y = k0·sinθ at the carrier f0; the sign is chosen so that a positive
     # angle_deg tilts the injected energy flow toward +transverse (matching the
     # legacy time-delay convention). Verified against poynting_angle.py.
@@ -335,7 +335,7 @@ def init_tfsf_2d(
         magnetic_hi=magnetic_hi,
     )
 
-    # Aux-grid fields are COMPLEX (Bloch field-transformation, #404). The
+    # Aux-grid fields are COMPLEX (Bloch field-transformation). The
     # complexity is contained here; apply_tfsf_2d_e/h re-apply exp(-j k_y y)
     # and take the real part before touching the (real) 3D grid.
     state = TFSF2DState(
@@ -394,7 +394,7 @@ _AUX_CARRY_FIELDS = ("ez_2d", "hx_2d", "hy_2d",
 def _narrow_to_carry(st_in: TFSF2DState, st_out: TFSF2DState) -> TFSF2DState:
     """Return ``st_out`` with every complex field back at ``st_in``'s dtype.
 
-    Issue #646. ``dx``/``dt``/``t`` reach the update bodies as numpy float64
+    ``dx``/``dt``/``t`` reach the update bodies as numpy float64
     scalars (derived from ``grid.dt``), and numpy scalars are strongly typed
     in JAX. Under ``jax_enable_x64`` they promote the scalar precomputes
     (``dt/MU_0``, ``exp(-1j*k_y*dx)``, the source term) and hence the whole
@@ -412,7 +412,7 @@ def _narrow_to_carry(st_in: TFSF2DState, st_out: TFSF2DState) -> TFSF2DState:
     the path is bit-identical by construction.
 
     Derived from the state, never pinned to complex64, so the complex
-    aux-grid carry the oblique-Bloch path needs (#404) is preserved and a
+    aux-grid carry the oblique-Bloch path needs is preserved and a
     complex128 aux state would stay complex128.
     """
     repl = {}
@@ -488,7 +488,7 @@ def _face_incident(sample_vals, cfg: TFSF2DConfig, n_trans: int, dx: float,
                    transformed: bool):
     """Per-transverse-cell incident field to inject at a TFSF face.
 
-    Transformed frame (complex 3D grid — #404 Phase-B): the 3D grid evolves the
+    Transformed frame (complex 3D grid): the 3D grid evolves the
     SAME Bloch envelope ``P`` as the aux grid, so inject ``P`` DIRECTLY (complex,
     no phase re-application, no ``jnp.real``).  Real frame (Phase-A / open /
     CPML-transverse): reconstruct the physical field ``Re(P·exp(-j·k_t·y))``.
@@ -544,7 +544,7 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     # sign is (-coeff, +coeff).  For TEz (Ey/Hz, curl_sign=-1): Ampere
     # has -dHz/dx, so correction sign is (+coeff, -coeff).  Using
     # curl_sign unifies both: (-curl_sign*coeff, +curl_sign*coeff).
-    # Narrow the correction to the 3D field's own dtype (#646). ``coeff`` is a
+    # Narrow the correction to the 3D field's own dtype. ``coeff`` is a
     # numpy float64 scalar, so under x64 the product is complex128/float64 and
     # the scatter-add into a complex64/float32 field emits JAX's
     # "cannot safely cast" FutureWarning (a future hard error). No-op with x64
@@ -592,7 +592,7 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
         e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
 
-    # Narrow to the 3D field dtype — see the note in apply_tfsf_2d_e (#646).
+    # Narrow to the 3D field dtype — see the note in apply_tfsf_2d_e.
     h_field = h_ref
     h_field = h_field.at[cfg.x_lo - 1, :, :].add(
         (-cfg.curl_sign * coeff * e_lo_3d).astype(h_ref.dtype))

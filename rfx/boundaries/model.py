@@ -196,7 +196,7 @@ def realize(model: BoundaryModel, grid) -> Realization:
             periods.append((axis.name, length))
         for side in ("lo", "hi"):
             name = f"{axis.name}_{side}"
-            # PR3a relabels only the full-guide default faces. Other feature
+            # Only the full-guide default faces are relabelled. Other feature
             # departures (including Floquet) retain their declared kinds.
             guide_faces = getattr(grid, "_waveguide_admission", ((),))[0]
             face = records[name] if name in guide_faces else model.face(name)

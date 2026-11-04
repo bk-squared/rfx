@@ -1,4 +1,4 @@
-"""Streaming NTFF multi-frequency accumulation (issue #43).
+"""Streaming NTFF multi-frequency accumulation.
 
 NTFF DFT arrays scale as ``n_freqs × face_cells × 4`` complex64. For
 broadband antenna sweeps (100+ frequency points) this dominates the

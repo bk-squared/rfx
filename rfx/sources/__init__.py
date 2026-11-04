@@ -30,7 +30,7 @@ from rfx.sources.coaxial_port import (
 
 # rfx.sources.waveguide_port imports the model, stepping and measurement
 # layers, and those layers import submodules of this package; an eager import
-# here would load that file whenever a layer loads (rfx#1818).
+# here would load that file whenever a layer loads.
 _LAZY_EXPORTS = {
     "WaveguidePort": "rfx.sources.waveguide_port",
     "WaveguidePortConfig": "rfx.sources.waveguide_port",

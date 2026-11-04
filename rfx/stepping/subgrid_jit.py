@@ -232,8 +232,8 @@ def _make_step_fn(ctx):
         st_c = update_h(st_c, mats_c, dt, dx_c, high_wall=high_wall_c)
         if use_cpml:
             # materials= keeps the CPML impedance-matched inside dielectrics
-            # (issue #205; free-space coefficients diverge when a dielectric
-            # overlaps the absorber — same mechanism as #203/#204).
+            # (free-space coefficients diverge when a dielectric
+            # overlaps the absorber).
             st_c, cpml_new = apply_cpml_h(st_c, cpml_params, carry["cpml"],
                                            grid_c, cpml_axes, materials=mats_c)
         if use_exterior_owned_z_slab and is_full_xy_z_slab:
@@ -364,11 +364,11 @@ def _make_step_fn(ctx):
             st_c, cpml_new = apply_cpml_e(st_c, cpml_params, cpml_new,
                                            grid_c, cpml_axes, materials=mats_c)
         if use_pec_mask_c:
-            # #931: ``apply_pec_mask`` IS the shared realization
+            # ``apply_pec_mask`` IS the shared realization
             # (realized_pec_edge_masks, volume branch). This lane
             # carries VOLUMES only — run() refuses a declared sheet
             # or wire before it gets here (rfx/api/_execute.py) — and
-            # has no periodic branch, so the default #689 flags are
+            # has no periodic branch, so the default flags are
             # the run's own.
             st_c = apply_pec_mask(st_c, pec_mask_c)
         st_c = apply_pec(st_c)
@@ -388,11 +388,11 @@ def _make_step_fn(ctx):
         # === Fine E update + PEC mask ===
         st_f = update_e(st_f, mats_f, dt, dx_f, high_wall=high_wall_f)
         if use_pec_mask_f:
-            # #931: ``apply_pec_mask`` IS the shared realization
+            # ``apply_pec_mask`` IS the shared realization
             # (realized_pec_edge_masks, volume branch). This lane
             # carries VOLUMES only — run() refuses a declared sheet
             # or wire before it gets here (rfx/api/_execute.py) — and
-            # has no periodic branch, so the default #689 flags are
+            # has no periodic branch, so the default flags are
             # the run's own.
             st_f = apply_pec_mask(st_f, pec_mask_f)
         if fine_physical_pec_faces:

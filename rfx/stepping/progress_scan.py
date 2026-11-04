@@ -41,11 +41,11 @@ def scan_with_progress(
     ``jax.lax.scan(body, carry, xs_chunk)`` with
     ``chunk_scan(carry, xs_chunk, lo)``, ``lo`` being the global index of
     the chunk's first step. ``run()`` passes one that records field
-    snapshots at global multiples of their interval (#1258); it must return
+    snapshots at global multiples of their interval; it must return
     the same ``(carry, outputs)`` pair, with every output leaf stacked on a
     leading axis that concatenates across chunks.
 
-    ``stop_fn``, when given (issue #1254, ``run(..., until_identified=True)``),
+    ``stop_fn``, when given (``run(..., until_identified=True)``),
     is called after every chunk as ``stop_fn(done, carry, chunk_outputs)``,
     ``done`` being the steps run so far and ``carry`` the state after them;
     a true return ends the loop there, and the returned outputs hold those

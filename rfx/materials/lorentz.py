@@ -18,7 +18,7 @@ Discretized (central difference + Crank-Nicolson damping):
     b_p = -(1 - δΔt) / (1 + δΔt)
     c_p = ε₀ κ_p Δt² / (1 + δΔt)
 
-Per E component (#1260): ε_∞ and σ are the edge mean over the component's
+Per E component: ε_∞ and σ are the edge mean over the component's
 four incident cells (:func:`rfx.core.yee.component_e_materials`), and each
 pole's κ_p (∝ Δε_p) is κ_p times the fraction of those cells that carry the
 pole -- the same parallel-susceptibility rule as σ, see
@@ -89,7 +89,7 @@ def lorentz_pole(delta_eps: float, omega_0: float, delta: float) -> LorentzPole:
 class LorentzCoeffs(NamedTuple):
     """Precomputed ADE coefficients for Lorentz/Drude poles.
 
-    Per E component (#1260) -- each a 3-tuple ``(x, y, z)``:
+    Per E component -- each a 3-tuple ``(x, y, z)``:
 
     ca, cb : (nx, ny, nz) each — E update coefficients
     cc : (nx, ny, nz) each — P→E coupling: 1/γ
@@ -173,7 +173,7 @@ def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
             # masked branch above, which has always produced whatever
             # ``jnp.where`` promotes to. A hard float32 here made the two
             # branches disagree and capped the ADE coefficients at float32
-            # under ``precision="float64"`` (issue #656). With x64 off JAX
+            # under ``precision="float64"``. With x64 off JAX
             # clamps to float32, so the default lane is unchanged.
             a_list.append(jnp.full(shape, a_val))
             b_list.append(jnp.full(shape, b_val))
@@ -210,7 +210,7 @@ def _lorentz_e_coeffs_si(e_materials, dt, a, b, c):
 
 
 def _lorentz_e_coeffs_eps_r(e_materials, dt, a, b, c):
-    """The Lorentz coefficients in relative-permittivity units (#1357)."""
+    """The Lorentz coefficients in relative-permittivity units."""
     eps_c, sig_c = e_materials
     ca, cb, cc = [], [], []
     for comp in range(3):
@@ -253,7 +253,7 @@ def init_lorentz(
     Parameters
     ----------
     poles : list of LorentzPole
-    materials : MaterialArrays (eps_r = ε_∞) with its lumped records (#1236)
+    materials : MaterialArrays (eps_r = ε_∞) with its lumped records
     dt : float
     mask : optional spatial mask
     field_dtype : jnp dtype, optional
@@ -263,7 +263,7 @@ def init_lorentz(
         callers that do not thread it) means the ambient default float with
         the same float32 floor. This used to be a hard ``dtype=jnp.float32``
         pin, which made ``precision="float64"`` + any pole fail the
-        ``lax.scan`` carry contract (issue #656).
+        ``lax.scan`` carry contract.
     periodic : per-axis flags
         The run's periodic flags, for the edge average (see ``init_debye``).
 
@@ -271,7 +271,7 @@ def init_lorentz(
     -------
     (LorentzCoeffs, LorentzState)
 
-    The rule is ``init_debye``'s (#1260): per component, ε_∞ and σ from
+    The rule is ``init_debye``'s: per component, ε_∞ and σ from
     :func:`rfx.core.yee.component_e_materials`, and κ_p times the fraction of
     the edge's four cells in the pole's mask.
     """
@@ -324,7 +324,7 @@ def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,
 
 def mixed_e_component_coeffs(debye_coeffs, lorentz_coeffs, comp: int, dt):
     """``(ca, cb, cc_debye, cc_lorentz)`` of the combined Debye + Lorentz E
-    update for component ``comp`` (#1260: each from that component's own
+    update for component ``comp`` (each from that component's own
     coefficients). One spelling for every lane that runs both models.
 
     The Lorentz ΔP enters with 1/γ_total, where γ_total = γ_Lorentz + Σβ is
@@ -353,7 +353,7 @@ def _mixed_e_coeffs_si(beta, alpha, lorentz_ca, lorentz_cc, dt):
 
 
 def _mixed_e_coeffs_eps_r(beta, alpha, lorentz_ca, lorentz_cc, dt):
-    """Cancel EPS_0 before dividing by the mixed permittivity (#1357).
+    """Cancel EPS_0 before dividing by the mixed permittivity.
 
     lorentz_cc is 1/gamma in SI units. Its relative-unit reciprocal is
     1/(lorentz_cc*EPS_0); no SI-sized denominator is squared by autodiff.

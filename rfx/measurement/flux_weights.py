@@ -128,7 +128,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None, *, periodic=None):
     """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
 
     Shared extraction of the ``run_uniform`` inline block so
-    the low-level forward lane (``_forward_from_materials``, issue-#488
+    the low-level forward lane (``_forward_from_materials``,
     mixed-family flux magnitude channel) can register the SAME monitors
     the run() lane does. Pure function of (sim registrations, grid,
     n_steps). Finite regions resolve to interior cells via the same geometry
@@ -137,7 +137,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None, *, periodic=None):
     ``entries`` overrides the entry list (same ``_FluxMonitorEntry``
     objects ``add_flux_monitor`` registers) without touching the sim's
     own registrations — the ``extra_flux_monitors=`` opt-in on the coax
-    extractors (#589 flux-adjudication instrument) passes caller-built
+    extractors passes caller-built
     entries here while the registered-monitor guard stays intact. ``sim``
     is still consulted for ``_freq_max``/``_domain``.
     """

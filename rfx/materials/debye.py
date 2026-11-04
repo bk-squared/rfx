@@ -19,19 +19,18 @@ The E update becomes (including conductivity σ):
     Cb    = dt / γ
     Cc_p  = (1 - α_p) / γ
 
-Every quantity that depends on the material is built PER E COMPONENT (#1260):
+Every quantity that depends on the material is built PER E COMPONENT:
 an E component lies on an edge shared by four cells, and its constitutive
 parameters are the tangential (arithmetic) mean over those cells -- ε_∞ and σ
-from :func:`rfx.core.yee.component_e_materials` (the #1210 rule, lumped
-stamps on their own component per #1236), and each pole's Δε_p as Δε_p times
+from :func:`rfx.core.yee.component_e_materials` (the rule, lumped
+stamps on their own component), and each pole's Δε_p as Δε_p times
 the fraction of the four cells that carry the pole. The four susceptibilities
 are in parallel along the edge exactly like the conductivities, and a pole
 has one τ_p wherever it is present, so the edge is itself a Debye medium
 with those averaged parameters. ``ca``/``cb``/``cc``/``beta`` are therefore
 3-tuples ``(x, y, z)``; ``alpha`` depends on τ_p only and stays one array
-per pole. Until #1260 all of them were one value per cell for all three
-components, so a dispersive material anywhere in a model put the whole grid
-back on the cell-owned rule.
+per pole. Using one value per cell for all three components would put the whole grid on a cell-owned rule whenever any
+material is dispersive.
 
 References:
     Taflove & Hagness, "Computational Electrodynamics", 3rd ed., Ch. 9
@@ -63,7 +62,7 @@ class DebyePole(NamedTuple):
 class DebyeCoeffs(NamedTuple):
     """Precomputed ADE update coefficients for all Debye poles.
 
-    Per E component (#1260) -- each a 3-tuple ``(x, y, z)``:
+    Per E component -- each a 3-tuple ``(x, y, z)``:
 
     ca : (nx, ny, nz) each — E decay coefficient
     cb : (nx, ny, nz) each — curl(H) coupling coefficient
@@ -87,7 +86,7 @@ def per_component(field, name="coefficient"):
     """``field`` as the ``(x, y, z)`` tuple the per-component update needs.
 
     A bare grid array here is a coefficient built by the old cell-owned rule
-    (one value per cell for all three components, #1260) -- indexing it by
+    (one value per cell for all three components) -- indexing it by
     component would silently take a y-z plane and broadcast it, so it is
     refused instead.
     """
@@ -101,7 +100,7 @@ def per_component(field, name="coefficient"):
 
 def pole_edge_fractions(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool]):
     """Per E component, the fraction of each edge's four cells that carry a
-    pole: ``edge_mean_components`` of the pole's cell mask (#1260). ``None``
+    pole: ``edge_mean_components`` of the pole's cell mask. ``None``
     (the pole everywhere) stays ``None``."""
     from rfx.model.materials import pole_component_weights
     return pole_component_weights(mask, periodic, high_wall=high_wall)
@@ -141,7 +140,7 @@ def debye_pole_coeffs(poles, dt, shape, fractions_by_pole):
                     jnp.where(fractions[c] > 0, b * fractions[c], 0.0))
         else:
             # No dtype pin — see the matching note in
-            # ``rfx.materials.lorentz.init_lorentz`` (issue #656): ``a``/``b``
+            # ``rfx.materials.lorentz.init_lorentz``: ``a``/``b``
             # are numpy scalars (``dt`` is ``grid.dt``, an np.float64), so
             # this matches the masked branch above instead of capping the
             # ADE coefficients at float32 under ``precision="float64"``.
@@ -186,7 +185,7 @@ def _debye_e_coeffs_si(e_materials, dt, alpha, beta):
 
 
 def _debye_e_coeffs_eps_r(e_materials, dt, alpha, beta):
-    """The Debye coefficients in relative-permittivity units (#1357)."""
+    """The Debye coefficients in relative-permittivity units."""
     eps_c, sig_c = e_materials
     n_poles = alpha.shape[0]
     ca, cb, cc = [], [], []
@@ -237,7 +236,7 @@ def init_debye(
         Debye relaxation poles.
     materials : MaterialArrays
         Base material arrays (eps_r = ε_∞, sigma, mu_r) and the lumped-stamp
-        records (#1236).
+        records.
     dt : float
         Timestep in seconds.
     mask : (nx, ny, nz) bool array or per-pole mask list, optional
@@ -250,7 +249,7 @@ def init_debye(
         callers that do not thread it) means the ambient default float with
         the same float32 floor. This used to be a hard ``dtype=jnp.float32``
         pin, which made ``precision="float64"`` + any pole fail the
-        ``lax.scan`` carry contract (issue #656).
+        ``lax.scan`` carry contract.
     periodic : per-axis flags
         The run's periodic flags, as its non-dispersive update takes them: a
         periodic axis wraps the edge average, any other replicates the
@@ -262,7 +261,7 @@ def init_debye(
         ``ca``/``cb``/``cc``/``beta`` per E component (see the class).
     state : DebyeState
 
-    The rule (#1260): per component, ε_∞ and σ are the edge mean of
+    The rule: per component, ε_∞ and σ are the edge mean of
     :func:`rfx.core.yee.component_e_materials`, and each pole's Δε_p the edge
     mean of the cells' Δε_p (``delta_eps`` times the fraction of the four
     cells in the pole's mask). Homogeneous regions give the bit pattern the
@@ -294,12 +293,12 @@ def init_debye(
 def debye_e_component(coeffs: DebyeCoeffs, c: int, e_old, curl, p,
                       fdtype=None, pdtype=None):
     """One E component's Debye step: ``(E^{n+1}, P^{n+1})`` for component
-    ``c`` (0, 1, 2) with its own coefficients (#1260).
+    ``c`` (0, 1, 2) with its own coefficients.
 
         E^{n+1} = Ca_c·E^n + Cb_c·curl + Σ_p Cc_{p,c}·P_p^n
         P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n)
 
-    ``fdtype`` / ``pdtype``: the carry dtypes to narrow back to (#656);
+    ``fdtype`` / ``pdtype``: the carry dtypes to narrow back to;
     ``None`` leaves the result as computed (the distributed slab bodies).
     """
     ca = per_component(coeffs.ca, "ca")[c]

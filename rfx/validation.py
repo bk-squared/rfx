@@ -595,8 +595,8 @@ def replay_smatrix_from_vi_dump(
     ``"driven_terminal"`` is ``(V_fdtd - Z0 I)/(V_fdtd + Z0 I)`` with
     ``V_fdtd = -V``, for a dump whose stored voltage sign makes the pair
     inconsistent AT THE DRIVEN PORT while keeping the off-diagonal role
-    channel right — which is the case for rfx's own lumped-port dump since
-    2026-09-21 (scripts/diagnostics/lumped_port_known_load_line.py; on that
+    channel right — which is the case for rfx's own lumped-port dump with the driven-terminal metadata
+    (scripts/diagnostics/lumped_port_known_load_line.py; on that
     known-load line ``b/a`` at a driven port reads 4.757 where the closed
     form is 0.333, the reciprocal of the physical reflection).  Such a dump
     says so in its metadata; see :func:`replay_smatrix_from_port_vi_dump`.
@@ -656,7 +656,7 @@ def replay_smatrix_from_vi_dump(
     a = (v + z_view * i) / (2.0 * sqrt_z)
     b = (v - z_view * i) / (2.0 * sqrt_z)
 
-    # Passive-receive channel (issue #308): the production receive b-wave in
+    # Passive-receive channel: the production receive b-wave in
     # this dump's into-DUT convention.  Selected per role in the loop below.
     b_recv = -(v + z_view * i) / (2.0 * sqrt_z)
     # Driven-terminal wave pair: the same split on ``V_fdtd = -V``, which is
@@ -707,7 +707,7 @@ def replay_smatrix_from_vi_dump(
 
     s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_i, driven_port in enumerate(driven):
-        # Role-selected numerator (issue #308): the reflected-wave channel at
+        # Role-selected numerator: the reflected-wave channel at
         # the driven port, the passive-receive channel everywhere else.
         numer = b_recv[drive_i, :, :].copy()
         if frame == "driven_terminal":
@@ -963,10 +963,9 @@ def replay_smatrix_from_port_vi_dump(dump: PortVIDump) -> PortSMatrixObservable:
         return _replay_msl_port_vi_dump(dump)
     current_convention = str(dump.metadata.get("current_convention", "positive_into_dut"))
     # ``diagonal_frame`` tells the replay which driven diagonal the dump's
-    # recorded production S-matrix used.  A dump of rfx's own LUMPED port
-    # written since 2026-09-21 records "driven_terminal"; everything else,
-    # including every dump written before the key existed, is the standard
-    # ``b/a``, which is what those dumps' recorded production S used.
+    # recorded production S-matrix used. A dump with "driven_terminal" metadata
+    # uses that convention; everything else, including dumps without the key,
+    # uses the standard ``b/a`` recorded by those dumps.
     diagonal_frame = str(dump.metadata.get("diagonal_frame", "port_branch"))
     return replay_smatrix_from_vi_dump(
         dump.voltages,

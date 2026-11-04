@@ -1,4 +1,4 @@
-"""Settled-spectrum reciprocity adjoint of the uniform production scan (#1424).
+"""Settled-spectrum reciprocity adjoint of the uniform production scan.
 
 Discrete overlap
 ----------------
@@ -19,7 +19,8 @@ dJ/dCb_j = Re sum_bins A_j curlH_j / Cb_j.
 Both field factors include dt; the source DFT targets b, not b*dt.
 JAX differentiates the production edge averaging and Ca/Cb arithmetic
 outside the custom VJP. Public adjoint admission refuses every supplied
-`design_sigma_override` (#1424: on lossless design cells the conductivity gradient has no settled value in a finite record; static sensitivity remains although the field decays, and this adjoint returns settled-spectrum gradients only).
+`design_sigma_override` (on lossless design cells the conductivity gradient has no settled value in a finite record;
+static sensitivity remains although the field decays, and this adjoint returns settled-spectrum gradients only).
 Fixed material conductivity remains allowed; its dCa/deps reaches gCa.
 Finite record endpoint terms are omitted: the result is a settled-spectrum
 gradient. No time tape or transposed time sweep is part of F2.
@@ -49,7 +50,7 @@ DC/Nyquist/out-of-band bins.
 The remaining run lets the wavelet response decay. Storage is design
 edges × components × bins, plus monitor bins and ordinary field carries.
 
-Gates, measurements and the refusal table: issue #1424 and PR #1430.
+
 """
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
 

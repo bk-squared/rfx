@@ -36,7 +36,7 @@ MSL_PROBE_CLEARANCE_RETRACTION = (
 #: Embedded by the preflight layout warning, ``compute_msl_s_matrix``'s Z0
 #: guard (only when the port's clearance is NOT satisfied) and the
 #: auto-offset resolver's empty-interval warning, so the three cannot drift
-#: apart again (#726).
+#: apart again.
 MSL_PROBE_CLEARANCE_EFFECT = (
     "Measured on ONE fixture (" + MSL_PROBE_CLEARANCE_WITNESS + ", same "
     "source, load and DUT; only p1's observation offset varied; both arms "
@@ -56,7 +56,7 @@ MSL_PROBE_CLEARANCE_EFFECT = (
 )
 
 #: What a caller should do, including when the feed admits no compliant
-#: offset at all ("interval empty") - #726 item 3.
+#: offset at all ("interval empty").
 MSL_PROBE_CLEARANCE_GUIDANCE = (
     "Gate on probe_clearance for the geometric condition and beta_railed "
     "for the fitted-value symptom; reliable is a per-bin fit-quality mask "

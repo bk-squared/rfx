@@ -80,7 +80,7 @@ def compute_mixed_s_matrix(
     ``sqrt(Z_j/Z_i)``; reciprocity of a reciprocal
     structure is the committed internal falsifier for this choice.
     The returned ``S`` and ``S_wave`` are referenced to every port's
-    declared ``impedance=`` (``z0_ref``, #2014): MSL waves are formed at
+    declared ``impedance=`` (``z0_ref``): MSL waves are formed at
     the analytic line Z0 (``line_impedances``) and the matrix is then
     referred to ``z0_ref`` by ``renormalize_power_waves``.
 
@@ -240,7 +240,7 @@ def compute_mixed_s_matrix(
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
         self._assemble_materials(
             grid, pec_sheets=_mx_pec_sheets, pec_wires=_mx_pec_wires)
-    # #931 §1.9: realized wall planes locate the trace, not cells.
+    # realized wall planes locate the trace, not cells.
     from rfx.boundaries.pec import (
         realized_pec_edge_masks as _rpem_mx,
     )
@@ -332,7 +332,7 @@ def compute_mixed_s_matrix(
                 )
                 # Anchor the V-span top on the rasterized trace
                 # node, not round(h_sub/dx) — see the sibling
-                # comment in compute_msl_s_matrix (PR #516 F2).
+                # comment in compute_msl_s_matrix.
                 v_q = msl_modal_voltage(
                     ez_plane, j_centre=meta["j_centre"],
                     k_lo=meta["k_lo"],
@@ -369,8 +369,8 @@ def compute_mixed_s_matrix(
         beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
         n_lw, n_msl, probe_xs, v_lad, z0_hj_per_port,
     )
-    # β-scan rail flags for the diagnostic N-probe fit (issue
-    # #681): a railed bin's |Zc|/β above are the ±35% scan-window
+    # β-scan rail flags for the diagnostic N-probe fit: a railed bin's |Zc|/β above
+    # are the ±35% scan-window
     # limit, not a measurement. S is unaffected (the MSL diagonal
     # uses the analytic HJ anchor; the feed-plane shift below uses
     # the closed-form beta, never the fit).
@@ -430,7 +430,7 @@ def compute_mixed_s_matrix(
     )
 
     # MSL standing-wave-null reliability from each MSL port's own
-    # driven run (mirrors compute_msl_s_matrix issue #337).
+    # driven run (mirrors compute_msl_s_matrix).
     reliable = None
     try:
         v_port = np.stack([
@@ -454,7 +454,7 @@ def compute_mixed_s_matrix(
         [("wire" if wire_mode else "lumped")] * n_lw
         + ["msl"] * n_msl
     )
-    # #2014: S is referenced to every port's declared impedance=. The
+    # S is referenced to every port's declared impedance=. The
     # MSL waves were formed at the analytic line Z0 (line_impedances);
     # lumped/wire ports already use their declared impedance, so only
     # the MSL rows and columns move, once, before the projection.

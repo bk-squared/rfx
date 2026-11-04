@@ -1,16 +1,11 @@
 """Rejection of removed ``Simulation.forward()`` keyword arguments.
 
-Moved out of ``rfx/api/_execute.py`` unchanged (file-size ratchet, #1512 PR).
+
 """
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Arc-audit follow-up item 5(b): a removed public kwarg (currently just
-# `design_mask`, issue #625) used to surface as the bare Python default --
-# `TypeError: _ExecuteMixin.forward() got an unexpected keyword argument
-# 'design_mask'` -- which leaks this mixin's internal class name (the
-# public surface is `Simulation.forward`, never `_ExecuteMixin.forward`)
-# and gives no reason or replacement. `forward()` now accepts
+# `forward()` accepts
 # `**_removed_kwargs` and calls this helper so a removed kwarg gets a
 # `TypeError` naming the actual reason and the one-line migration path
 # instead. Deliberately still a `TypeError` (not some other exception

@@ -171,7 +171,7 @@ def run_uniform_slab_loop(
                 P("x"), P("x"), P("x"),  # hx, hy, hz
                 P(),                     # step
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
-                # #1236 lumped records: None or (x, y, z) of arrays / None
+                # lumped records: None or (x, y, z) of arrays / None
                 P("x"), P("x"), P("x"),
                 P("x"),  # shared component means
                 # debye coeffs
@@ -278,7 +278,7 @@ def run_uniform_slab_loop(
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
 
-        Stage order (#1041)::
+        Stage order::
 
             H -> TF/SF-H -> CPML-H -> exch H -> E -> TF/SF-E -> CPML-E
               -> sources -> PEC face -> PEC mask -> exch E -> probes
@@ -286,10 +286,8 @@ def run_uniform_slab_loop(
         The E ghost exchange is the LAST stage of the E half-step, so a
         ghost row is always a copy of the owner's FINISHED real row -- a
         row the realized-PEC mask stage has already zeroed where the
-        geometry says metal (#1053). This is ``distributed_nu.py``'s order
-        since ``ac782d4f`` (#931 T3). The PMC coefficient holds the global
-        high H ghost at zero; no exchange sends it. Until #1041
-        this body exchanged BEFORE injecting, which lagged a seam-cell
+        geometry says metal. This is also ``distributed_nu.py``'s order. The PMC coefficient holds the global
+        high H ghost at zero; no exchange sends it. Exchanging BEFORE injecting lags a seam-cell
         source by one step in the neighbour's copy -- see the comment on
         stage 7 for the measurement that moved it.
         """
@@ -309,7 +307,7 @@ def run_uniform_slab_loop(
         st, incident = slab_tfsf.apply_h(
             st, carry["tfsf"], tfsf_tables_arg[0], tfsf_cfg, mesh, ranks=ranks)
 
-        # 2. CPML H correction (material-aware, #205)
+        # 2. CPML H correction (material-aware)
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
@@ -327,8 +325,8 @@ def run_uniform_slab_loop(
         st, incident = slab_tfsf.apply_e(
             st, incident, tfsf_tables_arg[1], tfsf_cfg, mesh, ranks=ranks)
 
-        # 5. CPML E correction (material-aware, #205), with the permittivity
-        #    the E update just used (#1043): each component's edge mean.
+        # 5. CPML E correction (material-aware), with the permittivity
+        #    the E update just used: each component's edge mean.
         st, cpml_st = _apply_cpml_e_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, materials=materials_arg,
@@ -351,7 +349,7 @@ def run_uniform_slab_loop(
         #     carrying the un-zeroed Ey/Ez of the seam plane rank 1 zeroes a
         #     stage later, and rank 0's next H update at its last real cell
         #     reads that stale plane -- measured on the nu lane at 2.107e-01
-        #     final-step error against a 5e-5 gate (ac782d4f, #931 T3), versus
+        #     final-step error against a 5e-5 gate, versus
         #     7.773e-08 in this order.
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
@@ -363,8 +361,7 @@ def run_uniform_slab_loop(
             pec_faces=e_wall_faces, ranks=ranks)
 
         # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
-        #    ghost row is a copy of the owner's FINISHED real row (#1041,
-        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
+        #    ghost row is a copy of the owner's FINISHED real row (also the ordering in distributed_nu.py).
         #    Exchanging before injection left a source at rank d's first
         #    real cell out of rank d-1's right ghost for one step, and
         #    rank d-1's next H update read the pre-injection plane.
@@ -385,7 +382,7 @@ def run_uniform_slab_loop(
         #    rank d's LAST real cell was never affected -- measured
         #    bit-identical between the two orderings on both bodies -- and
         #    that is exactly where every distributed_v2_* fixture of the
-        #    #1038 bit-identity lock puts its source, which is why that lock
+        #    bit-identity lock puts its source, which is why that lock
         #    stays 13/13 green through this change.
         st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx, ranks=ranks)
 
@@ -408,7 +405,7 @@ def run_uniform_slab_loop(
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
 
-        Stage order (#1041)::
+        Stage order::
 
             H -> TF/SF-H -> exch H -> E -> TF/SF-E -> sources -> PEC face
               -> PEC mask -> exch E -> probes
@@ -420,7 +417,7 @@ def run_uniform_slab_loop(
         inert (stage 6 comment), because the DOMAIN-FACE PEC is the only
         thing it touches. The realized-PEC cell mask of stage 5b is a
         different matter entirely and is why the invariant is load-bearing
-        rather than merely tidy (#1053).
+        rather than merely tidy.
         """
         _step_idx, src_vals = xs
         st = carry["fdtd"]
@@ -448,13 +445,14 @@ def run_uniform_slab_loop(
         reference_out = ports.references(st, port_table_arg, ranks=ranks)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # 5b. Realized-PEC cell mask (#1053), BEFORE the domain faces and
+        # 5b. Realized-PEC cell mask, BEFORE the domain faces and
         #     E ghost exchange -- distributed_nu's stage 8, in its position.
         #     See the long note on step_fn_cpml stage 6b: getting this one
         #     stage later, after the exchange, cost 2.107e-01 against a 5e-5
         #     gate when the nu lane had it there. Moving domain faces across
-        #     the exchange was measured inert (#1041 fixture P,
-        #     bit-identical); that measurement does not transfer to a body
+        #     the exchange was measured inert (bit-identical in
+        # scripts/diagnostics/issue1041_v2_step_order.py, fixture P); that measurement
+        # does not transfer to a body
         #     mask, which must stay before the exchange.
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
@@ -466,14 +464,13 @@ def run_uniform_slab_loop(
         #    which applies the faces before its soft-source loop; the
         #    difference is observable only for a source placed ON a domain
         #    PEC face, where the tangential E is zeroed in the same step it
-        #    is injected. #1041 measured no such fixture and did not change
-        #    it -- a source on a PEC face is its own question.
+        #    is injected. The step-order measurement does not cover
+        #    a source on a PEC face.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
         # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
-        #    ghost row is a copy of the owner's FINISHED real row (#1041,
-        #    the ordering distributed_nu.py took in ac782d4f / #931 T3).
+        #    ghost row is a copy of the owner's FINISHED real row (also the ordering in distributed_nu.py).
         #    Same measurement as step_fn_cpml above, boundary="pec": the
         #    probe 4 cells into the neighbouring rank went from 1.859e-01
         #    relative (first divergent step 4) to 4.858e-06 (step 43),
@@ -481,7 +478,7 @@ def run_uniform_slab_loop(
         #    reachability as step_fn_cpml: a source in rank d's LAST real
         #    cell is unaffected either way (measured bit-identical).
         #    The PEC half of the move is inert on THIS lane and was measured
-        #    to be so (#1041 fixture P, bit-identical): apply_pec_face_shmap
+        #    to be so: apply_pec_face_shmap
         #    zeroes the y/z faces on every x row INCLUDING the ghosts, and
         #    its x_lo / x_hi faces act on rank 0's first and rank N-1's last
         #    real cell, whose exchanged copies the receiving rank discards.

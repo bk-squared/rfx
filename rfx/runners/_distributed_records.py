@@ -1,6 +1,6 @@
 """Owned records at the uniform and graded distributed sampling slots.
 
-Ranks are data, and assembly replicates before indexing by rank (#1441).
+Ranks are data, and assembly replicates before indexing by rank.
 Only placement is performed for cell records; moment pairs are summed once.
 """
 

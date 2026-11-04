@@ -76,7 +76,7 @@ def port_termination_references(sim, collection, port, grid):
         # Memoised per realization: the helper that asks is called once per
         # conductor, and resolving the default rasterizes every conductor, so
         # without this an assembly with an MSL port was quadratic in the
-        # conductor count (review of PR #1178: 8.3 s at 20 conductors).
+        # conductor count (measured: 8.3 s at 20 conductors).
         realization = _realization_key(sim, grid)
         memo = sim.__dict__.get("_msl_default_memo")
         if memo is None or memo["realization"] != realization:

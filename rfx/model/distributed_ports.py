@@ -71,7 +71,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     if any(m is None or np.any(np.asarray(m)[window]) for m in masks):
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
     # Drive samples and scales are host constants, as declaration_setup makes
-    # them on one device: a user jit must not stage them (rfx #1840).
+    # them on one device: a user jit must not stage them.
     with jax.ensure_compile_time_eval():
         queue, material_drive = PortSourceQueue(), []
         for index, pe in enumerate(sim._ports):

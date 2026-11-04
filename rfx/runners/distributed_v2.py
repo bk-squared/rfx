@@ -180,11 +180,8 @@ _exchange_e_ghosts_shmap = exchange_e_yee_shmap
 # Device-conditional PEC inside shard_map
 # ---------------------------------------------------------------------------
 
-# #1038 leg 3. ``_apply_pec_shmap``'s body now lives as
-# ``apply_pec_face_shmap`` in ``_distributed_common.py`` (the NU runner
-# carried a copy that differed only in its parameter spelling and three
-# comments). Kept as a module-local alias so the existing call sites are
-# unchanged.
+# ``_apply_pec_shmap`` aliases
+# ``apply_pec_face_shmap`` in ``_distributed_common.py``.
 _apply_pec_shmap = apply_pec_face_shmap
 
 
@@ -420,7 +417,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # instead of replicating them.
     multi_process = _spans_other_processes(devices)
 
-    # Resolve PMC faces (T8, 2026-04). ``BoundarySpec.pmc_faces()`` returns
+    # Resolve PMC faces. ``BoundarySpec.pmc_faces()`` returns
     # a set; freeze it so it is safely closed-over by the traced scan
     # bodies below.
     _pmc_faces_frozen = frozenset(
@@ -438,11 +435,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     curl_boundary = (CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags())
                      if _pmc_faces_frozen else None)
 
-    # One device runs the same shard_map path on a one-device mesh (#1296).
-    # Until #1296 this call was handed to the pmap runner, which dropped the
-    # declared-PEC cell mask and so refused a PEC volume at one device that
-    # this path realizes at two. Simulation.run(devices=...) dispatches here
-    # only for len(devices) > 1; a one-device run() takes the uniform lane.
+    # One device runs the same shard_map path on a one-device mesh.
+    # Simulation.run(devices=...) dispatches here only for len(devices) > 1; a
+    # one-device run() takes the uniform lane.
 
     # ------------------------------------------------------------------
     # Build grid and materials (full domain)
@@ -588,7 +583,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # means, so the drive reads the four cells around its edge directly (this
     # path refuses periodic axes); M3 gives the slab kernel the realized rule.
     # A dispersive edge's drive needs the ADE update's coefficient, as on one
-    # device (#1524); the pole terms are read edge by edge from the specs.
+    # device; the pole terms are read edge by edge from the specs.
     from rfx.model.source_coefficients import dispersive_drive_model
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
                                             in_program=mesh.devices.size < 2)
@@ -655,20 +650,18 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         eps_r=cut(materials.eps_r, layout, "eps_r", mesh=mesh),
         sigma=cut(materials.sigma, layout, "sigma", mesh=mesh),
         mu_r=cut(materials.mu_r, layout, "mu_r", mesh=mesh),
-        # #1236: a lumped element loads its own E edge only; the slab update
+        # a lumped element loads its own E edge only; the slab update
         # needs the per-component record for that (None when no stamp).
         sigma_film=cut(materials.sigma_film, layout, "lumped", mesh=mesh),
         sigma_lumped=cut(materials.sigma_lumped, layout, "lumped", mesh=mesh),
         eps_r_lumped=cut(materials.eps_r_lumped, layout, "lumped", mesh=mesh),
     )
 
-    # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
-    # scan receives it as a jit argument next to ``sharded_materials`` (on
-    # every topology since PI decision A, 2026-09-23), not through
+    # ``None`` whenever the model declares no PEC volume. The scan receives it
+    # as a jit argument next to ``sharded_materials``, not through
     # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
-    # and otherwise discarded (it was forwarded only to the pmap runner at one
-    # device, until #1296).
-    # Alignment rows are still PEC; ghosts are still excluded by the kernel.
+    # and otherwise discarded. Alignment rows are still PEC; ghosts are excluded
+    # by the kernel.
     sharded_pec_mask = cut(pec_edges, layout, "pec_edge", mesh=mesh)
     del pec_edges
 
@@ -815,9 +808,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # TracerArrayConversionError whenever a caller wrapped the runner
         # in ``jax.grad`` to drive an objective from the gathered
         # ``final_state``. Pure JAX reshape + ``gather_array_x`` (already
-        # JAX-friendly) keeps the gather in the trace. Mirrors the
-        # already-correct ``distributed_nu.py::_unstack_and_gather`` -- as of
-        # #1038 leg 2b it IS that function, shared.
+        # JAX-friendly) keeps the gather in the trace. Shares the function
+        # with ``distributed_nu.py::_unstack_and_gather``.
         return unstack_and_gather(
             sharded_arr, n_devices, nx_local, ghost, pad_x, nx,
         )

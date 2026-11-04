@@ -89,7 +89,7 @@ __all__ = [
 # Domain splitting / gathering (x-axis slabs with ghost cells)
 # ---------------------------------------------------------------------------
 #
-# #1038 leg 2. Moved VERBATIM from ``distributed.py``, where they sat at
+# Moved VERBATIM from ``distributed.py``, where they sat at
 # L58/L107 -- ten lines AFTER that module's own import of this one. Nothing
 # about them was duplicated; they move because they are the x-slab primitives
 # every shared helper in this module that touches slabs has to call, and a
@@ -145,7 +145,7 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, h
 
     The compiled setup contains only pole-mask means and their fixed ADE
     factors, never differentiable epsilon/sigma coefficients. In particular,
-    forward does not execute a large eager shard_map on every call (#1260).
+    forward does not execute a large eager shard_map on every call.
     """
     def local(local_masks, *, rank):
         shape_local = (nx_per + 2,) + shape[1:]
@@ -221,11 +221,7 @@ def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
         passes its local ``nx`` (``grid.shape[0]``); ``distributed_nu``
         passes ``sharded_grid.nx``. Those are the same quantity -- both
         equal ``n_devices * (nx_local - 2 * ghost) - pad_x``, i.e. the
-        gathered length less the padding -- which is why the two runners'
-        copies of this body could merge; see the #1038 leg 2b commit
-        message for the binding-by-binding derivation. It stays an explicit
-        parameter rather than being recomputed here so that neither caller's
-        expression changes.
+        gathered length less the padding. It is an explicit parameter.
 
     Must remain pure JAX: callers wrap the runners in ``jax.grad`` to drive
     an objective from the gathered ``final_state``, and an earlier
@@ -271,17 +267,10 @@ def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
 # Stacked CPML psi allocation
 # ---------------------------------------------------------------------------
 #
-# #1038 leg 2 (a). ``distributed._init_cpml_distributed`` and
-# ``distributed_nu.init_cpml_for_sharded_nu`` each built the 24 psi arrays of
-# a ``CPMLState`` through a nested ``_zeros`` closure over ``n_devices`` and
-# the CPML layer count ``n``. The two bodies were the same statement spelled
-# with different parameter names (``dim1, dim2`` vs ``d1, d2``) -- inventory
-# §2.3(b). ``dim1, dim2`` is the spelling that landed; the second parameter
-# keeps the terse name ``n`` the two closures used so the moved statement is
-# byte-identical to the one it replaced.
-#
-# Both callers run at setup time, outside any jit/shard_map trace, so this
-# move carries no jaxpr-shape change.
+# ``distributed._init_cpml_distributed`` and
+# ``distributed_nu.init_cpml_for_sharded_nu`` share this allocator for the
+# 24 psi arrays of a ``CPMLState``. Both callers run at setup time,
+# outside any jit/shard_map trace.
 
 
 
@@ -314,29 +303,17 @@ from rfx.stepping.slab_exchange import exchange_e_yee_shmap
 from rfx.stepping.slab_walls import apply_pec_face_shmap
 
 
-# #1053 leg 2. The realized-PEC cell-mask kernel, moved here BY VALUE from
-# ``distributed_nu.py`` so ``distributed_v2`` can call the same object rather
-# than grow a second copy. It was already runner-agnostic -- ``(state,
-# sharded_array, mesh, n_devices, nx_local)``, no grid, no NU spacing, no
-# closure over anything -- so nothing became a parameter and the traced jaxpr
-# is structurally unchanged. Only the def NAME differs from the pre-move
-# source; the body from the docstring on is byte-identical, sha256
-# eea6ee6aa20e5ea8e07869c0986a831d2a450143272fde6932887feb4d595e51 before and
-# after.
-#
-# Re-spelling the neighbour rule here instead of calling
-# ``rfx.boundaries.pec.realized_pec_edge_masks`` is forbidden by
-# ``tests/contracts/test_pec_single_owner_lock.py``, and the repo has the
-# scars: this lane's inlined ``jnp.roll`` copy drifted through #689, then the
-# pre-#931 sheet rule drifted again after the single-device lanes moved to the
-# volume rule. The call is the point of the function.
+# Shared realized-PEC cell-mask kernel for distributed runners. Call
+# ``rfx.boundaries.pec.realized_pec_edge_masks`` rather than re-spelling the
+# neighbour rule, so periodic seams and volume/sheet realization share
+# a single owner across lanes.
 
 
 from rfx.stepping.slab_walls import apply_pec_mask_shmap
 
 
 # ---------------------------------------------------------------------------
-# CPML face-depth packing remains with the absorber adapters (#1535).
+# CPML face-depth packing remains with the absorber adapters.
 
 
 
@@ -350,7 +327,7 @@ from rfx.stepping.slab_walls import apply_pec_mask_shmap
 # whose Python loop is unrolled at trace time over ``*_local_specs`` and
 # ``*_device_ids``.  Lifting them out of ``run_distributed`` /
 # ``run_nonuniform_distributed_pec`` turns four closed-over locals into
-# parameters, which is exactly the jaxpr-shape change the #1038 leg-0 lock
+# parameters, which is exactly the jaxpr-shape change the leg-0 lock
 # was built to police.  It is done here because the lock says the arrays did
 # not move: all 13 fixtures stay bit-identical, and the four that exercise
 # these paths (distributed_v2_cpml, distributed_v2_pec,
@@ -374,13 +351,10 @@ from rfx.stepping.slab_update import sample_probes_shmap
 # Local NU update kernels (operate on per-device slab including ghosts)
 # ---------------------------------------------------------------------------
 #
-# #1038 leg 4 (prerequisite). Moved VERBATIM -- name, signature, docstring and
-# body byte-for-byte -- from ``distributed_nu.py`` L137/L169. Neither was
-# duplicated; they move for the same reason leg 2 moved ``split_array_x`` /
-# ``gather_array_x``: leg 4's shared NU shard wrappers below call them, and
-# this module MUST NOT import from ``rfx.runners.distributed_nu`` (it is the
-# leaf of the runner DAG, and ``distributed_nu`` imports it at L49). Their only
-# dependencies are ``rfx.core.yee`` names, so the move is cycle-free.
+# The shared NU shard wrappers below call these local kernels.
+# This module MUST NOT import from ``rfx.runners.distributed_nu`` (it is the
+# leaf of the runner DAG, and ``distributed_nu`` imports it). Their only
+# dependencies are ``rfx.core.yee`` names.
 #
 # ``distributed_nu.py`` re-imports both at the position they were defined, so
 # ``rfx.runners.distributed_nu._update_{h,e}_local_nu`` keeps resolving for
@@ -419,24 +393,9 @@ from rfx.stepping.slab_update import _update_e_local_nu
 # NU shard_map update wrappers
 # ---------------------------------------------------------------------------
 #
-# #1038 leg 4, inventory §2.4 -- THE renamed-clone pair the survey called the
-# load-bearing finding. ``distributed_v2.py`` carried a copy of
-# ``distributed_nu.py``'s NU shard wrappers under renamed inner functions
-# (``_h_nu`` / ``_e_nu`` against ``_h`` / ``_e``), inside its ``if is_nu:``
-# branch, and already imported the local kernels they wrap FROM
-# ``distributed_nu``. The survey measured the two H copies at 0.884 and the two
-# E copies at 0.947 similarity, the difference being the ``def`` name plus, for
-# H, one re-wrapped argument list.
-#
-# Both copies were nested closures. The body below is ``distributed_nu.py``'s
-# text, dedented, with the eight names it read from its enclosing
-# ``run_nonuniform_distributed_pec`` turned into explicit parameters spelled
-# exactly as they were spelled there -- so the statements are unchanged, only
-# where the names come from. Both runners keep a same-named nested
-# ``_update_h_shmap`` that forwards here, so no call site in either step body
-# moved. This is the shape inventory §8 prescribes as the fusion-hazard
-# mitigation, and the one ``exchange_component_shmap`` already uses: take the
-# closed-over values explicitly and build the ``shard_map`` inside.
+# Both runners keep a same-named nested ``_update_h_shmap`` that forwards
+# here. These wrappers take the closed-over values explicitly and build
+# the ``shard_map`` inside.
 #
 # TRACED, not eager. Unlike the leg-3 face kernels these are called from inside
 # the jitted step body and lifting the locals to parameters changes the jaxpr's

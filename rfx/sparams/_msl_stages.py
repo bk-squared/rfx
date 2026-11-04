@@ -56,11 +56,11 @@ def _prepare_msl_probes(
     entries, grid, msl_h_plane_stencil, msl_port_from_entry, msl_probe_x_coords_n, self,
 ):
     # Build MSLPort descriptors and probe coords once (geometry shared).
-    # Issue #661: msl_port_from_entry projects ``position`` onto the
+    # msl_port_from_entry projects ``position`` onto the
     # port frame for whichever in-plane axis ``direction`` names.
     msl_ports = [msl_port_from_entry(pe) for pe in entries]
 
-    # N-probe placement (issue #80 Fix C). Probe n sits at
+    # N-probe placement. Probe n sits at
     # offset + n*spacing cells from the feed plane. N >= 3.
     n_probes_per_port = [int(pe.n_probes) for pe in entries]
     probe_xs = [
@@ -79,12 +79,10 @@ def _prepare_msl_probes(
     # Resolved in rfx.preflight.msl, NOT through the rfx.api._preflight
     # re-export, so that this reader and preflight's own reader
     # (_check_msl_port_geometry, which lives in that module and looks the
-    # name up in its globals) share ONE lookup target. #980 Phase 3 leg 1
-    # moved both; before it, a single monkeypatch on rfx.api._preflight
-    # covered the two, and
-    # tests/unit/ports/test_msl_clearance_diagnostic.py asserts that it
-    # still does -- the re-export would have split them into two bindings
-    # of which only one is ever patched.
+    # name up in its globals) share ONE lookup target.
+    # tests/unit/ports/test_msl_clearance_diagnostic.py asserts that one
+    # monkeypatch covers both readers; importing the re-export would
+    # split them into two bindings of which only one is patched.
     from rfx.preflight.msl import msl_probe_clearance_for_port
     probe_clearance = tuple(msl_probe_clearance_for_port(
         self, pe, grid, probe_coordinates=xs,
@@ -98,7 +96,7 @@ def _prepare_msl_geometry(
     self,
 ):
     # ``probe_xs`` are the N physical x-coordinates fed to the
-    # N-probe extractor (issue #80 Fix C), which fits
+    # N-probe extractor, which fits
     # V_n = alpha*exp(-j*beta*x_n) + gamma*exp(+j*beta*x_n). The
     # coordinates are increasing for ``+x`` ports and decreasing for
     # ``-x`` ports; the extractor anchors the model at probe 0 and
@@ -111,7 +109,7 @@ def _prepare_msl_geometry(
     # non-uniform grids are supported — NonUniformGrid exposes per-cell
     # dx_arr/dy_arr/dz (NOT *_profile); see _msl_cell_profile.
     #
-    # Issue #661: ports may point along different in-plane axes, so the
+    # ports may point along different in-plane axes, so the
     # transverse profiles are resolved PER PORT. The substrate-normal
     # profile is always z (the normal axis is welded — see
     # msl_axis_roles), which is why the modal-voltage integration below
@@ -152,7 +150,7 @@ def _prepare_msl_geometry(
             h_a=f"h{a_ax}", h_b=f"h{b_ax}",
         ))
 
-    # Analytic Hammerstad-Jensen anchor per port (issue #80 Fix C).
+    # Analytic Hammerstad-Jensen anchor per port.
     # ``beta0_per_port[p]`` is the (n_freqs,) propagation-constant
     # guess ``omega * sqrt(eps_eff) / c`` used to centre the N-probe
     # extractor's robust beta scan; ``z0_hj_per_port[p]`` is the
@@ -167,7 +165,7 @@ def _prepare_msl_geometry(
     # land beta outside the scan window for a loaded substrate.
     from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
     _C0_MSL = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
-    # #679: surface_impedance_f0 sheets are supported on this lane. NO
+    # surface_impedance_f0 sheets are supported on this lane. NO
     # ctx is built here — every device dispatch below goes through the
     # public run()/forward(), which assemble their own materials with
     # sheet_specs and build the ctx against their OWN final pec_mask
@@ -188,7 +186,7 @@ def _prepare_msl_geometry(
             grid, pec_sheets=_msl_pec_sheets, pec_wires=_msl_pec_wires)
     )
     _msl_materials = _msl_assembled[0]
-    # #931 §1.9: the trace is located by its REALIZED wall planes, not
+    # the trace is located by its REALIZED wall planes, not
     # by a pec_mask cell scan — a sheet-declared trace owns no cell.
     from rfx.boundaries.pec import (
         realized_pec_edge_masks as _rpem_msl,
@@ -225,7 +223,7 @@ def _prepare_msl_geometry(
             2.0 * np.pi * freqs_arr * float(np.sqrt(eps_eff_hj)) / _C0_MSL
         )
         z0_hj_per_port.append(float(z0_hj))
-    # #2199: under eps_override the line between each feed plane and probe 0
+    # under eps_override the line between each feed plane and probe 0
     # is the solved one, so the plane shift reads its permittivity there
     # (traced; refused by name where it varies along that length).
     line_eps_per_port = None
@@ -241,11 +239,11 @@ def _prepare_msl_geometry(
                 k_lo=port_idx_meta[p]["k_lo"], k_hi=port_idx_meta[p]["k_hi"])
             for p, pe in enumerate(entries)
         ]
-    # #2014: the S reference is the declared impedance=, not the line Z0.
+    # the S reference is the declared impedance=, not the line Z0.
     declared_refs = np.asarray(
         [float(pe.impedance) for pe in entries], dtype=np.float64)
 
-    # Trace-conductor z-cell span per port (issue #80 stage S1). The
+    # Trace-conductor z-cell span per port. The
     # closed Ampere-loop current needs the PEC trace cells; the trace
     # is the PEC run at/above the substrate top in the port's centre
     # column (the ground-plane PEC sits far below near k_lo).
@@ -254,7 +252,7 @@ def _prepare_msl_geometry(
         meta = port_idx_meta[p_idx]
         # Walk UP the substrate-normal axis (always z) from the
         # substrate top, at the feed cell on the propagation axis and
-        # the trace centre on the width axis (issue #661).
+        # the trace centre on the width axis.
         _ij = tuple(
             meta["i_feed"] if c == meta["prop_idx"] else meta["j_centre"]
             for c in range(3) if c != meta["normal_idx"]
@@ -304,10 +302,10 @@ def _prepare_msl_witnesses(
         _witness_counts.append(len(pxs_w))
     _witness_total = sum(_witness_counts)
     # Mark the witness probes as library-internal so probe-placement
-    # preflight advisories and the #332 tail advisory skip them
-    # (issue #470: 10 self-inflicted advisories per driven run on
+    # preflight advisories and the tail advisory skip them
+    # (10 self-inflicted advisories per driven run on
     # the 2-port thru buried the genuine MSL port-clearance
-    # advisories, and #332 double-fired next to settling_db).
+    # advisories, and the tail advisory double-fired next to settling_db).
     observers._internal_probe_indices.update(
         range(_witness_base, _witness_base + _witness_total)
     )
@@ -446,13 +444,13 @@ def _integrate_msl_port(
         # at ceil = k_hi + 1 and the k_hi anchor is one
         # substrate edge SHORT — V and the Ampere-loop
         # current would reference different conductor
-        # planes (PR #516 review, finding F2; measured on
+        # planes (measured on
         # the dx=80um gate fixture: trace node 4, k_hi 3).
         # trace_k_per_port is the same PEC search the
         # current integration uses, so V and I share one
         # conductor plane by construction.
         # ez_plane is [freq, width, normal] for an x- OR a
-        # y-normal plane alike (issue #661), so j_centre /
+        # y-normal plane alike, so j_centre /
         # k_lo / k_hi address it unchanged and the dz_arr
         # here is always the substrate-normal profile.
         if (
@@ -499,10 +497,7 @@ def _integrate_msl_port(
         and hz_plane.shape == hy_plane.shape
     )
     # Closed Ampere-loop current ∮H·dl around the trace
-    # conductor (issue #80 stage S1). The pre-S1 inline
-    # integral summed the bottom Hy leg only and undercounted
-    # I by ~1.5x, inflating the de-embedded Z0 to ~74 vs the
-    # ~48 ohm analytic value. msl_loop_current closes the
+    # conductor. msl_loop_current closes the
     # contour (bottom/top Hy legs + left/right Hz legs) and
     # carries the +x current-sign convention.
     k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
@@ -518,12 +513,12 @@ def _integrate_msl_port(
         _n_lo, _n_hi = 0, hy_plane.shape[2]
         _j_lo, _j_hi = meta["j_lo"], meta["j_hi"]
         _k_lo, _k_hi = k_tr_lo, k_tr_hi
-    # Issue #661: msl_loop_current wants the planes in the
+    # msl_loop_current wants the planes in the
     # right-handed transverse frame [freq, a, b] with
     # a_hat x b_hat = p_hat. The recorded planes are
     # [freq, width, normal]. For "+x"/"-x" the pair is
     # (y, z) = (width, normal) — already in frame, no
-    # transpose, byte-identical to the pre-#661 call. For
+    # transpose. For
     # "+y"/"-y" the pair is (z, x) = (normal, width), so
     # the two axes swap and the spans swap with them.
     # Do NOT "simplify" this into a plain x<->y rename:
@@ -575,8 +570,7 @@ def _fit_msl_port(
     msl_ports, n_probes_per_port, p_idx, probe_xs, raw_beta_railed, raw_i1,
     raw_q, raw_v, raw_z0, v_per_port, z0_hj_per_port,
 ):
-    # N-probe least-squares wave decomposition (issue #80
-    # Fix C). Stack the N voltage probes into (n_freqs, N),
+    # N-probe least-squares wave decomposition. Stack the N voltage probes into (n_freqs, N),
     # anchor the beta scan on the analytic HJ guess, and
     # solve the over-determined (alpha, gamma) system by
     # SVD lstsq — this removes the 3-probe q->1 singularity.
@@ -591,8 +585,8 @@ def _fit_msl_port(
         jnp.asarray(beta0_per_port[p_idx]),
         z0_hj=z0_hj_per_port[p_idx],
     )
-    # Normalize the REPORTED characteristic-impedance sign per port
-    # (issue #140). msl_loop_current negates the loop current ONLY for
+    # Normalize the REPORTED characteristic-impedance sign per port.
+    # msl_loop_current negates the loop current ONLY for
     # "+x" ports (rfx/sources/msl_port.py:947-948), so a "-x" port's
     # fitted z0 = (alpha - gamma)/I inherits a negative sign while a
     # physical Z0 is positive-real. Mirror that exact binary so BOTH
@@ -620,9 +614,9 @@ def _check_msl_extraction(
     jax, n_ports, probe_clearance, raw_z0, reliable, strict_extractor,
     z0_hj_per_port,
 ):
-    # --- Honesty guard (issue #80 Fix A, retargeted in stage S1) ---
+    # --- Honesty guard ---
     # S11/S21 come from the OpenEMS-style V·I wave amplitudes, now
-    # combined by the multi-drive solve (issue #507). |S11| > 1 on a
+    # combined by the multi-drive solve. |S11| > 1 on a
     # passive structure remains the primary red flag, but read it
     # correctly: the single-plane split itself was bounded by
     # construction, whereas the solve is not — it can exceed 1 when
@@ -638,9 +632,8 @@ def _check_msl_extraction(
     # records and analytic reference still need their own checks.
     import warnings as _w
 
-    # Issue #726: ONE text for what probe-clearance corruption does,
-    # shared with the preflight layout warning that used to contradict
-    # this guard about the same condition. Imported, not copied.
+    # Share the probe-clearance corruption text with the preflight
+    # layout warning so both describe the same condition consistently.
     from rfx.preflight.msl import (
         MSL_PROBE_CLEARANCE_EFFECT,
         MSL_PROBE_CLEARANCE_GUIDANCE,
@@ -681,10 +674,10 @@ def _check_msl_extraction(
             _w.warn(msg, AccuracyWarning, stacklevel=3)
         # Secondary — reported-Z0 sanity (retained N-probe fit).
         if z0_dev_max > _Z0_TOL:
-            # Issue #726 review P1b: the clearance story is only ONE of
+            # the clearance story is only ONE of
             # this guard's causes, and on a satisfied port it is the
             # WRONG advice — the common trigger is coarse-mesh staircase
-            # bias (#752), where "lengthen the feed" does nothing. Read
+            # bias, where "lengthen the feed" does nothing. Read
             # the same per-port record the result carries, by the same
             # index the entries tuple uses.
             _cl = (probe_clearance[driven]
@@ -772,7 +765,7 @@ def _dump_msl_record(
                 "planes; undo the shift with "
                 "feed_plane_shift before comparing to a probe-0 replay"
             ),
-            # v3 (issue #523): production_smatrix is no longer always
+            # v3: production_smatrix is not always
             # the N-probe-fit-derived S. Record WHICH assembly made
             # it, so a replayed dump cannot be misattributed.
             #
@@ -901,7 +894,7 @@ def _shift_msl_reference_planes(
     )
     # The waves above are at the declared line's Z0 (z0_hj). The phase-
     # only shift is exact in the reference of the line it moves along,
-    # so under eps_override (#2199) S is first referred to the solved
+    # so under eps_override S is first referred to the solved
     # line's Z0, shifted with that line's beta, and referred to
     # impedance= from there below.
     s_line_refs = z0_hj_per_port

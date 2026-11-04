@@ -192,11 +192,8 @@ def _prepare_coax_msl_ladder(
     dz, grid, junction_x, msl_pe, msl_port_base, msl_probe_count, msl_probe_spacing_cells,
     msl_probe_start_cells, msl_probe_x_coords_n, probe_count, probe_spacing_cells, probe_start_cells, self,
 ):
-    # MSL-side probe ladder is independent of the coax-side one (issue
-    # #489 leg 4 attempt 2) -- default to the coax values so an
-    # existing caller (attempt 1's committed fixture) sees byte-
-    # identical behavior when these new parameters are left unset.
-    # Independent ladder parameters (moved from the API docstring): the
+    # The MSL-side probe ladder is independent of the coax-side one.
+    # Unset MSL ladder parameters default to the coax values. The
     # microstrip ladder may need a meaningful fraction of a guided wavelength,
     # while the short coax stub cannot host that span. Separate optional
     # parameters decouple those extents; None retains the shared defaults.
@@ -235,8 +232,8 @@ def _prepare_coax_msl_ladder(
     # DFT-plane construction and the voltage array stay index-consistent.
     xs_sorted = sorted(xs_ladder)
 
-    # ---- Issue #823: source near-field standoff on the REALIZED ladder.
-    # NEAR-FIELD STANDOFF (issue #823) — the one constraint these
+    # ---- source near-field standoff on the REALIZED ladder.
+    # NEAR-FIELD STANDOFF — the one constraint these
     # three are NOT free of. Every probe must clear BOTH ends the
     # ladder is referred to (the MSL port's own feed plane AND the
     # reference plane at ``junction_x``) by at least
@@ -248,7 +245,7 @@ def _prepare_coax_msl_ladder(
     # single probe 0.4 mm = 1.33*h_sub from the feed dragged the
     # full-ladder residual from 3.7e-3 to 0.342, and this lane spent
     # three attempts attributing that to junction physics. The
-    # threshold is the repo's EXISTING issue-#80 Fix B constant —
+    # threshold is the source near-field standoff constant —
     # see :func:`rfx.api._preflight.msl_source_near_field_standoff_cells`
     # for the derivation that licenses reusing it here, and for the
     # W/h limitation it carries. Preflight cannot enforce it on this
@@ -341,7 +338,7 @@ def _prepare_coax_msl_trace(
     k_lo_msl, k_hi_msl = span["n_lo"], span["n_hi"]
     j_centre_msl = span["w_centre"]
     i_feed_msl = span["i_feed"]
-    # #931 §1.9: realized wall planes locate the trace, not cells.
+    # realized wall planes locate the trace, not cells.
     from rfx.probes.msl_wave_decomp import (
         realized_trace_planes_on_column as _trace_planes_cx,
     )
@@ -365,7 +362,7 @@ def _collect_coax_msl_ladder_witness(
     return_ladder_voltages, v_coax_by_drive, v_msl_by_drive, xs_sorted, y_centre, z_planes_coax_m,
 ):
     # Ladder dump implementation (moved from the API docstring).
-    # ``return_ladder_voltages`` (issue #589 label-independent ladder dump):
+    # ``return_ladder_voltages``:
     # a second read-only channel, additive in exactly the same sense. When
     # ``True``, the RAW per-probe modal voltages this method already
     # computed for both drives are attached to
@@ -382,7 +379,7 @@ def _collect_coax_msl_ladder_witness(
     # test_return_ladder_voltages_does_not_perturb_s`` (byte-identity A/B,
     # the same discipline as the flux witness above; the round-trip
     # assertion there also proves the dump IS what the assembler consumed).
-    # The same flag switches on the issue-#823 LADDER SELF-CONSISTENCY
+    # The same flag switches on the LADDER SELF-CONSISTENCY
     # WITNESS, ``result.ladder_split_gamma_dev`` /
     # ``result.ladder_split_reflection_decades`` (``None`` when the flag
     # is off): a disjoint-half refit of each ladder, i.e. a Python loop of
@@ -391,7 +388,7 @@ def _collect_coax_msl_ladder_witness(
     # those arrays and moves no S-parameter number; it is opt-in so that
     # a default call pays for no extra pencil solves. Documented
     # field-by-field on :class:`~rfx.api._spec.CoaxMSLTransitionResult`.
-    # ---- Issue #823 ladder self-consistency witness (REPORT-ONLY) ----
+    # ---- ladder self-consistency witness (REPORT-ONLY) ----
     # Refit each port's ladder on two disjoint contiguous halves with the
     # same reference plane and the same extractor, and report the
     # disagreement. Computed AFTER the assembler has produced every
@@ -412,7 +409,7 @@ def _collect_coax_msl_ladder_witness(
         ladder_split_gamma_dev = np.stack([_split_g_coax, _split_g_msl])
         ladder_split_reflection_decades = np.stack([_split_d_coax, _split_d_msl])
 
-    # #589 ladder dump (read-only). Taken AFTER the assembler consumed
+    # ladder dump (read-only). Taken AFTER the assembler consumed
     # the very same arrays, so no number above can depend on the flag.
     # ``msl_ladder_i`` is recomputed here with the same expression the
     # drive loop used (``i_x`` there is loop-local by construction).
