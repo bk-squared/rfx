@@ -58,7 +58,7 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
-from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready
+from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready, replay_legacy_findings
 import math
 
 import numpy as np
@@ -997,6 +997,7 @@ def _cavity_wall_faces(ctx):
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     """Judge adjacent sheet/Box/wall faces independently of electrical columns."""
     if legacy_table_ready(ctx):
+        replay_legacy_findings(_w, ctx, "sheet_cavity_spacing")
         return
     conductors = [e for e in entries if e.kind == "sheet"
                   or (e.kind == "volume" and isinstance(e.shape, Box))]
@@ -1439,6 +1440,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     if legacy_table_ready(ctx):
+        replay_legacy_findings(_w, ctx, "sheet_effective_size")
         return
     from rfx.mesh_edges import EDGE_OFFSET
     # f0 sheets join on the PEC rule's terms: Box drawings only (no analytic

@@ -116,7 +116,10 @@ def judge_realization(table, snap):
             detail += f"; maximum per-owner face deviation {row.max_owner_deviation:.12g} (reported only)"
         finding = PreflightIssue(
             f"realization {row.label} ({row.family}): {quantity}; {detail}. {remedy}",
-            severity=severity, code="realization", loc=row.label, source="judge_realization")
+            severity=severity, code=("port_aperture_snap" if row.label.startswith("waveguide_port[") else "realization"),
+            loc=row.label, source="judge_realization")
+        finding._realization_axes = tuple(a.axis for a in axes
+            if a.miss_percent is not None and abs(a.miss_percent) > 1.)
         base_label = row.label.split("/", 1)[0]
         previous = next((f for f in table.findings + findings
                          if f.code == "realization" and f.loc == base_label), None)
@@ -289,3 +292,12 @@ def early_outcomes(owner, *, create=False):
         outcomes = {}
         object.__setattr__(owner, "_realization_early_outcomes", outcomes)
     return outcomes if outcomes is not None else {}
+
+
+def replay_legacy_findings(warnings, ctx, code):
+    """Render retained outcomes at the original diagnostic position."""
+    from rfx.preflight._common import PreflightWarning
+    for finding in ctx._realized.realization_table.findings:
+        if finding.code == code:
+            warnings.warn(PreflightWarning(str(finding), code=finding.code,
+                severity=finding.severity, loc=finding.loc, source=finding.source))

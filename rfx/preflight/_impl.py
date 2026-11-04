@@ -69,11 +69,12 @@ def _preflight_impl(
     # Resolve before any validator reads a profile or fallback spacing.
     self._resolve_mesh()
     issues = PreflightReport()
+    verdict_findings = []
     if _conductors is not None:
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
         if tables:
-            issues.extend(tables[-1].findings)
+            verdict_findings.extend(tables[-1].findings)
     else:
         issues._realization_reader = lambda: self.realized_geometry().realization_table
 
@@ -104,7 +105,13 @@ def _preflight_impl(
                     admit_table(self, root, finished=True, deliver=False)
                     table = root.realization_table
                     issues._realization_reader = lambda: table
-                    issues.extend(table.findings)
+                    verdict_findings.extend(table.findings)
+        except ValueError as exc:
+            if getattr(exc, "code", None) != "absorber_overlap":
+                raise
+            verdict_findings.append(PreflightIssue(str(exc), severity="error",
+                code=exc.code, source=exc.source))
+        try:
             from rfx.model.thin_conductors import warn_dc_films
             warn_dc_films(self, warnings)
             if check_resolution:
@@ -192,6 +199,19 @@ def _preflight_impl(
                 diagnostic=getattr(inst, "diagnostic", None),
             )
         )
+
+    # Existing diagnostics keep their call order. New rows follow them;
+    # legacy rows already replayed at their original sites are not duplicated.
+    for finding in verdict_findings:
+        if finding.code in {"sheet_effective_size", "sheet_cavity_spacing", "port_aperture_snap"}:
+            for index, issue in enumerate(issues):
+                if issue.code == finding.code and str(issue) == str(finding):
+                    # Preserve delivery state when replaying a legacy finding.
+                    issues[index] = finding
+            if any(issue.code == finding.code for issue in issues):
+                continue
+        if not any(issue.code == finding.code and str(issue) == str(finding) for issue in issues):
+            issues.append(finding)
 
     if check_ad_memory:
         if n_steps_for_memory is None:

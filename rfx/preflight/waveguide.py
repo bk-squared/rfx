@@ -738,7 +738,7 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
     """
     import warnings as _w
 
-    for entry in self._waveguide_ports:
+    for port_index, entry in enumerate(self._waveguide_ports):
         spans = self._port_transverse_spans(entry, grid, realized)
         # Built once per port, and only when a row is about to fire:
         # the cutoff is a joint property of BOTH transverse axes, so
@@ -774,9 +774,14 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 continue
             rasterized = rec["rasterized"]
             from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready
+            verdict = None
             if legacy_table_ready(self._campaign_ctx()):
-                continue
-            if not legacy_mismatch((rasterized-declared)/declared, .01):
+                table = self._campaign_ctx()._realized.realization_table
+                verdict = next((f for f in table.findings
+                    if f.code == "port_aperture_snap" and f.loc == f"waveguide_port[{port_index}]"), None)
+                if verdict is None or axis_name not in verdict._realization_axes:
+                    continue
+            elif not legacy_mismatch((rasterized-declared)/declared, .01):
                 continue
             note = (
                 ""
@@ -814,6 +819,8 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                     f"divides the declared width, or declare the width "
                     f"the grid can represent.",
                     code="port_aperture_snap",
+                    severity=verdict.severity if verdict is not None else "warning",
+                    loc=verdict.loc if verdict is not None else None,
                     source="_check_waveguide_port_aperture_snap",
                 ),
                 stacklevel=4,
