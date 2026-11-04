@@ -184,7 +184,7 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
                            skip_preflight=False):
     """Own the stamp and union AFTER the calculator's existing port operations.
 
-    No classification, sampling, material update or new acceptance gate occurs.
+    The completed stamp is judged before the calculator starts stepping.
     A concrete solve lends its last kernel product to realized_geometry(); a
     traced solve must not leave a tracer in the simulation's diagnostic cache.
     """
@@ -210,6 +210,17 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
                 ('read-failed', (type(exc).__name__, str(exc))),))
         if ctx is not None:
             sim._coax_geometry = (ctx, root)
+    from rfx.model.realization_table import bind_table, finish_table
+    from rfx.model.realization_verdict import admit_table
+    bind_table(sim, root, lane="coax")
+    from rfx.preflight._common import PreflightIssue
+    previous = tuple(PreflightIssue(message, code="sheet_effective_size",
+        severity="warning" if sim._snap == "declared" else "error",
+        source="_validate_cfg_off_lattice_design_edges")
+        for name, messages in root.stamp_check_findings if name == "sheet-size"
+        for message in messages)
+    admit_table(sim, root, legacy_findings=previous)
+    finish_table(sim, root, lane="coax")
     return root
 
 
@@ -421,7 +432,7 @@ def _same_grid(a, b):
 
 
 
-def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1):
+def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1, realization_options=None, report_only=False):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
@@ -432,6 +443,10 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
     root = replace(root)
     from rfx.model.realization_table import bind_table
     bind_table(sim, root, lane=root.lane)
+    from rfx.model.realization_verdict import admit_table
+    object.__setattr__(root.realization_table, "report_only", report_only)
+    if not report_only:
+        admit_table(sim, root, options=realization_options)
     if preflight is not None:
         sim._auto_preflight(conductors=root, **preflight)
     return root
@@ -444,8 +459,10 @@ class PreparedSolve:
     The empty handoff can stay in dispatch frames without pinning dense arrays
     while a distributed runner stages and drops its full-domain products.
     """
-    def __init__(self, sim):
+    def __init__(self, sim, realization_options=None, *, report_only=False):
         self.sim = sim
+        self.realization_options = realization_options
+        self.report_only = report_only
         self._product = None
         self._taken = False
         self.diagnostics = ()
@@ -460,7 +477,8 @@ class PreparedSolve:
             nonuniform = self.sim._uses_nonuniform_mesh
             grid = (self.sim._build_nonuniform_grid() if nonuniform
                     else self.sim._build_grid())
-            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices)
+            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices,
+                                             realization_options=self.realization_options, report_only=self.report_only)
         return self._product
 
     def take(self, *, n_devices=1):
@@ -470,13 +488,13 @@ class PreparedSolve:
         return product
 
 
-def prepare_solve(sim, *, distributed=False):
+def prepare_solve(sim, *, distributed=False, realization_options=None):
     """Keep solve ownership local to this execution, never in audit caches."""
     from rfx.model.realization_reference import forget_kernel
     forget_kernel(sim)
     if distributed:
         release_declaration_caches(sim)
-    return PreparedSolve(sim)
+    return PreparedSolve(sim, realization_options)
 
 
 def assembled_materials(root, **collectors):

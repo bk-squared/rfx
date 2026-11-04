@@ -535,10 +535,10 @@ class _ExecuteMixin:
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
-        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None,
+        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None, realization_options=None,
     ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal)
+        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal, realization_options=realization_options)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
@@ -1460,7 +1460,7 @@ class _ExecuteMixin:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override))
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override), realization_options=(subpixel_smoothing, False))
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)

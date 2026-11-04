@@ -13,6 +13,8 @@ def _admit_waveguide_options(
     admit_conformal_floor(self, "waveguide_s_matrix", conformal_pec, smoothing=subpixel_smoothing)
     if conformal_pec is None:
         conformal_pec = bool(self._boundary_spec.conformal_faces())
+    if conformal_pec:
+        raise RfxUnsupported("Conformal realization is supported on uniform run() only.")
     if conformal_pec == "cut_cell_floor" and port_reference_sims is not None:
         raise NotImplementedError('conformal_pec="cut_cell_floor" cannot carry port_reference_sims; '
                                   'use the uniform boundary-wall reference')
@@ -301,8 +303,11 @@ def _prepare_waveguide_references(
             _ref_pec_sheets: list = []
             _ref_pec_wires: list = []
             _ref_sheet_specs: list = []
-            _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(
-                _ref_grid, pec_sheets=_ref_pec_sheets,
+            from rfx.model.conductors import solve_conductors, assembled_materials
+            from rfx.model.realization_table import finish_table
+            reference = solve_conductors(_ref_sim, _ref_grid)
+            _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = assembled_materials(
+                reference, pec_sheets=_ref_pec_sheets,
                 pec_wires=_ref_pec_wires, sheet_specs=_ref_sheet_specs)
             # The reference run carries no sheet context: refuse, never drop.
             if _ref_sheet_specs:
@@ -327,6 +332,7 @@ def _prepare_waveguide_references(
                 _ref_edges_i = realized_pec_edge_masks(
                     _ref_pec_mask, sheets=tuple(_ref_pec_sheets),
                     wires=tuple(_ref_pec_wires))
+            finish_table(_ref_sim, reference, lane="waveguide_s_matrix_reference")
             ref_pec_edge_masks_per_port.append(_ref_edges_i)
     return ref_materials_per_port, ref_pec_edge_masks_per_port, ref_pec_masks
 

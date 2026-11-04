@@ -819,3 +819,354 @@ def test_forward_leaves_sim_report_on_pre_run_path(lane):
     assert after.realization_table.rows == before.realization_table.rows
     assert after.realization_table is not result.realized_geometry.realization_table
     assert sim.fidelity_report(print_report=False)[0]['realization_table'] is after.realization_table
+
+
+VERDICT_FAMILIES = ("pec_box", "pec_sphere", "dielectric_box", "magnetic_box",
+                    "lossy_box", "debye_box", "f0_film", "sheet", "dc_film", "wire", "port", "wall", "profile_domain")
+
+
+@pytest.mark.parametrize("lane", LANES + ("distributed_v2_run", "distributed_v2_forward",
+                                         "distributed_nu_run", "distributed_nu_forward", "subgridded"))
+@pytest.mark.parametrize("family", VERDICT_FAMILIES)
+@pytest.mark.parametrize("miss", (.009, .011))
+@pytest.mark.parametrize("snap", ("strict", "declared"))
+def test_verdict_boundary(family, lane, miss, snap):
+    """Contract (iii): actual scenes straddling the common geometric bar.
+
+    The oracle below uses only node/cell arrays and the family's sampling rule;
+    neither a realization helper nor the judge supplies an expected dimension.
+    """
+    import warnings
+
+    if lane == "subgridded" and family in ("sheet", "f0_film", "dc_film", "wire", "debye_box", "profile_domain"):
+        pytest.skip("this declaration is refused by subgrid lane admission")
+    if lane.startswith("distributed") and family == "f0_film":
+        pytest.skip("surface-impedance sheets are refused by distributed lane admission")
+    if "distributed_nu" in lane and family == "dc_film":
+        pytest.skip("DC films are refused by distributed graded lane admission")
+    graded = lane.startswith("graded") or "_nu_" in lane or family == "profile_domain"
+    profile = np.array((.8, 1.2) * 5) * D
+    domain = [120*D if family in ("wire", "port") else 10*D, 10*D, 10*D]
+    kwargs = {"dz_profile": profile} if graded else {}
+    if family in ("wall", "profile_domain"):
+        domain[0] = 10*D/(1+miss)
+    if family == "profile_domain":
+        kwargs["dx_profile"] = np.full(10, D)
+    # Build the oracle grid under declared acceptance before exercising strict.
+    sim = Simulation(freq_max=1e9, domain=tuple(domain), dx=D, boundary="pec",
+                     snap="declared", **kwargs)
+    oracle = Simulation(freq_max=1e9, domain=(120*D if family in ("wire", "port") else 10*D, 10*D, 10*D),
+                        dx=D, boundary="pec", snap="declared", **kwargs)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        grid = oracle._build_nonuniform_grid() if graded else oracle._build_grid()
+    cells = [np.asarray(grid.cells(a), dtype=float) for a in range(3)]
+    nodes = [np.r_[0., np.cumsum(d)] - np.sum(d[:getattr(grid, f"pad_{'xyz'[a]}_lo")])
+             for a, d in enumerate(cells)]
+    centre = np.array((5., 5., 4.8 if graded else 5.))*D
+    length = 4*D/(1+miss)
+    low, high = centre-length/2, centre+length/2
+    if family in ("pec_box", "dielectric_box", "magnetic_box", "lossy_box", "debye_box"):
+        if family == "pec_box":
+            material = "pec"
+        else:
+            from rfx.materials.debye import DebyePole
+            sim.add_material("test", eps_r=2., **(
+                {"mu_r": 2.} if family == "magnetic_box" else
+                {"sigma": .01} if family == "lossy_box" else
+                {"debye_poles": [DebyePole(1., 1e-11)]} if family == "debye_box" else {}))
+            material = "test"
+        sim.add(Box(tuple(low), tuple(high)), material=material)
+    elif family == "pec_sphere":
+        sim.add(Sphere(tuple(centre), length/2), material="pec")
+    elif family in ("sheet", "f0_film"):
+        length = 4.7*D/(1+miss)
+        low, high = centre-length/2, centre+length/2
+        low[2] = high[2] = centre[2]
+        if family == "sheet":
+            sim.add(Box(tuple(low), tuple(high)), material="pec")
+        else:
+            sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=100.,
+                                   thickness=35e-6, surface_impedance_f0=1e9)
+    elif family == "dc_film":
+        low[2] = high[2] = centre[2]
+        sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=100., thickness=35e-6)
+    elif family in ("wire", "port"):
+        length = 100*D/(1-miss)
+        low = np.array((1.66*D, centre[1], centre[2]))
+        high = low + (length, 0., 0.)
+        if family == "wire":
+            sim.add(PolylineWire((tuple(low), tuple(high)), radius=0.), material="pec")
+        else:
+            from rfx import GaussianPulse
+            sim.add_port(tuple(low), "ex", extent=length, impedance=50.,
+                         waveform=GaussianPulse(f0=5e8, bandwidth=.9))
+
+    if family in ("wall", "profile_domain"):
+        physical = nodes[0][10]-nodes[0][0]
+        expected_miss = physical/domain[0]-1
+    elif family in ("wire", "port"):
+        a = np.argmin(abs(nodes[0]-low[0]))
+        b = np.argmin(abs(nodes[0]-high[0]))
+        physical = nodes[0][b-1]-nodes[0][a]
+        expected_miss = physical/length-1
+    else:
+        spans = []
+        for a in range(2):
+            sample = nodes[a][:-1] if family in ("sheet", "f0_film") else nodes[a][:-1]+cells[a]/2
+            occupied = np.flatnonzero((sample >= low[a]) & (sample < high[a]))
+            first, last = occupied[0], occupied[-1]
+            physical = (nodes[a][last]-nodes[a][first]+.35*(cells[a][first-1]+cells[a][last])
+                        if family in ("sheet", "f0_film") else nodes[a][last+1]-nodes[a][first])
+            spans.append(physical)
+        expected_miss = (np.sqrt(np.prod(spans))/length-1
+                         if family in ("sheet", "f0_film", "dc_film") else spans[0]/length-1)
+    assert abs(expected_miss) == pytest.approx(miss, abs=2e-6)
+    sim._snap = snap
+    if lane == "subgridded":
+        sim.add_refinement(z_range=(2*D, 8*D), ratio=2, validation="research")
+    solve_options = dict(n_steps=1, skip_preflight=True)
+    if lane.startswith("distributed"):
+        import jax
+        solve_options["devices"] = jax.devices("cpu")[:2]
+        assert len(solve_options["devices"]) == 2
+        if lane.endswith("forward"):
+            solve_options["distributed"] = True
+
+    def solve():
+        if lane.endswith("forward"):
+            return sim.forward(**solve_options)
+        return sim.run(compute_s_params=False, **solve_options)
+
+    dielectric = family in ("dielectric_box", "magnetic_box", "lossy_box", "debye_box")
+    refuses = miss > .01 and snap == "strict" and not dielectric
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if refuses:
+            with pytest.raises(ValueError):
+                solve()
+        else:
+            solve()
+    codes = {"realization", "wall_axis_off_node", "dc_film_area", "sheet_effective_size", "sheet_cavity_spacing"}
+    messages = [w.message for w in caught if getattr(w.message, "code", None) in codes]
+    if miss < .01:
+        assert not messages
+    elif not refuses:
+        assert messages
+        if dielectric:
+            assert len(messages) == 1
+            text = str(messages[0])
+            for axis in "xy":
+                assert f"{axis}: realized" in text
+            assert text.count("cells (") >= 4
+            assert text.count(" m)") >= 4
+            assert "centroid shift" in text
+
+
+@pytest.mark.parametrize("graded", (False, True))
+@pytest.mark.parametrize("axis", range(3))
+@pytest.mark.parametrize("side", (0, 1))
+def test_point_interior_endpoint_roundoff(graded, axis, side):
+    widths = np.array((.8, 1.2) * 5)*D
+    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec",
+                     **({"dz_profile": widths} if graded else {}))
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    position = np.full(3, 5*D)
+    end_cell = widths[-1 if side else 0] if graded and axis == 2 else D
+    endpoint = 10*D if side else 0.
+    direction = 1 if side else -1
+    position[axis] = endpoint + direction*.9e-9*end_cell
+    if graded:
+        from rfx.model.graded_grid import position_to_index
+        index = lambda p: position_to_index(grid, tuple(p))
+    else:
+        index = grid.position_to_index
+    index(position)
+    position[axis] = endpoint + direction*1.1e-9*end_cell
+    with pytest.raises(ValueError, match="outside the interior"):
+        index(position)
+
+
+def test_refined_volume_has_one_realization_warning():
+    import warnings
+    sim = scene("dielectric_box", "uniform_run")
+    sim.add_refinement(z_range=(2*D, 8*D), ratio=2, validation="research")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    messages = [w.message for w in caught if getattr(w.message, "code", None) == "realization"]
+    assert len(messages) == 1
+    findings = [f for f in result.realized_geometry.realization_table.findings
+                if f.code == "realization" and f.loc == "geometry[0]"]
+    assert len(findings) == 1
+    assert "geometry[0]/fine" in findings[0]
+
+
+def _radius_at_miss(measure, target, low, high):
+    """Choose a drawing using the independent quadrature written in this test."""
+    radii = np.linspace(low, high, 161)
+    values = [measure(r)[0]-target for r in radii]
+    bracket = next(((a, b) for a, b, fa, fb in zip(radii[:-1], radii[1:], values[:-1], values[1:])
+                    if fa*fb <= 0), None)
+    assert bracket is not None, (target, min(values), max(values))
+    low, high = bracket
+    for _ in range(40):
+        mid = (low+high)/2
+        if (measure(low)[0]-target)*(measure(mid)[0]-target) <= 0:
+            high = mid
+        else:
+            low = mid
+    return (low+high)/2
+
+
+@pytest.mark.parametrize("lane", LANES)
+@pytest.mark.parametrize("smoothing", (True, "full_tensor"))
+@pytest.mark.parametrize("miss", (.009, .011))
+@pytest.mark.parametrize("snap", ("strict", "declared"))
+def test_integral_verdict_boundary_smoothed(lane, smoothing, miss, snap):
+    import warnings
+    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", snap=snap,
+                     **({"dz_profile": np.full(10, D)} if lane.startswith("graded") else {}))
+    grid = sim._build_nonuniform_grid() if lane.startswith("graded") else sim._build_grid()
+    cells = [np.asarray(grid.cells(a)) for a in range(3)]
+    nodes = [np.r_[0., np.cumsum(c[:-1])] for c in cells]
+    centre = np.array((5.23, 5.17, 4.91))*D
+    samples = []
+    for component in ((3,) if smoothing == "full_tensor" else range(3)):
+        xyz = np.meshgrid(*[n + (cells[a]/2 if a == component else 0.)
+                            for a, n in enumerate(nodes)], indexing="ij")
+        samples.append(np.sqrt(sum((x-centre[a])**2 for a, x in enumerate(xyz))))
+
+    def measure(radius):
+        # All occupied quadrature cells are interior; their primal/dual widths
+        # are D in this grid, for both the node tensor and E-edge samples.
+        filled = np.mean([np.sum(np.clip(.5-(distance-radius)/D, 0., 1.))*D**3
+                          for distance in samples])
+        declared = 4*np.pi*radius**3/3
+        return (filled/declared)**(1/3)-1, filled
+
+    radius = _radius_at_miss(measure, miss, .8*D, 3.5*D)
+    assert measure(radius)[0] == pytest.approx(miss, abs=1e-10)
+    sim.add_material("glass", eps_r=2.)
+    sim.add(Sphere(tuple(centre), radius), material="glass")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        options = dict(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)
+        result = (sim.forward(**options) if lane.endswith("forward") else
+                  sim.run(compute_s_params=False, **options))
+    row = result.realized_geometry.realization_table.row("geometry[0]")
+    assert row.filled_volume_m3 == pytest.approx(measure(radius)[1], rel=2e-6)
+    messages = [w.message for w in caught if getattr(w.message, "code", None) == "realization"]
+    assert len(messages) == (miss > .01)
+    if messages:
+        assert "filled volume-equivalent length" in str(messages[0])
+        assert "centroid shift" in str(messages[0])
+
+
+@pytest.mark.parametrize("conformal", (True, "cut_cell_floor"))
+@pytest.mark.parametrize("miss", (.009, .011))
+@pytest.mark.parametrize("snap", ("strict", "declared"))
+def test_integral_verdict_boundary_conformal(conformal, miss, snap):
+    import warnings
+    from rfx.grid import Grid
+    sim = Simulation(freq_max=1e9, domain=(4*D,)*3, dx=D, boundary="pec", snap=snap,
+                     **({"dt": .5*Grid.courant_dt(D)} if conformal == "cut_cell_floor" else {}))
+    grid = sim._build_grid()
+    cells = [np.asarray(grid.cells(a)) for a in range(3)]
+    nodes = [np.r_[0., np.cumsum(c[:-1])] for c in cells]
+    centre = np.array((2.1, 2.17, 1.91))*D
+    corners = []
+    for normal in range(3):
+        u, v = [a for a in range(3) if a != normal]
+        for plane in nodes[normal]:
+            for i in range(4):
+                for j in range(4):
+                    points = []
+                    for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                        point = centre.copy()
+                        point[normal], point[u], point[v] = plane, nodes[u][i+du], nodes[v][j+dv]
+                        points.append(np.linalg.norm(point-centre))
+                    corners.append(points)
+    distances = np.asarray(corners)
+    square = np.array(((0., 0.), (1., 0.), (1., 1.), (0., 1.)))
+
+    def measure(radius):
+        realized = 0.
+        for signed in distances-radius:
+            polygon, edges = [], []
+            for i in range(4):
+                j = (i+1) % 4
+                if signed[i] >= 0:
+                    polygon.append(square[i])
+                if (signed[i] >= 0) != (signed[j] >= 0):
+                    polygon.append(square[i]+signed[i]/(signed[i]-signed[j])*(square[j]-square[i]))
+                    edges.append(max(signed[i], signed[j])/abs(signed[j]-signed[i]))
+                else:
+                    edges.append(float(signed[i] >= 0))
+            if len(polygon) < 3:
+                area = 0.
+            else:
+                polygon = np.array(polygon)
+                area = abs(np.sum(polygon[:, 0]*np.roll(polygon[:, 1], -1)-
+                                  polygon[:, 1]*np.roll(polygon[:, 0], -1)))/2
+            if conformal == "cut_cell_floor" and 0 < area < 1:
+                area = max(area, .25*max(edges))
+            realized += area*D**2
+        # Each plane cuts a complete disk, wholly inside the transverse domain.
+        drawn = sum(len(n)*(4*D)**2 - np.pi*np.maximum(radius**2-(n-centre[a])**2, 0.).sum()
+                    for a, n in enumerate(nodes))
+        return np.sqrt(realized/drawn)-1, realized
+
+    radius = _radius_at_miss(measure, miss, .6*D, 1.75*D)
+    assert measure(radius)[0] == pytest.approx(miss, abs=1e-10)
+    sim.add(Sphere(tuple(centre), radius), material="pec")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        if snap == "strict" and miss > .01:
+            with pytest.raises(ValueError, match="summed open area-equivalent length"):
+                sim.run(n_steps=1, skip_preflight=True, compute_s_params=False, conformal_pec=conformal)
+        else:
+            result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False, conformal_pec=conformal)
+            row = result.realized_geometry.realization_table.row("geometry[0]")
+            assert sum(row.open_area_m2) == pytest.approx(measure(radius)[1], rel=2e-6)
+    messages = [w.message for w in caught if getattr(w.message, "code", None) == "realization"]
+    assert len(messages) == (miss > .01 and snap == "declared")
+
+
+@pytest.mark.parametrize("lane", LANES)
+@pytest.mark.parametrize("miss", (.009, .011))
+@pytest.mark.parametrize("snap", ("strict", "declared"))
+def test_aperture_verdict_boundary(lane, miss, snap):
+    import warnings
+    graded = lane.startswith("graded")
+    sim = Simulation(freq_max=100e9, domain=(10*D,)*3, dx=D, boundary="pec", snap=snap,
+                     **({"dz_profile": np.array((.8, 1.2)*5)*D} if graded else {}))
+    length = 4*D/(1+miss)
+    centre = (5*D, (4.8 if graded else 5)*D)
+    ranges = [(c-length/2, c+length/2) for c in centre]
+    sim.add_waveguide_port(5*D, direction="+x", y_range=ranges[0], z_range=ranges[1],
+                          freqs=np.array([80e9]), f0=80e9, bandwidth=.4,
+                          ref_offset=1, probe_offset=2)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    spans = []
+    for a, bounds in zip((1, 2), ranges):
+        cells = np.asarray(grid.cells(a))
+        nodes = np.r_[0., np.cumsum(cells[:-1])]
+        lo, hi = [np.argmin(abs(nodes-p)) for p in bounds]
+        spans.append(nodes[hi]-nodes[lo])
+    np.testing.assert_allclose(np.array(spans)/length-1, miss, atol=2e-6, rtol=0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        options = dict(n_steps=1, skip_preflight=True)
+        def solve():
+            return (sim.forward(**options) if lane.endswith("forward") else
+                    sim.run(compute_s_params=False, **options))
+        if snap == "strict" and miss > .01:
+            with pytest.raises(ValueError, match="waveguide_port"):
+                solve()
+        else:
+            result = solve()
+            row = result.realized_geometry.realization_table.row("waveguide_port[0]")
+            np.testing.assert_allclose([a.realized_span_m for a in row.axes[1:]], spans, atol=1e-12, rtol=0)
+    messages = [w.message for w in caught if getattr(w.message, "code", None) == "realization"]
+    assert len(messages) == (miss > .01 and snap == "declared")

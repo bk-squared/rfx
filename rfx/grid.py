@@ -357,6 +357,13 @@ class Grid:
             returned an out-of-range index silently, which then indexed
             the wrong cell (or wrapped negatively) downstream.
         """
+        from rfx.model.graded_admission import admit_interior_position
+        for axis, coordinate in enumerate(pos):
+            if _axis_name(axis) in self.periodic_axes or (axis == 2 and self.is_2d):
+                continue
+            interior = self.interior[axis]
+            high = (interior.stop - interior.start - 1) * self.dx
+            admit_interior_position(float(coordinate), 0., high, self.dx, self.dx)
         # Preserve this API's input-dtype division, including half-node ties.
         i = self._rounded_index(0, pos[0] / self.dx)
         j = self._rounded_index(1, pos[1] / self.dx)

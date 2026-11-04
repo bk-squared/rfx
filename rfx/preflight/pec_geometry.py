@@ -58,6 +58,7 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
+from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready
 import math
 
 import numpy as np
@@ -342,6 +343,9 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         return
     ctx = self._campaign_ctx()
     if ctx.error == "traced-mesh":
+        table = getattr(getattr(ctx, "_realized", None), "realization_table", None)
+        if table is not None and "traced" in table.judged:
+            return
         _w.warn(PreflightWarning(
             "The conductor-realization checks (PEC volume faces, the "
             "sheet-size verdict and the others) could NOT run on a traced "
@@ -992,6 +996,8 @@ def _cavity_wall_faces(ctx):
 
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     """Judge adjacent sheet/Box/wall faces independently of electrical columns."""
+    if legacy_table_ready(ctx):
+        return
     conductors = [e for e in entries if e.kind == "sheet"
                   or (e.kind == "volume" and isinstance(e.shape, Box))]
     if not conductors:
@@ -1077,7 +1083,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     continue
                 if not touching:
                     rel = solved / drawn - 1.0
-                    if abs(rel) <= _CAVITY_THICKNESS_TOL:
+                    if not legacy_mismatch(rel, _CAVITY_THICKNESS_TOL):
                         continue
                     score = abs(rel)
                     spacing = (f"drawn spacing {_fmt_len(drawn)}, solved spacing "
@@ -1432,6 +1438,8 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     domain wall is a wall, not an edge, and adds nothing. At non-free ends,
     exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
+    if legacy_table_ready(ctx):
+        return
     from rfx.mesh_edges import EDGE_OFFSET
     # f0 sheets join on the PEC rule's terms: Box drawings only (no analytic
     # face coordinates for other shapes; the 0.35-cell offset was measured on a fin).
@@ -1451,7 +1459,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         covered = float(nodes[span.i1] - nodes[span.i0])
         eff = span.hi - span.lo
         rel = (eff - ext) / ext
-        if abs(rel) > _SHEET_EFFECTIVE_SIZE_TOL:
+        if legacy_mismatch(rel, _SHEET_EFFECTIVE_SIZE_TOL):
             rows.append((abs(rel), rel, e, a, ext, covered, eff))
     if not rows:
         return

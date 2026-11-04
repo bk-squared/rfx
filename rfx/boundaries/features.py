@@ -11,6 +11,7 @@ from rfx._warning_origin import user_stacklevel
 from rfx.model.graded_admission import host_cells
 
 from dataclasses import replace
+from rfx.model.realization_verdict import legacy_mismatch
 import inspect
 from pathlib import Path
 import warnings
@@ -189,6 +190,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
     depths = grid_face_depths(grid) if boundary_depths is None else boundary_depths
     messages = []
     findings = []
+    sim._realization_early_outcomes = {}
     for index, (axis, kind) in enumerate(axis_kinds(depths).items()):
         if kind != "wall" or (axis == "z" and sim._mode.startswith("2d")):
             continue
@@ -214,7 +216,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
             cell = float(host_cells(grid, axis)[span.start])
             solved = n * cell
         rel = solved / length - 1
-        if abs(rel) <= .01:
+        if not legacy_mismatch(rel, .01):
             continue
         nearest_n = realized_cells(length, cell, "wall")
         adjacent = min((length / count for count in (nearest_n - 1, nearest_n + 1) if count >= 1),
@@ -232,6 +234,11 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
             warned = _WALL_AXIS_WARNED.setdefault(sim, set())
             for axis, length, solved, dx, text in findings:
                 key = (axis, length, solved, dx)
+                from rfx.model.realization_verdict import legacy_outcome, remember_legacy
+                remember_legacy(sim, axis, legacy_outcome(
+                    f"legacy:wall:{axis}", solved/length-1, .01,
+                    text + "; accepted with snap='declared'.",
+                    "wall_axis_off_node", "judge_wall_axes"))
                 if key in warned:
                     continue
                 warnings.warn(PreflightWarning(

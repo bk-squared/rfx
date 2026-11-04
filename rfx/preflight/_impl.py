@@ -72,6 +72,8 @@ def _preflight_impl(
     if _conductors is not None:
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
+        if tables:
+            issues.extend(tables[-1].findings)
     else:
         issues._realization_reader = lambda: self.realized_geometry().realization_table
 
@@ -252,7 +254,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     The advisory names the first caller frame outside rfx, however many rfx frames lie between;
     ``stacklevel`` is accepted from older callers and not used.
     """
-    issues = PreflightReport(issues)
+    issues = PreflightReport(i for i in issues if not getattr(i, "_realization_delivered", False))
     if not len(issues):          # PreflightReport refuses bool()
         return
     import warnings
@@ -289,7 +291,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
 
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
                    conductors=None, prepare=False, distributed=False, tfsf_material_overrides=(),
-                   conformal=None):
+                   conformal=None, realization_options=None):
     """Emit a UserWarning if preflight finds issues.
 
     Called automatically at the start of ``forward()``, ``optimize()``,
@@ -313,7 +315,7 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     skipped preflight it stays lazy until lane admission; otherwise checks
     read its assembled product before the selected runner takes ownership.
     """
-    assembly = prepare_solve(sim, distributed=distributed) if prepare else None
+    assembly = prepare_solve(sim, distributed=distributed, realization_options=realization_options) if prepare else None
     if skip:
         return assembly if prepare else PreflightReport()
     if assembly is not None:

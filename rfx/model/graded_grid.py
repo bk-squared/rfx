@@ -1144,13 +1144,13 @@ def _axis_position_to_index(
     pos: float,
     fallback_dx: float | None = None,
 ) -> int:
-    """Padded index of the node nearest ``pos`` on ``axis``, clamped.
+    """Padded index of the node nearest an admitted interior position.
 
     The node is the one ``index_of`` names: ``nearest_node_index`` on the
     node line the conductors are rasterized on, a tie to the lower node. Two legacy behaviours stay here and not in
     ``index_of``:
-    a coordinate outside the interior CLAMPS to the end node, and a traced
-    axis answers from a nominal mesh.
+    endpoint roundoff uses the local end cell, and a traced axis answers
+    from a nominal mesh.
 
     When the axis's cell widths are a JAX tracer (mesh-as-design-variable
     path) there is no host node line. If the caller declared the concrete
@@ -1238,9 +1238,11 @@ def host_nominal_grid(grid: NonUniformGrid) -> NonUniformGrid:
 
 def _nearest_on_line(nodes, cells, pos) -> int:
     """``nearest_node_index`` on a node line, with the local cell the sheet
-    snap uses (``_local_cell``). A coordinate outside the line gets its end
-    node, which is the legacy clamp of ``position_to_index``."""
+    snap uses (``_local_cell``). Admit only local endpoint roundoff."""
     from rfx.geometry.rasterize_grid import _local_cell
+    from rfx.model.graded_admission import admit_interior_position
+    admit_interior_position(float(pos), float(nodes[0]), float(nodes[-1]),
+                            float(cells[0]), float(cells[max(len(nodes)-2, 0)]))
     return nearest_node_index(nodes, float(pos),
                               _local_cell(nodes, cells, float(pos)))
 
@@ -1250,10 +1252,10 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
 
     Accounts for per-face CPML padding (``pad_{axis}_lo`` leading offset).
     Each axis resolves through ``_axis_position_to_index``: the node
-    ``index_of`` names, clamped into the interior. On a constant axis, for a
+    ``index_of`` names, after interior admission. On a constant axis, for a
     coordinate inside the interior that is not a tie, that is the uniform
     ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
-    interior this clamps to the end node, while the uniform grid returns a
+    interior both grids refuse. The uniform grid returns a
     pad index or refuses.
     """
     i = _axis_position_to_index(grid, "x", pos[0],
