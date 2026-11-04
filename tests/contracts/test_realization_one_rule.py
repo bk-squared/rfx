@@ -903,6 +903,23 @@ def test_periodic_wire_union_includes_terminal_edge():
 
 
 @pytest.mark.parametrize("graded", (False, True))
+def test_probe_point_shift_is_reported_without_finding_and_outside_refuses(graded):
+    sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9, boundary="pec",
+                     **({"dz_profile": np.full(10, D)} if graded else {}))
+    sim.add_probe((5.4*D, 5*D, 5*D), component="ez")
+    record = sim.realized_geometry()
+    nodes, cells = np.asarray(record.nodes[0]), np.asarray(record.cell_sizes[0])
+    row = record.realization_table.row("probe[0]")
+    shift = (nodes[5] - 5.4*D)/cells[5]
+    assert shift == pytest.approx(-.4)
+    assert row.axes[0].centroid_shift_cells == pytest.approx(shift)
+    assert not [f for f in sim.preflight() if f.code == "realization"]
+    sim.add_probe((5*D, 5*D, 10.4*D), component="ez")
+    with pytest.raises(ValueError, match="outside the interior"):
+        sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+
+
+@pytest.mark.parametrize("graded", (False, True))
 def test_point_source_retains_node_placement(graded):
     from rfx import GaussianPulse
     sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9, boundary="pec",
