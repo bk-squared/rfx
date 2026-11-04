@@ -3,6 +3,7 @@
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 from rfx._warning_origin import user_stacklevel
 from dataclasses import dataclass, replace
+from rfx.model.realization_verdict import legacy_mismatch
 import warnings
 
 import jax
@@ -356,7 +357,7 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
     exponent = 'sqrt(A_r/A_d)' if k == 2 else f'(A_r/A_d)^(1/{k})'
     error = (None if declared is None or declared <= 0 or k == 0 else
              np.sqrt(realized / declared) - 1 if k == 2 else (realized / declared)**(1 / k) - 1)
-    if error is None or abs(error) > _SHEET_EFFECTIVE_SIZE_TOL:
+    if legacy_mismatch(error, _SHEET_EFFECTIVE_SIZE_TOL):
         clipped = any(
             'xyz'[a] not in getattr(grid, 'periodic_axes', '')
             and (lo[a] < float(coords[a][0]) or hi[a] > float(coords[a][-1]))
@@ -378,6 +379,10 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
         if snap != 'declared':
             raise DCFilmAdmissionError(message)
         if emit:
+            from rfx.model.realization_verdict import legacy_outcome, remember_legacy
+            remember_legacy(grid, ("film", id(shape)), legacy_outcome(
+                f"legacy:film:{id(shape)}", error, _SHEET_EFFECTIVE_SIZE_TOL,
+                message, "dc_film_area", "admit_dc_film"))
             warnings.warn(PreflightWarning(message, code='dc_film_area', severity='warning',
                                           source='admit_dc_film'), stacklevel=user_stacklevel())
 

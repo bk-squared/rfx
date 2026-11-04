@@ -47,6 +47,7 @@ class RealizationRow:
     volume_equivalent_length_m: float | None = None
     volume_miss_percent: float | None = None
     max_owner_deviation: float | None = None
+    integral_comparison: tuple | None = None
     name: str | None = None
     shape_name: str | None = None
     declared_bounds_m: tuple | None = None
@@ -63,6 +64,16 @@ class RealizationTable:
     rows: tuple[RealizationRow, ...]
     lane: str
     prepared: object = field(repr=False, compare=False)
+
+    findings: list = field(default_factory=list, repr=False, compare=False)
+    legacy_rows: list = field(default_factory=list, repr=False, compare=False)
+    judged: set = field(default_factory=set, repr=False, compare=False)
+    deferred: set = field(default_factory=set, repr=False, compare=False)
+    delivered: set = field(default_factory=set, repr=False, compare=False)
+    early_domain_axes: set = field(default_factory=set, repr=False, compare=False)
+    report_only: bool = field(default=False, repr=False, compare=False)
+    active_axes: tuple = field(default=("x", "y", "z"), repr=False, compare=False)
+    periods: dict = field(default_factory=dict, repr=False, compare=False)
 
     def row(self, label):
         return next(row for row in self.rows if row.label == label)
@@ -139,6 +150,12 @@ def realization_table(prepared) -> RealizationTable:
             model = "solved sheet edges"
         tangent = [a for i, a in enumerate(axes) if entity.plane is not None and i != entity.plane[0]]
         area_cell = float(np.sqrt(np.prod([a.cell_size_m for a in tangent]))) if len(tangent) == 2 else None
+        if (entity.kind in ("sheet", "lossy") and realized is None and len(tangent) == 2
+                and all(a.declared_span_m is not None for a in tangent)):
+            comparison = [getattr(a, "comparison_bounds_m", None) or a.declared_bounds_m
+                          for i, a in enumerate(entity.axes) if i != entity.plane[0]]
+            declared = float(np.prod([hi-lo for lo, hi in comparison]))
+            realized = float(np.prod([a.realized_span_m for a in tangent]))
         rows.append(RealizationRow(
             entity.label, entity.kind, axes, entity.continued_faces,
             status=entity.error or entity.mask_error or "evaluated", model=model,
@@ -181,7 +198,10 @@ def realization_table(prepared) -> RealizationTable:
     from rfx.model.realization_integrals import read_rows
     quantity_grid = getattr(record, "_quantity_grid", prepared.conductors.grid)
     return RealizationTable(read_rows(rows, quantity_grid, sim), prepared.lane,
-                            weakref.ref(prepared.conductors))
+                            weakref.ref(prepared.conductors),
+                            active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1),
+                            periods={d.axis: d.length_m for d in record.domain
+                                     if d.axis in getattr(prepared.conductors.grid, "periodic_axes", "")})
 
 
 def _traced_table(prepared):
@@ -294,7 +314,7 @@ def finish_table(sim, conductors, *, lane):
                      dt=record.dt if is_tracer(conductors.grid.dt) else float(conductors.grid.dt))
     if lane == "run_subgridded" and not conductors.refinements and conductors.kernel_context is None:
         record = replace(record, limitations=("refined region not represented",))
-    if not any(row.traced_inputs for row in table.rows):
+    if lane != "coax" and not any(row.traced_inputs for row in table.rows):
         from rfx.preflight.realization import context_from_conductors
         from rfx.realized_geometry import _ports
         from rfx.model.realization_placements import placement_rows
@@ -308,4 +328,6 @@ def finish_table(sim, conductors, *, lane):
         object.__setattr__(table, "rows", disjoint_rows(sim, rows, conductors.kernel_context[1]))
         record = replace(record, limitations=("disjoint vacuum stepper does not carry material declarations",))
     object.__setattr__(conductors, "_realization_record", record)
+    from rfx.model.realization_verdict import admit_table
+    admit_table(sim, conductors, finished=True)
     return record

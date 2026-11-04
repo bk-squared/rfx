@@ -13,7 +13,7 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     reader._pf_campaign_ctx = None
     reader._realized_geometry_record = None
     reader._coax_geometry = None
-    root = PreparedSolve(reader).take()
+    root = PreparedSolve(reader, report_only=True).take()
     if solved.lane == "run_subgridded":
         from rfx.runners.subgridded import _run_subgridded_once
         root.grid._prepared_conductors = root

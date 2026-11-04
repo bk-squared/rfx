@@ -428,8 +428,8 @@ def compute_waveguide_s_matrix(
     _wg_sheet_specs: list = []
     _wg_pec_sheets: list = []
     _wg_pec_wires: list = []
-    from rfx.model.conductors import realized_conductors, assembled_materials
-    conductors = realized_conductors(self, grid)
+    from rfx.model.conductors import solve_conductors, assembled_materials
+    conductors = solve_conductors(self, grid, realization_options=(subpixel_smoothing, False))
     base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
         conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
         pec_wires=_wg_pec_wires)
@@ -530,6 +530,9 @@ def compute_waveguide_s_matrix(
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
         conformal_pec=conformal_pec,
         reference_eps=float(reference_medium.eps_r))
+
+    from rfx.model.realization_table import finish_table
+    finish_table(self, conductors, lane="waveguide_s_matrix")
 
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(
