@@ -203,6 +203,17 @@ Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
+### Subpixel smoothing does not see a gap thinner than half a cell between two dielectric volumes.
+
+Tracker: #2397
+
+Near a face, the smoothing reads the medium on the far side at one point half a normal cell beyond the face.
+When two dielectric volumes are separated by a gap thinner than that, the point lands inside the other volume.
+The cells across the gap then read as if the two volumes touched, and the gap's own medium does not enter the average.
+This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottke_pec"`, on uniform and graded Yee meshes and on the node tensor.
+Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
+Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
+
 ### With `"kottke_pec"`, a metal face resting on a dielectric off the grid is formed as if the dielectric were partly air.
 
 Tracker: #2390
