@@ -21,6 +21,8 @@ def _admit_waveguide_options(
     resolve_field_dtype(self._precision)
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, unsupported=True)
+    from rfx.runners._smoothing_admission import warn_kottke_pec_volume
+    warn_kottke_pec_volume(self, subpixel_smoothing)
     return conformal_pec
 
 
