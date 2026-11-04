@@ -18,7 +18,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.runners import distributed_v2
-from rfx.stepping import slab_uniform_loop
+from rfx.stepping import slab_wrap
 
 # Included in pr-tests.yml's ubuntu fast suite: no slow/gpu marker. The
 # subprocess test has its own shared deadline instead of a pytest plugin.
@@ -64,18 +64,21 @@ def _relative_error(actual, expected):
 
 
 def _scan_body_captures(monkeypatch, run):
-    """Run normally, then inspect every scan body seen through the runner's lax."""
+    """Run normally and inspect the scan body passed by the wrapped driver."""
     bodies = []
-    scan = slab_uniform_loop.lax.scan
+    scan = jax.lax.scan
 
     def traced_scan(f, *args, **kwargs):
         bodies.append(f)
         return scan(f, *args, **kwargs)
 
-    # Replace only the runner's namespace; leave JAX's internal lax uses alone.
-    runner_lax = SimpleNamespace(**{**vars(slab_uniform_loop.lax), "scan": traced_scan})
+    original = slab_wrap.run_steps
+
+    def run_steps(*args, **kwargs):
+        return original(*args, **kwargs, scan_loop=traced_scan)
+
     with monkeypatch.context() as patch:
-        patch.setattr(slab_uniform_loop, "lax", runner_lax)
+        patch.setattr(slab_wrap, "run_steps", run_steps)
         run()
     assert bodies, "the run must trace a scan body for the capture check to bind"
 
@@ -125,8 +128,12 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
         entries.append(entry)
         return entry
 
-    runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
-    monkeypatch.setattr(slab_uniform_loop, "jax", runner_jax)
+    original = slab_wrap.run_steps
+
+    def run_steps(*args, **kwargs):
+        return original(*args, **kwargs, compile_loop=traced_jit)
+
+    monkeypatch.setattr(slab_wrap, "run_steps", run_steps)
     gather = Mock(wraps=multihost_utils.process_allgather)
     monkeypatch.setattr(multihost_utils, "process_allgather", gather)
     captured = _scan_body_captures(
@@ -136,13 +143,10 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
     gather.assert_not_called()
     assert len(entries) == 1
     entries[0].assert_called_once()
-    # carry, xs, materials, Debye, Lorentz, [CPML parameters], PEC mask,
-    # TF/SF tables (an empty pair without a plane wave), the port table
-    # (empty without ports), and an explicit sharded rank argument.
-    # Uniform PEC needs no NU spacings.
-    assert len(entries[0].call_args.args) == (9 if boundary == "cpml" else 8)
-    assert set(entries[0].call_args.kwargs) == {"ranks"}
-    np.testing.assert_array_equal(entries[0].call_args.kwargs["ranks"], [0, 1])
+    # Carry, invariants, waves and ranks are explicit compiled arguments.
+    assert len(entries[0].call_args.args) == 4
+    assert not entries[0].call_args.kwargs
+    np.testing.assert_array_equal(entries[0].call_args.args[3], [0, 1])
 
 
 def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypatch):
@@ -275,9 +279,8 @@ def test_v2_direct_non_uniform_grid_is_refused(monkeypatch):
     assert distributed_v2._spans_other_processes(devices)
     # Profiles are constructor arguments; Simulation has no set_dz_profile API.
     sim = _build_box("pec", dz_profile=[1e-3] * 7)
-    scan = Mock(wraps=slab_uniform_loop.lax.scan)
-    runner_lax = SimpleNamespace(**{**vars(slab_uniform_loop.lax), "scan": scan})
-    monkeypatch.setattr(slab_uniform_loop, "lax", runner_lax)
+    scan = Mock(wraps=slab_wrap.run_steps)
+    monkeypatch.setattr(slab_wrap, "run_steps", scan)
     with pytest.raises(NotImplementedError, match="non-uniform grid") as exc:
         distributed_v2.run_distributed(sim, n_steps=3, devices=devices)
     assert "use sim.run(devices=...)" in str(exc.value)

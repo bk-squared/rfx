@@ -894,11 +894,6 @@
     },
     {
       "file": "rfx/stepping/uniform.py",
-      "function": "make_uniform_step.e_boundary",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/uniform.py",
       "function": "make_uniform_step.e_update",
       "kind": "boundary"
     },

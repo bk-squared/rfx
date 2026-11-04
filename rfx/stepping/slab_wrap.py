@@ -8,13 +8,12 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.core.yee import FDTDState
-from rfx.measurement.projector import ComponentTerms, SampleTable
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
 from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
-from rfx.stepping.slab_measurements import _nodes, cut_probe_table
+from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -113,14 +112,16 @@ def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
     return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
 
 
-def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
-    """Cut every spatial operand with the shared FILL policy, and route nodes."""
+def split(invariants, carry, layout, mesh, *, waveforms, dt=None, staged=False):
+    """Route nodes and cut spatial operands unless already staged per slab."""
     tags = dict(inv_dx='inv_dx', inv_dx_h='inv_dx_h', dx_arr='width',
                 pec_edge_masks='pec_edge', pec_static_edge_masks='pec_edge',
                 pec_occupancy='pec_occupancy')
     result = {}
     for key, value in invariants.items():
-        if key in tags:
+        if staged and key not in ('drives', 'probe_table', 'port_table'):
+            result[key] = value
+        elif key in tags:
             result[key] = cut(value, layout, tags[key], mesh=mesh)
         elif key == 'e_loss' and value is not None:
             eps, sigma, inverse = value
@@ -169,6 +170,8 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     result['owns_x'] = {face: _place(np.asarray([pair[side] for pair in layout.faces]), mesh)
                         for side, face in enumerate(('x_lo', 'x_hi'))}
     state = carry['fdtd']
+    if staged:
+        return result, carry
     local = {name: cut(getattr(state, name), layout, 'state', mesh=mesh)
              for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
     local_carry = {'fdtd': FDTDState(**local, step=state.step)}
@@ -187,8 +190,6 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def wrap(step, layout, mesh, *, table, port_table=None):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
-    components = tuple(term.component for term in table.components)
-    n_channels, channel_names = table.n_channels, table.channel_names
     context = replace(step.context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
@@ -204,15 +205,9 @@ def wrap(step, layout, mesh, *, table, port_table=None):
         if inputs.get('e_loss') is not None:
             inputs['e_loss'] = (*inputs['e_loss'], False)
         inputs['drives'] = jax.tree.map(lambda a: a[0], inputs['drives'])
-        terms, order, ids = jax.tree.map(lambda a: a[0], inputs['probe_table'])
-        inputs['probe_table'] = SampleTable(tuple(
-            ComponentTerms(component, *part) for component, part in zip(components, terms)),
-            n_channels, channel_names, order, ids)
+        inputs['probe_table'] = local_table(table, inputs['probe_table'])
         if port_table is not None:
-            parts, port_order, port_ids = jax.tree.map(lambda a: a[0], inputs['port_table'])
-            inputs['port_table'] = SampleTable(tuple(
-                ComponentTerms(term.component, *part) for term, part in zip(port_table.components, parts)),
-                port_table.n_channels, port_table.channel_names, port_order, port_ids)
+            inputs['port_table'] = local_table(port_table, inputs['port_table'])
             carry = dict(carry)
             for key in ('wire_sparams', 'sparam_time_records'):
                 if key in carry:

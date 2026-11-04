@@ -110,7 +110,10 @@ def seed_carry(carry, variant, physical_shape=None, hold_faces=()):
 @contextmanager
 def observe_scans(records, physical_shape=None, hold_faces=()):
     """Seed scan carries; observe numeric fields independently of wall names."""
+    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    from rfx.stepping import slab_wrap
     original = jax.lax.scan
+    run_steps = slab_wrap.run_steps
     depth = 0
 
     def scan(function, initial, xs=None, *args, **kwargs):
@@ -147,7 +150,11 @@ def observe_scans(records, physical_shape=None, hold_faces=()):
         finally:
             depth -= 1
 
-    with patch.object(jax.lax, "scan", scan):
+    def observed_steps(*args, **kwargs):
+        kwargs.setdefault('scan_loop', scan)
+        return run_steps(*args, **kwargs)
+
+    with patch.object(jax.lax, "scan", scan), patch.object(slab_wrap, "run_steps", observed_steps):
         yield
 
 

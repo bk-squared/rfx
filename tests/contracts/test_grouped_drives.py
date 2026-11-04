@@ -57,8 +57,9 @@ def use_per_cell_reference(monkeypatch):
         monkeypatch.setattr(module, 'drive_layout', layout)
         if hasattr(module, 'inject_drives'):
             monkeypatch.setattr(module, 'inject_drives', per_cell)
-    # Both one-device and wrapped graded steps import this injector.
-    # Slab setup imports core.drive_layout at call time, covered above.
+    # Uniform steps read core.drives.inject_drives and prepare_uniform reads
+    # core.drives.drive_layout at call time, both covered above. Graded steps
+    # retain their module binding below.
     for module in injector_modules:
         monkeypatch.setattr(module, 'inject_drives', per_cell)
 
@@ -143,9 +144,11 @@ def test_checker_is_live():
 @pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed', 'distributed_graded', 'vmap', 'subgridded'])
 def test_production_step_scatter_count(lane, monkeypatch):
     import importlib
+    from rfx.stepping import slab_wrap
+
     module = importlib.import_module({
         'uniform': 'rfx.core.drives', 'graded': 'rfx.stepping.graded',
-        'distributed': 'rfx.stepping.slab_update',
+        'distributed': 'rfx.core.drives',
         'distributed_graded': 'rfx.stepping.graded',
         'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.stepping.subgrid_jit',
     }[lane])
@@ -153,7 +156,7 @@ def test_production_step_scatter_count(lane, monkeypatch):
     seen = []
     def checked_inject(state, drives, values):
         assert drives.waves is None
-        array_types = (jax.Array, jax.core.Tracer) if lane == 'distributed_graded' else (np.ndarray,)
+        array_types = (jax.Array, jax.core.Tracer) if lane.startswith('distributed') else (np.ndarray,)
         assert all(isinstance(a, array_types) for a in jax.tree.leaves(drives))
         seen.append(True)
         return inject(state, drives, values)
@@ -176,6 +179,13 @@ def test_production_step_scatter_count(lane, monkeypatch):
         return original(f, init, xs, *args, **kwargs)
 
     monkeypatch.setattr(jax.lax, 'scan', scan)
+    if lane == 'distributed':
+        run_steps = slab_wrap.run_steps
+
+        def observed_steps(*args, **kwargs):
+            return run_steps(*args, **kwargs, scan_loop=scan)
+
+        monkeypatch.setattr(slab_wrap, 'run_steps', observed_steps)
     for n in (1, 64):
         if lane == 'vmap':
             # Inspect the actual compiled batched production scan, including
@@ -190,8 +200,8 @@ def test_production_step_scatter_count(lane, monkeypatch):
             subgrid_case(n)
         else:
             run_case(lane, n)
-    if lane == 'distributed_graded':
-        assert seen, 'wrapped graded injection was not observed'
+    if lane.startswith('distributed'):
+        assert seen, 'wrapped injection was not observed'
     assert len(counts) == 2 and counts[0] > 0, counts
     checked_counts(counts)
     print(lane, 'full-field scatters (1, 64):', counts)

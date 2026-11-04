@@ -74,12 +74,16 @@ def _equations(value):
 
 @pytest.mark.parametrize("n_devices,interval", [(2, 1), (3, 3)])
 def test_snapshot_scan_does_not_rebuild_history(n_devices, interval, monkeypatch, tmp_path):
+    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    from rfx.stepping import slab_wrap
+
     sim, grid, seam = model("pec", n_devices)
     frames = 19
     spec = SnapshotSpec(interval=interval, components=("ex", "ez", "hy"))
     # A local component history is much larger than all field/ghost temporaries.
     history_size = frames * seam * grid.shape[1] * grid.shape[2]
     original = jax.lax.scan
+    run_steps = slab_wrap.run_steps
     reports = []
 
     def inspect_scan(body, initial, xs, *args, **kwargs):
@@ -106,7 +110,12 @@ def test_snapshot_scan_does_not_rebuild_history(n_devices, interval, monkeypatch
             assert len(updates) == len(spec.components), report
         return original(body, initial, xs, *args, **kwargs)
 
+    def observed_steps(*args, **kwargs):
+        kwargs.setdefault('scan_loop', inspect_scan)
+        return run_steps(*args, **kwargs)
+
     monkeypatch.setattr(jax.lax, "scan", inspect_scan)
+    monkeypatch.setattr(slab_wrap, "run_steps", observed_steps)
     result = sim.run(n_steps=frames * interval + interval - 1, snapshot=spec,
                      devices=host_devices(n_devices), skip_preflight=True)
     jax.block_until_ready(result.snapshots)
