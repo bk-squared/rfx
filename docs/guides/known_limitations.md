@@ -214,15 +214,28 @@ This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottk
 Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
 Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
 
-### With `"kottke_pec"`, a metal face resting on a dielectric off the grid is formed as if the dielectric were partly air.
+### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
 Tracker: #2390
 
-Where a PEC body rests on a dielectric and the shared face lies between grid nodes, the cell under the face is averaged against the dielectric as already smoothed toward the background, not against the dielectric itself.
-Under a PEC strip on εr 4.4, with a cell half substrate and half metal, the inverse permittivity reads 0.307 where the cell's content gives 0.114.
-On a 30 mm microstrip resonator in a closed box (εr 4.4, 1.75 mm substrate), the first resonance on 0.5 mm cells reads 4.6 % above the same structure on 0.25 mm cells, where every face lies on a node.
-How much of that difference this face causes and how much comes from the strip edges is not separated.
-Until a fix lands, place metal faces that rest on a dielectric on grid nodes.
+Where a PEC body rests on a dielectric and the shared face lies between grid nodes, the cell under the face is not averaged by its content.
+With less than half of that cell metal, the smoothed inverse permittivity is larger than the content gives. Under a PEC strip on εr 4.4, with a quarter of the cell metal, `"kottke_pec"` reads 0.315 and `True` 0.420, where the content gives 0.170.
+With more than half of that cell metal, the field there is set to zero, where the content gives 0.085.
+With exactly half, `"kottke_pec"` read 0.307 on 0.5 mm cells and zero on 0.125 mm cells, where the content gives 0.114.
+On a 30 mm PEC strip resonator in a closed box (εr 4.4), with only the substrate face under the strip off the grid, the first resonance against a reference mesh on which every face lies on a node is off by:
+
+| cells | `True` | `"kottke_pec"` | `False` (staircase) |
+|---|---:|---:|---:|
+| 0.5 mm | −4.28 % | −4.28 % | −1.97 % |
+| 0.25 mm | +5.99 % | +3.15 % | −0.90 % |
+| 0.125 mm | −1.40 % | −1.40 % | −0.23 % |
+
+The error follows how much of the cell under the face is dielectric, not the cell size, so refining the mesh does not make it fall steadily.
+The second resonance moves the same way.
+With `"kottke_pec"`, an off-grid side edge of the strip also adds error that does not fall with refinement: −1.40 % at 0.125 mm with the edge half a cell off the grid, against −0.15 % for the staircase.
+Faces on grid nodes are not affected: with every face on a node, the three settings read the same resonance.
+Until a fix lands, put the dielectric face under the metal and the metal's edges on grid nodes: choose the cell size so that they fall on whole cells, or build the profiles with `rfx.mesh_edges.edge_aware_profiles(..., solids=[...], axes="xyz")`.
+Otherwise use `subpixel_smoothing=False`, which converged on every mesh measured.
 
 ### Subpixel smoothing with `"kottke_pec"` leaves a late field around a closed curved metal body, so its scattering depends on the record length.
 
