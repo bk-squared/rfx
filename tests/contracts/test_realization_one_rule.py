@@ -824,6 +824,53 @@ VERDICT_FAMILIES = ("pec_box", "pec_sphere", "dielectric_box", "magnetic_box",
                     "lossy_box", "debye_box", "f0_film", "sheet", "dc_film", "wire", "port", "wall", "profile_domain")
 
 
+@pytest.mark.parametrize("boundary", ("periodic", "pec", "cpml"))
+@pytest.mark.parametrize("material", ("glass", "pec"))
+@pytest.mark.parametrize("short", (False, True))
+def test_interior_face_comparison(boundary, material, short):
+    sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9,
+                     boundary={"x": boundary, "y": "pec", "z": "pec"}, cpml_layers=2, snap="strict")
+    sim.add_material("glass", eps_r=2.)
+    # The occupied x cells are 2..9. A lower face at 2.087042532 mm
+    # still selects cell 2; its interior span is 8 mm / 1.011.
+    start = 10*D - 8*D/1.011 if short else 2*D
+    sim.add(Box((start, 2*D, 2*D), (11*D, 8*D, 8*D)), material=material)
+    record = sim.realized_geometry()
+    row = record.realization_table.row("geometry[0]")
+    domain = record.domain[0]
+    nodes = np.asarray(record.nodes[0])
+    wall = nodes[domain.padding[0] + domain.n_cells]
+    physical = wall - nodes[domain.padding[0] + 2]
+    declared = wall - start
+    assert physical == pytest.approx(8*D)
+    assert 100*(physical/declared-1) == pytest.approx(1.1 if short else 0.)
+    assert row.axes[0].declared_bounds_m == pytest.approx((start, wall))
+    assert row.clipped_faces == (("x+", 11*D, wall),)
+    report = sim.preflight()
+    hits = [f for f in report if f.code == "realization" and f.loc == "geometry[0]"]
+    assert len(hits) == int(short)
+    if short:
+        assert hits[0].severity == ("warning" if material == "glass" else "error")
+        assert "clipped faces x+" in str(hits[0])
+
+
+def test_one_cell_graded_port_driven_span():
+    from rfx import GaussianPulse
+    sim = Simulation(domain=(16*D, 12*D, 12*D), dx=D, freq_max=1e9,
+                     dz_profile=np.full(12, D), boundary="pec")
+    sim.add(Box((4*D, 5*D, 3*D), (12*D, 7*D, 5*D)), material="pec")
+    sim.add(Box((4*D, 5*D, 7*D), (12*D, 7*D, 9*D)), material="pec")
+    sim.add_port((5*D, 6*D, 5*D), "ez", extent=D, impedance=50.,
+                 waveform=GaussianPulse(f0=5e8, bandwidth=.9))
+    record = sim.realized_geometry()
+    nodes, cells = np.asarray(record.nodes[2]), np.asarray(record.cell_sizes[2])
+    assert nodes[5:7] == pytest.approx((.005, .006))
+    assert cells[5] == pytest.approx(.001)
+    row = record.realization_table.row("port[0]")
+    assert row.axes[2].bounds_m == pytest.approx((nodes[5], nodes[6]))
+    assert row.axes[2].realized_span_m/cells[5] == pytest.approx(1.)
+
+
 @pytest.mark.parametrize("lane", LANES + ("distributed_v2_run", "distributed_v2_forward",
                                          "distributed_nu_run", "distributed_nu_forward", "subgridded"))
 @pytest.mark.parametrize("family", VERDICT_FAMILIES)
@@ -891,8 +938,8 @@ def test_verdict_boundary(family, lane, miss, snap):
         low[2] = high[2] = centre[2]
         sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=100., thickness=35e-6)
     elif family in ("wire", "port"):
-        length = 100*D/(1-miss)
-        low = np.array((1.66*D, centre[1], centre[2]))
+        length = 100*D/(1-miss) if family == "wire" else 40*D/(1+miss)
+        low = np.array(((1.66 if family == "wire" else 2.)*D, centre[1], centre[2]))
         high = low + (length, 0., 0.)
         if family == "wire":
             sim.add(PolylineWire((tuple(low), tuple(high)), radius=0.), material="pec")
@@ -907,7 +954,7 @@ def test_verdict_boundary(family, lane, miss, snap):
     elif family in ("wire", "port"):
         a = np.argmin(abs(nodes[0]-low[0]))
         b = np.argmin(abs(nodes[0]-high[0]))
-        physical = nodes[0][b-1]-nodes[0][a]
+        physical = nodes[0][b - (family == "wire")]-nodes[0][a]
         expected_miss = physical/length-1
     else:
         spans = []
