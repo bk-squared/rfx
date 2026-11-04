@@ -33,6 +33,7 @@ class AxisGeometry:
     # Sheet-size verdict excludes residuals at all non-free ends.
     comparison_bounds_m: tuple[float, float] | None = None
     free_ends: tuple[bool, bool] | None = None
+    occupied_intervals_m: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -315,10 +316,20 @@ def _build_record(sim, ctx, *, compact=False):
                 comparison, free_ends = width.comparison, width.free_ends
                 declared = None if bounds is None else (float(bounds[0][a]), float(bounds[1][a]))
                 residual = None if declared is None else (rlo - declared[0], rhi - declared[1])
+                intervals = ()
+                interval_mask = (e.edges(ctx.periodic, ctx.grid.shape)[a]
+                                 if ctx.periodic[a] and kind == "wire" else mask)
+                if ctx.periodic[a] and (cell_range is not None or
+                                        (kind == "wire" and np.any(interval_mask))):
+                    projection = np.any(interval_mask, axis=tuple(b for b in range(3) if b != a))
+                    starts = np.flatnonzero(np.diff(np.r_[False, projection, False].astype(int)) == 1)
+                    stops = np.flatnonzero(np.diff(np.r_[False, projection, False].astype(int)) == -1)
+                    intervals = tuple((float(nodes[a][lo]), float(nodes[a][hi]))
+                                      for lo, hi in zip(starts, stops))
                 axes.append(AxisGeometry(
                     'xyz'[a], (i0, i1 if cell_range is None else i1 + 1), cell_range,
                     declared, (rlo, rhi), rhi - rlo, residual,
-                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends))
+                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends, intervals))
         raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
         edge_counts = tuple(int(m.sum()) for m in raw_edges)
         edge_ranges = tuple(_mask_ranges(m) for m in raw_edges)

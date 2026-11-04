@@ -33,7 +33,8 @@ def placement_rows(sim, record, existing):
             indices = np.asarray(edges)
             component = getattr(item, "component", None)
             bounds = [(int(indices[:, a].min()), int(indices[:, a].max()) +
-                       int(component is not None and component[-1] == "xyz"[a]))
+                       int(component is not None and component[-1] == "xyz"[a]
+                           and declared is not None and declared[a][1] > declared[a][0]))
                       for a in range(3)]
         axes = tuple(_axis("xyz"[a], None if declared is None else declared[a],
                            tuple(float(record.nodes[a][k]) for k in interval),
