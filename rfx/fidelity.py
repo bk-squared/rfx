@@ -56,12 +56,14 @@ def _axis_names():
 from rfx.realized_geometry import _node_arrays
 
 
-def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
-    """Compatibility accessor for the cached public record; never rasterizes."""
+def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False, record=None):
+    """Read an entity mask from the public diagnostic record."""
     collection = sim._thin_conductors if hasattr(entry, "sigma_bulk") else sim._geometry
     prefix = "thin_conductor" if hasattr(entry, "sigma_bulk") else "geometry"
     index = next(i for i, candidate in enumerate(collection) if candidate is entry)
-    row = next(row for row in sim.realized_geometry().entities
+    if record is None:
+        record = sim.realized_geometry()
+    row = next(row for row in record.entities
                if row.label == f"{prefix}[{index}]")
     if row.mask_error is not None:
         raise ValueError(row.mask_error)
@@ -168,23 +170,30 @@ def fidelity_report(sim, print_report: bool = True):
     finding.
     """
     record = sim.realized_geometry()
-    ctx = sim._campaign_ctx()
-    nonuniform = ctx.lane == "nonuniform"
-    grid = ctx.grid
+    from rfx.preflight.realization import context_from_conductors
+    grid = getattr(record, "_report_grid", None)
+    if grid is None:
+        ctx = (context_from_conductors(sim, record.conductors) if record.conductors is not None
+               else sim._campaign_ctx())
+        grid = ctx.grid
+        nonuniform = ctx.lane == "nonuniform"
+    else:
+        nonuniform = hasattr(grid, "dx_arr")
     refused = dict(record.refused)
     refused_tc = dict(record.refused_thin_conductors)
     assembled_sheets = record.sheets
     assembled_wires = record.wires
     pad_fill_findings = [dict(row) for row in record.pad_fill_findings]
     rows = {row.label: row for row in record.entities}
+    table_rows = {row.label: row for row in record.realization_table.rows}
     mats = record.materials
     eps = np.asarray(mats.eps_r, dtype=float)
     sigma_arr = np.asarray(conductivity_envelope(mats), dtype=float)
     pec_mask = (record.pec_mask if record.pec_mask is not None else np.zeros(eps.shape, bool))
-    sizes, nodes = record.cell_sizes, record.nodes
+    nodes = record.nodes
     # The realized edge set depends on the run's #689 flags, so the report
     # reads the same ones the solve will.
-    domain = tuple(float(v) for v in getattr(sim, "_domain", (0.0, 0.0, 0.0)))
+    domain = tuple(d.declared_length_m for d in table_rows["domain"].domain_geometry)
     # Mask/material arrays live on the PADDED grid (CPML pad cells on every
     # side); declared coordinates are DOMAIN coordinates. The producers
     # behind _node_arrays already place node pad_lo at exactly 0.0, so this
@@ -224,35 +233,17 @@ def fidelity_report(sim, print_report: bool = True):
     # B3b: the odd tangential-H image places a magnetic wall on the
     # E-node mesh plane. Physical half-cell H samples are not zero planes.
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
+    dom_item["realization_table"] = record.realization_table
     if nonuniform and getattr(sim, "_interface_eps", "sampled") == "dual_average":
         dom_item["interface_eps_rule"] = sim._interface_eps
     for a in range(3):
         axis_name = _axis_names()[a]
-        p_lo = int(getattr(grid, f"pad_{axis_name}_lo"))
-        p_hi = int(getattr(grid, f"pad_{axis_name}_hi"))
-        i_lo = p_lo
-        # DEFENSIVE ONLY — unreachable on both grid classes as they are
-        # built today, and NOT evidence that "the pads consumed the axis"
-        # is a state this code has ever seen. Grid: shape[a] =
-        # cells_spanning(L, dx) + 1 + p_lo + p_hi, so i_hi - i_lo =
-        # cells_spanning(L, dx) >= 0 (rfx.grid.Grid.__init__; a bare
-        # ceil(L/dx) until #1070). NonUniformGrid: shape[a] = p_lo + len(profile)
-        # + p_hi + 1 (the trailing bounding node, rfx/nonuniform.py
-        # _append_bounding_node), so i_hi - i_lo = len(profile) >= 1. The
-        # clamp exists so a future grid layout cannot turn a negative index
-        # into a silent wrap; it has no test because it has no reachable
-        # input.
-        i_hi = max(len(sizes[a]) - p_hi - 1, i_lo)
-        # A declared periodic span includes the seam cell after its last
-        # stored node. Its endpoint is the appended far edge, not a wall.
-        if axis_name in getattr(grid, "periodic_axes", ""):
-            i_hi += 1
-        n_int = max(i_hi - i_lo, 0)
+        n_int = table_rows["domain"].domain_geometry[a].n_cells
         # mesh_extent is the NODE-to-NODE span (unchanged from before this
         # change) -- the commensurability finding below stays keyed on it,
         # since "does the cell size divide the declared length" is a mesh
         # question, independent of any PMC face on this axis.
-        mesh_extent = float(nodes[a][i_hi] - nodes[a][i_lo])
+        mesh_extent = table_rows["domain"].axes[a].realized_span_m
         declared = float(domain[a]) if a < len(domain) else 0.0
         # z is not solved in 2D (grid.nz == 1, Lz is ignored — rfx/grid.py);
         # comparing it against the declared z would replace one meaningless
@@ -263,9 +254,7 @@ def fidelity_report(sim, print_report: bool = True):
         eff_hi = mesh_extent
         realized = eff_hi - eff_lo
         # Local cell at each face for the round-off tie (see _zero_tie).
-        cell_lo = float(sizes[a][i_lo]) if len(sizes[a]) > i_lo else mesh_extent
-        cell_hi = (float(sizes[a][max(i_hi - 1, i_lo)])
-                   if len(sizes[a]) > max(i_hi - 1, i_lo) else mesh_extent)
+        cell_lo, cell_hi = table_rows["domain"].domain_face_cells_m[a]
         ax = dict(axis=axis_name, n_cells=int(n_int),
                   declared_um=(0.0, declared * 1e6),
                   mesh_extent_um=mesh_extent * 1e6,
@@ -331,7 +320,13 @@ def fidelity_report(sim, print_report: bool = True):
     # seam, not a free edge, in the shared solved-edge model
     # (rfx.mesh_edges.solved_sheet_span, #1375).
     for kind_src, i, entry in entries:
-        geometry = rows[f"{kind_src}[{i}]"]
+        label = f"{kind_src}[{i}]"
+        if table_rows[label].status.startswith("not represented:"):
+            report.append(dict(entity=label, findings=[dict(
+                kind="not-represented", detail=table_rows[label].status,
+                remedy="use a solver lane that carries these material declarations")]))
+            continue
+        geometry = rows[label]
         if kind_src == "thin_conductor":
             sig = float(getattr(entry, "sigma_bulk", 0.0))
             mat_name = "pec" if sig >= 1e6 else "lossy-sheet"
@@ -341,7 +336,7 @@ def fidelity_report(sim, print_report: bool = True):
             name = f"geometry[{i}] '{entry.material_name}'"
             mat_name = entry.material_name
         try:
-            lo, hi = entry.shape.bounding_box()
+            lo, hi = table_rows[geometry.label].declared_bounds_m
         except Exception:
             nb_item = dict(entity=name, findings=[dict(
                 kind="no-analytic-bounds",
@@ -355,7 +350,7 @@ def fidelity_report(sim, print_report: bool = True):
                         import builtins
                         cls, message = geometry.mask_error.split(": ", 1)
                         raise getattr(builtins, cls, ValueError)(message)
-                    nb_mask = _entity_mask(entry, sim, grid, nonuniform)
+                    nb_mask = _entity_mask(entry, sim, grid, nonuniform, record=record)
                 except (TimeoutError,): raise
                 except Exception as exc:  # noqa: BLE001 - recorded in findings.exception / findings.detail
                     pec_unrasterized.append((i, name, type(exc).__name__))
@@ -390,17 +385,17 @@ def fidelity_report(sim, print_report: bool = True):
         # disagree by a cell on any off-lattice conductor. Sheets carry no
         # cell (sheet_fp above) and a refused entry never reaches the
         # assembly, so both keep the node sampler.
-        mask = _entity_mask(entry, sim, grid, nonuniform)
+        mask = _entity_mask(entry, sim, grid, nonuniform, record=record)
         mask = mask if mask is not None else np.zeros(eps.shape, bool)
         item = dict(entity=name, material=_declared_material(sim, mat_name),
                     declared_lo=tuple(float(v) for v in lo),
                     declared_hi=tuple(float(v) for v in hi),
-                    n_cells=int(mask.sum()), findings=[])
+                    n_cells=table_rows[geometry.label].occupancy_count, findings=[])
         if (pec_assembled and i not in refused) or kind_src == "thin_conductor":
-            item["continued_faces"] = list(geometry.continued_faces)
+            item["continued_faces"] = list(table_rows[geometry.label].continued_faces)
         if sheet_fp is not None:
             item["n_cells"] = 0
-            item["n_sheet_nodes"] = int(sheet_fp.sum())
+            item["n_sheet_nodes"] = table_rows[geometry.label].occupancy_count
         if item["n_cells"] == 0 and sheet_fp is None:
             item["findings"].append(dict(
                 kind="absent",
@@ -565,7 +560,7 @@ def fidelity_report(sim, print_report: bool = True):
                 pec_before |= mask
                 pec_cells_by_entity[i] = np.flatnonzero(mask)
             else:
-                normal = int(geometry.plane[0])
+                normal = int(table_rows[geometry.label].plane[0])
                 pec_faces_by_entity[i] = (
                     normal, np.flatnonzero(_sheet_contact_faces(sheet_fp, normal)))
         # Absorber overlap: cells outside [0, domain) live in the CPML pad.
@@ -578,7 +573,7 @@ def fidelity_report(sim, print_report: bool = True):
                     and getattr(grid, f"pad_{'xyz'[a]}_hi") > 0))
             if len(idx) and (drawn_in_pad
                              or nodes[a][idx.min()] < -1e-12
-                             or nodes[a][idx.max() + (geometry.axes[a].cell_range is not None)]
+                             or nodes[a][idx.max() + (table_rows[geometry.label].record_axes[a].cell_range is not None)]
                              > domain[a] + 1e-12):
                 pad_hit.append(_axis_names()[a])
         if pad_hit:
@@ -592,8 +587,8 @@ def fidelity_report(sim, print_report: bool = True):
 
         axes = []
         clipped_axes = []
-        for a, realized_axis in enumerate(geometry.axes):
-            r_lo, r_hi = realized_axis.bounds_m
+        for a, comparison in enumerate(table_rows[geometry.label].record_axes):
+            r_lo, r_hi = comparison.bounds_m
             d_lo, d_hi = float(lo[a]), float(hi[a])
             # A body drawn past the domain is CLIPPED by construction (a
             # common deliberate idiom: draw big, let the rasterizer cut).
@@ -606,10 +601,10 @@ def fidelity_report(sim, print_report: bool = True):
                 d_lo, d_hi = max(d_lo, 0.0), min(d_hi, dom_hi)
             # Local cell size on this axis over the body's span — the scale a
             # placement can actually be resolved to.
-            cell_m = realized_axis.cell_size_m
+            cell_m = comparison.cell_size_m
             cell_um = cell_m * 1e6
-            residual = realized_axis.face_residual_m
-            if (d_lo, d_hi) != realized_axis.declared_bounds_m:
+            residual = comparison.face_residual_m
+            if (d_lo, d_hi) != comparison.declared_bounds_m:
                 residual = (r_lo - d_lo, r_hi - d_hi)
             ax = dict(axis=_axis_names()[a],
                       declared_um=(d_lo * 1e6, d_hi * 1e6),
@@ -617,7 +612,7 @@ def fidelity_report(sim, print_report: bool = True):
                       face_residual_um=(_zero_tie(abs(residual[0]), cell_m) * 1e6,
                                         _zero_tie(abs(residual[1]), cell_m) * 1e6),
                       declared_extent_um=(d_hi - d_lo) * 1e6,
-                      realized_extent_um=realized_axis.extent_m * 1e6)
+                      realized_extent_um=comparison.extent_m * 1e6)
             ext = ax["declared_extent_um"]
             ax["cell_um"] = cell_um
             # Relative margin, not an exact compare: see _SUB_CELL_TIE_REL.
@@ -772,8 +767,8 @@ def fidelity_report(sim, print_report: bool = True):
             # is not in pec_mask, so it does not reach this branch.)
             item["realized_wall_planes"] = {
                 _axis_names()[a]: dict(planes=list(planes),
-                                      planes_um=[float(nodes[a][k]) * 1e6 for k in planes])
-                for a, planes in enumerate(geometry.wall_planes)}
+                                      planes_um=[v * 1e6 for v in table_rows[geometry.label].wall_positions_m[a]])
+                for a, planes in enumerate(table_rows[geometry.label].wall_planes)}
             runs = [_max_run_length(mask, a) for a in range(3)]
             thin_axes = [a for a, r in enumerate(runs) if r == 1]
             if not thin_axes:
@@ -841,10 +836,10 @@ def fidelity_report(sim, print_report: bool = True):
     # reader to trust neither realization, on a model where the two agreed.
     for j, ps in enumerate(getattr(sim, "_pinned_sheets", ()) or ()):
         geometry = rows[f"pinned_sheet[{j}]"]
-        a, k, plane_m = geometry.plane
+        a, k, plane_m = table_rows[geometry.label].plane
         info = dict(normal_axis=a, plane_index=k, plane_m=plane_m,
-                    n_nodes=int(geometry.mask.sum()))
-        for axis in geometry.axes:
+                    n_nodes=table_rows[geometry.label].occupancy_count)
+        for axis in table_rows[geometry.label].record_axes:
             info[f"{axis.axis}_node_indices"] = axis.node_range
             info[f"{axis.axis}_edges_m"] = axis.bounds_m
             info[f"{axis.axis}_span_m"] = axis.extent_m

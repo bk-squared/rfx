@@ -936,13 +936,15 @@ class Result(NamedTuple):
         return _plot_time_series(ts, float(self.dt), labels=labels, title=title)
 
 
+from rfx.model.realization_transport import with_forward_geometry
+
+
+@with_forward_geometry
 class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
 
-    Carries the observables needed by gradient-based objectives.
-    ``settling_db`` and ``settling_witness`` score the concrete
-    user-probe record using the same host diagnostic as ``run()``. They
-    report absence while records are traced; read them on the returned
+    ``realized_geometry`` carries host metadata from the prepared kernel assembly.
+    ``settling_db`` and ``settling_witness`` score concrete user probes; read them on the returned
     concrete result, not as gradient objectives. Numeric
     ``settling_probe_info`` preserves the selected columns, component
     labels and the source-dominated flag as integers, without

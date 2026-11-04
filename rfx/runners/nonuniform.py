@@ -827,6 +827,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
             shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+            from rfx.model.realization_integrals import begin
+            begin(sim, grid, shapes=shape_eps_pairs, smoothing=subpixel_smoothing)
             if subpixel_smoothing != "full_tensor":
                 warn_curved_high_contrast(shape_eps_pairs, sim=sim)
             warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
@@ -1138,6 +1140,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         for index, config in enumerate(waveguide_port_cfgs):
             released = waveguide_port_stage(released, config, f'waveguide_port[{index}]')
         refuse_layout_port_releases(pinned_sheet_layout, released)
+    from rfx.stepping import prepared as prepared_step
+    conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
+    stepping_product = conductors
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
@@ -1196,7 +1201,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                            freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
             return stop_fn(steps_done, partial)
 
-        r = run_nonuniform_until_decay(
+        r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=0.0,
             check_interval=int(stop_interval),
@@ -1220,7 +1225,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
         # (forward-only host loop — mirrors uniform run_until_decay's
         # treatment of the grad-tape flag).
-        r = run_nonuniform_until_decay(
+        r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=until_decay,
             n_end=n_end,
@@ -1244,7 +1249,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         # (bit-identity locked by tests/unit/nonuniform/test_nu_progress_chunking.py).
         from rfx.progress import validate_report_every
         _re = validate_report_every(report_every, n_steps=n_steps)
-        r = run_nonuniform_until_decay(
+        r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=0.0,
             check_interval=_re,
@@ -1264,7 +1269,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "checkpoint/segmented-remat nor n_warmup on the NU lane "
                 "(the chunked loop is forward-only).",
                 ConfigurationWarning, stacklevel=user_stacklevel())
-        r = run_nonuniform(
+        r = prepared_step.advance(stepping_product, run_nonuniform,
             grid, materials, n_steps,
             checkpoint=checkpoint,
             checkpoint_every=checkpoint_every,
@@ -1323,9 +1328,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
     _stop = r.get("decay_stop")
     from rfx.model.design_admission import with_design_diagnostics
+    from rfx.model.realization_transport import publish_forward_geometry as _forward_geometry
     return with_design_diagnostics(Result(
         diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
-        realized_geometry=geometry_record,
+        realized_geometry=(_forward_geometry(grid, geometry_record)
+                           if lane == "fwd_nonuniform" else geometry_record),
         state=r["state"],
         time_series=r["time_series"],
         s_params=s_params,

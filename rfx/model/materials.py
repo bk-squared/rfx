@@ -381,6 +381,8 @@ def assemble_cells(
                           + list(lorentz_masks_by_pole.values())):
             _pole_mask_any = (_pmask if _pole_mask_any is None
                               else (_pole_mask_any | _pmask))
+        from rfx.model.realization_continuation import retain_continuation
+        retain_continuation(sim, grid, geometry_masks, eps_r, sigma, mu_r, _pole_mask_any)
         eps_r, sigma, mu_r = extend_cpml_pad_materials(
             eps_r, sigma, mu_r, plx, phx, ply, phy, plz, phz,
             dispersion_pole_mask=_pole_mask_any,

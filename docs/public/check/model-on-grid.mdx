@@ -29,6 +29,8 @@ Three calls, none of which runs a time step:
 | `sim.fidelity_report()` | A printed table: every shape's drawn extent next to the extent the grid built, per axis, in micrometres. |
 | `sim.realized_geometry()` | The same facts as a record you can read in code: solved sheet spans, wall planes, port edges, cell sizes, the snap mode. |
 
+After a solve, `result.realized_geometry.realization_table` holds one row per drawn object, built from the grid the time step used. Each entry of `row.axes` gives one axis: the drawn and solved span in metres, the difference in cells and in percent of the drawn extent, and how far the centre moved in cells. After a solve, `sim.realized_geometry()` and `sim.fidelity_report()` read the same table. If you change the model after the solve, they report the changed model.
+
 A 10 × 10.2 mm patch on a 0.5 mm uniform grid shows the most common finding:
 
 ```python

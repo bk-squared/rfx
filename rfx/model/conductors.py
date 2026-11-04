@@ -146,6 +146,12 @@ class RealizedConductors(_RealizedPEC):
     stamped_entities: tuple = ()
     stamp_check_findings: tuple = ()
     design_findings: tuple = ()
+    realization_table: object = field(default=None, compare=False, repr=False)
+    _realization_tables: list = field(default_factory=list, compare=False, repr=False)
+    _prepared_owner: object = field(default=None, compare=False, repr=False)
+    _realization_record: object = field(default=None, compare=False, repr=False)
+    refinements: tuple = ()
+    kernel_context: object = field(default=None, compare=False, repr=False)
 
     sheet_context = SheetConductors.sheet_context
     width_axes = conductor_width_axes
@@ -422,6 +428,10 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve", n_devices=n_devices)
         refuse_dead_soft_sources(sim, root)
+    # The prepared owner survives transfer to slabs; the assembly view need not.
+    root = replace(root)
+    from rfx.model.realization_table import bind_table
+    bind_table(sim, root, lane=root.lane)
     if preflight is not None:
         sim._auto_preflight(conductors=root, **preflight)
     return root
@@ -440,10 +450,13 @@ class PreparedSolve:
         self._taken = False
         self.diagnostics = ()
 
-    def realized(self, *, n_devices=1):
+    def realized(self, *, n_devices=1, report_context=None):
         if self._taken:
             raise RuntimeError("Solve assembly was already consumed")
         if self._product is None:
+            if report_context is not None:
+                self._product = report_context.realized()
+                return self._product
             nonuniform = self.sim._uses_nonuniform_mesh
             grid = (self.sim._build_nonuniform_grid() if nonuniform
                     else self.sim._build_grid())
@@ -459,6 +472,8 @@ class PreparedSolve:
 
 def prepare_solve(sim, *, distributed=False):
     """Keep solve ownership local to this execution, never in audit caches."""
+    from rfx.model.realization_reference import forget_kernel
+    forget_kernel(sim)
     if distributed:
         release_declaration_caches(sim)
     return PreparedSolve(sim)
@@ -486,7 +501,8 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             and tuple(map(id, sheets)) == tuple(map(id, root.sheets))
             and tuple(map(id, wires)) == tuple(map(id, root.wires))
             and tuple(periodic) == root.periodic):
-        return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs))
+        return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs),
+                       _prepared_owner=root._prepared_owner or root)
     # Internal override/S-parameter entry points already have assembled products.
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
@@ -498,7 +514,9 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
     return (replace(obj, assembly_from_sim=False) if root is None else
-            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim))
+            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim,
+                    _realization_tables=root._realization_tables, realization_table=root.realization_table,
+                    _realization_record=root._realization_record, _prepared_owner=root._prepared_owner or root))
 
 
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
@@ -507,6 +525,7 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         raise ValueError("A runner cannot consume audit-mode conductors")
     if pec_edges is not conductors.pec_edges:
         raise ValueError("PEC edges changed outside a conductor stage")
+    owner = conductors._prepared_owner or conductors
     if sheet_operator is not conductors.sheet_operator:
         conductors = replace(conductors, sheet_operator=sheet_operator)
     from rfx._internal import _realized
@@ -518,11 +537,21 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
                 conductors = replace(conductors, sheet_operator=conductors.sheet_context(edges))
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
-    if _traced_product(conductors):
-        return conductors, None
-    from rfx.realized_geometry import record_from_conductors
-    record = (record_from_conductors(sim, conductors, lane=lane, compact=compact)
-              if lane.startswith('run_') else None)
+    from rfx.model.realization_table import finish_table
+    from dataclasses import fields
+    if owner is not conductors:
+        for item in fields(conductors):
+            if item.name != "_prepared_owner":
+                object.__setattr__(owner, item.name, getattr(conductors, item.name))
+        conductors = owner
+    record = finish_table(sim, conductors, lane=lane)
+    if record is not None and not _traced_product(conductors):
+        from rfx.model.realization_reference import remember_kernel
+        remember_kernel(sim, conductors, record)
+    if "distributed" in lane:
+        # Keep the full-domain conductor view stable while its prepared owner
+        # transfers operands to shards. This shares arrays, never reassembles.
+        return replace(conductors, _prepared_owner=conductors), record
     return conductors, record
 
 

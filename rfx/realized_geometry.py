@@ -7,7 +7,8 @@ Arrays are read-only numpy arrays; this API is not an autodiff interface.
 from __future__ import annotations
 
 from rfx._internal._grid_metric import field_index
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
+from rfx.model.realization_transport import GeometryMetadata
 
 import numpy as np
 
@@ -131,14 +132,14 @@ class CellsPerWavelength:
 
 
 @dataclass(frozen=True)
-class RealizedGeometry:
+class RealizedGeometry(GeometryMetadata):
     """Immutable geometry metadata with optional build-time diagnostic arrays.
 
     ``entities`` are in geometry then thin-conductor declaration order.
     ``nodes`` include the far face of the last stored cell. ``edge_masks``
     preview the Yee PEC edges after driven port edge clearing. Yee Result
-    records are bound at the kernel; Subgrid records describe pre-port
-    assembly (the subgrid refinement is not represented).
+    records are bound at the kernel, including subgrid lanes.
+    ``realization_table`` also reports fine-region intervals and quantities.
     ``ports`` identifies the driven edges separately. Result records omit
     dense masks, materials and sheet/wire specs; entity edge counts/ranges
     summarize the interior solver geometry. Request diagnostic arrays through
@@ -169,6 +170,12 @@ class RealizedGeometry:
     probes: tuple[ProbeGeometry, ...] = ()
     dt: float | None = None
     cells_per_wavelength: CellsPerWavelength | None = None
+    realization_table: InitVar[object] = None
+
+    def __post_init__(self, realization_table):
+        # Execution metadata is outside the historical compared record fields.
+        # InitVar also lets dataclasses.replace preserve this reference.
+        object.__setattr__(self, 'realization_table', realization_table)
 
     @property
     def conductors(self):
@@ -182,6 +189,14 @@ class RealizedGeometry:
             raise ValueError("Dense wall query requires Simulation.realized_geometry()")
         kwargs.setdefault("periodic", self.periodic)
         return realized_wall_planes(self.edge_masks, axis, **kwargs)
+
+
+# The generated constructor has captured the InitVar default. Expose the
+# inherited slot so metadata stays outside both fields() and vars(record).
+del RealizedGeometry.realization_table
+
+from rfx.model.realization_transport import register_metadata
+register_metadata(RealizedGeometry)
 
 
 def _readonly(value):
@@ -480,24 +495,31 @@ def _ports(sim, ctx, assembled):
 def realized_geometry(sim):
     """Build once per preflight context and declaration snapshot, without stepping."""
     from rfx._declarations import declaration_key
-
+    from rfx.model.realization_reference import kernel_view
+    record = kernel_view(sim)
+    if record is not None:
+        return record
     ctx = sim._campaign_ctx()
     key = (ctx, declaration_key(sim))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    from rfx.model.conductors import RealizedConductors, preview_port_stages
+    from rfx.model.conductors import RealizedConductors, preview_port_stages, PreparedSolve
+    from rfx.model.realization_table import bind_table, realization_table, PreparedRealization
     stamped = getattr(sim, '_coax_geometry', None)
     if stamped is not None and stamped[0] is ctx:
-        record = _record_from_conductors_impl(sim, stamped[1], lane='coax', compact=False)
+        record = bind_table(sim, stamped[1], lane='coax', compact=False)
         sim._realized_geometry_record = key, record
         return record
-    assembled = ctx.realized()
+    assembled = PreparedSolve(sim).realized(report_context=ctx)
     if isinstance(assembled, RealizedConductors):
-        record = _record_from_conductors_impl(
+        record = bind_table(
             sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
     else:
         record = _build_record(sim, ctx)
+        from dataclasses import replace
+        table = realization_table(PreparedRealization(sim, record.conductors, ctx.lane, record))
+        record = _conductor_view(replace(record, realization_table=table), record.conductors)
     sim._realized_geometry_record = key, record
     return record
 
@@ -542,6 +564,8 @@ def _node_arrays(sim, grid, nonuniform):
         sizes = tuple(grid.cells(a) for a in range(3))
         lines = tuple(_uniform_axis_nodes(n[a], pads[a], float(sizes[a][0]))
                       for a in range(3))
+    origin = getattr(grid, "_realization_origin", (0., 0., 0.))
+    lines = tuple(line + offset for line, offset in zip(lines, origin))
     nodes = tuple(np.concatenate([line, [line[-1] + d[-1]]])
                   for line, d in zip(lines, sizes))
     return sizes, nodes
@@ -613,7 +637,10 @@ def record_from_conductors(sim, conductors, *, lane, compact=True):
 def attach_record(result, record):
     """Attach metadata to the public Result, preserving custom runner results."""
     from rfx.api._spec import Result
-    if isinstance(result, Result):
+    if isinstance(result, Result) and result.realized_geometry is None:
+        from rfx.model.realization_table import PreparedRealization, finish_table
+        if isinstance(record, PreparedRealization):
+            record = finish_table(record.sim, record.conductors, lane=record.lane)
         return result._replace(realized_geometry=record)
     return result
 
@@ -626,10 +653,9 @@ def _conductor_view(record, conductors):
 
 
 def early_run_record(sim, root, lane):
-    """Subgrid record timing remains at assembly, as before this move."""
+    """Hand the assembly to legacy runners; defer the record until after ports."""
     if lane == "run_uniform":
         return None
-    from rfx.realized_geometry import record_from_assembly
-    return record_from_assembly(sim, root.grid, root.materials, root.pec_cells,
-        root.sheets, root.wires, list(root.geometry_masks.items()),
-        list(root.assembly_entries), lane=lane, conductors=root)
+    from rfx.model.realization_table import PreparedRealization
+    root.grid._prepared_conductors = root
+    return PreparedRealization(sim, root, lane, None)

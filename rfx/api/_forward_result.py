@@ -22,6 +22,7 @@ def pack_nu_forward_result(
     dt=None,
     current_moment_data=None,
     current_moment_monitor=None,
+    realized_geometry=None,
 ):
     """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
 
@@ -40,7 +41,11 @@ def pack_nu_forward_result(
     separate fields, or ``None`` for a kind with no spectra.
     """
     from rfx.api._spec import ForwardResult
+    if realized_geometry is None:
+        from rfx.model.realization_transport import take_forward_geometry
+        realized_geometry = take_forward_geometry(grid)
     return ForwardResult(
+        realized_geometry=realized_geometry,
         diagnostics=diagnostics,
         time_series=time_series,
         ntff_data=ntff_data,
@@ -64,7 +69,7 @@ def pack_nu_forward_result(
 
 
 def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, freqs,
-                                current_moment_monitor):
+                                current_moment_monitor, realized_geometry=None):
     """Assemble the uniform forward lane's ``ForwardResult`` from its scan result.
 
     Plane probes and DFT time records are keyed by the names they were
@@ -76,6 +81,7 @@ def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, fre
     from rfx.measurement.plane_records import named_plane_records
     planes = getattr(result, "dft_planes", None)
     return ForwardResult(
+        realized_geometry=realized_geometry,
         diagnostics=diagnostics,
         time_series=result.time_series,
         ntff_data=result.ntff_data,

@@ -68,16 +68,19 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
            normal_source=False):
     from rfx._internal._periodic import periodic_sdf
 
-    union = nearest = normal = None
+    from rfx.model.realization_integrals import host_owner
+    union = nearest = normal = owner = None
     for shape_index, shape in enumerate(shapes):
         sdf, ns, image = periodic_sdf(
             grid, shape, coords, smooth._get_sdf_fn(shape), xp=xp,
             normal_fn=smooth._get_normal_fn(shape), return_image=True)
         if union is None:
+            owner = host_owner(sdf) if distance else None
             union, nearest, normal = sdf, xp.abs(sdf), ns
             source = xp.asarray(shape_index, dtype=xp.int32)
             source_image = image
         else:
+            owner = host_owner(sdf, shape_index, owner, union) if distance else None
             closer = xp.abs(sdf) < nearest
             source = xp.where(closer, shape_index, source)
             source_image = tuple(xp.where(closer, k, old)
@@ -89,6 +92,8 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
          smooth._normal_cell_length(xp, fill_length, normal))
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
     if distance:
+        from rfx.model.realization_integrals import capture
+        capture(grid, shapes, result[0], owner, 3)
         distance_result = result + (union,)
         return distance_result + (source, source_image) if normal_source else distance_result
     return result + (source, source_image) if normal_source else result

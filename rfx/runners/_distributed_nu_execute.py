@@ -236,11 +236,13 @@ def execute_from_materials(
                                             n_devices=mesh.devices.size)
     diagnostics = merge_diagnostics(diagnostics, solve_diagnostics)
     from rfx.model.distributed_ports import assemble
-    materials, pec_mask, pec_edges, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
+    stepping_product, materials, pec_mask, pec_edges, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
         self, grid, materials, conductors, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
         eps_override=eps_override, sigma_override=sigma_override, pec_mask_override=pec_mask_override,
         pec_occupancy_override=pec_occupancy_override, debye_spec=debye_spec, lorentz_spec=lorentz_spec, n_steps=n_steps, lane=lane,
         gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh)
+    from rfx.stepping import prepared as prepared_step
+    prepared_step.release_dense(stepping_product)
     del conductors
     from rfx.stepping.slab_ports import global_plan
     port_plan = global_plan(self, grid, port_specs, lane, s_param_freqs, compute_s_params)
@@ -298,13 +300,15 @@ def execute_from_materials(
     _require_wrapped_records(records, sharded_grid.step_kind)
 
     # ---- Launch the sharded NU runner. ----
-    result = run_nonuniform_distributed_pec(
+    prepared_step.stage(stepping_product, grid=sharded_grid, materials=sharded_materials, pec_edges=sharded_pec_mask)
+    result = prepared_step.advance(stepping_product, run_nonuniform_distributed_pec,
         sharded_grid,
         sharded_materials,
         sharded_pec_mask,
         n_steps,
         sources=sources,
         probes=probes,
+        _operand_layout="graded_slab",
         n_devices=n_devices,
         exchange_interval=exchange_interval,
         debye=sharded_debye,
@@ -325,6 +329,7 @@ def execute_from_materials(
     )
     if port_plan is not None:
         del sharded_materials
+        prepared_step.release_dense(stepping_product)
         result = result()
 
     return (
@@ -340,7 +345,7 @@ def forward_from_materials(
     self, *, diagnostics=(), **kwargs
 ) -> ForwardResult:
     """Pack the shared distributed graded solve for differentiable callers."""
-    grid, result, _ = self._execute_distributed_nonuniform_from_materials(
+    grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
         diagnostics=diagnostics,
         **kwargs,
     )
@@ -349,6 +354,7 @@ def forward_from_materials(
     warn_if_singular_value_exceeds_one(
         result.get('s_params'), result.get('s_param_freqs'), extractor="forward(distributed graded)")
     return pack_nu_forward_result(
+        realized_geometry=geometry_record,
         diagnostics=result.get('diagnostics', diagnostics),
         time_series=result.get('time_series'), grid=grid, dt=grid.dt,
         s_params=result.get('s_params'), freqs=result.get('s_param_freqs'),
