@@ -17,7 +17,7 @@
     "rfx/simulation.py": 190,
     "rfx/sources/waveguide_port.py": 126,
     "rfx/sparams/_common.py": 2129,
-    "rfx/sparams/coax.py": 1684,
+    "rfx/sparams/coax.py": 1406,
     "rfx/subgridding/jit_runner.py": 546
   }
 }
