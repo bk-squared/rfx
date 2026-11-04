@@ -1290,10 +1290,8 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
     """
     eps = dict(zip(("ex", "ey", "ez"), eps))
     background = eps.copy()
-    from collections import OrderedDict
-    groups: OrderedDict[float, list] = OrderedDict()
-    for shape, eps_r in shapes:
-        groups.setdefault(eps_r, []).append(shape)
+    from rfx.geometry.pec_normal import dielectric_groups
+    groups = dielectric_groups(shapes)
 
     for eps_r, group_shapes in groups.items():
         sdf_shapes = [s for s in group_shapes if _has_sdf(s)]
@@ -1701,12 +1699,18 @@ def compute_inv_eps_tensor_diag(
     # its own half-cell offset.
     sample = _uniform_sample_coords(xp, coords, grid.dx)
     promoted = False
+    # R1 replaces the dielectric baseline, which can differ from its exact
+    # laminate integral at corners. Other active PEC contributions still win
+    # by minimum; a remote PEC's f=0 baseline must not clamp R1 again.
+    normal_union = [xp.zeros_like(a, dtype=bool) for a in inv]
+    pec_inverse = [xp.full_like(a, xp.inf) for a in inv]
     for pec_shape in pec_shapes:
         if not _has_sdf(pec_shape):
             # Fallback: staircase mask. Cells inside the shape get
             # full-PEC (inv = 0); cells outside are unchanged.
             mask = pec_masks[id(pec_shape)]
             inv = [xp.where(mask, 0.0, a) for a in inv]
+            pec_inverse = [xp.where(mask, 0.0, a) for a in pec_inverse]
             continue
         promoted = True
         for i, comp in enumerate(("ex", "ey", "ez")):
@@ -1720,18 +1724,24 @@ def compute_inv_eps_tensor_diag(
             inv_c = _kottke_inv_eps_diag(
                 f, xp.inf, eps[i], n_x, n_y, n_z, is_pec=True, xp=xp,
             )[i]
-            # Kottke correctly zeros parallel (tangential) components for
-            # f > 0, but assigns inv_perp = (1−f)/ε > 0 when the
-            # E-position is inside the PEC body (SDF < 0, 0 < f < 1).
-            # That fractional inv for a point already inside the PEC is
-            # physically wrong (E = 0 inside a conductor) and creates a
-            # CPML resonance at boundary cells near domain walls.
-            # Override: wherever the E-component Yee position is inside
-            # the PEC shape (SDF ≤ 0), force its inv component to 0.
+            # Retain the legacy override outside R1's all-Box normal cells.
             e_inside = (sdf <= 0.0)
             inv_c = xp.where(e_inside, 0.0, inv_c)
+            from rfx.geometry.pec_normal import normal_box_mask, replace_normal_boxes
+            normal_cells = normal_box_mask(
+                xp, grid, pec_shape, dielectric_shapes, (Xc, Yc, Zc),
+                f, (n_x, n_y, n_z)[i])
+            inv_c = replace_normal_boxes(
+                xp, grid, pec_shape, dielectric_shapes, background_eps,
+                (Xc, Yc, Zc), i, normal_cells, inv_c)
+            if normal_cells is not None:
+                normal_union[i] = normal_union[i] | normal_cells
+            pec_inverse[i] = xp.minimum(
+                pec_inverse[i], xp.where((f > 0) | e_inside, inv_c, xp.inf))
             inv[i] = xp.minimum(inv[i], inv_c)
 
+    inv = [xp.where(selected, pec, legacy)
+           for selected, pec, legacy in zip(normal_union, pec_inverse, inv)]
     return _to_jax(inv, host=host, promoted=promoted)
 
 
