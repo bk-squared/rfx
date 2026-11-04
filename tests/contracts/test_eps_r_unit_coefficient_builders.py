@@ -151,7 +151,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"):
         "port medium is a concrete resolved scalar; traced section permittivity is refused",
     ("rfx/sparams/_common.py", "_resolve_msl_auto_offsets"): _C0,
-    ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
+    ("rfx/sparams/_mixed_stages.py", "_prepare_mixed_anchors"): _C0,
     ("rfx/sparams/_msl_stages.py", "_prepare_msl_geometry"): _C0,
     ("rfx/subgridding/disjoint_3d.py", "compute_disjoint_energy_3d"): _ENERGY,
     ("rfx/stepping/subgrid_coupling.py", "_z_slab_material_coupling_e_3d.face_coeffs"):

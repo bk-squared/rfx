@@ -360,7 +360,7 @@ def test_conformal_request_without_pec_runs_as_staircase(kind):
 _SCAN_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin.forward": "forward",
     "rfx/probes/sparam_driver.py:compute_lumped_wire_s_matrix_via_scan": "driver",
-    "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed",
+    "rfx/sparams/_mixed_stages.py:_run_mixed_drive": "mixed",
     "rfx/topology.py:topology_optimize": "topology",
 }
 
