@@ -1162,8 +1162,8 @@ def test_aperture_verdict_boundary(lane, miss, snap):
         spans.append(nodes[hi]-nodes[lo])
     np.testing.assert_allclose(np.array(spans)/length-1, miss, atol=2e-6, rtol=0)
     report = sim.preflight()
-    aperture = [f for f in report if f.code == "realization" and f.loc == "waveguide_port[0]"]
-    assert len(aperture) == (miss > .01)
+    aperture = [f for f in report if f.code == "port_aperture_snap" and f.loc == "waveguide_port[0]"]
+    assert len(aperture) == (1 if graded else 2) * (miss > .01)
     if aperture:
         assert aperture[0].severity == ("error" if snap == "strict" else "warning")
     with warnings.catch_warnings(record=True) as caught:
@@ -1179,7 +1179,7 @@ def test_aperture_verdict_boundary(lane, miss, snap):
             result = solve()
             row = result.realized_geometry.realization_table.row("waveguide_port[0]")
             np.testing.assert_allclose([a.realized_span_m for a in row.axes[1:]], spans, atol=1e-12, rtol=0)
-    messages = [w.message for w in caught if getattr(w.message, "code", None) == "realization"]
+    messages = [w.message for w in caught if getattr(w.message, "code", None) == "port_aperture_snap"]
     assert len(messages) == (miss > .01 and snap == "declared")
 
 
