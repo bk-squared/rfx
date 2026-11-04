@@ -235,8 +235,8 @@ The second resonance moves the same way.
 With `"kottke_pec"`, an off-grid side edge of the strip also adds error that does not fall with refinement: −1.40 % at 0.125 mm with the edge half a cell off the grid, against −0.15 % for the staircase.
 Faces on grid nodes are not affected: with every face on a node, the three settings read the same resonance.
 The cause lies in the metal model itself, not in one coefficient.
-Under `"kottke_pec"`, any part of a cell that holds metal freezes the field component parallel to the metal face.
-So the tangential field row just below an off-grid metal face is frozen in every setting.
+Under `"kottke_pec"`, any part of a cell that holds metal freezes the field component parallel to the metal face; with `True` and `False` the edge ownership rule freezes the same row.
+So, on the 0.5 mm and 0.125 mm meshes measured, the tangential field row just below the off-grid metal face is frozen in all three settings (on the 0.25 mm mesh that row lies clear of the metal).
 That cuts the half cell of dielectric between that row and the drawn face off from the rest of the substrate, so the metal acts as if it began one row lower.
 A correction to the field normal to the face was measured and cannot reach that row.
 `"kottke_pec"` is therefore not recommended where a metal body rests on a dielectric face that lies between grid nodes.

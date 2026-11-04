@@ -1,4 +1,4 @@
-"""The experimental metal smoothing advisory is shared by both solve entries."""
+"""The experimental metal smoothing advisory is shared by public solve entries."""
 
 import warnings
 
@@ -74,3 +74,43 @@ def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
         other = "forward" if entry == "run" else "run"
         getattr(sim, other)(n_steps=2, skip_preflight=True, subpixel_smoothing=smoothing)
     assert not [w for w in caught if "#2390" in str(w.message)]
+
+
+@pytest.mark.parametrize("smoothing", ["kottke_pec", True])
+def test_waveguide_kottke_pec_volume_warning(monkeypatch, smoothing):
+    """A whole-cell PEC post warns at admission, before any FDTD stepping."""
+    from rfx.boundaries.spec import BoundarySpec
+    from rfx.sparams import _waveguide_stages
+
+    sim = Simulation(freq_max=10e9, domain=(.012, .024, .010), dx=.002,
+                     boundary=BoundarySpec(x="cpml", y="pec", z="pec"),
+                     cpml_layers=2)
+    sim.add(Box((.006, .010, 0), (.008, .012, .010)), material="pec")
+    for position, direction in [(.002, "+x"), (.010, "-x")]:
+        sim.add_waveguide_port(position, direction=direction, mode=(1, 0),
+                               mode_type="TE", freqs=jnp.array([10e9]),
+                               f0=10e9, bandwidth=.5)
+
+    class AdmissionComplete(Exception):
+        pass
+
+    validate_ports = _waveguide_stages._validate_waveguide_ports
+
+    def stop_after_admission(*args, **kwargs):
+        validate_ports(*args, **kwargs)
+        raise AdmissionComplete
+
+    monkeypatch.setattr(_waveguide_stages, "_validate_waveguide_ports",
+                        stop_after_admission)
+    for call_index in range(2):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(AdmissionComplete):
+                sim.compute_waveguide_s_matrix(n_steps=1, normalize=True,
+                                               subpixel_smoothing=smoothing)
+        notices = [w for w in caught if "#2390" in str(w.message)]
+        expected = smoothing == "kottke_pec" and call_index == 0
+        assert len(notices) == int(expected)
+        if expected:
+            assert str(notices[0].message) == MESSAGE
+            assert notices[0].category is ConfigurationWarning
