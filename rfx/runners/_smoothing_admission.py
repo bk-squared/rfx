@@ -1,7 +1,38 @@
-"""Forward smoothing option conflicts."""
+"""Smoothing option conflicts and declaration-level advisories."""
 
-from rfx.errors import RfxUnsupported
+import warnings
+from weakref import WeakSet
+
+from rfx._warning_origin import user_stacklevel
+from rfx.errors import ConfigurationWarning, RfxUnsupported
 from rfx.model.smoothing_admission import admit_full_tensor
+
+_warned_kottke_pec = WeakSet()
+
+
+def warn_kottke_pec_volume(sim, subpixel_smoothing):
+    """Warn once per declaration, on the host even under an outer JAX trace."""
+    if subpixel_smoothing != "kottke_pec" or sim in _warned_kottke_pec:
+        return
+    from rfx.geometry.rasterize_grid import _box_zero_axes
+    from rfx.model.materials import assembled_as_pec
+
+    for entry in sim._geometry:
+        if not assembled_as_pec(sim, entry):
+            continue
+        shape = entry.shape
+        lo, hi = getattr(shape, "corner_lo", None), getattr(shape, "corner_hi", None)
+        if lo is not None and hi is not None and _box_zero_axes(lo, hi):
+            continue  # A zero-thickness Box declares a sheet, not a volume.
+        if getattr(shape, "points", None) is not None and shape.radius == 0:
+            continue  # A zero-radius PolylineWire declares a filament.
+        warnings.warn(
+            "subpixel_smoothing='kottke_pec' with a PEC volume is "
+            "experimental, not recommended for metal; see known limitations (#2390)",
+            ConfigurationWarning, stacklevel=user_stacklevel(),
+        )
+        _warned_kottke_pec.add(sim)
+        return
 
 
 def refuse_forward_smoothing(sim, *, subpixel_smoothing,

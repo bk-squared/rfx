@@ -151,6 +151,7 @@ studies.
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
 | `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. |
+| `subpixel_smoothing="kottke_pec"` | Experimental. Also smooths metal faces, but it is not recommended for metal: on every measured case it was farther from the reference than the staircase. A run that uses it with a PEC volume warns. For curved metal use `conformal_pec=True`. |
 | `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
 | `devices=[...]` | Run across several devices (x-slab decomposition). `exchange_interval` must stay 1. |

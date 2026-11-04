@@ -186,8 +186,10 @@ cut cells instead: each cut E edge uses its PEC-free length and each cut H face
 its PEC-free area, and a stability clamp keeps the ordinary time step. Other
 solver paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
 faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
-dielectric with a smoothed tensor; a run that sets it together with conformal
-PEC is refused. A flat wall sits at its drawn plane, and on a PEC sphere the
+dielectric with a smoothed tensor. It is experimental and not recommended for
+metal: on a PEC sphere and on a strip resonator it was farther from the
+reference than the staircase, and a run that uses it with a PEC volume warns. A
+run that sets it together with conformal PEC is refused. A flat wall sits at its drawn plane, and on a PEC sphere the
 cut-cell update is closer to Mie than the staircase, but its error falls only
 first order with the cell size. Every run with it warns. Judge a curved body by
 a mesh series of at least three refinements; the known-limitations list has
