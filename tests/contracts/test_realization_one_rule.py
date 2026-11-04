@@ -834,25 +834,89 @@ def test_interior_face_comparison(boundary, material, short):
     sim.add_material("glass", eps_r=2.)
     # The occupied x cells are 2..9. A lower face at 2.087042532 mm
     # still selects cell 2; its interior span is 8 mm / 1.011.
-    start = 10*D - 8*D/1.011 if short else 2*D
-    sim.add(Box((start, 2*D, 2*D), (11*D, 8*D, 8*D)), material=material)
+    end = 12*D if boundary == "periodic" else 11*D
+    start = ((end - 10*D/1.011 if short else 2*D) if boundary == "periodic"
+             else 10*D - 8*D/1.011 if short else 2*D)
+    sim.add(Box((start, 2*D, 2*D), (end, 8*D, 8*D)), material=material)
     record = sim.realized_geometry()
     row = record.realization_table.row("geometry[0]")
     domain = record.domain[0]
     nodes = np.asarray(record.nodes[0])
     wall = nodes[domain.padding[0] + domain.n_cells]
-    physical = wall - nodes[domain.padding[0] + 2]
-    declared = wall - start
-    assert physical == pytest.approx(8*D)
+    if boundary == "periodic":
+        period = wall - nodes[0]
+        length = end-start
+        first = start % period
+        intervals = ((0., period),) if length >= period else (
+            ((first, first+length),) if first+length <= period else
+            ((0., first+length-period), (first, period)))
+        declared = sum(hi-lo for lo, hi in intervals)
+        # The gap between 2 mm and 2.108803165 mm contains no cell centre.
+        physical = sum(np.diff(nodes[:domain.n_cells+1]))
+        assert row.axes[0].declared_intervals_m == intervals
+        assert row.axes[0].realized_span_m == pytest.approx(physical)
+    else:
+        physical = wall - nodes[domain.padding[0] + 2]
+        declared = wall - start
+        assert physical == pytest.approx(8*D)
     assert 100*(physical/declared-1) == pytest.approx(1.1 if short else 0.)
-    assert row.axes[0].declared_bounds_m == pytest.approx((start, wall))
-    assert row.clipped_faces == (("x+", 11*D, wall),)
+    if boundary != "periodic":
+        assert row.axes[0].declared_bounds_m == pytest.approx((start, wall))
+        assert row.clipped_faces == (("x+", end, wall),)
     report = sim.preflight()
     hits = [f for f in report if f.code == "realization" and f.loc == "geometry[0]"]
     assert len(hits) == int(short)
     if short:
         assert hits[0].severity == ("warning" if material == "glass" else "error")
-        assert "clipped faces x+" in str(hits[0])
+        assert ("periodic union" if boundary == "periodic" else "clipped faces x+") in str(hits[0])
+
+
+@pytest.mark.parametrize("material", ("glass", "pec"))
+def test_periodic_split_union_preserves_gap(material):
+    sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9,
+                     boundary={"x": "periodic", "y": "pec", "z": "pec"})
+    sim.add_material("glass", eps_r=2.)
+    sim.add(Box((2*D, 2*D, 2*D), (11*D, 8*D, 8*D)), material=material)
+    record = sim.realized_geometry()
+    n = np.asarray(record.nodes[0])
+    period = n[record.domain[0].n_cells] - n[0]
+    intervals = ((n[0], 11*D-period), (2*D, period))
+    # Projected occupied cells: 0 and 2..9, leaving cell 1 empty.
+    occupied_length = (n[1]-n[0]) + (n[10]-n[2])
+    row = record.realization_table.row("geometry[0]").axes[0]
+    assert row.declared_intervals_m == intervals
+    assert row.realized_intervals_m == ((n[0], n[1]), (n[2], n[10]))
+    assert row.realized_span_m == pytest.approx(occupied_length)
+    assert row.declared_span_m == pytest.approx(sum(hi-lo for lo, hi in intervals))
+    assert not [f for f in sim.preflight() if f.code == "realization"]
+
+
+def test_periodic_wire_union_includes_terminal_edge():
+    sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9,
+                     boundary={"x": "periodic", "y": "pec", "z": "pec"})
+    sim.add(PolylineWire(((9*D, 3*D, 2*D), (10*D, 3*D, 2*D)), radius=0.), material="pec")
+    record = sim.realized_geometry()
+    n = np.asarray(record.nodes[0])
+    row = record.realization_table.row("geometry[0]").axes[0]
+    assert row.realized_intervals_m == ((n[9], n[10]),)
+    assert row.realized_span_m == pytest.approx(n[10]-n[9])
+    assert not [f for f in sim.preflight() if f.code == "realization"]
+
+
+@pytest.mark.parametrize("graded", (False, True))
+def test_point_source_retains_node_placement(graded):
+    from rfx import GaussianPulse
+    sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9, boundary="pec",
+                     **({"dz_profile": np.full(10, D)} if graded else {}))
+    sim.add_source((5*D,)*3, "ez", waveform=GaussianPulse(f0=5e8, bandwidth=.9),
+                   amplitude_kind="current")
+    record = sim.realized_geometry()
+    row = record.realization_table.row("port[0]")
+    for a, axis in enumerate(row.axes):
+        node = float(record.nodes[a][5])
+        assert axis.bounds_m == pytest.approx((node, node))
+        assert axis.realized_span_m == 0.
+    assert not [f for f in sim.preflight() if f.code == "realization"]
 
 
 def test_one_cell_graded_port_driven_span():

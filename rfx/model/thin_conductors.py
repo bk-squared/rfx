@@ -518,7 +518,11 @@ def warn_dc_films(sim, warn):
                 warnings.simplefilter('always')
                 admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
                 if prepared:
-                    pass  # The table retains the assembly's per-film area outcomes.
+                    table = sim._campaign_ctx()._realized.realization_table
+                    for finding in table.findings:
+                        if finding.code == "dc_film_area" and finding.loc == f"thin_conductors[{i}]":
+                            warnings.warn(PreflightWarning(str(finding), code=finding.code,
+                                severity=finding.severity, source=finding.source, loc=finding.loc))
                 elif i in films:
                     check_film_area(tc.shape, grid, films[i], snap=sim._snap)
                 else:

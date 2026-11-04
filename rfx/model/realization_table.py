@@ -22,6 +22,8 @@ class RealizationAxis:
     miss_cells: float | None
     miss_percent: float | None
     centroid_shift_cells: float | None
+    declared_intervals_m: tuple = ()
+    realized_intervals_m: tuple = ()
 
 
 @dataclass(frozen=True)

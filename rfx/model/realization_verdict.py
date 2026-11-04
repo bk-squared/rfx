@@ -101,6 +101,10 @@ def judge_realization(table, snap):
                   "to place nodes on the drawn edges.")
         if not mismatch:
             quantity = "centroid shift exceeds 0.25 cell"
+        for a in axes:
+            if a.declared_intervals_m:
+                detail += (f"; {a.axis} periodic union declared {a.declared_intervals_m} m, "
+                           f"realized {a.realized_intervals_m} m")
         if row.clipped_faces:
             detail += "; clipped faces " + ", ".join(
                 f"{face}: {drawn:.12g} -> {wall:.12g} m" for face, drawn, wall in row.clipped_faces)
