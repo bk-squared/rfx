@@ -1,34 +1,47 @@
 """Restored sampler defects scoped to uniform distributed port measurements."""
 import jax
 import jax.numpy as jnp
+from unittest.mock import patch
 
 
 def mutate_port_sampler(monkeypatch, mutation):
-    from rfx.stepping import uniform_slab_ports as ports
+    from rfx.stepping import slab_wrap_uniform as wrapped
 
     if mutation == 'own_slab':
-        cut = ports.cut_probe_table
+        prepare = wrapped.prepare_uniform
 
         def wrong_owner(*args, **kwargs):
             # Keep every term's local index and weight, but give its payload
             # to another rank: that rank does not own the sampled global cell.
-            return jax.tree.map(lambda a: jnp.roll(a, 1, axis=0), cut(*args, **kwargs))
+            carry, inputs, waves, advance = prepare(*args, **kwargs)
+            if 'port_table' in inputs:
+                inputs = dict(inputs, port_table=jax.tree.map(
+                    lambda a: jnp.roll(a, 1, axis=0), inputs['port_table']))
+            return carry, inputs, waves, advance
 
-        monkeypatch.setattr(ports, 'cut_probe_table', wrong_owner)
+        monkeypatch.setattr(wrapped, 'prepare_uniform', wrong_owner)
     elif mutation == 'half_step':
-        references, update = ports.UniformSlabPorts.references, ports.UniformSlabPorts.update
-        before = {}
+        from rfx.measurement import projector
+        from rfx.stepping.sequence import HookPoint
+        make_step, project = wrapped.make_uniform_step, projector.project
 
-        def capture(self, state, payload, *, ranks):
-            before[self] = state
-            return references(self, state, payload, ranks=ranks)
+        def early_step(context, invariants, *, hooks):
+            before = {}
 
-        def early(self, carry, state, refs, step, payload, *, ranks):
-            # Physical completed-field channels now read the pre-injection
-            # state. Reference sampling, DFT stamps and user probes stay intact.
-            return update(self, carry, before[self], refs, step, payload, ranks=ranks)
+            def capture(frame):
+                before['state'] = frame.st
 
-        monkeypatch.setattr(ports.UniformSlabPorts, 'references', capture)
-        monkeypatch.setattr(ports.UniformSlabPorts, 'update', early)
+            def early(state, table):
+                # Only physical port channels read the pre-injection state.
+                # Reference sampling, DFT stamps and user probes stay intact.
+                return project(before['state'] if table is invariants.get('port_table')
+                               else state, table)
+
+            hooks = dict(hooks)
+            hooks[HookPoint.BEFORE_SOURCES] = (*hooks.get(HookPoint.BEFORE_SOURCES, ()), capture)
+            with patch.object(projector, 'project', early):
+                return make_step(context, invariants, hooks=hooks)
+
+        monkeypatch.setattr(wrapped, 'make_uniform_step', early_step)
     else:
         raise ValueError(mutation)

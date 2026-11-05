@@ -30,7 +30,7 @@ def judge_v_ref(owner, spec, grid):
     reference = references[0]
     expression = compile(ast.Expression(reference.value), '<production references>', 'eval')
     def sample(fields):
-        env = dict(frame=SimpleNamespace(st=fields), dx=grid.dx,
+        env = dict(frame=SimpleNamespace(st=fields), dx=grid.dx, invariants={},
                    port_specs=((spec.component, (), owner.kind, idx, 0),),
                    _port_voltage_value=_port_voltage_value,
                    pre_injection_samples=pre_injection_samples)

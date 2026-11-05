@@ -1,4 +1,4 @@
-"""Uniform slabs hoist material means only when CPML shares the consumers."""
+"""Wrapped slabs share the one-device material-mean placement."""
 import inspect
 import re
 from pathlib import Path
@@ -10,7 +10,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx.core import yee
 from rfx.model import electric_metrics
-from rfx.stepping import slab_update
+from rfx.stepping import slab_update, slab_wrap
 
 
 def scene(boundary):
@@ -86,7 +86,40 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
 
     def jit(fun, *args, **kwargs):
         compiled = original(fun, *args, **kwargs)
-        if fun.__module__ != 'rfx.stepping.slab_uniform_loop' or fun.__name__ not in ('_run_cpml', '_run_pec'):
+        if fun.__module__ != 'rfx.stepping.slab_wrap' or fun.__name__ != 'run_fn':
+            return compiled
+
+        def run(*values, **named):
+            lowered = compiled.lower(*values, **named)
+            executable = lowered.compile()
+            captured.append(lowered.compiler_ir('hlo').as_hlo_module().to_string())
+            captured.append(executable.runtime_executable().hlo_modules()[0].to_string())
+            return executable(*values, **named)
+        return run
+
+    original_run = slab_wrap.run_steps
+
+    def run_steps(*args, **kwargs):
+        return original_run(*args, **kwargs, compile_loop=jit)
+
+    monkeypatch.setattr(slab_wrap, 'run_steps', run_steps)
+    result = scene(boundary).run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+    assert len(captured) == 2, 'public run must lower and compile the uniform slab driver'
+    for stage, hlo in zip(('lowered', 'compiled'), captured):
+        (tmp_path / f'{boundary}-{stage}.hlo').write_text(hlo)
+        means = means_inside_while(hlo)
+        assert_mean_placement(means, boundary, stage, driver='wrapped')
+
+
+def test_closed_box_tfsf_keeps_old_loop_cpml_means_outside_loop(monkeypatch, tmp_path):
+    assert len(jax.devices('cpu')) == 2, 'run with two virtual CPU devices'
+    original = jax.jit
+    captured = []
+
+    def jit(fun, *args, **kwargs):
+        compiled = original(fun, *args, **kwargs)
+        if fun.__module__ != 'rfx.stepping.slab_uniform_loop' or fun.__name__ != '_run_cpml':
             return compiled
 
         def run(*values, **named):
@@ -98,18 +131,25 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
         return run
 
     monkeypatch.setattr(jax, 'jit', jit)
-    result = scene(boundary).run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
+    sim = Simulation(freq_max=15e9, domain=(18e-3, 16e-3, 14e-3), dx=1e-3,
+                     boundary='cpml', cpml_layers=2)
+    sim.add_material('dielectric', eps_r=4, sigma=.01)
+    sim.add(Box((7e-3, 6e-3, 5e-3), (10e-3, 9e-3, 8e-3)), material='dielectric')
+    sim.add_tfsf_source(f0=8e9, margin=4, direction='+x', polarization='ez',
+                        closed_box=True)
+    sim.add_probe((9e-3, 8e-3, 7e-3), 'ez')
+    result = sim.run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
     assert np.isfinite(np.asarray(result.time_series)).all()
-    assert len(captured) == 2, 'public run must lower and compile the uniform slab driver'
+    assert len(captured) == 2, 'public closed-box TF/SF must lower and compile _run_cpml'
     for stage, hlo in zip(('lowered', 'compiled'), captured):
-        (tmp_path / f'{boundary}-{stage}.hlo').write_text(hlo)
-        means = means_inside_while(hlo)
-        if boundary == 'cpml':
-            assert not means, f'material means inside while body: {means}'
-        elif stage == 'lowered':
-            # Pin the input program; CPU optimization may move invariant work.
-            # Bandwidth: hoisting adds slab reads for update-only consumers (rfx-archive plans/absorber/20261026-cpml-cost-952 D1-L0 reading).
-            assert means, 'PEC must form material means inside the while body'
+        (tmp_path / f'tfsf-cpml-{stage}.hlo').write_text(hlo)
+        assert_mean_placement(means_inside_while(hlo), 'cpml', stage, driver='old_loop')
+
+
+def assert_mean_placement(means, boundary, stage, *, driver):
+    assert driver in ('wrapped', 'old_loop')
+    if driver == 'wrapped' or boundary == 'cpml':
+        assert not means, f'material means inside while body: {means}'
 
 
 def independent_means():

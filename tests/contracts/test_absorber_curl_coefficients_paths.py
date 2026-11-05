@@ -25,8 +25,8 @@ from tests.unit.runners.test_distributed_nu_forward_staging import _select_legac
 def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
     """Observe the same twelve face multipliers through the shared kernel."""
     import rfx.boundaries.electric_coefficient as coefficients
-    # The uniform slab loop's E boundary stage calls the shared kernel from here.
-    import rfx.stepping.slab_cpml as uniform
+    # Uniform setup captures this shared kernel for the wrapped E boundary stage.
+    import rfx.boundaries.cpml as uniform
     import rfx.runners.distributed_nu as graded
     from rfx.boundaries.depths import grid_face_depths
 

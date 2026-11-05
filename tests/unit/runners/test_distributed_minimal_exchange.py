@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch as patch_attribute
 
 import jax
 import jax.numpy as jnp
@@ -22,7 +23,8 @@ from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import FDTDState
 from rfx.materials.lorentz import lorentz_pole
-from rfx.stepping import slab_uniform_loop as runner
+from rfx.stepping import slab_wrap_uniform as runner
+from rfx.stepping import slab_wrap
 from rfx.runners import _distributed_common as common
 
 pytestmark = pytest.mark.distributed
@@ -80,21 +82,54 @@ def _full_sample(st, mesh, n_prb, specs, owners, **_kwargs):
 
 @contextmanager
 def _reference(patch, *, exchange=True, probes=True):
+    def local_call(function, *args, **kwargs):
+        # The frozen reference already spells the local numerical operation.
+        # The production wrapper supplies its shard_map, so adapt only the
+        # reference's map boundary; its body and expected values stay intact.
+        with patch_attribute.object(sys.modules[__name__], 'shard_map', lambda f, **kw: f):
+            return function(*args, **kwargs)
+
+    def exchange_adapter(function):
+        def adapted(*args, local=False, **kwargs):
+            return local_call(function, *args, **kwargs) if local else function(*args, **kwargs)
+        return adapted
+
     with patch.context() as p:
         if exchange:
-            p.setattr(runner, "_exchange_h_ghosts_shmap", _full_h)
-            p.setattr(runner, "_exchange_e_ghosts_shmap", _full_e)
+            p.setattr(runner, "exchange_h_yee_shmap", exchange_adapter(_full_h))
+            p.setattr(runner, "exchange_e_yee_shmap", exchange_adapter(_full_e))
         if probes:
-            p.setattr(runner, "sample_probes_shmap", _full_sample)
-            scan = runner.lax.scan
+            from rfx.measurement import projector
+            original_wrap, original_step = runner.wrap_uniform, runner.make_uniform_step
+            project = projector.project
 
-            def old_scan(*args, **kwargs):
-                carry, trace = scan(*args, **kwargs)
-                # Adapter OUTSIDE the frozen scan: the new post-scan sum
-                # sees a singleton axis and leaves the old trace unchanged.
-                return carry, trace[:, None, :]
+            def wrap(context, layout, mesh, *, table, port_table=None):
+                specs, owners = [None] * table.n_channels, [None] * table.n_channels
+                for term in table.components:
+                    for channel, i, j, k, weight in zip(
+                            term.channel_ids, *term.indices, term.weights, strict=True):
+                        assert float(weight) == 1 and specs[channel] is None
+                        owner = int(i) // layout.nx_per_rank
+                        specs[channel] = (int(i) - owner * layout.nx_per_rank + layout.ghost_width,
+                                          int(j), int(k), term.component)
+                        owners[channel] = owner
 
-            p.setattr(runner, "lax", SimpleNamespace(**{**vars(lax), "scan": old_scan}))
+                def make_step(ctx, invariants, **kwargs):
+                    def sample(state, sample_table):
+                        if sample_table is not invariants['probe_table']:
+                            return project(state, sample_table)
+                        total = local_call(_full_sample, state, mesh, table.n_channels, specs, owners)
+                        # The after-scan sum gets this replicated reference
+                        # once, from rank zero, rather than once per rank.
+                        return jnp.where(lax.axis_index('x') == 0, total, jnp.zeros_like(total))
+
+                    with patch_attribute.object(projector, 'project', sample):
+                        return original_step(ctx, invariants, **kwargs)
+
+                p.setattr(runner, 'make_uniform_step', make_step)
+                return original_wrap(context, layout, mesh, table=table, port_table=port_table)
+
+            p.setattr(runner, 'wrap_uniform', wrap)
         yield
 
 
@@ -173,9 +208,11 @@ def _assert_same_fields(actual, expected):
         assert np.any(expected[name]), f"zero {name} cannot witness coupling"
 
 
-def _poison(st, mesh, n_devices, *, live=False):
-    @partial(shard_map, mesh=mesh, in_specs=(P("x"),) * 6,
-             out_specs=(P("x"),) * 6, check_vma=False)
+def _poison(st, mesh, n_devices, *, live=False, local=False):
+    mapper = (lambda f: f) if local else partial(
+        shard_map, mesh=mesh, in_specs=(P("x"),) * 6,
+        out_specs=(P("x"),) * 6, check_vma=False)
+    @mapper
     def poison(*fields):
         rank = lax.axis_index("x")
         result = []
@@ -191,11 +228,12 @@ def _poison(st, mesh, n_devices, *, live=False):
 
 
 def _install_poison(patch, *, live=False):
-    for name in ("_exchange_h_ghosts_shmap", "_exchange_e_ghosts_shmap"):
+    for name in ("exchange_h_yee_shmap", "exchange_e_yee_shmap"):
         original = getattr(runner, name)
 
-        def poisoned(st, mesh, n_devices, original=original, *, ranks=None):
-            return _poison(original(st, mesh, n_devices, ranks=ranks), mesh, n_devices, live=live)
+        def poisoned(st, mesh, n_devices, original=original, *, ranks=None, local=False):
+            return _poison(original(st, mesh, n_devices, ranks=ranks, local=local),
+                           mesh, n_devices, live=live, local=local)
 
         patch.setattr(runner, name, poisoned)
 
@@ -307,21 +345,39 @@ def _compiled_hlo(patch, source_kind="field", grad=False):
 
         def run(*a, **k):
             if grad:
+                carry, invariants, waves, ranks = a
+                materials = invariants['materials']
+
                 def loss(eps, ranks):
-                    args = (*a[:2], a[2]._replace(eps_r=eps), *a[3:])
-                    return jnp.sum(entry(*args, **{**k, "ranks": ranks})[1] ** 2)
-                compiled = jax.jit(jax.grad(loss)).lower(a[2].eps_r, k["ranks"]).compile()
+                    # The wrapped loop receives component means explicitly.
+                    # Keep the Yee and CPML material operands tied together
+                    # while observing this loop and its transpose.
+                    components = materials.components._replace(eps_update=eps)
+                    inputs = dict(invariants,
+                        materials=materials._replace(components=components),
+                        cpml_inv_eps_r=tuple(1.0 / e for e in eps),
+                        e_loss=(eps, invariants['e_loss'][1]))
+                    samples = entry(carry, inputs, waves, ranks)[1]
+                    return jnp.sum(jnp.sum(samples, axis=1) ** 2)
+
+                compiled = jax.jit(jax.grad(loss)).lower(
+                    materials.components.eps_update, ranks).compile()
                 result = entry(*a, **k)
             else:
                 compiled = entry.lower(*a, **k).compile()
                 result = compiled(*a, **k)
             captured.append(compiled.as_text())
-            assert result[1].sharding.is_fully_replicated
+            assert result[1].shape[1] == 2  # Owner samples, reduced after this call.
             return result
         return run
 
     with patch.context() as p:
-        p.setattr(runner, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
+        original = slab_wrap.run_steps
+
+        def run_steps(*args, **kwargs):
+            return original(*args, **kwargs, compile_loop=traced_jit)
+
+        p.setattr(slab_wrap, "run_steps", run_steps)
         _run("cpml", 2, "plain", source_kind)
     assert len(captured) == 1
     return captured[0]
@@ -356,12 +412,12 @@ def test_collective_gate_rejects_mutations(monkeypatch, mutation):
 
 
 def test_bit_gate_rejects_missing_ez(monkeypatch):
-    original = runner._exchange_e_ghosts_shmap
+    original = runner.exchange_e_yee_shmap
 
-    def missing_ez(st, mesh, n_devices, *, ranks=None):
-        return original(st, mesh, n_devices, ranks=ranks)._replace(ez=st.ez)
+    def missing_ez(st, mesh, n_devices, *, ranks=None, local=False):
+        return original(st, mesh, n_devices, ranks=ranks, local=local)._replace(ez=st.ez)
 
-    monkeypatch.setattr(runner, "_exchange_e_ghosts_shmap", missing_ez)
+    monkeypatch.setattr(runner, "exchange_e_yee_shmap", missing_ez)
     with pytest.raises(AssertionError, match="trace"):
         _bit_case(monkeypatch, "pec", 2, "composed")
 
