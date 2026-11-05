@@ -140,9 +140,9 @@ def expected(family, record):
         points = ((2.23*D, 6.61*D), (4.27*D, 4.27*D), (4.19*D, 4.19*D))
         indices = [(int(np.argmin(abs(n-lo))), int(np.argmin(abs(n-hi))))
                    for n, (lo, hi) in zip(nodes, points)]
-        # A filament record bounds the occupied edge-start nodes.
-        return np.array([(n[lo], n[hi - (a == 0)]) for a, (n, (lo, hi))
-                         in enumerate(zip(nodes, indices))])
+        # Sum every occupied edge, from its start node to its end node.
+        return np.array([(n[lo], n[lo] + sum(n[k+1]-n[k] for k in range(lo, hi)))
+                         for n, (lo, hi) in zip(nodes, indices)])
     if family == "sphere":
         x, y, z = np.meshgrid(*centres, indexing="ij")
         mask = ((x-4.23*D)**2 + (y-4.61*D)**2 + (z-4.17*D)**2 <= (2.13*D)**2)
@@ -1057,7 +1057,13 @@ def test_verdict_boundary(family, lane, miss, snap):
         low[2] = high[2] = centre[2]
         sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=100., thickness=35e-6)
     elif family in ("wire", "port"):
-        length = 100*D/(1-miss) if family == "wire" else 40*D/(1+miss)
+        if family == "wire":
+            # Edges 2..41 span 40 cells, from the first start to the last end.
+            # (stepped_span - drawn) / drawn = -miss => drawn = stepped_span / (1-miss).
+            stepped_span = sum(nodes[0][k+1]-nodes[0][k] for k in range(2, 42))
+            length = stepped_span/(1-miss)
+        else:
+            length = 40*D/(1+miss)
         low = np.array(((1.66 if family == "wire" else 2.)*D, centre[1], centre[2]))
         high = low + (length, 0., 0.)
         if family == "wire":
@@ -1073,7 +1079,7 @@ def test_verdict_boundary(family, lane, miss, snap):
     elif family in ("wire", "port"):
         a = np.argmin(abs(nodes[0]-low[0]))
         b = np.argmin(abs(nodes[0]-high[0]))
-        physical = nodes[0][b - (family == "wire")]-nodes[0][a]
+        physical = nodes[0][b]-nodes[0][a]
         expected_miss = physical/length-1
     else:
         spans = []
