@@ -102,10 +102,39 @@
         ],
         "severity": "warning",
         "source": "preflight_wire_port_radius"
+      },
+      {
+        "code": "realization",
+        "loc": "port[0]",
+        "numbers": [
+          0.0,
+          -1.0,
+          -33.3333333333,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          2.0,
+          0.001,
+          3.0,
+          0.0015,
+          -0.5,
+          -0.00025
+        ],
+        "severity": "error",
+        "source": "judge_realization"
       }
     ],
-    "n_errors": 0,
-    "n_issues": 5,
-    "ok": true
+    "n_errors": 1,
+    "n_issues": 6,
+    "ok": false
   }
 }
