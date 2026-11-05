@@ -50,7 +50,7 @@ class ConductorWidthAxis:
 
 
 def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
-                         f0_spec, bounds, sizes, nodes, interior):
+                         f0_spec, bounds, sizes, nodes, interior, wire_edges=()):
     """One record product: PEC solved spans, DC cells, or weighted f0 nodes."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
     union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
@@ -64,6 +64,11 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
         cell_range = None if kind in ('sheet', 'wire') or node_based else (i0, i1 + 1)
         lo = float(nodes[a][i0])
         hi = float(nodes[a][i1 if cell_range is None else i1 + 1])
+        if kind == 'wire' and np.any(wire_edges[a]):
+            # A component mask indexes edge starts. Include its end nodes,
+            # while retaining transverse nodes from the other components.
+            last_edge = int(np.where(wire_edges[a])[a].max())
+            hi = float(nodes[a][max(i1, last_edge + 1)])
         comparison = free_ends = None
         if f0_spec is not None and a != int(f0_spec.normal_axis):
             i0, i1, lo, hi = _f0_solved_bounds(

@@ -1420,3 +1420,55 @@ def test_integral_without_reference_is_reported(smoothing):
                     and getattr(w.message, "code", None) == "realization"]
         assert len(messages) == 1
         assert "not judged: no reference" in str(messages[0])
+
+
+@pytest.mark.parametrize("case", ("uniform_z", "uniform_x", "graded_z"))
+def test_wire_span_includes_the_last_stepped_edge(case, monkeypatch):
+    from rfx.stepping import prepared as stepping
+
+    dx = 1 / 1024 if case == "graded_z" else D
+    profiles = {}
+    if case == "graded_z":
+        # The source-on-PEC fixture's metric; z=3*dx is NOT a node here.
+        for axis, count in zip("xyz", (12, 8, 8)):
+            profile = np.full(count, dx)
+            profile[2:4] = (.9*dx, 1.1*dx)
+            profiles[f"d{axis}_profile"] = profile
+    axis = 0 if case == "uniform_x" else 2
+    domain = (24, 12, 12) if axis == 0 else (12, 8, 8)
+    start, end = ((10, 6, 6), (14, 6, 6)) if axis == 0 else (
+        (6, 4, 2.9 if profiles else 3), (6, 4, 5))
+    captured = []
+    original = stepping.advance
+
+    def advance(product, stepper, *args, **kwargs):
+        def step(grid, *step_args, **step_kwargs):
+            captured.append((grid, tuple(np.asarray(m, dtype=bool)
+                                         for m in step_kwargs["pec_edge_masks"])))
+            return stepper(grid, *step_args, **step_kwargs)
+        return original(product, step, *args, **kwargs)
+
+    monkeypatch.setattr(stepping, "advance", advance)
+    for snap in ("declared", "strict"):
+        sim = Simulation(freq_max=15e9, domain=tuple(v*dx for v in domain),
+                         dx=dx, boundary="pec", snap=snap, **profiles)
+        sim.add(PolylineWire((tuple(v*dx for v in start), tuple(v*dx for v in end)),
+                             radius=0), material="pec")
+        refused = None
+        try:
+            result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+        except ValueError as exc:
+            refused = exc
+        assert refused is None, f"{case} {snap}: {refused}"
+        grid, masks = captured[-1]
+        indices = np.where(masks[axis])[axis]
+        assert sorted(indices.tolist()) == ([10, 11, 12, 13] if axis == 0 else [3, 4])
+        # Count the actual stepping operand's edges by hand using grid cells.
+        cells = np.asarray(grid.cells(axis), dtype=float)
+        hand_span = sum(float(cells[k]) for k in indices)
+        assert hand_span == pytest.approx((4 if axis == 0 else 2.1 if profiles else 2)*dx)
+        row = result.realized_geometry.realization_table.row("geometry[0]")
+        assert row.axes[axis].realized_span_m == pytest.approx(hand_span)
+        for transverse in set(range(3)) - {axis}:
+            assert not masks[transverse].any()
+            assert row.axes[transverse].bounds_m == pytest.approx((start[transverse]*dx,)*2)
