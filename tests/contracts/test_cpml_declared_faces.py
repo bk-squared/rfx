@@ -21,12 +21,15 @@ EXPECTED = {
 
 def _run(case, entry, *, seed_psi=False):
     import rfx.boundaries.cpml as cpml
+    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    from rfx.stepping import slab_wrap
 
     jax.clear_caches()
     sim, declared = build(case, "nonuniform" if entry == "distributed_nu" else entry)
     assert {face for face, token in declared.items() if token == "cpml"} == EXPECTED[case]
     observed = {"apply_cpml_e": [], "apply_cpml_h": []}
     original_windows, original_scan = cpml.face_windows, jax.lax.scan
+    run_steps = slab_wrap.run_steps
     seeded = []
 
     def windows(*args, **kwargs):
@@ -53,7 +56,11 @@ def _run(case, entry, *, seed_psi=False):
     if entry in ("distributed", "distributed_nu"):
         assert len(jax.devices("cpu")) >= 2, "two CPU devices required"
         kwargs["devices"] = jax.devices("cpu")[:2]
-    with patch.object(cpml, "face_windows", windows), patch.object(jax.lax, "scan", scan):
+    def observed_steps(*args, **kwargs):
+        kwargs.setdefault('scan_loop', scan)
+        return run_steps(*args, **kwargs)
+
+    with patch.object(cpml, "face_windows", windows), patch.object(jax.lax, "scan", scan), patch.object(slab_wrap, "run_steps", observed_steps):
         result = sim.run(**kwargs)
         jax.block_until_ready(result.time_series)
         jax.effects_barrier()

@@ -106,7 +106,8 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
     devices = _devices(count)
     expected = _reference(kind, graded, boundary, count)
     staged = []
-    original = C.stage_distributed_edges if graded else D.cut
+    from rfx.stepping import slab_wrap
+    original = C.stage_distributed_edges if graded else slab_wrap.cut
 
     def capture(*args, **kwargs):
         result = original(*args, **kwargs)
@@ -117,7 +118,7 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
         return result
 
     with monkeypatch.context() as patch:
-        patch.setattr(C if graded else D, 'stage_distributed_edges' if graded else 'cut', capture)
+        patch.setattr(C if graded else slab_wrap, 'stage_distributed_edges' if graded else 'cut', capture)
         sim, grid, _ = _build(kind, graded, boundary, count=count)
         sim.run(n_steps=2, devices=devices, compute_s_params=False, skip_preflight=True)
     assert len(staged) == 3
@@ -338,7 +339,8 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
                   compute_s_params=True, skip_preflight=True)
     single = single_sim.run(**kwargs)
     staged = []
-    original = D.cut
+    from rfx.stepping import slab_wrap
+    original = slab_wrap.cut
 
     def capture(*args, **kw):
         result = original(*args, **kw)
@@ -346,7 +348,7 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
             staged.extend(np.asarray(edge) for edge in result)
         return result
 
-    monkeypatch.setattr(D, 'cut', capture)
+    monkeypatch.setattr(slab_wrap, 'cut', capture)
     multi_sim = _lumped_model(kind, boundary)
     assert multi_sim._build_grid().dt == grid.dt
     multi = multi_sim.run(devices=_devices(), **kwargs)
