@@ -272,6 +272,7 @@ def _build_record(sim, ctx, *, compact=False):
         bounds = _shape_bounds(shape)
         sheet = None if e is None else e.sheet
         kind = "material" if e is None else e.kind
+        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
         if e is None:
             mask = np.asarray(assembled.geometry_masks[id(sim._geometry[index])], dtype=bool)
         elif sheet is not None:
@@ -279,7 +280,7 @@ def _build_record(sim, ctx, *, compact=False):
         elif e.cells is not None:
             mask = e.cells
         elif e.kind == "wire":
-            mask = np.logical_or.reduce(e.edges(ctx.periodic, ctx.grid.shape))
+            mask = np.logical_or.reduce(raw_edges)
         elif e.kind == "lossy" and id(sim._thin_conductors[index - len(sim._geometry)]) in assembled.geometry_masks:
             from rfx.geometry.rasterize_grid import interior_lattice_mask
             mask = interior_lattice_mask(
@@ -309,7 +310,7 @@ def _build_record(sim, ctx, *, compact=False):
         if mask is not None and mask.any():
             widths = assembled.width_axes(sim, mask, kind=kind, sheet=sheet,
                 node_based=node_based, f0_spec=f0_spec, bounds=bounds,
-                sizes=sizes, nodes=nodes, interior=interior.values())
+                sizes=sizes, nodes=nodes, interior=interior.values(), wire_edges=raw_edges)
             for a, width in enumerate(widths):
                 i0, i1, cell_range = width.first, width.last, width.cell_range
                 rlo, rhi = width.lo, width.hi
@@ -330,7 +331,6 @@ def _build_record(sim, ctx, *, compact=False):
                     'xyz'[a], (i0, i1 if cell_range is None else i1 + 1), cell_range,
                     declared, (rlo, rhi), rhi - rlo, residual,
                     float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends, intervals))
-        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
         edge_counts = tuple(int(m.sum()) for m in raw_edges)
         edge_ranges = tuple(_mask_ranges(m) for m in raw_edges)
         edges = () if compact else tuple(_readonly(m) for m in raw_edges)

@@ -141,7 +141,7 @@ def realization_table(prepared) -> RealizationTable:
                 declared_shape = sim._geometry[int(entity.label[9:-1])].shape
                 model = sampler.get("material_sampling", {}).get(id(declared_shape), model)
         elif entity.kind == "wire":
-            model = "lattice edge-start envelope"
+            model = "lattice edge envelope"
         elif entity.kind == "lossy" and realized is None:
             model = "weighted f0 sheet end rows"
         if realized is not None and entity.plane is not None:
