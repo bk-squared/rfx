@@ -72,7 +72,6 @@ FIELD_STEPPERS = {
     "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:_update_e_local_with_dispersion":
         "internal to run_distributed, run_distributed_nu, fwd_distributed_nu",
-    "rfx/stepping/slab_uniform_loop.py:run_uniform_slab_loop": "internal to run_distributed",
     "rfx/stepping/uniform_setup.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",

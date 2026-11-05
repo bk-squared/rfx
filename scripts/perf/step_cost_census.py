@@ -406,8 +406,8 @@ class Program:
         if fun is None:
             return lambda f: self._capture_jit(f, **kwargs)
         compiled_fn = self.original_jit(fun, **kwargs)
-        legacy_runner = (fun.__module__ in ("rfx.stepping.slab_uniform_loop", "rfx.stepping.slab_graded_legacy_loop")
-                         and fun.__name__ in ("_run_cpml", "_run_pec", "run_fn"))
+        legacy_runner = (fun.__module__ == "rfx.stepping.slab_graded_legacy_loop"
+                         and fun.__name__ == "run_fn")
         wrapped_graded_runner = (fun.__module__, fun.__name__) == ("rfx.stepping.slab_wrap", "run_fn")
         if not (legacy_runner or wrapped_graded_runner):
             return compiled_fn

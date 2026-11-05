@@ -80,7 +80,7 @@ def means_inside_while(hlo):
 
 @pytest.mark.parametrize('boundary', ['cpml', 'pec'])
 def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
-    assert len(jax.devices('cpu')) == 2, 'run with two virtual CPU devices'
+    assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
     original = jax.jit
     captured = []
 
@@ -103,7 +103,7 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
         return original_run(*args, **kwargs, compile_loop=jit)
 
     monkeypatch.setattr(slab_wrap, 'run_steps', run_steps)
-    result = scene(boundary).run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
+    result = scene(boundary).run(n_steps=6, devices=jax.devices('cpu')[:2], skip_preflight=True)
     assert np.isfinite(np.asarray(result.time_series)).all()
     assert len(captured) == 2, 'public run must lower and compile the uniform slab driver'
     for stage, hlo in zip(('lowered', 'compiled'), captured):
@@ -112,14 +112,14 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
         assert_mean_placement(means, boundary, stage, driver='wrapped')
 
 
-def test_closed_box_tfsf_keeps_old_loop_cpml_means_outside_loop(monkeypatch, tmp_path):
-    assert len(jax.devices('cpu')) == 2, 'run with two virtual CPU devices'
+def test_closed_box_tfsf_keeps_wrapped_cpml_means_outside_loop(monkeypatch, tmp_path):
+    assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
     original = jax.jit
     captured = []
 
     def jit(fun, *args, **kwargs):
         compiled = original(fun, *args, **kwargs)
-        if fun.__module__ != 'rfx.stepping.slab_uniform_loop' or fun.__name__ != '_run_cpml':
+        if fun.__module__ != 'rfx.stepping.slab_wrap' or fun.__name__ != 'run_fn':
             return compiled
 
         def run(*values, **named):
@@ -130,7 +130,12 @@ def test_closed_box_tfsf_keeps_old_loop_cpml_means_outside_loop(monkeypatch, tmp
             return executable(*values, **named)
         return run
 
-    monkeypatch.setattr(jax, 'jit', jit)
+    original_run = slab_wrap.run_steps
+
+    def run_steps(*args, **kwargs):
+        return original_run(*args, **kwargs, compile_loop=jit)
+
+    monkeypatch.setattr(slab_wrap, 'run_steps', run_steps)
     sim = Simulation(freq_max=15e9, domain=(18e-3, 16e-3, 14e-3), dx=1e-3,
                      boundary='cpml', cpml_layers=2)
     sim.add_material('dielectric', eps_r=4, sigma=.01)
@@ -138,12 +143,12 @@ def test_closed_box_tfsf_keeps_old_loop_cpml_means_outside_loop(monkeypatch, tmp
     sim.add_tfsf_source(f0=8e9, margin=4, direction='+x', polarization='ez',
                         closed_box=True)
     sim.add_probe((9e-3, 8e-3, 7e-3), 'ez')
-    result = sim.run(n_steps=6, devices=jax.devices('cpu'), skip_preflight=True)
+    result = sim.run(n_steps=6, devices=jax.devices('cpu')[:2], skip_preflight=True)
     assert np.isfinite(np.asarray(result.time_series)).all()
-    assert len(captured) == 2, 'public closed-box TF/SF must lower and compile _run_cpml'
+    assert len(captured) == 2, 'public closed-box TF/SF must lower and compile the wrapped driver'
     for stage, hlo in zip(('lowered', 'compiled'), captured):
         (tmp_path / f'tfsf-cpml-{stage}.hlo').write_text(hlo)
-        assert_mean_placement(means_inside_while(hlo), 'cpml', stage, driver='old_loop')
+        assert_mean_placement(means_inside_while(hlo), 'cpml', stage, driver='wrapped')
 
 
 def assert_mean_placement(means, boundary, stage, *, driver):
