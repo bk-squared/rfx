@@ -780,9 +780,11 @@ def test_source_scan_node_ids_bypass_budget_and_account_for_parameters():
               'def test_plain():\n    pass\n')
     durations = {f"{path}::test_scan[a]": 3, f"{path}::test_scan[b]": 4,
                  f"{path}::test_plain": 500}
-    result = selector.select_tests(["rfx/core/changed.py"], {path: source}, durations)
+    result = selector.select_tests(["rfx/core/changed.py"], {path: source}, durations,
+                                   gate_nodeids=frozenset({f"{path}::test_scan[a]", f"{path}::test_plain"}))
     assert result.files == (f"{path}::test_scan",)
     assert not result.excluded
+    assert "  tests/unit/test_scan.py: whole-file recorded 507.000000 s" in result.summary()
     assert result.partly_added == {path: 507}
     assert result.selected_seconds == result.source_scan_seconds == 7
     assert result.not_run_count == 1
@@ -1053,6 +1055,8 @@ def test_cli_gate_nodeids(monkeypatch, tmp_path, capsys):
 
 @pytest.mark.parametrize("collect_status,over_limit", [(0, True), (5, True), (2, True), (0, False)])
 def test_local_price_collection_and_fallback(tmp_path, collect_status, over_limit):
+    (tmp_path / "tests/unit").mkdir(parents=True)
+    (tmp_path / "tests/unit/test_x.py").touch()
     stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 9\n", 1)[1]
     fragment = stage[stage.index("STAGE2_MARKERS="):].split("selected_tests=()", 1)[0]
     prefix = r'''set -uo pipefail
@@ -1065,7 +1069,9 @@ fail() { exit 1; }
 fake_python() {
   case "$*" in
     *--over-limit-files*)
-      if [ "$over_limit_fixture" = True ]; then printf '%s\n' tests/unit/test_x.py; fi
+      if [ "$over_limit_fixture" = True ]; then
+        printf '%s\n' tests/unit/test_x.py tests/unit/test_missing.py
+      fi
       return 0 ;;
     *--collect-only*)
       printf '%s\n' "$@" > "$selection_dir/collect-args"
@@ -1083,13 +1089,14 @@ PYTHON=fake_python
         ["/bin/bash", "-uc", prefix + fragment, "bash", str(tmp_path),
          str(collect_status), str(over_limit)],
         env=dict(os.environ, PYTEST_ADDOPTS="--unexpected-inherited-option"),
-        capture_output=True, text=True, timeout=10,
+        cwd=tmp_path, capture_output=True, text=True, timeout=10,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     args = (tmp_path / "select-args").read_text().splitlines()
     assert ("--gate-nodeids" in args) == (collect_status in (0, 5))
     if over_limit:
         collect_args = (tmp_path / "collect-args").read_text().splitlines()
+        assert "tests/unit/test_missing.py" not in collect_args
         assert collect_args == ["-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
                                 "-o", "addopts=", "-m",
                                 "not gpu and not slow and not slow_physics and not docs_consistency",

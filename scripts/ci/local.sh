@@ -216,7 +216,9 @@ STAGE2_MARKERS="not gpu and not slow and not slow_physics and not docs_consisten
   > "$selection_dir/over-limit-files" || fail
 over_limit_files=()
 while IFS= read -r test_file; do
-  over_limit_files+=("$test_file")
+  if [ -f "$test_file" ]; then
+    over_limit_files+=("$test_file")
+  fi
 done < "$selection_dir/over-limit-files"
 gate_nodeid_args=()
 collect_status=0
