@@ -528,7 +528,8 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
                      dz_profile=np.array([0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 1, 1]) * MM)
     sim.add_material("sub", eps_r=3.5)
     sim.add(Box((0, 0, 0), (24 * MM, 20 * MM, 1.5 * MM)), material="sub")
-    sim.add(Box((6 * MM, 5 * MM, 1.5 * MM), (18 * MM, 15 * MM, 1.5 * MM)), material="pec")
+    sim.add(Box(((6 - .35) * MM, (5 - .35) * MM, 1.5 * MM),
+                ((18 + .35) * MM, (15 + .35) * MM, 1.5 * MM)), material="pec")
     sim.add_port(position=(9 * MM, 10 * MM, 0.0), component="ez", impedance=50.0,
                  extent=1.5 * MM, waveform=GaussianPulse(f0=8e9, bandwidth=0.9))
     r = sim.run(n_steps=1500, compute_s_params=True,

@@ -39,7 +39,7 @@ def _mixed_scene(wire):
                          x='cpml', y=Boundary('pmc', 'cpml'), z=Boundary('pec', 'cpml')))
     sim.add_material('substrate', eps_r=3.)
     sim.add(Box((0., 0., 0.), (.024, .016, .002)), material='substrate')
-    sim.add(Box((0., .007, .002), (.014, .009, .002)), material='pec')
+    sim.add(Box((0., (7 - .35) * .001, .002), (.014, (9 + .35) * .001, .002)), material='pec')
     sim.add_port((.008, .00049, 0.), 'ez', extent=.002 if wire else None)
     sim.add_msl_port(position=(.014, .008, 0.), width=.002, height=.002,
                      direction='-x', impedance=50., n_probe_offset=3, n_probe_spacing=2)

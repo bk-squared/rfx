@@ -30,9 +30,10 @@ def model(path='uniform', kind='volume', *, adjacent=False, component='ez'):
             profile[2:4] = (0.9 * DX, 1.1 * DX)
             kwargs[f'd{axis}_profile'] = profile
     sim = Simulation(freq_max=15e9, domain=point(12, 8, 8), dx=DX,
-                     boundary='pec', **kwargs)
+                     boundary='pec', snap='declared' if kind == 'sheet' else 'strict', **kwargs)
     if kind == 'volume':
-        sim.add(Box(point(6, 3, 3), point(8, 5, 5)), material='pec')
+        low_yz = float(np.cumsum(kwargs['dy_profile'])[2]) if 'graded' in path else 3 * DX
+        sim.add(Box((6 * DX, low_yz, low_yz), point(8, 5, 5)), material='pec')
     elif kind == 'sheet':
         # Off-node declaration: only the realized x=6 plane owns the source.
         sim.add(Box(point(6.2, 3, 3), point(6.2, 5, 5)), material='pec')

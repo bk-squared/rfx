@@ -39,7 +39,8 @@ def test_uninspectable_shape_defers_to_execution_checks(method, monkeypatch):
 def test_declaration_refusal_precedes_stub_mesh_planning(method, match, monkeypatch):
     sim = Simulation(domain=(.02, .01, .01), dx=.001, freq_max=10e9,
                      boundary='cpml', cpml_layers=2)
-    sim.add(Box((.001, .003, .002), (.018, .005, .002)), material='pec')
+    sim.add(Box(((1 - .35) * .001, (3 - .35) * .001, .002),
+                ((18 + .35) * .001, (5 + .35) * .001, .002)), material='pec')
     sim.add_msl_port((.005, .004, .001), width=.002, height=.001, eps_r_sub=2.)
     kwargs = {}
     if method in ('run', 'forward') or method.startswith('compute_coaxial'):

@@ -29,7 +29,7 @@ def test_f4_one_device_mie_anchor():
 
     f0, radius = geo["f0_hz"], geo["radius_m"]
     dx = C0 / f0 / geo["resolution_cells_per_lambda"]
-    sim = Simulation(freq_max=f0 * 1.5, domain=tuple(geo["domain_m"]),
+    sim = Simulation(snap="declared", freq_max=f0 * 1.5, domain=tuple(geo["domain_m"]),
                      dx=dx, boundary="cpml", cpml_layers=geo["cpml_layers"])
     sim.add_material("PEC", eps_r=1.0, sigma=geo["pec_sigma_s_per_m"])
     sim.add(Sphere(center=tuple(d / 2 for d in geo["domain_m"]), radius=radius),

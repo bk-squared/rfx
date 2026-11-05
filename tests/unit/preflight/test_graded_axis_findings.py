@@ -718,7 +718,7 @@ def _stub_board(feed_cells, gap_m=3.0e-3):
     lx, h, w = float(prof.sum()), _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
     stub = 8e-3
     ly = w + 4 * (2 * h + 8 * coarse) + max(14e-3, stub + 2e-3)
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=9e9, domain=(lx, ly, h + 1.5e-3), dx=coarse, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -797,7 +797,7 @@ def _ramp_feed_board(n_probe_offset, stub_gap_m=1.0e-3):
     lx, h, w = float(prof.sum()), _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
     stub = 8e-3
     ly = w + 4 * (2 * h + 8 * coarse) + max(14e-3, stub + 2e-3)
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=9e9, domain=(lx, ly, h + 1.5e-3), dx=coarse, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -1003,7 +1003,7 @@ def _uniform_stub_finding(feed, direction, n_probe_offset):
     dx, h, w = 254e-6, 254e-6, 508e-6
     lx, stub = 40e-3, 8e-3
     ly = w + 4 * (2 * h + 8 * dx) + max(14e-3, stub + 2e-3)
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=9e9, domain=(lx, ly, h + 1.5e-3), dx=dx, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")))
@@ -1061,7 +1061,7 @@ def _ports_on(prof, dx, ports, n_probe_offset, stub_x=None, freq_max=5e9):
     from rfx.geometry.csg import Box
     h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
     lx, ly = float(np.sum(prof)), 24 * _NOTCH_H_SUB
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=freq_max, domain=(lx, ly, h + 1.5e-3), dx=dx, cpml_layers=8,
         dx_profile=prof,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -1243,7 +1243,7 @@ def _auto_offset_board(f_max=20e9, runway_node=20.3, **port_kw):
     prof, x_run, _ = _graded_runway_board()
     h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
     lx, ly = float(prof.sum()), 10 * _NOTCH_H_SUB
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=f_max, domain=(lx, ly, h + 1.5e-3), dx=2 * _NOTCH_RUNWAY,
         cpml_layers=8, dx_profile=prof,
         boundary=BoundarySpec(x="cpml", y="cpml",

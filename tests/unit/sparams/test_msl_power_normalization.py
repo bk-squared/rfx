@@ -61,8 +61,9 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
     sim.add(Box((0, 0, 0), (40 * U, 16 * U, 2 * U)), material="substrate")
     sim.add(Box((0, 0, 0), (40 * U, 16 * U, 0)), material="pec")
     for p, width in enumerate(widths):
-        sim.add(Box((p * 20 * U, 8 * U - width / 2, 2 * U),
-                    ((p + 1) * 20 * U, 8 * U + width / 2, 2 * U)), material="pec")
+        sim.add(Box(((p * 20 - (.35 if p == 1 and not equal else 0)) * U,
+                     8 * U - width / 2 - .35 * U, 2 * U),
+                    ((p + 1) * 20 * U, 8 * U + width / 2 + .35 * U, 2 * U)), material="pec")
         sim.add_msl_port(position=((2 if p == 0 else 38) * U, 8 * U, 0),
                          width=width, height=2 * U, direction="+x" if p == 0 else "-x",
                          impedance=50.0, eps_r_sub=2.0, mode="uniform",

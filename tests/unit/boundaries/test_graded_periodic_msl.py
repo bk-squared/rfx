@@ -17,7 +17,8 @@ def test_msl_seam_geometry_reaches_step_builder(graded, monkeypatch):
     sim.add(Box((0, 0, .004), (.024, .024, .004)), material="pec")
     sim.add_material("substrate", eps_r=3)
     sim.add(Box((0, 0, .004), (.024, .024, .008)), material="substrate")
-    sim.add(Box((.016, .010, .008), (.024, .014, .008)), material="pec")
+    sim.add(Box(((16 - .35) * .001, (10 - .35) * .001, .008),
+                (.024, (14 + .35) * .001, .008)), material="pec")
     sim.add_msl_port(position=(0, .012, .004), width=.004, height=.004, direction="-x")
 
     class StepBuilderReached(Exception):

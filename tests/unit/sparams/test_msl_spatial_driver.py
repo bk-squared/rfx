@@ -44,7 +44,7 @@ def _build_case(direction, graded):
     sim.add(Box((0, 0, 0), (domain[0], domain[1], 2 * U)), material="substrate")
     sim.add_thin_conductor(Box((0, 0, 0), (domain[0], domain[1], 0)))
     lo, hi = [0.0, 0.0, 2 * U], [domain[0], domain[1], 2 * U]
-    lo[width], hi[width] = 4 * U, 8 * U
+    lo[width], hi[width] = (4 - .35) * U, (8 + .35) * U
     sim.add_thin_conductor(Box(tuple(lo), tuple(hi)))
     position = [6 * U, 6 * U, 0.0]
     position[prop] = float(prop_nodes[2 if direction[0] == "+" else 22])

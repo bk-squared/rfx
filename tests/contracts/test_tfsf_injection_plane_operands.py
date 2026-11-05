@@ -52,7 +52,9 @@ def scene(obj=None, *, graded=False, interior=False, kind='slab'):
     x = 11 if interior else 6
     ys, zs = (8, 16) if kind != 'slab' else (0, 12), (8, 16) if kind == 'box' else (0, 12)
     slab = Box(mm(x-1, ys[0], zs[0]), mm(x+1, ys[1], zs[1]))
-    sheet = Box(mm(x, ys[0], zs[0]), mm(x, ys[1], zs[1]))
+    sheet_ys = (ys[0] - .35, ys[1] + .35) if kind != "slab" else ys
+    sheet_zs = (zs[0] - .35, zs[1] + .35) if kind == "box" else zs
+    sheet = Box(mm(x, sheet_ys[0], sheet_zs[0]), mm(x, sheet_ys[1], sheet_zs[1]))
     medium = {
         'drude': dict(lorentz_poles=[drude_pole(2*np.pi*10e9, 1e10)]),
         'kerr': dict(chi3=1e3), 'eps': dict(eps_r=2.), 'sigma': dict(sigma=.1),

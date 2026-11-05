@@ -607,7 +607,7 @@ def _raw_v_for_dx(dx, tmp_path):
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
     lz = _H_SUB + 1.5e-3
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=_F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -641,7 +641,7 @@ def _realized_trace_plane(dx):
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
     lz = _H_SUB + 1.5e-3
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=_F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -782,7 +782,7 @@ def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * dx)
     lz = _H_SUB + 1.5e-3
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=_F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),

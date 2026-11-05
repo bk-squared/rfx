@@ -310,7 +310,7 @@ class TestConformalConvergence:
         """End-to-end API test: conformal should give different results than staircase."""
         from rfx.api import Simulation
 
-        sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06))
+        sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), snap="declared")
         sim.add(Cylinder((0.03, 0.03, 0.03), 0.012, 0.04), material="pec")
         sim.add_port((0.03, 0.03, 0.005), "ez", waveform=GaussianPulse(f0=3e9))
         sim.add_probe((0.03, 0.045, 0.03), "ez")

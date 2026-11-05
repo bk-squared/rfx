@@ -307,8 +307,9 @@ def msl_sim(mesh, direction='+x'):
     sim = Simulation(freq_max=15e9, domain=tuple(n*DX for n in shape), dx=DX,
                      boundary='cpml', cpml_layers=2, **kw)
     sim.add(Box((0, 0, DX), (shape[0]*DX, shape[1]*DX, DX)), material='pec')
-    bounds = ((0, 4*DX, 3*DX), (30*DX, 8*DX, 3*DX)) if direction[1] == 'x' else (
-        (4*DX, 0, 3*DX), (8*DX, 30*DX, 3*DX))
+    width_lo = (3.9 - .35 * .9) * DX if mesh == 'graded' else (4 - .35) * DX
+    bounds = ((0, width_lo, 3*DX), (30*DX, (8 + .35)*DX, 3*DX)) if direction[1] == 'x' else (
+        (width_lo, 0, 3*DX), ((8 + .35)*DX, 30*DX, 3*DX))
     sim.add(Box(*bounds), material='pec')
     position = [6*DX, 6*DX, DX]
     position['xy'.index(direction[1])] = (2 if direction[0] == '+' else 28)*DX
@@ -417,7 +418,8 @@ def test_live_gap_excludes_pec_edges(mesh):
     from tests.contracts.path_equivalence.builders import point
     row = ('_ports', 'wire_port')
     sim = build(row, 'run_uniform' if mesh == 'uniform' else 'run_nonuniform', graded=mesh == 'graded')
-    sim.add(Box(point(4, 2, 2), point(6, 4, 3)), material='pec')
+    edge = (5 + .9 - 2) if mesh == 'graded' else 4
+    sim.add(Box(point(edge, 2, 2), point(6, edge, 3)), material='pec')
     actual = setup(sim)
     plan = measurement_plan(sim, n_steps=12, frequencies=FREQS)
     judge(plan, actual, row, mesh != 'uniform')

@@ -19,7 +19,7 @@ def model(lane):
         # Truly graded, with the declared witnesses in the 1 mm portion.
         d = np.array([.001] * 12 + [.0009, .0011] * 3 + [.001] * 2)
         kw.update(dx_profile=d, dy_profile=d, dz_profile=d)
-    sim = Simulation(**kw)
+    sim = Simulation(snap="declared", **kw)
     grid = sim._build_realized_grid()
     coords = (coords_from_nonuniform_grid(grid) if lane == "graded"
               else coords_from_uniform_grid(grid))

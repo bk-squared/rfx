@@ -24,13 +24,13 @@ SLOPE = 0.5 + 0.25j
 FREQS = np.array([0.8e9, 1.2e9, 1.6e9])
 
 
-def _case(direction):
+def _case(direction, strip_pad=.35):
     sim = Simulation(freq_max=20e9, domain=(40 * U, 12 * U, 8 * U),
                      dx=U, cpml_layers=2, boundary="cpml")
     sim.add_material("substrate", eps_r=2.0)
     sim.add(Box((0, 0, 0), (40 * U, 12 * U, 2 * U)), material="substrate")
     sim.add(Box((0, 0, 0), (40 * U, 12 * U, 0)), material="pec")
-    sim.add(Box((0, 4 * U, 2 * U), (40 * U, 8 * U, 2 * U)), material="pec")
+    sim.add(Box((0, (4 - strip_pad) * U, 2 * U), (40 * U, (8 + strip_pad) * U, 2 * U)), material="pec")
     feed = (2 if direction == "+x" else 38) * U
     sim.add_msl_port(position=(feed, 6 * U, 0), width=4 * U, height=2 * U,
                      direction=direction, mode="uniform", eps_r_sub=2.0,
@@ -164,7 +164,7 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
 
 @pytest.mark.parametrize("entry", ["compute_mixed_s_matrix", "compute_s_matrix"])
 def test_strict_mixed_preflight_refuses_before_runner(monkeypatch, entry):
-    sim, _ = _case("+x")
+    sim, _ = _case("+x", strip_pad=0)
     assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
     calls = []
 

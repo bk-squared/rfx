@@ -230,7 +230,7 @@ def _sphere(*, ports=False):
     def build(lane, on, ref=False):
         spec = BoundarySpec(x=Boundary(lo="pec", hi="pec", conformal=on),
                             y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec"))
-        sim = _base(lane, ref=ref, boundary=spec, source=None if ports else "field")
+        sim = _base(lane, ref=ref, snap="declared", boundary=spec, source=None if ports else "field")
         if ports:
             for x in (4, 8):
                 sim.add_port(mm(x, 6, 6), "ez", impedance=50.0, waveform=WAVEFORM)
@@ -319,15 +319,15 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_materials", "drude"): _pole(dict(eps_r=1.0, lorentz_poles=[drude_pole(2 * np.pi * 10e9, 1e10)])),
     ("_materials", "kerr"): Feature(_kerr, off="block eps_r=1"),
     ("_geometry", "pec_volume"): _plus(lambda s, _: s.add(Box(mm(5, 3, 3), mm(7, 9, 9)), material="pec")),
-    ("_geometry", "pec_sheet"): _plus(lambda s, _: s.add(Box(mm(6, 3, 3), mm(6, 9, 9)), material="pec")),
+    ("_geometry", "pec_sheet"): _plus(lambda s, _: s.add(Box(mm(6, 3 - .35, 3 - .35), mm(6, 9 + .35, 9 + .35)), material="pec")),
     ("_geometry", "pec_wire"): _plus(lambda s, _: s.add(
         PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.0), material="pec")),
     ("_thin_conductors", "lossy_sheet"): _plus(lambda s, _: s.add_thin_conductor(
         Box(mm(6, 3, 3), mm(6, 9, 9)), sigma_bulk=1e3, thickness=1e-4)),
     ("_thin_conductors", "pec_sheet"): _plus(lambda s, _: s.add_thin_conductor(
-        Box(mm(6, 3, 3), mm(6, 9, 9)))),
+        Box(mm(6, 3 - .35, 3 - .35), mm(6, 9 + .35, 9 + .35)))),
     ("_thin_conductors", "surface_impedance"): _plus(lambda s, _: s.add_thin_conductor(
-        Box(mm(6, 3, 3), mm(6, 9, 9)), sigma_bulk=1e3, thickness=1e-4, surface_impedance_f0=5e9)),
+        Box(mm(6, 3 - .35, 3 - .35), mm(6, 9 + .35, 9 + .35)), sigma_bulk=1e3, thickness=1e-4, surface_impedance_f0=5e9)),
     ("_pinned_sheets", "pec_sheet"): _plus(lambda s, _: s.add_pinned_sheet(
         plane_index=6, i_range=(3, 9), j_range=(3, 9), normal_axis=0)),
     ("_ports", "source"): _plus(lambda s, _: s.add_source(

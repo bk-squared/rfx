@@ -73,7 +73,7 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     elif feature == "msl":
         sim.add_material("substrate", eps_r=3.66)
         sim.add(Box((0, 0, 0), (24.3e-3, 12.7e-3, 1e-3)), material="substrate")
-        sim.add(Box((1e-3, 5e-3, 1e-3), (23e-3, 7e-3, 2e-3)), material="pec")
+        sim.add(Box((1e-3, 5e-3, 1e-3), (float(np.cumsum(kwargs["dx_profile"])[-2]) if mesh == "graded" else 23e-3, 7e-3, 2e-3)), material="pec")
         sim.add_msl_port(position=(2e-3, 6e-3, 0), width=2e-3, height=1e-3,
                          direction="+x", impedance=50.0, waveform=pulse)
     elif feature == "waveguide":

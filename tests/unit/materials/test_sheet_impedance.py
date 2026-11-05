@@ -271,7 +271,7 @@ def _sigma_bulk_for_rs0(rs0, f0=F0):
 
 def _cavity(precision=None, **tc_kwargs):
     kw = {} if precision is None else {"precision": precision}
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                      boundary="pec", **kw)
     if tc_kwargs:
         with warnings.catch_warnings():
@@ -522,7 +522,8 @@ def _nu_probe_sim(with_sheet: bool):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             sim.add_thin_conductor(
-                Box((2e-3, 2e-3, 4e-3), (6e-3, 6e-3, 4e-3)),
+                Box(((4 - .35) * .5e-3, (4 - .35) * .5e-3, 4e-3),
+                    ((12 + .35) * .5e-3, (12 + .35) * .5e-3, 4e-3)),
                 sigma_bulk=1e4, surface_impedance_f0=F0)
     sim.add_source((4e-3, 4e-3, 2e-3), "ex",
                    waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
@@ -565,7 +566,8 @@ def _sheet_sim(**sim_kw):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim.add_thin_conductor(
-            Box((4e-3, 4e-3, 10e-3), (16e-3, 16e-3, 10e-3)),
+            Box(((4 - .35) * 1e-3, (4 - .35) * 1e-3, 10e-3),
+                 ((16 + .35) * 1e-3, (16 + .35) * 1e-3, 10e-3)),
             sigma_bulk=1e4, surface_impedance_f0=F0)
     sim.add_source((10e-3, 10e-3, 5e-3), "ex",
                    waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
@@ -655,7 +657,8 @@ def test_g9_dispersive_overlap_refuses_uniform_and_nu():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim_nu.add_thin_conductor(
-            Box((2e-3, 2e-3, 4e-3), (6e-3, 6e-3, 4e-3)),
+            Box(((4 - .35) * .5e-3, (4 - .35) * .5e-3, 4e-3),
+                    ((12 + .35) * .5e-3, (12 + .35) * .5e-3, 4e-3)),
             sigma_bulk=1e4, surface_impedance_f0=F0)
     from rfx import DebyePole
     sim_nu.add_material("water", eps_r=4.0,
@@ -680,7 +683,8 @@ def test_g9_upml_refuses():
 # ===========================================================================
 
 F0 = 10e9
-_SHEET_BOX = Box((4e-3, 4e-3, 10e-3), (16e-3, 16e-3, 10e-3))
+_SHEET_BOX = Box(((4 - .35) * 1e-3, (4 - .35) * 1e-3, 10e-3),
+                 ((16 + .35) * 1e-3, (16 + .35) * 1e-3, 10e-3))
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +774,7 @@ def _mixed_probe_fed_msl():
     eps_r, h_sub, w_trace = 3.66, 254e-6, 600e-6
     dx = h_sub / 3.0                    # 84.667 um: h_sub is node 3
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(freq_max=5e9, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
+    sim = Simulation(snap="declared", freq_max=5e9, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
     sim.add_material("sub", eps_r=eps_r)

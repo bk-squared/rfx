@@ -58,7 +58,7 @@ PATCH = ((0.012466, 0.003, H_SUB), (0.015006, 0.02332, H_SUB))
 
 
 def _base():
-    sim = Simulation(freq_max=20e9, domain=DOMAIN, dx=DX,
+    sim = Simulation(snap="declared", freq_max=20e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")

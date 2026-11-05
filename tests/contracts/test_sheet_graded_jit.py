@@ -11,6 +11,9 @@ from rfx.geometry.rasterize_grid import (
     coords_from_uniform_grid, refuse_vaporized_sheets, sheet_spec_from_shape,
 )
 
+SHEET_X_PROFILE = np.array([.001] * 4 + [.0009, .0011] * 2 + [.001] * 4)
+SHEET_X_NODES = np.r_[0., np.cumsum(SHEET_X_PROFILE)]
+
 
 def assert_trace_records(actual, expected):
     actual, expected = np.asarray(actual), np.asarray(expected)
@@ -21,13 +24,18 @@ def assert_trace_records(actual, expected):
 
 
 @pytest.mark.parametrize('shape', (
-    Box((.003, .003, .003), (.009, .007, .003)),
-    Cylinder((.006, .005, .003), radius=.002, height=0., axis='z'),
+    Box(((3 - .35) * .001, (3 - .35) * .001, .003),
+        ((9 + .35) * .001, (7 + .35) * .001, .003)),
+    # Both in-plane solved spans are 4.7 mm, including the free-edge offset.
+    Cylinder((.006, .005, .003),
+             radius=(SHEET_X_NODES[8] - SHEET_X_NODES[4]) / 2 + .35 * SHEET_X_PROFILE[8],
+             height=0., axis='z'),
 ), ids=('box', 'disc'))
 def test_graded_sheet_run_under_user_jit(shape):
-    profile = np.array([.001] * 4 + [.0009, .0011] * 2 + [.001] * 4)
+    profile = SHEET_X_PROFILE
     sim = Simulation(freq_max=10e9, domain=(.012, .010, .010), dx=.001,
-                     dx_profile=profile, boundary='pec')
+                     dx_profile=profile, boundary='pec',
+    )
     sim.add_thin_conductor(shape)
     sim.add_source((.005, .005, .005), 'ez', amplitude_kind='current',
                    waveform=GaussianPulse(f0=5e9, bandwidth=.8))

@@ -91,7 +91,8 @@ def _model(source_kind="field"):
                      debye_poles=[DebyePole(.5, 1e-11)],
                      lorentz_poles=[lorentz_pole(.5, 2 * np.pi * 3e9, 1e9)])
     sim.add(Box((2e-3, 1e-3, 1e-3), (12e-3, 3e-3, 3e-3)), material="lossy_poles")
-    sim.add(Box((6e-3, 3e-3, 1e-3), (9e-3, 4e-3, 3e-3)), material="pec")
+    pec_x = np.cumsum(np.r_[dx[0], dx]) - dx[0]
+    sim.add(Box((float(pec_x[6]), 3e-3, 1e-3), (float(pec_x[9]), 4e-3, 3e-3)), material="pec")
     return sim
 
 

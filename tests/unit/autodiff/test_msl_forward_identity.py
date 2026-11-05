@@ -132,7 +132,8 @@ def _build_planted_sim(monkeypatch, scale: float):
     sim.add_material("substrate", eps_r=2.0)
     sim.add(Box((0, 0, 0), (40 * U, 12 * U, 2 * U)), material="substrate")
     sim.add(Box((0, 0, 0), (40 * U, 12 * U, 0)), material="pec")
-    sim.add(Box((0, 4 * U, 2 * U), (40 * U, 8 * U, 2 * U)), material="pec")
+    sim.add(Box((0, (4 - .35) * U, 2 * U),
+                (40 * U, (8 + .35) * U, 2 * U)), material="pec")
     for feed, direction in ((2 * U, "+x"), (38 * U, "-x")):
         sim.add_msl_port(position=(feed, 6 * U, 0), width=4 * U, height=2 * U,
                          direction=direction, mode="uniform", eps_r_sub=2.0,

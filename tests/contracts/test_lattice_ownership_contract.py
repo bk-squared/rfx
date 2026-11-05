@@ -1219,8 +1219,8 @@ def _sheet_and_volume_sim():
     sim.add(Box((2e-3, 2e-3, 2e-3), (4e-3, 4e-3, 3e-3)), material="pec")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sim.add_thin_conductor(Box((3e-3, 2e-3, SHEET_PLANE_Z),
-                                   (8e-3, 8e-3, SHEET_PLANE_Z)))
+        sim.add_thin_conductor(Box(((3 - .35) * 1e-3, (2 - .35) * 1e-3, SHEET_PLANE_Z),
+                                   ((8 + .35) * 1e-3, (8 + .35) * 1e-3, SHEET_PLANE_Z)))
     sim.add_source((5e-3, 5e-3, 3e-3), "ez", amplitude_kind="field")
     sim.add_probe(SHEET_PROBE, "ex")
     sim.add_probe(CONTROL_PROBE, "ex")

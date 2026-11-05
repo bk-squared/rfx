@@ -843,7 +843,9 @@ def graded_cpml_box(nx=28):
                      cpml_layers=4, dx_profile=dx, dy_profile=dy)
     sim.add_material('diel', eps_r=3.3, sigma=0.05)
     sim.add(Box((xs[nx//3 - 2], 2e-3, 2e-3), (xs[nx//3 + 2], 9e-3, 7e-3)), material='diel')
-    sim.add(Box((xs[2*nx//3 - 1], 4e-3, 3e-3), (xs[2*nx//3 + 1], 7e-3, 6e-3)), material='pec')
+    pec_x = np.cumsum(np.r_[np.full(4, dx[0]), dx]) - 4 * dx[0]
+    pec_y = np.cumsum(np.r_[np.full(4, dy[0]), dy]) - 4 * dy[0]
+    sim.add(Box((float(pec_x[2*nx//3 + 2]), float(pec_y[7]), 3e-3), (float(pec_x[2*nx//3 + 4]), float(pec_y[10]), 6e-3)), material='pec')
     sim.add_source((xs[nx//3 + 1] + 1e-4, 5.5e-3, 4.5e-3), 'ez', amplitude_kind='current')
     for fx in (0.1, 0.34, 0.5, 0.66, 0.9, 0.99):
         sim.add_probe((lx * fx, 6e-3, 5e-3), 'ez')

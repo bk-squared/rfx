@@ -20,7 +20,7 @@ from rfx.nonuniform import NonUniformGrid
 
 def _documented_model(variant="plate"):
     # materials-geometry.mdx's first Simulation and 1 mm PEC plate block.
-    sim = Simulation(freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
     sim.add(Box((0.005, 0.005, 0.005), (0.045, 0.045, 0.0066)), material="fr4")
     sim.add(Box((0.005, 0.005, 0.004), (0.045, 0.045, 0.005)), material="pec")
     if variant == "chained":

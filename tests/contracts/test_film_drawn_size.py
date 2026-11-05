@@ -86,7 +86,7 @@ def test_t3_f0_sheet_effective_size(snap, severity):
 def test_t6_non_box_sheet_gets_no_size_finding_as_a_pec_sheet_gets_none(f0):
     """The size check reads Box sheets only, PEC or f0 alike (no analytic faces)."""
     from rfx.geometry.csg import Cylinder
-    sim = Simulation(10e9, (.024, .016, .012), dx=.001, boundary='pec')
+    sim = Simulation(10e9, (.024, .016, .012), dx=.001, boundary='pec', snap="declared")
     disc = Cylinder(center=(.012, .008, .005), radius=.004, height=0.)
     options = {} if f0 is None else {'surface_impedance_f0': f0}
     with warnings.catch_warnings():

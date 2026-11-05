@@ -69,6 +69,7 @@ def _reports(sim):
 
 def _board(profiles):
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="pec",
+                     snap="declared",
                      **profiles)
     sim.add_thin_conductor(_sheet())
     return sim
@@ -141,6 +142,7 @@ def test_sheet_continued_into_cpml_reports_only_the_free_end_residual():
     its drawn 8.3 mm end. Removing the census's domain clamp reads 1 mm.
     """
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml",
+                     snap="declared",
                      cpml_layers=4)
     sim.add_thin_conductor(Box((-1 * MM, Y_LO, Z), (8.3 * MM, Y_HI, Z)))
     issues, items = _reports(sim)
@@ -185,6 +187,7 @@ def test_shifted_strips_of_the_right_size_are_reported():
     sheet_effective_size is silent on x; but each is shifted 0.35 mm
     away from the other, and the gap is solved 1.3 mm instead of 0.6."""
     sim = Simulation(freq_max=10e9, domain=(16 * MM, 8 * MM, 6 * MM), dx=MM,
+                     snap="declared",
                      boundary="pec")
     sim.add_thin_conductor(Box((2.0 * MM, 2 * MM, 3 * MM), (6.7 * MM, 5 * MM, 3 * MM)))
     sim.add_thin_conductor(Box((7.3 * MM, 2 * MM, 3 * MM), (12.0 * MM, 5 * MM, 3 * MM)))

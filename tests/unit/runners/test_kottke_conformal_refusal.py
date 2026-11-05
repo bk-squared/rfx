@@ -17,7 +17,7 @@ def _scene(entry, source, *, pec=True, dt=None):
         boundary = {"x": "cpml", "y": "pec", "z": "pec"}
         if source == "B":
             boundary["y"] = Boundary("pec", "pec", conformal=True)
-        sim = Simulation(freq_max=9e9, domain=(.12, .04, .02), dx=.002,
+        sim = Simulation(snap="declared", freq_max=9e9, domain=(.12, .04, .02), dx=.002,
                          boundary=boundary, cpml_layers=10, dt=dt,
                          **({"dz_profile": np.full(10, .002)}
                             if entry == "waveguide_graded" else {}))
