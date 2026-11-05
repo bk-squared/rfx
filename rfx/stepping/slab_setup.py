@@ -72,6 +72,11 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     # drive_columns uses the same indexing and products as its whole-grid call.
     scalar_cells = tuple((0, (n, 0, 0)) for n in range(len(sources)))
     samples = jnp.stack([jnp.asarray(s.waveform) for s in sources], axis=-1)
+    # Cross before owner masking so the transpose returns the caller's placement.
+    samples = place(samples, NamedSharding(mesh, P()))
+    volumes = jax.tree.map(lambda a: place(a, NamedSharding(mesh, P()))
+                           if isinstance(a, (jax.Array, jax.core.Tracer, np.ndarray)) else a,
+                           volumes)
     def local(e, s, k, c, rank, samples=samples, volumes=volumes):
         def arrays(a):
             return None if a is None else (a[:, None, None],)
@@ -338,6 +343,10 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
     # Families decide separately: traced Lorentz masks need not trace Debye products.
     device, _ = _material_host_device(materials, spec, debye_spec, mesh=mesh)
     poles, masks = spec
+    if device is None:
+        poles = jax.tree.map(lambda a: place(a, NamedSharding(mesh, P()))
+                            if isinstance(a, (jax.Array, jax.core.Tracer, np.ndarray)) else a,
+                            poles)
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
     with jax.ensure_compile_time_eval() if device is not None else nullcontext():
         inputs = input_materials(materials, layout, mesh)
@@ -355,8 +364,9 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                 halo_hi=layout.nx_local + 1 - 2 - (view.x1 - view.x0))
             def local_masks(spec_masks):
                 return [None if m is None else
-                    (jnp if isinstance(m, jax.core.Tracer) else np).asarray(m)[
-                        np.clip(rows.indices[view.rank], 0, layout.nx - 1)] for m in spec_masks]
+                    place((jnp if isinstance(m, jax.core.Tracer) else np).asarray(m)[
+                        np.clip(rows.indices[view.rank], 0, layout.nx - 1)],
+                        NamedSharding(mesh, P())) for m in spec_masks]
             local_debye = None
             if debye_spec is not None:
                 dp, dm = debye_spec

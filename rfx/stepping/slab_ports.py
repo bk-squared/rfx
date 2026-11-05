@@ -48,7 +48,8 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps):
         return context
     context = replace(context, port_record_specs=plan.specs,
         port_acc_indices=plan.acc_indices, wp_meta=plan.wp_meta,
-        sp_freqs=plan.sp_freqs, use_wire_ports=plan.use_wire_ports)
+        sp_freqs=None if plan.sp_freqs is None else place(plan.sp_freqs, NamedSharding(mesh, P())),
+        use_wire_ports=plan.use_wire_ports)
     with jax.ensure_compile_time_eval():
         invariants['port_table'] = port_table(context.grid, plan.specs, nu=True,
             boundary=context.curl_boundary, dtype=carry['fdtd'].ex.dtype)

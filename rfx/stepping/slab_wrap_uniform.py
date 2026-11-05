@@ -93,6 +93,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.stepping.graded import graded_probe_table
     from rfx.stepping.slab_setup import realize_materials, stage_dispersion, input_materials
     from rfx.stepping.slab_wrap import cut, split
+    from rfx.stepping.slab import place
 
     sharding = NamedSharding(mesh, P('x'))
     replicated = NamedSharding(mesh, P())
@@ -113,8 +114,9 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     local_materials = kernel_materials(local_materials,
         electric=debye is None and lorentz is None)
     pec_faces, pmc_faces = resolve_wall_faces(grid, (False,) * 3, None)
-    wires = tuple(m for m, s in zip(port_plan.metadata, port_plan.specs) if s[2] == 'wire')
-    lumped = tuple(m for m, s in zip(port_plan.metadata, port_plan.specs) if s[2] == 'lumped')
+    metadata = tuple(m._replace(freqs=place(m.freqs, replicated)) for m in port_plan.metadata)
+    wires = tuple(m for m, s in zip(metadata, port_plan.specs) if s[2] == 'wire')
+    lumped = tuple(m for m, s in zip(metadata, port_plan.specs) if s[2] == 'lumped')
     ctx = _StepContext(grid=grid, materials=None, dt=grid.dt, dx=grid.dx,
         periodic=(False,) * 3, pec_axes=''.join(a for a in 'xyz'
             if {a + '_lo', a + '_hi'} <= pec_faces), stencil_order=2,
