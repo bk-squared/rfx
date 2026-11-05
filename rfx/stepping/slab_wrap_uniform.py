@@ -16,7 +16,7 @@ from rfx.stepping.uniform import make_uniform_step
 _PORT_CARRY = ('wire_sparam_accs', 'lumped_sparam_accs', 'sparam_time_records')
 
 
-def wrap_uniform(context, layout, mesh, *, table, port_table=None):
+def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_interval=1):
     """Attach exchanges to each local uniform step, retaining owner samples.
 
     E exchange follows the PEC mask and sources: a neighbour's next H update
@@ -27,13 +27,43 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None):
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
     def local(carry, xs, invariants, *, rank):
+        def exchange(frame, kernel, components):
+            if exchange_interval == 1:
+                frame.st = kernel(frame.st, mesh, layout.n_devices, ranks=rank, local=True)
+                return
+
+            # Entry validation refuses this branch; retain the skipped-exchange
+            # negative control with its original all-component halo copies.
+            def full(state):
+                fields = {}
+                for name in components:
+                    field = getattr(state, name)
+                    left = jax.lax.ppermute(field[-2], 'x',
+                        [(r, r + 1) for r in range(layout.n_devices - 1)])
+                    right = jax.lax.ppermute(field[1], 'x',
+                        [(r, r - 1) for r in range(1, layout.n_devices)])
+                    field = field.at[0].set(jnp.where(rank > 0, left, field[0]))
+                    fields[name] = field.at[-1].set(
+                        jnp.where(rank < layout.n_devices - 1, right, field[-1]))
+                return state._replace(**fields)
+
+            frame.st = jax.lax.cond(frame.step_idx % exchange_interval == 0,
+                                    full, lambda state: state, frame.st)
+
         def h(frame):
-            frame.st = exchange_h_yee_shmap(
-                frame.st, mesh, layout.n_devices, ranks=rank, local=True)
+            exchange(frame, exchange_h_yee_shmap, ('hx', 'hy', 'hz'))
 
         def e(frame):
-            frame.st = exchange_e_yee_shmap(
-                frame.st, mesh, layout.n_devices, ranks=rank, local=True)
+            exchange(frame, exchange_e_yee_shmap, ('ex', 'ey', 'ez'))
+
+        def tfsf_hx(frame):
+            # Transverse TF/SF faces correct owned Hx only. NTFF also reads
+            # the right ghost, which the minimal Yee exchange does not send.
+            hx = frame.st.hx
+            received = jax.lax.ppermute(hx[1], 'x',
+                [(r, r - 1) for r in range(1, layout.n_devices)])
+            frame.st = frame.st._replace(hx=hx.at[-1].set(
+                jnp.where(rank < layout.n_devices - 1, received, hx[-1])))
 
         inputs = dict(invariants)
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
@@ -48,12 +78,22 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None):
             debye_coeffs=inputs.get('debye_coeffs'),
             lorentz_coeffs=inputs.get('lorentz_coeffs'),
             drives=StepDrives(drives, None))
+        if ctx.use_tfsf:
+            tables = tuple(tuple(table._replace(
+                target_index=cut[0][0], source_index=cut[1][0], coefficient=cut[2][0])
+                for table, cut in zip(tables, cuts))
+                for tables, cuts in zip((ctx.tfsf_cfg.tables_h, ctx.tfsf_cfg.tables_e),
+                                        inputs['tfsf_tables']))
+            ctx = replace(ctx, tfsf_cfg=replace(ctx.tfsf_cfg,
+                shape=(layout.nx_local, *ctx.grid.shape[1:]),
+                tables_h=tables[0], tables_e=tables[1]))
         carry = dict(carry)
         for key in _PORT_CARRY:
             if key in carry:
                 carry[key] = jax.tree.map(lambda a: a[0], carry[key])
         advance = make_uniform_step(ctx, inputs,
-            hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
+            hooks={HookPoint.AFTER_H: (h, tfsf_hx) if ctx.use_tfsf else (h,),
+                   HookPoint.STEP_END: (e,)})
         from rfx._internal import _realized
         if _realized.ACTIVE is None:
             carry, samples, _ = advance(carry, xs[0], xs[1][0], None)
@@ -72,6 +112,8 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None):
             None if a is None else P('x') if axis == 0 else P()
             for axis, a in enumerate(invariants['magnetic_factors']))
         carry_spec = jax.tree.map(lambda a: P() if np.ndim(a) == 0 else P('x'), carry)
+        if context.use_tfsf:
+            carry_spec['tfsf'] = jax.tree.map(lambda _: P(), carry['tfsf'])
         return rank_shard_map(local, mesh=mesh,
             in_specs=(carry_spec, (P(), P('x')), specs),
             out_specs=(carry_spec, P('x')), check_rep=False)(ranks, carry, xs, invariants)
@@ -81,7 +123,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None):
 
 def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                     *, n_steps, boundary, debye_spec, lorentz_spec, port_plan,
-                    record_vref=True):
+                    record_vref=True, tfsf=None, exchange_interval=1):
     """Form every spatial step operand from its owning slab's material rows."""
     from types import SimpleNamespace
     from jax.sharding import NamedSharding
@@ -191,14 +233,23 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     for family, bundle in (('debye', debye), ('lorentz', lorentz)):
         if bundle is not None:
             inputs[family + '_coeffs'] = bundle[0]
+    if tfsf is not None:
+        from rfx.stepping.tfsf import apply_tfsf_h, apply_tfsf_e
+        from rfx.sources.tfsf import update_tfsf_1d_h, update_tfsf_1d_e
+        cfg, carry['tfsf'], inputs['tfsf_tables'] = tfsf
+        ctx = replace(ctx, use_tfsf=True, tfsf_cfg=cfg,
+            apply_tfsf_h=apply_tfsf_h, apply_tfsf_e=apply_tfsf_e,
+            update_tfsf_1d_h=update_tfsf_1d_h, update_tfsf_1d_e=update_tfsf_1d_e)
     waves = inputs['drives'].waves
     inputs['drives'] = inputs['drives']._replace(waves=None)
     return carry, inputs, waves, wrap_uniform(ctx, layout, mesh,
-                                             table=table, port_table=port_table)
+                                             table=table, port_table=port_table,
+                                             exchange_interval=exchange_interval)
 
 
 def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
-                boundary, dispersion, port_plan, record_vref=True):
+                boundary, dispersion, port_plan, record_vref=True, tfsf=None,
+                exchange_interval=1):
     """Transfer dense setup operands to slabs before entering the time loop."""
     grid, materials, pec_edges = operands
     operands.clear()
@@ -206,7 +257,8 @@ def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_s
     dispersion.clear()
     prepared = prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         n_steps=n_steps, boundary=boundary, debye_spec=debye_spec,
-        lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref)
+        lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref,
+        tfsf=tfsf, exchange_interval=exchange_interval)
     del materials, pec_edges, debye_spec, lorentz_spec
     return run_prepared(prepared, records, mesh, n_steps=n_steps)
 
