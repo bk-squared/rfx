@@ -176,7 +176,8 @@ def test_wire_mode_uses_per_cell_impedance():
 
 def _base_sim(**kw):
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(snap="declared",
+    kw.setdefault("snap", "declared")
+    sim = Simulation(
         freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
