@@ -9,6 +9,36 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
+2026-11-05: both files re-priced. Fast prices: `regen-durations` run
+[41949007467](https://github.com/bk-squared/rfx/actions/runs/41949007467) (`lanes=fast`, main
+`e190f8f70`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 12 jobs
+uploaded artifacts; none needed log pricing. No result-line gap exceeds its artifact value by 600 s
+(largest excess 0.7 s); each artifact sum is 1.18-1.74 % below its session time. The unchanged
+full-inventory-or-freshly-measured prune rule drops 3,443 old entries at `e190f8f70` and retains
+11 freshly measured IDs absent from this Mac's full collection. Merged in the 10-29 order
+(old file, jobs 1-9, 11, 12, then job 10), rounded to two significant figures:
+29,759 → **28506 entries in the file**, of which **681 carried unchanged** (not re-measured).
+The explicit fast collection (`not gpu and not slow and not slow_physics`, 28,694 tests on macOS,
+no CAD extra) has 551 unpriced tests, down from 2,741; the default addopts additionally excludes
+`docs_consistency`. pytest-split predicts 42.9-48.5 min per shard (7763 basis), versus old
+46.9-49.2 min; the old split under new prices costs 39.2-53.6 min. Leader verdict: the condition
+that binds is the longest shard against the 75-min job limit: old 49.2 min, new 48.5 min.
+Shards 1-11 span 46.7-48.5 min; shard 12 at 42.9 min is the remainder duration_based_chunks leaves
+in the last group. The design's 2-min spread condition measured the wrong quantity and is withdrawn
+in this record.
+Check on 115 readings from the 10 recent green pr-tests runs, using each shard's own test list:
+normalised actual / new-price prediction median 1.016, p10 0.925, p90 1.105;
+5 readings on CPUs absent from factors.json are excluded by leader decision and listed in the record.
+Weekly prices: run [41565185166](https://github.com/bk-squared/rfx/actions/runs/41565185166)
+(main `b45900a67`), raw runner seconds; fast fallback 304, old weekly file, weekly jobs 1-16,
+all pruned to the 29,144-test weekly collection. 30,570 → **29144 entries**, 3,873 old entries dropped,
+305 not re-measured by weekly (304 fallback and 1 old weekly carry), zero unpriced. All 16 artifact
+sums are within their pytest-step duration. Weekly job 14 has no session line (565-line log ends
+02:30:52Z); its artifact sum is 3,556.06 s, below the metadata step upper bound
+02:18:36Z-03:19:06Z = 3,630 s. Weekly prediction: 53.9-67.2 min (old 56.4-66.4),
+headroom projection 7,780 s of 9,180. Inputs, scripts and readings: rfx-archive
+`rfx/records/20261105-prices-refresh/`.
+
 2026-10-29: both files re-priced. In the 11 green pr-tests runs of 2026-10-28 that ran the fast suite,
 the longest shard's pytest session took 53.8-58.9 min (shards 10 and 11; jobs 55-60 min with install,
 against a 75-min limit) and the shortest 20.1-29.1 min. On their 132 shard readings (pytest seconds
