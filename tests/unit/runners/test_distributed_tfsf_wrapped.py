@@ -133,3 +133,55 @@ def test_t1_t2(boundary, entry, steps):
             two = many
     jax.clear_caches()
 
+
+def evaluate_ntff(devices):
+    """Sample the corrected Hx ghost at the transverse TF/SF boundary."""
+    sim = model('cpml')
+    grid = sim._build_grid()
+    lo = tuple((8 - getattr(grid, f'pad_{axis}_lo')) * grid.dx for axis in 'xyz')
+    hi = tuple((22 - getattr(grid, f'pad_{axis}_lo')) * grid.dx for axis in 'xyz')
+    # At x=14 the face-centre average reads x=15, the left slab's high ghost.
+    # The y=8 face includes the Hx correction just outside the TF box [9,20].
+    sim.add_ntff_box(lo, hi, freqs=[5e9, 7.5e9, 10e9])
+    options = dict(n_steps=60, skip_preflight=True, compute_s_params=False)
+    if devices > 1:
+        options['devices'] = jax.devices('cpu')[:devices]
+    return sim.run(**options)
+
+
+def ntff_quantities(result):
+    from rfx.antenna import antenna_gain
+    from rfx.measurement.farfield import compute_far_field
+
+    angles = (np.linspace(0, np.pi, 19), np.linspace(0, 2 * np.pi, 37))
+    far = compute_far_field(result.ntff_data, result.ntff_box, result.grid, *angles)
+    return dict(zip(result.ntff_data._fields, result.ntff_data),
+                E_theta=far.E_theta, E_phi=far.E_phi, gain=antenna_gain(far))
+
+
+def test_tfsf_ntff_seam():
+    if jax.device_count() < 2:
+        pytest.skip('requires two forced CPU devices')
+    one, two = (evaluate_ntff(devices) for devices in (1, 2))
+    assert one.ntff_box.face_centre and two.ntff_box.face_centre
+    assert (two.ntff_box.i_lo, two.ntff_box.i_hi,
+            two.ntff_box.j_lo, two.ntff_box.j_hi) == (8, 22, 8, 22)
+    reference, actual = ntff_quantities(one), ntff_quantities(two)
+    errors, compensation = {}, {}
+    for name, value in reference.items():
+        want, got = np.asarray(value), np.asarray(actual[name])
+        assert np.isfinite(want).all() and np.isfinite(got).all(), name
+        delta = float(np.max(np.abs(got.astype(np.complex128) - want)))
+        peak = float(np.max(np.abs(want)))
+        errors[name] = delta / peak if peak else delta
+        if name in one.ntff_data._fields[6:]:
+            sum_peak = float(np.max(np.abs(np.asarray(reference[name[2:]]))))
+            compensation[name] = delta / sum_peak if sum_peak else delta
+    row = dict(bar='NTFF', devices=2, steps=60, errors=errors,
+               compensation_error_over_sum=compensation)
+    report(row)
+    # Match test_distributed_ntff.py's CPML bars, including compensation.
+    assert max(value for name, value in errors.items()
+               if name not in compensation) <= 5e-5, row
+    assert max(compensation.values()) <= 2 * np.finfo(np.float32).eps, row
+    jax.clear_caches()
