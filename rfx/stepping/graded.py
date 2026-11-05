@@ -492,9 +492,14 @@ def make_graded_step(
 
     attachments = {point: () for point in HookPoint}
     attachments[HookPoint.BEFORE_SOURCES] = (before_sources,) if port_specs else ()
-    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)
+    slab = ctx.x_face_frame is not None
+    # Slab observers read owned rows from the exchanged state, so the
+    # ghost write does not need to preserve a separate pre-exchange E.
+    attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)
+    attachments[HookPoint.STEP_END] = (after_sources,) if slab else ()
     for point, extra in (hooks or {}).items():
-        attachments[point] += tuple(extra)
+        attachments[point] = (tuple(extra) + attachments[point] if slab
+                              else attachments[point] + tuple(extra))
     advance = compose({
         Kernel.H_UPDATE: h_update,
         Kernel.H_BOUNDARY: h_boundary,
