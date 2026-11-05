@@ -211,11 +211,41 @@ selection_dir=$(mktemp -d) || fail
 # Quote the concrete path now so EXIT always removes this exact scratch directory.
 printf -v selection_cleanup 'rm -rf -- %q' "$selection_dir"
 trap "$selection_cleanup" EXIT
+STAGE2_MARKERS="not gpu and not slow and not slow_physics and not docs_consistency"
+"$PYTHON" scripts/ci/select_gate_tests.py --over-limit-files --durations .test_durations \
+  > "$selection_dir/over-limit-files" || fail
+over_limit_files=()
+while IFS= read -r test_file; do
+  if [ -f "$test_file" ]; then
+    over_limit_files+=("$test_file")
+  fi
+done < "$selection_dir/over-limit-files"
+gate_nodeid_args=()
+collect_status=0
+if [ "${#over_limit_files[@]}" -gt 0 ]; then
+  # Collection is serial even when the gate exports xdist flags in PYTEST_ADDOPTS.
+  PYTEST_ADDOPTS="" "$PYTHON" -m pytest --collect-only -q -p no:cacheprovider \
+    -o addopts="" -m "$STAGE2_MARKERS" "${over_limit_files[@]}" \
+    > "$selection_dir/gate-collection" 2>&1 || collect_status=$?
+  echo "stage-2 file-price collection exit status: $collect_status"
+fi
+# Exit 5 is a successful empty collection: every over-limit test was deselected.
+if [ "$collect_status" -eq 0 ] || [ "$collect_status" -eq 5 ]; then
+  : > "$selection_dir/gate-nodeids"
+  if [ "${#over_limit_files[@]}" -gt 0 ]; then
+    awk '/^tests\/.*\.py::/' "$selection_dir/gate-collection" > "$selection_dir/gate-nodeids" || fail
+  fi
+  gate_nodeid_args=(--gate-nodeids "$selection_dir/gate-nodeids")
+else
+  echo "stage-2 file-price collection unavailable; using whole-file prices"
+  cat "$selection_dir/gate-collection"
+fi
 central_path_args=()
 if [ "${RFX_GATE_CENTRAL_PATHS:-}" = "1" ]; then
   central_path_args+=(--central-paths)
 fi
 "$PYTHON" scripts/ci/select_gate_tests.py ${central_path_args[@]+"${central_path_args[@]}"} \
+  ${gate_nodeid_args[@]+"${gate_nodeid_args[@]}"} \
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" \
   --durations .test_durations --summary "$selection_dir/summary" \
   > "$selection_dir/files" || fail
@@ -237,7 +267,7 @@ stage2_pytest() {
     PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON" -m pytest "${@:2}" -q \
     -p rfx_gate_collection -p rfx_gate_memory -p no:cacheprovider \
-    -o addopts="" -m "not gpu and not slow and not slow_physics and not docs_consistency" --strict-markers \
+    -o addopts="" -m "$STAGE2_MARKERS" --strict-markers \
     --junitxml="$selection_dir/$1.xml"
 }
 cat "$selection_dir/summary"

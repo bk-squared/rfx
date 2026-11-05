@@ -430,7 +430,7 @@ def test_oracle_and_locks_not_added_without_rfx_change(changed):
 
 
 @pytest.mark.parametrize("edited", [False, True])
-def test_oracle_and_locks_budget_excludes_heavy_unless_edited(edited):
+def test_oracle_and_locks_have_no_file_time_limit(edited):
     heavy = "tests/locks/test_heavy.py"
     changed = ["rfx/vmap_sweep.py"] + ([heavy] if edited else [])
     result = selector.select_tests(changed, {heavy: "", "tests/oracle/test_light.py": ""}, {
@@ -438,13 +438,12 @@ def test_oracle_and_locks_budget_excludes_heavy_unless_edited(edited):
         "tests/locks/test_heavy.py::test_x[b]": 101,
         "tests/oracle/test_light.py::test_x": 400,
     })
+    assert result.files == ("tests/locks/test_heavy.py", "tests/oracle/test_light.py")
+    assert not result.excluded
     if edited:
-        assert result.files == ("tests/locks/test_heavy.py", "tests/oracle/test_light.py")
         assert "oracle and lock tests added: 1 files, recorded 400.000000 s" in result.summary()
     else:
-        assert result.files == ("tests/oracle/test_light.py",)
-        assert result.excluded == {"tests/locks/test_heavy.py": 401}
-        assert "oracle and lock tests added: 1 files, recorded 400.000000 s" in result.summary()
+        assert "oracle and lock tests added: 2 files, recorded 801.000000 s" in result.summary()
 
 
 def test_oracle_summary_counts_only_files_no_other_rule_chose():
@@ -459,13 +458,14 @@ def test_oracle_summary_counts_only_files_no_other_rule_chose():
     assert "oracle and lock tests added: 1 files, recorded 5.000000 s" in result.summary()
 
 
-def test_central_change_adds_runners_and_autodiff_except_over_budget(sources, durations):
+def test_central_change_adds_runners_and_autodiff_without_file_time_limit(sources, durations):
     result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
     assert set(result.files) == {
         "tests/unit/runners/test_light.py", "tests/unit/autodiff/test_boundary.py",
         "tests/unit/autodiff/test_unknown.py",
+        "tests/unit/runners/test_heavy.py",
     }
-    assert result.excluded == {"tests/unit/runners/test_heavy.py": 401}
+    assert not result.excluded
 
 
 def test_execute_defaults_to_only_direct_imports(sources, durations):
@@ -538,11 +538,11 @@ def test_changed_test_overrides_budget(sources, durations):
 
 def test_not_run_summary_matches_recorded_tests(sources, durations):
     result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
-    assert result.not_run_count == 3
-    assert result.not_run_seconds == 413.5
-    assert result.selected_seconds == 500
-    assert "3 recorded tests, 413.500000 s" in result.summary()
-    assert "tests/unit/runners/test_heavy.py: 401.000000 s" in result.summary()
+    assert result.not_run_count == 1
+    assert result.not_run_seconds == 12.5
+    assert result.selected_seconds == 901
+    assert "1 recorded tests, 12.500000 s" in result.summary()
+    assert "excluded by >400 s rule: 0 files" in result.summary()
     empty = selector.select_tests([], sources, durations)
     assert empty.not_run_count == 5
     assert empty.not_run_seconds == 913.5
@@ -684,7 +684,8 @@ def test_selected_stage_markers_match_pyproject():
     options = shlex.split(config["tool"]["pytest"]["ini_options"]["addopts"])
     default_expression = options[options.index("-m") + 1]
     stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 9\n")[1]
-    stage_expression = re.search(r'-m "([^"]+)"', stage).group(1)
+    stage_expression = re.search(r'^STAGE2_MARKERS="([^"]+)"', stage, re.M).group(1)
+    assert stage.count('-m "$STAGE2_MARKERS"') == 2
 
     def excluded_markers(expression):
         terms = expression.split(" and ")
@@ -779,9 +780,11 @@ def test_source_scan_node_ids_bypass_budget_and_account_for_parameters():
               'def test_plain():\n    pass\n')
     durations = {f"{path}::test_scan[a]": 3, f"{path}::test_scan[b]": 4,
                  f"{path}::test_plain": 500}
-    result = selector.select_tests(["rfx/core/changed.py"], {path: source}, durations)
+    result = selector.select_tests(["rfx/core/changed.py"], {path: source}, durations,
+                                   gate_nodeids=frozenset({f"{path}::test_scan[a]", f"{path}::test_plain"}))
     assert result.files == (f"{path}::test_scan",)
     assert not result.excluded
+    assert "  tests/unit/test_scan.py: whole-file recorded 507.000000 s" in result.summary()
     assert result.partly_added == {path: 507}
     assert result.selected_seconds == result.source_scan_seconds == 7
     assert result.not_run_count == 1
@@ -920,3 +923,190 @@ def test_selected_status_handling_in_isolated_bash(tmp_path, status):
 def test_aliased_simulation_import_builds_a_model():
     sources = {"tests/unit/other/test_x.py": "def f():\n    from rfx.api import Simulation as _Sim\n    _Sim()"}
     assert selector.select_tests(["rfx/grid.py"], sources, {}).files == tuple(sources)
+
+
+@pytest.mark.parametrize("gate_nodeids,expected_files,expected_seconds", [
+    (frozenset({"tests/unit/sources/test_x.py::fast"}), ("tests/unit/sources/test_x.py",), 10),
+    (None, (), 0),
+])
+def test_t1_stage2_file_price_and_fallback(gate_nodeids, expected_files, expected_seconds):
+    path = "tests/unit/sources/test_x.py"
+    result = selector.select_tests(["rfx/sources/y.py"], {path: ""}, {
+        "tests/unit/sources/test_x.py::fast": 10,
+        "tests/unit/sources/test_x.py::heavy": 1000,
+    }, gate_nodeids=gate_nodeids)
+    assert result.files == expected_files
+    assert result.selected_seconds == expected_seconds
+    if gate_nodeids is None:
+        assert result.excluded == {"tests/unit/sources/test_x.py": 1010}
+        assert "file prices: whole file (gate collection unavailable)" in result.summary()
+    else:
+        assert not result.excluded
+        assert "file prices: stage-2 tests only" in result.summary()
+
+
+def test_t1_all_slow_file_prices_zero():
+    path = "tests/unit/sources/test_slow.py"
+    result = selector.select_tests(["rfx/sources/y.py"], {path: ""}, {
+        "tests/unit/sources/test_slow.py::heavy": 1000,
+    }, gate_nodeids=frozenset())
+    assert result.files == ("tests/unit/sources/test_slow.py",)
+    assert result.selected_seconds == 0
+    assert not result.excluded
+
+
+def test_t1_exact_parameter_ids_and_uncollected_light_files():
+    result = selector.select_tests(["rfx/sources/y.py"], {
+        "tests/unit/sources/test_x.py": "", "tests/unit/sources/test_light.py": "",
+    }, {
+        "tests/unit/sources/test_x.py::test_x[a b::c]": 10,
+        "tests/unit/sources/test_x.py::test_x[a]": 1000,
+        "tests/unit/sources/test_light.py::test_x": 20,
+    }, gate_nodeids=frozenset({"tests/unit/sources/test_x.py::test_x[a b::c]"}))
+    assert result.files == ("tests/unit/sources/test_light.py", "tests/unit/sources/test_x.py")
+    assert result.selected_seconds == 30
+    assert not result.excluded
+
+
+@pytest.mark.parametrize("central_paths,expected_files", [
+    (True, ("tests/unit/runners/test_x.py",)), (False, ()),
+])
+def test_t2_central_gate_has_no_file_time_limit(central_paths, expected_files):
+    result = selector.select_tests(["rfx/core/x.py"], {
+        "tests/unit/runners/test_x.py": "import rfx.core.x",
+    }, {"tests/unit/runners/test_x.py::test_x": 1000}, central_paths=central_paths)
+    assert result.files == expected_files
+    if central_paths:
+        assert not result.excluded
+        assert "central gate: no file-time limit" in result.summary()
+    else:
+        assert result.excluded == {"tests/unit/runners/test_x.py": 1000}
+        assert "central gate: no file-time limit" not in result.summary()
+
+
+def test_t2_central_gate_exempts_candidates_outside_central_test_dirs():
+    result = selector.select_tests(["rfx/core/x.py"], {
+        "tests/unit/other/test_x.py": "import rfx.core.x",
+    }, {"tests/unit/other/test_x.py::test_x": 1000}, central_paths=True)
+    assert result.files == ("tests/unit/other/test_x.py",)
+    assert not result.excluded
+
+
+@pytest.mark.parametrize("path", ["tests/locks/test_x.py", "tests/oracle/test_x.py"])
+def test_t3_always_on_has_no_file_time_limit(path):
+    result = selector.select_tests(["rfx/sources/y.py"], {path: ""}, {
+        f"{path}::test_x": 1000,
+    })
+    assert result.files == (path,)
+    assert result.selected_seconds == 1000
+    assert not result.excluded
+    assert "locks and oracle: no file-time limit" in result.summary()
+
+
+def test_central_option_alone_does_not_exempt_noncentral_candidates():
+    result = selector.select_tests(["rfx/sources/y.py"], {
+        "tests/unit/sources/test_x.py": "",
+    }, {"tests/unit/sources/test_x.py::test_x": 1000}, central_paths=True)
+    assert result.files == ()
+    assert result.excluded == {"tests/unit/sources/test_x.py": 1000}
+
+
+def test_t4_cli_over_limit_files_is_static(monkeypatch, tmp_path, capsys):
+    durations = tmp_path / "durations.json"
+    durations.write_text(json.dumps({
+        "tests/unit/test_z.py::fast": 10, "tests/unit/test_z.py::heavy": 1000,
+        "tests/locks/test_x.py::test_x": 401,
+        "tests/unit/test_boundary.py::test_x": 400,
+        "tests/unit/test_light.py::test_x": 20,
+        "rfx/test_other.py::test_x": 1000, "tests/helper.py::test_x": 1000,
+    }))
+    monkeypatch.setattr(sys, "argv", ["select_gate_tests.py", "--over-limit-files",
+                                     "--durations", str(durations)])
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("static duration listing must not read git or test sources")
+
+    monkeypatch.setattr(selector.subprocess, "check_output", unexpected)
+    monkeypatch.setattr(selector, "read_test_sources", unexpected)
+    assert selector.main() == 0
+    output = capsys.readouterr()
+    assert output.out == "tests/locks/test_x.py\ntests/unit/test_z.py\n"
+    assert output.err == ""
+
+
+def test_cli_gate_nodeids(monkeypatch, tmp_path, capsys):
+    durations = tmp_path / "durations.json"
+    durations.write_text(json.dumps({
+        "tests/unit/sources/test_x.py::fast[a b::c]": 10,
+        "tests/unit/sources/test_x.py::heavy": 1000,
+    }))
+    nodeids = tmp_path / "nodeids"
+    nodeids.write_text("tests/unit/sources/test_x.py::fast[a b::c]\n")
+    monkeypatch.setattr(sys, "argv", ["select_gate_tests.py", "--base", "base",
+                                     "--durations", str(durations), "--gate-nodeids", str(nodeids)])
+    monkeypatch.setattr(selector.subprocess, "check_output", lambda *a, **k: str(ROOT))
+    monkeypatch.setattr(selector, "changed_paths", lambda *a: ["rfx/sources/y.py"])
+    monkeypatch.setattr(selector, "read_test_sources", lambda *a: {"tests/unit/sources/test_x.py": ""})
+    assert selector.main() == 0
+    output = capsys.readouterr()
+    assert output.out == "tests/unit/sources/test_x.py\n"
+    assert "selected-tests: 1 files, recorded 10.000000 s" in output.err
+
+
+@pytest.mark.parametrize("collect_status,over_limit", [(0, True), (5, True), (2, True), (0, False)])
+def test_local_price_collection_and_fallback(tmp_path, collect_status, over_limit):
+    (tmp_path / "tests/unit").mkdir(parents=True)
+    (tmp_path / "tests/unit/test_x.py").touch()
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 9\n", 1)[1]
+    fragment = stage[stage.index("STAGE2_MARKERS="):].split("selected_tests=()", 1)[0]
+    prefix = r'''set -uo pipefail
+selection_dir="$1"
+collect_status_fixture="$2"
+over_limit_fixture="$3"
+CHANGELOG_BASE=base
+CHANGELOG_HEAD=head
+fail() { exit 1; }
+fake_python() {
+  case "$*" in
+    *--over-limit-files*)
+      if [ "$over_limit_fixture" = True ]; then
+        printf '%s\n' tests/unit/test_x.py tests/unit/test_missing.py
+      fi
+      return 0 ;;
+    *--collect-only*)
+      printf '%s\n' "$@" > "$selection_dir/collect-args"
+      printf '%s' "$PYTEST_ADDOPTS" > "$selection_dir/collect-addopts"
+      if [ "$collect_status_fixture" != 5 ]; then
+        printf '%s\n' 'tests/unit/test_x.py::test_x[a b::c]' '1 test collected in 0.01s'
+      fi
+      return "$collect_status_fixture" ;;
+    *) printf '%s\n' "$@" > "$selection_dir/select-args" ;;
+  esac
+}
+PYTHON=fake_python
+'''
+    result = subprocess.run(
+        ["/bin/bash", "-uc", prefix + fragment, "bash", str(tmp_path),
+         str(collect_status), str(over_limit)],
+        env=dict(os.environ, PYTEST_ADDOPTS="--unexpected-inherited-option"),
+        cwd=tmp_path, capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = (tmp_path / "select-args").read_text().splitlines()
+    assert ("--gate-nodeids" in args) == (collect_status in (0, 5))
+    if over_limit:
+        collect_args = (tmp_path / "collect-args").read_text().splitlines()
+        assert "tests/unit/test_missing.py" not in collect_args
+        assert collect_args == ["-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                                "-o", "addopts=", "-m",
+                                "not gpu and not slow and not slow_physics and not docs_consistency",
+                                "tests/unit/test_x.py"]
+        assert (tmp_path / "collect-addopts").read_text() == ""
+        assert f"stage-2 file-price collection exit status: {collect_status}" in result.stdout
+    else:
+        assert not (tmp_path / "collect-args").exists()
+    if collect_status in (0, 5):
+        expected = "tests/unit/test_x.py::test_x[a b::c]\n" if over_limit and collect_status == 0 else ""
+        assert (tmp_path / "gate-nodeids").read_text() == expected
+    else:
+        assert "collection unavailable; using whole-file prices" in result.stdout
