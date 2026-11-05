@@ -23,7 +23,7 @@ def model(case):
     sim = Simulation(
         freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,  # solved length; #1887
         dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3],
-        boundary=boundary, cpml_layers=2 if absorbing else 0, snap="declared",
+        boundary=boundary, cpml_layers=2 if absorbing else 0,
     )
     sim.add_source((5.1e-3, 3.2e-3, 4.3e-3), "ez", amplitude_kind="field",
                    waveform=lambda t: jnp.exp(-((t-1.2e-11)/5e-12)**2))
@@ -40,7 +40,9 @@ def model(case):
         sim.add(Box((6.1e-3, 1.4e-3, 2.2e-3), (10.7e-3, 5.6e-3, 6.3e-3)),
                 material="ade")
     if case in ("pec_body", "cpml_pec"):
-        sim.add(Box((7.1e-3, 4.1e-3, 2.2e-3), (9.4e-3, 6.2e-3, 5.3e-3)),
+        x_nodes = np.r_[0., np.cumsum(sim._dx_profile)]
+        sim.add(Box((x_nodes[8], 4 * 1e-3, 2 * 1e-3),
+                    (x_nodes[10], 6 * 1e-3, 5 * 1e-3)),
                 material="pec")
     return sim
 
