@@ -46,6 +46,13 @@ def is_test_file(path: str) -> bool:
     return path.startswith("tests/") and name.name.startswith("test_") and name.suffix == ".py"
 
 
+def whole_file_seconds(durations: Mapping[str, float]) -> dict[str, float]:
+    totals: dict[str, float] = defaultdict(float)
+    for nodeid, seconds in durations.items():
+        totals[nodeid.split("::", 1)[0]] += seconds
+    return totals
+
+
 def module_name(path: str) -> str | None:
     if not path.startswith("rfx/") or not path.endswith(".py"):
         return None
@@ -157,6 +164,8 @@ class Selection:
     source_scan_run_seconds: float
     source_scan_deselected_count: int
     source_scan_deselected_seconds: float
+    gate_collection_available: bool
+    central_gate: bool
 
     def summary(self) -> str:
         lines = [
@@ -182,8 +191,12 @@ class Selection:
             f"not run (돌리지 않은 시험): {self.not_run_count} recorded tests, "
             f"{self.not_run_seconds:.6f} s",
             "Counts use .test_durations nodeids; contracts run in stage 1 are excluded. "
-            "Markers are read from AST; no pytest collection or test imports are performed.",
+            "Source-scan markers are read from AST; the selector does not collect or import tests.",
+            ("file prices: stage-2 tests only" if self.gate_collection_available else
+             "file prices: whole file (gate collection unavailable)"),
             f"excluded by >{MAX_FILE_SECONDS} s rule: {len(self.excluded)} files",
+            ("central gate: no file-time limit" if self.central_gate else
+             "locks and oracle: no file-time limit"),
         ]
         if self.central_skipped_count is not None:
             lines.append(
@@ -200,6 +213,7 @@ class Selection:
 def select_tests(
     changed_paths: Iterable[str], test_sources: Mapping[str, str], durations: Mapping[str, float],
     *, central_paths: bool = False, module_sources: Mapping[str, str] | None = None,
+    gate_nodeids: frozenset[str] | None = None,
 ) -> Selection:
     """Pure selection over repo-relative paths, source text, and recorded nodeids.
 
@@ -274,12 +288,20 @@ def select_tests(
     message_added = message_tests - candidates
     candidates.update(message_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
-    totals: dict[str, float] = defaultdict(float)
-    for nodeid, seconds in durations.items():
-        totals[nodeid.split("::", 1)[0]] += seconds
+    totals = whole_file_seconds(durations)
+    prices = totals.copy()
+    if gate_nodeids is not None:
+        collected_totals = whole_file_seconds({
+            nodeid: seconds for nodeid, seconds in durations.items() if nodeid in gate_nodeids
+        })
+        for path, seconds in totals.items():
+            if seconds > MAX_FILE_SECONDS or path in collected_totals:
+                prices[path] = collected_totals.get(path, 0)
+    central_gate = central_changed and central_paths
     excluded = {
-        path: totals[path] for path in sorted(candidates)
-        if totals[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
+        path: prices[path] for path in sorted(candidates)
+        if prices[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
+        and not central_gate and not path.startswith(ALWAYS_ON_TEST_DIRS)
     }
     selected = candidates - excluded.keys()
     package_added &= selected
@@ -310,7 +332,7 @@ def select_tests(
         if marked or scan.module_marked:
             source_scan_files.add(path)
             source_scan_count += len(marked)
-    partly_added = {path: seconds for path, seconds in excluded.items()
+    partly_added = {path: totals[path] for path in excluded
                     if path in source_scan_files and path not in source_scan_nodes}
     excluded = {path: seconds for path, seconds in excluded.items()
                 if path not in source_scan_files}
@@ -328,20 +350,21 @@ def select_tests(
     ]
     return Selection(
         tuple(sorted(selected | source_scan_nodes)), excluded, partly_added,
-        sum(totals[path] for path in sorted(selected)) + source_scan_seconds,
+        sum(prices[path] for path in sorted(selected)) + source_scan_seconds,
         len(not_run), sum(not_run),
         len(central_tests) if central_changed and not central_paths else None,
-        sum(totals[path] for path in sorted(central_tests)),
-        len(package_added), sum(totals[path] for path in sorted(package_added)),
-        len(always_on_added), sum(totals[path] for path in sorted(always_on_added)),
-        len(test_module_added), sum(totals[path] for path in sorted(test_module_added)),
-        model_changed, len(model_added), sum(totals[path] for path in sorted(model_added)),
-        len(message_added), sum(totals[path] for path in sorted(message_added)),
+        sum(prices[path] for path in sorted(central_tests)),
+        len(package_added), sum(prices[path] for path in sorted(package_added)),
+        len(always_on_added), sum(prices[path] for path in sorted(always_on_added)),
+        len(test_module_added), sum(prices[path] for path in sorted(test_module_added)),
+        model_changed, len(model_added), sum(prices[path] for path in sorted(model_added)),
+        len(message_added), sum(prices[path] for path in sorted(message_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),
         len(marked_deselected), sum(seconds for nodeid, seconds in durations.items()
                                     if nodeid.split("[", 1)[0] in marked_deselected),
+        gate_nodeids is not None, central_gate,
     )
 
 
@@ -391,20 +414,34 @@ def read_module_sources(paths: Iterable[str], root: Path, head: str | None) -> d
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", required=True)
+    parser.add_argument("--base")
     parser.add_argument("--head", help="omit to include the working tree")
     parser.add_argument("--durations", type=Path, default=Path(".test_durations"))
     parser.add_argument("--summary", type=Path)
+    parser.add_argument("--over-limit-files", action="store_true",
+                        help="list whole-file duration totals above the file-time limit and exit")
+    parser.add_argument("--gate-nodeids", type=Path,
+                        help="stage-2 collect-only nodeids, one per line")
     parser.add_argument("--central-paths", action="store_true",
                         help="include runners/autodiff for central path changes")
     args = parser.parse_args()
+    if not args.over_limit_files and args.base is None:
+        parser.error("--base is required unless --over-limit-files is used")
+    durations = json.loads(args.durations.read_text(encoding="utf-8"))
+    if args.over_limit_files:
+        for path, seconds in sorted(whole_file_seconds(durations).items()):
+            if is_test_file(path) and seconds > MAX_FILE_SECONDS:
+                print(path)
+        return 0
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     paths = changed_paths(args.base, args.head, root)
     result = select_tests(
         paths, read_test_sources(root),
-        json.loads(args.durations.read_text(encoding="utf-8")),
+        durations,
         central_paths=args.central_paths,
         module_sources=read_module_sources(paths, root, args.head),
+        gate_nodeids=(frozenset(args.gate_nodeids.read_text(encoding="utf-8").splitlines())
+                      if args.gate_nodeids is not None else None),
     )
     if args.summary:
         args.summary.write_text(result.summary(), encoding="utf-8")

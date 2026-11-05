@@ -133,6 +133,9 @@ def run_fragment(tmp_path, workers="2", fake=False, first=0, retry=0, kinds=None
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     stage = (ROOT / "scripts/ci/local.sh").read_text().split("selected_tests=()", 1)[1]
     stage = "selected_tests=()" + stage.split('\necho\necho "all ', 1)[0]
+    markers = next(line for line in (ROOT / "scripts/ci/local.sh").read_text().splitlines()
+                   if line.startswith("STAGE2_MARKERS="))
+    stage = markers + "\n" + stage
     (tmp_path / "summary").write_text("selection summary\n")
     scripts = tmp_path / "scripts"
     scripts.mkdir(exist_ok=True)
@@ -361,7 +364,7 @@ def test_real_xdist_retry_collection(tmp_path, shrinks):
 @pytest.mark.parametrize("status", [0, 1])
 def test_selection_cleanup_on_exit(tmp_path, status):
     source = (ROOT / "scripts/ci/local.sh").read_text()
-    setup = source.split('selection_dir=$(mktemp -d)', 1)[1].split('central_path_args=()', 1)[0]
+    setup = source.split('selection_dir=$(mktemp -d)', 1)[1].split('STAGE2_MARKERS=', 1)[0]
     setup = 'selection_dir=$(mktemp -d)' + setup
     summary = source[source.index('\necho\necho "all '):]
     script = ('set -uo pipefail\nfail() { exit 1; }\nSTEP_NAMES=(selected-tests)\n'
