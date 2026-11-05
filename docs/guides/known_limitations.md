@@ -644,17 +644,6 @@ material's even extension; extending the material at least a cell beyond
 the face is supported. No issue plans these kernels or the smoothing
 extension for 2.0; they stay refusals.
 
-### A PMC wall on two x86 CPU devices moves H by up to 30 float32 ULP from one device.
-
-Tracker: #2086
-
-A closed box on a uniform mesh with one PMC face, run with `run(devices=...)` on 2 x86 CPU devices, gives H that
-differs from the one-device run by at most 30 float32 ULP of the H peak and E by at most 5 ULP of the E peak. The
-difference stays bounded over 400 steps and does not grow with the record. With a PEC wall in the same place the two
-runs are bit-identical, and on arm64 CPUs both walls give bit-identical runs. The cause on x86 is undetermined.
-What to do: for a bit-for-bit comparison with one device on x86, use a PEC wall or one device.
-→ [#2086](https://github.com/bk-squared/rfx/issues/2086)
-
 ### A plane wave requires compatible transverse faces and an invariant absorber replacement.
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused)

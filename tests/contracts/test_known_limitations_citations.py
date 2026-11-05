@@ -103,7 +103,10 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # pulse is declared) joined on 2026-10-17; OPEN, checked with
 # `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
 # #1812 left with the declared-pulse fix and its always-on contract pins.
-CITED_ISSUES = frozenset({737, 1373, 1512, 2086, 2150})
+# #2086 (PMC wall on two x86 CPU devices) left when the multi-device uniform
+# step became the one-device step per slab; test_pmc_ghost_coefficient.py pins
+# 1- and 2-device bit identity on x86 with no xfail.
+CITED_ISSUES = frozenset({737, 1373, 1512, 2150})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
