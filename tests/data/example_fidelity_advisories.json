@@ -641,6 +641,54 @@
    "ref": "examples/tutorials/ports_and_sparams_101.py:157-184",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "the demo never time-steps; the warning is part of the exported report. z: realized 1 cells (0.001 m), declared 1 cells (0.001 m).",
+   "ref": "examples/tutorials/artifact_report_demo.py:39-40",
+   "rows": 1,
+   "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 62 cells (0.05937 m), declared 62.6579080344 cells (0.06 m).",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:253-254,288",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 30 cells (0.0586 m), declared 30.7167235495 cells (0.06 m).",
+   "ref": "examples/tutorials/patch_antenna_demo.py:328-329,377",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "true positive on the substrate; strip and ports silent. y: realized 36 cells (0.00835125 m), declared 36.641221374 cells (0.0085 m).",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:120-129,179-182",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "the variant lengthens the patch by half a cell by growing the 8 cells inside its +x edge (m6_wire_port_ad.py:1-14, 133-138); the substrate drawn 10 mm is then solved 10.125 mm.",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:205-213",
+   "rows": 1,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "centroid only; the strip width the notch depends on is solved within 1 %. x: realized 262 cells (0.033274 m), declared 261.417322835 cells (0.0332 m).",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:247-269",
+   "rows": 2,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   }
  ]
 }

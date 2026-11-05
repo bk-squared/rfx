@@ -210,10 +210,71 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_sheet_cavity_thickness"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[1]",
+        "numbers": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          -0.3,
+          -13.0434782609,
+          6.0,
+          0.006,
+          6.0,
+          0.006,
+          0.0,
+          0.0,
+          6.0,
+          0.006,
+          6.0,
+          0.006,
+          0.0,
+          0.0,
+          2.0,
+          0.002,
+          2.3,
+          0.0023,
+          -0.15,
+          -0.00015
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[2]",
+        "numbers": [
+          2.0,
+          0.25,
+          6.7,
+          0.0067,
+          6.0,
+          0.006,
+          0.0,
+          0.0,
+          6.7,
+          0.0067,
+          6.0,
+          0.006,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          -0.3,
+          -0.0003
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 12,
+    "n_issues": 14,
     "ok": true
   }
 }

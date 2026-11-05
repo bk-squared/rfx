@@ -98,6 +98,29 @@ reaches: the two remaining ``precision_*`` guards,
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
 
+SNAPSHOT CHANGE, 2026-11-05 (one realization verdict). Written before the regeneration.
+congruence_off_lattice: +2 realization error; PEC boxes x 1.0–4.5 mm and 6.02–9.52 mm on 1 mm cells are solved 3 and 4 cells against 3.5 drawn (−14.3 %, +14.3 %): the off-lattice pair this scene exists to show; strict refuses metal.
+sheet_congruence_off_lattice: +2 realization error; Patterned sheets, area-equivalent length −2.5 % and −16.7 %: the footprint verdict for non-Box sheets (Box sheets keep sheet_effective_size; one quantity, one rule).
+stack_snapped_patch: +2 realization warning; Dielectric layer z 2.3 cells drawn, 2 solved (−13 %; dielectric warns); sheet centroid −0.3 cell in z.
+tie_stack: +2 realization warning; Two 0.1 mm thin conductors solved as zero-thickness sheets: centroid −0.5 cell in z (−50 µm). Footprint stays with sheet_effective_size.
+off_lattice_edges: +1 realization warning; PEC box x 1.3–10.3 mm: extent 9 cells kept, both faces move to 1 and 10 mm, centroid −0.3 cell; extent within 1 %, so only the centroid warns.
+msl_x_clearance: +2 realization warning; snap="declared" fixture: RO4350B substrate 254 µm solved 240 µm (−5.5 %); 0.6 mm PEC strip on 80 µm cells solved 7 cells, 0.56 mm (−6.7 %): the S2 case, warned because the fixture declares snap.
+msl_y_clearance: +2 realization warning; snap="declared" fixture: RO4350B substrate 254 µm solved 240 µm (−5.5 %); 0.6 mm PEC strip on 80 µm cells solved 7 cells, 0.56 mm (−6.7 %): the S2 case, warned because the fixture declares snap.
+guards_probe_in_cpml: +1 absorber_overlap error; Source at z = 22.5 mm lies outside the interior [0, 20.99] mm (in the padded absorber): a point outside the interior now refuses on both grids (NOTE §2 graded item, applied to uniform too).
+guards_lossless_q: +1 realization warning; Alumina box 5–15 mm on 0.4 mm cells: all six faces at half-cell ties go to the lower node, so the box sits 0.2 mm (0.5 cell) low on every axis; extent exact.
+guards_box_alumina: +1 realization warning; Alumina box 5–15 mm on 0.4 mm cells: all six faces at half-cell ties go to the lower node, so the box sits 0.2 mm (0.5 cell) low on every axis; extent exact.
+guards_msl_sheet_probe: +2 realization warning; Substrate y +1.6 % (dielectric); strip sheet centroid +0.31 cell in y (+40 µm).
+guards_under_resolved_dielectric: +1 realization warning; Dielectric box at half-cell ties: centroid −0.5 cell (−1 mm) on every axis, extent exact.
+ntff_pec_overlap: +1 realization error; PEC box z 10–40 mm on 2.998 mm cells solved 11 cells against 10.0 (+9.9 %).
+ntff_pec_overlap_full: +1 realization error; PEC box z 10–40 mm on 2.998 mm cells solved 11 cells against 10.0 (+9.9 %).
+pec_face_short_of_wall: +1 realization warning; PEC volume z 10.16 mm solved 10 cells (−1.6 %); snap="declared" fixture.
+wire_port_dead_extent: +1 realization error; Wire port drawn 1.5 mm (3 cells) solved 2 cells (−33 %).
+conformal_fine_dx: 2 port_aperture_snap warnings → 1 error; WR-90 aperture 10.16 mm on 1 mm cells solved 10.00 mm (−1.6 %); the existing port_aperture_snap text is kept (bar B3) and is now a strict refusal; one finding per port instead of one per axis.
+waveguide_nu_declared_geometry: +1 port_aperture_snap warning; Graded WR-90 aperture y −1.6 %, z +3.3 %; snap="declared" fixture, so it warns.
+coax_junction_short: +1 realization warning; 0.3 mm dielectric layer at half-cell ties: centroid −0.5 cell (−50 µm), extent exact.
+wire_port_dead_cell_nu: +3 realization warning; Graded: substrate z 254 µm solved 226 µm (−10.9 %), strip sheet centroid +0.28 cell, wire port z −10.9 % (follows the substrate).
+The two congruence_off_lattice count-mutation tests pass again after the regeneration (they failed only because the new code reached the lock before their count assertion).
+
 SNAPSHOT CHANGE, 2026-10-29 (in-plane grading cap 1.3 -> 1.4). Written before the regeneration.
 ``nu_wire_port_on_graded_node``'s two in-plane ``nu_grading_ratio_beyond_validated_cap`` lines (dx ratio 2.0, dy 3.0)
 now name the in-plane cap 1.4 instead of 1.3 and no longer quote the z cap in their scope, so their numbers go from

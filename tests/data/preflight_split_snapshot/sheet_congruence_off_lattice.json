@@ -72,10 +72,68 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_congruent_rasterization_parity"
+      },
+      {
+        "code": "realization",
+        "loc": "thin_conductor[0]",
+        "numbers": [
+          0.0,
+          -0.0796742233481,
+          -2.45879991365,
+          3.7,
+          0.0037,
+          3.5,
+          0.0035,
+          -0.25,
+          -0.00025,
+          2.7,
+          0.0027,
+          3.0,
+          0.003,
+          -0.5,
+          -0.0005,
+          0.0,
+          0.0,
+          0.4,
+          0.0004,
+          -0.4,
+          -0.0004
+        ],
+        "severity": "error",
+        "source": "judge_realization"
+      },
+      {
+        "code": "realization",
+        "loc": "thin_conductor[1]",
+        "numbers": [
+          1.0,
+          -0.540370349204,
+          -16.6761910205,
+          2.7,
+          0.0027,
+          3.5,
+          0.0035,
+          0.23,
+          0.00023,
+          2.7,
+          0.0027,
+          3.0,
+          0.003,
+          -0.5,
+          -0.0005,
+          0.0,
+          0.0,
+          0.4,
+          0.0004,
+          -0.4,
+          -0.0004
+        ],
+        "severity": "error",
+        "source": "judge_realization"
       }
     ],
-    "n_errors": 0,
-    "n_issues": 3,
-    "ok": true
+    "n_errors": 2,
+    "n_issues": 5,
+    "ok": false
   }
 }
