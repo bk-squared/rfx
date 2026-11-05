@@ -358,7 +358,8 @@ def test_port_material_fold_is_checked_after_setup(entry, on_face):
     # Each sheet is clear of the source shell; only the load cells between
     # them cross it. Those conductivities are added during port setup.
     for height in (z, z + 0.004):
-        sim.add(Box((0.007 if height == z else 0.009, 0.007, height), (0.011, 0.009, height)), material="pec")
+        sim.add(Box(((7 - .35) * .001 if height == z else .009, (7 - .35) * .001, height),
+                    ((11 + .35) * .001, (9 + .35) * .001, height)), material="pec")
     sim.add_msl_port((0.009, 0.008, z), width=0.002, height=0.004,
                      excite=False, mode="uniform", name="passive")
     if on_face:
@@ -497,8 +498,10 @@ def test_closed_box_pec_sheet_declaration_and_execution(entry, crossing):
 
     sim = Simulation(freq_max=15e9, domain=(0.036, 0.024, 0.024), dx=1e-3,
                      boundary="cpml", cpml_layers=8)
-    sheet = (Box((0.002, 0.010, 0.012), (0.006, 0.014, 0.012)) if crossing else
-             Box((0.018, 0.008, 0.008), (0.018, 0.016, 0.016)))
+    sheet = (Box(((2 - .35) * .001, (10 - .35) * .001, .012),
+                 ((6 + .35) * .001, (14 + .35) * .001, .012)) if crossing else
+             Box((.018, (8 - .35) * .001, (8 - .35) * .001),
+                 (.018, (16 + .35) * .001, (16 + .35) * .001)))
     sim.add(sheet, material="pec")
     sim.add_tfsf_source(f0=8e9, margin=4, direction="+x", polarization="ez",
                         closed_box=True)

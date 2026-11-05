@@ -104,7 +104,7 @@ def _build_thru(dx: float) -> Simulation:
     lx = L_LINE + 2 * MARGIN
     ly = W_TRACE + 2 * (2 * H_SUB + 8 * dx)
     lz = H_SUB + 1.5e-3
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=F_MAX, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )

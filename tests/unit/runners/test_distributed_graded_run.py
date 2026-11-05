@@ -23,7 +23,7 @@ def model(case):
     sim = Simulation(
         freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,  # solved length; #1887
         dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3],
-        boundary=boundary, cpml_layers=2 if absorbing else 0,
+        boundary=boundary, cpml_layers=2 if absorbing else 0, snap="declared",
     )
     sim.add_source((5.1e-3, 3.2e-3, 4.3e-3), "ez", amplitude_kind="field",
                    waveform=lambda t: jnp.exp(-((t-1.2e-11)/5e-12)**2))

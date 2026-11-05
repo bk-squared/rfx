@@ -7,7 +7,7 @@ from rfx.geometry.csg import Sphere
 
 
 def _sim():
-    sim = Simulation(freq_max=10e9, domain=(0.012,) * 3, dx=0.0015,
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.012,) * 3, dx=0.0015,
                      boundary="cpml", cpml_layers=4)
     sim.add(Sphere(center=(0.006,) * 3, radius=0.002), material="pec")
     sim.add_source((0.003, 0.006, 0.006), component="ez", amplitude_kind="current")

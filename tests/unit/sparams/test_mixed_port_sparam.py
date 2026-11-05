@@ -176,7 +176,7 @@ def test_wire_mode_uses_per_cell_impedance():
 
 def _base_sim(**kw):
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -206,7 +206,7 @@ def _bisecting_sim():
     this file is on-lattice.
     """
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=80e-6, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -470,10 +470,10 @@ def test_guard_requires_pec_ground_for_flux_channel():
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     # A physical MSL ground still exists when the domain's z_lo is CPML.
     # Only the flux extractor requires that domain face itself to be PEC.
-    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, 0.0)), material="pec")
+    sim.add(Box((0.0, 0.0, 0.0), (95 * _DX, 36 * _DX, 0.0)), material="pec")
     y_c = ly / 2.0
-    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB + _DX)), material="pec")
+    sim.add(Box((0.0, 14 * _DX, 3 * _DX),
+                (95 * _DX, 21 * _DX, 4 * _DX)), material="pec")
     _add_feed(sim, y_c)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
     with pytest.raises(NotImplementedError, match="PEC z_lo"):

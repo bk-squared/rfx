@@ -251,7 +251,7 @@ def test_w4_internal_pec_energy(monkeypatch, tmp_path):
     sim = Simulation(freq_max=20e9, domain=(.012,) * 3, dx=.001,
                      dz_profile=profile, boundary='pec', cpml_layers=0)
     sim.add_material('sphere', eps_r=12.)
-    sim.add(Box((0, 0, .002), (.012, .012, .004)), material='pec')
+    sim.add(Box((0, 0, 2 * .001), (12 * .001, 12 * .001, float(np.cumsum(profile)[3]))), material='pec')
     sim.add(Sphere((.0061, .0058, .0052), .0029), material='sphere')
     pulse = GaussianPulse(f0=10e9, bandwidth=.8)
     dt = sim._build_nonuniform_grid().dt

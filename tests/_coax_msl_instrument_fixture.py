@@ -22,7 +22,7 @@ FREQS = np.array([6e9, 8e9, 10e9])
 
 
 def build_instrument_junction():
-    sim = Simulation(freq_max=16e9, domain=DOMAIN, dx=DX,
+    sim = Simulation(snap="declared", freq_max=16e9, domain=DOMAIN, dx=DX,
                      cpml_layers=8, boundary="cpml")
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, GROUND), (DOMAIN[0], DOMAIN[1], TRACE)), material="sub")

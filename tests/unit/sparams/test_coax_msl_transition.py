@@ -2825,7 +2825,7 @@ def _build_coax_msl_transition_sim_attempt3():
     from rfx.boundaries.spec import BoundarySpec
     from rfx.geometry.csg import Box, Cylinder
 
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
     )

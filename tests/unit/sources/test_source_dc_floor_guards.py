@@ -564,7 +564,7 @@ def _hz_drive_sim(kind):
                          boundary="pec", cpml_layers=0)
         sim.add_material("sub", eps_r=2.2)
         sim.add(Box((0., 0., 0.), (.024, .024, .003)), material="sub")
-        sim.add(Box((0., .010, .003), (.024, .014, .003)), material="pec")
+        sim.add(Box((0., (10 - .35) * .001, .003), (.024, (14 + .35) * .001, .003)), material="pec")
         sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
                          direction="+x", impedance=50., waveform=hz,
                          eps_r_sub=2.2, n_probe_offset=3, n_probe_spacing=2,

@@ -15,9 +15,9 @@ class CalculatorGridReached(Exception):
     """Stop at the calculator's own build, after its admission block."""
 
 
-def _guide():
+def _guide(*, snap="strict"):
     sim = Simulation(
-        freq_max=8e9, domain=(0.06, 0.024, 0.012), dx=0.003,
+        freq_max=8e9, domain=(0.06, 0.024, 0.012), dx=0.003, snap=snap,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")), cpml_layers=6)
     for x, direction in ((0.009, "+x"), (0.051, "-x")):
@@ -57,7 +57,7 @@ def _intercept_calculator_grid(monkeypatch, calculator):
 @pytest.mark.parametrize("dispatch", [False, True])
 @pytest.mark.parametrize("skip", [False, True])
 def test_waveguide_shared_preflight(monkeypatch, dispatch, skip):
-    sim = _guide()
+    sim = _guide(snap="declared" if skip else "strict")
     _intercept_calculator_grid(monkeypatch, compute_waveguide_s_matrix)
     call = sim.compute_s_matrix if dispatch else sim.compute_waveguide_s_matrix
     if skip:

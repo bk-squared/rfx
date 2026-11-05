@@ -48,10 +48,25 @@ def _planes(sim):
 def _microstrip(sim):
     # Minimal physical prerequisites of an MSL declaration: both longitudinal
     # conductor surfaces exist at its declared ground and trace heights.
-    sim.add(Box(point(1, 1, 1), point(9, 6, 1)), material='pec')
-    sim.add(Box(point(1, 2, 2), point(9, 4, 2)), material='pec')
+    sim.add(Box(point(1 - .35, 1 - .35, 1), point(9 + .35, 6 + .35, 1)), material='pec')
+    y_hi = (3.9 + .35 * 1.1) if sim._dy_profile is not None and sim._dy_profile[3] != DX else (4 + .35)
+    sim.add(Box(point(1 - .35, 2 - .35, 2), point(9 + .35, y_hi, 2)), material='pec')
     sim.add_msl_port(position=point(3, 3, 1), width=2*DX, height=DX,
                      direction='+x', impedance=50., waveform=waveform)
+
+
+def _metal(sim, *, volume=False, thin=False, f0=False):
+    graded = sim._dy_profile is not None and sim._dy_profile[3] != DX
+    top = (5 + .9 - 2) if graded else 4
+    outside = 1.1 if graded else 1
+    shape = (Box(point(5, 2, 2), point(6, top, 3)) if volume else
+             Box(point(5, 2 - .35, 1 - .35),
+                 point(5, top + .35 * outside, top + .35 * outside)))
+    if thin:
+        sim.add_thin_conductor(shape, **(dict(sigma_bulk=1e3, thickness=DX/10,
+                                             surface_impedance_f0=5e9) if f0 else {}))
+    else:
+        sim.add(shape, material='pec')
 
 
 # A row is deliberately explicit: extending admission cannot inherit a no-op.
@@ -76,14 +91,14 @@ BUILDERS = {
     ('_materials', 'lorentz'): _material(eps_r=2.5, lorentz_poles=[lorentz_pole(0.5, 2*np.pi*5e9, 1e9)]),
     ('_materials', 'drude'): _material(eps_r=2.5, lorentz_poles=[drude_pole(2*np.pi*5e9, 1e9)]),
     ('_materials', 'kerr'): _material(eps_r=2.5, chi3=1e-3),
-    ('_geometry', 'pec_volume'): _add('add', Box(point(5.2, 2.1, 2.2), point(6.3, 4.2, 3.3)), material='pec'),
-    ('_geometry', 'pec_sheet'): _add('add', Box(point(5, 2, 1), point(5, 4, 4)), material='pec'),
+    ('_geometry', 'pec_volume'): ({}, lambda sim: _metal(sim, volume=True)),
+    ('_geometry', 'pec_sheet'): ({}, _metal),
     ('_geometry', 'pec_wire'): _add('add', PolylineWire((point(5, 3, 1), point(5, 3, 4)), radius=0), material='pec'),
     # The graded profile has nodes at 3 and 3.9 DX (not 4): DC film edges sit on
     # nodes every lane shares, so the realized footprint equals the drawn one.
     ('_thin_conductors', 'lossy_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 5, 5)), sigma_bulk=1e3, thickness=DX/10),
-    ('_thin_conductors', 'pec_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4))),
-    ('_thin_conductors', 'surface_impedance'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4)), sigma_bulk=1e3, thickness=DX/10, surface_impedance_f0=5e9),
+    ('_thin_conductors', 'pec_sheet'): ({}, lambda sim: _metal(sim, thin=True)),
+    ('_thin_conductors', 'surface_impedance'): ({}, lambda sim: _metal(sim, thin=True, f0=True)),
     ('_pinned_sheets', 'pec_sheet'): _add('add_pinned_sheet', plane_index=6, i_range=(3, 5), j_range=(3, 6), normal_axis=0),
     ('_ports', 'source'): ({}, _nothing),
     ('_ports', 'amplitude_kind'): ({}, _nothing),

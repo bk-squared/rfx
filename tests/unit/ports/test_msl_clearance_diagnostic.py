@@ -35,7 +35,7 @@ def _base(direction="+x", *, auto=False):
     sim.add(Box((0, 0, 0), (domain[0], domain[1], 2 * U)), material="substrate")
     sim.add(Box((0, 0, 0), (domain[0], domain[1], 0)), material="pec")
     lo, hi = [0.0, 0.0, 2 * U], [domain[0], domain[1], 2 * U]
-    lo[width], hi[width] = 4 * U, 8 * U
+    lo[width], hi[width] = (4 - .35) * U, (8 + .35) * U
     sim.add(Box(tuple(lo), tuple(hi)), material="pec")
     position = [6 * U, 6 * U, 0.0]
     # Deliberately off-node: the ladder starts from node 2 (or 38), not

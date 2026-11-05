@@ -123,7 +123,8 @@ def _scene(path, kind, *, refusal=False, debye=False):
             sim.add_material('substrate', eps_r=3.)
             sim.add(Box((2e-3, 2e-3, 1e-3), (23e-3, 10e-3, 3e-3)), material='substrate')
             sim.add(Box((2e-3, 2e-3, 0), (23e-3, 10e-3, 1e-3)), material='pec')
-            sim.add(Box((5e-3, 5e-3, 3e-3), (22e-3, 7e-3, 4e-3)), material='pec')
+            strip_z = np.cumsum(np.r_[np.full(layers, DZ_MSL[0]), DZ_MSL]) - layers * DZ_MSL[0] if graded else None
+            sim.add(Box((5e-3, 5e-3, float(strip_z[layers + 5]) if graded else 3e-3), (22e-3, 7e-3, float(strip_z[layers + 7]) if graded else 4e-3)), material='pec')
         sim.add_msl_port((5e-3, 6e-3, 1e-3), width=2e-3, height=2e-3,
                          direction='+x', impedance=50., waveform=pulse,
                          mode='eigenmode' if kind == 'msl-eigenmode' else 'laplace',

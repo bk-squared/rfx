@@ -73,8 +73,12 @@ def _model(case="mixed", large=False):
     sim.add_material("block", eps_r=4.4, sigma=.02, mu_r=1.5, **poles)
     sim.add(Box((.3 * nx * 1e-3, .2 * ny * 1e-3, .2 * dz.sum()),
                 (.7 * nx * 1e-3, .8 * ny * 1e-3, .8 * dz.sum())), material="block")
-    sim.add(Box((.45 * nx * 1e-3, .4 * ny * 1e-3, .4 * dz.sum()),
-                (.55 * nx * 1e-3, .6 * ny * 1e-3, .6 * dz.sum())), material="pec")
+    pec_z = np.cumsum(np.r_[np.full(2, dz[0]), dz]) - 2 * dz[0]
+    conductor = (Box((.45 * nx * 1e-3, .4 * ny * 1e-3, .4 * dz.sum()),
+                     (.55 * nx * 1e-3, .6 * ny * 1e-3, .6 * dz.sum())) if large else
+                 Box((5 * 1e-3, 3 * 1e-3, float(pec_z[4])),
+                     (7 * 1e-3, 4 * 1e-3, float(pec_z[5]))))
+    sim.add(conductor, material="pec")
     # Off the PEC block, close enough for nonzero traces/gradients in 8 steps;
     # the source and probe straddle the two-device seam in this 17-cell grid.
     sim.add_source((.45 * nx * 1e-3, .7 * ny * 1e-3, .5 * dz.sum()),

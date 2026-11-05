@@ -12,6 +12,7 @@ def _model(nonuniform=False):
     d = 1e-3
     kwargs = {"dz_profile": np.full(9, d)} if nonuniform else {}
     sim = Simulation(freq_max=10e9, domain=(12*d, 11*d, 9*d), dx=d,
+                     snap="declared",
                      boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
                                            y=Boundary(lo="cpml", hi="pec"), z="pec"),
                      cpml_layers=2, **kwargs)
@@ -212,6 +213,7 @@ def _terminated_trace(nonuniform):
     d = 127e-6
     kw = {"dz_profile": np.full(10, d)} if nonuniform else {}
     sim = Simulation(freq_max=20e9, domain=(60.4*d, 30*d, 10*d), dx=d,
+                     snap="declared",
                      boundary="cpml", cpml_layers=8, **kw)
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, 0), (60.4*d, 30*d, 2*d)), material="sub")
@@ -424,6 +426,7 @@ def test_lossy_run_record_retains_assembly_continuation(monkeypatch, nonuniform)
     import rfx.runners.nonuniform as nu
     kwargs = {"dz_profile": np.full(8, .001)} if nonuniform else {}
     sim = Simulation(freq_max=10e9, domain=(.0086, .0086, .008), dx=.001,
+                     snap="declared",
                      boundary="cpml", cpml_layers=4, **kwargs)
     sim.add_thin_conductor(Box((0., 0., .004), (.0086, .0086, .004)),
                            sigma_bulk=1e4, surface_impedance_f0=10e9)

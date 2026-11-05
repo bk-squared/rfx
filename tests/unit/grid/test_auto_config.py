@@ -445,7 +445,7 @@ def test_auto_mesh_trigger_fires_thin_only_end_to_end():
     from rfx.sources.sources import GaussianPulse
     from rfx.geometry.csg import Box
     from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.002),
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.02, 0.02, 0.002),
                      boundary="cpml", cpml_layers=6)
     sim.add_thin_conductor(Box((0.006, 0.006, 0.001), (0.014, 0.009, 0.001)),
                            sigma_bulk=5.8e7, thickness=35e-6)

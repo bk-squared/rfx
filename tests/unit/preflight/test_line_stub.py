@@ -281,7 +281,7 @@ def test_the_placement_the_refusal_recommends_is_admitted(thin, port_x):
     import re
 
     def build(start):
-        sim = Simulation(domain=(.028, .012, .006), dx=.0005,
+        sim = Simulation(snap="declared", domain=(.028, .012, .006), dx=.0005,
                          freq_max=40e9, boundary='cpml', cpml_layers=3)
         sim.add_material('board', eps_r=3.66)
         sim.add(Box((0, 0, 0), (.028, .012, .001)), material='board')

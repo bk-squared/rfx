@@ -176,7 +176,8 @@ def test_lumped_solve_releases_inspection(entry, contexts):
 def test_ntff_solve_releases_inspection(entry, graded, contexts):
     sim = _model(graded=graded, boundary='cpml')
     # A conductor inside the box exercises the NTFF realized-geometry reader.
-    sim.add(Box((.002, .002, .005), (.006, .006, .005)), material='pec')
+    sim.add(Box(((2 - .35) * .001, (2 - .35) * .001, .005),
+                ((6 + .35) * .001, (6 + .35) * .001, .005)), material='pec')
     sim.add_ntff_box((.001, .001, .001), (.007, .007, .007), freqs=[4e9])
     _prime(sim)
     # The box sits closer than lambda/2 to the sheet, which preflight refuses; this checks lifetime, not the far field.

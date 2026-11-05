@@ -459,7 +459,8 @@ def test_a_reference_impedance_sheet_is_refused_not_run_without_it(monkeypatch):
     refs = _tj_refs(freqs, 6e9)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        refs[0].add_thin_conductor(Box((0.05, 0.06, 0.0), (0.07, 0.06, 0.02)),
+        refs[0].add_thin_conductor(Box(((25 - .35) * .002, .06, 0.),
+                                      ((35 + .35) * .002, .06, .02)),
                                    sigma_bulk=1e4, surface_impedance_f0=6e9)
         with pytest.raises(NotImplementedError,
                            match=r"port_reference_sims\[0\] declares a surface-impedance sheet"):

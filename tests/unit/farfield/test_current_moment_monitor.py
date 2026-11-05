@@ -832,9 +832,11 @@ def _strip_dipole_run():
     xc, yc, zc = lx / 2, ly / 2, lz / 2
     sim = Simulation(freq_max=12e9, domain=(lx, ly, lz), dx=1e-3,
                      boundary="cpml", cpml_layers=8)
-    sim.add(Box((xc - L / 2, yc, zc), (xc - 1e-3, yc + 1e-3, zc)),
+    sim.add(Box((xc - (7 + .35) * 1e-3, yc - .35 * 1e-3, zc),
+                (xc - (1 - .35) * 1e-3, yc + (1 + .35) * 1e-3, zc)),
             material="pec")
-    sim.add(Box((xc + 1e-3, yc, zc), (xc + L / 2, yc + 1e-3, zc)),
+    sim.add(Box((xc + (1 - .35) * 1e-3, yc - .35 * 1e-3, zc),
+                (xc + (7 + .35) * 1e-3, yc + (1 + .35) * 1e-3, zc)),
             material="pec")
     sim.add_source((xc, yc, zc), "ex")
     sim.add_ntff_box((4e-3, 4e-3, 4e-3), (lx - 4e-3, ly - 4e-3, lz - 4e-3),
@@ -1705,7 +1707,8 @@ def test_refuses_a_radiator_the_slab_does_not_hold(case):
         # cells 9..10 on x: cell 9's edges lie on the slab's first layer
         _block(sim, (6, 10, 10), (10, 14, 14))
     elif case == "conductor sheet crossing the slab":
-        sim.add(Box((8e-3, 8e-3, 12e-3), (20e-3, 16e-3, 12e-3)), material="pec")
+        sim.add(Box(((4 - .35) * DX, (4 - .35) * DX, 12e-3),
+                    ((10 + .35) * DX, (8 + .35) * DX, 12e-3)), material="pec")
     elif case == "source outside":
         sim.add_source((3e-3, 12e-3, 12e-3), "ez", amplitude_kind="current")
     elif case == "port outside":
@@ -1727,7 +1730,8 @@ def test_accepts_the_same_structures_one_cell_further_in():
     from rfx import Box
     sim = _guard_sim()
     _block(sim, (8, 10, 10), (12, 14, 14))
-    sim.add(Box((8e-3, 8e-3, 14e-3), (16e-3, 16e-3, 14e-3)), material="pec")
+    sim.add(Box(((4 - .35) * DX, (4 - .35) * DX, 14e-3),
+                ((8 + .35) * DX, (8 + .35) * DX, 14e-3)), material="pec")
     sim.add_port((14e-3, 12e-3, 10e-3), "ez", impedance=50.0)
     sim.add_lumped_rlc((10e-3, 14e-3, 12e-3), "ez", R=50.0)
     res = _guard_runs(sim)
@@ -2037,10 +2041,10 @@ def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     sim.add_waveguide_port(4e-3, y_range=(4e-3, 20e-3), z_range=(8e-3, 16e-3),
                            freqs=GUARD_FREQS)
     # PEC guide walls on the aperture edges, ending before the slab (x < 6 mm)
-    for lo, hi in (((0., 2e-3, 6e-3), (5e-3, 4e-3, 18e-3)),
-                   ((0., 20e-3, 6e-3), (5e-3, 22e-3, 18e-3)),
-                   ((0., 2e-3, 6e-3), (5e-3, 22e-3, 8e-3)),
-                   ((0., 2e-3, 16e-3), (5e-3, 22e-3, 18e-3))):
+    for lo, hi in (((0., 2e-3, 6e-3), (2 * DX, 4e-3, 9 * DX)),
+                   ((0., 20e-3, 6e-3), (2 * DX, 22e-3, 9 * DX)),
+                   ((0., 2e-3, 6e-3), (2 * DX, 22e-3, 8e-3)),
+                   ((0., 2e-3, 16e-3), (2 * DX, 22e-3, 9 * DX))):
         sim.add(Box(lo, hi), material="pec")
     with pytest.raises(NotImplementedError, match="waveguide port"):
         _guard_runs(sim)
@@ -2070,7 +2074,7 @@ def _msl_guard_sim(slab_y=(7e-3, 17e-3), *, lane="uniform", **port_kw):
     from rfx import Box, Simulation
     kw, lz = (({"dz_profile": MSL_GUARD_DZ}, float(MSL_GUARD_DZ.sum()))
               if lane == "graded" else ({}, 14e-3))
-    sim = Simulation(freq_max=1.2e10, domain=(24e-3, 24e-3, lz), dx=1e-3,
+    sim = Simulation(snap="declared", freq_max=1.2e10, domain=(24e-3, 24e-3, lz), dx=1e-3,
                      cpml_layers=6, boundary="cpml", **kw)
     for z in (6e-3, 8e-3):
         sim.add(Box((8e-3, 11e-3, z), (16e-3, 13e-3, z)), material="pec")
@@ -2178,9 +2182,12 @@ def _msl_patch_run(lane):
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((3 * mm, 3 * mm, 3 * mm), (25 * mm, 21 * mm, 4 * mm)),
             material="sub")
-    for lo, hi in (((3, 3, 3), (25, 21, 3)),          # ground
-                   ((12, 6, 4), (22, 18, 4)),         # patch
-                   ((5, 10.5, 4), (12, 13.5, 4))):    # trace
+    for lo, hi in (((3 - .35 * .5, 3 - .35 * .5, 3),
+                    (25 + .35 * .5, 21 + .35 * .5, 3)),  # ground
+                   ((12 - .35 * .5, 6 - .35 * .5, 4),
+                    (22 + .35 * .5, 18 + .35 * .5, 4)),  # patch
+                   ((5, 10.5 - .35 * .5, 4),
+                    (12, 13.5 + .35 * .5, 4))):         # trace
         sim.add(Box(tuple(v * mm for v in lo), tuple(v * mm for v in hi)),
                 material="pec")
     sim.add_msl_port((5 * mm, 12 * mm, 3 * mm), width=3 * mm, height=1 * mm,

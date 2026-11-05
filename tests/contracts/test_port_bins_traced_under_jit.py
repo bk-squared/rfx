@@ -41,7 +41,9 @@ def _scene(kind, path):
             sim.add_material('sub', eps_r=2.2)
             sim.add(Box((0, 0, 0), (.024, .020, .001)), material='sub')
             sim.add(Box((0, 0, 0), (.024, .020, 0)), material='pec')
-            sim.add(Box((.004, .008, .001), (.024, .012, .001)), material='pec')
+            trace_z = .8 * .001 if graded else .001
+            sim.add(Box((.004, (8 - .35) * .001, trace_z),
+                        (.024, (12 + .35) * .001, trace_z)), material='pec')
             sim.add_msl_port((.004, .010, 0), width=.004, height=.001,
                              direction='+x', impedance=50, eps_r_sub=2.2,
                              n_probe_offset=5, n_probe_spacing=2, n_probes=3)

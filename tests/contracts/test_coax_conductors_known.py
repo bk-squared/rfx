@@ -6,9 +6,34 @@ import pytest
 
 from rfx.geometry.csg import Cylinder
 from rfx.model.conductors import coax_kernel_conductors
-from tests.locks.test_sparams_split_bit_identity import (
-    _coax_line_result, _coax_two_port_result, _coax_msl_result,
-)
+from rfx import GaussianPulse, Simulation
+from tests.locks.test_sparams_split_bit_identity import _COAX_BAND
+
+
+def _coax_line_result():
+    sim = Simulation(domain=(0.008, 0.008, 0.040), freq_max=40.0e9,
+                     boundary="cpml", snap="declared")
+    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
+                         waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
+    return sim.compute_coaxial_line_reflection(
+        termination="short", n_steps=400, freqs=_COAX_BAND)
+
+
+def _coax_two_port_result():
+    sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=40.0e9,
+                     boundary="cpml", snap="declared")
+    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
+                         waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
+    return sim.compute_coaxial_two_port(n_steps=400, freqs=_COAX_BAND)
+
+
+def _coax_msl_result():
+    from tests._coax_msl_instrument_fixture import (
+        build_instrument_junction, instrument_kwargs,
+    )
+
+    sim = build_instrument_junction()
+    return sim.compute_coax_msl_transition(**instrument_kwargs(200))
 
 
 class KernelInspected(Exception):
@@ -290,7 +315,7 @@ def test_traced_handover_does_not_publish_tracers():
     from rfx import Simulation
     from rfx.sources.coaxial_port import stamp_coaxial_line
     from rfx.sparams.coax import _coax_pec_edge_masks
-    sim = Simulation(freq_max=10e9, domain=(.01, .01, .01), dx=.0005, boundary='cpml')
+    sim = Simulation(freq_max=10e9, domain=(.01, .01, .01), dx=.0005, boundary='cpml', snap="declared")
     grid = sim._build_grid()
     entities = []
     materials, _, cells = stamp_coaxial_line(grid, sim._build_materials(grid)[0],

@@ -68,7 +68,8 @@ def test_msl_substrate_through_x_absorber_is_silent():
                      cpml_layers=2)
     sim.add_material("board", eps_r=4.4)
     sim.add(Box((0, 0, 0), (.02, .02, .0016)), material="board")
-    sim.add(Box((.002, .008, .0016), (.018, .012, .0016)), material="pec")
+    sim.add(Box(((5 - .35) * .0004, (20 - .35) * .0004, .0016),
+                ((45 + .35) * .0004, (30 + .35) * .0004, .0016)), material="pec")
     assert not [i for i in sim.preflight() if i.code == "body_flush_on_absorber"]
 
 

@@ -167,7 +167,7 @@ def _junction_sim(*, open_annulus: bool) -> Simulation:
     the two foils (ground, trace) are SHEET declarations and the pin is a
     VOLUME; see the module docstring.
     """
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
     )
@@ -620,7 +620,7 @@ def test_rule_ii_message_names_the_first_registered_pec_radius_on_a_partial_hole
     16/24, was 8/16 (measured 2026-09-07): the same 16 metal ring nodes,
     counted against the 24-node ring the widened inner bound defines. The
     radius the message names is unchanged at 316.2 um."""
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
     )
